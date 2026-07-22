@@ -1041,10 +1041,87 @@ def search_lease_wiki(query: str, limit: int = 3) -> dict[str, Any]:
         return _wiki_keyword_fallback(query, limit)
 
 
+def _classify_quick_fix_via_policy(improvement: dict) -> dict:
+    """auto_fix_policy.classify_quick_fix をスキルパス解決込みで呼ぶ。"""
+    import sys
+
+    skill_scripts = _REPO_PATH / ".agents" / "skills" / "auto-improvement-pipeline" / "scripts"
+    if skill_scripts.is_dir() and str(skill_scripts) not in sys.path:
+        sys.path.insert(0, str(skill_scripts))
+    from auto_fix_policy import classify_quick_fix
+
+    return classify_quick_fix(improvement, _REPO_PATH)
+
+
+def propose_quick_fix(request: str, title: str = "") -> dict[str, Any]:
+    """ユーザーの修正要望が自動修正可能（quick_fix）かを判定し、可能なら起票する。
+
+    「○○ページの文言のタイポを直して」等の小規模な修正要望を受けたときに使う。
+    auto_fix_policy を単一の真実源として判定し、quick_fix と判定された場合のみ
+    data/chat_quick_fix_intake.jsonl に追記する。追記された候補は自律改善
+    パイプライン（recursive_self_improvement）が翌回の実行で拾い、自動修正の
+    ランクキューに載せる。判定が通らない要望は起票せず理由を返す。
+    """
+    req = (request or "").strip()
+    if not req:
+        return {"accepted": False, "reason": "要望テキストが空です。"}
+
+    improvement = {
+        "title": (title or req)[:120],
+        "description": req,
+    }
+    try:
+        verdict = _classify_quick_fix_via_policy(improvement)
+    except Exception as exc:
+        return {"accepted": False, "reason": f"判定に失敗しました: {exc}"}
+
+    if not verdict.get("is_quick_fix"):
+        return {
+            "accepted": False,
+            "reason": verdict.get("reason") or "自動修正対象の小規模修正として判定できませんでした。",
+            "hint": "対象ページ名（例: FAQページ・ホーム画面）と、文言/タイポ/表示件数など変更内容を具体的に伝えてください。",
+        }
+
+    import datetime as _dt
+    import hashlib
+
+    target = verdict.get("target_module")
+    rec_id = "chat_" + hashlib.md5(req.encode("utf-8")).hexdigest()[:12]
+    record = {
+        "id": rec_id,
+        "title": improvement["title"],
+        "description": req,
+        "target_module": target,
+        "category": "quick_ui",
+        "source": "chat",
+        "proposed_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+    }
+    try:
+        intake_path = Path(get_data_path("chat_quick_fix_intake.jsonl"))
+        intake_path.parent.mkdir(parents=True, exist_ok=True)
+        with intake_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        return {"accepted": False, "reason": f"起票の書き込みに失敗しました: {exc}"}
+
+    return {
+        "accepted": True,
+        "target_module": target,
+        "risk": verdict.get("risk"),
+        "id": rec_id,
+        "message": (
+            f"自動修正候補として起票しました（対象: {target}）。"
+            "次回の自律改善パイプライン実行でランクキューに載り、自動修正が試行されます。"
+        ),
+    }
+
+
 def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
     """Dispatch a tool call by name and return its result."""
     if name == "search_cases":
         return search_cases(args.get("query", ""), int(args.get("limit", 5)))
+    if name == "propose_quick_fix":
+        return propose_quick_fix(args.get("request", ""), args.get("title", ""))
     if name == "get_score_detail":
         return get_score_detail(args.get("company_name", ""))
     if name == "get_screening_activity":
@@ -1128,6 +1205,24 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
 
 # Gemini function_declarations schema for all tools
 TOOL_DECLARATIONS: list[dict] = [
+    {
+        "name": "propose_quick_fix",
+        "description": (
+            "ユーザーの小規模な修正要望が自動修正可能かを判定し、可能なら自律改善"
+            "パイプラインへ起票する。「FAQページの文言のタイポを直して」「ホーム画面の"
+            "ボタンの表示名を変えて」など、特定ページの文言・表示・設定値の小修正を"
+            "頼まれたときに使う。quick_fixと判定されれば対象ファイル付きで起票し、"
+            "対象外なら理由を返す。スコアリング・DB・API等のリスク領域は起票されない。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "request": {"type": "string", "description": "ユーザーの修正要望（対象ページと変更内容を含む自然文）"},
+                "title": {"type": "string", "description": "候補の短い見出し（省略時は要望冒頭を使用）"},
+            },
+            "required": ["request"],
+        },
+    },
     {
         "name": "search_cases",
         "description": "審査履歴DBを検索する。会社名・業種・キーワードで直近の審査案件を取得できる。",
