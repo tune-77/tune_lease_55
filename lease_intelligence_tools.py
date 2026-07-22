@@ -142,6 +142,122 @@ def get_score_detail(company_name: str) -> dict[str, Any]:
     }
 
 
+def get_scoring_coefficients(model: str = "", feature: str = "") -> dict[str, Any]:
+    """スコアリングで使われる各種係数を照会する。
+
+    「○○業の係数は？」「sales_log の係数はいくつ？」「競合がいると何%下がる？」
+    「物件カテゴリごとの物件/借手重みは？」といった係数の質問に答えるためのツール。
+    対象: 業種別ロジスティック回帰係数(COEFFS)・ベイズ事前補正・定性強みタグ重み・
+    物件カテゴリ別の物件/借手重み(ASSET_WEIGHT)。
+    - 引数なし: 利用可能なモデル/係数グループの一覧を返す
+    - model: 特定モデル名（例: 運送業_既存先）、または 'bayesian' / 'strength_tags' / 'asset_weight'
+    - feature: 指定した特徴量（例: sales_log）の係数を全回帰モデル横断で返す
+    """
+    from category_config import ASSET_WEIGHT
+    from coeff_definitions import (
+        BAYESIAN_PRIOR_EXTRA,
+        COEFFS,
+        DEFAULT_STRENGTH_WEIGHT,
+        STRENGTH_TAG_WEIGHTS,
+    )
+
+    q = (model or "").strip()
+    q_low = q.lower()
+
+    # ── 特殊グループのエイリアス ───────────────────────────────────────────
+    if q:
+        if q_low in {"bayesian", "prior", "prior_extra"} or any(k in q for k in ("ベイズ", "事前")):
+            return {
+                "model": "bayesian_prior_extra",
+                "type": "bayesian_prior",
+                "coefficients": dict(BAYESIAN_PRIOR_EXTRA),
+                "note": "AI知見に基づく初期補正（%ポイント換算）。標準化zに係数をかけて加算する想定。",
+                "source": "coeff_definitions.py: BAYESIAN_PRIOR_EXTRA",
+            }
+        if q_low in {"strength", "strength_tags", "tags"} or any(k in q for k in ("定性", "タグ", "強み")):
+            return {
+                "model": "strength_tag_weights",
+                "type": "qualitative_tag_weights",
+                "coefficients": dict(STRENGTH_TAG_WEIGHTS),
+                "default_weight": DEFAULT_STRENGTH_WEIGHT,
+                "note": "強みタグ1つあたりの%ポイント寄与目安。未定義タグは default_weight を適用。",
+                "source": "coeff_definitions.py: STRENGTH_TAG_WEIGHTS",
+            }
+        if q_low in {"asset", "asset_weight", "category"} or any(k in q for k in ("カテゴリ", "物件", "担保")):
+            return {
+                "model": "asset_weight",
+                "type": "category_asset_obligor_weight",
+                "categories": {
+                    cat: {
+                        "asset_w": conf.get("asset_w"),
+                        "obligor_w": conf.get("obligor_w"),
+                        "rationale": conf.get("rationale", ""),
+                    }
+                    for cat, conf in ASSET_WEIGHT.items()
+                },
+                "note": "物件カテゴリごとの物件スコア重み(asset_w)と借手スコア重み(obligor_w)。合計1.0。",
+                "source": "category_config.py: ASSET_WEIGHT",
+            }
+
+    # ── 特徴量横断照会（model 未指定で feature 指定時）─────────────────────
+    if not q and feature:
+        feat = feature.strip()
+        by_model = {
+            name: coeffs[feat]
+            for name, coeffs in COEFFS.items()
+            if feat in coeffs
+        }
+        if not by_model:
+            all_features = sorted({f for coeffs in COEFFS.values() for f in coeffs})
+            return {
+                "found": False,
+                "feature": feat,
+                "available_features": all_features,
+            }
+        return {
+            "feature": feat,
+            "type": "feature_across_models",
+            "by_model": by_model,
+            "count": len(by_model),
+            "source": "coeff_definitions.py: COEFFS",
+        }
+
+    # ── 回帰モデル指定 ─────────────────────────────────────────────────────
+    if q:
+        if q in COEFFS:
+            matched = q
+        else:
+            candidates = [name for name in COEFFS if q_low in name.lower()]
+            if len(candidates) == 1:
+                matched = candidates[0]
+            else:
+                return {
+                    "found": False,
+                    "query": q,
+                    "candidates": candidates,
+                    "available_regression_models": list(COEFFS.keys()),
+                }
+        return {
+            "model": matched,
+            "type": "regression_coefficients",
+            "coefficients": dict(COEFFS[matched]),
+            "feature_count": len(COEFFS[matched]),
+            "source": "coeff_definitions.py: COEFFS",
+        }
+
+    # ── 引数なし: 一覧 ─────────────────────────────────────────────────────
+    return {
+        "available_regression_models": list(COEFFS.keys()),
+        "coefficient_groups": {
+            "bayesian": "ベイズ事前補正（competitor_present 等、%ポイント換算）",
+            "strength_tags": "定性強みタグの加点重み",
+            "asset_weight": "物件カテゴリ別の物件/借手スコア重み",
+        },
+        "usage": "model= に上記モデル名やグループ名を指定、または feature= で特徴量を全モデル横断照会",
+        "source": "coeff_definitions.py / category_config.py",
+    }
+
+
 def get_screening_activity(period: str = "today", days: int = 0) -> dict[str, Any]:
     """審査活動サマリー：期間内に実施した審査（screening_records）の件数と判定内訳を返す。
 
@@ -575,6 +691,11 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
             args.get("period", "today"),
             int(args.get("days", 0) or 0),
         )
+    if name == "get_scoring_coefficients":
+        return get_scoring_coefficients(
+            args.get("model", ""),
+            args.get("feature", ""),
+        )
     if name == "compare_similar_cases":
         return compare_similar_cases(
             args.get("industry", ""),
@@ -680,6 +801,37 @@ TOOL_DECLARATIONS: list[dict] = [
                 "days": {
                     "type": "integer",
                     "description": "直近N日間で集計したい場合に指定（1以上のとき period より優先）。",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_scoring_coefficients",
+        "description": (
+            "スコアリングで使われる各種係数を照会する。"
+            "業種別ロジスティック回帰係数(COEFFS)・ベイズ事前補正・定性強みタグ重み・"
+            "物件カテゴリ別の物件/借手重み(ASSET_WEIGHT)を返す。"
+            "「運送業の係数は？」「sales_logの係数はいくつ？」「競合がいると何%下がる？」"
+            "「車両の物件重みは？」など係数値そのものを聞かれたときに使う。"
+            "引数なしで利用可能なモデル・グループ一覧を取得できる。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "description": (
+                        "モデル名（例: 全体_既存先 / 運送業_既存先 / 製造業_指標）、"
+                        "またはグループ名 bayesian / strength_tags / asset_weight。"
+                        "省略時は一覧を返す。"
+                    ),
+                },
+                "feature": {
+                    "type": "string",
+                    "description": (
+                        "特徴量名（例: sales_log / grade_watch / ratio_op_margin）。"
+                        "指定すると全回帰モデル横断でその係数値を返す（model 未指定時）。"
+                    ),
                 },
             },
         },

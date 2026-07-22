@@ -149,6 +149,72 @@ def test_tool_declarations_include_screening_activity():
     assert "get_screening_activity" in names
 
 
+def test_get_scoring_coefficients_lists_models_without_args():
+    from lease_intelligence_tools import get_scoring_coefficients
+
+    result = get_scoring_coefficients()
+
+    assert "全体_既存先" in result["available_regression_models"]
+    assert set(result["coefficient_groups"]) == {"bayesian", "strength_tags", "asset_weight"}
+
+
+def test_get_scoring_coefficients_returns_named_regression_model():
+    from lease_intelligence_tools import get_scoring_coefficients
+
+    result = get_scoring_coefficients("運送業_既存先")
+
+    assert result["model"] == "運送業_既存先"
+    assert result["type"] == "regression_coefficients"
+    assert "lease_credit_log" in result["coefficients"]
+
+
+def test_get_scoring_coefficients_bayesian_and_asset_groups():
+    from lease_intelligence_tools import get_scoring_coefficients
+
+    bayes = get_scoring_coefficients("bayesian")
+    assert bayes["type"] == "bayesian_prior"
+    assert "competitor_present" in bayes["coefficients"]
+
+    asset = get_scoring_coefficients("asset_weight")
+    assert asset["type"] == "category_asset_obligor_weight"
+    first = next(iter(asset["categories"].values()))
+    assert "asset_w" in first and "obligor_w" in first
+
+
+def test_get_scoring_coefficients_feature_across_models():
+    from lease_intelligence_tools import get_scoring_coefficients
+
+    result = get_scoring_coefficients(feature="sales_log")
+
+    assert result["type"] == "feature_across_models"
+    assert result["count"] >= 2
+    assert "全体_既存先" in result["by_model"]
+
+
+def test_get_scoring_coefficients_unknown_model_returns_candidates():
+    from lease_intelligence_tools import get_scoring_coefficients
+
+    result = get_scoring_coefficients("存在しないモデル")
+
+    assert result["found"] is False
+    assert "available_regression_models" in result
+
+
+def test_execute_tool_dispatches_scoring_coefficients():
+    from lease_intelligence_tools import execute_tool
+
+    result = execute_tool("get_scoring_coefficients", {"model": "全体_既存先"})
+
+    assert result["type"] == "regression_coefficients"
+
+
+def test_tool_declarations_include_scoring_coefficients():
+    from lease_intelligence_tools import TOOL_DECLARATIONS
+
+    names = {item["name"] for item in TOOL_DECLARATIONS}
+    assert "get_scoring_coefficients" in names
+
+
 def test_obsidian_query_expands_scoring_identifiers_to_business_terms():
     from mobile_app.obsidian_bridge import _expand_query_terms
 
