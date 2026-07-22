@@ -34,13 +34,30 @@ _TARGET_INFERENCE_RULES: list[tuple[tuple[str, ...], str]] = [
     (("紫苑の記憶システム",), "frontend/src/app/shion-memory-system/page.tsx"),
     (("ホーム画面",), "frontend/src/app/home/page.tsx"),
     (("リースニュースの注目論点",), "frontend/src/app/home/page.tsx"),
+    # 主要ページへの自然文からの対象推定（文言・タイポ等の微修正を発火可能にするため）
+    (("faqページ",), "frontend/src/app/faq/page.tsx"),
+    (("よくある質問",), "frontend/src/app/faq/page.tsx"),
+    (("ヘルプページ",), "frontend/src/app/help/page.tsx"),
+    (("ヘルプ画面",), "frontend/src/app/help/page.tsx"),
+    (("チャット画面",), "frontend/src/app/chat/page.tsx"),
+    (("案件一覧",), "frontend/src/app/cases/page.tsx"),
+    (("業界統計",), "frontend/src/app/industry-stats/page.tsx"),
+    (("改善ログ",), "frontend/src/app/improvement-log/page.tsx"),
+    (("競合分析",), "frontend/src/app/competitor/page.tsx"),
+    (("金利画面",), "frontend/src/app/interest/page.tsx"),
+    (("財務画面",), "frontend/src/app/finance/page.tsx"),
+    (("事業計画チェック",), "frontend/src/app/business-plan-check/page.tsx"),
 ]
 
 
+# canonical_key は不透明な識別ハッシュ（例: misc_a92f18c9bdb3）であり、
+# 禁止/許可キーワードやファイル参照の走査対象に含めると、ハッシュ中の
+# 偶然の部分文字列（"db"/"api"/"500" 等）に誤マッチして正当な候補まで
+# DENY されてしまう。キーワード走査には意味のあるテキストだけを使う。
 def _text(improvement: dict[str, Any]) -> str:
     return " ".join(
         str(improvement.get(key, ""))
-        for key in ("title", "description", "reason", "target_module", "canonical_key")
+        for key in ("title", "description", "reason", "target_module")
         if improvement.get(key)
     ).lower()
 
@@ -48,7 +65,7 @@ def _text(improvement: dict[str, Any]) -> str:
 def _body_text(improvement: dict[str, Any]) -> str:
     return " ".join(
         str(improvement.get(key, ""))
-        for key in ("title", "description", "reason", "canonical_key")
+        for key in ("title", "description", "reason")
         if improvement.get(key)
     ).lower()
 
@@ -172,6 +189,52 @@ def evaluate_auto_fix_policy(
     if inferred_target_module and not improvement.get("target_module"):
         result["inferred_target_module"] = inferred_target_module
     return result
+
+
+def classify_quick_fix(
+    improvement: dict[str, Any],
+    workspace_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """改善候補が「対象ファイルの明確な小規模修正（quick_ui）」かを判定する供給用ヘルパー。
+
+    トリアージやチャットが、抽象的な要望を自動修正パイプラインが発火できる形へ
+    整形するために使う。auto_fix_policy を単一の真実源として再利用し、判定が通れば
+    そのまま候補源へ追記できる `candidate` を返す。
+
+    戻り値:
+        {
+          "is_quick_fix": bool,          # 自動修正の発火対象か
+          "target_module": str | None,   # 特定/推定された単一対象ファイル
+          "risk": str,                   # low / medium / high
+          "reason": str,
+          "candidate": dict | None,      # is_quick_fix のとき、追記可能な候補dict
+        }
+    """
+    policy = evaluate_auto_fix_policy(improvement, workspace_root)
+    target = (
+        str(improvement.get("target_module") or "").strip()
+        or policy.get("inferred_target_module")
+        or None
+    )
+    is_quick_fix = bool(policy.get("auto_fix_allowed") and target)
+
+    candidate: dict[str, Any] | None = None
+    if is_quick_fix:
+        candidate = {
+            "title": str(improvement.get("title") or "").strip(),
+            "description": str(improvement.get("description") or improvement.get("detail") or "").strip(),
+            "reason": str(improvement.get("reason") or "").strip(),
+            "target_module": target,
+            "implementation": {"category": "quick_ui"},
+        }
+
+    return {
+        "is_quick_fix": is_quick_fix,
+        "target_module": target,
+        "risk": policy.get("risk", "medium"),
+        "reason": policy.get("reason", ""),
+        "candidate": candidate,
+    }
 
 
 if __name__ == "__main__":
