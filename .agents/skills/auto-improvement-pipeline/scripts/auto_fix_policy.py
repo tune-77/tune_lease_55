@@ -37,10 +37,14 @@ _TARGET_INFERENCE_RULES: list[tuple[tuple[str, ...], str]] = [
 ]
 
 
+# canonical_key は不透明な識別ハッシュ（例: misc_a92f18c9bdb3）であり、
+# 禁止/許可キーワードやファイル参照の走査対象に含めると、ハッシュ中の
+# 偶然の部分文字列（"db"/"api"/"500" 等）に誤マッチして正当な候補まで
+# DENY されてしまう。キーワード走査には意味のあるテキストだけを使う。
 def _text(improvement: dict[str, Any]) -> str:
     return " ".join(
         str(improvement.get(key, ""))
-        for key in ("title", "description", "reason", "target_module", "canonical_key")
+        for key in ("title", "description", "reason", "target_module")
         if improvement.get(key)
     ).lower()
 
@@ -48,7 +52,7 @@ def _text(improvement: dict[str, Any]) -> str:
 def _body_text(improvement: dict[str, Any]) -> str:
     return " ".join(
         str(improvement.get(key, ""))
-        for key in ("title", "description", "reason", "canonical_key")
+        for key in ("title", "description", "reason")
         if improvement.get(key)
     ).lower()
 
