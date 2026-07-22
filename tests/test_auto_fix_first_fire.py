@@ -43,6 +43,56 @@ def test_auto_fix_policy_still_denies_real_db_keyword():
     assert result["auto_fix_allowed"] is False
 
 
+def test_target_inference_resolves_expanded_pages():
+    from scripts import recursive_self_improvement as _rsi  # noqa: F401
+    import auto_fix_policy as policy
+
+    cases = {
+        "FAQページの文言のタイポを修正": "frontend/src/app/faq/page.tsx",
+        "案件一覧のラベル表示名を修正": "frontend/src/app/cases/page.tsx",
+        "改善ログ画面の説明文の誤字を直す": "frontend/src/app/improvement-log/page.tsx",
+    }
+    for text, expected in cases.items():
+        item = {"title": text, "description": text}
+        assert policy.infer_target_module(item, _REPO_ROOT) == expected, text
+
+
+def test_classify_quick_fix_accepts_genuine_quick_fix():
+    from scripts import recursive_self_improvement as _rsi  # noqa: F401
+    import auto_fix_policy as policy
+
+    verdict = policy.classify_quick_fix(
+        {"title": "FAQページのボタン文言のタイポを修正", "description": "表示名の誤字を直す"},
+        _REPO_ROOT,
+    )
+    assert verdict["is_quick_fix"] is True
+    assert verdict["target_module"] == "frontend/src/app/faq/page.tsx"
+    assert verdict["risk"] == "low"
+    # 返却された candidate はそのまま発火可能な形になっている
+    assert verdict["candidate"]["implementation"]["category"] == "quick_ui"
+    assert policy.evaluate_auto_fix_policy(verdict["candidate"], _REPO_ROOT)["auto_fix_allowed"] is True
+
+
+def test_classify_quick_fix_rejects_abstract_and_risky():
+    from scripts import recursive_self_improvement as _rsi  # noqa: F401
+    import auto_fix_policy as policy
+
+    # 対象ファイル不明の抽象要望
+    abstract = policy.classify_quick_fix(
+        {"title": "紫苑の記憶参照システムに根本的欠陥がある", "description": "改善してほしい"},
+        _REPO_ROOT,
+    )
+    assert abstract["is_quick_fix"] is False
+    assert abstract["candidate"] is None
+
+    # スコアリング等のリスク領域
+    risky = policy.classify_quick_fix(
+        {"title": "スコアリングの閾値を変更", "description": "承認ラインを調整", "target_module": "scoring_core.py"},
+        _REPO_ROOT,
+    )
+    assert risky["is_quick_fix"] is False
+
+
 def test_quick_ui_candidate_reaches_ranked_queue(tmp_path, monkeypatch):
     """空の台帳のもと、quick_ui 候補が suppressed されず ranked_queue に載る（＝発火可能）。"""
     from scripts import recursive_self_improvement as rsi
