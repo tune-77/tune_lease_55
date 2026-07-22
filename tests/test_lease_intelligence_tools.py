@@ -64,6 +64,91 @@ def test_tool_declarations_include_senior_reasoner_contract():
     ]
 
 
+def _seed_screening_db(path, rows):
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        CREATE TABLE screening_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_id TEXT NOT NULL,
+            screened_at TEXT NOT NULL,
+            total_score REAL NOT NULL,
+            asset_score REAL NOT NULL,
+            tenant_score REAL,
+            q_risk_score REAL,
+            competitor_pressure_score REAL,
+            outcome TEXT,
+            input_snapshot TEXT,
+            source TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    conn.executemany(
+        "INSERT INTO screening_records (case_id, screened_at, total_score, asset_score, "
+        "input_snapshot, source) VALUES (?, ?, ?, ?, ?, 'test')",
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_get_screening_activity_counts_today_with_verdict_breakdown(tmp_path, monkeypatch):
+    import datetime
+    import json
+
+    import lease_intelligence_tools as tools
+
+    today = datetime.date.today()
+    yesterday = today - datetime.timedelta(days=1)
+    db = tmp_path / "lease_data.db"
+    _seed_screening_db(
+        db,
+        [
+            ("C-1", f"{today.isoformat()}T09:00:00Z", 80.0, 70.0, json.dumps({"company_name": "承認商事"})),
+            ("C-2", f"{today.isoformat()}T10:00:00Z", 63.0, 50.0, json.dumps({"company_name": "条件工業"})),
+            ("C-3", f"{yesterday.isoformat()}T10:00:00Z", 40.0, 30.0, json.dumps({"company_name": "昨日社"})),
+        ],
+    )
+    monkeypatch.setattr(tools, "DB_PATH", str(db))
+
+    result = tools.get_screening_activity("today")
+
+    assert result["count"] == 2
+    assert result["period_label"] == "今日"
+    assert result["breakdown"]["承認"] == 1
+    assert result["breakdown"]["条件付き承認"] == 1
+    assert result["breakdown"]["否決"] == 0
+    assert {c["company_name"] for c in result["cases"]} == {"承認商事", "条件工業"}
+
+
+def test_execute_tool_dispatches_screening_activity(tmp_path, monkeypatch):
+    import datetime
+
+    import lease_intelligence_tools as tools
+
+    db = tmp_path / "lease_data.db"
+    _seed_screening_db(
+        db,
+        [("C-1", f"{datetime.date.today().isoformat()}T09:00:00Z", 75.0, 60.0, "{}")],
+    )
+    monkeypatch.setattr(tools, "DB_PATH", str(db))
+
+    result = tools.execute_tool("get_screening_activity", {"period": "today"})
+
+    assert result["count"] == 1
+
+
+def test_tool_declarations_include_screening_activity():
+    from lease_intelligence_tools import TOOL_DECLARATIONS
+
+    names = {item["name"] for item in TOOL_DECLARATIONS}
+    assert "get_screening_activity" in names
+
+
 def test_obsidian_query_expands_scoring_identifiers_to_business_terms():
     from mobile_app.obsidian_bridge import _expand_query_terms
 

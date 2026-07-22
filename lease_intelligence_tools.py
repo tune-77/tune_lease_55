@@ -142,6 +142,99 @@ def get_score_detail(company_name: str) -> dict[str, Any]:
     }
 
 
+def get_screening_activity(period: str = "today", days: int = 0) -> dict[str, Any]:
+    """審査活動サマリー：期間内に実施した審査（screening_records）の件数と判定内訳を返す。
+
+    「今日は審査を何件したか」「今週は何件審査したか」といった日付ベースの活動量に答えるためのツール。
+    過去案件を会社名・キーワードで探すのは search_cases を使うこと。
+    period: today / yesterday / this_week / this_month / last_7_days / last_30_days / all
+    days に1以上を指定した場合は「直近days日間」を優先する。
+    """
+    import datetime as _dt
+
+    from constants import APPROVAL_LINE, CONDITIONAL_LINE
+
+    today = _dt.date.today()
+    start: _dt.date | None
+    end: _dt.date | None
+
+    if days and days > 0:
+        start, end, label = today - _dt.timedelta(days=days - 1), today, f"直近{days}日間"
+        period = f"last_{days}_days"
+    elif period == "yesterday":
+        y = today - _dt.timedelta(days=1)
+        start, end, label = y, y, "昨日"
+    elif period == "this_week":  # 月曜始まり
+        start, end, label = today - _dt.timedelta(days=today.weekday()), today, "今週"
+    elif period == "this_month":
+        start, end, label = today.replace(day=1), today, "今月"
+    elif period == "last_7_days":
+        start, end, label = today - _dt.timedelta(days=6), today, "直近7日間"
+    elif period == "last_30_days":
+        start, end, label = today - _dt.timedelta(days=29), today, "直近30日間"
+    elif period == "all":
+        start, end, label = None, None, "全期間"
+    else:  # today（未知の値も今日にフォールバック）
+        period, start, end, label = "today", today, today, "今日"
+
+    where = ""
+    params: list[Any] = []
+    if start is not None and end is not None:
+        where = "WHERE date(screened_at) BETWEEN ? AND ?"
+        params = [start.isoformat(), end.isoformat()]
+
+    with closing(_open_db()) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT case_id, screened_at, total_score, outcome, input_snapshot
+            FROM screening_records
+            {where}
+            ORDER BY screened_at DESC
+            """,
+            params,
+        ).fetchall()
+
+    def _verdict(score: float) -> str:
+        if score >= APPROVAL_LINE:
+            return "承認"
+        if score >= CONDITIONAL_LINE:
+            return "条件付き承認"
+        return "否決"
+
+    breakdown = {"承認": 0, "条件付き承認": 0, "否決": 0}
+    scores: list[float] = []
+    recent: list[dict] = []
+    for r in rows:
+        score = float(r["total_score"] or 0)
+        scores.append(score)
+        verdict = _verdict(score)
+        breakdown[verdict] += 1
+        if len(recent) < 10:
+            snap: dict = {}
+            try:
+                snap = json.loads(r["input_snapshot"] or "{}")
+            except Exception:
+                pass
+            recent.append({
+                "case_id": r["case_id"],
+                "company_name": snap.get("company_name", r["case_id"]),
+                "screened_at": r["screened_at"],
+                "total_score": round(score, 1),
+                "verdict": verdict,
+            })
+
+    return {
+        "period": period,
+        "period_label": label,
+        "start_date": start.isoformat() if start else None,
+        "end_date": end.isoformat() if end else None,
+        "count": len(rows),
+        "breakdown": breakdown,
+        "avg_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
+        "cases": recent,
+    }
+
+
 def compare_similar_cases(industry: str, score_min: float = 0.0, score_max: float = 100.0) -> dict[str, Any]:
     """Compare cases in a similar industry and score range to find patterns."""
     like = f"%{industry}%" if industry else "%"
@@ -477,6 +570,11 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
         return search_cases(args.get("query", ""), int(args.get("limit", 5)))
     if name == "get_score_detail":
         return get_score_detail(args.get("company_name", ""))
+    if name == "get_screening_activity":
+        return get_screening_activity(
+            args.get("period", "today"),
+            int(args.get("days", 0) or 0),
+        )
     if name == "compare_similar_cases":
         return compare_similar_cases(
             args.get("industry", ""),
@@ -559,6 +657,31 @@ TOOL_DECLARATIONS: list[dict] = [
                 "company_name": {"type": "string", "description": "調査対象の会社名"},
             },
             "required": ["company_name"],
+        },
+    },
+    {
+        "name": "get_screening_activity",
+        "description": (
+            "審査活動サマリーを取得する。指定期間に実施した審査の件数・判定内訳（承認/条件付き承認/否決）・"
+            "平均スコア・直近案件リストを返す。"
+            "「今日は審査を何件したか」「今週は何件審査したか」など日付ベースの活動量を答えるときに使う。"
+            "会社名やキーワードで過去案件を探すのは search_cases を使うこと。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "period": {
+                    "type": "string",
+                    "description": (
+                        "集計期間。today / yesterday / this_week / this_month / "
+                        "last_7_days / last_30_days / all のいずれか（デフォルト today）。"
+                    ),
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "直近N日間で集計したい場合に指定（1以上のとき period より優先）。",
+                },
+            },
         },
     },
     {
