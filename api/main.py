@@ -5263,6 +5263,60 @@ def _build_proactive_problem_report(now=None) -> str:
     return " ".join(parts)
 
 
+# 同一の自発報告を毎ターン繰り返すとうるさいため、一定時間は抑制する。
+_MONITOR_THROTTLE_HOURS = 12
+
+
+def _throttle_proactive_report(report: str, now=None) -> str:
+    """同一内容の自発報告を _MONITOR_THROTTLE_HOURS 内は繰り返さない（ナグ防止）。
+
+    署名は数字を除いた本文で取り、件数・日数だけの変化では再掲しない（同じ問題クラスは
+    抑制）。状態は data/shion_monitor_report_state.json に保存。read/write 失敗は
+    fail-open（＝報告を出す）で観測性を優先する。
+    """
+    import datetime as _dt
+    import hashlib
+
+    if not report.strip():
+        return ""
+    now = now or _dt.datetime.now()
+    sig = hashlib.md5(re.sub(r"\d+", "#", report).encode("utf-8")).hexdigest()[:16]
+    path = Path(get_data_path("shion_monitor_report_state.json"))
+    state: dict[str, str] = {}
+    try:
+        if path.exists():
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                state = loaded
+    except Exception:
+        state = {}
+
+    last = state.get(sig)
+    if last:
+        try:
+            if now - _dt.datetime.fromisoformat(last) < _dt.timedelta(hours=_MONITOR_THROTTLE_HOURS):
+                return ""
+        except ValueError:
+            pass
+
+    state[sig] = now.isoformat()
+    try:
+        cutoff = now - _dt.timedelta(days=7)
+
+        def _fresh(ts: str) -> bool:
+            try:
+                return _dt.datetime.fromisoformat(ts) >= cutoff
+            except ValueError:
+                return False
+
+        state = {k: v for k, v in state.items() if _fresh(v)}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return report
+
+
 def _load_improvement_ledger_summary(limit: int = 8) -> dict:
     """scripts/improvement_ledger.jsonl の直近エントリを要約する（P0-2）。
 
@@ -13302,6 +13356,10 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     )
     improvement_report_context = _build_dialogue_improvement_report_context(limit=4)
     improvement_observability_context = _build_dialogue_improvement_observability_context(full_message)
+    # 通常会話での自発報告（常時レイヤ）は同一内容を毎ターン繰り返さないよう抑制する。
+    # 改善相談（オンデマンド詳細）はユーザーが明示的に尋ねているので抑制しない。
+    if not _is_improvement_consultation_message(full_message):
+        improvement_observability_context = _throttle_proactive_report(improvement_observability_context)
     improvement_triage_context = _build_dialogue_triage_context(limit=4)
 
     if not vault:

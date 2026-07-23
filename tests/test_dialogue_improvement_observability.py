@@ -131,6 +131,28 @@ def test_no_proactive_report_when_report_is_fresh(tmp_path, main_module, monkeyp
     assert context == ""
 
 
+def test_proactive_report_throttled_within_window(tmp_path, main_module, monkeypatch):
+    """同一の自発報告は _MONITOR_THROTTLE_HOURS 内は再掲しない（件数差は同一視）。"""
+    import datetime
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+
+    now = datetime.datetime(2026, 7, 23, 12, 0, 0)
+    report = "【システム監視】自己改善レポートが5日更新されていません。"
+
+    assert main_module._throttle_proactive_report(report, now=now) == report  # 初回は出す
+    assert main_module._throttle_proactive_report(report, now=now + datetime.timedelta(hours=1)) == ""  # 窓内は抑制
+    # 件数だけ変わっても同一問題クラスとして抑制
+    report2 = "【システム監視】自己改善レポートが6日更新されていません。"
+    assert main_module._throttle_proactive_report(report2, now=now + datetime.timedelta(hours=2)) == ""
+    # 窓を超えたら再掲
+    assert main_module._throttle_proactive_report(report, now=now + datetime.timedelta(hours=13)) == report
+    # 空は空のまま
+    assert main_module._throttle_proactive_report("", now=now) == ""
+
+
 def test_rerun_of_same_step_uses_last_result(tmp_path, main_module):
     _write_pipeline_log(
         tmp_path,
