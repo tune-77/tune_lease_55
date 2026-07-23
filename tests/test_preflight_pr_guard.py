@@ -73,6 +73,27 @@ def test_import_sanitizer_warns_only_on_unknown_imports():
     assert not any("import pandas as pd" == w.detail for w in warnings)
 
 
+def test_local_top_level_modules_include_agents_subtree():
+    """実行時 sys.path 追加で import される .agents/skills 配下のモジュールも拾う。"""
+    local = g.local_top_level_modules()
+    assert "pipeline_ledger" in local
+    assert "auto_fix_policy" in local
+
+
+def test_import_sanitizer_accepts_runtime_syspath_local_modules():
+    """.agents/skills 配下等のローカルモジュールを幻覚 import と誤検知しない。"""
+    diff = (
+        "+import pipeline_ledger\n"
+        "+from auto_fix_policy import evaluate_auto_fix_policy\n"
+        "+import nonexistent_pkg_xyz\n"
+    )
+    warnings = g.run_import_sanitizer(diff)
+    flagged = {w.detail for w in warnings}
+    assert "import nonexistent_pkg_xyz" in flagged  # 真の幻覚は依然検知
+    assert not any("pipeline_ledger" in (w.detail or "") for w in warnings)
+    assert not any("auto_fix_policy" in (w.detail or "") for w in warnings)
+
+
 def test_extract_added_imports_ignores_diff_header_and_handles_forms():
     diff = (
         "+++ b/foo.py\n"       # ヘッダは無視
@@ -90,6 +111,17 @@ def test_extract_added_imports_ignores_diff_header_and_handles_forms():
 
 
 # ── AST Guard ────────────────────────────────────────────────────────────────
+
+def test_extract_added_imports_ignores_prose_and_comments():
+    """「import」で始まるだけの散文・コメント行を import 文と誤認しない。"""
+    diff = (
+        "+    import されるサブツリー（.agents/skills 配下）\n"  # 日本語の散文
+        "+# import commented_out\n"                              # コメント
+        "+import real_module\n"                                  # 本物の import
+    )
+    tops = [t[0] for t in g.extract_added_imports(diff)]
+    assert tops == ["real_module"]
+
 
 def test_check_ast_syntax_detects_syntax_error():
     assert g.check_ast_syntax("def f(:\n    pass", "bad.py") is not None
