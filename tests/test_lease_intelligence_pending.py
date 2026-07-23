@@ -76,6 +76,44 @@ def test_reconcile_caps_history(tmp_path, monkeypatch):
     assert f"d{pending.MAX_HISTORY + 49}" not in kept_ids
 
 
+def test_promise_detection_matches_future_commitments(tmp_path, monkeypatch):
+    path = tmp_path / "shion_pending_tasks.json"
+    monkeypatch.setattr(pending, "PENDING_PATH", str(path))
+
+    future_replies = [
+        "それでは調べてみますね。",
+        "こちらで確認します。",
+        "詳細を調査いたします。",
+        "後で報告します。",
+        "結果を改めてご報告します。",
+        "検索してみます。",
+    ]
+    for reply in future_replies:
+        ids = pending.extract_and_save_promises("元の質問", reply)
+        assert ids, f"未来の約束が検出されなかった: {reply}"
+
+
+def test_promise_detection_ignores_past_and_requests(tmp_path, monkeypatch):
+    """過去形（完了）・ユーザーへの依頼は約束として記録しない（過剰マッチ抑制）。"""
+    path = tmp_path / "shion_pending_tasks.json"
+    monkeypatch.setattr(pending, "PENDING_PATH", str(path))
+
+    non_promises = [
+        "ご確認ください。",              # ユーザーへの依頼
+        "確認してください。",            # 依頼
+        "さきほど確認しました。",        # 過去（完了）
+        "調べてみました。",              # 過去
+        "確認できませんでした。",        # 過去否定
+        "ご確認いただけますようお願いします。",  # 依頼
+        "これは重要な確認事項です。",    # 名詞
+    ]
+    for reply in non_promises:
+        ids = pending.extract_and_save_promises("元の質問", reply)
+        assert ids == [], f"約束でない文が記録された: {reply}"
+    # ファイルには何も書かれていない
+    assert not path.exists() or json.loads(path.read_text(encoding="utf-8")) == []
+
+
 def test_reconcile_noop_when_clean(tmp_path, monkeypatch):
     now = datetime(2026, 7, 23, 12, 0, 0)
     path = tmp_path / "shion_pending_tasks.json"
