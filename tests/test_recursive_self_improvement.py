@@ -126,6 +126,61 @@ def test_recursive_self_improvement_suppresses_deleted_items(tmp_path, monkeypat
     assert bundle["canonical_candidates"][0]["state"] == "suppressed"
 
 
+def test_record_ledger_events_skips_suppressed(tmp_path, monkeypatch):
+    """suppressed イベントを台帳へ再記録しない（クールダウン恒久リセットの防止）。"""
+    from scripts import recursive_self_improvement as rsi
+    import pipeline_ledger
+
+    ledger_path = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(pipeline_ledger, "LEDGER_PATH", ledger_path)
+
+    events = [
+        {"key": "k_supp", "status": "suppressed", "title": "抑制", "canonical_key": "k_supp"},
+        {"key": "k_nr", "status": "needs_review", "title": "要レビュー", "canonical_key": "k_nr"},
+        {"key": "k_val", "status": "validated", "title": "検証済み", "canonical_key": "k_val"},
+    ]
+    recorded = rsi.record_ledger_events(events)
+
+    assert recorded == 2  # suppressed は記録しない
+    entries = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    statuses = {e["key"]: e["status"] for e in entries}
+    assert "k_supp" not in statuses
+    assert statuses["k_nr"] == "needs_review"
+    assert statuses["k_val"] == "validated"
+
+
+def test_recursive_distinguishes_healthy_dedup_from_churn(tmp_path, monkeypatch):
+    """applied 抑制=健全な重複排除、needs_review クールダウン抑制=滞留(churn) を区別する。"""
+    from scripts import recursive_self_improvement as rsi
+    import pipeline_ledger
+
+    ledger_path = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(pipeline_ledger, "LEDGER_PATH", ledger_path)
+
+    healthy_key = rsi.canonical_key("A項目", "説明A")
+    pipeline_ledger.record(healthy_key, "applied", "A項目", canonical_key=healthy_key)
+    churn_key = rsi.canonical_key("B項目", "説明B")
+    pipeline_ledger.record(churn_key, "needs_review", "B項目", canonical_key=churn_key)
+
+    report = {
+        "date": "2026-07-23",
+        "needs_review": [
+            {"id": "R1", "title": "A項目", "description": "説明A", "target_module": "frontend/src/app/page.tsx"},
+            {"id": "R2", "title": "B項目", "description": "説明B", "target_module": "frontend/src/app/page.tsx"},
+        ],
+    }
+    bundle = rsi.build_recursive_self_improvement(report, prompt_feedback_log=[], workspace_root=tmp_path)
+
+    ms = bundle["measurement_summary"]
+    assert bundle["suppressed_count"] == 2
+    assert ms["suppressed_healthy_count"] == 1
+    assert ms["suppressed_churn_count"] == 1
+    assert ms["churn_rate"] == 50.0
+    healthy_flags = {s["canonical_key"]: s["healthy"] for s in bundle["suppressions"]}
+    assert healthy_flags[healthy_key] is True
+    assert healthy_flags[churn_key] is False
+
+
 def test_recursive_self_improvement_writes_outputs_and_augments_latest(tmp_path):
     from scripts import recursive_self_improvement as rsi
 

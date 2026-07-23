@@ -330,10 +330,21 @@ def build_loop_metrics(
         if status == "ok":
             status = "warn"
         recommendations.append("needs_review が多いため、低リスク候補と高リスク候補を分けて棚卸しする")
-    if _safe_float(recursive_measurement.get("noise_rate")) >= 50.0:
+    # 滞留(churn)判定は churn_rate を使う（＝クールダウン固着のみ）。
+    # noise_rate は applied 等の健全な重複排除も含むため、それ単体を異常扱いしない。
+    # churn_rate 未提供の古いレポートは noise_rate にフォールバック（後方互換）。
+    churn_signal = (
+        _safe_float(recursive_measurement.get("churn_rate"))
+        if "churn_rate" in recursive_measurement
+        else _safe_float(recursive_measurement.get("noise_rate"))
+    )
+    if churn_signal >= 50.0:
         if status == "ok":
             status = "warn"
-        recommendations.append("noise_rate が高いため、重複候補と抑制ルールを確認する")
+        recommendations.append(
+            "抑制の滞留(churn)が高いため、needs_review/suppressed のクールダウン固着や"
+            "台帳の suppressed 再記録を確認する（健全な重複排除は含めない）"
+        )
     if not recommendations:
         recommendations.append("現状は読み取り専用の定点観測を継続する")
 
@@ -372,6 +383,9 @@ def build_loop_metrics(
                 "repeat_issue_rate": _safe_float(recursive_measurement.get("repeat_issue_rate")),
                 "reuse_rate": _safe_float(recursive_measurement.get("reuse_rate")),
                 "noise_rate": _safe_float(recursive_measurement.get("noise_rate")),
+                "churn_rate": _safe_float(recursive_measurement.get("churn_rate")),
+                "suppressed_healthy_count": _safe_int(recursive_measurement.get("suppressed_healthy_count")),
+                "suppressed_churn_count": _safe_int(recursive_measurement.get("suppressed_churn_count")),
             },
         },
         "prompt_feedback_loop": {
@@ -411,6 +425,11 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Repeat issue rate: {measurement['repeat_issue_rate']}%")
     lines.append(f"- Reuse rate: {measurement['reuse_rate']}%")
     lines.append(f"- Noise rate: {measurement['noise_rate']}%")
+    lines.append(
+        f"- Churn rate: {measurement.get('churn_rate', 0.0)}% "
+        f"(healthy dedup: {measurement.get('suppressed_healthy_count', 0)}, "
+        f"churn: {measurement.get('suppressed_churn_count', 0)})"
+    )
     lines.append("")
     lines.append("## Prompt Feedback Loop")
     prompt = report["prompt_feedback_loop"]

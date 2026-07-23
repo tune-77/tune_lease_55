@@ -242,6 +242,10 @@ def build_recursive_self_improvement(
         if processed and ledger_status:
             state = "suppressed"
             reason = _build_suppression_reason(ledger_status, duplicate_count, True)
+            # 台帳で既に決着済み（applied/deleted/rejected）の抑制は健全な重複排除。
+            # 一方 needs_review/parked/suppressed のクールダウン抑制は「滞留(churn)」で、
+            # ループが前へ進んでいないサイン。両者を区別して noise の誤読を防ぐ。
+            healthy = ledger_status.startswith(("applied", "deleted", "rejected"))
             suppressions.append(
                 {
                     "id": item.get("id"),
@@ -249,6 +253,7 @@ def build_recursive_self_improvement(
                     "canonical_key": key,
                     "status": state,
                     "reason": reason,
+                    "healthy": healthy,
                 }
             )
         elif item.get("source_state") == "applied":
@@ -293,12 +298,19 @@ def build_recursive_self_improvement(
     prompt_rows = prompt_feedback_log or []
     prompt_summary = build_prompt_summary(prompt_rows)
     total = len(canonical_candidates)
+    suppressed_healthy = sum(1 for s in suppressions if s.get("healthy"))
+    suppressed_churn = len(suppressions) - suppressed_healthy
     measurement_summary = {
         "pdca_rate": prompt_summary.get("pdca_rate", 0.0),
         "response_changed_rate": prompt_summary.get("previous_diff_rate", 0.0),
         "repeat_issue_rate": round(repeat_count / total * 100, 1) if total else 0.0,
         "reuse_rate": round(reused_count / total * 100, 1) if total else 0.0,
+        # noise_rate は後方互換のため「全抑制/総数」を維持。健全な重複排除も含むため、
+        # ループ滞留の判定には churn_rate（クールダウン滞留のみ）を使うこと。
         "noise_rate": round(len(suppressions) / total * 100, 1) if total else 0.0,
+        "churn_rate": round(suppressed_churn / total * 100, 1) if total else 0.0,
+        "suppressed_healthy_count": suppressed_healthy,
+        "suppressed_churn_count": suppressed_churn,
         "prompt_total": prompt_summary.get("total", 0),
         "prompt_previous_diff_count": prompt_summary.get("previous_diff_count", 0),
     }
@@ -344,6 +356,11 @@ def render_markdown(bundle: dict[str, Any]) -> str:
     lines.append(f"- Repeat issue rate: {measurement['repeat_issue_rate']}%")
     lines.append(f"- Reuse rate: {measurement['reuse_rate']}%")
     lines.append(f"- Noise rate: {measurement['noise_rate']}%")
+    lines.append(
+        f"- Churn rate: {measurement.get('churn_rate', 0.0)}% "
+        f"(healthy dedup: {measurement.get('suppressed_healthy_count', 0)}, "
+        f"churn: {measurement.get('suppressed_churn_count', 0)})"
+    )
     lines.append("")
     lines.append("## Ranked Queue")
     if not bundle["ranked_queue"]:
@@ -362,6 +379,34 @@ def render_markdown(bundle: dict[str, Any]) -> str:
         for item in bundle["suppressions"][:10]:
             lines.append(f"- `{item.get('id')}` `{item.get('title')}` / {item.get('reason')}")
     return "\n".join(lines) + "\n"
+
+
+def record_ledger_events(events: list[dict[str, Any]]) -> int:
+    """ledger_events を台帳へ記録する。記録した件数を返す。
+
+    重要: status=="suppressed" のイベントは記録しない。
+    suppressed は「既に台帳にある候補をクールダウンで抑制した」という一時的な観測結果
+    であって新しい決定ではない。これを毎回記録し直すと、pipeline_ledger.is_processed が
+    見る最新エントリの recorded_at が日々更新され、needs_review/suppressed の30日
+    クールダウンが永久にリセットされて恒久抑制に陥る（applied=0 の空回りの原因）。
+    決定を表す状態（applied/validated/needs_review/rejected 等）のみ記録する。
+    """
+    recorded = 0
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        status = str(event.get("status") or "")
+        if status == "suppressed":
+            continue
+        pipeline_ledger.record(
+            str(event.get("key") or event.get("canonical_key") or ""),
+            status,
+            str(event.get("title") or ""),
+            reason=str(event.get("reason") or ""),
+            canonical_key=str(event.get("canonical_key") or ""),
+        )
+        recorded += 1
+    return recorded
 
 
 def write_recursive_outputs(
@@ -488,16 +533,7 @@ def main() -> int:
         print(json.dumps(bundle, ensure_ascii=False, indent=2))
         return 0
 
-    for event in bundle.get("ledger_events", []):
-        if not isinstance(event, dict):
-            continue
-        pipeline_ledger.record(
-            str(event.get("key") or event.get("canonical_key") or ""),
-            str(event.get("status") or ""),
-            str(event.get("title") or ""),
-            reason=str(event.get("reason") or ""),
-            canonical_key=str(event.get("canonical_key") or ""),
-        )
+    record_ledger_events(bundle.get("ledger_events", []))
 
     write_recursive_outputs(
         bundle,
