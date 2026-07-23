@@ -71,6 +71,7 @@ jobs:
         run: >
           python -m pytest -q
           tests/test_no_duplicate_toplevel_defs.py
+          tests/test_preflight_pr_guard.py
           tests/test_improvement_log_recursive_summary.py
           tests/test_improvement_triage.py
           tests/test_dialogue_improvement_observability.py
@@ -83,3 +84,21 @@ jobs:
           tests/test_loop_hardening.py
           tests/test_codex_review_p1_p2_fixes.py
           tests/test_build_loop_proof.py
+
+  # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）を warn-only で実行。
+  # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。
+  # ガードは stdlib のみで動くため追加依存は不要。`|| true` で CI は絶対に落とさない。
+  preflight-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # resolve_base_ref() が origin/master との merge-base を要求するため全履歴取得
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Preflight guard (warn-only)
+        run: |
+          python scripts/preflight_pr_guard.py | tee -a "$GITHUB_STEP_SUMMARY" || true
