@@ -136,6 +136,55 @@ def test_loop_metrics_flags_prompt_rows_with_zero_pdca_rate(tmp_path):
     assert any("PDCA反映率が0%" in item for item in report["recommendations"])
 
 
+def test_loop_metrics_does_not_flag_healthy_dedup_suppression(tmp_path):
+    """noise_rate が高くても churn_rate が0（＝健全な重複排除）なら滞留として警告しない。"""
+    from scripts.loop_metrics import build_loop_metrics
+
+    latest = tmp_path / "latest.json"
+    latest.write_text(json.dumps({"applied_count": 1, "needs_review_count": 0, "failed_count": 0}), encoding="utf-8")
+    recursive = tmp_path / "recursive.json"
+    recursive.write_text(
+        json.dumps({"measurement_summary": {"noise_rate": 100.0, "churn_rate": 0.0}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    prompt_log = tmp_path / "prompt.jsonl"
+    prompt_log.write_text("", encoding="utf-8")
+
+    report = build_loop_metrics(
+        latest_report_path=latest,
+        recursive_report_path=recursive,
+        prompt_log_path=prompt_log,
+        model_paths=(),
+    )
+
+    assert not any("churn" in item for item in report["recommendations"])
+    assert report["recursive_loop"]["measurement_summary"]["churn_rate"] == 0.0
+
+
+def test_loop_metrics_flags_high_churn(tmp_path):
+    """churn_rate が高いときは滞留として警告する。"""
+    from scripts.loop_metrics import build_loop_metrics
+
+    latest = tmp_path / "latest.json"
+    latest.write_text(json.dumps({"applied_count": 0, "needs_review_count": 0, "failed_count": 0}), encoding="utf-8")
+    recursive = tmp_path / "recursive.json"
+    recursive.write_text(
+        json.dumps({"measurement_summary": {"noise_rate": 100.0, "churn_rate": 80.0}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    prompt_log = tmp_path / "prompt.jsonl"
+    prompt_log.write_text("", encoding="utf-8")
+
+    report = build_loop_metrics(
+        latest_report_path=latest,
+        recursive_report_path=recursive,
+        prompt_log_path=prompt_log,
+        model_paths=(),
+    )
+
+    assert any("churn" in item for item in report["recommendations"])
+
+
 def test_scoring_coeff_health_flags_all_zero_required_coefficients(tmp_path):
     from scripts.loop_metrics import build_scoring_coeff_health
 
