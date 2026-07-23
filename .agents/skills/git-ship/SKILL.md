@@ -60,6 +60,10 @@ git add -A -- ':!data/' ':!.streamlit/secrets.toml'
 # 2. コミット
 git commit -m "<自動生成メッセージ>"
 
+# 2.5 プリフライト検証ガード（警告のみ・push は止めない）
+#     構文崩れ／幻覚import／同一箇所への繰り返し修正を最後の一線で検知する。
+python3 scripts/preflight_pr_guard.py || true
+
 # 3. リモートへpush
 git push origin <branch>
 
@@ -107,6 +111,9 @@ git add -A -- ':!data/' ':!.streamlit/secrets.toml'
 
 # 2. コミット
 git commit -m "<自動生成メッセージ>"
+
+# 2.5 プリフライト検証ガード（警告のみ・push は止めない）
+python3 scripts/preflight_pr_guard.py || true
 
 # 3. push
 git push origin master

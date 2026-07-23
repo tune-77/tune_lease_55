@@ -58,3 +58,21 @@ Codex 実行プロンプトへ埋め込まれる。この経路への対策:
 - キューの**並び替え・除外**は User 確定トリアージがある場合のみ（live モード時）
 - **実装の実行**は従来どおり codex-safe 判定＋required_checks＋人間のPRレビューが前提
 - DB / スコアリング / 認証 / デプロイ設定 / 顧客データ / 課金を伴う操作は必ず人間承認（backlog §9.1 権限段階5）
+
+## 6. PR 前プリフライト検証ガード（warn-only）
+
+`scripts/preflight_pr_guard.py` が PR 発行直前の「最後の一線」で 3 つを検査する。
+現段階は **警告のみ**（既定 exit 0・push は止めない）。将来 `--strict` でブロック化可能。
+
+- **AST Guard** — 変更 .py の構文チェック＋行数激減/関数消失検知。ロジックの出典は
+  §2 でも参照している `step3_auto_apply.py::_run_local_tests` / `_sanity_check`。
+- **Import Sanitizer** — 差分の追加 import を stdlib / 宣言済み依存
+  (`pyproject.toml` / `requirements.txt` / `web/requirements.txt`) / ローカルモジュール /
+  現環境(find_spec) で解決し、幻覚 import の疑いを警告。
+- **Circuit Breaker** — 同一ファイル集合で警告が解消しないまま繰り返した回数を
+  `.claude/state/preflight_retries.json` に記録し、上限超過で人間へのバトンタッチを警告。
+  上限 env は `PREFLIGHT_MAX_RETRIES`（既定 2）で、§4「連続失敗で停止」の
+  `CODEX_QUEUE_MAX_CONSECUTIVE_FAILURES`（既定 2）と同じ規約に揃えている。
+
+配線: `git-ship` スキルの push 直前ステップ、および `Bash` の PreToolUse フック
+（`.claude/hooks/preflight_guard_hook.sh`、`git push` / `gh pr create` 時のみ・非ブロック）。

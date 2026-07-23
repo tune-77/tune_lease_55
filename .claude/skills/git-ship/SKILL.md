@@ -76,6 +76,11 @@ git add -A -- ':!data/'
 # 2. コミット
 git commit -m "<自動生成メッセージ>"
 
+# 2.5 プリフライト検証ガード（警告のみ・push は止めない）
+#     構文崩れ／幻覚import／同一箇所への繰り返し修正を最後の一線で検知する。
+#     警告が出ても続行するが、内容はユーザーに提示すること。
+python3 scripts/preflight_pr_guard.py || true
+
 # 3. リモートへpush
 git push -u origin <branch>
 
