@@ -298,6 +298,55 @@ def test_get_pipeline_status_handles_missing_sources(tmp_path, monkeypatch):
     assert result["pending_investigations"]["available"] is False
 
 
+def test_get_pipeline_status_reads_report_from_bundle_json(tmp_path, monkeypatch):
+    """Cloud Run 相当: reports/ に .md が無く、バンドルに .json だけある状況。
+
+    .md 直読みだけだと available=False（「レポート未生成」誤報告）になる回帰を防ぐ。
+    """
+    import json
+
+    import lease_intelligence_tools as tools
+
+    # トップレベル reports/ は空（Cloud Run では .dockerignore で除外される想定）
+    (tmp_path / "reports").mkdir()
+
+    bundle_reports = tmp_path / ".cloudrun_bundle" / "reports"
+    bundle_reports.mkdir(parents=True)
+    (bundle_reports / "recursive_self_improvement_latest.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-07-23T04:01:58",
+                "canonical_candidate_count": 34,
+                "ranked_queue_count": 2,
+                "suppressed_count": 32,
+                "measurement_summary": {
+                    "pdca_rate": 100.0,
+                    "response_changed_rate": 36.7,
+                    "repeat_issue_rate": 0.0,
+                    "reuse_rate": 100.0,
+                    "noise_rate": 12.5,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(tools, "_REPO_PATH", tmp_path)
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+    monkeypatch.delenv("CLOUDRUN_BUNDLE_DIR", raising=False)
+
+    report_summary = tools.get_pipeline_status()["self_improvement_report"]
+
+    assert report_summary["available"] is True
+    assert report_summary["source"] == "json"
+    assert report_summary["generated_at"] == "2026-07-23T04:01:58"
+    assert report_summary["canonical_candidates"] == "34"
+    assert report_summary["ranked_queue"] == "2"
+    assert report_summary["suppressed"] == "32"
+    assert report_summary["metrics"]["pdca_rate"] == "100.0%"
+    assert report_summary["metrics"]["noise_rate"] == "12.5%"
+
+
 def test_execute_tool_dispatches_pipeline_status(tmp_path, monkeypatch):
     import lease_intelligence_tools as tools
 
