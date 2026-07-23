@@ -28,6 +28,15 @@ DEFAULT_OUTPUT_MD = REPORTS_DIR / "loop_engineering_latest.md"
 DEFAULT_COEFF_OVERRIDES = REPO_ROOT / "data" / "coeff_overrides.json"
 DEFAULT_COEFF_AUTO = REPO_ROOT / "data" / "coeff_auto.json"
 DEFAULT_PREFLIGHT_RETRY_STATE = REPO_ROOT / ".claude" / "state" / "preflight_retries.json"
+DEFAULT_DATA_DIR = REPO_ROOT / "data"
+DEFAULT_PDCA_LOG = DEFAULT_DATA_DIR / "shion_self_pdca_log.jsonl"
+# 4つの結果ループが提案を永続化する jsonl（出典: api/*_loop.py）
+_OUTCOME_LOOP_FILES = {
+    "outcome_drift": "outcome_drift_proposals.jsonl",
+    "feedback_pattern": "feedback_pattern_proposals.jsonl",
+    "judgment_divergence": "judgment_divergence_proposals.jsonl",
+    "knowledge_gap": "knowledge_gap_proposals.jsonl",
+}
 DEFAULT_MODEL_PATHS = (
     REPO_ROOT / "data" / "ml_rf_v4.pkl",
     REPO_ROOT / "data" / "lgb_main_model.joblib",
@@ -362,6 +371,84 @@ def build_guard_health(
     }
 
 
+def _read_jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    """jsonl を dict 行のリストで読む（欠損・壊れ行は無視・空リスト）。"""
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                rows.append(obj)
+    except OSError:
+        return []
+    return rows
+
+
+def build_outcome_health(
+    *,
+    data_dir: Path = DEFAULT_DATA_DIR,
+    pdca_log_path: Path = DEFAULT_PDCA_LOG,
+) -> dict[str, Any]:
+    """結果ループ（Outcome Loop）の作動状況と効果測定を集約する。
+
+    「改善を入れる」だけでなく「効いたか」を器が俯瞰できるようにするための
+    読み取り専用ヘルス。api/*_loop.py の重い依存は import せず、各ループが
+    永続化する data/*.jsonl を直接読む（欠損は available:false）。
+
+    - 4結果ループの提案件数・最新日時（出典: api/outcome_drift_loop.py ほか）
+    - feedback_pattern の PDCA効果ログ（data/shion_self_pdca_log.jsonl）の
+      delta（negative_rate の after - before、負=改善）を集計。
+    """
+    issues: list[dict[str, str]] = []
+
+    loops: dict[str, dict[str, Any]] = {}
+    for name, filename in _OUTCOME_LOOP_FILES.items():
+        path = data_dir / filename
+        rows = _read_jsonl_rows(path)
+        latest_at = max((str(r.get("generated_at") or "") for r in rows), default="")
+        loops[name] = {
+            "available": path.exists(),
+            "proposal_count": len(rows),
+            "latest_generated_at": latest_at,
+        }
+
+    pdca_rows = _read_jsonl_rows(pdca_log_path)
+    measured = len(pdca_rows)
+    improved = sum(1 for r in pdca_rows if _safe_float(r.get("delta")) < 0)
+    worsened = sum(1 for r in pdca_rows if _safe_float(r.get("delta")) > 0)
+    avg_delta = round(sum(_safe_float(r.get("delta")) for r in pdca_rows) / measured, 3) if measured else 0.0
+
+    if measured > 0 and worsened > improved:
+        issues.append({
+            "severity": "warn",
+            "code": "adopted_improvements_net_worsening",
+            "message": f"採用済み改善の効果測定で悪化({worsened})が改善({improved})を上回っています（効いていない改善の見直しを検討）",
+        })
+
+    warn_count = sum(1 for i in issues if i["severity"] == "warn")
+    status = "warn" if warn_count else "ok"
+    return {
+        "status": status,
+        "loops": loops,
+        "pdca": {
+            "available": pdca_log_path.exists(),
+            "measured_count": measured,
+            "improved_count": improved,
+            "worsened_count": worsened,
+            "avg_delta": avg_delta,
+        },
+        "issues": issues,
+    }
+
+
 def _percent(part: int | float, total: int | float) -> float:
     return round(float(part) / float(total) * 100, 1) if total else 0.0
 
@@ -376,6 +463,8 @@ def build_loop_metrics(
     model_paths: tuple[Path, ...] = DEFAULT_MODEL_PATHS,
     guard_reports_dir: Path = REPORTS_DIR,
     preflight_retry_state_path: Path = DEFAULT_PREFLIGHT_RETRY_STATE,
+    outcome_data_dir: Path = DEFAULT_DATA_DIR,
+    pdca_log_path: Path = DEFAULT_PDCA_LOG,
 ) -> dict[str, Any]:
     latest_report, latest_available = _load_json(latest_report_path)
     recursive_report, recursive_available = _load_json(recursive_report_path)
@@ -390,6 +479,10 @@ def build_loop_metrics(
     guard_health = build_guard_health(
         reports_dir=guard_reports_dir,
         preflight_retry_state_path=preflight_retry_state_path,
+    )
+    outcome_health = build_outcome_health(
+        data_dir=outcome_data_dir,
+        pdca_log_path=pdca_log_path,
     )
 
     applied_count = _safe_int(latest_report.get("applied_count"))
@@ -452,6 +545,10 @@ def build_loop_metrics(
         if status == "ok":
             status = "warn"
         recommendations.append("安全ガードに警告: 日次上限の繰り越しやプリフライトのリトライ枠超過を確認する")
+    if outcome_health["status"] == "warn":
+        if status == "ok":
+            status = "warn"
+        recommendations.append("結果ループ: 採用済み改善の効果測定で悪化が改善を上回っています。効いていない改善の見直しを検討する")
     if not recommendations:
         recommendations.append("現状は読み取り専用の定点観測を継続する")
 
@@ -505,6 +602,7 @@ def build_loop_metrics(
         },
         "scoring_coefficients": scoring_health,
         "guard_health": guard_health,
+        "outcome_health": outcome_health,
         "recommendations": recommendations,
     }
 
@@ -577,6 +675,24 @@ def render_markdown(report: dict[str, Any]) -> str:
             lines.append(f"- [{issue['severity']}] {issue['message']}")
     else:
         lines.append("- No guard activations detected")
+    lines.append("")
+    lines.append("## Outcome Loops")
+    outcome = report.get("outcome_health") or {}
+    lines.append(f"- Status: `{outcome.get('status', 'ok')}`")
+    for name, info in (outcome.get("loops") or {}).items():
+        lines.append(
+            f"- {name}: {info.get('proposal_count', 0)} proposals "
+            f"(latest {info.get('latest_generated_at') or 'n/a'})"
+        )
+    pdca = outcome.get("pdca", {})
+    lines.append(
+        f"- PDCA effect: measured {pdca.get('measured_count', 0)}, "
+        f"improved {pdca.get('improved_count', 0)}, worsened {pdca.get('worsened_count', 0)}, "
+        f"avg delta {pdca.get('avg_delta', 0.0)}"
+    )
+    if outcome.get("issues"):
+        for issue in outcome["issues"][:8]:
+            lines.append(f"- [{issue['severity']}] {issue['message']}")
     lines.append("")
     lines.append("## Recommendations")
     for item in report["recommendations"]:
