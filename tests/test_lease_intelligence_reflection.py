@@ -668,3 +668,58 @@ def test_replaces_entire_existing_reflection_section_with_nested_headings(tmp_pa
     assert "古い本文" not in text
     assert "古い愚痴" not in text
     assert "## 差分と再利用" in text
+
+
+def _loop_report(guard="ok", outcome="ok", improved=0, worsened=0, aborted=False):
+    return {
+        "status": "warn",
+        "guard_health": {"status": guard, "codex_queue": {"aborted_by_consecutive_failures": aborted}},
+        "outcome_health": {"status": outcome, "pdca": {"improved_count": improved, "worsened_count": worsened}},
+    }
+
+
+def test_loop_health_signals_extracts_sub_states():
+    s = reflection._loop_health_signals(_loop_report(guard="attention", outcome="warn", improved=1, worsened=3, aborted=True))
+    assert s["guard"] == "attention"
+    assert s["outcome"] == "warn"
+    assert s["guard_aborted"] is True
+    assert s["outcome_improved"] == 1
+    assert s["outcome_worsened"] == 3
+
+
+def test_loop_health_summary_line_mentions_guard_and_outcome():
+    line = reflection._loop_health_summary_line(_loop_report(guard="ok", outcome="warn", improved=1, worsened=2))
+    assert "安全ガード=ok" in line
+    assert "結果ループ=warn" in line
+
+
+def test_loop_health_reflection_selects_by_state():
+    # 悪化 > 改善 → 「改善したつもり」
+    assert "改善したつもり" in reflection._loop_health_reflection(_loop_report(outcome="warn", improved=1, worsened=2))
+    # ガード attention/連続失敗停止 → 安堵の内省
+    assert "安堵" in reflection._loop_health_reflection(_loop_report(guard="attention", aborted=True))
+    # warn → 黄色い灯り
+    assert "黄色" in reflection._loop_health_reflection(_loop_report(guard="warn"))
+    # 全て ok → 静けさ
+    assert "静か" in reflection._loop_health_reflection(_loop_report(guard="ok", outcome="ok"))
+    # レポート無し / サブ状態 unknown → 何も言わない（誤誘導しない）
+    assert reflection._loop_health_reflection({}) == ""
+    assert reflection._loop_health_reflection({"status": "warn"}) == ""
+
+
+def test_fallback_reflection_carries_loop_health_awareness(tmp_path, monkeypatch):
+    """Private Reflection に、ガード/結果ループのサブ状態と観測の感想が乗る。"""
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-07-23"
+    vault = tmp_path / "vault"
+    _write(
+        tmp_path / "reports" / "loop_engineering_latest.json",
+        json.dumps(_loop_report(guard="ok", outcome="warn", improved=1, worsened=2), ensure_ascii=False),
+    )
+
+    reflection.generate_and_append_reflection(vault, date_str=date_str)
+    text = _private_reflection_path(vault, date_str).read_text(encoding="utf-8")
+
+    assert "安全ガード=ok" in text          # サブ状態が自己認識に出る
+    assert "結果ループ=warn" in text
+    assert "改善したつもり" in text          # 観測への内省的な感想が乗る

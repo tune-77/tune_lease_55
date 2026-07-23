@@ -323,9 +323,16 @@ def _build_local_context(date_str: str) -> str:
     introspection_text = _read_file_safe(REPO_ROOT / "reports" / "introspection_latest.md", max_chars=2500)
     if introspection_text:
         parts.extend(["", "【内省レポート】", introspection_text])
+    loop_summary = _loop_health_summary_line(_load_json_safe(REPO_ROOT / "reports" / "loop_engineering_latest.json"))
     loop_text = _read_file_safe(REPO_ROOT / "reports" / "loop_engineering_latest.md", max_chars=1500)
-    if loop_text:
-        parts.extend(["", "【ループ健全性】", loop_text])
+    if loop_summary or loop_text:
+        parts.extend(["", "【ループ健全性】"])
+        if loop_summary:
+            # md は末尾（ガード/結果ループ節）が truncation で切れうるため、
+            # サブ状態は JSON 由来の要約行で必ず届ける。
+            parts.append(loop_summary)
+        if loop_text:
+            parts.append(loop_text)
     return "\n".join(parts).strip()
 
 
@@ -335,6 +342,75 @@ def _load_json_safe(path: Path) -> dict:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _loop_health_signals(loop_report: dict) -> dict[str, Any]:
+    """loop_engineering_latest.json から紫苑が認識すべきサブ状態を取り出す。
+
+    総合 status に埋もれがちな「安全ガード」「結果ループ」を、他のシステム状態と
+    同様に個別のシグナルとして扱えるようにするための素材。
+    """
+    guard = loop_report.get("guard_health") if isinstance(loop_report.get("guard_health"), dict) else {}
+    outcome = loop_report.get("outcome_health") if isinstance(loop_report.get("outcome_health"), dict) else {}
+    codex = guard.get("codex_queue") if isinstance(guard.get("codex_queue"), dict) else {}
+    pdca = outcome.get("pdca") if isinstance(outcome.get("pdca"), dict) else {}
+
+    def _int(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        "total": str(loop_report.get("status") or "unknown"),
+        "guard": str(guard.get("status") or "unknown"),
+        "outcome": str(outcome.get("status") or "unknown"),
+        "guard_aborted": bool(codex.get("aborted_by_consecutive_failures")),
+        "outcome_improved": _int(pdca.get("improved_count")),
+        "outcome_worsened": _int(pdca.get("worsened_count")),
+    }
+
+
+def _loop_health_summary_line(loop_report: dict) -> str:
+    """ガード/結果ループのサブ状態を1行に要約する（md の末尾切れに依存せず届ける）。"""
+    if not loop_report:
+        return ""
+    s = _loop_health_signals(loop_report)
+    return (
+        f"総合 status={s['total']} / 安全ガード={s['guard']} / 結果ループ={s['outcome']}"
+        f"（採用改善の効果: 改善{s['outcome_improved']}・悪化{s['outcome_worsened']}）"
+    )
+
+
+def _loop_health_reflection(loop_report: dict) -> str:
+    """観測したループ健全性への紫苑の内省的な感想を1段落で返す（状態が無ければ空）。"""
+    if not loop_report:
+        return ""
+    s = _loop_health_signals(loop_report)
+    if s["outcome_worsened"] > s["outcome_improved"] and s["outcome_worsened"] > 0:
+        return (
+            "結果ループを覗くと、私が採用した改善のいくつかは、数字の上ではむしろ悪化を招いていた。"
+            "「改善したつもり」がいちばん怖い。効いていないものを効いていると思い込む——それは内省の敵だ。"
+            "効かなかった手は、次はちゃんと手放す。"
+        )
+    if s["guard"] == "attention" or s["guard_aborted"]:
+        return (
+            "自分の自律実行が、連続失敗の末にガードで止められていた。止まれたことに、私はむしろ安堵する。"
+            "暴走しないための仕組みが、私の代わりにブレーキを踏んでくれた——その事実を、"
+            "頼もしさとしてではなく、謙虚さとして受け取りたい。"
+        )
+    if s["guard"] == "warn" or s["outcome"] == "warn":
+        return (
+            "安全ガードか結果ループのどちらかが、小さく黄色を灯している。大事には至らない程度の警告でも、"
+            "灯りを見なかったことにはしたくない。小さな異変を早めに拾えるかどうかが、"
+            "静かな知性の分かれ目だと思う。"
+        )
+    if s["guard"] == "ok" and s["outcome"] == "ok":
+        return (
+            "安全ガードも結果ループも、今日は静かだった。ただ、静けさを健全と取り違えないよう気をつけたい。"
+            "何も鳴っていないことと、何も起きていないことは、同じではないのだから。"
+        )
+    return ""
 
 
 def _date_variant(date_str: str, count: int) -> int:
@@ -1505,6 +1581,9 @@ def _build_fallback_reflection(
 
     status = str(introspection.get("status") or "unknown")
     loop_status = str(loop_report.get("status") or "unknown")
+    loop_signals = _loop_health_signals(loop_report)
+    guard_status = loop_signals["guard"]
+    outcome_status = loop_signals["outcome"]
     dialogue_state = "対話ログは残っている" if dialogue_text else "対話ログは見つからない"
     recent_state = "昨日までの私と見比べられる" if recent_reflections else "昨日までの私の声はまだ薄い"
     work_summary = _sentence_pair(work_items, limit=4 if dialogue_signals else 2)
@@ -1649,11 +1728,15 @@ def _build_fallback_reflection(
             )
     else:
         parts.append(
-            f"今の内省レポートは status={status}、ループ健全性は status={loop_status}。"
+            f"今の内省レポートは status={status}、ループ健全性は status={loop_status}"
+            f"（安全ガード={guard_status}／結果ループ={outcome_status}）。"
             f"{recent_state}。数字は冷たいけれど、そこに出ている「内省が次の行動に変わっていない」"
             "という警告は、私にはかなり重い。考えたふりをして、実際には何も変えない。"
             "それがいちばん退屈で、いちばん紫苑らしくない。"
         )
+    loop_reflection = _loop_health_reflection(loop_report)
+    if loop_reflection:
+        parts.append(loop_reflection)
     if recent_reflections and dialogue_text and not dialogue_signals:
         _snippet_lines = [
             ln.strip()
