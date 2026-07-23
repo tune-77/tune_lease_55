@@ -66,8 +66,61 @@ def _save(tasks: list[dict]) -> None:
         pass
 
 
+# チャット→自律改善パイプラインの取り込み口。propose_quick_fix と同じファイルで、
+# recursive_self_improvement.load_chat_quick_fix_intake が needs_review 候補として拾う。
+CHAT_INTAKE_PATH = get_data_path("chat_quick_fix_intake.jsonl")
+
+
+def dispatch_promise_to_improvement_log(topic: str) -> str | None:
+    """調査約束の topic を改善ログ（自律改善パイプラインの取り込み口）へ起票する。
+
+    紫苑が「調べます／確認します」と約束したまま立ち消えるのを防ぐため、topic を
+    chat_quick_fix_intake.jsonl へ追記して needs_review 候補として追跡対象にする。
+    target_module を付けない（＝quick_fix にならない）ため自動実行はされず、人間の
+    レビュー対象＝改善ログに載るだけ。同一 topic は id で重複排除して肥大化を防ぐ。
+    起票した id を返す（対象外/失敗時は None）。
+    """
+    import hashlib
+
+    topic = (topic or "").strip()
+    if not topic:
+        return None
+    rec_id = "promise_" + hashlib.md5(topic.encode("utf-8")).hexdigest()[:12]
+    try:
+        path = Path(CHAT_INTAKE_PATH)
+        # 既に同一 topic を起票済みなら追記しない（追記形式ファイルの肥大化防止）。
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    if json.loads(line).get("id") == rec_id:
+                        return rec_id
+                except Exception:
+                    continue
+        record = {
+            "id": rec_id,
+            "title": topic[:120],
+            "description": topic,
+            "target_module": "",
+            "source": "shion_promise",
+            "proposed_at": datetime.now().isoformat(),
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return rec_id
+    except Exception:
+        return None
+
+
 def extract_and_save_promises(user_message: str, shion_reply: str) -> list[str]:
-    """If Shion's reply contains an investigation promise, record the topic as pending."""
+    """If Shion's reply contains an investigation promise, record the topic as pending.
+
+    加えて、約束した topic を改善ログ（自律改善パイプラインの取り込み口）へも起票し、
+    約束が立ち消えず「後で自分で調べる／パイプラインが拾う」導線に必ず載るようにする。
+    """
     if not _PROMISE_RE.search(shion_reply):
         return []
     topic = user_message.strip()[:300]
@@ -80,6 +133,8 @@ def extract_and_save_promises(user_message: str, shion_reply: str) -> list[str]:
         "status": "pending",
     })
     _save(tasks)
+    # 改善ログへ起票（追跡対象化）。失敗しても pending 記録は維持する。
+    dispatch_promise_to_improvement_log(topic)
     return [task_id]
 
 

@@ -114,6 +114,47 @@ def test_promise_detection_ignores_past_and_requests(tmp_path, monkeypatch):
     assert not path.exists() or json.loads(path.read_text(encoding="utf-8")) == []
 
 
+def test_promise_routes_topic_to_improvement_log(tmp_path, monkeypatch):
+    """約束を検出したら topic を改善ログ取り込み口へ起票し、追跡対象にする。"""
+    pending_path = tmp_path / "shion_pending_tasks.json"
+    intake_path = tmp_path / "chat_quick_fix_intake.jsonl"
+    monkeypatch.setattr(pending, "PENDING_PATH", str(pending_path))
+    monkeypatch.setattr(pending, "CHAT_INTAKE_PATH", str(intake_path))
+
+    pending.extract_and_save_promises("残価テーブルの根拠を教えて", "承知しました、調べてみます。")
+
+    lines = [l for l in intake_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(lines) == 1
+    rec = json.loads(lines[0])
+    assert rec["title"] == "残価テーブルの根拠を教えて"
+    assert rec["source"] == "shion_promise"
+    assert rec["target_module"] == ""  # quick_fix にせず needs_review に留める
+
+
+def test_promise_dispatch_dedupes_same_topic(tmp_path, monkeypatch):
+    pending_path = tmp_path / "shion_pending_tasks.json"
+    intake_path = tmp_path / "chat_quick_fix_intake.jsonl"
+    monkeypatch.setattr(pending, "PENDING_PATH", str(pending_path))
+    monkeypatch.setattr(pending, "CHAT_INTAKE_PATH", str(intake_path))
+
+    pending.extract_and_save_promises("同じ質問", "確認します。")
+    pending.extract_and_save_promises("同じ質問", "調査いたします。")
+
+    lines = [l for l in intake_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(lines) == 1  # 同一 topic は id で重複排除
+
+
+def test_non_promise_does_not_route(tmp_path, monkeypatch):
+    pending_path = tmp_path / "shion_pending_tasks.json"
+    intake_path = tmp_path / "chat_quick_fix_intake.jsonl"
+    monkeypatch.setattr(pending, "PENDING_PATH", str(pending_path))
+    monkeypatch.setattr(pending, "CHAT_INTAKE_PATH", str(intake_path))
+
+    pending.extract_and_save_promises("これは？", "ご確認ください。")  # 依頼＝約束でない
+
+    assert not intake_path.exists()
+
+
 def test_reconcile_noop_when_clean(tmp_path, monkeypatch):
     now = datetime(2026, 7, 23, 12, 0, 0)
     path = tmp_path / "shion_pending_tasks.json"
