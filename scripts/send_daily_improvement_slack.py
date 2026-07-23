@@ -167,6 +167,46 @@ def _judgment_asset_growth_lines(growth_report: dict[str, Any] | None) -> list[s
     ]
 
 
+# 会話外でも問題が届くよう、日次レポートに「システム監視」節を載せる。
+# 閾値はチャットの自発報告（api/main.py）と揃える。
+_STALE_REPORT_DAYS = 3
+_PENDING_BACKLOG_THRESHOLD = 25
+
+
+def _system_monitor_lines(now: datetime | None = None) -> list[str]:
+    """自己改善レポートの鮮度低下・未完了タスク滞留を検出して行にする（無ければ異常なし）。"""
+    import re as _re
+
+    now = now or datetime.now()
+    problems: list[str] = []
+
+    report_md = REPO_ROOT / "reports" / "recursive_self_improvement_latest.md"
+    if report_md.exists():
+        try:
+            m = _re.search(r"Generated at:\s*`([^`]+)`", report_md.read_text(encoding="utf-8"))
+            if m:
+                age = (now - datetime.fromisoformat(m.group(1).strip())).days
+                if age >= _STALE_REPORT_DAYS:
+                    problems.append(f"• ⚠️ 自己改善レポートが `{age}` 日更新なし（改善パイプライン停止の可能性）")
+        except (ValueError, OSError):
+            pass
+
+    tasks_path = REPO_ROOT / "data" / "shion_pending_tasks.json"
+    if tasks_path.exists():
+        try:
+            from lease_intelligence_pending import is_pending_open
+
+            data = json.loads(tasks_path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                open_count = sum(1 for t in data if is_pending_open(t))
+                if open_count >= _PENDING_BACKLOG_THRESHOLD:
+                    problems.append(f"• ⚠️ 未完了調査タスクが `{open_count}` 件滞留（改善ログで追跡中）")
+        except (ValueError, OSError):
+            pass
+
+    return problems if problems else ["• 異常なし"]
+
+
 def build_message(
     report: dict[str, Any],
     *,
@@ -217,6 +257,9 @@ def build_message(
             "",
             "*判断資産 実戦検証*",
             *_judgment_asset_growth_lines(judgment_asset_growth_report),
+            "",
+            "*システム監視*",
+            *_system_monitor_lines(),
             "",
             "_自動投稿: run_daily_improvement_pipeline / Slack通知のみ。改善状態は変更していません。_",
         ]
