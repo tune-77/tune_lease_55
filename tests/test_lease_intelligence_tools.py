@@ -298,6 +298,35 @@ def test_get_pipeline_status_handles_missing_sources(tmp_path, monkeypatch):
     assert result["pending_investigations"]["available"] is False
 
 
+def test_get_pipeline_status_excludes_stale_and_expired_tasks(tmp_path, monkeypatch):
+    """未完了件数は「陳腐化していない pending」のみ。放置された古い約束や expired は除外。"""
+    import json
+
+    import lease_intelligence_tools as tools
+
+    tasks = tmp_path / "shion_pending_tasks.json"
+    tasks.write_text(
+        json.dumps([
+            {"id": "1", "topic": "生きてる約束", "status": "pending", "promised_at": "2999-01-01T00:00:00"},
+            {"id": "2", "topic": "放置された古い約束", "status": "pending", "promised_at": "2020-01-01T00:00:00"},
+            {"id": "3", "topic": "期限切れ", "status": "expired"},
+            {"id": "4", "topic": "完了済み", "status": "done"},
+        ]),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(tools, "_REPO_PATH", tmp_path)
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+
+    summary = tools.get_pipeline_status()["pending_investigations"]
+
+    assert summary["available"] is True
+    assert summary["total_count"] == 4
+    assert summary["open_count"] == 1
+    assert summary["expired_count"] == 1
+    assert summary["open_topics"] == ["生きてる約束"]
+
+
 def test_get_pipeline_status_reads_report_from_bundle_json(tmp_path, monkeypatch):
     """Cloud Run 相当: reports/ に .md が無く、バンドルに .json だけある状況。
 
