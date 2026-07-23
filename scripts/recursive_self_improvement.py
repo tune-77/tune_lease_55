@@ -485,7 +485,9 @@ def load_chat_quick_fix_intake(path: Path | None = None) -> list[dict[str, Any]]
             "title": title,
             "description": str(record.get("description") or "").strip(),
             "target_module": str(record.get("target_module") or "").strip(),
-            "source": "chat_quick_fix",
+            # 元の source（例: shion_promise）を保持し、改善ログUIで出所を辿れるようにする。
+            # 未指定のチャット quick_fix は従来どおり chat_quick_fix。
+            "source": str(record.get("source") or "chat_quick_fix"),
         })
     return items
 
