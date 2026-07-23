@@ -273,6 +273,8 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   RULE_REGISTERED: { label: "今後ルール化済", className: "bg-indigo-50 text-indigo-700 border-indigo-200" },
   RULE_REVIEW: { label: "今後ルール要確認", className: "bg-violet-50 text-violet-700 border-violet-200" },
   SKIPPED: { label: "スキップ", className: "bg-slate-50 text-slate-500 border-slate-200" },
+  expired: { label: "期限切れ", className: "bg-slate-100 text-slate-400 border-slate-200" },
+  EXPIRED: { label: "期限切れ", className: "bg-slate-100 text-slate-400 border-slate-200" },
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -1491,6 +1493,11 @@ export default function ImprovementLogPage() {
                               Cloud Run入力
                               {item.source_event_id ? ` / event ${item.source_event_id.slice(0, 8)}` : ""}
                               {item.source_ts || item.recorded_at ? ` / ${item.source_ts || item.recorded_at}` : ""}
+                            </div>
+                          )}
+                          {item.source === "shion_promise" && (
+                            <div className="mt-1 text-xs text-fuchsia-700">
+                              紫苑の約束（自動下調べ対象）
                             </div>
                           )}
                         </td>

@@ -86,6 +86,11 @@ jobs:
           tests/test_loop_hardening.py
           tests/test_codex_review_p1_p2_fixes.py
           tests/test_build_loop_proof.py
+          tests/test_lease_intelligence_pending.py
+          tests/test_lease_intelligence_tools.py
+          tests/test_reconcile_pending_pipeline_wiring.py
+          tests/test_chat_quick_fix_intake.py
+          tests/test_send_daily_improvement_slack.py
 
   # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）を warn-only で実行。
   # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。

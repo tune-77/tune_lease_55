@@ -62,6 +62,97 @@ def test_anomaly_summary_is_single_line_for_normal_message(tmp_path, main_module
     assert "gist_update" not in context
 
 
+def test_proactive_reports_stale_self_improvement_report(tmp_path, main_module):
+    """通常会話でも、自己改善レポートの更新が止まっていれば自発報告する。"""
+    _write_pipeline_log(
+        tmp_path,
+        [{"ts": "2026-07-17T04:00:00Z", "run_date": "20260717", "step": "auto_improvement_pipeline", "exit_code": 0}],
+    )
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    (reports_dir / "recursive_self_improvement_latest.md").write_text(
+        "# Recursive Self-Improvement Report\n\n- Generated at: `2020-01-01T04:00:00`\n",
+        encoding="utf-8",
+    )
+
+    context = main_module._build_dialogue_improvement_observability_context("こんにちは")
+
+    assert "自己改善レポート" in context
+    assert "更新されていません" in context
+    assert "\n" not in context  # 常時レイヤは1行のみ
+    assert "改善ループ観測・詳細" not in context
+
+
+def test_proactive_reports_pending_task_backlog(tmp_path, main_module, monkeypatch):
+    """通常会話でも、未完了調査タスクが閾値以上滞留していれば自発報告する。"""
+    _write_pipeline_log(
+        tmp_path,
+        [{"ts": "2026-07-17T04:00:00Z", "run_date": "20260717", "step": "auto_improvement_pipeline", "exit_code": 0}],
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+    backlog = [
+        {"id": str(i), "topic": f"調査{i}", "status": "pending", "promised_at": "2999-01-01T00:00:00"}
+        for i in range(25)
+    ]
+    (data_dir / "shion_pending_tasks.json").write_text(
+        json.dumps(backlog, ensure_ascii=False), encoding="utf-8"
+    )
+
+    context = main_module._build_dialogue_improvement_observability_context("やあ")
+
+    assert "未完了調査タスクが25件滞留" in context
+    assert "\n" not in context
+
+
+def test_no_proactive_report_when_report_is_fresh(tmp_path, main_module, monkeypatch):
+    """レポートが新しく・タスク滞留も無ければ通常会話に何も注入しない。"""
+    import datetime
+
+    _write_pipeline_log(
+        tmp_path,
+        [{"ts": "2026-07-17T04:00:00Z", "run_date": "20260717", "step": "auto_improvement_pipeline", "exit_code": 0}],
+    )
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    fresh = datetime.datetime.now().isoformat(timespec="seconds")
+    (reports_dir / "recursive_self_improvement_latest.md").write_text(
+        f"# Recursive Self-Improvement Report\n\n- Generated at: `{fresh}`\n",
+        encoding="utf-8",
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+    (data_dir / "shion_pending_tasks.json").write_text("[]", encoding="utf-8")
+
+    context = main_module._build_dialogue_improvement_observability_context("こんにちは")
+
+    assert context == ""
+
+
+def test_proactive_report_throttled_within_window(tmp_path, main_module, monkeypatch):
+    """同一の自発報告は _MONITOR_THROTTLE_HOURS 内は再掲しない（件数差は同一視）。"""
+    import datetime
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+
+    now = datetime.datetime(2026, 7, 23, 12, 0, 0)
+    report = "【システム監視】自己改善レポートが5日更新されていません。"
+
+    assert main_module._throttle_proactive_report(report, now=now) == report  # 初回は出す
+    assert main_module._throttle_proactive_report(report, now=now + datetime.timedelta(hours=1)) == ""  # 窓内は抑制
+    # 件数だけ変わっても同一問題クラスとして抑制
+    report2 = "【システム監視】自己改善レポートが6日更新されていません。"
+    assert main_module._throttle_proactive_report(report2, now=now + datetime.timedelta(hours=2)) == ""
+    # 窓を超えたら再掲
+    assert main_module._throttle_proactive_report(report, now=now + datetime.timedelta(hours=13)) == report
+    # 空は空のまま
+    assert main_module._throttle_proactive_report("", now=now) == ""
+
+
 def test_rerun_of_same_step_uses_last_result(tmp_path, main_module):
     _write_pipeline_log(
         tmp_path,

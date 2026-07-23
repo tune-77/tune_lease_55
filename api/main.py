@@ -5197,6 +5197,126 @@ def _build_pipeline_anomaly_summary_line() -> str:
     )
 
 
+# 自己改善レポートが「存在するのに更新が止まっている」＝パイプライン停止の疑い。
+# 完全欠損は新規チェックアウト等と区別できず誤検知になるため、鮮度低下のみ検知する。
+_STALE_REPORT_DAYS = 3
+# 未完了調査タスクがこの件数以上滞留していたら異常として自発報告する。
+_PENDING_BACKLOG_THRESHOLD = 25
+
+
+def _detect_self_improvement_report_staleness(now=None) -> str:
+    """自己改善レポートが一定日数更新されていなければ問題文を返す（無ければ空）。"""
+    import datetime as _dt
+
+    text = _recursive_self_improvement_text()
+    if not text.strip():
+        return ""  # 完全欠損は誤検知回避のため報告しない（鮮度低下のみ検知）
+    m = re.search(r"Generated at:\s*`([^`]+)`", text)
+    if not m:
+        return ""
+    try:
+        generated = _dt.datetime.fromisoformat(m.group(1).strip())
+    except ValueError:
+        return ""
+    age_days = ((now or _dt.datetime.now()) - generated).days
+    if age_days >= _STALE_REPORT_DAYS:
+        return f"自己改善レポートが{age_days}日更新されていません（改善パイプライン停止の可能性）"
+    return ""
+
+
+def _detect_pending_task_backlog() -> str:
+    """未完了調査タスクが閾値以上滞留していれば問題文を返す（無ければ空）。"""
+    try:
+        path = Path(get_data_path("shion_pending_tasks.json"))
+        if not path.exists():
+            return ""
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return ""
+        from lease_intelligence_pending import is_pending_open
+
+        open_count = sum(1 for t in data if is_pending_open(t))
+        if open_count >= _PENDING_BACKLOG_THRESHOLD:
+            return f"未完了調査タスクが{open_count}件滞留しています"
+    except Exception:
+        return ""
+    return ""
+
+
+def _build_proactive_problem_report(now=None) -> str:
+    """紫苑が会話冒頭で自発的に報告すべき「検出済みの問題」を1行に集約する。
+
+    問題が無ければ空文字（通常会話の注入量を増やさない）。常時レイヤなので改行を
+    含めず1行を維持する。紫苑はシステムプロンプトの指示に従い、ここに載った
+    「システム監視」項目を改善候補より先に User へ簡潔に報告する。
+    """
+    parts: list[str] = []
+    pipeline = _build_pipeline_anomaly_summary_line()
+    if pipeline:
+        parts.append(pipeline)
+    report_stale = _detect_self_improvement_report_staleness(now)
+    if report_stale:
+        parts.append(f"【システム監視】{report_stale}。")
+    backlog = _detect_pending_task_backlog()
+    if backlog:
+        parts.append(f"【システム監視】{backlog}。改善ログで追跡中。")
+    return " ".join(parts)
+
+
+# 同一の自発報告を毎ターン繰り返すとうるさいため、一定時間は抑制する。
+_MONITOR_THROTTLE_HOURS = 12
+
+
+def _throttle_proactive_report(report: str, now=None) -> str:
+    """同一内容の自発報告を _MONITOR_THROTTLE_HOURS 内は繰り返さない（ナグ防止）。
+
+    署名は数字を除いた本文で取り、件数・日数だけの変化では再掲しない（同じ問題クラスは
+    抑制）。状態は data/shion_monitor_report_state.json に保存。read/write 失敗は
+    fail-open（＝報告を出す）で観測性を優先する。
+    """
+    import datetime as _dt
+    import hashlib
+
+    if not report.strip():
+        return ""
+    now = now or _dt.datetime.now()
+    sig = hashlib.md5(re.sub(r"\d+", "#", report).encode("utf-8")).hexdigest()[:16]
+    path = Path(get_data_path("shion_monitor_report_state.json"))
+    state: dict[str, str] = {}
+    try:
+        if path.exists():
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                state = loaded
+    except Exception:
+        state = {}
+
+    last = state.get(sig)
+    if last:
+        try:
+            if now - _dt.datetime.fromisoformat(last) < _dt.timedelta(hours=_MONITOR_THROTTLE_HOURS):
+                return ""
+        except ValueError:
+            pass
+
+    state[sig] = now.isoformat()
+    try:
+        cutoff = now - _dt.timedelta(days=7)
+
+        def _fresh(ts: str) -> bool:
+            try:
+                return _dt.datetime.fromisoformat(ts) >= cutoff
+            except ValueError:
+                return False
+
+        state = {k: v for k, v in state.items() if _fresh(v)}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return report
+
+
 def _load_improvement_ledger_summary(limit: int = 8) -> dict:
     """scripts/improvement_ledger.jsonl の直近エントリを要約する（P0-2）。
 
@@ -5412,7 +5532,9 @@ def _load_recursive_self_improvement_digest(max_chars: int = 700) -> str:
 def _build_dialogue_improvement_observability_context(message: str) -> str:
     """Phase 0 の2層コンテキスト。通常会話では異常サマリのみ、改善相談で詳細を展開する。"""
     if not _is_improvement_consultation_message(message):
-        return _build_pipeline_anomaly_summary_line()
+        # 通常会話でも、検出済みの問題（パイプライン失敗・レポート鮮度低下・タスク滞留）が
+        # あれば1行で自発報告する。紫苑はこれを改善候補より先に User へ報告する。
+        return _build_proactive_problem_report()
 
     lines = [
         "【改善ループ観測・詳細（read-only）】",
@@ -13183,11 +13305,21 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     vault = find_vault()
 
-    # 前回約束した調査タスクがあれば冒頭に報告する
+    # 前回約束した調査タスクがあれば冒頭に報告する。
+    # 日次の investigate_pending_tasks が下調べ(finding)を付けていれば、その結果も
+    # 添えて「自分で調べた」内容を紫苑が報告できるようにする。
     pending = get_pending_tasks()
     pending_prefix = ""
     if pending:
-        topics = "、".join(f"「{t['topic'][:40]}」" for t in pending[:3])
+        topic_bits: list[str] = []
+        for t in pending[:3]:
+            topic = str(t.get("topic", ""))[:40]
+            finding = str(t.get("finding") or "").strip()
+            if finding:
+                topic_bits.append(f"「{topic}」（下調べ済み: {finding[:120]}）")
+            else:
+                topic_bits.append(f"「{topic}」")
+        topics = "、".join(topic_bits)
         pending_prefix = f"[前回お約束した調査を先に実行します: {topics}]\n\n"
         mark_done([t["id"] for t in pending])
 
@@ -13234,6 +13366,10 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     )
     improvement_report_context = _build_dialogue_improvement_report_context(limit=4)
     improvement_observability_context = _build_dialogue_improvement_observability_context(full_message)
+    # 通常会話での自発報告（常時レイヤ）は同一内容を毎ターン繰り返さないよう抑制する。
+    # 改善相談（オンデマンド詳細）はユーザーが明示的に尋ねているので抑制しない。
+    if not _is_improvement_consultation_message(full_message):
+        improvement_observability_context = _throttle_proactive_report(improvement_observability_context)
     improvement_triage_context = _build_dialogue_triage_context(limit=4)
 
     if not vault:

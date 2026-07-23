@@ -534,14 +534,21 @@ def get_pipeline_status(recent: int = 5) -> dict[str, Any]:
         if tasks_path.exists():
             data = json.loads(tasks_path.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                open_tasks = [
-                    t for t in data
-                    if isinstance(t, dict) and t.get("status") != "done"
-                ]
+                # 「未完了」は status=="pending" かつ陳腐化していないものだけを数える。
+                # 従来の「status != done」だと、放置された古い約束（expired 相当）や
+                # done 以外の異常ステータスまで open として水増しされ、実態より件数が
+                # 大きく膨らんでいた（「未完了タスク約70件」の一因）。
+                from lease_intelligence_pending import is_pending_open
+
+                open_tasks = [t for t in data if is_pending_open(t)]
+                expired_count = sum(
+                    1 for t in data if isinstance(t, dict) and t.get("status") == "expired"
+                )
                 status["pending_investigations"] = {
                     "available": True,
                     "open_count": len(open_tasks),
                     "total_count": len(data),
+                    "expired_count": expired_count,
                     "open_topics": [str(t.get("topic", ""))[:60] for t in open_tasks[:recent]],
                 }
             else:

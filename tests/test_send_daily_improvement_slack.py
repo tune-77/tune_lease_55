@@ -1,4 +1,50 @@
-from scripts.send_daily_improvement_slack import build_message, should_skip
+from datetime import datetime
+
+from scripts.send_daily_improvement_slack import (
+    _system_monitor_lines,
+    build_message,
+    should_skip,
+)
+
+
+def test_system_monitor_section_present_in_message():
+    payload = build_message({"applied_count": 0}, report_date="2026-07-14")
+    assert "*システム監視*" in payload["text"]
+
+
+def test_system_monitor_flags_stale_report_and_backlog(tmp_path, monkeypatch):
+    import scripts.send_daily_improvement_slack as mod
+
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "recursive_self_improvement_latest.md").write_text(
+        "# Recursive Self-Improvement Report\n\n- Generated at: `2020-01-01T04:00:00`\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data").mkdir()
+    backlog = [
+        {"id": str(i), "status": "pending", "promised_at": "2999-01-01T00:00:00"}
+        for i in range(25)
+    ]
+    import json as _json
+
+    (tmp_path / "data" / "shion_pending_tasks.json").write_text(
+        _json.dumps(backlog), encoding="utf-8"
+    )
+
+    lines = mod._system_monitor_lines(now=datetime(2026, 7, 23, 12, 0, 0))
+    text = "\n".join(lines)
+    assert "自己改善レポートが" in text and "更新なし" in text
+    assert "未完了調査タスクが `25` 件滞留" in text
+    assert "異常なし" not in text
+
+
+def test_system_monitor_healthy(tmp_path, monkeypatch):
+    import scripts.send_daily_improvement_slack as mod
+
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    # ファイル無し（レポートもタスクも無い）→ 異常なし
+    assert mod._system_monitor_lines(now=datetime(2026, 7, 23, 12, 0, 0)) == ["• 異常なし"]
 
 
 def test_build_message_summarizes_improvement_report():

@@ -94,3 +94,21 @@ def test_intake_feeds_recursive_ranker(tmp_path, monkeypatch):
 
     assert bundle["ranked_queue_count"] == 1
     assert bundle["ranked_queue"][0]["target_module"] == "frontend/src/app/faq/page.tsx"
+
+
+def test_load_intake_preserves_original_source(tmp_path):
+    """shion_promise 等の元 source を保持し、改善ログUIで出所を辿れるようにする。"""
+    from scripts import recursive_self_improvement as rsi
+
+    intake = tmp_path / "chat_quick_fix_intake.jsonl"
+    intake.write_text(
+        json.dumps({"id": "promise_x", "title": "残価の根拠を調べる", "source": "shion_promise"})
+        + "\n"
+        + json.dumps({"id": "chat_y", "title": "タイポ修正"})  # source 未指定
+        + "\n",
+        encoding="utf-8",
+    )
+
+    items = {i["id"]: i for i in rsi.load_chat_quick_fix_intake(intake)}
+    assert items["promise_x"]["source"] == "shion_promise"
+    assert items["chat_y"]["source"] == "chat_quick_fix"  # 未指定は従来どおり
