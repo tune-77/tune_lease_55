@@ -155,6 +155,48 @@ def test_non_promise_does_not_route(tmp_path, monkeypatch):
     assert not intake_path.exists()
 
 
+def test_attach_finding(tmp_path, monkeypatch):
+    path = tmp_path / "shion_pending_tasks.json"
+    _write(path, [
+        {"id": "a", "topic": "残価の根拠", "status": "pending", "promised_at": "2999-01-01T00:00:00"},
+        {"id": "b", "topic": "完了済み", "status": "done"},
+    ])
+    monkeypatch.setattr(pending, "PENDING_PATH", str(path))
+
+    assert pending.attach_finding("a", "リース知識/残価.md: 残価は法定耐用年数から算出") is True
+    assert pending.attach_finding("b", "x") is False  # done には付けない
+    assert pending.attach_finding("a", "") is False    # 空findingは無視
+
+    saved = {t["id"]: t for t in json.loads(path.read_text(encoding="utf-8"))}
+    assert saved["a"]["finding"].startswith("リース知識/残価.md")
+    assert "investigated_at" in saved["a"]
+    assert "finding" not in saved["b"]
+
+
+def test_investigate_pending_attaches_findings(tmp_path, monkeypatch):
+    import scripts.investigate_pending_tasks as inv
+
+    path = tmp_path / "shion_pending_tasks.json"
+    _write(path, [
+        {"id": "a", "topic": "残価の根拠は？", "status": "pending", "promised_at": "2999-01-01T00:00:00"},
+        {"id": "b", "topic": "既に調査済み", "status": "pending", "promised_at": "2999-01-01T00:00:00",
+         "finding": "既存"},
+    ])
+    monkeypatch.setattr(pending, "PENDING_PATH", str(path))
+    # read-only 検索をスタブ（vault非依存）
+    monkeypatch.setattr(
+        inv, "investigate_topic",
+        lambda topic: "リース知識/残価.md: 法定耐用年数から算出" if "残価" in topic else "",
+    )
+
+    processed = inv.investigate_pending(limit=5)
+
+    assert [t["id"] for t in processed] == ["a"]  # 未調査のみ・findingありのbはスキップ
+    saved = {t["id"]: t for t in json.loads(path.read_text(encoding="utf-8"))}
+    assert "法定耐用年数" in saved["a"]["finding"]
+    assert saved["b"]["finding"] == "既存"  # 上書きしない
+
+
 def test_reconcile_noop_when_clean(tmp_path, monkeypatch):
     now = datetime(2026, 7, 23, 12, 0, 0)
     path = tmp_path / "shion_pending_tasks.json"

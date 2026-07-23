@@ -14,10 +14,13 @@ def test_reconcile_pending_wired_into_daily_post_pipeline():
     assert "scripts/reconcile_pending_tasks.py" in script
     assert 'log_step "reconcile_pending_tasks"' in script
 
-    # 配布停止ゲート（Mana != allow）より前で保守が走ること
+    # 自動下調べ（investigate）→ 整理（reconcile）の順で、配布停止ゲートより前に走ること
+    assert "scripts/investigate_pending_tasks.py" in script
+    assert 'log_step "investigate_pending_tasks"' in script
+    investigate_pos = script.index("scripts/investigate_pending_tasks.py")
     reconcile_pos = script.index("scripts/reconcile_pending_tasks.py")
     gate_pos = script.index('if [ "${MANA_STATUS}" != "allow" ]')
-    assert reconcile_pos < gate_pos
+    assert investigate_pos < reconcile_pos < gate_pos
 
 
 def test_reconcile_script_exists_and_runnable():

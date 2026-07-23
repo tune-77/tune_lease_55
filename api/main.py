@@ -13305,11 +13305,21 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     vault = find_vault()
 
-    # 前回約束した調査タスクがあれば冒頭に報告する
+    # 前回約束した調査タスクがあれば冒頭に報告する。
+    # 日次の investigate_pending_tasks が下調べ(finding)を付けていれば、その結果も
+    # 添えて「自分で調べた」内容を紫苑が報告できるようにする。
     pending = get_pending_tasks()
     pending_prefix = ""
     if pending:
-        topics = "、".join(f"「{t['topic'][:40]}」" for t in pending[:3])
+        topic_bits: list[str] = []
+        for t in pending[:3]:
+            topic = str(t.get("topic", ""))[:40]
+            finding = str(t.get("finding") or "").strip()
+            if finding:
+                topic_bits.append(f"「{topic}」（下調べ済み: {finding[:120]}）")
+            else:
+                topic_bits.append(f"「{topic}」")
+        topics = "、".join(topic_bits)
         pending_prefix = f"[前回お約束した調査を先に実行します: {topics}]\n\n"
         mark_done([t["id"] for t in pending])
 

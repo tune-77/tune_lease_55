@@ -205,6 +205,28 @@ def get_pending_tasks() -> list[dict[str, Any]]:
     return [t for t in reconcile_pending() if t.get("status") == "pending"]
 
 
+def attach_finding(task_id: str, finding: str, now: datetime | None = None) -> bool:
+    """pending タスクに下調べ結果(finding)を付与する。付与できたら True。
+
+    紫苑が約束を read-only ツールで自動下調べした結果を保存し、次の対話や日次で
+    報告できるようにする。status は変えない（pending のまま追跡を継続）。
+    """
+    task_id = (task_id or "").strip()
+    finding = (finding or "").strip()
+    if not task_id or not finding:
+        return False
+    tasks = _load()
+    updated = False
+    for t in tasks:
+        if isinstance(t, dict) and t.get("id") == task_id and t.get("status") == "pending":
+            t["finding"] = finding[:600]
+            t["investigated_at"] = (now or datetime.now()).isoformat()
+            updated = True
+    if updated:
+        _save(tasks)
+    return updated
+
+
 def mark_done(task_ids: list[str]) -> None:
     if not task_ids:
         return
