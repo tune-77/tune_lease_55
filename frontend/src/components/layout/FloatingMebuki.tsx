@@ -295,8 +295,7 @@ export default function FloatingMebuki() {
     pathname === "/chat" ||
     pathname === "/chat-compare" ||
     pathname === "/lease-intelligence" ||
-    pathname === "/multi-shion-demo" ||
-    pathname === "/voice-chat"
+    pathname === "/multi-shion-demo"
   ) {
     return null;
   }
