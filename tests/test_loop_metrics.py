@@ -286,6 +286,92 @@ def test_loop_metrics_escalates_on_guard_attention(tmp_path):
     assert any("安全ガード" in item for item in report["recommendations"])
 
 
+def test_build_outcome_health_counts_and_flags_net_worsening(tmp_path):
+    from scripts.loop_metrics import build_outcome_health
+
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "outcome_drift_proposals.jsonl").write_text(
+        json.dumps({"generated_at": "2026-07-01T00:00:00"})
+        + "\n"
+        + json.dumps({"generated_at": "2026-07-05T00:00:00"})
+        + "\n",
+        encoding="utf-8",
+    )
+    pdca = data / "shion_self_pdca_log.jsonl"
+    pdca.write_text(
+        json.dumps({"title": "a", "delta": 0.2})
+        + "\n"
+        + json.dumps({"title": "b", "delta": 0.1})
+        + "\n"
+        + json.dumps({"title": "c", "delta": -0.05})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    health = build_outcome_health(data_dir=data, pdca_log_path=pdca)
+
+    assert health["loops"]["outcome_drift"]["proposal_count"] == 2
+    assert health["loops"]["outcome_drift"]["latest_generated_at"] == "2026-07-05T00:00:00"
+    assert health["pdca"]["measured_count"] == 3
+    assert health["pdca"]["worsened_count"] == 2
+    assert health["pdca"]["improved_count"] == 1
+    assert health["status"] == "warn"
+    assert any(issue["code"] == "adopted_improvements_net_worsening" for issue in health["issues"])
+
+
+def test_build_outcome_health_ok_when_net_improving(tmp_path):
+    from scripts.loop_metrics import build_outcome_health
+
+    data = tmp_path / "data"
+    data.mkdir()
+    pdca = data / "shion_self_pdca_log.jsonl"
+    pdca.write_text(
+        json.dumps({"delta": -0.2}) + "\n" + json.dumps({"delta": -0.1}) + "\n" + json.dumps({"delta": 0.05}) + "\n",
+        encoding="utf-8",
+    )
+
+    health = build_outcome_health(data_dir=data, pdca_log_path=pdca)
+
+    assert health["status"] == "ok"
+    assert health["pdca"]["improved_count"] == 2
+    assert health["issues"] == []
+
+
+def test_loop_metrics_escalates_on_outcome_worsening(tmp_path):
+    from scripts.loop_metrics import build_loop_metrics
+
+    latest = tmp_path / "latest.json"
+    latest.write_text(json.dumps({"applied_count": 1, "needs_review_count": 0, "failed_count": 0}), encoding="utf-8")
+    recursive = tmp_path / "recursive.json"
+    recursive.write_text(json.dumps({"measurement_summary": {"churn_rate": 0.0}}), encoding="utf-8")
+    prompt_log = tmp_path / "prompt.jsonl"
+    prompt_log.write_text("", encoding="utf-8")
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    data = tmp_path / "data"
+    data.mkdir()
+    pdca = data / "shion_self_pdca_log.jsonl"
+    pdca.write_text(
+        json.dumps({"delta": 0.3}) + "\n" + json.dumps({"delta": 0.1}) + "\n" + json.dumps({"delta": -0.05}) + "\n",
+        encoding="utf-8",
+    )
+
+    report = build_loop_metrics(
+        latest_report_path=latest,
+        recursive_report_path=recursive,
+        prompt_log_path=prompt_log,
+        model_paths=(),
+        guard_reports_dir=reports,
+        preflight_retry_state_path=tmp_path / "missing_preflight.json",
+        outcome_data_dir=data,
+        pdca_log_path=pdca,
+    )
+
+    assert report["outcome_health"]["status"] == "warn"
+    assert any("結果ループ" in item for item in report["recommendations"])
+
+
 def test_scoring_coeff_health_flags_all_zero_required_coefficients(tmp_path):
     from scripts.loop_metrics import build_scoring_coeff_health
 
