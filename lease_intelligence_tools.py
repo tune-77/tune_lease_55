@@ -362,6 +362,111 @@ def get_screening_activity(period: str = "today", days: int = 0) -> dict[str, An
     }
 
 
+def _candidate_reports_dirs() -> list[Path]:
+    """自己改善レポートの探索ディレクトリを優先順に返す。
+
+    Cloud Run イメージでは トップレベル reports/ が .dockerignore で除外され、
+    バンドル（.cloudrun_bundle/reports/）だけが同梱される。api/main.py の
+    _candidate_report_dirs() と同じく「reports/ → バンドル reports/」の順で探索し、
+    ローカル・Cloud Run のどちらでもレポートを見つけられるようにする。
+    """
+    bundle_root = Path(os.environ.get("CLOUDRUN_BUNDLE_DIR") or (_REPO_PATH / ".cloudrun_bundle"))
+    dirs = [_REPO_PATH / "reports", bundle_root / "reports"]
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for directory in dirs:
+        key = str(directory)
+        if key not in seen:
+            seen.add(key)
+            unique.append(directory)
+    return unique
+
+
+def _read_self_improvement_report() -> dict[str, Any]:
+    """再帰的自己改善レポートの要点を返す。
+
+    .md（reports/ 直下）を最優先で読み、無ければ Cloud Run に同梱される .json から
+    同じ要点を組み立てる。バンドルには .json しか入らない（package_cloud_run_bundle.sh）
+    ため、.md だけを直読みしていた従来実装は Cloud Run 上で必ず available=False となり、
+    「レポートが生成されていない」と誤報告していた。返却フィールドの型（数値は文字列、
+    指標は "%%" 付き文字列）は .md 経路と揃える。
+    """
+    import datetime as _dt
+
+    for reports_dir in _candidate_reports_dirs():
+        report_path = reports_dir / "recursive_self_improvement_latest.md"
+        if not report_path.exists():
+            continue
+        try:
+            text = report_path.read_text(encoding="utf-8")
+
+            def _find(pattern: str) -> str | None:
+                m = re.search(pattern, text)
+                return m.group(1).strip() if m else None
+
+            return {
+                "available": True,
+                "source": "md",
+                "generated_at": _find(r"Generated at:\s*`([^`]+)`"),
+                "canonical_candidates": _find(r"Canonical candidates:\s*(\d+)"),
+                "ranked_queue": _find(r"Ranked queue:\s*(\d+)"),
+                "suppressed": _find(r"Suppressed:\s*(\d+)"),
+                "metrics": {
+                    "pdca_rate": _find(r"PDCA rate:\s*([\d.]+%)"),
+                    "response_changed_rate": _find(r"Response changed rate:\s*([\d.]+%)"),
+                    "repeat_issue_rate": _find(r"Repeat issue rate:\s*([\d.]+%)"),
+                    "reuse_rate": _find(r"Reuse rate:\s*([\d.]+%)"),
+                    "noise_rate": _find(r"Noise rate:\s*([\d.]+%)"),
+                },
+                "file_mtime": _dt.datetime.fromtimestamp(
+                    report_path.stat().st_mtime
+                ).isoformat(timespec="seconds"),
+            }
+        except Exception as exc:
+            return {"available": False, "error": str(exc)}
+
+    # .md が無い（＝Cloud Run バンドル経路）場合は .json から要点を組み立てる。
+    for reports_dir in _candidate_reports_dirs():
+        json_path = reports_dir / "recursive_self_improvement_latest.json"
+        if not json_path.exists():
+            continue
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                continue
+            metrics = data.get("measurement_summary") or {}
+
+            def _int_str(value: Any) -> str | None:
+                return str(value) if isinstance(value, (int, float)) else None
+
+            def _pct(key: str) -> str | None:
+                value = metrics.get(key)
+                return f"{value}%" if isinstance(value, (int, float)) else None
+
+            return {
+                "available": True,
+                "source": "json",
+                "generated_at": data.get("generated_at"),
+                "canonical_candidates": _int_str(data.get("canonical_candidate_count")),
+                "ranked_queue": _int_str(data.get("ranked_queue_count")),
+                "suppressed": _int_str(data.get("suppressed_count")),
+                "metrics": {
+                    "pdca_rate": _pct("pdca_rate"),
+                    "response_changed_rate": _pct("response_changed_rate"),
+                    "repeat_issue_rate": _pct("repeat_issue_rate"),
+                    "reuse_rate": _pct("reuse_rate"),
+                    "noise_rate": _pct("noise_rate"),
+                },
+                "file_mtime": _dt.datetime.fromtimestamp(
+                    json_path.stat().st_mtime
+                ).isoformat(timespec="seconds"),
+            }
+        except Exception as exc:
+            return {"available": False, "error": str(exc)}
+
+    return {"available": False}
+
+
 def get_pipeline_status(recent: int = 5) -> dict[str, Any]:
     """日次改善パイプライン（REV自律改善フロー）の状況を返す。
 
@@ -371,8 +476,6 @@ def get_pipeline_status(recent: int = 5) -> dict[str, Any]:
     - 自己改善レポート(reports/recursive_self_improvement_latest.md): 生成時刻・主要指標
     - 紫苑の未完了調査タスク(shion_pending_tasks.json): 件数と topic
     """
-    import datetime as _dt
-
     recent = max(1, min(int(recent or 5), 20))
     status: dict[str, Any] = {}
 
@@ -422,36 +525,8 @@ def get_pipeline_status(recent: int = 5) -> dict[str, Any]:
         status["rev_ledger"] = {"available": False}
 
     # ── 自己改善レポート ───────────────────────────────────────────────────
-    report_path = _REPO_PATH / "reports" / "recursive_self_improvement_latest.md"
-    if report_path.exists():
-        try:
-            text = report_path.read_text(encoding="utf-8")
-
-            def _find(pattern: str) -> str | None:
-                m = re.search(pattern, text)
-                return m.group(1).strip() if m else None
-
-            status["self_improvement_report"] = {
-                "available": True,
-                "generated_at": _find(r"Generated at:\s*`([^`]+)`"),
-                "canonical_candidates": _find(r"Canonical candidates:\s*(\d+)"),
-                "ranked_queue": _find(r"Ranked queue:\s*(\d+)"),
-                "suppressed": _find(r"Suppressed:\s*(\d+)"),
-                "metrics": {
-                    "pdca_rate": _find(r"PDCA rate:\s*([\d.]+%)"),
-                    "response_changed_rate": _find(r"Response changed rate:\s*([\d.]+%)"),
-                    "repeat_issue_rate": _find(r"Repeat issue rate:\s*([\d.]+%)"),
-                    "reuse_rate": _find(r"Reuse rate:\s*([\d.]+%)"),
-                    "noise_rate": _find(r"Noise rate:\s*([\d.]+%)"),
-                },
-                "file_mtime": _dt.datetime.fromtimestamp(
-                    report_path.stat().st_mtime
-                ).isoformat(timespec="seconds"),
-            }
-        except Exception as exc:
-            status["self_improvement_report"] = {"available": False, "error": str(exc)}
-    else:
-        status["self_improvement_report"] = {"available": False}
+    # reports/ 直下の .md → バンドルの .md → バンドルの .json の順で解決する。
+    status["self_improvement_report"] = _read_self_improvement_report()
 
     # ── 紫苑の未完了調査タスク ─────────────────────────────────────────────
     try:

@@ -5352,14 +5352,51 @@ def _load_shion_pm_quality_summary() -> dict:
     }
 
 
-def _load_recursive_self_improvement_digest(max_chars: int = 700) -> str:
-    """reports/recursive_self_improvement_latest.md の要点を抜粋する（P0-3）。"""
-    path = Path(_REPO_ROOT) / "reports" / "recursive_self_improvement_latest.md"
-    if not path.exists():
+def _recursive_self_improvement_text() -> str:
+    """再帰的自己改善レポートの本文を返す（.md 優先・無ければ .json から生成）。
+
+    Cloud Run バンドルには .json しか同梱されず（package_cloud_run_bundle.sh）、
+    トップレベル reports/ はイメージから除外される（.dockerignore）。.md を直読み
+    するだけだと Cloud Run では常に空になるため、.md → .json の順で解決する。
+    """
+    for reports_dir in _candidate_report_dirs():
+        md_path = reports_dir / "recursive_self_improvement_latest.md"
+        if md_path.exists():
+            try:
+                return md_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return ""
+
+    json_path = _latest_recursive_self_improvement_path()
+    if not json_path:
         return ""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    metrics = data.get("measurement_summary") or {}
+    lines = [
+        "# Recursive Self-Improvement Report",
+        f"- Generated at: `{data.get('generated_at', '')}`",
+        f"- Canonical candidates: {data.get('canonical_candidate_count', '')}",
+        f"- Ranked queue: {data.get('ranked_queue_count', '')}",
+        f"- Suppressed: {data.get('suppressed_count', '')}",
+        "## Measurement",
+        f"- PDCA rate: {metrics.get('pdca_rate', '')}%",
+        f"- Response changed rate: {metrics.get('response_changed_rate', '')}%",
+        f"- Repeat issue rate: {metrics.get('repeat_issue_rate', '')}%",
+        f"- Reuse rate: {metrics.get('reuse_rate', '')}%",
+        f"- Noise rate: {metrics.get('noise_rate', '')}%",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _load_recursive_self_improvement_digest(max_chars: int = 700) -> str:
+    """再帰的自己改善レポートの要点を抜粋する（P0-3）。"""
+    text = _recursive_self_improvement_text()
+    if not text:
         return ""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     digest: list[str] = []
