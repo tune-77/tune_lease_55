@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import json
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +27,7 @@ DEFAULT_OUTPUT_JSON = REPORTS_DIR / "loop_engineering_latest.json"
 DEFAULT_OUTPUT_MD = REPORTS_DIR / "loop_engineering_latest.md"
 DEFAULT_COEFF_OVERRIDES = REPO_ROOT / "data" / "coeff_overrides.json"
 DEFAULT_COEFF_AUTO = REPO_ROOT / "data" / "coeff_auto.json"
+DEFAULT_PREFLIGHT_RETRY_STATE = REPO_ROOT / ".claude" / "state" / "preflight_retries.json"
 DEFAULT_MODEL_PATHS = (
     REPO_ROOT / "data" / "ml_rf_v4.pkl",
     REPO_ROOT / "data" / "lgb_main_model.joblib",
@@ -268,6 +270,98 @@ def build_scoring_coeff_health(
     }
 
 
+def _latest_codex_queue_result(reports_dir: Path) -> tuple[dict[str, Any], Path | None]:
+    """最新の codex_queue_result_*.json を返す（無ければ空）。"""
+    candidates = sorted(reports_dir.glob("codex_queue_result_*.json"))
+    if not candidates:
+        return {}, None
+    latest = candidates[-1]
+    data, ok = _load_json(latest)
+    return (data if ok else {}), latest
+
+
+def build_guard_health(
+    *,
+    reports_dir: Path = REPORTS_DIR,
+    preflight_retry_state_path: Path = DEFAULT_PREFLIGHT_RETRY_STATE,
+    preflight_max_retries: int | None = None,
+) -> dict[str, Any]:
+    """安全ガード層（Codex自律実行ブレーカー・PR前プリフライト）の作動状況を集約する。
+
+    器が自分の安全装置を観測できるようにするための読み取り専用ヘルス。
+    - Codex キュー: reports/codex_queue_result_*.json の guards ブロック
+      （日次上限の繰り越し・連続失敗停止）。出典: scripts/execute_codex_queue.py。
+    - プリフライト: .claude/state/preflight_retries.json のリトライ枠超過。
+      出典: scripts/preflight_pr_guard.py。
+    """
+    if preflight_max_retries is None:
+        try:
+            preflight_max_retries = int(os.environ.get("PREFLIGHT_MAX_RETRIES", "2"))
+        except ValueError:
+            preflight_max_retries = 2
+
+    issues: list[dict[str, str]] = []
+
+    # ── Codex 自律実行キューのガード ──
+    codex, codex_path = _latest_codex_queue_result(reports_dir)
+    guards = codex.get("guards") if isinstance(codex.get("guards"), dict) else {}
+    carried_over = guards.get("carried_over") if isinstance(guards.get("carried_over"), list) else []
+    aborted = bool(guards.get("aborted_by_consecutive_failures"))
+    if aborted:
+        issues.append({
+            "severity": "attention",
+            "code": "codex_consecutive_failures_abort",
+            "message": f"Codex自律実行が連続失敗（上限 {guards.get('max_consecutive_failures')}）で停止しています",
+        })
+    if carried_over:
+        issues.append({
+            "severity": "warn",
+            "code": "codex_daily_limit_carryover",
+            "message": f"日次上限で {len(carried_over)} 件が翌日以降へ繰り越されています",
+        })
+
+    # ── PR前プリフライトのリトライ枠 ──
+    retry_state, retry_available = _load_json(preflight_retry_state_path)
+    over_budget: list[str] = []
+    max_retry_count = 0
+    if isinstance(retry_state, dict):
+        for sig, entry in retry_state.items():
+            count = _safe_int(entry.get("count")) if isinstance(entry, dict) else 0
+            max_retry_count = max(max_retry_count, count)
+            if count > preflight_max_retries:
+                over_budget.append(str(sig))
+    if over_budget:
+        issues.append({
+            "severity": "warn",
+            "code": "preflight_retry_budget_exhausted",
+            "message": f"プリフライトのリトライ枠超過が {len(over_budget)} 箇所（上限 {preflight_max_retries}）— 人間へのバトンタッチを検討",
+        })
+
+    attention_count = sum(1 for i in issues if i["severity"] == "attention")
+    warn_count = sum(1 for i in issues if i["severity"] == "warn")
+    status = "attention" if attention_count else "warn" if warn_count else "ok"
+    return {
+        "status": status,
+        "codex_queue": {
+            "available": codex_path is not None,
+            "path": str(codex_path) if codex_path else "",
+            "total": _safe_int(codex.get("total")),
+            "failed": _safe_int(codex.get("failed")),
+            "carried_over_count": len(carried_over),
+            "aborted_by_consecutive_failures": aborted,
+            "max_consecutive_failures": _safe_int(guards.get("max_consecutive_failures")),
+        },
+        "preflight_guard": {
+            "available": retry_available,
+            "tracked_signatures": len(retry_state) if isinstance(retry_state, dict) else 0,
+            "over_budget_count": len(over_budget),
+            "max_retry_count": max_retry_count,
+            "max_retries": preflight_max_retries,
+        },
+        "issues": issues,
+    }
+
+
 def _percent(part: int | float, total: int | float) -> float:
     return round(float(part) / float(total) * 100, 1) if total else 0.0
 
@@ -280,6 +374,8 @@ def build_loop_metrics(
     coeff_overrides_path: Path = DEFAULT_COEFF_OVERRIDES,
     coeff_auto_path: Path = DEFAULT_COEFF_AUTO,
     model_paths: tuple[Path, ...] = DEFAULT_MODEL_PATHS,
+    guard_reports_dir: Path = REPORTS_DIR,
+    preflight_retry_state_path: Path = DEFAULT_PREFLIGHT_RETRY_STATE,
 ) -> dict[str, Any]:
     latest_report, latest_available = _load_json(latest_report_path)
     recursive_report, recursive_available = _load_json(recursive_report_path)
@@ -290,6 +386,10 @@ def build_loop_metrics(
         coeff_overrides_path=coeff_overrides_path,
         coeff_auto_path=coeff_auto_path,
         model_paths=model_paths,
+    )
+    guard_health = build_guard_health(
+        reports_dir=guard_reports_dir,
+        preflight_retry_state_path=preflight_retry_state_path,
     )
 
     applied_count = _safe_int(latest_report.get("applied_count"))
@@ -345,6 +445,13 @@ def build_loop_metrics(
             "抑制の滞留(churn)が高いため、needs_review/suppressed のクールダウン固着や"
             "台帳の suppressed 再記録を確認する（健全な重複排除は含めない）"
         )
+    if guard_health["status"] == "attention":
+        status = "attention"
+        recommendations.append("安全ガードに重大な作動: Codex自律実行が連続失敗で停止しています。原因を確認する")
+    elif guard_health["status"] == "warn":
+        if status == "ok":
+            status = "warn"
+        recommendations.append("安全ガードに警告: 日次上限の繰り越しやプリフライトのリトライ枠超過を確認する")
     if not recommendations:
         recommendations.append("現状は読み取り専用の定点観測を継続する")
 
@@ -397,6 +504,7 @@ def build_loop_metrics(
             "surface_counts": prompt_summary.get("surface_counts") or {},
         },
         "scoring_coefficients": scoring_health,
+        "guard_health": guard_health,
         "recommendations": recommendations,
     }
 
@@ -449,6 +557,26 @@ def render_markdown(report: dict[str, Any]) -> str:
             lines.append(f"- [{issue['severity']}] {issue['message']}")
     else:
         lines.append("- No coefficient/model issues detected")
+    lines.append("")
+    lines.append("## Guard / Safety")
+    guard = report.get("guard_health") or {}
+    codex = guard.get("codex_queue", {})
+    preflight = guard.get("preflight_guard", {})
+    lines.append(f"- Status: `{guard.get('status', 'ok')}`")
+    lines.append(
+        f"- Codex queue: failed {codex.get('failed', 0)}/{codex.get('total', 0)}, "
+        f"carried over {codex.get('carried_over_count', 0)}, "
+        f"aborted={codex.get('aborted_by_consecutive_failures', False)}"
+    )
+    lines.append(
+        f"- Preflight retries: over-budget {preflight.get('over_budget_count', 0)} "
+        f"(max count {preflight.get('max_retry_count', 0)} / limit {preflight.get('max_retries', 0)})"
+    )
+    if guard.get("issues"):
+        for issue in guard["issues"][:8]:
+            lines.append(f"- [{issue['severity']}] {issue['message']}")
+    else:
+        lines.append("- No guard activations detected")
     lines.append("")
     lines.append("## Recommendations")
     for item in report["recommendations"]:

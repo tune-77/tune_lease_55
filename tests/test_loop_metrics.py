@@ -185,6 +185,107 @@ def test_loop_metrics_flags_high_churn(tmp_path):
     assert any("churn" in item for item in report["recommendations"])
 
 
+def test_build_guard_health_flags_codex_abort_and_carryover(tmp_path):
+    from scripts.loop_metrics import build_guard_health
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "codex_queue_result_20260101.json").write_text(
+        json.dumps(
+            {
+                "total": 3,
+                "failed": 2,
+                "guards": {
+                    "daily_limit": 3,
+                    "already_executed_today": 3,
+                    "carried_over": ["x", "y"],
+                    "aborted_by_consecutive_failures": True,
+                    "max_consecutive_failures": 2,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    health = build_guard_health(
+        reports_dir=reports,
+        preflight_retry_state_path=tmp_path / "missing_preflight.json",
+    )
+
+    assert health["status"] == "attention"
+    codes = {issue["code"] for issue in health["issues"]}
+    assert "codex_consecutive_failures_abort" in codes
+    assert "codex_daily_limit_carryover" in codes
+    assert health["codex_queue"]["failed"] == 2
+    assert health["codex_queue"]["carried_over_count"] == 2
+
+
+def test_build_guard_health_flags_preflight_over_budget(tmp_path):
+    from scripts.loop_metrics import build_guard_health
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    state = tmp_path / "preflight.json"
+    state.write_text(json.dumps({"sigA": {"count": 3}, "sigB": {"count": 1}}), encoding="utf-8")
+
+    health = build_guard_health(reports_dir=reports, preflight_retry_state_path=state, preflight_max_retries=2)
+
+    assert health["status"] == "warn"
+    assert health["preflight_guard"]["over_budget_count"] == 1
+    assert health["preflight_guard"]["max_retry_count"] == 3
+    assert any(issue["code"] == "preflight_retry_budget_exhausted" for issue in health["issues"])
+
+
+def test_build_guard_health_ok_when_clean(tmp_path):
+    from scripts.loop_metrics import build_guard_health
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    state = tmp_path / "preflight.json"
+    state.write_text(json.dumps({"sigA": {"count": 0}}), encoding="utf-8")
+
+    health = build_guard_health(reports_dir=reports, preflight_retry_state_path=state, preflight_max_retries=2)
+
+    assert health["status"] == "ok"
+    assert health["issues"] == []
+
+
+def test_loop_metrics_escalates_on_guard_attention(tmp_path):
+    from scripts.loop_metrics import build_loop_metrics
+
+    latest = tmp_path / "latest.json"
+    latest.write_text(json.dumps({"applied_count": 1, "needs_review_count": 0, "failed_count": 0}), encoding="utf-8")
+    recursive = tmp_path / "recursive.json"
+    recursive.write_text(json.dumps({"measurement_summary": {"churn_rate": 0.0}}), encoding="utf-8")
+    prompt_log = tmp_path / "prompt.jsonl"
+    prompt_log.write_text("", encoding="utf-8")
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "codex_queue_result_20260101.json").write_text(
+        json.dumps(
+            {
+                "total": 1,
+                "failed": 1,
+                "guards": {"aborted_by_consecutive_failures": True, "max_consecutive_failures": 2, "carried_over": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_loop_metrics(
+        latest_report_path=latest,
+        recursive_report_path=recursive,
+        prompt_log_path=prompt_log,
+        model_paths=(),
+        guard_reports_dir=reports,
+        preflight_retry_state_path=tmp_path / "missing_preflight.json",
+    )
+
+    assert report["guard_health"]["status"] == "attention"
+    assert report["status"] == "attention"
+    assert any("安全ガード" in item for item in report["recommendations"])
+
+
 def test_scoring_coeff_health_flags_all_zero_required_coefficients(tmp_path):
     from scripts.loop_metrics import build_scoring_coeff_health
 
