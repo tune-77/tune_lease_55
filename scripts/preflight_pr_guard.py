@@ -296,9 +296,28 @@ def load_declared_dependencies(repo_root: Path = REPO_ROOT) -> set[str]:
     return declared
 
 
+# 実行時に sys.path へ追加され import 元になりうるサブツリー。
+# 例: .agents/skills/auto-improvement-pipeline/ の pipeline_ledger.py は
+# sys.path.insert 経由で `import pipeline_ledger` される。ルート直下しか見ないと
+# こうしたモジュールを「幻覚 import」と誤検知してしまう。
+_LOCAL_SOURCE_SUBTREES = ("scripts", "api", ".agents", "mobile_app")
+_WALK_PRUNE_DIRS = {
+    ".git", "node_modules", ".venv", "venv", "__pycache__", ".next",
+    "dist", "build", "data", ".mypy_cache", ".pytest_cache", "frontend",
+}
+
+
 def local_top_level_modules(repo_root: Path = REPO_ROOT) -> set[str]:
-    """リポジトリ直下の .py / パッケージディレクトリ名（＝ローカル import 元）。"""
+    """ローカル import 元になりうるモジュール名の集合。
+
+    リポジトリ直下の .py / パッケージディレクトリに加え、実行時 sys.path 追加で
+    import されるサブツリー（.agents/skills 配下・scripts・api 等）の .py 名も含める。
+    これにより pipeline_ledger / auto_fix_policy のような実在ローカルモジュールを
+    幻覚 import と誤検知しない。
+    """
     mods: set[str] = set()
+
+    # 1) リポジトリ直下
     for entry in repo_root.iterdir():
         if entry.name.startswith("."):
             continue
@@ -310,6 +329,23 @@ def local_top_level_modules(repo_root: Path = REPO_ROOT) -> set[str]:
             # __init__.py が無くても import 経路になりうる主要ディレクトリを拾う
             if any(entry.glob("*.py")):
                 mods.add(entry.name)
+
+    # 2) 実行時 sys.path 追加で import されるサブツリーの .py / パッケージ名
+    for sub in _LOCAL_SOURCE_SUBTREES:
+        base = repo_root / sub
+        if not base.is_dir():
+            continue
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = [d for d in dirnames if d not in _WALK_PRUNE_DIRS]
+            has_py = False
+            for name in filenames:
+                if name.endswith(".py"):
+                    mods.add(name[:-3])
+                    has_py = True
+            current = Path(dirpath)
+            if has_py and current != base:
+                mods.add(current.name)
+
     return mods
 
 
@@ -318,11 +354,16 @@ def extract_added_imports(diff_text: str) -> list[tuple[str, str, bool]]:
 
     差分ヘッダ（+++）は除外する。相対 import（from . / from .. ）は is_relative=True。
     """
+    # 有効な import のトップレベル名は Python 識別子。これで検証し、
+    # 「import」で始まるだけの散文・コメント・docstring 行を除外する（誤検知抑制）。
+    ident = re.compile(r"^[A-Za-z_]\w*$")
     results: list[tuple[str, str, bool]] = []
     for line in diff_text.splitlines():
         if not line.startswith("+") or line.startswith("+++"):
             continue
         code = line[1:].strip()
+        if code.startswith("#"):  # コメント行は import ではない
+            continue
         # from X import ...
         m = re.match(r"^from\s+(\.*)([A-Za-z0-9_.]*)\s+import\s+", code)
         if m:
@@ -330,15 +371,19 @@ def extract_added_imports(diff_text: str) -> list[tuple[str, str, bool]]:
             if dots:  # 相対 import
                 results.append((mod.split(".")[0] if mod else "", code, True))
             elif mod:
-                results.append((mod.split(".", 1)[0], code, False))
+                top = mod.split(".", 1)[0]
+                if ident.match(top):
+                    results.append((top, code, False))
             continue
         # import X[, Y] / import X as Z
         m = re.match(r"^import\s+(.+)$", code)
         if m:
             for part in m.group(1).split(","):
                 name = part.strip().split(" as ")[0].strip()
-                if name:
-                    results.append((name.split(".")[0], code, False))
+                top = name.split(".")[0] if name else ""
+                # トップレベルが識別子でなければ import 文ではない（散文の可能性）
+                if top and ident.match(top):
+                    results.append((top, code, False))
     return results
 
 
