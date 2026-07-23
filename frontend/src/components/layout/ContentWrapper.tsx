@@ -29,7 +29,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/devops": "DevOpsサイクル",
   "/improvement-log": "改善PMレポート",
   "/research-organ": "外部調査器官",
-  "/voice-chat": "リアルタイム会話",
   "/cases": "過去案件",
   "/shion-memory-system": "紫苑の記憶システム",
   "/shion-core": "知性体コア",
