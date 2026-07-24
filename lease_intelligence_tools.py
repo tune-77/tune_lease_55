@@ -1545,6 +1545,57 @@ def list_shion_questions(limit: int = 10) -> dict[str, Any]:
     return {"questions": questions, "count": len(questions)}
 
 
+def answer_shion_question(question_id: str, answer: str) -> dict[str, Any]:
+    """紫苑が登録した未回答の質問（list_shion_questions で確認できるもの）に、
+    ユーザーが答えてくれたときに使う。
+
+    回答を記録して質問をdone化する。好み・家族等の個人的な事実として扱えそうな
+    内容は、既存の人物記憶（user_personal_memory、既に会話全般で使われている
+    保守的な判定ロジック）にもあわせて取り込む。業務知識としての正式な記憶化
+    （canonical_judgment_rules等）はここでは行わない。既存の人間レビュー付き
+    昇格フロー（build_shion_memory_promotion_queue.py）に委ね、雑談的な回答が
+    確認なしに判断原則へ化けるのを防ぐ。
+    """
+    qid = (question_id or "").strip()
+    ans = (answer or "").strip()
+    if not qid or not ans:
+        return {"recorded": False, "reason": "question_id と answer の両方が必要です"}
+
+    try:
+        from api.shion_tasks import list_tasks, set_task_status, update_task
+
+        open_tasks = {t.get("id"): t for t in list_tasks(status="open", limit=200)}
+        task = open_tasks.get(qid)
+        if task is None or task.get("source") != "shion_question":
+            return {"recorded": False, "reason": "指定されたidの未回答質問が見つかりません"}
+
+        existing_note = str(task.get("note") or "").strip()
+        new_note = f"{existing_note} / 回答: {ans}" if existing_note else f"回答: {ans}"
+        update_task(qid, note=new_note)
+        set_task_status(qid, "done")
+    except Exception as exc:
+        return {"recorded": False, "reason": f"記録に失敗しました: {exc}"}
+
+    personal_memory_captured = False
+    try:
+        from api.user_personal_memory import capture_user_personal_memory
+
+        result = capture_user_personal_memory(ans, source="shion_question_answer")
+        personal_memory_captured = bool(result.get("captured"))
+    except Exception:
+        pass
+
+    return {
+        "recorded": True,
+        "id": qid,
+        "personal_memory_captured": personal_memory_captured,
+        "message": (
+            "回答を記録しました。"
+            + ("個人的な記憶としても保存しました。" if personal_memory_captured else "")
+        ),
+    }
+
+
 def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
     """Dispatch a tool call by name and return its result."""
     if name == "search_cases":
@@ -1555,6 +1606,8 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
         return ask_user_question(args.get("question", ""), args.get("reason", ""))
     if name == "list_shion_questions":
         return list_shion_questions(int(args.get("limit", 10) or 10))
+    if name == "answer_shion_question":
+        return answer_shion_question(args.get("question_id", ""), args.get("answer", ""))
     if name == "get_score_detail":
         return get_score_detail(args.get("company_name", ""))
     if name == "get_screening_activity":
@@ -1682,6 +1735,21 @@ TOOL_DECLARATIONS: list[dict] = [
                 "limit": {"type": "integer", "description": "取得件数（デフォルト10、最大50）"},
             },
             "required": [],
+        },
+    },
+    {
+        "name": "answer_shion_question",
+        "description": (
+            "list_shion_questions で確認できる未回答の質問に、ユーザーが答えてくれたときに使う。"
+            "回答を記録して質問をdone化し、個人的な内容なら人物記憶にも取り込む。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question_id": {"type": "string", "description": "list_shion_questions で得た質問のid"},
+                "answer": {"type": "string", "description": "ユーザーの回答内容"},
+            },
+            "required": ["question_id", "answer"],
         },
     },
     {
