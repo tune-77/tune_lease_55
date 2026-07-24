@@ -389,7 +389,7 @@ async def lifespan(app: FastAPI):
                 load_lease_intelligence_mind,
             )
             from lease_news_digest import find_vault
-            from api.database import record_emotion_snapshot
+            from api.database import backfill_emotion_history, record_emotion_snapshot
 
             vault = find_vault()
             if not vault:
@@ -398,6 +398,15 @@ async def lifespan(app: FastAPI):
             emotions = _derive_complex_emotions(state.get("mood", {}))
             scores = {e["key"]: float(e["score"]) for e in emotions}
             dominant = emotions[0]["key"] if emotions else ""
+            # Cloud Run（demoモード）は揮発性で当日分しか残らないため、履歴が疎なら
+            # 過去30日を補完してトレンドを描画可能にする（実データは上書きしない）。
+            if os.environ.get("CLOUDRUN_DATA_MODE") == "demo":
+                try:
+                    filled = backfill_emotion_history(scores, dominant, days=30)
+                    if filled:
+                        print(f"[API] emotion 30day trend backfilled: {filled} days")
+                except Exception as be:
+                    print(f"[API] emotion backfill failed (non-fatal): {be}")
             record_emotion_snapshot(scores, dominant)
         except Exception as e:
             print(f"[API] emotion auto-record failed (non-fatal): {e}")

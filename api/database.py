@@ -318,3 +318,100 @@ def get_emotion_summary(days: int = 30) -> dict:
         "axes": axes_stats,
         "dominant_avg": dominant_avg,
     }
+
+
+# ── デモ向け 30日トレンド補完（Cloud Run 対策）──────────────────────────────────
+#
+# Cloud Run（CLOUDRUN_DATA_MODE=demo）はコンテナが揮発性で、cold start のたびに
+# bundle の demo.db を再seedし、その後「当日分」のスナップショットしか記録しない。
+# そのため emotion_history が実質1件になり、フロントの EmotionTrendChart が
+# 「データが少なすぎます（1件）」で 30日トレンドを描画できない。
+# 実データが無い（疎な）ときだけ、現在の mood を基点に過去日を決定論的に補完する。
+# 実データの日付は絶対に上書きせず、notes="seed:demo-backfill" で識別可能にする。
+
+_BACKFILL_NOTE = "seed:demo-backfill"
+
+
+def _backfill_variation(date_iso: str, axis: str) -> float:
+    """日付×軸から決定論的な微変動（約 ±7、ゆるやかなドリフト付き）を返す。
+
+    プロセスやDBをまたいでも同じ日付・軸なら同じ値になるよう hashlib を使う。
+    """
+    import hashlib
+
+    digest = hashlib.sha256(f"{date_iso}:{axis}".encode("utf-8")).digest()
+    # 0..1 の擬似乱数
+    jitter = (int.from_bytes(digest[:4], "big") / 0xFFFFFFFF) * 2.0 - 1.0  # -1..1
+    # 日付起点のゆるやかな波（軸ごとに位相をずらす）
+    day_ord = dt.date.fromisoformat(date_iso).toordinal()
+    phase = (int.from_bytes(digest[4:6], "big") % 360) * math.pi / 180.0
+    drift = math.sin(day_ord / 5.0 + phase) * 4.0
+    return jitter * 7.0 + drift
+
+
+def backfill_emotion_history(
+    base_scores: dict[str, float],
+    dominant: str,
+    days: int = 30,
+    min_rows: int = 2,
+) -> int:
+    """emotion_history が疎なとき、過去 days 日分の欠損日を補完する（デモ用）。
+
+    - 既存レコードが min_rows 件以上あれば何もしない（実データを尊重）。
+    - 既に行が存在する日付は絶対に上書きしない。
+    - 当日分は record_emotion_snapshot 側が扱うため補完対象から除外する。
+    Returns 補完した行数。
+    """
+    if not base_scores:
+        return 0
+
+    init_emotion_history_table()
+    today = dt.date.today()
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        threshold = (
+            dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
+        ).isoformat()
+        cur.execute(
+            f"SELECT COUNT(*) FROM emotion_history WHERE recorded_at >= {ph}",
+            (threshold,),
+        )
+        existing_count = int(cur.fetchone()[0])
+        if existing_count >= min_rows:
+            return 0
+
+        cur.execute(
+            f"SELECT date(recorded_at) FROM emotion_history WHERE recorded_at >= {ph}",
+            (threshold,),
+        )
+        existing_dates = {row[0] for row in cur.fetchall()}
+
+        inserted = 0
+        # 古い日→新しい日の順で挿入し、当日は除外する。
+        for offset in range(days, 0, -1):
+            day = today - dt.timedelta(days=offset)
+            day_iso = day.isoformat()
+            if day_iso in existing_dates:
+                continue
+            recorded_at = dt.datetime(
+                day.year, day.month, day.day, 12, 0, 0, tzinfo=dt.timezone.utc
+            ).isoformat()
+            values = [recorded_at]
+            for axis in _EMOTION_AXES:
+                base = float(base_scores.get(axis) or 0.0)
+                val = base + _backfill_variation(day_iso, axis)
+                values.append(round(max(0.0, min(100.0, val)), 1))
+            values.append(dominant)
+            values.append(_BACKFILL_NOTE)
+            cur.execute(
+                f"""INSERT INTO emotion_history
+                    (recorded_at, hopeful_anxiety, careful_attachment,
+                     intellectual_excitement, unrewarded_effort, quiet_loneliness,
+                     earned_confidence, protective_frustration,
+                     dominant_raw_emotion, notes)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})""",
+                tuple(values),
+            )
+            inserted += 1
+        return inserted
