@@ -1,6 +1,13 @@
 #!/bin/bash
 # 日次改善の本体
 # 改善候補の収集・検証・反映をまとめて実行する
+#
+# 追加依存: requirements-pipeline.txt（fetch_fincept_data.py の akshare 等）。
+# venv を requirements.txt のみで再構築するとこれらは入らない
+# （REV-034a: akshare 欠落で fetch_fincept_data が exit 1 になり続けた実績あり。
+#  未導入でも exit 0 に健全スキップするため全体は止まらないが、マクロ更新は止まる）。
+#   .venv/bin/pip install -r requirements-pipeline.txt
+# （.venv/bin/pip が無い環境では: .venv/bin/python -m pip install -r requirements-pipeline.txt）
 
 PROJECT_ROOT="${PROJECT_ROOT:-/Users/kobayashiisaoryou/clawd/tune_lease_55}"
 PYTHON="${PYTHON:-${PROJECT_ROOT}/.venv/bin/python}"

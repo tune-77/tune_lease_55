@@ -33,10 +33,13 @@ STATIC_DIR = REPO_ROOT / "static_data"
 try:
     import akshare as ak
     import pandas as pd
-except ImportError:
-    print("Error: akshare が未インストールです。以下を実行してください:")
-    print("  pip install akshare")
-    sys.exit(1)
+except Exception as _imp_err:  # noqa: BLE001 — 未導入だけでなく壊れた依存も健全スキップ扱いにする
+    # akshare は任意依存（requirements 未収録）。未導入/壊れている場合は、マクロデータ更新を
+    # 健全にスキップして既存の static_data/macro_context.json を温存する。
+    # 日次改善パイプラインを止めないため exit 0（意図的スキップ＝健全として記録される）。
+    print(f"[fetch_fincept_data] akshare 利用不可のためスキップ（既存マクロデータを維持）: {_imp_err}")
+    print("  マクロ更新を使う場合は `pip install akshare` を実行してください。")
+    sys.exit(0)
 
 
 def _latest_row(df: pd.DataFrame, value_col: str) -> dict:
@@ -321,4 +324,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # マクロデータ更新は非クリティカル。想定外の実行時エラーでも日次パイプラインを
+    # 止めないよう握って健全スキップする（既存の macro_context.json を温存）。
+    try:
+        main()
+    except Exception as _e:  # noqa: BLE001
+        print(f"[fetch_fincept_data] マクロ更新に失敗したためスキップ（既存データを維持）: {_e}")
+        sys.exit(0)
