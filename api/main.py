@@ -8397,7 +8397,15 @@ def multi_agent_screening(req: MultiAgentRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        # 主経路（作り込んだ討論）が失敗 → 独立実装の ADK マルチエージェント討論へ
+        # フォールバックし、審査を止めない。フォールバックも失敗したら従来通り 500。
+        try:
+            from api.shion_debate_adk import run_debate_adk_fallback
+            print("[WARNING] run_debate_screening failed, fallback to ADK debate")
+            return run_debate_adk_fallback(req.model_dump())
+        except Exception as fe:
+            print(f"[WARNING] ADK debate fallback also failed: {fe}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/multi-agent-screening/stream")
@@ -8419,7 +8427,13 @@ def multi_agent_screening_stream(req: MultiAgentRequest):
         except Exception as e:
             import traceback
             traceback.print_exc()
-            yield f"data: {json.dumps({'type': 'error', 'detail': str(e)}, ensure_ascii=False)}\n\n"
+            # 主経路が失敗 → ADK マルチエージェント討論のフォールバック結果を1件配信。
+            try:
+                from api.shion_debate_adk import run_debate_adk_fallback
+                result = run_debate_adk_fallback(params)
+                yield f"data: {json.dumps({'type': 'result', **result}, ensure_ascii=False)}\n\n"
+            except Exception:
+                yield f"data: {json.dumps({'type': 'error', 'detail': str(e)}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
