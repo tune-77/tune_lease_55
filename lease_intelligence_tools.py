@@ -1106,6 +1106,138 @@ def get_pipeline_item_details(status: str = "requires_check", limit: int = 10, s
     }
 
 
+def recall_judgment_memory(question: str, limit: int = 5) -> dict[str, Any]:
+    """質問に関連する審査判断の記憶を、正準ルールと紫苑の記憶索引の両方から想起する。
+
+    「この論点について紫苑はどう判断してきた？」「関連する判断基準は？」といった、
+    案件横断の判断根拠を確認するために使う。既存ルール本体の網羅照会は
+    lookup_judgment_rules を、直近の想起（会話用）は既存チャット経路を使う。
+    - canonical_judgment_rules.json（lookup_judgment_rules 経由）
+    - shion_memory_index.json（api.shion_memory_recall.recall_memories 経由）
+    """
+    canonical = lookup_judgment_rules(query=question)
+
+    try:
+        from api.shion_memory_recall import recall_memories
+
+        recalled = recall_memories(question, limit=limit)
+        memories = [
+            {
+                "id": m.get("id"),
+                "memory_type": m.get("memory_type"),
+                "status": m.get("status"),
+                "content": str(m.get("content") or "")[:400],
+            }
+            for m in recalled.get("memories") or []
+            if isinstance(m, dict)
+        ]
+        memory_result: dict[str, Any] = {
+            "available": True,
+            "route": recalled.get("route"),
+            "memories": memories,
+        }
+    except Exception as exc:
+        memory_result = {"available": False, "error": str(exc), "memories": []}
+
+    return {
+        "canonical_rules": canonical.get("canonical_rules", {}),
+        "shion_memory": memory_result,
+        "sources": ["canonical_judgment_rules.json", "shion_memory_index.json"],
+    }
+
+
+def build_judgment_preview(material_type: str = "", limit: int = 10) -> dict[str, Any]:
+    """日次パイプラインが生成した判断材料プレビューを返す（reports/judgment_materials_preview_latest.md）。
+
+    「最近たまった判断材料のpreviewを見せて」「リスクシグナルの候補は？」といった、
+    正式採用前の下書き材料を確認するために使う。material_type: judgment_rule /
+    risk_signal / user_preference で絞り込み可能。
+
+    このツール自身はプレビューを生成しない（生成は日次パイプライン専有。
+    まだ人間レビューを経ていない下書きであり、canonical_judgment_rulesとは異なる）。
+    """
+    for reports_dir in _candidate_reports_dirs():
+        report_path = reports_dir / "judgment_materials_preview_latest.md"
+        if not report_path.exists():
+            continue
+        try:
+            text = report_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            return {"available": False, "error": str(exc), "materials": []}
+
+        header_m = re.match(r"#\s*Judgment Materials Preview \(([^)]*)\)", text)
+        period = header_m.group(1) if header_m else None
+
+        summary: dict[str, int] = {}
+        for key in ("Materials", "judgment_rule", "risk_signal", "user_preference"):
+            m = re.search(rf"-\s*{re.escape(key)}:\s*(\d+)", text)
+            if m:
+                summary[key] = int(m.group(1))
+
+        materials: list[dict[str, Any]] = []
+        for block in re.split(r"\n### ", text)[1:]:
+            header_line, _, body = block.partition("\n")
+            hm = re.match(r"([\d-]+)\s*/\s*(\S+)\s*/\s*confidence=([\d.]+)", header_line.strip())
+            if not hm:
+                continue
+            date_str, mtype, confidence = hm.group(1), hm.group(2), hm.group(3)
+            if material_type and material_type != mtype:
+                continue
+            claim_m = re.search(r"-\s*Claim:\s*(.+)", body)
+            use_m = re.search(r"-\s*Use when:\s*(.+)", body)
+            axis_m = re.search(r"-\s*Axis:\s*(.+)", body)
+            evidence_m = re.search(r"-\s*Evidence:\s*`([^`]+)`", body)
+            materials.append({
+                "date": date_str,
+                "material_type": mtype,
+                "confidence": float(confidence),
+                "claim": (claim_m.group(1).strip() if claim_m else "")[:300],
+                "use_when": use_m.group(1).strip() if use_m else "",
+                "axis": axis_m.group(1).strip() if axis_m else "",
+                "evidence": evidence_m.group(1).strip() if evidence_m else "",
+            })
+            if len(materials) >= max(1, min(limit, 50)):
+                break
+
+        return {
+            "available": True,
+            "period": period,
+            "summary": summary,
+            "materials": materials,
+            "note": "正式採用前のプレビューです。canonical_judgment_rulesとは異なり、レビューを経ていません。",
+        }
+
+    return {"available": False, "materials": []}
+
+
+def search_obsidian_context(query: str, limit: int = 4) -> dict[str, Any]:
+    """Obsidian Vaultの知識ノートをクエリで検索する。
+
+    「〇〇についてObsidianに何か書いてある？」「過去のメモで関連するものは？」
+    といった、社内知識ノートからの裏取りに使う。既存の共通経路
+    （obsidian_ai_context.collect_obsidian_ai_context → mobile_app.obsidian_bridge）を
+    そのまま呼び出す。Vaultが見つからない・接続できない環境では例外を投げず、
+    hits が空の結果を返す。
+    """
+    try:
+        from obsidian_ai_context import collect_obsidian_ai_context
+
+        result = collect_obsidian_ai_context(query, limit=limit)
+    except Exception as exc:
+        return {"available": False, "error": str(exc), "hits": [], "source_count": 0}
+
+    hits = [
+        {"path": h.get("path"), "snippet": str(h.get("snippet") or "")[:320]}
+        for h in result.get("hits") or []
+        if isinstance(h, dict)
+    ]
+    return {
+        "available": bool(hits),
+        "hits": hits,
+        "source_count": result.get("source_count", len(hits)),
+    }
+
+
 # ── Wiki embedding helpers ────────────────────────────────────────────────────
 
 def _gemini_api_key_for_tools() -> str:
