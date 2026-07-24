@@ -112,3 +112,21 @@ def test_load_intake_preserves_original_source(tmp_path):
     items = {i["id"]: i for i in rsi.load_chat_quick_fix_intake(intake)}
     assert items["promise_x"]["source"] == "shion_promise"
     assert items["chat_y"]["source"] == "chat_quick_fix"  # 未指定は従来どおり
+
+
+def test_load_intake_excludes_already_executed_ids(tmp_path):
+    """execute_chat_quick_fix が即時実行済みのIDは、日次バッチの候補から除外する（二重実行防止）。"""
+    from scripts import recursive_self_improvement as rsi
+
+    intake = tmp_path / "chat_quick_fix_intake.jsonl"
+    intake.write_text(
+        json.dumps({"id": "chat_a", "title": "起票A"}) + "\n"
+        + json.dumps({"id": "chat_b", "title": "起票B"}) + "\n",
+        encoding="utf-8",
+    )
+    executed = tmp_path / "chat_quick_fix_executed.json"
+    executed.write_text(json.dumps(["chat_a"]), encoding="utf-8")
+
+    items = rsi.load_chat_quick_fix_intake(intake, executed_ids_path=executed)
+
+    assert [i["id"] for i in items] == ["chat_b"]
