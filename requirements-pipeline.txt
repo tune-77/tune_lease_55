@@ -1,0 +1,14 @@
+# ─────────────────────────────────────────────────────────────
+# 日次改善パイプライン専用の追加依存
+# scripts/run_daily_improvement_core.sh からのみ使われ、Cloud Run（Dockerfile /
+# Dockerfile.api、requirements.txt）や pytest-core CI には一切関与しない。
+# Mac の日次パイプライン用 .venv にだけ入れる:
+#   .venv/bin/pip install -r requirements-pipeline.txt
+# ─────────────────────────────────────────────────────────────
+
+# scripts/fetch_fincept_data.py（マクロ経済データ更新）が使う。
+# 外部サイトを scrape するため壊れやすい任意依存。未導入/失敗時は
+# fetch_fincept_data.py が健全スキップ（exit 0）するため、パイプライン全体は止まらない。
+# venv を requirements.txt だけから再構築すると本パッケージは入らない点に注意
+# （REV-034a: これが原因でマクロ更新が exit 1 になり続けた実績あり）。
+akshare>=1.18.0

@@ -101,6 +101,7 @@ jobs:
           tests/test_shion_debate_adk_fallback.py
           tests/test_analyze_debate_quality.py
           tests/test_fetch_fincept_data_resilience.py
+          tests/test_requirements_pipeline_declares_akshare.py
 
   # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）を warn-only で実行。
   # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。
