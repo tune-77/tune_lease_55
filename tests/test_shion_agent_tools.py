@@ -16,6 +16,7 @@ EXPECTED_DB_TOOLS = {
     "get_portfolio_stats",
     "get_weekly_trend",
     "get_system_overview",
+    "get_recent_errors",
 }
 
 
@@ -36,6 +37,6 @@ def test_agent_registers_all_tools_when_adk_available():
     import api.shion_agent as sa
 
     names = {fn.__name__ for fn in sa._AGENT_TOOL_FUNCS}
-    # 既存2ツール + 読み取り専用DBツール5個 = 7個。
+    # 既存2ツール + 読み取り専用DBツール6個 = 8個。
     assert names == {"get_industry_benchmark", "assess_risk_level"} | EXPECTED_DB_TOOLS
-    assert len(sa._AGENT_TOOL_FUNCS) == 7
+    assert len(sa._AGENT_TOOL_FUNCS) == 8
