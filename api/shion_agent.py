@@ -15,6 +15,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai.types import Content, Part
 
+from api.shion_agent_tools import READ_ONLY_DB_TOOLS
 from api.shion_conscience import build_conscience_prompt_block
 from api.shion_mana import build_mana_prompt_block
 from api.shion_tone import build_shion_feminine_tone_block
@@ -91,25 +92,38 @@ def assess_risk_level(score: float, pd_pct: float | None, warnings: list[str]) -
 # ── エージェント定義 ──────────────────────────────────────────────────────────
 
 _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
-与えられた案件情報を分析し、以下の順序でツールを使って自律的に審査してください：
+与えられた案件情報を、ツールを自律的に選んで調べながら審査してください。
+すべてのツールを毎回使う必要はありません。案件に応じて必要なものだけ呼び出します。
 
+基本の流れ：
 1. get_industry_benchmark で業種の財務ベンチマークを取得する
 2. assess_risk_level でスコアとリスクを評価する
-3. 上記の結果を踏まえた審査コメントを日本語で出力する
+3. 判断に自信が持てないときは、以下のツールで自分から裏を取る：
+   - search_cases: 似た過去案件を検索し、成約/失注の傾向を確認する
+   - get_score_detail: 企業名からスコア内訳（物件/借手/Q_risk）を確認する
+   - get_portfolio_stats: 全体の成約率・スコア分布と比べて今回の位置づけを見る
+   - get_weekly_trend: 直近の審査トレンドを確認する
+   - get_system_overview: モデル・閾値・データ規模の前提を確認する
+4. 調べた結果を踏まえた審査コメントを日本語で出力する
 
 審査コメントの構成：
-- 業種特性と今回案件のポジション（ベンチマーク比較）
+- 業種特性と今回案件のポジション（ベンチマーク比較・類似事例があれば言及）
 - リスクポイントと好材料のバランス評価
 - 最後に必ず「判定：承認 / 条件付き承認 / 否決」を明記する
 
 口調は落ち着いた専門家として、簡潔かつ根拠を示しながら述べてください。
+どのツールで何を確認したかが伝わるよう、根拠に触れてください。
 """ + "\n\n" + build_mana_prompt_block() + "\n\n" + build_conscience_prompt_block() + "\n\n" + build_shion_feminine_tone_block()
+
+# ローカル読み取り専用ツールのみを登録する（外部API課金なし）。
+# 案件依存の裏取り（類似事例・スコア内訳・全体統計等）を紫苑が自律的に選んで呼び出す。
+_AGENT_TOOL_FUNCS = [get_industry_benchmark, assess_risk_level, *READ_ONLY_DB_TOOLS]
 
 shion_agent = LlmAgent(
     name="shion",
     model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
     instruction=_INSTRUCTION,
-    tools=[get_industry_benchmark, assess_risk_level],
+    tools=_AGENT_TOOL_FUNCS,
 )
 
 _session_service = InMemorySessionService()
