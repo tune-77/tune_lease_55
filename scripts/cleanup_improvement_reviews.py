@@ -116,6 +116,27 @@ KNOWN_CODE_APPLIED: list[tuple[str, str, str]] = [
      "修正済み: improvement-log/page.tsx 表示を「自動改善キュー（claude実行・gemini予備）」に変更"),
 ]
 
+# B群: 出荷済みだが、生メモの canonical_key（title+description 依存）が出荷 REV 番号と
+# 繋がらないため、runtime 台帳で needs_review のまま churn し続ける項目。
+# canonical_key は description 差異でブレるため固定キーで照合できない。代わりに
+# runtime 台帳の未決着エントリを「正規化タイトル一致」で解決し、その実キーのまま
+# applied 化する（_apply_title_matched_closures で処理）。
+# 値は (タイトル, 出荷エビデンス)。タイトルは recursive_self_improvement レポートの表記に合わせる。
+KNOWN_TITLE_APPLIED: list[tuple[str, str]] = [
+    ("音声入力に対して音声での応答がない。",
+     "実装済み: REV-048 音声入出力（PR#320/321）・REV-173 音声VAD修正（PR#504）"),
+    ("「紫苑」と「めぶきちゃん」間の意思疎通が不十分",
+     "実装済み: REV-060/064/065/147 めぶき⇔紫苑の認識・中継・専門知識注入（PR#343/347/354/469）"),
+    ("紫苑の記憶参照システムと重要情報統合プロセスに根本的欠陥。",
+     "実装済み: REV-091/095/201/206 長期記憶圧縮・感情スナップショット・個人記憶・ハイブリッド想起（PR#383/387/525/531）"),
+    ("複数のAIモデル（紫苑）を同時に動かし、互いに意見を出し合わせる機能がない。",
+     "実装済み: REV-123/149 軍師AI・討論ページのマルチペルソナ化（PR#453/473）"),
+    ("Cloud Runに関する改善メモが散在しており、一元管理ができていない。",
+     "実装済み: REV-125/179/208/215 Cloud Run移行・一元化・自動デプロイ（PR#447/510/543/583）"),
+    ("AIアシスタント「八奈見さん」の名称に関する課題",
+     "実装済み: REV-056 紫苑の正式名称 full_name フィールド追加（PR#336）"),
+]
+
 KNOWN_PR_OVERRIDES: dict[str, tuple[int, str]] = {
     "REV-001": (193, "rejected"),   # PR#193 CLOSED: EDINET API連携
     "REV-005": (202, "applied"),    # PR#202 MERGED: OCRモバイル入力機能
@@ -280,6 +301,75 @@ def _get_ledger_latest() -> dict[str, dict]:
     }
 
 
+_OPEN_STATUSES = {"needs_review", "parked", "suppressed"}
+
+
+def _norm_title(title: str) -> str:
+    """タイトル一致用の軽量正規化（空白除去 + 小文字化）。
+
+    canonical_key ほど強い正規化はかけず、レポート表記のブレ（前後空白）だけを吸収する。
+    """
+    return re.sub(r"\s+", "", str(title or "").strip().lower())
+
+
+def _get_ledger_open_titles() -> dict[str, tuple[str, str]]:
+    """runtime 台帳の「未決着（needs_review/parked/suppressed）」最新エントリを
+    正規化タイトル → (実key, status) で返す。
+
+    canonical_key が description 差異でブレても、runtime 台帳が保持する実 key を
+    タイトルから解決できるようにするための逆引き表。
+    """
+    if not LEDGER_PATH.exists():
+        return {}
+    latest: dict[str, dict] = {}
+    for line in LEDGER_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        k = e.get("key", "")
+        if k:
+            latest[k] = e  # last wins
+
+    out: dict[str, tuple[str, str]] = {}
+    for k, e in latest.items():
+        if e.get("status") in _OPEN_STATUSES:
+            nt = _norm_title(e.get("title", ""))
+            if nt:
+                out[nt] = (k, e.get("status", ""))
+    return out
+
+
+def _apply_title_matched_closures(now: str) -> list[dict]:
+    """KNOWN_TITLE_APPLIED を runtime 台帳の未決着エントリにタイトル一致で当て、
+    実 key のまま applied 追記する更新エントリ群を返す（副作用なし）。
+
+    - 台帳に該当タイトルの未決着エントリが無ければ何もしない（no-op）。
+    - 既に applied のものは _OPEN_STATUSES に含まれないため自然に対象外。
+    """
+    open_by_title = _get_ledger_open_titles()
+    updates: list[dict] = []
+    for title, reason in KNOWN_TITLE_APPLIED:
+        hit = open_by_title.get(_norm_title(title))
+        if not hit:
+            continue
+        real_key, cur_status = hit
+        updates.append({
+            "key": real_key,
+            "rev_id": "",
+            "status": "applied",
+            "title": title,
+            "canonical_key": real_key,
+            "pr_url": "",
+            "reason": f"{reason}（旧status={cur_status}→applied, title一致で解決）",
+            "recorded_at": now,
+        })
+    return updates
+
+
 def _append_ledger(entry: dict) -> None:
     LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
     with LEDGER_PATH.open("a", encoding="utf-8") as f:
@@ -361,6 +451,10 @@ def main() -> None:
             "reason": reason,
             "recorded_at": now,
         })
+
+    # B群: 出荷済みだが canonical_key が出荷REVと繋がらず needs_review で滞留している
+    # 生メモを、runtime 台帳のタイトル一致で実キーごと applied 化する。
+    updates.extend(_apply_title_matched_closures(now))
 
     # deferred（PR なし） - --mark-deferred フラグ時のみ
     if args.mark_deferred:
