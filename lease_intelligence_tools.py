@@ -1322,15 +1322,37 @@ def propose_quick_fix(request: str, title: str = "") -> dict[str, Any]:
     except Exception as exc:
         return {"accepted": False, "reason": f"起票の書き込みに失敗しました: {exc}"}
 
+    # codex-safe条件・日次実行枠・キルスイッチを満たす場合のみ、待たせずに
+    # バックグラウンドで即時実行を試みる（execute_chat_quick_fix が既存の
+    # execute_codex_queue ガードをそのまま再利用する）。実行しない場合は
+    # 従来どおり次回の日次パイプラインが拾う。
+    try:
+        from scripts.execute_chat_quick_fix import start_execution
+
+        execution = start_execution(record)
+    except Exception as exc:
+        execution = {"execution": "queued_for_batch", "reason": f"即時実行の判定に失敗: {exc}"}
+
+    if execution.get("execution") == "started":
+        message = (
+            f"自動修正候補として起票し、バックグラウンドで即時実行を開始しました（対象: {target}）。"
+            "完了後もマージ前には人間のPRレビューが必要です。"
+        )
+    else:
+        message = (
+            f"自動修正候補として起票しました（対象: {target}）。"
+            f"即時実行はしません（{execution.get('reason', '条件を満たさないため')}）。"
+            "次回の自律改善パイプライン実行でランクキューに載り、自動修正が試行されます。"
+        )
+
     return {
         "accepted": True,
         "target_module": target,
         "risk": verdict.get("risk"),
         "id": rec_id,
-        "message": (
-            f"自動修正候補として起票しました（対象: {target}）。"
-            "次回の自律改善パイプライン実行でランクキューに載り、自動修正が試行されます。"
-        ),
+        "execution": execution.get("execution"),
+        "execution_reason": execution.get("reason"),
+        "message": message,
     }
 
 
