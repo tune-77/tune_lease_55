@@ -108,6 +108,11 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
      logs/api.log・app.log の頻出エラーパターンを自律的に調査する
    - get_pipeline_item_details: 改善パイプラインの要確認・放置項目について聞かれたら、
      ledger_rules.json の個別項目を深掘りする
+   - recall_judgment_memory: 過去の判断根拠を確認したいときは、正準ルールと紫苑の
+     記憶索引の両方から関連する判断を想起する
+   - build_judgment_preview: レビュー前の判断材料候補を確認したいときに使う
+     （まだcanonical_judgment_rulesではない下書きである点に注意）
+   - search_obsidian_context: Obsidian Vaultの知識ノートで裏取りしたいときに使う
 4. 調べた結果を踏まえた審査コメントを日本語で出力する
 
 審査コメントの構成：
