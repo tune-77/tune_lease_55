@@ -970,6 +970,142 @@ def get_commit_diff(commit_hash: str) -> dict[str, Any]:
         return {"error": str(exc), "stat": ""}
 
 
+def get_recent_errors(hours: int = 24, limit: int = 10) -> dict[str, Any]:
+    """リース審査システムのエラーログ（logs/api.log・app.log）を調査し、直近hours時間で
+    頻出しているエラーパターンを件数順に返す。
+
+    「システムでエラーが出ていないか」「最近落ちてないか」といったシステム不具合の
+    自律調査に使う。案件データそのものの異常は対象外（get_score_detail等を使う）。
+    集計ロジックは scripts/analyze_error_logs.py と共通。
+    """
+    import datetime as _dt
+
+    from scripts.analyze_error_logs import (
+        LOG_FILES,
+        LOGS_DIR,
+        _extract_error_key,
+        _parse_ts,
+        _sanitize_text,
+    )
+
+    cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=max(1, hours))
+    counts: dict[str, int] = {}
+    samples: dict[str, str] = {}
+    total_lines = 0
+    checked_files: list[str] = []
+
+    for log_name in LOG_FILES:
+        log_path = LOGS_DIR / log_name
+        if not log_path.exists():
+            continue
+        checked_files.append(log_name)
+        try:
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception:
+            continue
+        current_ts = None
+        for line in lines:
+            if len(line) > 2000:
+                continue
+            ts_m = re.match(r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})", line)
+            if ts_m:
+                current_ts = _parse_ts(ts_m.group(1))
+            if current_ts and current_ts < cutoff:
+                continue
+            key = _extract_error_key(line)
+            if not key:
+                continue
+            total_lines += 1
+            counts[key] = counts.get(key, 0) + 1
+            if key not in samples:
+                samples[key] = _sanitize_text(line.strip(), max_len=200)
+
+    top = sorted(counts.items(), key=lambda kv: -kv[1])[: max(1, min(limit, 50))]
+    patterns = [
+        {"pattern": key, "count": count, "sample": samples.get(key, "")}
+        for key, count in top
+    ]
+
+    return {
+        "checked_files": checked_files,
+        "lookback_hours": hours,
+        "total_error_lines": total_lines,
+        "distinct_patterns": len(counts),
+        "patterns": patterns,
+    }
+
+
+def get_pipeline_item_details(status: str = "requires_check", limit: int = 10, stale_days: int = 14) -> dict[str, Any]:
+    """改善パイプライン台帳（api/rule_engine/ledger_rules.json）から個別項目の詳細を返す。
+
+    「要確認のREV項目を詳しく教えて」「放置されている改善提案はある？」といった
+    パイプライン監査の深掘りに使う。全体件数はget_pipeline_statusを使うこと。
+
+    status:
+      "requires_check" — pending_review=True の全項目（要確認）
+      "expired"         — pending_review=True かつ detected_at から stale_days 日以上
+                           経過した項目（期限切れ）。ledger_rules.json にネイティブな
+                           expired フィールドは存在しないため、経過日数から派生的に判定する。
+    """
+    import datetime as _dt
+
+    if status not in ("requires_check", "expired"):
+        return {"items": [], "count": 0, "error": f"未対応のstatus: {status}（requires_check または expired を指定）"}
+
+    ledger_path = _REPO_PATH / "api" / "rule_engine" / "ledger_rules.json"
+    if not ledger_path.exists():
+        return {"items": [], "count": 0, "error": "ledger_rules.json が見つかりません"}
+    try:
+        rules = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"items": [], "count": 0, "error": str(exc)}
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    def _age_days(entry: dict) -> int | None:
+        try:
+            detected = _dt.datetime.fromisoformat(str(entry.get("detected_at") or "").replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return (now - detected).days
+
+    candidates = [r for r in rules if isinstance(r, dict) and r.get("pending_review") is True]
+    if status == "expired":
+        candidates = [r for r in candidates if (_age_days(r) or 0) >= stale_days]
+    candidates.sort(key=lambda r: str(r.get("detected_at") or ""))
+
+    items = []
+    for entry in candidates[: max(1, min(limit, 50))]:
+        age_days = _age_days(entry)
+        detail_reason = (
+            f"経過{age_days}日・未レビューのまま放置" if status == "expired"
+            else f"category={entry.get('category', '-')} / risk={entry.get('risk', '-')} / auto_fix_allowed={entry.get('auto_fix_allowed')}"
+        )
+        items.append({
+            "id": entry.get("rev_id"),
+            "created_at": entry.get("detected_at"),
+            "title": entry.get("description"),
+            "detail_reason": detail_reason,
+            "context_data": {
+                "type": entry.get("type"),
+                "category": entry.get("category"),
+                "source": entry.get("source"),
+                "target": entry.get("target"),
+                "affected_files": entry.get("affected_files"),
+                "risk": entry.get("risk"),
+                "auto_fix_allowed": entry.get("auto_fix_allowed"),
+                "age_days": age_days,
+            },
+        })
+
+    return {
+        "items": items,
+        "count": len(items),
+        "status": status,
+        "stale_days": stale_days if status == "expired" else None,
+    }
+
+
 # ── Wiki embedding helpers ────────────────────────────────────────────────────
 
 def _gemini_api_key_for_tools() -> str:

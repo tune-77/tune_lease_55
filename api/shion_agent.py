@@ -104,6 +104,10 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
    - get_portfolio_stats: 全体の成約率・スコア分布と比べて今回の位置づけを見る
    - get_weekly_trend: 直近の審査トレンドを確認する
    - get_system_overview: モデル・閾値・データ規模の前提を確認する
+   - get_recent_errors: システムエラー（落ちている・エラーが出ている等）を聞かれたら、
+     logs/api.log・app.log の頻出エラーパターンを自律的に調査する
+   - get_pipeline_item_details: 改善パイプラインの要確認・放置項目について聞かれたら、
+     ledger_rules.json の個別項目を深掘りする
 4. 調べた結果を踏まえた審査コメントを日本語で出力する
 
 審査コメントの構成：
