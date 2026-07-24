@@ -1488,12 +1488,73 @@ def propose_quick_fix(request: str, title: str = "") -> dict[str, Any]:
     }
 
 
+def ask_user_question(question: str, reason: str = "") -> dict[str, Any]:
+    """紫苑が知りたいことをユーザーへの質問として登録する。
+
+    案件を離れた一般的な確認事項（例: 「◯◯業界の最近の傾向を今度教えてください」）を、
+    その場で無理に聞き出そうとせず、後で答えてもらえるよう記録しておきたいときに使う。
+    その場ですぐ確認すべき情報（会社名・業種・金額等）は通常の会話で直接聞くこと。
+    既存の紫苑タスク台帳（api.shion_tasks）に source="shion_question" として登録するだけで、
+    新しいストレージは作らない。
+    """
+    q = (question or "").strip()
+    if not q:
+        return {"registered": False, "reason": "質問文が空です"}
+    try:
+        from api.shion_tasks import create_task
+
+        task = create_task(
+            title=q,
+            note=(reason or "").strip(),
+            source="shion_question",
+            tags=["question"],
+        )
+    except Exception as exc:
+        return {"registered": False, "reason": f"登録に失敗しました: {exc}"}
+    return {
+        "registered": True,
+        "id": task.get("id"),
+        "question": task.get("title"),
+        "message": "質問を記録しました。ユーザーからの回答を待ちます。",
+    }
+
+
+def list_shion_questions(limit: int = 10) -> dict[str, Any]:
+    """紫苑がユーザーに聞きたいと登録した、まだ回答されていない質問の一覧を返す。
+
+    「他に何か聞きたいことある？」「未回答の質問は？」といった確認に使う。
+    """
+    try:
+        from api.shion_tasks import list_tasks
+
+        tasks = list_tasks(status="open", limit=200)
+    except Exception as exc:
+        return {"questions": [], "count": 0, "error": str(exc)}
+
+    questions = [
+        {
+            "id": t.get("id"),
+            "question": t.get("title"),
+            "reason": t.get("note"),
+            "asked_at": t.get("created_at"),
+        }
+        for t in tasks
+        if isinstance(t, dict) and t.get("source") == "shion_question"
+    ]
+    questions = questions[: max(1, min(limit, 50))]
+    return {"questions": questions, "count": len(questions)}
+
+
 def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
     """Dispatch a tool call by name and return its result."""
     if name == "search_cases":
         return search_cases(args.get("query", ""), int(args.get("limit", 5)))
     if name == "propose_quick_fix":
         return propose_quick_fix(args.get("request", ""), args.get("title", ""))
+    if name == "ask_user_question":
+        return ask_user_question(args.get("question", ""), args.get("reason", ""))
+    if name == "list_shion_questions":
+        return list_shion_questions(int(args.get("limit", 10) or 10))
     if name == "get_score_detail":
         return get_score_detail(args.get("company_name", ""))
     if name == "get_screening_activity":
@@ -1593,6 +1654,34 @@ TOOL_DECLARATIONS: list[dict] = [
                 "title": {"type": "string", "description": "候補の短い見出し（省略時は要望冒頭を使用）"},
             },
             "required": ["request"],
+        },
+    },
+    {
+        "name": "ask_user_question",
+        "description": (
+            "案件を離れた一般的な確認事項を、その場で無理に聞き出さず、後で答えてもらえる"
+            "ようユーザーへの質問として記録する。「今度教えてください」「後で確認したい」"
+            "といった場面で使う。会社名・業種・金額等、その場で必要な情報は通常の会話で"
+            "直接聞くこと（このツールは使わない）。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "ユーザーに聞きたい質問文"},
+                "reason": {"type": "string", "description": "なぜ聞きたいか（省略可）"},
+            },
+            "required": ["question"],
+        },
+    },
+    {
+        "name": "list_shion_questions",
+        "description": "紫苑がユーザーに聞きたいと登録した、まだ回答されていない質問の一覧を返す。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "取得件数（デフォルト10、最大50）"},
+            },
+            "required": [],
         },
     },
     {
