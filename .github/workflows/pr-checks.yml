@@ -93,6 +93,7 @@ jobs:
           tests/test_send_daily_improvement_slack.py
           tests/test_screening_domain.py
           tests/test_threshold_single_source.py
+          tests/test_emotion_history_backfill.py
           tests/test_cleanup_title_matched_closures.py
           tests/test_reconcile_needs_review_from_prs.py
 
