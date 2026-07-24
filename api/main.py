@@ -9529,6 +9529,72 @@ def _update_shion_screening_review_feedback(review_id: int, user_feedback: str) 
     return {"id": review_id, "user_feedback": normalized}
 
 
+def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: str) -> None:
+    """紫苑レビューへのユーザーフィードバックを判断資産使用ログに記録する（バックグラウンドタスク用）.
+
+    data/judgment_asset_usage_feedback.jsonl に追記するだけ。
+    プロンプト・スコアリング・DB スキーマには一切触れない。
+    """
+    import json as _json
+    from datetime import datetime as _dt
+    from pathlib import Path as _Path
+
+    _FEEDBACK_JSONL = _Path(__file__).resolve().parent.parent / "data" / "judgment_asset_usage_feedback.jsonl"
+    _OUTCOME_MAP = {"useful": "helped", "needs_fix": "challenged", "wrong": "rejected"}
+    outcome = _OUTCOME_MAP.get(str(user_feedback or "").strip())
+    if not outcome:
+        return
+
+    try:
+        _ensure_shion_screening_reviews_table()
+        ph = placeholder()
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"SELECT case_id, result_snapshot FROM shion_screening_reviews WHERE id = {ph}",
+                (review_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return
+            case_id = str(row[0] or "")
+            result_snapshot_str = str(row[1] or "{}")
+    except Exception:
+        return
+
+    try:
+        snapshot = _json.loads(result_snapshot_str)
+        refs: list[str] = []
+        if isinstance(snapshot.get("knowledge_refs"), list):
+            refs = [str(r) for r in snapshot["knowledge_refs"] if r]
+        if not refs and isinstance(snapshot.get("memory_debug"), dict):
+            md = snapshot["memory_debug"]
+            if isinstance(md.get("knowledge_refs"), list):
+                refs = [str(r) for r in md["knowledge_refs"] if r]
+        if not refs:
+            refs = ["shion_screening_review"]
+    except Exception:
+        refs = ["shion_screening_review"]
+
+    now = _dt.now().isoformat(timespec="seconds")
+    _FEEDBACK_JSONL.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with _FEEDBACK_JSONL.open("a", encoding="utf-8") as _f:
+            for rule_id in refs[:12]:
+                entry = {
+                    "schema_version": "1",
+                    "rule_id": rule_id.strip(),
+                    "outcome": outcome,
+                    "case_id": case_id,
+                    "note": "",
+                    "source": "shion_screening_review",
+                    "used_at": now,
+                }
+                _f.write(_json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+    except Exception:
+        pass
+
+
 def _screening_candidate_terms(*values: str) -> set[str]:
     text = " ".join(str(value or "") for value in values)
     terms = set(re.findall(r"[A-Za-z0-9_]{3,}|[一-龥ぁ-んァ-ンー]{2,}", text))
@@ -12332,6 +12398,11 @@ def patch_shion_screening_review_feedback(
         event_type="shion_screening_review_feedback",
         surface="screening",
         payload={**entry, "schema_version": 1, "cloud_review_id": review_id},
+    )
+    background_tasks.add_task(
+        _record_judgment_asset_feedback_from_review,
+        review_id,
+        req.user_feedback,
     )
     return {"status": "ok", "review": entry}
 
