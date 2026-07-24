@@ -11,6 +11,22 @@ from typing import Optional
 
 from api.db_connection import get_connection, placeholder, ensure_schema, _is_postgres
 
+# 感情履歴の保存・比較・当日判定はすべて東京時間（JST）に統一する。
+# Cloud Run コンテナは既定 UTC のため、UTC の "today" ではフロント表示や
+# 日次デデュープが日本の日付境界とズレる。オフセットを持たない naive JST 文字列で
+# 保存し、SQLite の date() が余計なタイムゾーン変換を挟まないようにする。
+JST = dt.timezone(dt.timedelta(hours=9), name="JST")
+
+
+def _jst_now() -> dt.datetime:
+    """現在時刻を東京時間の naive datetime で返す。"""
+    return dt.datetime.now(JST).replace(tzinfo=None)
+
+
+def _jst_today() -> dt.date:
+    """東京時間での今日の日付を返す。"""
+    return _jst_now().date()
+
 
 def _insert_get_id(conn, sql: str, params: tuple) -> int:
     """INSERT して新規レコードのIDを返す（SQLite/PostgreSQL 両対応）。"""
@@ -212,7 +228,7 @@ def record_emotion_snapshot(
     Returns (id, was_inserted).
     """
     init_emotion_history_table()
-    today = dt.date.today().isoformat()
+    today = _jst_today().isoformat()
     ph = placeholder()
     with get_connection() as conn:
         cur = conn.cursor()
@@ -231,7 +247,7 @@ def record_emotion_snapshot(
                  dominant_raw_emotion, notes)
             VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})""",
             (
-                dt.datetime.now(dt.timezone.utc).isoformat(),
+                _jst_now().isoformat(),
                 scores.get("hopeful_anxiety"),
                 scores.get("careful_attachment"),
                 scores.get("intellectual_excitement"),
@@ -249,7 +265,7 @@ def record_emotion_snapshot(
 def get_emotion_history(days: int = 30) -> list[dict]:
     """過去N日分の感情スコアを時系列で返す。"""
     init_emotion_history_table()
-    threshold = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
+    threshold = (_jst_now() - dt.timedelta(days=days)).isoformat()
     ph = placeholder()
     with get_connection() as conn:
         cur = conn.cursor()
@@ -271,7 +287,7 @@ def get_emotion_history(days: int = 30) -> list[dict]:
 def get_emotion_summary(days: int = 30) -> dict:
     """期間内の各軸の平均・最大・最小・標準偏差を返す。"""
     init_emotion_history_table()
-    threshold = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
+    threshold = (_jst_now() - dt.timedelta(days=days)).isoformat()
     ph = placeholder()
     with get_connection() as conn:
         cur = conn.cursor()
@@ -366,13 +382,11 @@ def backfill_emotion_history(
         return 0
 
     init_emotion_history_table()
-    today = dt.date.today()
+    today = _jst_today()
     ph = placeholder()
     with get_connection() as conn:
         cur = conn.cursor()
-        threshold = (
-            dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
-        ).isoformat()
+        threshold = (_jst_now() - dt.timedelta(days=days)).isoformat()
         cur.execute(
             f"SELECT COUNT(*) FROM emotion_history WHERE recorded_at >= {ph}",
             (threshold,),
@@ -394,9 +408,8 @@ def backfill_emotion_history(
             day_iso = day.isoformat()
             if day_iso in existing_dates:
                 continue
-            recorded_at = dt.datetime(
-                day.year, day.month, day.day, 12, 0, 0, tzinfo=dt.timezone.utc
-            ).isoformat()
+            # 東京時間の正午（naive JST）で記録する。
+            recorded_at = dt.datetime(day.year, day.month, day.day, 12, 0, 0).isoformat()
             values = [recorded_at]
             for axis in _EMOTION_AXES:
                 base = float(base_scores.get(axis) or 0.0)

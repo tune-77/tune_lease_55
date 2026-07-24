@@ -94,3 +94,26 @@ def test_backfill_does_not_overwrite_real_rows(db):
 def test_backfill_no_base_scores_is_noop(db):
     assert db.backfill_emotion_history({}, "", days=30) == 0
     assert db.get_emotion_history(days=30) == []
+
+
+def test_timestamps_are_tokyo_time(db):
+    """保存タイムスタンプは東京時間（naive JST、UTCオフセット無し）で、
+    当日判定も JST 基準になっている。"""
+    db.record_emotion_snapshot(_BASE, "hopeful_anxiety")
+    db.backfill_emotion_history(_BASE, "hopeful_anxiety", days=30)
+    history = db.get_emotion_history(days=30)
+    assert history
+
+    for row in history:
+        ts = row["recorded_at"]
+        # UTC オフセット／Z が付いていない（naive JST）。
+        assert "+" not in ts and not ts.endswith("Z")
+
+    # 当日レコードの日付が JST の今日と一致する。
+    today = db._jst_today().isoformat()
+    today_rows = [r for r in history if r["recorded_at"][:10] == today]
+    assert len(today_rows) == 1
+
+    # デデュープも JST 当日基準（2度目の記録は挿入されない）。
+    _id, inserted = db.record_emotion_snapshot(_BASE, "hopeful_anxiety")
+    assert inserted is False
