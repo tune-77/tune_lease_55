@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown, Brain, Check, ClipboardList, Copy, Database, Loader2, Mic, MicOff,
-  Network, Paperclip, Send, Sparkles, Trash2, TrendingUp, User, Volume2, VolumeX, X,
+  Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
@@ -1034,6 +1034,7 @@ export default function LeaseIntelligencePage() {
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [ragFeedbackSent, setRagFeedbackSent] = useState<Set<string>>(new Set());
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<number, "shion_like" | "not_shion">>({});
 
   // 改善トリアージ state（Phase 1: planning/shion_improvement_loop_plan.md）
   const [improvementLog, setImprovementLog] = useState<DialogueImprovementLog | null>(null);
@@ -1152,6 +1153,24 @@ export default function LeaseIntelligencePage() {
       setRagFeedbackSent((prev) => new Set([...prev, key]));
     } catch {
       // non-fatal
+    }
+  };
+
+  const submitFeedback = async (
+    message: Message,
+    rating: "shion_like" | "not_shion",
+  ) => {
+    if (feedbackGiven[message.id]) return;
+    setFeedbackGiven((prev) => ({ ...prev, [message.id]: rating }));
+    try {
+      await apiClient.post("/api/human-response-feedback", {
+        message: message.query ?? "",
+        response: message.content,
+        rating,
+        route: "lease_judgment",
+      });
+    } catch {
+      // フィードバック送信の失敗は対話体験をブロックしない
     }
   };
 
@@ -1902,6 +1921,34 @@ export default function LeaseIntelligencePage() {
                   {message.role === "assistant" && message.longInputMode && (
                     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800">
                       長文入力として履歴と知識文脈を圧縮して処理しました。
+                    </div>
+                  )}
+                  {message.role === "assistant" && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <button
+                        onClick={() => submitFeedback(message, "shion_like")}
+                        disabled={Boolean(feedbackGiven[message.id])}
+                        title="紫苑っぽい回答"
+                        className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-black transition ${
+                          feedbackGiven[message.id] === "shion_like"
+                            ? "border-emerald-300 bg-emerald-100 text-emerald-700"
+                            : "border-violet-200 bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
+                        }`}
+                      >
+                        <ThumbsUp className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={() => submitFeedback(message, "not_shion")}
+                        disabled={Boolean(feedbackGiven[message.id])}
+                        title="一般論に戻った回答"
+                        className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-black transition ${
+                          feedbackGiven[message.id] === "not_shion"
+                            ? "border-rose-300 bg-rose-100 text-rose-700"
+                            : "border-violet-200 bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                        }`}
+                      >
+                        <ThumbsDown className="h-3 w-3" />
+                      </button>
                     </div>
                   )}
                   {codexRequest && (
