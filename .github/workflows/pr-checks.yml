@@ -96,6 +96,7 @@ jobs:
           tests/test_emotion_history_backfill.py
           tests/test_cleanup_title_matched_closures.py
           tests/test_reconcile_needs_review_from_prs.py
+          tests/test_shion_debate_adk_fallback.py
 
   # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）を warn-only で実行。
   # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。
