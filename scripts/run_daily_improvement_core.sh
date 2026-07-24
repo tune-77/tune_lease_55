@@ -7,6 +7,7 @@
 # （REV-034a: akshare 欠落で fetch_fincept_data が exit 1 になり続けた実績あり。
 #  未導入でも exit 0 に健全スキップするため全体は止まらないが、マクロ更新は止まる）。
 #   .venv/bin/pip install -r requirements-pipeline.txt
+# （.venv/bin/pip が無い環境では: .venv/bin/python -m pip install -r requirements-pipeline.txt）
 
 PROJECT_ROOT="${PROJECT_ROOT:-/Users/kobayashiisaoryou/clawd/tune_lease_55}"
 PYTHON="${PYTHON:-${PROJECT_ROOT}/.venv/bin/python}"

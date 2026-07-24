@@ -4,6 +4,9 @@
 # Dockerfile.api、requirements.txt）や pytest-core CI には一切関与しない。
 # Mac の日次パイプライン用 .venv にだけ入れる:
 #   .venv/bin/pip install -r requirements-pipeline.txt
+# 環境によっては .venv/bin/pip が存在しない（.venv/bin/python が conda 環境への
+# symlink になっている等）ことがある。その場合は python -m pip を使う:
+#   .venv/bin/python -m pip install -r requirements-pipeline.txt
 # ─────────────────────────────────────────────────────────────
 
 # scripts/fetch_fincept_data.py（マクロ経済データ更新）が使う。
