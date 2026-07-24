@@ -107,6 +107,8 @@ def _is_likely_personal_memory(message: str) -> bool:
         return True
     if _extract_dog_name(text):
         return True
+    if _extract_preferred_name(text):
+        return True
 
     # 疑問文フィルタ（明示的記憶指示がある場合は除外）
     if not any(w in text for w in MEMORY_INSTRUCTION_WORDS):
@@ -133,17 +135,17 @@ def _classify_personal_memory(message: str) -> str:
     return "personal_fact"
 
 
-def _confidence_for_memory(message: str, *, dog_name: str = "") -> str:
+def _confidence_for_memory(message: str, *, dog_name: str = "", preferred_name: str = "") -> str:
     text = str(message or "")
     if any(term in text for term in _SENSITIVE_TERMS):
         return "sensitive"
-    if dog_name or _has_explicit_remember_intent(text):
+    if dog_name or preferred_name or _has_explicit_remember_intent(text):
         return "confirmed"
     return "candidate"
 
 
 _QUESTION_WORDS = {"何だっけ", "なんだっけ", "わかるかい", "なに", "なんて", "なんだろう", "なんだ", "何", "なん"}
-_INVALID_DOG_NAME_TOKENS = {
+_INVALID_NAME_TOKENS = {
     "",
     "は",
     "が",
@@ -161,7 +163,7 @@ _INVALID_DOG_NAME_TOKENS = {
     "覚えているかが",
     "覚えてるかが",
 }
-_INVALID_DOG_NAME_FRAGMENTS = (
+_INVALID_NAME_FRAGMENTS = (
     "覚えて",
     "記憶",
     "信頼",
@@ -189,22 +191,52 @@ def _extract_dog_name(message: str) -> str:
                 name
                 and name not in {"犬", "愛犬", "ペット", "名前"}
                 and name not in _QUESTION_WORDS
-                and name not in _INVALID_DOG_NAME_TOKENS
-                and not any(fragment in name for fragment in _INVALID_DOG_NAME_FRAGMENTS)
+                and name not in _INVALID_NAME_TOKENS
+                and not any(fragment in name for fragment in _INVALID_NAME_FRAGMENTS)
             ):
                 return name
     return ""
 
 
-def _replace_or_append_dog_name(lines: list[str], dog_name: str) -> list[str]:
-    if not dog_name:
+_PREFERRED_NAME_PATTERNS = (
+    r"(?:私|僕|俺|自分)のことは\s*[「『\"]?([ぁ-んァ-ヶ一-龥A-Za-z0-9_-]{1,24})(?:と|って)\s*呼(?:んで|んでください|んでほしい)",
+    r"([ぁ-んァ-ヶ一-龥A-Za-z0-9_-]{1,24})(?:と|って)\s*呼(?:んで|んでください|んでほしい)",
+)
+
+
+def _extract_preferred_name(message: str) -> str:
+    """ユーザーが自分をどう呼んでほしいか（呼び方）を抽出する。"""
+    text = str(message or "")
+    for pattern in _PREFERRED_NAME_PATTERNS:
+        m = re.search(pattern, text)
+        if m:
+            name = m.group(1).strip(" 　。、『』「」\"'")
+            name = re.sub(r"(です|だよ|だ)$", "", name).strip()
+            if (
+                name
+                and name not in {"私", "僕", "俺", "自分", "名前"}
+                and name not in _QUESTION_WORDS
+                and name not in _INVALID_NAME_TOKENS
+                and not any(fragment in name for fragment in _INVALID_NAME_FRAGMENTS)
+            ):
+                return name
+    return ""
+
+
+def _replace_or_append_fact(lines: list[str], key: str, value: str) -> list[str]:
+    """「## Personal Facts」配下の単一値の事実（key: value）を上書き保存する。
+
+    同じkeyの既存行があれば置き換え、無ければ追加する。犬の名前・呼び方など、
+    「常に最新の1件だけを保持したい」種類の個人事実に使う（会話ノリの一般記憶とは
+    別に、追記し続けて矛盾した記憶が並ぶのを防ぐ）。
+    """
+    if not value:
         return lines
-    replacement = f"- [confirmed] Dog name: {dog_name}"
+    prefix_variants = (f"- {key}:", f"- [confirmed] {key}:", f"- [candidate] {key}:")
+    replacement = f"- [confirmed] {key}: {value}"
     for index, line in enumerate(lines):
         stripped = line.strip()
-        if (stripped.startswith("- Dog name:") or
-                stripped.startswith("- [confirmed] Dog name:") or
-                stripped.startswith("- [candidate] Dog name:")):
+        if stripped.startswith(prefix_variants):
             lines[index] = replacement
             return lines
     try:
@@ -213,6 +245,10 @@ def _replace_or_append_dog_name(lines: list[str], dog_name: str) -> list[str]:
     except StopIteration:
         lines.extend(["", "## Personal Facts", replacement])
     return lines
+
+
+def _replace_or_append_dog_name(lines: list[str], dog_name: str) -> list[str]:
+    return _replace_or_append_fact(lines, "Dog name", dog_name)
 
 
 def derive_personal_memory_entries(
@@ -227,12 +263,15 @@ def derive_personal_memory_entries(
         return {"captured": False, "reason": "not_personal_memory", "lines": [], "dog_name": ""}
 
     dog_name = _extract_dog_name(clean)
+    preferred_name = _extract_preferred_name(clean)
     category = _classify_personal_memory(clean)
-    confidence = _confidence_for_memory(clean, dog_name=dog_name)
+    confidence = _confidence_for_memory(clean, dog_name=dog_name, preferred_name=preferred_name)
     ts = timestamp or dt.datetime.now().isoformat(timespec="seconds")
     lines: list[str] = []
     if dog_name:
         lines.append(f"- [confirmed] Dog name: {dog_name}")
+    if preferred_name:
+        lines.append(f"- [confirmed] Preferred name: {preferred_name}")
     lines.append(f"- {ts} [{confidence}/{category}] ({source}) {clean}")
     return {
         "captured": True,
@@ -240,6 +279,7 @@ def derive_personal_memory_entries(
         "category": category,
         "confidence": confidence,
         "dog_name": dog_name,
+        "preferred_name": preferred_name,
     }
 
 
@@ -262,9 +302,14 @@ def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         derived = derive_personal_memory_entries(clean, source=source)
         dog_name = str(derived.get("dog_name") or "")
-        lines = _replace_or_append_dog_name(lines, dog_name)
+        preferred_name = str(derived.get("preferred_name") or "")
+        lines = _replace_or_append_fact(lines, "Dog name", dog_name)
+        lines = _replace_or_append_fact(lines, "Preferred name", preferred_name)
         category = str(derived.get("category") or _classify_personal_memory(clean))
-        confidence = str(derived.get("confidence") or _confidence_for_memory(clean, dog_name=dog_name))
+        confidence = str(
+            derived.get("confidence")
+            or _confidence_for_memory(clean, dog_name=dog_name, preferred_name=preferred_name)
+        )
         entry = f"- {dt.datetime.now().isoformat(timespec='seconds')} [{confidence}/{category}] ({source}) {clean}"
         # clean が既存行のいずれかに完全一致する場合のみスキップ
         if not any(clean == existing_line.strip() for existing_line in lines):
@@ -284,6 +329,7 @@ def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[
                     "category": category,
                     "confidence": confidence,
                     "dog_name": dog_name,
+                    "preferred_name": preferred_name,
                     "derived_lines": derived.get("lines") or [],
                 },
             )
@@ -295,6 +341,7 @@ def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[
             "category": category,
             "confidence": confidence,
             "dog_name": dog_name,
+            "preferred_name": preferred_name,
             "writeback": writeback,
         }
     except Exception as exc:
