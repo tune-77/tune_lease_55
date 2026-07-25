@@ -113,6 +113,8 @@ scripts/.sync_state_icloud_gcs.json
 data/shion_memory_health_state.json
 # Generated judgment/memory analysis artifacts
 data/autoresearch_judgment_asset_candidate_state.json
+data/bias_extraction_candidate_state.json
+data/bias_extraction_checkpoint.json
 data/canonical_judgment_rules_preview.json
 data/shion_reflection_delta.json
 data/shion_timeline_delta.json
