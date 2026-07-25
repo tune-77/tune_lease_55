@@ -33,6 +33,21 @@ ROLE_LABELS = {
     "assistant": "🤖 Claude",
 }
 
+# 紫苑・システムに関連するキーワード（どれか1つでも含めば保存対象）
+SHION_KEYWORDS = [
+    "紫苑", "shion", "tune_lease", "リース", "審査", "判断資産", "知識",
+    "メモリ", "memory", "chromadb", "obsidian", "vault", "rag",
+    "スコア", "改善", "フィードバック", "デプロイ", "cloud run",
+    "pr", "ブランチ", "コミット", "rev-", "mana", "growth",
+    "めぶき", "arcaia", "aurion", "ループ", "pipeline",
+]
+
+
+def is_shion_related(text: str) -> bool:
+    """紫苑・システムに関連する会話かどうかを判定する。"""
+    lower = text.lower()
+    return any(kw in lower for kw in SHION_KEYWORDS)
+
 
 def extract_text(content) -> str:
     """content フィールドからテキストを抽出する。"""
@@ -91,6 +106,9 @@ def load_sessions(days: int) -> dict[str, list[dict]]:
                     continue
                 # 短すぎるものは除外
                 if len(text) < 3:
+                    continue
+                # 紫苑・システムに無関係な会話は除外
+                if not is_shion_related(text):
                     continue
 
                 date_str = ts.astimezone().strftime("%Y-%m-%d")
