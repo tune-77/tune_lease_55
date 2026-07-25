@@ -106,6 +106,33 @@ def test_normalize_improvement_report_reflects_review_ledger_statuses(monkeypatc
     assert result["parked"] == 1
 
 
+def test_normalize_improvement_report_recovers_status_via_title_when_canonical_key_drifts(monkeypatch):
+    """重複統合等で description が日によって変わり canonical_key がブレても、
+    タイトル一致で「昨日処理済み」（保留/削除等）の判断を引き継げることの回帰防止。
+
+    (改善PMレポートで「保留38」等の処理済み項目が翌日また出てくる不具合の再発防止)
+    """
+    import api.main as main
+
+    monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: {})
+    monkeypatch.setattr(
+        main,
+        "_latest_improvement_statuses_by_title",
+        lambda: {"保留対象38": "deferred"},
+    )
+
+    report = {
+        "needs_review": [
+            {"id": "REV-038", "title": "保留対象38", "canonical_key": "misc_today_drifted_key"},
+        ],
+    }
+
+    result = main._normalize_improvement_report(report)
+    by_id = {item["id"]: item for item in result["items"]}
+
+    assert by_id["REV-038"]["status"] == "PARKED"
+
+
 def test_cloudrun_improvement_items_include_raw_preview(monkeypatch):
     import api.main as main
 
