@@ -186,8 +186,8 @@ echo "[提案] 紫苑（LLM）のトリアージ上書き提案（差分のみ�
 "${PYTHON}" "${PROJECT_ROOT}/scripts/shion_llm_triage_proposal.py" --apply; log_step "shion_llm_triage_proposal" $?
 
 echo ""
-echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チェック（読み取り専用）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/check_ledger_consistency.py" --days 14; log_step "check_ledger_consistency" $?
+echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チェック（repo applied を runtime へ補完）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/check_ledger_consistency.py" --days 14 --sync-repo-applied-to-runtime; log_step "check_ledger_consistency" $?
 
 echo ""
 echo "[保守] 追記ログのローテーション（しきい値超過分をアーカイブへ退避して縮約）..."
