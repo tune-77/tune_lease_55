@@ -101,6 +101,23 @@ def _read_optional_json(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _mana_action_fallback(findings: list[dict[str, Any]]) -> str:
+    codes = {str(item.get("code") or "") for item in findings}
+    if "memory_insight_reports_warning" in codes:
+        return (
+            "memory insight sidecar更新: "
+            "scripts/build_obsidian_memory_insight_report.py / "
+            "scripts/build_shion_memory_promotion_queue.py を再実行して36h以内に戻す"
+        )
+    if "private_reflection_not_meaningful" in codes or "reflection_handoff_incomplete" in codes:
+        return "Private ReflectionをUser要求・誤読・次回行動が分かる形で再生成する"
+    if "reflection_delta_missing" in codes:
+        return "scripts/build_shion_reflection_delta.py を再実行する"
+    if "monitor_report_missing" in codes:
+        return "scripts/monitor_obsidian_environment.py を再実行する"
+    return ""
+
+
 def _mana_lines(mana_report: dict[str, Any] | None) -> list[str]:
     if not mana_report:
         return ["• status: `missing` / Manaレポート未生成"]
@@ -112,8 +129,11 @@ def _mana_lines(mana_report: dict[str, Any] | None) -> list[str]:
     lines = [
         f"• status: `{status}` / candidates: `{candidate_count}` / useful: `{useful_count}`"
     ]
-
     findings = [item for item in mana_report.get("findings") or [] if isinstance(item, dict)]
+    action_summary = _clean_text(mana_report.get("action_summary") or _mana_action_fallback(findings), 160)
+    if action_summary:
+        lines.append(f"• next: {action_summary}")
+
     if not findings:
         lines.append("• findings: なし")
         return lines
