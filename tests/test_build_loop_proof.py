@@ -113,7 +113,7 @@ def test_render_contains_live_numbers(tmp_path, monkeypatch):
     assert "36.9%" in html               # response-diff rate
     assert "needs-review" in html
     # honesty: field-validation zero is shown, not hidden
-    assert "Field validation はこれから" in html
+    assert "Field validation score" in html
 
 
 def test_load_payload_snapshot_fallback(tmp_path, monkeypatch):

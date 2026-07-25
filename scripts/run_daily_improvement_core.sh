@@ -74,6 +74,11 @@ echo ""
 echo "[入力・同期] 実装済み改善を Obsidian インデックスに自動同期中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_implemented_to_obsidian.py"; log_step "sync_implemented_to_obsidian" $?
 
+echo ""
+echo "[記録] Claude/Dispatch 会話ログを Obsidian Vault に書き出し中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/export_claude_to_obsidian.py" --days 2
+log_step "export_claude_to_obsidian" $?
+
 JUDGMENT_PREVIEW_DATE="${JUDGMENT_PREVIEW_DATE:-$(date +%F)}"
 JUDGMENT_PREVIEW_DAYS="${JUDGMENT_PREVIEW_DAYS:-3}"
 
