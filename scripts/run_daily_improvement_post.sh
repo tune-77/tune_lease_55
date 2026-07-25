@@ -16,6 +16,9 @@ REFLECTION_VAULT="${OBSIDIAN_VAULT:-${OBSIDIAN_VAULT_PATH:-${DEFAULT_OBSIDIAN_VA
 REFLECTION_DIR="${REFLECTION_VAULT}/Projects/tune_lease_55/Lease Intelligence/Private Reflection"
 MANA_REPORT_JSON="${PROJECT_ROOT}/reports/mana_obsidian_curator_latest.json"
 SCREENING_TERMS_REPORT_JSON="${PROJECT_ROOT}/reports/screening_terms_audit_latest.json"
+LATEST_FILE="${PROJECT_ROOT}/reports/latest.json"
+PROMPT_FEEDBACK_LOG="${PROJECT_ROOT}/data/prompt_feedback_log.jsonl"
+JUDGMENT_ASSET_GRAPH_FREQUENCY="${JUDGMENT_ASSET_GRAPH_FREQUENCY:-weekly}"
 
 build_reflection_delta() {
   "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_reflection_delta.py" \
@@ -154,14 +157,32 @@ echo "[成長] Judgment Asset Growth Score を記録（Slack日次レポート /
 log_step "judgment_asset_growth_report" $?
 
 echo ""
+echo "[成長] 判断資産の実利用棚卸しを生成（伸ばす/見直す/眠ってる/保留。自動昇格なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_field_review.py" \
+  --date "${PIPELINE_DATE}"
+log_step "build_judgment_asset_field_review" $?
+
+echo ""
 echo "[成長] 紫苑の期間成長判定を生成（判断資産グラフのみが参照する末端）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_shion_growth.py" \
   --end-date "${PIPELINE_DATE}"
 log_step "evaluate_shion_growth" $?
 
+RUN_JUDGMENT_ASSET_GRAPH=0
+if [ "${JUDGMENT_ASSET_GRAPH_FREQUENCY}" = "daily" ]; then
+  RUN_JUDGMENT_ASSET_GRAPH=1
+elif [ "${JUDGMENT_ASSET_GRAPH_FREQUENCY}" = "weekly" ] && [ "$(date +%u)" = "1" ]; then
+  RUN_JUDGMENT_ASSET_GRAPH=1
+fi
+
 echo ""
-echo "[可視化] 判断資産グラフを生成（末端: 生成HTML/JSONを読むコードは無し。手動閲覧しなければ純コスト → 棚卸し候補）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_graph.py"; log_step "build_judgment_asset_graph" $?
+if [ "${RUN_JUDGMENT_ASSET_GRAPH}" = "1" ]; then
+  echo "[可視化] 判断資産グラフを生成（既定は週次。JUDGMENT_ASSET_GRAPH_FREQUENCY=daily で毎日生成）..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_graph.py"; log_step "build_judgment_asset_graph" $?
+else
+  echo "[可視化] 判断資産グラフ生成はスキップ（frequency=${JUDGMENT_ASSET_GRAPH_FREQUENCY}、既存latestを使用）..."
+  log_step "build_judgment_asset_graph" 0
+fi
 
 echo ""
 echo "[配線] 判断資産グラフを frontend/public へ同期（本番UI配信用）..."
@@ -169,9 +190,14 @@ echo "[配線] 判断資産グラフを frontend/public へ同期（本番UI配�
 # 生成した最新グラフ(HTML/PNG)を public にコピーし、次回デプロイで /judgment-asset-graph に反映させる。
 GRAPH_PUBLIC_DIR="${PROJECT_ROOT}/frontend/public/judgment-asset-graph"
 mkdir -p "${GRAPH_PUBLIC_DIR}"
-cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" "${GRAPH_PUBLIC_DIR}/index.html" \
-  && cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.png" "${GRAPH_PUBLIC_DIR}/preview.png"
-log_step "sync_graph_to_public" $?
+if [ -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" ] && [ -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.png" ]; then
+  cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" "${GRAPH_PUBLIC_DIR}/index.html" \
+    && cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.png" "${GRAPH_PUBLIC_DIR}/preview.png"
+  log_step "sync_graph_to_public" $?
+else
+  echo "警告: 判断資産グラフlatestが無いため public 同期をスキップします。"
+  log_step "sync_graph_to_public" 0
+fi
 
 echo ""
 echo "[可視化] 審査員向け「ループが閉じた証拠」1画面を最新値で再生成..."
@@ -186,8 +212,49 @@ echo "[提案] 紫苑（LLM）のトリアージ上書き提案（差分のみ�
 "${PYTHON}" "${PROJECT_ROOT}/scripts/shion_llm_triage_proposal.py" --apply; log_step "shion_llm_triage_proposal" $?
 
 echo ""
-echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チェック（読み取り専用）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/check_ledger_consistency.py" --days 14; log_step "check_ledger_consistency" $?
+echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チェック（repo applied を runtime へ補完）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/check_ledger_consistency.py" --days 14 --sync-repo-applied-to-runtime; log_step "check_ledger_consistency" $?
+
+if [ -f "${LATEST_FILE}" ]; then
+  echo ""
+  echo "[反映] post台帳補完後の改善レポートを再同期中..."
+  "${PYTHON}" "${PROJECT_ROOT}/.agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py" \
+    --report "${LATEST_FILE}" \
+    --latest "${LATEST_FILE}" \
+    --from-ledger \
+    --include-known-cleanup
+  log_step "sync_improvement_reports_post" $?
+
+  echo ""
+  echo "[反映] post同期後の再帰的自己改善レポートを再生成中..."
+  RECURSIVE_JSON_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.json"
+  RECURSIVE_MD_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.md"
+  RECURSIVE_LATEST_JSON="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.json"
+  RECURSIVE_LATEST_MD="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.md"
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/recursive_self_improvement.py" \
+    --report "${LATEST_FILE}" \
+    --prompt-log "${PROMPT_FEEDBACK_LOG}" \
+    --output-json "${RECURSIVE_JSON_FILE}" \
+    --output-md "${RECURSIVE_MD_FILE}" \
+    --latest-json "${RECURSIVE_LATEST_JSON}" \
+    --latest-md "${RECURSIVE_LATEST_MD}"
+  log_step "recursive_self_improvement_post" $?
+
+  echo ""
+  echo "[品質] post同期後の改善レポート品質スコアを再計算中..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_improvement_quality.py"; log_step "analyze_improvement_quality_post" $?
+
+  echo ""
+  echo "[品質] post同期後のループ/係数/モデルのヘルスチェックを再生成中..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/loop_metrics.py"; log_step "loop_metrics_post" $?
+
+  echo ""
+  echo "[可視化] post同期後のループ証拠を再生成中..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_loop_proof.py"; log_step "build_loop_proof_post" $?
+else
+  echo "警告: ${LATEST_FILE} が存在しないため、post台帳補完後のレポート再同期をスキップします。"
+  log_step "sync_improvement_reports_post" 0
+fi
 
 echo ""
 echo "[保守] 追記ログのローテーション（しきい値超過分をアーカイブへ退避して縮約）..."
@@ -212,7 +279,8 @@ echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・We
 "${PYTHON}" "${PROJECT_ROOT}/scripts/send_daily_improvement_slack.py" \
   --date "${PIPELINE_DATE}" \
   --mana-report "${MANA_REPORT_JSON}" \
-  --screening-terms-report "${SCREENING_TERMS_REPORT_JSON}"
+  --screening-terms-report "${SCREENING_TERMS_REPORT_JSON}" \
+  --judgment-asset-field-review "${PROJECT_ROOT}/reports/judgment_asset_field_review_latest.json"
 log_step "send_daily_improvement_slack" $?
 
 if [ "${MANA_STATUS}" != "allow" ]; then

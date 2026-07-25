@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-from pathlib import Path
 
 from scripts import build_codex_auto_queue as queue_builder
 from scripts import check_gist_payload_safety as gist_safety
@@ -82,12 +81,51 @@ def test_ledger_consistency_detects_one_sided_applied(tmp_path, monkeypatch, cap
     )
     monkeypatch.setattr(ledger_check, "REPO_LEDGER", repo)
     monkeypatch.setattr(ledger_check, "RUNTIME_LEDGER", runtime)
-    monkeypatch.setattr("sys.argv", ["check_ledger_consistency.py", "--days", "7"])
+    monkeypatch.setattr("sys.argv", ["check_ledger_consistency.py", "--days", "7", "--strict-runtime-only"])
 
     assert ledger_check.main() == 0
     out = capsys.readouterr().out
     assert "REV-210" in out and "リポジトリ台帳のみ" in out
     assert "REV-209" in out and "ランタイム台帳のみ" in out
+
+
+def test_ledger_consistency_syncs_repo_applied_to_runtime(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "repo_ledger.jsonl"
+    runtime = tmp_path / "runtime_ledger.jsonl"
+    now = dt.datetime.now().isoformat()
+    repo.write_text(
+        json.dumps(
+            {
+                "key": "misc_rev210",
+                "rev_id": "REV-210",
+                "status": "applied",
+                "title": "REV-210",
+                "canonical_key": "misc_rev210",
+                "pr_url": "https://github.com/tune-77/tune_lease_55/pull/557",
+                "reason": "PR #557 マージ済み",
+                "recorded_at": now,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    runtime.write_text("", encoding="utf-8")
+    monkeypatch.setattr(ledger_check, "REPO_LEDGER", repo)
+    monkeypatch.setattr(ledger_check, "RUNTIME_LEDGER", runtime)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["check_ledger_consistency.py", "--days", "7", "--sync-repo-applied-to-runtime"],
+    )
+
+    assert ledger_check.main() == 0
+
+    out = capsys.readouterr().out
+    assert "runtime台帳へ applied を補完: 1 件" in out
+    rows = [json.loads(line) for line in runtime.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["rev_id"] == "REV-210"
+    assert rows[0]["status"] == "applied"
+    assert "repo ledger applied sync" in rows[0]["reason"]
 
 
 # ── 3. ログローテーション ─────────────────────────────────────────────────

@@ -155,11 +155,28 @@ def _feedback_outcome(row: dict[str, Any]) -> str:
     return ""
 
 
+def _is_simulation_feedback(row: dict[str, Any]) -> bool:
+    source = str(row.get("source") or "").strip().lower()
+    case_id = str(row.get("case_id") or row.get("case") or "").strip().lower()
+    return source == "simulation" or case_id.startswith("sim-")
+
+
 def summarize_field_feedback(feedback_rows: list[dict[str, Any]], rules: list[dict[str, Any]]) -> dict[str, Any]:
     active_ids = {str(rule.get("id") or "").strip() for rule in rules if rule.get("status") == "active" and rule.get("id")}
     by_rule: dict[str, dict[str, Any]] = {}
-    totals = {"used": 0, "helped": 0, "challenged": 0, "neutral": 0, "rejected": 0, "unknown_rule": 0}
+    totals = {
+        "used": 0,
+        "helped": 0,
+        "challenged": 0,
+        "neutral": 0,
+        "rejected": 0,
+        "unknown_rule": 0,
+        "simulation_skipped": 0,
+    }
     for row in feedback_rows:
+        if _is_simulation_feedback(row):
+            totals["simulation_skipped"] += 1
+            continue
         rule_id = _feedback_rule_id(row)
         outcome = _feedback_outcome(row)
         if not rule_id or not outcome:
@@ -218,6 +235,7 @@ def summarize_field_feedback(feedback_rows: list[dict[str, Any]], rules: list[di
         "rules": sorted(by_rule.values(), key=lambda item: (-int(item["used_count"]), item["rule_id"])),
         "notes": [
             "field_validation は実案件・ユーザー反応で使われた判断資産だけを評価する。",
+            "source=simulation または sim-* case は試運転として除外する。",
             "helped は加点、challenged/rejected は減点、未使用active ruleは軽い減点。",
             "この値が低い間は、判断資産を単なるルールブックとして扱い、RAG/プロンプトで過信しない。",
         ],

@@ -151,6 +151,16 @@ type LedgerRule = {
   manual_reason?: string;
 };
 
+type ImprovementLogTab = "improvements" | "recipes" | "ledger";
+
+type RelatedFeatureAction = {
+  label: string;
+  hint: string;
+  href?: string;
+  tab?: ImprovementLogTab;
+  keywords: string[];
+};
+
 type GapAnalysis = {
   available: boolean;
   generated_at?: string;
@@ -295,6 +305,83 @@ const LEDGER_TYPE_LABELS: Record<string, string> = {
   rag_boost_adjust: "RAG調整",
 };
 
+const RELATED_FEATURE_ACTIONS: RelatedFeatureAction[] = [
+  {
+    label: "今回の修正案",
+    tab: "recipes",
+    hint: "この改善から作られた1回限りの修正パッチを確認します",
+    keywords: ["改善ログからの機能連携強化", "機能連携", "直接遷移", "修正案", "自動修正", "パッチ", "適用待ち"],
+  },
+  {
+    label: "自動修正ルール",
+    tab: "ledger",
+    hint: "今後も使う継続ルールや承認待ちルールを確認します",
+    keywords: ["改善ログからの機能連携強化", "機能連携", "直接遷移", "ルール", "PDCA", "今後ルール", "再発防止"],
+  },
+  {
+    label: "紫苑対話",
+    href: "/lease-intelligence",
+    hint: "紫苑の対話・記憶・判断資産連携を確認します",
+    keywords: ["紫苑", "対話", "記憶", "回答", "自己言及", "具体性", "深掘り", "判断資産"],
+  },
+  {
+    label: "帰還データ検疫",
+    href: "/cloudrun-return-review",
+    hint: "Cloud Runから戻った改善入力の検疫画面を開きます",
+    keywords: ["Cloud Run", "cloudrun", "GCS", "帰還", "検疫", "cloudrun_input", "cloudrun_gcs_input"],
+  },
+  {
+    label: "審査・分析",
+    href: "/screening",
+    hint: "審査案件の入力・分析画面を開きます",
+    keywords: ["審査", "スコア", "案件", "判断", "物件", "稟議"],
+  },
+  {
+    label: "結果登録",
+    href: "/register",
+    hint: "成約・失注など審査結果の登録画面を開きます",
+    keywords: ["結果登録", "成約", "失注", "実績", "支払い"],
+  },
+  {
+    label: "ループ証跡",
+    href: "/loop-proof",
+    hint: "改善ループや判断資産化の証跡を確認します",
+    keywords: ["ループ", "証跡", "再利用", "改善履歴", "判断資産"],
+  },
+  {
+    label: "システム概要",
+    href: "/system-overview",
+    hint: "関連機能の全体像と運用導線を確認します",
+    keywords: ["システム", "概要", "監視", "導線", "機能連携"],
+  },
+  {
+    label: "DevOps",
+    href: "/devops",
+    hint: "Cloud RunやCloudflareなど運用状態を確認します",
+    keywords: ["デプロイ", "Cloudflare", "環境", "運用", "DevOps"],
+  },
+];
+
+function relatedFeatureActionsFor(item: ImprovementItem): RelatedFeatureAction[] {
+  const haystack = [
+    item.title,
+    item.reason,
+    item.detail,
+    item.raw_preview,
+    item.category,
+    item.source,
+    item.source_surface,
+    item.source_event_id,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return RELATED_FEATURE_ACTIONS.filter((action) =>
+    action.keywords.some((keyword) => haystack.includes(keyword.toLowerCase()))
+  ).slice(0, 3);
+}
+
 // batch_apply.py のスキップ条件と同じ判定。
 // 「承認済み」でも manual / pending_llm は自動適用されないことを画面上で区別する
 type LedgerEffectiveStatus = "applied" | "pending_review" | "manual_only" | "awaiting_apply";
@@ -311,7 +398,7 @@ function ledgerEffectiveStatus(rule: LedgerRule): LedgerEffectiveStatus {
 }
 
 export default function ImprovementLogPage() {
-  const [activeTab, setActiveTab] = useState<"improvements" | "recipes" | "ledger">("improvements");
+  const [activeTab, setActiveTab] = useState<ImprovementLogTab>("improvements");
   const [data, setData] = useState<ImprovementLog | null>(null);
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [gapAnalysis, setGapAnalysis] = useState<GapAnalysis | null>(null);
@@ -1478,6 +1565,7 @@ export default function ImprovementLogPage() {
                     const itemKey = item.canonical_key || item.id || item.title;
                     const isNeedsReview = item.status === "NEEDS_REVIEW" || item.status === "needs_review";
                     const isActing = !!actionLoading[itemKey];
+                    const relatedActions = relatedFeatureActionsFor(item);
                     return (
                       <tr key={`${item.id}-${item.status}`} className="align-top hover:bg-slate-50">
                         <td className="px-4 py-3 font-mono text-xs text-slate-500">{item.recommended_order ?? "-"}</td>
@@ -1498,6 +1586,33 @@ export default function ImprovementLogPage() {
                           {item.source === "shion_promise" && (
                             <div className="mt-1 text-xs text-fuchsia-700">
                               紫苑の約束（自動下調べ対象）
+                            </div>
+                          )}
+                          {relatedActions.length > 0 && (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[11px] font-bold text-slate-400">関連導線</span>
+                              {relatedActions.map((action) =>
+                                action.tab ? (
+                                  <button
+                                    key={`${itemKey}-${action.label}`}
+                                    type="button"
+                                    onClick={() => setActiveTab(action.tab!)}
+                                    title={action.hint}
+                                    className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-700 transition hover:bg-sky-100"
+                                  >
+                                    {action.label}
+                                  </button>
+                                ) : (
+                                  <a
+                                    key={`${itemKey}-${action.label}`}
+                                    href={action.href}
+                                    title={action.hint}
+                                    className="rounded-full border border-sky-200 bg-white px-2 py-0.5 text-[11px] font-bold text-sky-700 transition hover:bg-sky-50"
+                                  >
+                                    {action.label}
+                                  </a>
+                                )
+                              )}
                             </div>
                           )}
                         </td>

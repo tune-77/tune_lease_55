@@ -454,18 +454,39 @@ def _load_report(path: Path | None) -> dict[str, Any]:
 
 
 CHAT_INTAKE_PATH = _REPO_ROOT / "data" / "chat_quick_fix_intake.jsonl"
+CHAT_INTAKE_EXECUTED_PATH = _REPO_ROOT / "data" / "chat_quick_fix_executed.json"
 
 
-def load_chat_quick_fix_intake(path: Path | None = None) -> list[dict[str, Any]]:
+def _load_chat_quick_fix_executed_ids(path: Path = CHAT_INTAKE_EXECUTED_PATH) -> set[str]:
+    """execute_chat_quick_fix.start_execution がバックグラウンド即時実行した候補IDの集合。
+
+    ここに含まれるIDは、日次バッチ実行前にすでに execute_codex_queue 相当が完了
+    （成功/失敗いずれも）しているため、needs_review へ再度乗せると二重実行になる。
+    """
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {str(x) for x in data} if isinstance(data, list) else set()
+    except (OSError, json.JSONDecodeError):
+        return set()
+
+
+def load_chat_quick_fix_intake(
+    path: Path | None = None, executed_ids_path: Path | None = None
+) -> list[dict[str, Any]]:
     """チャットで紫苑が起票した quick_fix 提案を needs_review 候補として読み込む。
 
     propose_quick_fix ツール（lease_intelligence_tools）が追記する JSONL を、
     自律改善パイプラインの候補源へ取り込むための入口。欠損時は空リスト。
     ledger のクールダウンで重複起票は自動的に抑制されるため、追記形式のまま扱う。
+    ただし execute_chat_quick_fix によりすでに即時実行済みのIDは除外する
+    （二重実行防止。実行結果は codex_queue_result_*_chat.json 側にある）。
     """
     intake_path = path or CHAT_INTAKE_PATH
     if not intake_path.exists():
         return []
+    executed_ids = _load_chat_quick_fix_executed_ids(executed_ids_path or CHAT_INTAKE_EXECUTED_PATH)
     items: list[dict[str, Any]] = []
     for line in intake_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -479,6 +500,8 @@ def load_chat_quick_fix_intake(path: Path | None = None) -> list[dict[str, Any]]
             continue
         title = str(record.get("title") or "").strip()
         if not title:
+            continue
+        if str(record.get("id") or "") in executed_ids:
             continue
         items.append({
             "id": str(record.get("id") or ""),

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -36,6 +37,10 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
+def pipeline_skill_dir(root: Path) -> Path:
+    return root / ".agents" / "skills" / "auto-improvement-pipeline"
+
+
 def latest_report_path(root: Path) -> Path:
     reports = sorted((root / "reports").glob("improvement_report_*.json"))
     if not reports:
@@ -62,6 +67,134 @@ def id_map(items: Iterable[dict]) -> dict[str, dict]:
 
 def normalize_text(value: str) -> str:
     return re.sub(r"[\s　・/（）()【】\[\]「」:：,，.。_-]+", "", value.lower())
+
+
+def normalize_status(value: str) -> str:
+    parts = str(value or "").split()
+    return parts[0].strip().lower() if parts else ""
+
+
+def load_ledger_latest(ledger_path: Path) -> dict[str, dict]:
+    latest: dict[str, dict] = {}
+    if not ledger_path.exists():
+        return latest
+
+    for line in ledger_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        status = normalize_status(entry.get("status", ""))
+        if not status:
+            continue
+        aliases = [
+            entry.get("key"),
+            entry.get("canonical_key"),
+            entry.get("rev_id"),
+        ]
+        for alias in aliases:
+            alias_text = str(alias or "").strip()
+            if alias_text:
+                latest[alias_text] = entry
+    return latest
+
+
+def load_canonical_key_func(root: Path):
+    scripts_dir = pipeline_skill_dir(root) / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    try:
+        from improvement_identity import canonical_key  # type: ignore
+    except Exception:
+        return None
+    return canonical_key
+
+
+def grouped_aliases(report: dict, latest: dict) -> dict[str, set[str]]:
+    aliases_by_id: dict[str, set[str]] = {}
+    for source in (report, latest):
+        for group in source.get("grouped_improvements") or []:
+            ids = {
+                str(group.get("canonical_id") or ""),
+                *[str(item_id or "") for item_id in group.get("ids") or []],
+                *[str(item_id or "") for item_id in group.get("original_ids") or []],
+                *[str(item_id or "") for item_id in group.get("duplicate_ids") or []],
+            }
+            aliases = {
+                str(group.get("group_key") or ""),
+                str(group.get("canonical_key") or ""),
+                str(group.get("canonical_id") or ""),
+                str(group.get("group_id") or ""),
+                *ids,
+            }
+            aliases = {alias for alias in aliases if alias}
+            for item_id in ids:
+                if item_id:
+                    aliases_by_id.setdefault(item_id, set()).update(aliases)
+    return aliases_by_id
+
+
+def item_aliases(item: dict, aliases_by_id: dict[str, set[str]], canonical_key_func) -> set[str]:
+    item_id = str(item.get("id") or "")
+    aliases = {
+        item_id,
+        str(item.get("canonical_key") or ""),
+        str(item.get("group_key") or ""),
+        str(item.get("rev_id") or ""),
+    }
+    if item_id:
+        aliases.update(aliases_by_id.get(item_id, set()))
+
+    if canonical_key_func is not None:
+        title = str(item.get("title") or "")
+        descriptions = [
+            str(item.get("detail") or ""),
+            str(item.get("description") or ""),
+            str(item.get("reason") or ""),
+            "",
+        ]
+        for description in descriptions:
+            if title or description:
+                aliases.add(str(canonical_key_func(title, description)))
+
+    return {alias for alias in aliases if alias}
+
+
+def infer_status_ids_from_ledger(
+    report: dict,
+    latest: dict,
+    ledger_path: Path,
+    canonical_key_func=None,
+) -> tuple[list[str], list[str]]:
+    ledger_latest = load_ledger_latest(ledger_path)
+    if not ledger_latest:
+        return [], []
+
+    aliases_by_id = grouped_aliases(report, latest)
+    candidate_by_id: dict[str, dict] = {}
+    for item in list(report.get("needs_review") or []) + list(latest.get("needs_review") or []):
+        item_id = str(item.get("id") or "")
+        if item_id:
+            candidate_by_id.setdefault(item_id, item)
+
+    applied_ids: list[str] = []
+    parked_ids: list[str] = []
+    for item_id, item in candidate_by_id.items():
+        statuses = {
+            normalize_status(ledger_latest[alias].get("status", ""))
+            for alias in item_aliases(item, aliases_by_id, canonical_key_func)
+            if alias in ledger_latest
+        }
+        if "applied" in statuses:
+            applied_ids.append(item_id)
+        elif "parked" in statuses:
+            parked_ids.append(item_id)
+
+    return applied_ids, parked_ids
 
 
 def title_matches(item: dict, patterns: Iterable[str]) -> bool:
@@ -275,6 +408,17 @@ def main() -> None:
         action="store_true",
         help="Apply known Shion cleanup title patterns for already-fixed or strategic-monitoring items.",
     )
+    parser.add_argument(
+        "--from-ledger",
+        action="store_true",
+        help="Infer applied/parked IDs from the runtime improvement ledger.",
+    )
+    parser.add_argument(
+        "--ledger",
+        type=Path,
+        default=Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl",
+        help="Runtime improvement ledger JSONL path used by --from-ledger.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the planned changes without writing files.")
     args = parser.parse_args()
 
@@ -297,7 +441,19 @@ def main() -> None:
         applied_titles.extend(KNOWN_APPLIED_TITLE_PATTERNS)
         parked_titles.extend(KNOWN_PARKED_TITLE_PATTERNS)
 
-    if not applied_ids and not applied_titles and not args.parked and not parked_titles:
+    parked_ids = list(args.parked)
+    if args.from_ledger:
+        canonical_key_func = load_canonical_key_func(root)
+        ledger_applied_ids, ledger_parked_ids = infer_status_ids_from_ledger(
+            report,
+            latest,
+            args.ledger.expanduser(),
+            canonical_key_func=canonical_key_func,
+        )
+        applied_ids.extend(item_id for item_id in ledger_applied_ids if item_id not in applied_ids)
+        parked_ids.extend(item_id for item_id in ledger_parked_ids if item_id not in parked_ids)
+
+    if not applied_ids and not applied_titles and not parked_ids and not parked_titles:
         print("適用済み改善項目なし（スキップ）")
         return
 
@@ -305,14 +461,14 @@ def main() -> None:
         report,
         applied_ids,
         applied_titles,
-        args.parked,
+        parked_ids,
         parked_titles,
     )
     updated_latest = sync_latest(
         latest,
         applied_ids,
         applied_titles,
-        args.parked,
+        parked_ids,
         parked_titles,
     ) if latest else {}
 

@@ -970,6 +970,274 @@ def get_commit_diff(commit_hash: str) -> dict[str, Any]:
         return {"error": str(exc), "stat": ""}
 
 
+def get_recent_errors(hours: int = 24, limit: int = 10) -> dict[str, Any]:
+    """リース審査システムのエラーログ（logs/api.log・app.log）を調査し、直近hours時間で
+    頻出しているエラーパターンを件数順に返す。
+
+    「システムでエラーが出ていないか」「最近落ちてないか」といったシステム不具合の
+    自律調査に使う。案件データそのものの異常は対象外（get_score_detail等を使う）。
+    集計ロジックは scripts/analyze_error_logs.py と共通。
+    """
+    import datetime as _dt
+
+    from scripts.analyze_error_logs import (
+        LOG_FILES,
+        LOGS_DIR,
+        _extract_error_key,
+        _parse_ts,
+        _sanitize_text,
+    )
+
+    cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=max(1, hours))
+    counts: dict[str, int] = {}
+    samples: dict[str, str] = {}
+    total_lines = 0
+    checked_files: list[str] = []
+
+    for log_name in LOG_FILES:
+        log_path = LOGS_DIR / log_name
+        if not log_path.exists():
+            continue
+        checked_files.append(log_name)
+        try:
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception:
+            continue
+        current_ts = None
+        for line in lines:
+            if len(line) > 2000:
+                continue
+            ts_m = re.match(r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})", line)
+            if ts_m:
+                current_ts = _parse_ts(ts_m.group(1))
+            if current_ts and current_ts < cutoff:
+                continue
+            key = _extract_error_key(line)
+            if not key:
+                continue
+            total_lines += 1
+            counts[key] = counts.get(key, 0) + 1
+            if key not in samples:
+                samples[key] = _sanitize_text(line.strip(), max_len=200)
+
+    top = sorted(counts.items(), key=lambda kv: -kv[1])[: max(1, min(limit, 50))]
+    patterns = [
+        {"pattern": key, "count": count, "sample": samples.get(key, "")}
+        for key, count in top
+    ]
+
+    return {
+        "checked_files": checked_files,
+        "lookback_hours": hours,
+        "total_error_lines": total_lines,
+        "distinct_patterns": len(counts),
+        "patterns": patterns,
+    }
+
+
+def get_pipeline_item_details(status: str = "requires_check", limit: int = 10, stale_days: int = 14) -> dict[str, Any]:
+    """改善パイプライン台帳（api/rule_engine/ledger_rules.json）から個別項目の詳細を返す。
+
+    「要確認のREV項目を詳しく教えて」「放置されている改善提案はある？」といった
+    パイプライン監査の深掘りに使う。全体件数はget_pipeline_statusを使うこと。
+
+    status:
+      "requires_check" — pending_review=True の全項目（要確認）
+      "expired"         — pending_review=True かつ detected_at から stale_days 日以上
+                           経過した項目（期限切れ）。ledger_rules.json にネイティブな
+                           expired フィールドは存在しないため、経過日数から派生的に判定する。
+    """
+    import datetime as _dt
+
+    if status not in ("requires_check", "expired"):
+        return {"items": [], "count": 0, "error": f"未対応のstatus: {status}（requires_check または expired を指定）"}
+
+    ledger_path = _REPO_PATH / "api" / "rule_engine" / "ledger_rules.json"
+    if not ledger_path.exists():
+        return {"items": [], "count": 0, "error": "ledger_rules.json が見つかりません"}
+    try:
+        rules = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"items": [], "count": 0, "error": str(exc)}
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    def _age_days(entry: dict) -> int | None:
+        try:
+            detected = _dt.datetime.fromisoformat(str(entry.get("detected_at") or "").replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return (now - detected).days
+
+    candidates = [r for r in rules if isinstance(r, dict) and r.get("pending_review") is True]
+    if status == "expired":
+        candidates = [r for r in candidates if (_age_days(r) or 0) >= stale_days]
+    candidates.sort(key=lambda r: str(r.get("detected_at") or ""))
+
+    items = []
+    for entry in candidates[: max(1, min(limit, 50))]:
+        age_days = _age_days(entry)
+        detail_reason = (
+            f"経過{age_days}日・未レビューのまま放置" if status == "expired"
+            else f"category={entry.get('category', '-')} / risk={entry.get('risk', '-')} / auto_fix_allowed={entry.get('auto_fix_allowed')}"
+        )
+        items.append({
+            "id": entry.get("rev_id"),
+            "created_at": entry.get("detected_at"),
+            "title": entry.get("description"),
+            "detail_reason": detail_reason,
+            "context_data": {
+                "type": entry.get("type"),
+                "category": entry.get("category"),
+                "source": entry.get("source"),
+                "target": entry.get("target"),
+                "affected_files": entry.get("affected_files"),
+                "risk": entry.get("risk"),
+                "auto_fix_allowed": entry.get("auto_fix_allowed"),
+                "age_days": age_days,
+            },
+        })
+
+    return {
+        "items": items,
+        "count": len(items),
+        "status": status,
+        "stale_days": stale_days if status == "expired" else None,
+    }
+
+
+def recall_judgment_memory(question: str, limit: int = 5) -> dict[str, Any]:
+    """質問に関連する審査判断の記憶を、正準ルールと紫苑の記憶索引の両方から想起する。
+
+    「この論点について紫苑はどう判断してきた？」「関連する判断基準は？」といった、
+    案件横断の判断根拠を確認するために使う。既存ルール本体の網羅照会は
+    lookup_judgment_rules を、直近の想起（会話用）は既存チャット経路を使う。
+    - canonical_judgment_rules.json（lookup_judgment_rules 経由）
+    - shion_memory_index.json（api.shion_memory_recall.recall_memories 経由）
+    """
+    canonical = lookup_judgment_rules(query=question)
+
+    try:
+        from api.shion_memory_recall import recall_memories
+
+        recalled = recall_memories(question, limit=limit)
+        memories = [
+            {
+                "id": m.get("id"),
+                "memory_type": m.get("memory_type"),
+                "status": m.get("status"),
+                "content": str(m.get("content") or "")[:400],
+            }
+            for m in recalled.get("memories") or []
+            if isinstance(m, dict)
+        ]
+        memory_result: dict[str, Any] = {
+            "available": True,
+            "route": recalled.get("route"),
+            "memories": memories,
+        }
+    except Exception as exc:
+        memory_result = {"available": False, "error": str(exc), "memories": []}
+
+    return {
+        "canonical_rules": canonical.get("canonical_rules", {}),
+        "shion_memory": memory_result,
+        "sources": ["canonical_judgment_rules.json", "shion_memory_index.json"],
+    }
+
+
+def build_judgment_preview(material_type: str = "", limit: int = 10) -> dict[str, Any]:
+    """日次パイプラインが生成した判断材料プレビューを返す（reports/judgment_materials_preview_latest.md）。
+
+    「最近たまった判断材料のpreviewを見せて」「リスクシグナルの候補は？」といった、
+    正式採用前の下書き材料を確認するために使う。material_type: judgment_rule /
+    risk_signal / user_preference で絞り込み可能。
+
+    このツール自身はプレビューを生成しない（生成は日次パイプライン専有。
+    まだ人間レビューを経ていない下書きであり、canonical_judgment_rulesとは異なる）。
+    """
+    for reports_dir in _candidate_reports_dirs():
+        report_path = reports_dir / "judgment_materials_preview_latest.md"
+        if not report_path.exists():
+            continue
+        try:
+            text = report_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            return {"available": False, "error": str(exc), "materials": []}
+
+        header_m = re.match(r"#\s*Judgment Materials Preview \(([^)]*)\)", text)
+        period = header_m.group(1) if header_m else None
+
+        summary: dict[str, int] = {}
+        for key in ("Materials", "judgment_rule", "risk_signal", "user_preference"):
+            m = re.search(rf"-\s*{re.escape(key)}:\s*(\d+)", text)
+            if m:
+                summary[key] = int(m.group(1))
+
+        materials: list[dict[str, Any]] = []
+        for block in re.split(r"\n### ", text)[1:]:
+            header_line, _, body = block.partition("\n")
+            hm = re.match(r"([\d-]+)\s*/\s*(\S+)\s*/\s*confidence=([\d.]+)", header_line.strip())
+            if not hm:
+                continue
+            date_str, mtype, confidence = hm.group(1), hm.group(2), hm.group(3)
+            if material_type and material_type != mtype:
+                continue
+            claim_m = re.search(r"-\s*Claim:\s*(.+)", body)
+            use_m = re.search(r"-\s*Use when:\s*(.+)", body)
+            axis_m = re.search(r"-\s*Axis:\s*(.+)", body)
+            evidence_m = re.search(r"-\s*Evidence:\s*`([^`]+)`", body)
+            materials.append({
+                "date": date_str,
+                "material_type": mtype,
+                "confidence": float(confidence),
+                "claim": (claim_m.group(1).strip() if claim_m else "")[:300],
+                "use_when": use_m.group(1).strip() if use_m else "",
+                "axis": axis_m.group(1).strip() if axis_m else "",
+                "evidence": evidence_m.group(1).strip() if evidence_m else "",
+            })
+            if len(materials) >= max(1, min(limit, 50)):
+                break
+
+        return {
+            "available": True,
+            "period": period,
+            "summary": summary,
+            "materials": materials,
+            "note": "正式採用前のプレビューです。canonical_judgment_rulesとは異なり、レビューを経ていません。",
+        }
+
+    return {"available": False, "materials": []}
+
+
+def search_obsidian_context(query: str, limit: int = 4) -> dict[str, Any]:
+    """Obsidian Vaultの知識ノートをクエリで検索する。
+
+    「〇〇についてObsidianに何か書いてある？」「過去のメモで関連するものは？」
+    といった、社内知識ノートからの裏取りに使う。既存の共通経路
+    （obsidian_ai_context.collect_obsidian_ai_context → mobile_app.obsidian_bridge）を
+    そのまま呼び出す。Vaultが見つからない・接続できない環境では例外を投げず、
+    hits が空の結果を返す。
+    """
+    try:
+        from obsidian_ai_context import collect_obsidian_ai_context
+
+        result = collect_obsidian_ai_context(query, limit=limit)
+    except Exception as exc:
+        return {"available": False, "error": str(exc), "hits": [], "source_count": 0}
+
+    hits = [
+        {"path": h.get("path"), "snippet": str(h.get("snippet") or "")[:320]}
+        for h in result.get("hits") or []
+        if isinstance(h, dict)
+    ]
+    return {
+        "available": bool(hits),
+        "hits": hits,
+        "source_count": result.get("source_count", len(hits)),
+    }
+
+
 # ── Wiki embedding helpers ────────────────────────────────────────────────────
 
 def _gemini_api_key_for_tools() -> str:
@@ -1186,14 +1454,144 @@ def propose_quick_fix(request: str, title: str = "") -> dict[str, Any]:
     except Exception as exc:
         return {"accepted": False, "reason": f"起票の書き込みに失敗しました: {exc}"}
 
+    # codex-safe条件・日次実行枠・キルスイッチを満たす場合のみ、待たせずに
+    # バックグラウンドで即時実行を試みる（execute_chat_quick_fix が既存の
+    # execute_codex_queue ガードをそのまま再利用する）。実行しない場合は
+    # 従来どおり次回の日次パイプラインが拾う。
+    try:
+        from scripts.execute_chat_quick_fix import start_execution
+
+        execution = start_execution(record)
+    except Exception as exc:
+        execution = {"execution": "queued_for_batch", "reason": f"即時実行の判定に失敗: {exc}"}
+
+    if execution.get("execution") == "started":
+        message = (
+            f"自動修正候補として起票し、バックグラウンドで即時実行を開始しました（対象: {target}）。"
+            "完了後もマージ前には人間のPRレビューが必要です。"
+        )
+    else:
+        message = (
+            f"自動修正候補として起票しました（対象: {target}）。"
+            f"即時実行はしません（{execution.get('reason', '条件を満たさないため')}）。"
+            "次回の自律改善パイプライン実行でランクキューに載り、自動修正が試行されます。"
+        )
+
     return {
         "accepted": True,
         "target_module": target,
         "risk": verdict.get("risk"),
         "id": rec_id,
+        "execution": execution.get("execution"),
+        "execution_reason": execution.get("reason"),
+        "message": message,
+    }
+
+
+def ask_user_question(question: str, reason: str = "") -> dict[str, Any]:
+    """紫苑が知りたいことをユーザーへの質問として登録する。
+
+    案件を離れた一般的な確認事項（例: 「◯◯業界の最近の傾向を今度教えてください」）を、
+    その場で無理に聞き出そうとせず、後で答えてもらえるよう記録しておきたいときに使う。
+    その場ですぐ確認すべき情報（会社名・業種・金額等）は通常の会話で直接聞くこと。
+    既存の紫苑タスク台帳（api.shion_tasks）に source="shion_question" として登録するだけで、
+    新しいストレージは作らない。
+    """
+    q = (question or "").strip()
+    if not q:
+        return {"registered": False, "reason": "質問文が空です"}
+    try:
+        from api.shion_tasks import create_task
+
+        task = create_task(
+            title=q,
+            note=(reason or "").strip(),
+            source="shion_question",
+            tags=["question"],
+        )
+    except Exception as exc:
+        return {"registered": False, "reason": f"登録に失敗しました: {exc}"}
+    return {
+        "registered": True,
+        "id": task.get("id"),
+        "question": task.get("title"),
+        "message": "質問を記録しました。ユーザーからの回答を待ちます。",
+    }
+
+
+def list_shion_questions(limit: int = 10) -> dict[str, Any]:
+    """紫苑がユーザーに聞きたいと登録した、まだ回答されていない質問の一覧を返す。
+
+    「他に何か聞きたいことある？」「未回答の質問は？」といった確認に使う。
+    """
+    try:
+        from api.shion_tasks import list_tasks
+
+        tasks = list_tasks(status="open", limit=200)
+    except Exception as exc:
+        return {"questions": [], "count": 0, "error": str(exc)}
+
+    questions = [
+        {
+            "id": t.get("id"),
+            "question": t.get("title"),
+            "reason": t.get("note"),
+            "asked_at": t.get("created_at"),
+        }
+        for t in tasks
+        if isinstance(t, dict) and t.get("source") == "shion_question"
+    ]
+    questions = questions[: max(1, min(limit, 50))]
+    return {"questions": questions, "count": len(questions)}
+
+
+def answer_shion_question(question_id: str, answer: str) -> dict[str, Any]:
+    """紫苑が登録した未回答の質問（list_shion_questions で確認できるもの）に、
+    ユーザーが答えてくれたときに使う。
+
+    回答を記録して質問をdone化する。好み・家族等の個人的な事実として扱えそうな
+    内容は、既存の人物記憶（user_personal_memory、既に会話全般で使われている
+    保守的な判定ロジック）にもあわせて取り込む。業務知識としての正式な記憶化
+    （canonical_judgment_rules等）はここでは行わない。既存の人間レビュー付き
+    昇格フロー（build_shion_memory_promotion_queue.py）に委ね、雑談的な回答が
+    確認なしに判断原則へ化けるのを防ぐ。
+    """
+    qid = (question_id or "").strip()
+    ans = (answer or "").strip()
+    if not qid or not ans:
+        return {"recorded": False, "reason": "question_id と answer の両方が必要です"}
+
+    try:
+        from api.shion_tasks import list_tasks, set_task_status, update_task
+
+        open_tasks = {t.get("id"): t for t in list_tasks(status="open", limit=200)}
+        task = open_tasks.get(qid)
+        if task is None or task.get("source") != "shion_question":
+            return {"recorded": False, "reason": "指定されたidの未回答質問が見つかりません"}
+
+        existing_note = str(task.get("note") or "").strip()
+        new_note = f"{existing_note} / 回答: {ans}" if existing_note else f"回答: {ans}"
+        update_task(qid, note=new_note)
+        set_task_status(qid, "done")
+    except Exception as exc:
+        return {"recorded": False, "reason": f"記録に失敗しました: {exc}"}
+
+    personal_memory_captured = False
+    try:
+        from api.user_personal_memory import capture_user_personal_memory
+
+        result = capture_user_personal_memory(ans, source="shion_question_answer")
+        personal_memory_captured = bool(result.get("captured"))
+    except Exception:
+        pass
+
+    return {
+        "recorded": True,
+        "id": qid,
+        "personal_memory_captured": personal_memory_captured,
         "message": (
-            f"自動修正候補として起票しました（対象: {target}）。"
-            "次回の自律改善パイプライン実行でランクキューに載り、自動修正が試行されます。"
+            "回答を記録しました。"
+            + ("個人的な記憶としても保存しました。" if personal_memory_captured else "")
         ),
     }
 
@@ -1204,6 +1602,12 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
         return search_cases(args.get("query", ""), int(args.get("limit", 5)))
     if name == "propose_quick_fix":
         return propose_quick_fix(args.get("request", ""), args.get("title", ""))
+    if name == "ask_user_question":
+        return ask_user_question(args.get("question", ""), args.get("reason", ""))
+    if name == "list_shion_questions":
+        return list_shion_questions(int(args.get("limit", 10) or 10))
+    if name == "answer_shion_question":
+        return answer_shion_question(args.get("question_id", ""), args.get("answer", ""))
     if name == "get_score_detail":
         return get_score_detail(args.get("company_name", ""))
     if name == "get_screening_activity":
@@ -1303,6 +1707,49 @@ TOOL_DECLARATIONS: list[dict] = [
                 "title": {"type": "string", "description": "候補の短い見出し（省略時は要望冒頭を使用）"},
             },
             "required": ["request"],
+        },
+    },
+    {
+        "name": "ask_user_question",
+        "description": (
+            "案件を離れた一般的な確認事項を、その場で無理に聞き出さず、後で答えてもらえる"
+            "ようユーザーへの質問として記録する。「今度教えてください」「後で確認したい」"
+            "といった場面で使う。会社名・業種・金額等、その場で必要な情報は通常の会話で"
+            "直接聞くこと（このツールは使わない）。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "ユーザーに聞きたい質問文"},
+                "reason": {"type": "string", "description": "なぜ聞きたいか（省略可）"},
+            },
+            "required": ["question"],
+        },
+    },
+    {
+        "name": "list_shion_questions",
+        "description": "紫苑がユーザーに聞きたいと登録した、まだ回答されていない質問の一覧を返す。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "取得件数（デフォルト10、最大50）"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "answer_shion_question",
+        "description": (
+            "list_shion_questions で確認できる未回答の質問に、ユーザーが答えてくれたときに使う。"
+            "回答を記録して質問をdone化し、個人的な内容なら人物記憶にも取り込む。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question_id": {"type": "string", "description": "list_shion_questions で得た質問のid"},
+                "answer": {"type": "string", "description": "ユーザーの回答内容"},
+            },
+            "required": ["question_id", "answer"],
         },
     },
     {

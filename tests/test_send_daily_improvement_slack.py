@@ -1,7 +1,8 @@
 from datetime import datetime
+import subprocess
+import sys
 
 from scripts.send_daily_improvement_slack import (
-    _system_monitor_lines,
     build_message,
     should_skip,
 )
@@ -10,6 +11,25 @@ from scripts.send_daily_improvement_slack import (
 def test_system_monitor_section_present_in_message():
     payload = build_message({"applied_count": 0}, report_date="2026-07-14")
     assert "*システム監視*" in payload["text"]
+
+
+def test_script_dry_run_works_when_executed_by_path():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/send_daily_improvement_slack.py",
+            "--date",
+            "2026-07-25",
+            "--dry-run",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "*日次改善レポート*" in result.stdout
+    assert "*システム監視*" in result.stdout
 
 
 def test_system_monitor_flags_stale_report_and_backlog(tmp_path, monkeypatch):
@@ -88,6 +108,7 @@ def test_build_message_includes_mana_report_summary_without_raw_evidence():
     }
     mana_report = {
         "status": "hold",
+        "action_summary": "Private Reflection を User要求・誤読・次回行動が分かる形で再生成する。",
         "inputs": {"candidate_count": 12, "useful_candidate_count": 7},
         "findings": [
             {
@@ -102,6 +123,7 @@ def test_build_message_includes_mana_report_summary_without_raw_evidence():
     payload = build_message(report, report_date="2026-07-14", mana_report=mana_report)
 
     assert "status: `hold`" in payload["text"]
+    assert "next: Private Reflection" in payload["text"]
     assert "candidates: `12`" in payload["text"]
     assert "private_reflection_not_meaningful" in payload["text"]
     assert "Slackに出してはいけない長い原文" not in payload["text"]
@@ -173,6 +195,37 @@ def test_build_message_includes_judgment_asset_field_validation_summary():
     assert "unused_active=`5`" in payload["text"]
     assert "reports/judgment_asset_growth_latest.md" in payload["text"]
     assert "Slackに出さない詳細" not in payload["text"]
+
+
+def test_build_message_includes_judgment_asset_field_review_summary():
+    report = {
+        "applied_count": 0,
+        "needs_review_count": 0,
+        "failed_count": 0,
+        "needs_review": [],
+    }
+    field_review = {
+        "summary": {
+            "active_rules": 8,
+            "grow": 1,
+            "review": 2,
+            "sleeping": 4,
+            "hold": 1,
+        },
+        "buckets": {
+            "review": [{"statement": "Slackに出さない棚卸し詳細"}],
+        },
+    }
+
+    payload = build_message(
+        report,
+        report_date="2026-07-25",
+        judgment_asset_field_review=field_review,
+    )
+
+    assert "field_review: grow=`1` / review=`2` / sleeping=`4` / hold=`1`" in payload["text"]
+    assert "reports/judgment_asset_field_review_latest.md" in payload["text"]
+    assert "Slackに出さない棚卸し詳細" not in payload["text"]
 
 
 def test_should_skip_same_date_and_hash_unless_forced():

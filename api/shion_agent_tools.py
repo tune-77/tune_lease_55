@@ -10,18 +10,28 @@ ADK（google.adk）に依存させず import できるよう、ツール関数�
 from __future__ import annotations
 
 from lease_intelligence_tools import (
+    build_judgment_preview,
+    get_pipeline_item_details,
     get_portfolio_stats,
+    get_recent_errors,
     get_score_detail,
     get_system_overview,
     get_weekly_trend,
+    recall_judgment_memory,
     search_cases,
+    search_obsidian_context,
 )
 
-# ローカル SQLite / JSON 読み取りのみ。外部 API を叩かない（追加課金ゼロ）。
+# ローカル SQLite / JSON / ログファイル読み取りのみ。外部 API を叩かない（追加課金ゼロ）。
 READ_ONLY_DB_TOOLS = [
-    search_cases,        # 類似・過去案件の検索
-    get_score_detail,    # 企業名からスコア内訳を取得
-    get_portfolio_stats, # 審査DB全体の統計（成約率・分布・業種構成）
-    get_weekly_trend,    # 週次トレンド
-    get_system_overview, # モデル・閾値・データ規模のスナップショット
+    search_cases,              # 類似・過去案件の検索
+    get_score_detail,          # 企業名からスコア内訳を取得
+    get_portfolio_stats,       # 審査DB全体の統計（成約率・分布・業種構成）
+    get_weekly_trend,          # 週次トレンド
+    get_system_overview,       # モデル・閾値・データ規模のスナップショット
+    get_recent_errors,         # logs/api.log・app.log の頻出エラー調査
+    get_pipeline_item_details, # 改善パイプライン台帳（ledger_rules.json）の個別項目詳細
+    recall_judgment_memory,    # 正準ルール＋紫苑の記憶索引から判断根拠を想起
+    build_judgment_preview,    # 判断材料プレビュー（レビュー前の下書き）を取得
+    search_obsidian_context,   # Obsidian Vaultの知識ノート検索
 ]

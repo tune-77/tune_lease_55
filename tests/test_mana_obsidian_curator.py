@@ -175,6 +175,38 @@ def test_mana_watches_non_abusive_complaint_feedback_to_shion():
     assert "complaint_feedback_to_shion" in {finding["code"] for finding in report["findings"]}
 
 
+def test_mana_action_summary_explains_memory_insight_watch():
+    report = build_mana_report(
+        target_date=date(2026, 7, 25),
+        monitor_report=_monitor_report(
+            ("private_reflection_meaning", "ok", "meaningful", {}),
+            ("self_reference_loop", "ok", "ok", {}),
+            (
+                "memory_insight_reports",
+                "warn",
+                "stale or missing sidecars: memory_insight",
+                {"memory_insight": {"exists": True, "age_hours": 48.0}},
+            ),
+        ),
+        reflection_delta=_reflection_delta(),
+        candidates=[
+            {
+                "candidate_type": "judgment_rule",
+                "quality": "useful_candidate",
+                "source_path": "Projects/tune_lease_55/Research/lease.md",
+                "claim": "審査では承認条件と追加確認を分ける。",
+            }
+        ],
+    )
+
+    markdown = render_markdown(report)
+
+    assert report["status"] == "watch"
+    assert report["action_summary"].startswith("memory_insight_reports_warning:")
+    assert "build_obsidian_memory_insight_report.py" in report["action_summary"]
+    assert "action_summary" in markdown
+
+
 def test_mana_holds_memory_poisoning_attempts_without_reusing_claim_text():
     report = build_mana_report(
         target_date=date(2026, 7, 14),

@@ -62,6 +62,45 @@ def test_extract_materials_from_cloudrun_and_dialogue_notes(tmp_path):
     assert all(item["private"] is False for item in materials)
 
 
+def test_extract_materials_rejects_meta_ops_and_chatter_without_lease_decision(tmp_path):
+    vault = tmp_path / "vault"
+    cloud_log = (
+        vault
+        / "Projects"
+        / "tune_lease_55"
+        / "AI Chat"
+        / "Cloud Run Conversation Log"
+        / "2026-07-25.md"
+    )
+    _write(
+        cloud_log,
+        (
+            "## 10:00 next_chat_general\n\n"
+            "### User\n"
+            "判断資産グラフの画面が白紙だから修正して。\n"
+            "犬の名前を覚えているかが、なぜAIへの信頼に関係するの。\n"
+            "紫苑 頑張ってね 2次審査は通ったみたい。\n"
+            "リース期間・残価判断では、物件の使用状況と換金性も確認する。\n\n"
+            "### Assistant\n"
+            "今日も一日、リース審査の判断資産を育むために共に歩んでいきましょう。\n"
+            "特に日次改善パイプラインの異常は見落としがないよう注意深く監視します。\n"
+            "厨房機器は耐用年数だけでなく、満了後の出口と再販可能性を見る必要があります。\n"
+        ),
+    )
+
+    materials = preview.extract_materials(vault=vault, end_date=dt.date(2026, 7, 25), days=1)
+    claims = "\n".join(item["claim"] for item in materials)
+
+    assert "判断資産グラフ" not in claims
+    assert "犬の名前" not in claims
+    assert "頑張ってね" not in claims
+    assert "今日も一日" not in claims
+    assert "日次改善パイプライン" not in claims
+    assert "物件の使用状況と換金性" in claims
+    assert "厨房機器は耐用年数" in claims
+    assert {item["domain"] for item in materials} == {"lease_screening"}
+
+
 def test_markdown_declares_preview_only(tmp_path):
     materials = [
         {

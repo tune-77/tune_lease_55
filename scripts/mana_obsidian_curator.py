@@ -482,6 +482,7 @@ def build_mana_report(
             "useful_candidate_count": useful_count,
         },
         "findings": [finding.__dict__ for finding in findings],
+        "action_summary": _action_summary(status, findings),
         "blocked_actions": _blocked_actions(status),
         "allowed_actions": _allowed_actions(status),
         "user_requests": _user_requests(status, findings),
@@ -518,6 +519,43 @@ def _allowed_actions(status: str) -> list[str]:
     if status == "watch":
         return ["読み取り専用の観察継続", "3日分の傾向比較", "明示承認された候補だけ手動レビュー"]
     return ["読み取り専用の観察継続", "人間レビュー済み候補の整理"]
+
+
+def _action_for_finding(finding: Finding) -> str:
+    if finding.code == "memory_insight_reports_warning":
+        return (
+            "memory insight sidecarを更新する: "
+            "scripts/build_obsidian_memory_insight_report.py と "
+            "scripts/build_shion_memory_promotion_queue.py を日次内で再実行し、"
+            "reports/obsidian_memory_insight_latest.md 等を36h以内に戻す。"
+        )
+    if finding.code == "monitor_report_missing":
+        return "scripts/monitor_obsidian_environment.py を再実行して Mana の入力レポートを作る。"
+    if finding.code == "reflection_delta_missing":
+        return "scripts/build_shion_reflection_delta.py を再実行して内省差分JSONを更新する。"
+    if finding.code in {"private_reflection_not_meaningful", "reflection_handoff_incomplete"}:
+        return "Private Reflection を User要求・誤読・次回行動が分かる形で再生成する。"
+    if finding.code == "reflection_too_similar":
+        return "前日との差分が出るよう、当日の具体的な違和感・判断変更・次回行動を1つ追加する。"
+    if finding.code == "useful_candidate_missing":
+        return "memory insight候補の抽出条件を見直し、有用候補が0件になった原因を確認する。"
+    if finding.code == "candidate_self_reference_high":
+        return "Daily/Private Reflection/reports由来の候補を除外し、一次ノート中心で再抽出する。"
+    if finding.code == "self_reference_loop_risk":
+        return "自己生成レポート由来の候補を止め、候補ソースの除外ルールを確認する。"
+    if finding.code in {"rag_index_warning", "wikilinks_warning", "recent_note_noise_warning"}:
+        return f"{finding.code.replace('_warning', '')} の監視レポート詳細を確認し、該当箇所だけ手動整理する。"
+    return finding.message
+
+
+def _action_summary(status: str, findings: list[Finding]) -> str:
+    if status == "allow":
+        return "追加対応なし。読み取り専用の観察を継続する。"
+    if not findings:
+        return "Mana判定の入力を確認する。"
+    priority = sorted(findings, key=lambda finding: LEVEL_RANK[finding.level], reverse=True)
+    top = priority[0]
+    return f"{top.code}: {_action_for_finding(top)}"
 
 
 def _user_requests(status: str, findings: list[Finding]) -> list[str]:
@@ -565,6 +603,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- generated_at: `{report['generated_at']}`",
         f"- target_date: `{report['target_date']}`",
         f"- status: `{report['status']}`",
+        f"- action_summary: {report.get('action_summary') or 'なし'}",
         f"- guardrail: `{report['guardrail']}`",
         "",
         "## Inputs",
