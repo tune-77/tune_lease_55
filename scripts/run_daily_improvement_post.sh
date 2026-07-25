@@ -157,6 +157,12 @@ echo "[成長] Judgment Asset Growth Score を記録（Slack日次レポート /
 log_step "judgment_asset_growth_report" $?
 
 echo ""
+echo "[成長] 判断資産の実利用棚卸しを生成（伸ばす/見直す/眠ってる/保留。自動昇格なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_field_review.py" \
+  --date "${PIPELINE_DATE}"
+log_step "build_judgment_asset_field_review" $?
+
+echo ""
 echo "[成長] 紫苑の期間成長判定を生成（判断資産グラフのみが参照する末端）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_shion_growth.py" \
   --end-date "${PIPELINE_DATE}"
@@ -273,7 +279,8 @@ echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・We
 "${PYTHON}" "${PROJECT_ROOT}/scripts/send_daily_improvement_slack.py" \
   --date "${PIPELINE_DATE}" \
   --mana-report "${MANA_REPORT_JSON}" \
-  --screening-terms-report "${SCREENING_TERMS_REPORT_JSON}"
+  --screening-terms-report "${SCREENING_TERMS_REPORT_JSON}" \
+  --judgment-asset-field-review "${PROJECT_ROOT}/reports/judgment_asset_field_review_latest.json"
 log_step "send_daily_improvement_slack" $?
 
 if [ "${MANA_STATUS}" != "allow" ]; then

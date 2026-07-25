@@ -197,6 +197,37 @@ def test_build_message_includes_judgment_asset_field_validation_summary():
     assert "Slackに出さない詳細" not in payload["text"]
 
 
+def test_build_message_includes_judgment_asset_field_review_summary():
+    report = {
+        "applied_count": 0,
+        "needs_review_count": 0,
+        "failed_count": 0,
+        "needs_review": [],
+    }
+    field_review = {
+        "summary": {
+            "active_rules": 8,
+            "grow": 1,
+            "review": 2,
+            "sleeping": 4,
+            "hold": 1,
+        },
+        "buckets": {
+            "review": [{"statement": "Slackに出さない棚卸し詳細"}],
+        },
+    }
+
+    payload = build_message(
+        report,
+        report_date="2026-07-25",
+        judgment_asset_field_review=field_review,
+    )
+
+    assert "field_review: grow=`1` / review=`2` / sleeping=`4` / hold=`1`" in payload["text"]
+    assert "reports/judgment_asset_field_review_latest.md" in payload["text"]
+    assert "Slackに出さない棚卸し詳細" not in payload["text"]
+
+
 def test_should_skip_same_date_and_hash_unless_forced():
     state = {"last_sent_date": "2026-07-14", "last_report_hash": "abc"}
 

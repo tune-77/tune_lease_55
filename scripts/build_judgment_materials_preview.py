@@ -112,15 +112,34 @@ DOMAIN_TERMS = (
     "補助金",
     "事業計画",
     "Q_risk",
-    "AURION",
-    "AI",
     "物件",
     "換金性",
-    "ハッカソン",
-    "判断材料",
     "購入選択権",
     "残価",
+    "承認条件",
+    "返済原資",
+    "資金繰り",
+    "耐用年数",
+    "設備",
+    "成約",
+)
+META_ONLY_TERMS = (
+    "判断資産",
+    "紫苑",
+    "ハッカソン",
+    "Cloud Run",
+    "パイプライン",
+    "実装",
+    "デプロイ",
+    "画面",
+    "グラフ",
+    "会話ログ",
+    "記憶",
+    "内省",
     "信頼",
+    "成長",
+    "おはよう",
+    "頑張って",
 )
 PROMPT_NOISE_TERMS = (
     "紫苑レビュー依頼",
@@ -168,6 +187,10 @@ CONVERSATIONAL_NOISE_TERMS = (
     "先ほど確認",
     "となりますね",
     "になりますね",
+    "頑張って",
+    "通ったみたい",
+    "判断資産を育む",
+    "共に歩んで",
 )
 
 
@@ -299,14 +322,20 @@ def _looks_domain_relevant(sentence: str) -> bool:
     return any(term in sentence for term in DOMAIN_TERMS)
 
 
+def _looks_meta_only(sentence: str) -> bool:
+    return any(term in sentence for term in META_ONLY_TERMS) and not _looks_domain_relevant(sentence)
+
+
 def _classify(sentence: str, role: str) -> tuple[str, float] | None:
     if _looks_like_noise(sentence, role):
+        return None
+    if _looks_meta_only(sentence):
         return None
     risk_score = sum(1 for term in RISK_TERMS if term in sentence)
     rule_score = sum(1 for term in RULE_TERMS if term in sentence)
     preference_score = sum(1 for term in PREFERENCE_TERMS if term in sentence)
     domain_relevant = _looks_domain_relevant(sentence)
-    if not domain_relevant and max(risk_score, rule_score, preference_score) == 0:
+    if not domain_relevant:
         return None
 
     if risk_score >= 1 and risk_score >= rule_score:
@@ -315,8 +344,6 @@ def _classify(sentence: str, role: str) -> tuple[str, float] | None:
         base = 0.72 + min(0.16, risk_score * 0.04)
         return "risk_signal", min(0.9, base + (0.04 if role == "user" else 0.0))
     if preference_score >= 1 and role == "user":
-        if not (domain_relevant or any(term in sentence for term in ("AI", "信頼", "判断", "本体", "交換可能", "スピード"))):
-            return None
         base = 0.68 + min(0.18, preference_score * 0.05)
         return "user_preference", min(0.9, base)
     if rule_score >= 1:
@@ -336,7 +363,6 @@ def _risk_axes(sentence: str) -> list[str]:
         "industry_risk": ("飲食", "ラーメン", "業種", "廃業"),
         "cash_flow": ("返済", "資金繰り", "キャッシュ", "入金"),
         "support_specificity": ("銀行支援", "支援", "補助金"),
-        "ai_ops": ("内省", "ハッカソン", "判断材料", "交換可能"),
     }
     for axis, terms in mapping.items():
         if any(term in sentence for term in terms):
@@ -349,8 +375,6 @@ def _use_when(material_type: str, sentence: str) -> str:
         return "飲食業・厨房機器・店舗設備のリース判断をするとき"
     if "銀行支援" in sentence or "補助金" in sentence:
         return "外部支援を返済原資や保全材料として扱うとき"
-    if "ハッカソン" in sentence or "判断材料" in sentence:
-        return "AI Agent Opsや判断資産化の説明・改善をするとき"
     if material_type == "risk_signal":
         return "案件の見落としリスクや追加確認事項を洗い出すとき"
     if material_type == "user_preference":
@@ -359,8 +383,6 @@ def _use_when(material_type: str, sentence: str) -> str:
 
 
 def _domain(sentence: str) -> str:
-    if any(term in sentence for term in ("ハッカソン", "内省", "判断材料", "交換可能")):
-        return "ai_agent_ops"
     return "lease_screening"
 
 
