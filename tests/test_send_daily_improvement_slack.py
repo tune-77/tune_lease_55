@@ -108,6 +108,7 @@ def test_build_message_includes_mana_report_summary_without_raw_evidence():
     }
     mana_report = {
         "status": "hold",
+        "action_summary": "Private Reflection を User要求・誤読・次回行動が分かる形で再生成する。",
         "inputs": {"candidate_count": 12, "useful_candidate_count": 7},
         "findings": [
             {
@@ -122,6 +123,7 @@ def test_build_message_includes_mana_report_summary_without_raw_evidence():
     payload = build_message(report, report_date="2026-07-14", mana_report=mana_report)
 
     assert "status: `hold`" in payload["text"]
+    assert "next: Private Reflection" in payload["text"]
     assert "candidates: `12`" in payload["text"]
     assert "private_reflection_not_meaningful" in payload["text"]
     assert "Slackに出してはいけない長い原文" not in payload["text"]
