@@ -6842,6 +6842,39 @@ def _latest_improvement_statuses() -> dict[str, str]:
     return latest_by_key
 
 
+def _norm_improvement_title(title: str) -> str:
+    """canonical_key 突合用の軽量タイトル正規化（空白除去 + 小文字化）。
+
+    重複統合等で description が日によって変わり canonical_key がブレても、
+    タイトルが同じなら「昨日処理済み」を拾えるようにするための保険キー。
+    scripts/cleanup_improvement_reviews.py の _norm_title と同じ考え方。
+    """
+    return re.sub(r"\s+", "", str(title or "").strip().lower())
+
+
+def _latest_improvement_statuses_by_title() -> dict[str, str]:
+    """canonical_key が一致しない場合の保険: 正規化タイトル一致で最後のステータスを返す。"""
+    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+    if not ledger_path.exists():
+        return {}
+    latest_by_title: dict[str, str] = {}
+    try:
+        for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            title = _norm_improvement_title(str(entry.get("title") or ""))
+            status = str(entry.get("status") or "")
+            if title and status:
+                latest_by_title[title] = status
+    except OSError:
+        return {}
+    return latest_by_title
+
+
 def _ledger_status_to_improvement_status(status: str) -> str | None:
     normalized = str(status or "").lower()
     if normalized == "deleted":
@@ -7308,6 +7341,7 @@ def _normalize_improvement_report(report: dict) -> dict:
     """旧/新の改善パイプラインレポートをNext表示用に正規化する."""
     items_by_id: dict[str, dict] = {}
     latest_statuses = _latest_improvement_statuses()
+    latest_statuses_by_title = _latest_improvement_statuses_by_title()
     applied_keys = {key for key, status in latest_statuses.items() if status == "applied"}
 
     for item in report.get("improvements") or []:
@@ -7400,6 +7434,10 @@ def _normalize_improvement_report(report: dict) -> dict:
         canonical = item.get("canonical_key") or _improvement_canonical_key(str(item.get("title") or ""))
         item["canonical_key"] = canonical
         ledger_status = latest_statuses.get(canonical)
+        if not ledger_status:
+            # 重複統合等で description が日によって変わり canonical_key がブレても、
+            # タイトル一致で「昨日処理済み」の判断を拾えるようにする（保留・削除等の再発防止）。
+            ledger_status = latest_statuses_by_title.get(_norm_improvement_title(str(item.get("title") or "")))
         mapped_status = _ledger_status_to_improvement_status(ledger_status or "")
         if canonical in applied_keys:
             ledger_status = "applied"
