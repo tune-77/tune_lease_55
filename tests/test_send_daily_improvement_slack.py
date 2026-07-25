@@ -1,7 +1,8 @@
 from datetime import datetime
+import subprocess
+import sys
 
 from scripts.send_daily_improvement_slack import (
-    _system_monitor_lines,
     build_message,
     should_skip,
 )
@@ -10,6 +11,25 @@ from scripts.send_daily_improvement_slack import (
 def test_system_monitor_section_present_in_message():
     payload = build_message({"applied_count": 0}, report_date="2026-07-14")
     assert "*システム監視*" in payload["text"]
+
+
+def test_script_dry_run_works_when_executed_by_path():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/send_daily_improvement_slack.py",
+            "--date",
+            "2026-07-25",
+            "--dry-run",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "*日次改善レポート*" in result.stdout
+    assert "*システム監視*" in result.stdout
 
 
 def test_system_monitor_flags_stale_report_and_backlog(tmp_path, monkeypatch):
