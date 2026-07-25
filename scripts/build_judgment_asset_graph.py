@@ -123,6 +123,12 @@ def _feedback_outcome(row: dict[str, Any]) -> str:
     return ""
 
 
+def _is_simulation_feedback(row: dict[str, Any]) -> bool:
+    source = str(row.get("source") or "").strip().lower()
+    case_id = str(row.get("case_id") or row.get("case") or "").strip()
+    return source == "simulation" or case_id.startswith("sim-")
+
+
 def _case_id(row: dict[str, Any], fallback_index: int) -> str:
     value = str(row.get("case_id") or row.get("case") or "").strip()
     return value or f"feedback-{fallback_index + 1}"
@@ -151,6 +157,8 @@ def build_graph_data(
     feedback_cases_by_rule: dict[str, set[str]] = defaultdict(set)
 
     for index, row in enumerate(feedback_rows):
+        if _is_simulation_feedback(row):
+            continue
         rule_id = _feedback_rule_id(row)
         outcome = _feedback_outcome(row)
         if not rule_id or not outcome:
@@ -260,6 +268,8 @@ def build_graph_data(
             add_edge(f"rule:{rule_id}", evidence_id, "evidence", "evidence", 0.6)
 
     for index, row in enumerate(feedback_rows):
+        if _is_simulation_feedback(row):
+            continue
         rule_id = _feedback_rule_id(row)
         outcome = _feedback_outcome(row)
         if not rule_id or not outcome:

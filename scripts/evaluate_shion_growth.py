@@ -125,12 +125,25 @@ def _feedback_date(row: dict[str, Any]) -> date | None:
 def _feedback_summary(rows: list[dict[str, Any]], start_date: str, end_date: str) -> dict[str, Any]:
     start = _parse_date(start_date)
     end = _parse_date(end_date)
-    totals = {"used": 0, "helped": 0, "challenged": 0, "neutral": 0, "rejected": 0}
+    totals = {
+        "used": 0,
+        "helped": 0,
+        "challenged": 0,
+        "neutral": 0,
+        "rejected": 0,
+        "manual_example": 0,
+        "simulation_skipped": 0,
+    }
     rule_ids: set[str] = set()
     case_ids: set[str] = set()
     if not start or not end:
         return {"totals": totals, "distinct_rules": 0, "distinct_cases": 0}
     for row in rows:
+        source = str(row.get("source") or "").strip().lower()
+        case_id = str(row.get("case_id") or row.get("case") or "").strip()
+        if source == "simulation" or case_id.startswith("sim-"):
+            totals["simulation_skipped"] += 1
+            continue
         used_on = _feedback_date(row)
         if not used_on or not (start <= used_on <= end):
             continue
@@ -138,10 +151,11 @@ def _feedback_summary(rows: list[dict[str, Any]], start_date: str, end_date: str
         if outcome not in totals:
             continue
         totals["used"] += 1
+        if source == "manual_example":
+            totals["manual_example"] += 1
         if outcome != "used":
             totals[outcome] += 1
         rule_id = str(row.get("rule_id") or row.get("judgment_asset_id") or "").strip()
-        case_id = str(row.get("case_id") or row.get("case") or "").strip()
         if rule_id:
             rule_ids.add(rule_id)
         if case_id:
@@ -273,11 +287,18 @@ def build_growth_evaluation(
         1,
     )
 
+    manual_example_count = int(feedback_totals.get("manual_example") or 0)
+    real_feedback_count = max(0, int(feedback_totals.get("used") or 0) - manual_example_count)
     field_has_evidence = feedback_totals["used"] > 0 or field_last > 0
+    field_has_real_evidence = real_feedback_count > 0
     regression = score_trend["delta"] <= -10 or negative_last >= 75
     if regression:
         code = "regressed"
-    elif overall >= 70 and field_has_evidence and feedback_totals["helped"] >= feedback_totals["challenged"] + feedback_totals["rejected"]:
+    elif (
+        overall >= 70
+        and field_has_real_evidence
+        and feedback_totals["helped"] >= feedback_totals["challenged"] + feedback_totals["rejected"]
+    ):
         code = "grown"
     elif inventory_score >= 50 and reuse_score >= 45 and judgment_change_score >= 45 and field_has_evidence:
         code = "partial"
@@ -289,7 +310,10 @@ def build_growth_evaluation(
     if code == "grown":
         summary = "判断資産が増え、再利用され、実案件・人間反応で効いた証跡もある。"
     elif code == "partial":
-        summary = "判断資産と再利用の兆候はあるが、実戦検証の厚みはまだ十分ではない。"
+        if manual_example_count and not field_has_real_evidence:
+            summary = "例題検証は始まったが、実案件で効いた証跡はまだ不足している。"
+        else:
+            summary = "判断資産と再利用の兆候はあるが、実戦検証の厚みはまだ十分ではない。"
     elif code == "inventory_only":
         summary = "判断資産の在庫と整理は進んだが、実案件で効いた証跡が不足している。"
     elif code == "regressed":
@@ -318,6 +342,8 @@ def build_growth_evaluation(
             "helped": feedback_totals["helped"],
             "challenged": feedback_totals["challenged"],
             "rejected": feedback_totals["rejected"],
+            "manual_example": manual_example_count,
+            "real_feedback": real_feedback_count,
         },
         "human_alignment": {"score": round(alignment_score, 1), "grade": _grade_dimension(alignment_score)},
         "noise_control": {
@@ -411,6 +437,8 @@ def build_markdown(payload: dict[str, Any]) -> str:
             f"- Feedback helped: {int(feedback_totals.get('helped') or 0)}",
             f"- Feedback challenged: {int(feedback_totals.get('challenged') or 0)}",
             f"- Feedback rejected: {int(feedback_totals.get('rejected') or 0)}",
+            f"- Manual example feedback: {int(feedback_totals.get('manual_example') or 0)}",
+            f"- Simulation feedback skipped: {int(feedback_totals.get('simulation_skipped') or 0)}",
             f"- Distinct rules with feedback: {int(feedback.get('distinct_rules') or 0)}",
             f"- Distinct cases with feedback: {int(feedback.get('distinct_cases') or 0)}",
             "",

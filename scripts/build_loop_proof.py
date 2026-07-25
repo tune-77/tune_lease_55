@@ -408,7 +408,7 @@ def render(m: dict) -> str:
     <div class="stage"><span class="flag live">稼働</span><span class="n">02 適用</span><span class="t">PRで反映</span><span class="big tnum">{m.get('applied',0)}</span><span class="d">うち{m.get('pr_traced',0)}がPR追跡可</span></div>
     <div class="stage"><span class="flag live">稼働</span><span class="n">03 人間評価</span><span class="t">効いた／微妙／外した</span><span class="big tnum">{m.get('feedback_total',0)}</span><span class="d">{m.get('fb_diff_pct',0)}%が次回応答を変えた</span></div>
     <div class="stage"><span class="flag live">稼働</span><span class="n">04 資産化</span><span class="t">判断資産が育つ</span><span class="big tnum">{m.get('materials',0)}</span><span class="d">Materials／Active rules {m.get('active_rules',0)}</span></div>
-    <div class="stage next"><span class="flag soon">次の点火点</span><span class="n">05 実戦検証</span><span class="t">実案件で効いたか</span><span class="big tnum">{round(m.get('field',0))}</span><span class="d">Field validation はこれから</span></div>
+    <div class="stage next"><span class="flag soon">次の点火点</span><span class="n">05 実戦検証</span><span class="t">例題/案件レビューで効いたか</span><span class="big tnum">{round(m.get('field',0))}</span><span class="d">Field validation score</span></div>
   </div>
 
   <hr class="rule">
@@ -453,7 +453,7 @@ def render(m: dict) -> str:
   <div class="gaps">
     <h3>正直な現在地 — ここが次の伸びしろ</h3>
     <ul>
-      <li><span class="dot"></span><span><b>実戦検証がまだ{round(m.get('field',0))}件。</b> 蒸留した{m.get('active_rules',0)}ルールが「実案件で本当に効いたか」を回収する段（Field validation）は未点灯。ここが点けば、ループは提案→適用→評価→資産化→<b>検証</b>まで一周する。</span></li>
+      <li><span class="dot"></span><span><b>Field validation score は {round(m.get('field',0))}。</b> 例題レビューで初期点灯した段階。次は本物の案件フィードバックを <code>source=shion_screening_review</code> 等で積み、manual_example と分けて有効性を見る。</span></li>
       <li><span class="dot"></span><span><b>レビュー圧が高い。</b> {m.get('needs_review',0)}件が needs-review で滞留。適用スピードに対し人間承認がボトルネック。</span></li>
       {scoring_line}
     </ul>

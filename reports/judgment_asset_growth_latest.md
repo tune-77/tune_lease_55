@@ -2,8 +2,8 @@
 
 ## Current
 
-- Date: 2026-07-21
-- Score: 67.5
+- Date: 2026-07-25
+- Score: 65.1
 - Mode: local_measurement_only
 - Guardrail: no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 
@@ -14,11 +14,11 @@
 - Judgment change proxy: `███████████████░░░░░` 75.0
 - Human alignment proxy: `██████████████░░░░░░` 70.0
 - Field validation: `░░░░░░░░░░░░░░░░░░░░` 0.0
-- Negative signal: `░░░░░░░░░░░░░░░░░░░░` 0.0
+- Negative signal: `█████░░░░░░░░░░░░░░░` 24.0
 
 ## Counts
 
-- Materials: 25
+- Materials: 26
 - Inbox candidates: 20
 - Active rules: 10
 - Risk axes: 5
@@ -42,9 +42,15 @@
 - 2026-07-19: `████████████░░░░░░░░` 62.1
 - 2026-07-20: `█████████████░░░░░░░` 62.6
 - 2026-07-21: `██████████████░░░░░░` 67.5
+- 2026-07-22: `█████████████░░░░░░░` 65.1
+- 2026-07-23: `████████████░░░░░░░░` 62.1
+- 2026-07-24: `█████████████░░░░░░░` 63.6
+- 2026-07-25: `█████████████░░░░░░░` 65.1
 
 ## Notes
 
 - reuse_proxy, judgment_change_proxy, human_alignment_proxy は現時点の保存証跡からの代理指標。
 - 実利用ログ・結果登録で helped / challenged を付け、使われない判断資産は成長スコアで伸びにくくする。
+- source=manual_example は実案件前の例題検証としてカウントし、本物の実案件とは source で分離する。
+- source=simulation または sim-* case は試運転として除外する。
 - ハッカソン中は測定とローカル可視化のみ。RAG・プロンプト・スコアリング・GCS・Cloud Runへ自動接続しない。
