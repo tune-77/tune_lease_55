@@ -3,7 +3,7 @@
   "generated_at": "2026-07-18T15:35:33",
   "source": "canonical_judgment_rules",
   "summary": {
-    "active_rules": 10,
+    "active_rules": 8,
     "promoted": 1,
     "updated": 0,
     "skipped": 0
@@ -93,7 +93,7 @@
     },
     {
       "id": "3a2ea362a372091a",
-      "status": "active",
+      "status": "demoted",
       "source_status": "accepted_preview",
       "material_type": "judgment_rule",
       "domain": "ai_agent_ops",
@@ -122,6 +122,8 @@
       "created_at": "2026-07-12T07:23:23",
       "updated_at": "2026-07-12T07:25:09",
       "promotion_source": "canonical_judgment_rules_preview",
+      "demoted_at": "2026-07-25",
+      "demotion_reason": "デモ説明・発表運用のルールであり、実案件の審査判断資産ではないため active から外す。",
       "private": false,
       "material_types": [
         "judgment_rule"
@@ -236,15 +238,14 @@
       "source_status": "accepted_preview",
       "material_type": "user_preference",
       "domain": "lease_screening",
-      "concept": "user_decision_preference",
-      "canonical_statement": "ユーザーが明示した判断基準や信頼条件は、一般論より優先して回答・審査支援に反映する。",
-      "evidence_count": 2,
-      "user_evidence_count": 2,
-      "confidence": 0.8,
+      "concept": "purchase_option_guidance",
+      "canonical_statement": "購入選択権は5〜30%程度が多い前提で、残価・再リース・満了後出口と整合するか確認する。",
+      "evidence_count": 1,
+      "user_evidence_count": 1,
+      "confidence": 0.78,
       "risk_axis": [],
       "sample_claims": [
-        "覚えておいて 購入選択権は5パーセントから30%なことが多い",
-        "犬の名前を覚えているかが、なぜAIへの信頼に関係するの"
+        "覚えておいて 購入選択権は5パーセントから30%なことが多い"
       ],
       "evidence_paths": [
         "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-10.md",
@@ -253,6 +254,7 @@
       "created_at": "2026-07-12T07:23:23",
       "updated_at": "2026-07-12T07:25:09",
       "promotion_source": "canonical_judgment_rules_preview",
+      "review_note": "AI信頼・犬の名前の会話断片を除外し、購入選択権の審査確認ルールとして修正。",
       "private": false,
       "material_types": [
         "user_preference"
@@ -268,7 +270,7 @@
       "material_type": "risk_signal",
       "domain": "lease_screening",
       "concept": "conditional_approval_checks",
-      "canonical_statement": "条件付き承認では、不確実性を残したまま通さず、追加資料・確認条件・撤退条件を明文化する。",
+      "canonical_statement": "条件付き承認では、未確認リスクを追加資料・実行条件・撤退条件に分けて明文化する。",
       "evidence_count": 2,
       "user_evidence_count": 1,
       "confidence": 0.87,
@@ -286,6 +288,7 @@
       "created_at": "2026-07-12T07:23:23",
       "updated_at": "2026-07-12T07:25:09",
       "promotion_source": "canonical_judgment_rules_preview",
+      "review_note": "デモ案件由来の返済履歴表現を外し、条件付き承認の一般ルールとして修正。",
       "private": false,
       "material_types": [
         "risk_signal"
@@ -301,13 +304,12 @@
       "material_type": "judgment_rule",
       "domain": "lease_screening",
       "concept": "intuition_gap",
-      "canonical_statement": "数字が悪くない案件でも、違和感は追加確認事項に変換し、稟議で説明できる判断軸として残す。",
+      "canonical_statement": "数字が悪くない案件でも、違和感は追加確認事項・稟議補足・条件設定のいずれかに変換する。",
       "evidence_count": 2,
       "user_evidence_count": 1,
       "confidence": 0.87,
       "risk_axis": [],
       "sample_claims": [
-        "私は、ユーザーのリース審査の経験・違和感・判断基準を、再利用できる判断資産として育てることを目的としています",
         "リース審査で、数字は悪くないが違和感がある時どう見る"
       ],
       "evidence_paths": [
@@ -317,6 +319,7 @@
       "created_at": "2026-07-12T07:23:23",
       "updated_at": "2026-07-12T07:25:09",
       "promotion_source": "canonical_judgment_rules_preview",
+      "review_note": "紫苑の目的説明を根拠から外し、審査行動へ落ちる文面に修正。",
       "private": false,
       "material_types": [
         "judgment_rule"
@@ -327,7 +330,7 @@
     },
     {
       "id": "4252a50d3fd694df",
-      "status": "active",
+      "status": "demoted",
       "source_status": "accepted_preview",
       "material_type": "judgment_rule",
       "domain": "lease_screening",
@@ -348,6 +351,8 @@
       "created_at": "2026-07-12T07:23:23",
       "updated_at": "2026-07-12T07:25:09",
       "promotion_source": "canonical_judgment_rules_preview",
+      "demoted_at": "2026-07-25",
+      "demotion_reason": "判断資産の運用ルールであり、案件の承認条件・追加確認・否認理由を直接変えないため active から外す。",
       "private": false,
       "material_types": [
         "judgment_rule"

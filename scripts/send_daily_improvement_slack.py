@@ -23,6 +23,7 @@ DEFAULT_REPORT = REPO_ROOT / "reports" / "latest.json"
 DEFAULT_MANA_REPORT = REPO_ROOT / "reports" / "mana_obsidian_curator_latest.json"
 DEFAULT_SCREENING_TERMS_REPORT = REPO_ROOT / "reports" / "screening_terms_audit_latest.json"
 DEFAULT_JUDGMENT_ASSET_GROWTH_REPORT = REPO_ROOT / "reports" / "judgment_asset_growth_latest.json"
+DEFAULT_JUDGMENT_ASSET_FIELD_REVIEW = REPO_ROOT / "reports" / "judgment_asset_field_review_latest.json"
 DEFAULT_STATE = REPO_ROOT / "data" / "slack_daily_improvement_state.json"
 DEFAULT_TIMEOUT = 15
 
@@ -189,6 +190,22 @@ def _judgment_asset_growth_lines(growth_report: dict[str, Any] | None) -> list[s
     ]
 
 
+def _judgment_asset_field_review_lines(field_review: dict[str, Any] | None) -> list[str]:
+    if not field_review:
+        return ["• field_review: `missing` / 判断資産棚卸しレポート未生成"]
+
+    summary = field_review.get("summary") if isinstance(field_review.get("summary"), dict) else {}
+    report_path = REPO_ROOT / "reports" / "judgment_asset_field_review_latest.md"
+    return [
+        (
+            "• field_review: "
+            f"grow=`{summary.get('grow', 0)}` / review=`{summary.get('review', 0)}` / "
+            f"sleeping=`{summary.get('sleeping', 0)}` / hold=`{summary.get('hold', 0)}`"
+        ),
+        f"• field_report: `{report_path.relative_to(REPO_ROOT)}`",
+    ]
+
+
 # 会話外でも問題が届くよう、日次レポートに「システム監視」節を載せる。
 # 閾値はチャットの自発報告（api/main.py）と揃える。
 _STALE_REPORT_DAYS = 3
@@ -236,6 +253,7 @@ def build_message(
     mana_report: dict[str, Any] | None = None,
     screening_terms_report: dict[str, Any] | None = None,
     judgment_asset_growth_report: dict[str, Any] | None = None,
+    judgment_asset_field_review: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     applied = _items(report, "applied_improvements")
     needs_review = _items(report, "needs_review")
@@ -279,6 +297,7 @@ def build_message(
             "",
             "*判断資産 実戦検証*",
             *_judgment_asset_growth_lines(judgment_asset_growth_report),
+            *_judgment_asset_field_review_lines(judgment_asset_field_review),
             "",
             "*システム監視*",
             *_system_monitor_lines(),
@@ -320,6 +339,7 @@ def main() -> int:
     parser.add_argument("--mana-report", type=Path, default=DEFAULT_MANA_REPORT)
     parser.add_argument("--screening-terms-report", type=Path, default=DEFAULT_SCREENING_TERMS_REPORT)
     parser.add_argument("--judgment-asset-growth-report", type=Path, default=DEFAULT_JUDGMENT_ASSET_GROWTH_REPORT)
+    parser.add_argument("--judgment-asset-field-review", type=Path, default=DEFAULT_JUDGMENT_ASSET_FIELD_REVIEW)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--webhook", default=None)
@@ -331,13 +351,21 @@ def main() -> int:
     mana_report = _read_optional_json(args.mana_report)
     screening_terms_report = _read_optional_json(args.screening_terms_report)
     judgment_asset_growth_report = _read_optional_json(args.judgment_asset_growth_report)
-    digest = _combined_hash(report, mana_report or {}, screening_terms_report or {}, judgment_asset_growth_report or {})
+    judgment_asset_field_review = _read_optional_json(args.judgment_asset_field_review)
+    digest = _combined_hash(
+        report,
+        mana_report or {},
+        screening_terms_report or {},
+        judgment_asset_growth_report or {},
+        judgment_asset_field_review or {},
+    )
     payload = build_message(
         report,
         report_date=args.date,
         mana_report=mana_report,
         screening_terms_report=screening_terms_report,
         judgment_asset_growth_report=judgment_asset_growth_report,
+        judgment_asset_field_review=judgment_asset_field_review,
     )
 
     if args.dry_run:
