@@ -152,6 +152,28 @@ def test_field_feedback_rewards_helped_and_penalizes_challenges():
     assert helped["rules"][0]["last_used_case"] == "case-001"
 
 
+def test_field_feedback_excludes_simulation_from_real_validation():
+    rules = [{"id": "rule-a", "status": "active"}]
+
+    summary = growth.summarize_field_feedback(
+        [
+            {
+                "rule_id": "rule-a",
+                "outcome": "helped",
+                "case_id": "sim-20260725-demo",
+                "source": "simulation",
+            }
+        ],
+        rules,
+    )
+
+    assert summary["score"] == 0.0
+    assert summary["totals"]["used"] == 0
+    assert summary["totals"]["helped"] == 0
+    assert summary["totals"]["simulation_skipped"] == 1
+    assert summary["unused_active_rules"] == 1
+
+
 def test_main_writes_latest_json_markdown_and_history(tmp_path):
     curator = tmp_path / "curator.json"
     mana = tmp_path / "mana.json"

@@ -102,6 +102,12 @@ def _feedback_outcome(row: dict[str, Any]) -> str:
     return ""
 
 
+def _is_simulation_feedback(row: dict[str, Any]) -> bool:
+    source = str(row.get("source") or "").strip().lower()
+    case_id = str(row.get("case_id") or row.get("case") or "").strip().lower()
+    return source == "simulation" or case_id.startswith("sim-")
+
+
 def _short(value: Any, length: int = 120) -> str:
     text = " ".join(str(value or "").split())
     if len(text) <= length:
@@ -142,6 +148,7 @@ def build_review(
     target_date: str,
     canonical: dict[str, Any],
     feedback_rows: list[dict[str, Any]] | None = None,
+    include_simulation: bool = False,
 ) -> dict[str, Any]:
     feedback_rows = feedback_rows or []
     rules = active_rules(canonical)
@@ -149,8 +156,13 @@ def build_review(
     rows_by_rule: dict[str, list[dict[str, Any]]] = defaultdict(list)
     unknown_feedback = 0
     invalid_feedback = 0
+    simulation_feedback = 0
 
     for row in feedback_rows:
+        if _is_simulation_feedback(row):
+            simulation_feedback += 1
+            if not include_simulation:
+                continue
         rule_id = _feedback_rule_id(row)
         outcome = _feedback_outcome(row)
         if not rule_id or not outcome:
@@ -195,6 +207,8 @@ def build_review(
         "hold": len(buckets["hold"]),
         "unknown_feedback": unknown_feedback,
         "invalid_feedback": invalid_feedback,
+        "simulation_feedback": simulation_feedback,
+        "include_simulation": include_simulation,
     }
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -206,6 +220,7 @@ def build_review(
         "buckets": buckets,
         "notes": [
             "この棚卸しは実利用フィードバックの見える化だけを行う。",
+            "source=simulation または sim-* case は既定では試運転として除外する。",
             "grow は昇格ではなく、次回案件で優先して試す候補。",
             "review は自動修正せず、人間が文面・適用条件・使わない条件を見る。",
             "sleeping は削除候補ではなく、実案件でまだ試されていない active ルール。",
@@ -230,6 +245,7 @@ def build_markdown(payload: dict[str, Any]) -> str:
         f"- Guardrail: {payload['guardrail']}",
         f"- Active rules: {summary['active_rules']}",
         f"- Grow: {summary['grow']} / Review: {summary['review']} / Sleeping: {summary['sleeping']} / Hold: {summary['hold']}",
+        f"- Simulation feedback: {summary.get('simulation_feedback', 0)} / included: {summary.get('include_simulation', False)}",
         f"- Unknown feedback rows: {summary['unknown_feedback']}",
         "",
     ]
@@ -271,6 +287,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--feedback-jsonl", type=Path, default=DEFAULT_FEEDBACK_JSONL)
     parser.add_argument("--output-json", type=Path, default=DEFAULT_OUTPUT_JSON)
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
+    parser.add_argument(
+        "--include-simulation",
+        action="store_true",
+        help="Include source=simulation / sim-* feedback in buckets for trial review",
+    )
     return parser.parse_args()
 
 
@@ -280,6 +301,7 @@ def main() -> int:
         target_date=args.date,
         canonical=_read_json(args.canonical_json),
         feedback_rows=_read_jsonl(args.feedback_jsonl),
+        include_simulation=args.include_simulation,
     )
     _write_json(args.output_json, payload)
     args.output_md.parent.mkdir(parents=True, exist_ok=True)

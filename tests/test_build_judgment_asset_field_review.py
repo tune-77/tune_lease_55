@@ -90,6 +90,47 @@ def test_neutral_or_used_only_feedback_goes_to_hold():
     assert payload["buckets"]["hold"][0]["counts"]["neutral"] == 1
 
 
+def test_simulation_feedback_is_excluded_by_default():
+    payload = review.build_review(
+        target_date="2026-07-25",
+        canonical=_canonical_payload(),
+        feedback_rows=[
+            {
+                "rule_id": "rule-helped",
+                "outcome": "helped",
+                "case_id": "sim-20260725-demo",
+                "source": "simulation",
+            }
+        ],
+    )
+
+    assert payload["summary"]["grow"] == 0
+    assert payload["summary"]["sleeping"] == 3
+    assert payload["summary"]["simulation_feedback"] == 1
+    assert payload["summary"]["include_simulation"] is False
+
+
+def test_simulation_feedback_can_be_included_for_trial_review():
+    payload = review.build_review(
+        target_date="2026-07-25",
+        canonical=_canonical_payload(),
+        feedback_rows=[
+            {
+                "rule_id": "rule-helped",
+                "outcome": "helped",
+                "case_id": "sim-20260725-demo",
+                "source": "simulation",
+            }
+        ],
+        include_simulation=True,
+    )
+
+    assert payload["summary"]["grow"] == 1
+    assert payload["summary"]["sleeping"] == 2
+    assert payload["summary"]["simulation_feedback"] == 1
+    assert payload["summary"]["include_simulation"] is True
+
+
 def test_markdown_contains_operational_buckets():
     payload = review.build_review(
         target_date="2026-07-25",
