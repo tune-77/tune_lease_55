@@ -215,6 +215,7 @@ if [ -f "${RESULT_FILE}" ]; then
         --report "${RESULT_FILE}" \
         --latest "${LATEST_FILE}" \
         --from-report \
+        --from-ledger \
         --include-known-cleanup
     SYNC_EXIT=$?
     log_step "sync_improvement_reports" ${SYNC_EXIT}
