@@ -134,6 +134,40 @@ def test_cloudrun_improvement_items_include_raw_preview(monkeypatch):
     assert items[0]["detail"].startswith("## AI整理")
 
 
+def test_cloudrun_improvement_items_surface_pattern_and_proposal(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-pattern-proposal",
+                "event_type": "improvement_note",
+                "surface": "shion_self_proposal",
+                "ts": "2026-07-21T10:47:37Z",
+                "payload": {
+                    "title": "自己言及質問への個性付与",
+                    "body": (
+                        "## パターン\n"
+                        "自己言及質問に一般的なAIの機能論で回答している。\n\n"
+                        "## 提案\n"
+                        "紫苑の役割や設計思想に基づく回答にする。"
+                    ),
+                },
+            }
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert items[0]["title"] == "自己言及質問への個性付与"
+    assert "本文確認が必要" not in items[0]["reason"]
+    assert "パターン: 自己言及質問に一般的なAIの機能論で回答している。" in items[0]["reason"]
+    assert "提案: 紫苑の役割や設計思想に基づく回答にする。" in items[0]["reason"]
+
+
 def test_cloudrun_improvement_items_fall_back_to_local_log(tmp_path, monkeypatch):
     import api.main as main
 

@@ -304,6 +304,8 @@ const readableImprovementTitle = (item: DialogueImprovementItem) => {
     extractMarkedReportLine(sourceText, "課題") ||
     extractReportSection(sourceText, "原文") ||
     extractReportSection(sourceText, "ユーザー要望") ||
+    extractReportSection(sourceText, "パターン") ||
+    extractReportSection(sourceText, "提案") ||
     title ||
     compactReportText(sourceText, 60) ||
     item.id ||
@@ -320,7 +322,12 @@ const readableImprovementReason = (item: DialogueImprovementItem) => {
   const reason = compactReportText(item.reason || item.park_reason || "", 110);
   if (reason && reason !== "Cloud Runから登録された改善入力") return reason;
   const original = extractReportSection(detail, "原文") || extractReportSection(detail, "ユーザー要望");
-  return original ? `原文: ${original}` : "";
+  if (original) return `原文: ${original}`;
+  const pattern = extractReportSection(detail, "パターン");
+  const proposal = extractReportSection(detail, "提案");
+  if (pattern && proposal) return `パターン: ${pattern} / 提案: ${proposal}`;
+  if (pattern) return `パターン: ${pattern}`;
+  return proposal ? `提案: ${proposal}` : "";
 };
 
 const pushImprovementItemLines = (lines: string[], item: DialogueImprovementItem, index: number) => {
