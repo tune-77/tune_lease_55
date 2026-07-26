@@ -6,10 +6,11 @@ chat_messages テーブルを lease_data.db 内に作成し、
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import Any, Callable
 import requests
 import re
 
+from api.context.time_context import with_current_datetime_context
 from api.db_connection import current_backend, get_connection, placeholder, ensure_schema
 
 _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -151,6 +152,7 @@ def _continue_truncated_response(
     timeout: int,
 ) -> str:
     """Continue MAX_TOKENS responses until Gemini reports a completed turn."""
+    system_prompt = with_current_datetime_context(system_prompt)
     text = str(initial_text or "").strip()
     data = initial_data
     continuation_contents = list(contents)
@@ -283,9 +285,9 @@ def call_gemini_with_tools(
     history: list[dict],
     user_message: str,
     tool_declarations: list[dict],
-    tool_executor: "Callable[[str, dict], Any]",
+    tool_executor: Callable[[str, dict], Any],
     max_tool_rounds: int = 3,
-    extra_user_parts: "list[dict] | None" = None,
+    extra_user_parts: list[dict] | None = None,
 ) -> str:
     """
     Gemini API を function calling 対応の multi-turn 形式で呼び出す。
@@ -293,12 +295,11 @@ def call_gemini_with_tools(
     tool_executor: (tool_name, args_dict) -> result_any を実行する関数
     extra_user_parts: 画像等を渡す際に text 部分の前に追加する parts (inline_data 等)
     """
-    from typing import Callable, Any as _Any  # noqa: F401
-
     api_key = _get_gemini_api_key()
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY が設定されていません")
 
+    system_prompt = with_current_datetime_context(system_prompt)
     contents: list[dict] = []
     for msg in history:
         gemini_role = "user" if msg["role"] == "user" else "model"
@@ -380,6 +381,7 @@ def call_gemini_chat(
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY が設定されていません")
 
+    system_prompt = with_current_datetime_context(system_prompt)
     contents = []
     for msg in history:
         gemini_role = "user" if msg["role"] == "user" else "model"

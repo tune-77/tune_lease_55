@@ -39,6 +39,7 @@ def test_chat_continues_until_finish_reason_is_not_max_tokens(monkeypatch):
 
     assert result == "前半。\n\n中盤。\n\n結論。"
     assert post.call_count == 3
+    assert "【現在日時】" in post.call_args_list[0].kwargs["json"]["system_instruction"]["parts"][0]["text"]
 
 
 def test_tool_chat_continues_final_text_after_tool_round(monkeypatch):
@@ -62,6 +63,7 @@ def test_tool_chat_continues_final_text_after_tool_round(monkeypatch):
 
     assert result == "紫苑の長い回答前半。\n\n回答の結論。"
     assert post.call_count == 2
+    assert "【現在日時】" in post.call_args_list[0].kwargs["json"]["system_instruction"]["parts"][0]["text"]
 
 
 def test_continuation_round_limit_adds_clear_notice(monkeypatch):

@@ -13565,8 +13565,47 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     )
     from lease_intelligence_tools import TOOL_DECLARATIONS, execute_tool
     from lease_news_digest import find_vault
+    from api.context.time_context import current_time_reply_if_requested
 
     vault = find_vault()
+    time_reply = current_time_reply_if_requested(message)
+    if time_reply:
+        save_message(DIALOGUE_USER_ID, "user", message)
+        save_message(DIALOGUE_USER_ID, "assistant", time_reply)
+        note_path = append_dialogue_note(vault, message, time_reply) if vault else ""
+        knowledge_connection = _build_lease_intelligence_knowledge_connection(vault)
+        _record_cloudrun_chat_exchange(
+            surface="lease_intelligence_dialogue",
+            user_id=DIALOGUE_USER_ID,
+            user_message=message,
+            assistant_reply=time_reply,
+            category="deterministic_current_time",
+            response_mode="shion",
+            metadata={
+                "obsidian_available": bool(vault),
+                "context_mode": "casual",
+            },
+        )
+        return {
+            "reply": time_reply,
+            "state": {
+                "dominant_mood": "時刻確認",
+                "knowledge_available": bool(
+                    knowledge_connection.get("case_count")
+                    or knowledge_connection.get("vector_chunks")
+                    or knowledge_connection.get("markdown_notes")
+                ),
+                "knowledge_connection": knowledge_connection,
+            },
+            "note_path": note_path,
+            "knowledge_refs": [],
+            "personal_memory_capture": personal_memory_capture,
+            "user_personal_memory": {"used": False, "refs": [], "line_count": 0},
+            "shared_shion_memory": {},
+            "long_input_mode": False,
+            "context_mode": "casual",
+            "history_messages_sent": 0,
+        }
 
     # 前回約束した調査タスクがあれば冒頭に報告する。
     # 日次の investigate_pending_tasks が下調べ(finding)を付けていれば、その結果も

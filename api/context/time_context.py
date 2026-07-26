@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from typing import Any
 
 try:
@@ -29,6 +30,35 @@ def current_datetime_prompt_block(now: dt.datetime | None = None) -> str:
     return (
         f"{CURRENT_DATETIME_LABEL}{current.strftime('%Y年%m月%d日 %H:%M')} "
         f"(JST, {current.date().isoformat()}, {weekday}曜日)"
+    )
+
+
+def current_time_reply_if_requested(message: str, now: dt.datetime | None = None) -> str | None:
+    """Return a deterministic JST answer for simple current-time questions."""
+    text = re.sub(r"\s+", "", str(message or ""))
+    if not text:
+        return None
+    asks_time = any(
+        key in text
+        for key in (
+            "今何時",
+            "いま何時",
+            "今の時間",
+            "現在時刻",
+            "今時刻",
+            "いまの時間",
+        )
+    )
+    if not asks_time:
+        return None
+    current = now or dt.datetime.now(_jst())
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=_jst())
+    current = current.astimezone(_jst())
+    weekday = ["月", "火", "水", "木", "金", "土", "日"][current.weekday()]
+    return (
+        f"今はJSTで{current.strftime('%H:%M')}です。"
+        f"{current.strftime('%Y年%m月%d日')}（{weekday}曜日）です。"
     )
 
 
