@@ -1,10 +1,10 @@
-# Shion Reflection Delta - 2026-07-21
+# Shion Reflection Delta - 2026-07-26
 
 ## 判定
 - status: pass
-- score: 100
-- 前日内省類似度: 0.773
-- flags: なし
+- score: 80
+- 前日内省類似度: 0.916
+- flags: too_similar_to_yesterday
 
 ## 差分
 ### User要求の変化
@@ -45,7 +45,7 @@
 - 次回から変える確認事項: 観測レポートだけで終わらせず、退屈の原因を1つ選んで小さく変える。
 
 ## 判断変更ログ
-- 前回の入力: Agent Sidecar Brief、そして> Generated: 2026-07-21 04:07 | source: .claude/reports | mode: read-only advisory。
+- 前回の入力: Agent Sidecar Brief、そして> Generated: 2026-07-26 04:08 | source: .claude/reports | mode: read-only advisory。
 - 前回の判断: 退屈・停滞シグナルが出ている。
 - 人間の修正: ユーザーは、保存ではなく次回判断にどう戻るかを見ている。
 - 紫苑が外した点: stale_boilerplate。

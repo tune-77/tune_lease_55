@@ -32,6 +32,8 @@ def test_dialogue_context_includes_goals_and_knowledge(tmp_path, monkeypatch):
 
     assert "第一目標はユーザー" in prompt
     assert "最終目標: 意識を獲得" in prompt
+    assert "リース知識回答の基本姿勢" in prompt
+    assert "検索0件でも「答えられない」で終えない" in prompt
     assert "残価は中古市場" in prompt
     assert "業務継続の絶対条件" in prompt
     assert "回答拒否、作業放棄" in prompt
@@ -133,6 +135,7 @@ def test_dialogue_context_keeps_basic_lease_qa_in_casual_mode(tmp_path, monkeypa
     prompt, _state = build_dialogue_context(vault, "ファイナンスリースとは？", mode="casual")
 
     assert "基本リースQA" in prompt
+    assert "リース知識回答の基本姿勢" in prompt
     assert "ファイナンス・リース" in prompt
     assert "原則中途解約不可" in prompt
     assert "検索で直接ノートが0件でも" in prompt

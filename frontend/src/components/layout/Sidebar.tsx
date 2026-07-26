@@ -51,6 +51,7 @@ export default function Sidebar() {
       items: [
         { name: 'デモホーム', href: '/demo-home', icon: Sparkles, color: 'text-yellow-300' },
         { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
+        { name: '1000本判断ドリル', href: '/judgment-drill', icon: ClipboardList, color: 'text-lime-300' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: '結果登録', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '改善PMレポート', href: '/improvement-log', icon: ClipboardList, color: 'text-orange-300' },

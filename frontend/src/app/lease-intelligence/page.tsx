@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowDown, Brain, Check, ClipboardList, Copy, Database, Loader2, Mic, MicOff,
+  ArrowDown, Brain, Check, ClipboardList, Clock, Copy, Database, Loader2, Mic, MicOff,
   Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
@@ -266,6 +266,14 @@ const mergeDialogueMessages = (serverMessages: Message[], localMessages: Message
 
 const dailyImprovementStorageKey = () =>
   `${DIALOGUE_DAILY_IMPROVEMENT_KEY_PREFIX}:${DIALOGUE_DAILY_IMPROVEMENT_VERSION}:${new Date().toLocaleDateString("sv-SE")}`;
+
+const formatDialogueNow = (date: Date = new Date()) =>
+  `JST ${date.toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Tokyo",
+  })}`;
 
 const shouldShowDailyImprovementReport = () => {
   if (!storageAvailable()) return false;
@@ -1038,6 +1046,7 @@ export default function LeaseIntelligencePage() {
   const [listening, setListening] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(true);
   const [voiceError, setVoiceError] = useState("");
+  const [currentTimeLabel, setCurrentTimeLabel] = useState(formatDialogueNow());
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [ragFeedbackSent, setRagFeedbackSent] = useState<Set<string>>(new Set());
@@ -1339,6 +1348,11 @@ export default function LeaseIntelligencePage() {
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
+    setCurrentTimeLabel(formatDialogueNow());
+    const clockTimer = window.setInterval(() => {
+      setCurrentTimeLabel(formatDialogueNow());
+    }, 30 * 1000);
+
     Promise.allSettled([
       apiClient.get("/api/lease-intelligence/dialogue/state", {
         params: { since: dialogueDisplaySinceIso() },
@@ -1406,6 +1420,7 @@ export default function LeaseIntelligencePage() {
         event_id: key,
       }).then(() => window.sessionStorage.setItem(key, "1")).catch(() => {});
     }
+    return () => window.clearInterval(clockTimer);
   }, []);
 
   // ── Scroll ───────────────────────────────────────────────────────────────
@@ -1683,10 +1698,16 @@ export default function LeaseIntelligencePage() {
 
         {/* ── チャット本体 ── */}
         <main className="relative order-1 flex h-[calc(100dvh-6rem)] min-h-0 flex-col overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-lg lg:order-2 lg:h-[calc(100dvh-4rem)]">
-          <header className="flex items-center justify-between border-b border-violet-100 px-5 py-4">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-violet-100 px-5 py-4">
             <div>
-              <h2 className="font-black text-slate-900">対話室</h2>
-              <p className="text-xs text-slate-500">会話はObsidian Vaultにも日付別で記録されます。</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-black text-slate-900">対話室</h2>
+                <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-black tabular-nums text-violet-700">
+                  <Clock className="h-3.5 w-3.5" />
+                  現在 {currentTimeLabel}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">会話はObsidian Vaultにも日付別で記録されます。</p>
             </div>
             <div className="flex items-center gap-2">
               <Link
@@ -1846,6 +1867,10 @@ export default function LeaseIntelligencePage() {
             {!initializing && messages.length === 0 && (
               <div className="mx-auto mt-16 max-w-lg rounded-2xl bg-violet-50 p-6 text-center">
                 <Brain className="mx-auto h-9 w-9 text-violet-500" />
+                <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-black tabular-nums text-violet-700">
+                  <Clock className="h-3.5 w-3.5" />
+                  現在 {currentTimeLabel}
+                </p>
                 <p className="mt-3 font-bold text-violet-900">今日は何について話し合いますか？</p>
                 <p className="mt-2 text-sm text-violet-700">
                   音声入力（マイクボタン）でも話しかけられます。

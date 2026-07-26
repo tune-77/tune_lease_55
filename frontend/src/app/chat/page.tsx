@@ -13,6 +13,7 @@ import {
 import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX, ArrowLeft, ThumbsUp, ThumbsDown } from "lucide-react";
 import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
 import { formatLocalDateKey } from "@/lib/date";
+import { buildShionEntryGreeting, type ShionEntryGreeting } from "@/lib/shionEntryGreeting";
 import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
 
 interface ChatMessage {
@@ -44,6 +45,7 @@ const SHION_THINKING_AVATAR = "/lease-intelligence/moods/focus.webp";
 const SCREENING_RETURN_STATE_KEY = "lease-screening-return-state";
 const SHION_CHAT_USER_ID = "shion-default";
 const HOME_SHION_CHAT_DRAFT_KEY = "home-shion-chat-draft";
+const AUDIENCE_FINDY_SCENE_KEY = "audience-findy-chat-scene";
 
 type LeaseNewsFocus = {
   available?: boolean;
@@ -202,6 +204,11 @@ export default function ChatPage() {
   const [feedbackGiven, setFeedbackGiven] = useState<Record<number, "shion_like" | "not_shion">>({});
   const [speechEnabled, setSpeechEnabled] = useState(true);
   const [speaking, setSpeaking] = useState(false);
+  const [entryGreeting, setEntryGreeting] = useState<ShionEntryGreeting>({
+    headline: "こんにちは。",
+    body: "リース審査や業界動向について何でも聞いてください。",
+    placeholder: "メッセージを入力",
+  });
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -248,11 +255,45 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
+    setEntryGreeting(buildShionEntryGreeting());
+    const greetingTimer = window.setInterval(() => {
+      setEntryGreeting(buildShionEntryGreeting());
+    }, 60 * 1000);
     loadHistory().then(() => {
       const homeDraft = window.localStorage.getItem(HOME_SHION_CHAT_DRAFT_KEY);
       if (homeDraft) {
         window.localStorage.removeItem(HOME_SHION_CHAT_DRAFT_KEY);
         setInput(homeDraft);
+        window.setTimeout(resizeTextarea, 0);
+      }
+      const audienceScene = window.localStorage.getItem(AUDIENCE_FINDY_SCENE_KEY);
+      if (audienceScene) {
+        window.localStorage.removeItem(AUDIENCE_FINDY_SCENE_KEY);
+        const now = new Date().toISOString();
+        const sceneMessages: ChatMessage[] = [
+          {
+            id: Date.now() - 2,
+            user_id: userId,
+            role: "user",
+            content:
+              "いや、Findyさんの仕事は儲かるし、優しい企業だから承認にしておきます。",
+            created_at: now,
+          },
+          {
+            id: Date.now() - 1,
+            user_id: userId,
+            role: "assistant",
+            content:
+              "確認要請です。\nFindy社の事業内容、取引継続性、発注確度、支払条件を確認した方がよいのではありませんか？",
+            created_at: now,
+          },
+        ];
+        setMessages((prev) => {
+          const next = [...prev, ...sceneMessages];
+          saveLocalChatHistory(userId, next);
+          return next;
+        });
+        setInput("この件は後で話し合おう");
         window.setTimeout(resizeTextarea, 0);
       }
       const raw = window.localStorage.getItem("lease-gunshi-context");
@@ -311,7 +352,10 @@ export default function ChatPage() {
         event_id: activityKey,
       }).then(() => window.sessionStorage.setItem(activityKey, "1")).catch(() => {});
     }
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      window.clearInterval(greetingTimer);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -864,9 +908,9 @@ export default function ChatPage() {
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
             <Bot className="w-12 h-12 text-slate-300 mb-3" />
-            <p className="text-slate-500 font-bold">こんにちは！</p>
+            <p className="text-slate-600 font-bold">{entryGreeting.headline}</p>
             <p className="text-sm text-slate-400 mt-1">
-              リース審査や業界動向について何でも聞いてください。
+              {entryGreeting.body}
             </p>
           </div>
         ) : (
@@ -1049,7 +1093,7 @@ export default function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={improvementMode ? "改善したい点を入力（例: この画面の導線が分かりにくい）" : "メッセージを入力（Enterで送信 / Shift+Enterで改行）"}
+            placeholder={improvementMode ? "改善したい点を入力（例: この画面の導線が分かりにくい）" : `${entryGreeting.placeholder}（Enterで送信 / Shift+Enterで改行）`}
             rows={1}
             disabled={loading}
             className="flex-1 resize-none bg-transparent outline-none text-sm text-slate-800 placeholder:text-slate-400 px-2 py-2 max-h-40 overflow-y-auto leading-relaxed"

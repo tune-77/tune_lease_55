@@ -140,7 +140,7 @@ Status: planned
 
 ### Phase 1: Observation Only
 
-Status: planned
+Status: implemented initial sidecar on 2026-07-25
 
 回答挙動を一切変えず、既存の参照情報だけを集計する。
 
@@ -157,6 +157,20 @@ Status: planned
 - プロンプトを変えない
 - 回答文を変えない
 - 自動昇格しない
+
+実装:
+
+- `scripts/obsidian_memory_effectiveness_report.py`
+- `reports/obsidian_memory_effectiveness_latest.md`
+- `reports/obsidian_memory_effectiveness_latest.json`
+- `data/obsidian_memory_effectiveness.jsonl`
+
+対象:
+
+- 初期は `knowledge_base/okf_lease_concepts` のOKF風知識パック
+- `data/shion_memory_index.json`
+- `reports/okf_rag_eval_latest.json`
+- `data/judgment_asset_usage_feedback.jsonl`
 
 ### Phase 2: Used Detection
 
