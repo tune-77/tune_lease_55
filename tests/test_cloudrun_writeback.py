@@ -81,11 +81,20 @@ class _FakeGCSLock:
 
 
 def _install_fake_gcs(monkeypatch, blob: MagicMock) -> None:
-    from google.cloud import storage
+    try:
+        from google.cloud import storage
+    except ImportError:
+        storage = ModuleType("google.cloud.storage")
+        cloud_mod = sys.modules.get("google.cloud")
+        if cloud_mod is None:
+            cloud_mod = ModuleType("google.cloud")
+            monkeypatch.setitem(sys.modules, "google.cloud", cloud_mod)
+        setattr(cloud_mod, "storage", storage)
+        monkeypatch.setitem(sys.modules, "google.cloud.storage", storage)
 
     client_cls = MagicMock()
     client_cls.return_value.bucket.return_value.blob.return_value = blob
-    monkeypatch.setattr(storage, "Client", client_cls)
+    monkeypatch.setattr(storage, "Client", client_cls, raising=False)
 
     lock_mod = ModuleType("scripts.gcs_lock")
     lock_mod.GCSLock = _FakeGCSLock

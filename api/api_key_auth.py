@@ -27,17 +27,38 @@ def get_api_access_key() -> str:
     return os.environ.get("API_ACCESS_KEY", "").strip()
 
 
+def api_access_key_required() -> bool:
+    """Return whether protected API paths must have an access key configured.
+
+    Local development keeps the historical opt-in behavior. Managed/public
+    runtimes fail closed so a missing environment variable does not silently
+    expose mutating API endpoints.
+    """
+    raw = os.environ.get("REQUIRE_API_ACCESS_KEY", "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return bool(os.environ.get("K_SERVICE", "").strip())
+
+
 class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         access_key = get_api_access_key()
-        if not access_key:
-            return await call_next(request)
         path = request.url.path
         # CORS プリフライトと公開パスは検証しない
         if request.method == "OPTIONS" or path in AUTH_EXEMPT_PATHS:
             return await call_next(request)
         # 保護対象は API パスのみ（静的・ドキュメント配信は上で除外済み）
         if not path.startswith("/api/"):
+            return await call_next(request)
+        if not access_key:
+            if api_access_key_required():
+                return Response(
+                    content='{"detail":"API_ACCESS_KEY is required in this runtime"}',
+                    status_code=503,
+                    media_type="application/json",
+                )
             return await call_next(request)
         provided = request.headers.get("X-API-Key", "")
         if not provided:

@@ -252,6 +252,7 @@ def _run_full_scoring_api_locked(inputs: dict) -> dict:
     except Exception as e:
         print(f"[ERROR] Engine Failure: {e}")
         import traceback; traceback.print_exc()
+        raise RuntimeError(f"審査エンジン実行に失敗しました: {e}") from e
 
     # API実行時はメモリ上の結果を優先する。物理ファイルはStreamlit互換の後方互換だけに残す。
     res_state = getattr(sc_mod, "_API_LAST_RESULT", None) or _SHARED_SESSION_STATE.get("last_result")
@@ -290,16 +291,9 @@ def _run_full_scoring_api_locked(inputs: dict) -> dict:
             return res
         except Exception as e:
             print(f"[ERROR] Failed to read physical file: {e}")
+            raise RuntimeError(f"審査エンジンの結果ファイルを読めませんでした: {e}") from e
 
-    # 万が一、物理ファイルがない場合のバックアップ
-    print(f"[DEBUG] Physical file not found. Attempting backup sync.")
     res_backup = _SHARED_SESSION_STATE.get("last_result")
-    if res_backup: return res_backup
-    
-    return {
-        "score": _SHARED_SESSION_STATE.get("final_score", 45.0),
-        "user_op_margin": _SHARED_SESSION_STATE.get("user_op_margin", 0.0),
-        "user_equity_ratio": _SHARED_SESSION_STATE.get("user_equity_ratio", 0.0),
-        "hantei": "要確認",
-        "comparison": "物理ファイル経由でのデータ抽出に失敗しました。エンジンは完走した可能性があります。"
-    }
+    if isinstance(res_backup, dict):
+        return res_backup
+    raise RuntimeError("審査エンジンは完了しましたが、有効な結果を返しませんでした。")

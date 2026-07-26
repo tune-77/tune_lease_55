@@ -29,13 +29,16 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import re
 import shutil
+import socket
 import sys
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 from runtime_paths import get_data_path, get_db_path
 
 # プロジェクトルートをPYTHONPATHに追加して、既存モジュール(scoring_core)をインポート可能にする
@@ -473,7 +476,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 # 共有シークレットによる API アクセス制御（api/api_key_auth.py に実装。多層防御）。
-from api.api_key_auth import ApiKeyAuthMiddleware, get_api_access_key
+from api.api_key_auth import ApiKeyAuthMiddleware, api_access_key_required, get_api_access_key
 # 公開デモ用の削除保護（api/demo_guard.py に実装）。
 from api.demo_guard import DemoReadonlyMiddleware, is_demo_readonly
 
@@ -506,6 +509,8 @@ if is_demo_readonly():
 app.add_middleware(ApiKeyAuthMiddleware)
 if get_api_access_key():
     logger.info("ApiKeyAuthMiddleware 有効: /api/* は X-API-Key 必須")
+elif api_access_key_required():
+    logger.error("API_ACCESS_KEY 未設定: この実行環境では /api/* を 503 で拒否します")
 else:
     logger.warning(
         "API_ACCESS_KEY 未設定: API 認証は無効です。"
@@ -7774,15 +7779,20 @@ def _read_obsidian_files(vault_path: str, rel_paths: list[str], max_bytes: int =
     """指定されたObsidianノートを読み込み、結合テキストとファイル名リストを返す。"""
     parts = []
     files_read = []
-    vault_norm = os.path.normpath(vault_path)
+    try:
+        vault_root = Path(vault_path).expanduser().resolve(strict=True)
+    except OSError:
+        return "", []
     for rel_path in rel_paths:
-        full = os.path.normpath(os.path.join(vault_path, rel_path))
-        if not full.startswith(vault_norm):
+        try:
+            full_path = (vault_root / rel_path).resolve(strict=True)
+            full_path.relative_to(vault_root)
+        except (OSError, ValueError):
             continue
-        if not full.endswith(".md") or not os.path.isfile(full):
+        if full_path.suffix != ".md" or not full_path.is_file():
             continue
         try:
-            with open(full, "r", encoding="utf-8", errors="ignore") as f:
+            with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read(max_bytes)
             parts.append(f"=== {rel_path} ===\n{content}")
             files_read.append(rel_path)
@@ -16145,8 +16155,10 @@ def _lease_news_dir(vault: Path, create: bool = False) -> Path | None:
 
 def _fetch_url_text(url: str) -> str:
     import requests as _req
+    _validate_public_http_url(url)
     resp = _req.get(url, timeout=15, headers={"User-Agent": "TuneLeaseBot/1.0"})
     resp.raise_for_status()
+    _validate_public_http_url(resp.url)
     from html.parser import HTMLParser
 
     class _TextExtractor(HTMLParser):
@@ -16172,6 +16184,35 @@ def _fetch_url_text(url: str) -> str:
     parser = _TextExtractor()
     parser.feed(resp.text)
     return "\n".join(parser._parts)[:6000]
+
+
+def _validate_public_http_url(url: str) -> None:
+    """Reject URLs that could reach local/private infrastructure."""
+    parsed = urlparse((url or "").strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="URLは http/https のみ指定できます")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="認証情報を含むURLは指定できません")
+    host = parsed.hostname
+    if not host:
+        raise HTTPException(status_code=400, detail="URLのホスト名が不正です")
+    if host.lower() in {"localhost", "metadata.google.internal"} or host.lower().endswith(".local"):
+        raise HTTPException(status_code=400, detail="ローカル/内部ホストは指定できません")
+    try:
+        addresses = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=400, detail=f"URLの名前解決に失敗: {exc}") from exc
+    for addr in addresses:
+        ip = ipaddress.ip_address(addr[4][0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise HTTPException(status_code=400, detail="ローカル/内部ネットワーク宛のURLは指定できません")
 
 
 _NEWS_SUMMARY_CODE_TEXT = {

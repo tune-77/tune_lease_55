@@ -39,6 +39,12 @@ def test_disabled_when_key_unset(monkeypatch):
     assert client.get("/api/secret").status_code == 200
 
 
+def test_missing_key_fails_closed_in_cloud_run(monkeypatch):
+    monkeypatch.setenv("K_SERVICE", "lease-api")
+    client = _build_client(monkeypatch, "")
+    assert client.get("/api/secret").status_code == 503
+
+
 def test_blocks_without_key_when_enabled(monkeypatch):
     client = _build_client(monkeypatch, "s3cret")
     assert client.get("/api/secret").status_code == 401
