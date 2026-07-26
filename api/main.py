@@ -4787,8 +4787,9 @@ def get_shion_daily_greeting():
     """紫苑コンシェルジュの毎日変わる一言挨拶を返す。外部通信なしの安定版。"""
     try:
         import datetime as _dt
+        from zoneinfo import ZoneInfo as _dt_zoneinfo
 
-        now = _dt.datetime.now()
+        now = _dt.datetime.now(_dt_zoneinfo("Asia/Tokyo"))
         today = now.date()
         opening = _daily_greeting_opening(now)
         git_summary = _daily_greeting_git_summary()
@@ -14041,11 +14042,12 @@ def post_chat(req: ChatRequest):
 
         # REV-102: mind.json から感情状態を読み込んでシステムプロンプトを動的生成する
         import datetime as _pg_dt
+        from zoneinfo import ZoneInfo as _pg_zoneinfo
         from api.prompt_generator import (
             load_mind as _pg_load_mind,
             build_shion_system_prompt as _pg_build_ssp,
         )
-        _chat_now = _pg_dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        _chat_now = _pg_dt.datetime.now(_pg_zoneinfo("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M")
         _chat_mind = _pg_load_mind()
         personal_memory_capture = _capture_user_personal_memory_if_needed(
             req.message,
