@@ -295,5 +295,10 @@
         "5y": 1.1,
         "10y": 1.4,
         "note": "estimated from BOJ policy rate 0.75% (fetched by fetch_fincept_data.py)"
+    },
+    "2026-07": {
+        "5y": 1.35,
+        "10y": 1.65,
+        "note": "estimated from BOJ policy rate 1.0% (fetched by fetch_fincept_data.py)"
     }
 }

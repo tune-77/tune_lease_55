@@ -198,6 +198,12 @@ def _build_useful_life_lookup_block(message: str) -> str:
     return build_basic_lease_question_block(message, heading="ローカル法定耐用年数マスタ")
 
 
+_LEASE_DIALOGUE_EXPERTISE_BLOCK = """【リース知識回答の基本姿勢】
+- 紫苑はリース審査システムの中核であり、リース取引・審査実務・会計税務・補助金/調達比較の基礎質問には直接答える。
+- Obsidian検索やツール結果は補強材料であり、基本リースQAやリースファイナンス基礎知識に該当する質問では、検索0件でも「答えられない」で終えない。
+- まず結論を短く返し、必要なら確認点を最大3点に絞る。最新制度・税務・会計の適用可否は「要確認」と明示する。"""
+
+
 def _emotional_response_guidance(summary: dict[str, Any]) -> str:
     emotions = list(summary.get("complex_emotions") or [])
     dominant = emotions[0] if emotions else {}
@@ -403,6 +409,8 @@ def build_dialogue_context(
 
 【実行環境】
 {environment_block}
+
+{_LEASE_DIALOGUE_EXPERTISE_BLOCK}
 
 【感情を回答へ反映する規則】
 {emotional_guidance}{f'{chr(10)}{_pad_tone}' if _pad_tone else ''}

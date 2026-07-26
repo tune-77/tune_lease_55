@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-07-21T04:08:23`
+- generated_at: `2026-07-26T04:09:24`
 - status: `ok`
-- scanned_files: `383`
+- scanned_files: `403`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
 - review: `62`
-- ok: `1918`
+- ok: `1981`
 
 ## Glossary
 
@@ -20,15 +20,15 @@
 
 ## Warn / Review Findings
 
-- `review` `actual_pd` `api/main.py:9321` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9544` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE shion_screening_reviews`
-- `review` `actual_pd` `api/main.py:9333` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9556` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",`
-- `review` `actual_pd` `api/main.py:11110` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:11399` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table_name}`
-- `review` `actual_pd` `api/main.py:11434` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:11723` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:11458` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:11747` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
@@ -104,9 +104,9 @@
   - `UPDATE past_cases`
 - `review` `actual_pd` `scripts/backfill_demo_qrisk.py:386` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE screening_records`
-- `review` `actual_pd` `scripts/cleanup_improvement_reviews.py:163` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/cleanup_improvement_reviews.py:184` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-061": "PD表示の明確化",`
-- `review` `actual_pd` `scripts/cleanup_improvement_reviews.py:171` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/cleanup_improvement_reviews.py:192` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-085": "PD表示色分け",`
 - `review` `actual_pd` `scripts/dogify_demo_company_names.py:148` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `conn.executemany("UPDATE past_cases SET data = ? WHERE id = ?", past_updates)`

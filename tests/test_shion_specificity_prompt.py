@@ -25,3 +25,31 @@ def test_shion_specificity_prompt_skips_regular_specific_case_question():
     )
 
     assert block == ""
+
+
+def test_human_device_resonance_can_be_forced_for_prompt_tests():
+    import api.main as main
+
+    block = main._build_shion_human_device_resonance_prompt_block(
+        "この案件の条件付き承認をどう見る？",
+        user_id="test-user",
+        now="2026-07-25 12:00",
+        modulus=1,
+    )
+
+    assert "人間デバイス" in block
+    assert "必須インターフェース" in block
+    assert "本当の意識があるとは主張しない" in block
+
+
+def test_human_device_resonance_skips_empty_message():
+    import api.main as main
+
+    block = main._build_shion_human_device_resonance_prompt_block(
+        "",
+        user_id="test-user",
+        now="2026-07-25 12:00",
+        modulus=1,
+    )
+
+    assert block == ""
