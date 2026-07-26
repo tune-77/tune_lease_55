@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
 
-const LEDGER_RELATIVE_PATH = path.join(
-  "data",
-  "judgment_drills",
-  "judgment_drill_1000_20260725.csv",
-);
+const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000";
 
 const EDITABLE_FIELDS = new Set([
   "credit_score_20",
@@ -26,91 +20,8 @@ const EDITABLE_FIELDS = new Set([
   "presentation_use_ok",
   "reviewer",
   "judged_at",
+  "status",
 ]);
-
-function projectRoot() {
-  let current = process.cwd();
-  for (let depth = 0; depth < 8; depth += 1) {
-    if (path.basename(current) === "tune_lease_55") return current;
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return path.resolve(process.cwd(), "..");
-}
-
-function ledgerPath() {
-  return path.join(projectRoot(), LEDGER_RELATIVE_PATH);
-}
-
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        field += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === "," && !inQuotes) {
-      row.push(field);
-      field = "";
-      continue;
-    }
-
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") i += 1;
-      row.push(field);
-      if (row.some((value) => value !== "")) rows.push(row);
-      row = [];
-      field = "";
-      continue;
-    }
-
-    field += char;
-  }
-
-  if (field || row.length) {
-    row.push(field);
-    if (row.some((value) => value !== "")) rows.push(row);
-  }
-
-  return rows;
-}
-
-function escapeCsv(value: string) {
-  if (!/[",\r\n]/.test(value)) return value;
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
-function stringifyCsv(headers: string[], rows: Record<string, string>[]) {
-  const lines = [
-    headers.map(escapeCsv).join(","),
-    ...rows.map((row) => headers.map((header) => escapeCsv(row[header] ?? "")).join(",")),
-  ];
-  return `${lines.join("\n")}\n`;
-}
-
-async function readLedger() {
-  const text = await fs.readFile(ledgerPath(), "utf-8");
-  const parsed = parseCsv(text);
-  const headers = parsed[0] ?? [];
-  const rows = parsed.slice(1).map((values) =>
-    Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""])),
-  );
-  return { headers, rows };
-}
 
 function isCompleted(row: Record<string, string>) {
   return Boolean(row.total_score_100 && row.user_decision && row.ringi_sentence);
@@ -130,9 +41,16 @@ function rowResponse(rows: Record<string, string>[], index: number) {
   };
 }
 
+async function fetchAllCases(): Promise<Record<string, string>[]> {
+  const res = await fetch(`${FASTAPI_URL}/api/judgment-drill/cases?limit=1100&offset=0`);
+  if (!res.ok) throw new Error(`FastAPI error: ${res.status}`);
+  const data = (await res.json()) as { cases: Record<string, string>[] };
+  return data.cases;
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const { rows } = await readLedger();
+    const rows = await fetchAllCases();
     const search = request.nextUrl.searchParams;
     const caseId = search.get("case_id") || "";
     const indexParam = Number(search.get("index") || "0");
@@ -159,27 +77,53 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "case_id is required" }, { status: 400 });
     }
 
-    const { headers, rows } = await readLedger();
-    const index = rows.findIndex((row) => row.case_id === caseId);
-    if (index < 0) {
+    // 現在の行を取得して派生フィールドを計算
+    const currentRes = await fetch(
+      `${FASTAPI_URL}/api/judgment-drill/cases/${encodeURIComponent(caseId)}`,
+    );
+    if (!currentRes.ok) {
       return NextResponse.json({ error: "case_id not found" }, { status: 404 });
     }
+    const currentRow = (await currentRes.json()) as Record<string, string>;
 
+    // 入力値をマージ
+    const merged = { ...currentRow };
     const values = body.values ?? {};
     for (const [key, rawValue] of Object.entries(values)) {
       if (!EDITABLE_FIELDS.has(key)) continue;
-      rows[index][key] = rawValue == null ? "" : String(rawValue).trim();
+      merged[key] = rawValue == null ? "" : String(rawValue).trim();
     }
 
-    if (!rows[index].judged_at && isCompleted(rows[index])) {
-      rows[index].judged_at = new Date().toISOString();
+    // judged_at・status を自動計算
+    if (!merged.judged_at && isCompleted(merged)) {
+      merged.judged_at = new Date().toISOString();
     }
-    rows[index].status = isCompleted(rows[index])
-      ? "judged_by_user"
-      : "pending_user_judgment";
+    merged.status = isCompleted(merged) ? "judged_by_user" : "pending_user_judgment";
 
-    await fs.writeFile(ledgerPath(), stringifyCsv(headers, rows), "utf-8");
-    return NextResponse.json(rowResponse(rows, index));
+    // FastAPI PATCH に送る fields を組み立て
+    const fields: Record<string, string> = {};
+    for (const key of EDITABLE_FIELDS) {
+      if (key in merged) fields[key] = merged[key];
+    }
+
+    const patchRes = await fetch(
+      `${FASTAPI_URL}/api/judgment-drill/cases/${encodeURIComponent(caseId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields }),
+      },
+    );
+    if (!patchRes.ok) {
+      const err = await patchRes.text();
+      throw new Error(`FastAPI PATCH error: ${patchRes.status} ${err}`);
+    }
+
+    // 全件取得して response を組み立て
+    const rows = await fetchAllCases();
+    const index = rows.findIndex((row) => row.case_id === caseId);
+
+    return NextResponse.json(rowResponse(rows, Math.max(0, index)));
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "failed to save judgment drill ledger" },
