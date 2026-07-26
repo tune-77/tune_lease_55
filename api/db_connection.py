@@ -316,6 +316,27 @@ def ensure_schema() -> None:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        # judgment_lifecycle_events ─────────────────────────────────────────────
+        f"""CREATE TABLE IF NOT EXISTS judgment_lifecycle_events (
+            id {auto_pk},
+            case_id TEXT NOT NULL,
+            event_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            event_type TEXT NOT NULL,
+            event_stage TEXT NOT NULL DEFAULT '',
+            actor TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            deal_outcome TEXT DEFAULT '',
+            review_outcome TEXT DEFAULT '',
+            post_outcome TEXT DEFAULT '',
+            judgment_asset_id TEXT DEFAULT '',
+            decision_before TEXT DEFAULT '',
+            decision_after TEXT DEFAULT '',
+            human_signal TEXT DEFAULT '',
+            ai_signal TEXT DEFAULT '',
+            note TEXT DEFAULT '',
+            payload TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
         # sync_log ───────────────────────────────────────────────────────────────
         f"""CREATE TABLE IF NOT EXISTS sync_log (
             id {auto_pk},
@@ -336,6 +357,10 @@ def ensure_schema() -> None:
         "CREATE INDEX IF NOT EXISTS idx_screening_experience_demo ON screening_experience_cases(demo_case_id)",
         "CREATE INDEX IF NOT EXISTS idx_screening_experience_industry ON screening_experience_cases(industry_sub)",
         "CREATE INDEX IF NOT EXISTS idx_screening_experience_created ON screening_experience_cases(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_judgment_lifecycle_case ON judgment_lifecycle_events(case_id, event_at)",
+        "CREATE INDEX IF NOT EXISTS idx_judgment_lifecycle_type ON judgment_lifecycle_events(event_type)",
+        "CREATE INDEX IF NOT EXISTS idx_judgment_lifecycle_stage ON judgment_lifecycle_events(event_stage)",
+        "CREATE INDEX IF NOT EXISTS idx_judgment_lifecycle_asset ON judgment_lifecycle_events(judgment_asset_id)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_case_id ON screening_records(case_id)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_screened_at ON screening_records(screened_at)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_outcome ON screening_records(outcome)",

@@ -5074,6 +5074,12 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
             "auto_fix_candidates": _report_count("auto_fix_candidates", report.get("auto_fix_candidates")),
             "needs_review": _report_count("needs_review", needs_review_items),
             "rejected": _report_count("rejected", report.get("rejected")),
+            "shion_self_proposals": _report_count(
+                "shion_self_proposal",
+                (report.get("shion_self_proposals") or {}).get("items")
+                if isinstance(report.get("shion_self_proposals"), dict)
+                else [],
+            ),
         },
     }
 
@@ -5101,8 +5107,10 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
             f"適用済み{counts.get('applied', 0)}件、"
             f"自動候補{counts.get('auto_fix_candidates', 0)}件、"
             f"要確認{counts.get('needs_review', 0)}件、"
-            f"却下{counts.get('rejected', 0)}件を必要時に報告する。"
+            f"却下{counts.get('rejected', 0)}件、"
+            f"紫苑の自己提案{counts.get('shion_self_proposals', 0)}件を必要時に報告する。"
         ),
+        "紫苑の自己提案は通常の要確認ではなく、ログから出した仮説として扱う。",
     ]
     date = str(highlights.get("date") or highlights.get("generated_at") or "").strip()
     if date:
@@ -6950,6 +6958,16 @@ def _is_cloudrun_improvement_noise(body: str, payload: dict) -> bool:
     return False
 
 
+def _is_shion_self_proposal_event(event: dict, payload: dict) -> bool:
+    surface = str(event.get("surface") or payload.get("surface") or "").strip()
+    source = str(event.get("source") or payload.get("source") or "").strip()
+    proposed_by = str(event.get("proposed_by") or payload.get("proposed_by") or "").strip()
+    self_proposal_sources = {"feedback_pattern_loop", "usage_loop"}
+    return surface == "shion_self_proposal" and (
+        source in self_proposal_sources or proposed_by == "shion"
+    )
+
+
 def _is_improvement_status_echo_entry(entry: dict) -> bool:
     title = str(entry.get("title") or "").strip()
     detail = str(entry.get("detail") or entry.get("description") or "").strip()
@@ -7446,10 +7464,14 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
                     "event_id": row.get("event_id"),
                     "event_type": "improvement_note",
                     "surface": row.get("surface") or "chat_improvement",
+                    "source": row.get("source") or "",
+                    "proposed_by": row.get("proposed_by") or "",
                     "ts": row.get("ts"),
                     "payload": {
                         "title": row.get("title") or "Cloud Run改善メモ",
                         "body": row.get("body") or "",
+                        "source": row.get("source") or "",
+                        "proposed_by": row.get("proposed_by") or "",
                     },
                 }
                 for row in _load_local_jsonl(local_log)
@@ -7487,6 +7509,8 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
         surface = str(event.get("surface") or "")
         payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
         if event_type in control_event_types:
+            continue
+        if _is_shion_self_proposal_event(event, payload):
             continue
         is_improvement = event_type == "improvement_note"
         if event_type == "chat_exchange":
