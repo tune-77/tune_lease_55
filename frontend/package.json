@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint src/",
     "lint:fix": "echo 'ERROR: lint:fix は禁止されています。手動で修正してください。' && exit 1",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit --project tsconfig.typecheck.json"
   },
   "dependencies": {
     "@types/d3-sankey": "^0.12.5",
