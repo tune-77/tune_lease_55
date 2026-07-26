@@ -246,6 +246,28 @@ def _system_monitor_lines(now: datetime | None = None) -> list[str]:
     return problems if problems else ["• 異常なし"]
 
 
+def _shion_self_proposal_lines(report: dict[str, Any]) -> list[str]:
+    section = report.get("shion_self_proposals")
+    if not isinstance(section, dict):
+        return ["• なし"]
+
+    count = int(section.get("count") or 0)
+    items = section.get("items") if isinstance(section.get("items"), list) else []
+    if count <= 0 and not items:
+        return ["• なし"]
+
+    lines = [f"• 合計 `{count}` 件（通常のneeds_reviewには含めない）"]
+    for item in items[:3]:
+        if not isinstance(item, dict):
+            continue
+        kind = _clean_text(item.get("kind") or "自己提案", 24)
+        title = _clean_text(item.get("title") or item.get("topic") or "無題", 90)
+        priority = _clean_text(item.get("priority") or "", 16)
+        suffix = f" / priority={priority}" if priority else ""
+        lines.append(f"• [{kind}] {title}{suffix}")
+    return lines
+
+
 def build_message(
     report: dict[str, Any],
     *,
@@ -288,6 +310,9 @@ def build_message(
             "",
             "*要レビュー上位*",
             *review_lines,
+            "",
+            "*紫苑の自己提案*",
+            *_shion_self_proposal_lines(report),
             "",
             "*Mana判定*",
             *_mana_lines(mana_report),

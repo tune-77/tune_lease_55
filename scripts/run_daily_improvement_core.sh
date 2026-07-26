@@ -230,6 +230,21 @@ if [ -f "${RESULT_FILE}" ]; then
             FINAL_EXIT=${SYNC_EXIT}
         fi
     fi
+
+    echo ""
+    echo "[反映] 紫苑の自己提案を改善レポートへ別枠追記中..."
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/attach_shion_self_proposals_to_report.py" \
+        --report "${RESULT_FILE}" \
+        --latest "${LATEST_FILE}" \
+        --limit 10
+    SHION_SELF_PROPOSAL_EXIT=$?
+    log_step "attach_shion_self_proposals_to_report" ${SHION_SELF_PROPOSAL_EXIT}
+    if [ ${SHION_SELF_PROPOSAL_EXIT} -ne 0 ]; then
+        echo "警告: 紫苑の自己提案セクション追記に失敗しました（終了コード ${SHION_SELF_PROPOSAL_EXIT}）"
+        if [ ${FINAL_EXIT} -eq 0 ]; then
+            FINAL_EXIT=${SHION_SELF_PROPOSAL_EXIT}
+        fi
+    fi
 fi
 
 echo ""

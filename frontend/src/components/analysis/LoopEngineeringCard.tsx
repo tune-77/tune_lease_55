@@ -22,6 +22,7 @@ type LoopEngineeringCardProps = {
   proposalsEndpoint: string;
   buttonLabel: string;
   fields: FieldSpec[];
+  proposalKindLabel?: string;
 };
 
 const PRIORITY_STYLE: Record<string, string> = {
@@ -38,6 +39,7 @@ export default function LoopEngineeringCard({
   proposalsEndpoint,
   buttonLabel,
   fields,
+  proposalKindLabel = "改善案",
 }: LoopEngineeringCardProps) {
   const [proposals, setProposals] = useState<GenericProposal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,21 +101,28 @@ export default function LoopEngineeringCard({
 
       <div className="mt-3 space-y-2">
         {proposals.length === 0 ? (
-          <p className="text-xs text-slate-400">まだ改善案がありません。ボタンを押すと生成されます。</p>
+          <p className="text-xs text-slate-400">まだ{proposalKindLabel}はありません。ボタンを押すと生成されます。</p>
         ) : (
           proposals.map((proposal, index) => (
             <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <p className="text-sm font-bold text-slate-900">{proposal.title}</p>
-                {proposal.priority && (
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${
-                      PRIORITY_STYLE[proposal.priority] || PRIORITY_STYLE.medium
-                    }`}
-                  >
-                    {proposal.priority}
-                  </span>
-                )}
+                <div className="min-w-0">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">
+                      {proposalKindLabel}
+                    </span>
+                    {proposal.priority && (
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                          PRIORITY_STYLE[proposal.priority] || PRIORITY_STYLE.medium
+                        }`}
+                      >
+                        {proposal.priority}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm font-bold text-slate-900">{proposal.title}</p>
+                </div>
               </div>
               {fields.map((field) => {
                 const value = proposal[field.key];

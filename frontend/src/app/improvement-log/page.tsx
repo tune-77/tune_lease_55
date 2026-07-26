@@ -892,11 +892,12 @@ export default function ImprovementLogPage() {
         <div className="space-y-3">
           <LoopEngineeringCard
             icon={Eye}
-            title="画面利用ループエンジニアリング"
-            description="紫苑がUserの画面利用状況を観察し、Geminiで改善案を考える"
+            title="紫苑の自己提案: 画面利用"
+            description="通常の保留ではなく、紫苑が画面利用状況から出す仮説です"
             analyzeEndpoint="/api/usage-loop/propose"
             proposalsEndpoint="/api/usage-loop/proposals"
-            buttonLabel="利用状況から改善案を考える"
+            buttonLabel="紫苑に自己提案させる"
+            proposalKindLabel="紫苑の自己提案"
             fields={[
               { key: "target_page", label: "対象" },
               { key: "reason", label: "理由" },
@@ -904,11 +905,12 @@ export default function ImprovementLogPage() {
           />
           <LoopEngineeringCard
             icon={Scale}
-            title="審査判断乖離学習ループ"
-            description="争点・稟議方針への否定的フィードバックから審査ロジックの着眼点を考える"
+            title="紫苑の自己提案: 審査判断乖離"
+            description="通常の保留ではなく、紫苑が審査フィードバックから出す確認仮説です"
             analyzeEndpoint="/api/judgment-divergence/analyze"
             proposalsEndpoint="/api/judgment-divergence/proposals"
-            buttonLabel="フィードバックから着眼点を考える"
+            buttonLabel="紫苑に自己提案させる"
+            proposalKindLabel="紫苑の自己提案"
             fields={[
               { key: "observation", label: "観察" },
               { key: "review_point", label: "確認観点" },
@@ -916,11 +918,12 @@ export default function ImprovementLogPage() {
           />
           <LoopEngineeringCard
             icon={MessageCircleHeart}
-            title="人間反応フィードバック傾向分析ループ"
-            description="紫苑の応答への否定的評価（薄い/一般論/紫苑らしくない）の傾向から改善観点を考える"
+            title="紫苑の自己提案: 人間反応"
+            description="通常の保留ではなく、紫苑が回答評価の傾向から出す応答改善仮説です"
             analyzeEndpoint="/api/feedback-pattern/analyze"
             proposalsEndpoint="/api/feedback-pattern/proposals"
-            buttonLabel="評価傾向から改善観点を考える"
+            buttonLabel="紫苑に自己提案させる"
+            proposalKindLabel="紫苑の自己提案"
             fields={[
               { key: "pattern", label: "傾向" },
               { key: "suggestion", label: "提案" },
@@ -928,11 +931,12 @@ export default function ImprovementLogPage() {
           />
           <LoopEngineeringCard
             icon={TrendingDown}
-            title="審査実績ドリフト監視ループ"
-            description="支払い実績（正常/延滞/デフォルト）とスコア帯の乖離から審査精度の確認観点を考える"
+            title="紫苑の自己提案: 実績ドリフト"
+            description="通常の保留ではなく、紫苑が支払い実績とスコア帯の乖離から出す再校正仮説です"
             analyzeEndpoint="/api/outcome-drift/analyze"
             proposalsEndpoint="/api/outcome-drift/proposals"
-            buttonLabel="実績データから乖離を確認する"
+            buttonLabel="紫苑に自己提案させる"
+            proposalKindLabel="紫苑の自己提案"
             fields={[
               { key: "observation", label: "観察" },
               { key: "review_point", label: "確認観点" },
@@ -940,11 +944,12 @@ export default function ImprovementLogPage() {
           />
           <LoopEngineeringCard
             icon={BookOpenCheck}
-            title="ナレッジ穴探しループ"
-            description="知識参照0件だった質問の傾向から、Obsidianに補うべき調査トピックを考える"
+            title="紫苑の自己提案: ナレッジ穴探し"
+            description="通常の保留ではなく、紫苑が知識参照0件の質問から出す調査仮説です"
             analyzeEndpoint="/api/knowledge-gap/analyze"
             proposalsEndpoint="/api/knowledge-gap/proposals"
-            buttonLabel="質問傾向から調査トピックを考える"
+            buttonLabel="紫苑に自己提案させる"
+            proposalKindLabel="紫苑の自己提案"
             fields={[
               { key: "reason", label: "理由" },
               { key: "search_hint", label: "検索キーワード案" },

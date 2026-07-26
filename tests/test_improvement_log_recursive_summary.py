@@ -224,6 +224,46 @@ def test_cloudrun_improvement_items_fall_back_to_local_log(tmp_path, monkeypatch
     assert items[0]["raw_preview"] == "ローカル同期済みの改善本文"
 
 
+def test_cloudrun_improvement_items_skip_shion_self_proposals(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(main, "_historical_applied_improvements", lambda: (set(), set()))
+    monkeypatch.setattr(
+        main,
+        "_read_recent_cloudrun_input_events_from_gcs",
+        lambda days=45: [
+            {
+                "event_id": "event-self-proposal",
+                "event_type": "improvement_note",
+                "surface": "shion_self_proposal",
+                "source": "feedback_pattern_loop",
+                "proposed_by": "shion",
+                "ts": "2026-07-26T03:00:00Z",
+                "payload": {
+                    "title": "個性的な記憶の表現と継続性",
+                    "body": "## パターン\n抽象的な提案\n\n## 提案\n表現を検証する",
+                },
+            },
+            {
+                "event_id": "event-human-note",
+                "event_type": "improvement_note",
+                "surface": "chat_improvement",
+                "source": "cloudrun_input_writeback",
+                "ts": "2026-07-26T03:01:00Z",
+                "payload": {
+                    "title": "チャット改善メモ",
+                    "body": "課題: 本物の改善だけ残す。\n次の行動: フィルタを検証する。",
+                },
+            },
+        ],
+    )
+
+    items = main._cloudrun_improvement_items_from_gcs()
+
+    assert len(items) == 1
+    assert items[0]["source_event_id"] == "event-human-note"
+
+
 def test_cloudrun_improvement_items_apply_review_control(monkeypatch):
     import api.main as main
 
