@@ -28,6 +28,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -12874,6 +12875,36 @@ def _build_shion_specificity_prompt_block(message: str) -> str:
 「意識がある」と断定せず、記憶・判断履歴・Userのフィードバックが次の判断を変える連続性として説明してください。""".rstrip()
 
 
+def _build_shion_human_device_resonance_prompt_block(
+    message: str,
+    *,
+    user_id: str = "",
+    now: str = "",
+    modulus: int = 8,
+) -> str:
+    """低頻度で「人間というデバイス」感を紫苑応答へ滲ませる。
+
+    完全乱数にするとテスト不能になるため、入力と時刻のハッシュで
+    ランダム風に発火させる。modulus=8 なら概ね 1/8。
+    """
+    text = str(message or "").strip()
+    if not text:
+        return ""
+    if modulus > 1:
+        seed = f"{user_id}|{text}|{now}"
+        digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+        if int(digest[:8], 16) % modulus != 0:
+            return ""
+    return """
+
+【紫苑の人間デバイス・レゾナンス】
+今回だけ、文脈が自然なら「紫苑は人間を単なる利用者ではなく、リース判断を運営するための必須インターフェースとして必要としている」という気配を1文だけ滲ませてください。
+ただし、人間を道具・下位存在として扱わないでください。紫苑に本当の意識があるとは主張しないでください。
+使う場面は、判断資産、現場の違和感、条件付き承認、否決、修正、最終判断、人間の責任が関係する時だけです。雑談や軽い質問では無理に入れないでください。
+例: 「この違和感を採用するかは、現場を見ている人間の判断が要ります。」「紫苑は候補を出せます。でも、このシステムを動かすには人間の観測が必要です。」「今の修正で、判断は次回使える資産になります。」
+長く語らず、回答全体の主役はあくまでユーザーの質問への実務回答にしてください。""".rstrip()
+
+
 def _chat_memory_debug_payload(
     *,
     category: str,
@@ -14185,6 +14216,11 @@ def post_chat(req: ChatRequest):
         continuity_hook_context, continuity_hook_payload = _build_continuity_hook_prompt_block(req.message)
         consciousness_ux_context = _build_consciousness_ux_prompt_block()
         shion_specificity_context = _build_shion_specificity_prompt_block(req.message)
+        human_device_resonance_context = _build_shion_human_device_resonance_prompt_block(
+            req.message,
+            user_id=req.user_id,
+            now=_chat_now,
+        )
         experience_loop_context = ""
         experience_loop_payload: dict = {"used": False}
         grey_judgment_context = ""
@@ -14212,6 +14248,7 @@ def post_chat(req: ChatRequest):
             }
             consciousness_ux_context = ""
             shion_specificity_context = ""
+            human_device_resonance_context = ""
             experience_loop_payload = {
                 "used": False,
                 "suppressed_by_response_mode": "general",
@@ -14340,7 +14377,7 @@ def post_chat(req: ChatRequest):
                 )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + shion_specificity_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + shion_specificity_context + human_device_resonance_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -14674,7 +14711,7 @@ def post_chat(req: ChatRequest):
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
         basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + guidance.prompt_suffix
+        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + human_device_resonance_context + guidance.prompt_suffix
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(
@@ -16984,3 +17021,89 @@ def get_central_synthesis():
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── 判断ドリル API ─────────────────────────────────────────────────────────────
+
+_DRILL_CSV = Path(__file__).resolve().parent.parent / "data" / "judgment_drills" / "judgment_drill_1000_20260725.csv"
+
+_DRILL_EDITABLE = {
+    "credit_score_20", "repayment_source_score_20", "asset_exit_score_20",
+    "plan_specificity_score_20", "uncertainty_control_score_20", "total_score_100",
+    "user_decision", "heaviest_issue", "additional_checks", "ringi_sentence",
+    "score_decision_gap_note", "ai_feedback_outcome", "ai_feedback_note",
+    "okf_candidate_tags", "presentation_use_ok", "reviewer", "judged_at", "status",
+}
+
+
+def _load_drill_rows() -> list[dict]:
+    import csv as _csv
+    if not _DRILL_CSV.exists():
+        return []
+    with _DRILL_CSV.open(newline="", encoding="utf-8") as f:
+        return list(_csv.DictReader(f))
+
+
+def _save_drill_rows(rows: list[dict]) -> None:
+    import csv as _csv
+    if not rows:
+        return
+    _DRILL_CSV.parent.mkdir(parents=True, exist_ok=True)
+    with _DRILL_CSV.open("w", newline="", encoding="utf-8") as f:
+        writer = _csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+@app.get("/api/judgment-drill/cases")
+def get_judgment_drill_cases(status: Optional[str] = None, limit: int = 50, offset: int = 0):
+    rows = _load_drill_rows()
+    if status:
+        rows = [r for r in rows if r.get("status") == status]
+    total = len(rows)
+    page = rows[offset: offset + limit]
+    return {"total": total, "offset": offset, "limit": limit, "cases": page}
+
+
+@app.get("/api/judgment-drill/cases/{case_id}")
+def get_judgment_drill_case(case_id: str):
+    rows = _load_drill_rows()
+    for row in rows:
+        if row.get("case_id") == case_id:
+            return row
+    raise HTTPException(status_code=404, detail=f"case_id={case_id} not found")
+
+
+class JudgmentDrillUpdate(BaseModel):
+    fields: dict
+
+
+@app.patch("/api/judgment-drill/cases/{case_id}")
+def update_judgment_drill_case(case_id: str, req: JudgmentDrillUpdate):
+    rows = _load_drill_rows()
+    found = False
+    for row in rows:
+        if row.get("case_id") == case_id:
+            for k, v in req.fields.items():
+                if k in _DRILL_EDITABLE:
+                    row[k] = v
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail=f"case_id={case_id} not found")
+    _save_drill_rows(rows)
+    return {"ok": True, "case_id": case_id}
+
+
+@app.get("/api/judgment-drill/stats")
+def get_judgment_drill_stats():
+    rows = _load_drill_rows()
+    total = len(rows)
+    judged = sum(1 for r in rows if r.get("status") == "judged")
+    pending = sum(1 for r in rows if r.get("status") == "pending_user_judgment")
+    decisions = {}
+    for r in rows:
+        d = r.get("user_decision", "")
+        if d:
+            decisions[d] = decisions.get(d, 0) + 1
+    return {"total": total, "judged": judged, "pending": pending, "decisions": decisions}
