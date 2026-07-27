@@ -14,6 +14,15 @@ type GenericProposal = {
 
 type FieldSpec = { key: string; label: string };
 
+const SHION_SELF_HYPOTHESIS_FIELDS: FieldSpec[] = [
+  { key: "hypothesis", label: "仮説" },
+  { key: "evidence", label: "根拠" },
+  { key: "proposed_change", label: "変更案" },
+  { key: "success_metric", label: "成功指標" },
+  { key: "verification_plan", label: "検証方法" },
+  { key: "risk", label: "リスク" },
+];
+
 type LoopEngineeringCardProps = {
   icon: LucideIcon;
   title: string;
@@ -77,6 +86,11 @@ export default function LoopEngineeringCard({
     }
   };
 
+  const fieldsForProposal = (proposal: GenericProposal) => {
+    const hasHypothesisSchema = SHION_SELF_HYPOTHESIS_FIELDS.some((field) => proposal[field.key]);
+    return hasHypothesisSchema ? SHION_SELF_HYPOTHESIS_FIELDS : fields;
+  };
+
   return (
     <div className="rounded-lg border border-indigo-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -124,7 +138,7 @@ export default function LoopEngineeringCard({
                   <p className="text-sm font-bold text-slate-900">{proposal.title}</p>
                 </div>
               </div>
-              {fields.map((field) => {
+              {fieldsForProposal(proposal).map((field) => {
                 const value = proposal[field.key];
                 if (!value) return null;
                 return (

@@ -568,14 +568,64 @@
   {
     "rev_id": "REV-036a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] send_daily_improvement_slack が過去7日で失敗率100%（4/4件, 4日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-07-25T19:01:48Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-07-27T04:16:12Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_13________",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-13_ユーモアまとめ が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-13_ユーモアまとめ",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-07-26T19:01:38.407607+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_13______AI_____",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-13_リース審査AI_知識分解 が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-13_リース審査AI_知識分解",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-07-26T19:01:38.407607+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_13_______",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-13_失注要因分析 が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-13_失注要因分析",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-07-26T19:01:38.407607+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_13________autoresearch",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-13_期待使用期間_autoresearch が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-13_期待使用期間_autoresearch",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-07-26T19:01:38.407607+00:00"
   }
 ]

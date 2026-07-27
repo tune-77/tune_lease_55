@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-07-26T04:09:24`
+- generated_at: `2026-07-27T04:08:26`
 - status: `ok`
-- scanned_files: `403`
+- scanned_files: `413`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
 - review: `62`
-- ok: `1981`
+- ok: `1987`
 
 ## Glossary
 
@@ -20,15 +20,15 @@
 
 ## Warn / Review Findings
 
-- `review` `actual_pd` `api/main.py:9544` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9617` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE shion_screening_reviews`
-- `review` `actual_pd` `api/main.py:9556` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:9629` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",`
-- `review` `actual_pd` `api/main.py:11399` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:11472` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table_name}`
-- `review` `actual_pd` `api/main.py:11723` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:11796` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:11747` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:11820` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`

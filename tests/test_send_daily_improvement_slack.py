@@ -4,6 +4,7 @@ import sys
 
 from scripts.send_daily_improvement_slack import (
     build_message,
+    _is_plausible_slack_webhook,
     should_skip,
 )
 
@@ -30,6 +31,13 @@ def test_script_dry_run_works_when_executed_by_path():
     assert result.returncode == 0, result.stderr
     assert "*日次改善レポート*" in result.stdout
     assert "*システム監視*" in result.stdout
+
+
+def test_invalid_placeholder_webhook_is_skipped_without_send():
+    assert not _is_plausible_slack_webhook("https://hooks.slack.com/services/T1234567/B1234567890/xxx")
+    assert _is_plausible_slack_webhook(
+        "https://hooks.slack.com/services/T1234567/B1234567890/abcdefghijklmnopqrstuvwxyz"
+    )
 
 
 def test_system_monitor_flags_stale_report_and_backlog(tmp_path, monkeypatch):

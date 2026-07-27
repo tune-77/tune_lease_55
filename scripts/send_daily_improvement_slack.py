@@ -15,6 +15,7 @@ import urllib.request
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -79,6 +80,24 @@ def _load_webhook(explicit: str | None = None) -> str:
         _key, _, raw_value = stripped.partition("=")
         return raw_value.strip().strip('"').strip("'")
     return ""
+
+
+def _is_plausible_slack_webhook(webhook_url: str) -> bool:
+    """Return False for obvious placeholders/truncated Slack webhook URLs."""
+    parsed = urlparse(webhook_url)
+    if parsed.scheme != "https" or parsed.netloc != "hooks.slack.com":
+        return False
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) != 4 or parts[0] != "services":
+        return False
+    team, channel, secret = parts[1:]
+    return (
+        team.startswith("T")
+        and channel.startswith("B")
+        and len(team) >= 8
+        and len(channel) >= 8
+        and len(secret) >= 20
+    )
 
 
 def _clean_text(value: Any, limit: int = 140) -> str:
@@ -420,6 +439,9 @@ def main() -> int:
         return 0
     if not webhook_url.startswith("https://hooks.slack.com/"):
         print("SLACK_WEBHOOK_URL must start with https://hooks.slack.com/; skipping.")
+        return 0
+    if not _is_plausible_slack_webhook(webhook_url):
+        print("SLACK_WEBHOOK_URL looks incomplete or invalid; skipping Slack improvement report.")
         return 0
 
     state = _read_state(args.state)

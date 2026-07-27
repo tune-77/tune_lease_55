@@ -1,6 +1,6 @@
 # Obsidian Memory Effectiveness
 
-- Date: 2026-07-26
+- Date: 2026-07-27
 - Mode: read_only_observation
 - Guardrail: no_rag_rank_change_no_prompt_change_no_obsidian_write_no_auto_promotion
 - Knowledge dir: `/Users/kobayashiisaoryou/clawd/tune_lease_55/knowledge_base/okf_lease_concepts`
