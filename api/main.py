@@ -5076,6 +5076,16 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
         "status": str(report.get("status") or ""),
         "source": str(report_path),
         "items": items,
+        "shion_self_proposal_counts_by_layer": (
+            (report.get("shion_self_proposals") or {}).get("counts_by_layer")
+            if isinstance(report.get("shion_self_proposals"), dict)
+            else {}
+        ),
+        "shion_self_proposal_layer_labels": (
+            (report.get("shion_self_proposals") or {}).get("layer_labels")
+            if isinstance(report.get("shion_self_proposals"), dict)
+            else {}
+        ),
         "counts": {
             "applied": _report_count("applied", report.get("applied")),
             "auto_fix_candidates": _report_count("auto_fix_candidates", report.get("auto_fix_candidates")),
@@ -5118,10 +5128,20 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
             f"紫苑の自己提案{counts.get('shion_self_proposals', 0)}件を必要時に報告する。"
         ),
         "紫苑の自己提案は通常の要確認ではなく、ログから出した仮説として扱う。",
+        "紫苑の自己提案は根拠層を明示する: usage_based=画面利用ログ由来、feedback_based=人間反応・判断ログ由来、system_audit_based=コード/レポート/運用監査由来。",
+        "利用回数だけの提案は断定せず、導線不足・価値不足・作業文脈不足を切り分ける。system_audit_based は影響範囲と確認方法を先に述べる。",
     ]
     date = str(highlights.get("date") or highlights.get("generated_at") or "").strip()
     if date:
         lines.append(f"対象日: {date}")
+    by_layer = highlights.get("shion_self_proposal_counts_by_layer")
+    labels = highlights.get("shion_self_proposal_layer_labels")
+    if isinstance(by_layer, dict) and by_layer:
+        labels = labels if isinstance(labels, dict) else {}
+        parts = []
+        for key in ("usage_based", "feedback_based", "system_audit_based"):
+            parts.append(f"{labels.get(key, key)} {int(by_layer.get(key) or 0)}件")
+        lines.append(f"紫苑自己提案の根拠層: {' / '.join(parts)}")
     shadow_line = _build_codex_queue_shadow_line()
     if shadow_line:
         lines.append(shadow_line)

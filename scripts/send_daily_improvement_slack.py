@@ -257,14 +257,31 @@ def _shion_self_proposal_lines(report: dict[str, Any]) -> list[str]:
         return ["• なし"]
 
     lines = [f"• 合計 `{count}` 件（通常のneeds_reviewには含めない）"]
+    by_layer = section.get("counts_by_layer") if isinstance(section.get("counts_by_layer"), dict) else {}
+    if by_layer:
+        layer_labels = section.get("layer_labels") if isinstance(section.get("layer_labels"), dict) else {}
+        parts = []
+        for key in ("usage_based", "feedback_based", "system_audit_based"):
+            value = int(by_layer.get(key) or 0)
+            label = _clean_text(layer_labels.get(key) or key, 24)
+            parts.append(f"{label} {value}")
+        lines.append(f"• 根拠層: {' / '.join(parts)}")
     for item in items[:3]:
         if not isinstance(item, dict):
             continue
         kind = _clean_text(item.get("kind") or "自己提案", 24)
+        layer = _clean_text(item.get("evidence_layer_label") or item.get("evidence_layer") or "", 24)
         title = _clean_text(item.get("title") or item.get("topic") or "無題", 90)
         priority = _clean_text(item.get("priority") or "", 16)
         suffix = f" / priority={priority}" if priority else ""
-        lines.append(f"• [{kind}] {title}{suffix}")
+        prefix = f"[{kind} / {layer}]" if layer else f"[{kind}]"
+        lines.append(f"• {prefix} {title}{suffix}")
+        hypothesis = _clean_text(item.get("hypothesis") or "", 120)
+        success_metric = _clean_text(item.get("success_metric") or "", 100)
+        if hypothesis:
+            lines.append(f"  仮説: {hypothesis}")
+        if success_metric:
+            lines.append(f"  成功指標: {success_metric}")
     return lines
 
 

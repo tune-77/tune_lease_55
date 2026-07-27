@@ -92,12 +92,20 @@ def _push_proposals_to_improvement_log(
             if not title or title in existing_titles:
                 continue
             body_parts = []
-            if p.get("pattern"):
-                body_parts.append(f"## パターン\n{p['pattern']}")
-            if p.get("suggestion"):
-                body_parts.append(f"## 提案\n{p['suggestion']}")
-            if p.get("reason"):
-                body_parts.append(f"## 理由\n{p['reason']}")
+            for key, label in (
+                ("hypothesis", "仮説"),
+                ("evidence", "根拠"),
+                ("proposed_change", "変更案"),
+                ("success_metric", "成功指標"),
+                ("verification_plan", "検証方法"),
+                ("risk", "リスク"),
+                ("pattern", "パターン"),
+                ("suggestion", "提案"),
+                ("reason", "理由"),
+            ):
+                value = str(p.get(key) or "").strip()
+                if value:
+                    body_parts.append(f"## {label}\n{value}")
             entry = {
                 "event_id": str(uuid.uuid4()),
                 "ts": ts_now,
@@ -106,6 +114,17 @@ def _push_proposals_to_improvement_log(
                 "surface": "shion_self_proposal",
                 "source": source,
                 "proposed_by": "shion",
+                "target_page": str(p.get("target_page") or ""),
+                "hypothesis": str(p.get("hypothesis") or ""),
+                "evidence": str(p.get("evidence") or ""),
+                "proposed_change": str(p.get("proposed_change") or ""),
+                "success_metric": str(p.get("success_metric") or ""),
+                "verification_plan": str(p.get("verification_plan") or ""),
+                "risk": str(p.get("risk") or ""),
+                "priority": str(p.get("priority") or ""),
+                "status": str(p.get("status") or ""),
+                "proposal_schema": str(p.get("proposal_schema") or ""),
+                "human_decision_status": str(p.get("human_decision_status") or p.get("status") or ""),
             }
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
             existing_titles.add(title)

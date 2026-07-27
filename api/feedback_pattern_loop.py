@@ -140,12 +140,21 @@ def _build_prompt(aggregate: dict[str, Any], experience: dict[str, Any]) -> str:
   {{
     "title": "着眼点のタイトル（30字以内）",
     "pattern": "どんな状況で問題が起きやすいか（100字程度）",
-    "suggestion": "応答スタンス・プロンプトのどこを見直すとよいか、具体的な提案"
+    "hypothesis": "この見直しで何が改善すると考えるか。検証可能な仮説として書く",
+    "evidence": "根拠にした評価件数、rating、経験イベントの弱シグナルを明示する",
+    "proposed_change": "人間が採用する場合に、応答スタンス・プロンプト・表示のどこを変えるか",
+    "success_metric": "効果が出たかを何で見るか。thin/generic/not_shion減少、helped増加など",
+    "verification_plan": "変更前後でどう比較するか。見るログと期間を含める",
+    "risk": "副作用や過剰適用の可能性"
   }}
 ]
 
 重要: あなたはシステムプロンプトを直接書き換える権限を持ちません。
 提案はすべて「人間が確認・検証すべき観点」として書いてください。"""
+
+
+def _proposal_text(item: dict[str, Any], key: str, fallback: str = "") -> str:
+    return str(item.get(key) or fallback or "").strip()
 
 
 def generate_proposals() -> dict[str, Any]:
@@ -175,8 +184,16 @@ def generate_proposals() -> dict[str, Any]:
             "title": str(item.get("title") or "").strip(),
             "pattern": str(item.get("pattern") or "").strip(),
             "suggestion": str(item.get("suggestion") or "").strip(),
+            "hypothesis": _proposal_text(item, "hypothesis", item.get("suggestion") or item.get("pattern") or ""),
+            "evidence": _proposal_text(item, "evidence"),
+            "proposed_change": _proposal_text(item, "proposed_change", item.get("suggestion") or ""),
+            "success_metric": _proposal_text(item, "success_metric"),
+            "verification_plan": _proposal_text(item, "verification_plan"),
+            "risk": _proposal_text(item, "risk"),
             "generated_at": generated_at,
             "status": "needs_human_review",
+            "proposal_schema": "shion_self_hypothesis_v1",
+            "human_decision_status": "needs_human_review",
         }
         append_jsonl(_PROPOSALS_PATH, entry)
         saved.append(entry)

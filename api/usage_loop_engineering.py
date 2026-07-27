@@ -148,14 +148,24 @@ UI/UXや機能の改善案を考えるのがあなたの役目の一つです。
   {{
     "title": "改善案のタイトル（30字以内）",
     "target_page": "対象画面のパス（例: /screening）",
-    "reason": "なぜこの改善が必要か。利用状況のどの部分から着想したかを含めて説明する（100字程度）",
+    "hypothesis": "この改善で何が良くなると考えるか。検証可能な仮説として書く（100字程度）",
+    "evidence": "根拠にした画面利用ログの数字・画面名・傾向を明示する",
+    "proposed_change": "人間が採用する場合に何を変えるか。UI/API/文言/導線など具体的に書く",
+    "success_metric": "効果が出たかを何で見るか。遷移率、利用回数、離脱減少など",
+    "verification_plan": "変更前後でどう比較するか。期間や見るログを含める",
+    "risk": "副作用や誤判定の可能性",
     "priority": "high|medium|low"
   }}
 ]
 
 よく使われる画面はさらに使いやすくする改善案を、あまり使われない画面は理由を推測して
 統合・削除・導線改善などを提案してください。一般論ではなく、与えられた利用状況の数字を
-根拠にした具体的な提案にしてください。"""
+根拠にした具体的な提案にしてください。
+提案は「自動実装する指示」ではなく、人間が採用・保留・却下を判断する検証可能な仮説として書いてください。"""
+
+
+def _proposal_text(item: dict[str, Any], key: str, fallback: str = "") -> str:
+    return str(item.get(key) or fallback or "").strip()
 
 
 def generate_proposals(days: int = _LOOKBACK_DAYS) -> dict[str, Any]:
@@ -183,10 +193,18 @@ def generate_proposals(days: int = _LOOKBACK_DAYS) -> dict[str, Any]:
             entry = {
                 "title": str(item.get("title") or "").strip(),
                 "target_page": str(item.get("target_page") or "").strip(),
-                "reason": str(item.get("reason") or "").strip(),
+                "hypothesis": _proposal_text(item, "hypothesis", item.get("reason") or ""),
+                "evidence": _proposal_text(item, "evidence", item.get("reason") or ""),
+                "proposed_change": _proposal_text(item, "proposed_change", item.get("suggestion") or ""),
+                "success_metric": _proposal_text(item, "success_metric"),
+                "verification_plan": _proposal_text(item, "verification_plan"),
+                "risk": _proposal_text(item, "risk"),
+                "reason": str(item.get("reason") or item.get("evidence") or "").strip(),
                 "priority": str(item.get("priority") or "medium").strip(),
                 "generated_at": generated_at,
                 "status": "proposed",
+                "proposal_schema": "shion_self_hypothesis_v1",
+                "human_decision_status": "needs_human_review",
             }
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
             saved.append(entry)
