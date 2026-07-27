@@ -124,6 +124,53 @@ const decisionLines = [
   "承認済みの判断だけを、次の紫苑レビューと審査判断へ戻す。",
 ];
 
+const judgmentAssetProof = [
+  {
+    label: "Before",
+    title: "普通のAI回答",
+    body: "補助金の採択状況を確認してください。",
+    detail: "正しいが、次回に残る判断の型にはまだなっていない。",
+    tone: "border-slate-200 bg-slate-50 text-slate-800",
+  },
+  {
+    label: "Correction",
+    title: "人間の修正",
+    body: "採択可否だけでなく、未採択時の返済原資・発注済みリスク・稼働開始時期を見るべき。",
+    detail: "現場の違和感を、再利用できる確認条件へ変換する。",
+    tone: "border-amber-200 bg-amber-50 text-amber-900",
+  },
+  {
+    label: "Reuse",
+    title: "次回の紫苑",
+    body: "この案件は補助金前提なので、未採択時の返済原資と発注タイミングを条件付き承認の確認事項に入れます。",
+    detail: "一度の修正が、次の審査で使える判断資産として戻る。",
+    tone: "border-teal-200 bg-teal-50 text-teal-900",
+  },
+];
+
+const judgmentAssetMotion = [
+  {
+    label: "Miss",
+    title: "見落とし",
+    line: "スコアは承認圏内。普通のAIは「補助金採択状況を確認」で止まる。",
+  },
+  {
+    label: "Correction",
+    title: "人間の修正",
+    line: "採択可否ではなく、未採択時の返済原資・発注済みリスク・稼働遅延を見ろ。",
+  },
+  {
+    label: "Asset",
+    title: "判断資産化",
+    line: "補助金前提案件では、未採択時の返済原資と発注タイミングを確認条件にする。",
+  },
+  {
+    label: "Reuse",
+    title: "次回再利用",
+    line: "次の工作機械案件で、紫苑が同じ確認条件を自動で思い出す。",
+  },
+];
+
 function n(value?: number | null) {
   return new Intl.NumberFormat("ja-JP").format(value ?? 0);
 }
@@ -154,6 +201,7 @@ function WarmPill({ children }: { children: React.ReactNode }) {
 
 export default function DemoHomePage() {
   const [data, setData] = useState<LiveData>({});
+  const [assetStep, setAssetStep] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -176,6 +224,13 @@ export default function DemoHomePage() {
     return () => {
       alive = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setAssetStep((current) => (current + 1) % judgmentAssetMotion.length);
+    }, 1800);
+    return () => window.clearInterval(timer);
   }, []);
 
   const live = useMemo(
@@ -359,6 +414,109 @@ export default function DemoHomePage() {
           <InfoStrip label="Referenced" value={`${n(referenced)}件`} detail="直近の回答で想起された判断資産" />
           <InfoStrip label="Feedback" value={`${n(feedback)}件`} detail="人の修正とprompt改善の信号" />
           <InfoStrip label="Response Change" value={pct(live.prompt.summary?.response_changed_rate)} detail="改善が回答へ効いた比率" />
+        </div>
+      </section>
+
+      <section className="border-b border-stone-200 bg-[#fffdf8] px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-teal-700">Judgment Asset Proof</p>
+              <h2 className="mt-2 text-3xl font-black tracking-tight text-stone-950">
+                人間の修正が、次の判断に戻る。
+              </h2>
+            </div>
+            <p className="max-w-2xl text-sm font-bold leading-7 text-stone-600">
+              紫苑の成果は、審査結果を出すことだけではありません。人間が直した論点を検疫し、判断資産として次回の確認条件へ戻すことです。
+            </p>
+          </div>
+
+          <div className="mt-6 grid gap-3 lg:grid-cols-3">
+            {judgmentAssetProof.map((item, index) => (
+              <div key={item.label} className={`min-h-56 rounded-lg border p-5 shadow-sm ${item.tone}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-black">
+                    {index + 1}. {item.label}
+                  </span>
+                  {index < judgmentAssetProof.length - 1 && (
+                    <ArrowRight className="hidden h-5 w-5 text-stone-400 lg:block" />
+                  )}
+                </div>
+                <h3 className="mt-4 text-lg font-black">{item.title}</h3>
+                <p className="mt-3 text-base font-black leading-7">{item.body}</p>
+                <p className="mt-4 text-xs font-bold leading-6 opacity-75">{item.detail}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-lg border border-teal-200 bg-white px-5 py-4">
+            <p className="text-sm font-black leading-7 text-stone-950">
+              結果: 紫苑は「案件を審査するAI」ではなく、「人間の判断をログ化・検証・再利用する Human Judgment DevOps」になる。
+            </p>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-lg border border-stone-200 bg-stone-950 p-5 text-white shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.28em] text-teal-200">Live Loop</p>
+                <h3 className="mt-2 text-xl font-black">見落としが、次回の確認条件に変わる。</h3>
+              </div>
+              <div className="flex gap-1.5">
+                {judgmentAssetMotion.map((item, index) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => setAssetStep(index)}
+                    className={`h-2.5 rounded-full transition-all ${
+                      index === assetStep ? "w-9 bg-teal-300" : "w-2.5 bg-white/30 hover:bg-white/60"
+                    }`}
+                    aria-label={`${item.title}へ移動`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="text-[11px] font-black uppercase tracking-widest text-teal-200">
+                  {judgmentAssetMotion[assetStep].label}
+                </div>
+                <div className="mt-2 text-3xl font-black text-white">
+                  {judgmentAssetMotion[assetStep].title}
+                </div>
+                <p className="mt-3 min-h-20 text-sm font-bold leading-7 text-stone-200">
+                  {judgmentAssetMotion[assetStep].line}
+                </p>
+              </div>
+
+              <div className="relative min-h-40 rounded-lg border border-white/10 bg-[#fffdf8] p-4 text-stone-950">
+                <div className="grid grid-cols-4 gap-2">
+                  {judgmentAssetMotion.map((item, index) => {
+                    const active = index === assetStep;
+                    const done = index < assetStep;
+                    return (
+                      <div key={item.label} className="relative">
+                        <div className={`h-2 rounded-full ${done || active ? "bg-teal-500" : "bg-stone-200"}`} />
+                        <div
+                          className={`mt-3 min-h-24 rounded-lg border px-3 py-3 transition-all duration-500 ${
+                            active
+                              ? "translate-y-0 border-teal-300 bg-teal-50 shadow-lg shadow-teal-900/15"
+                              : "translate-y-2 border-stone-200 bg-white opacity-70"
+                          }`}
+                        >
+                          <div className="text-[10px] font-black uppercase tracking-widest text-stone-500">{item.label}</div>
+                          <div className="mt-1 text-sm font-black text-stone-950">{item.title}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 rounded-lg bg-teal-50 px-4 py-3 text-sm font-black leading-7 text-teal-950">
+                  人間の一言が消えず、次の案件で紫苑の確認条件として再登場する。
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
