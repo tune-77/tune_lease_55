@@ -53,6 +53,7 @@ sys.path.insert(0, _REPO_ROOT)
 from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
 from api.db_connection import current_backend, get_connection, placeholder
 from api.cloudrun_writeback import record_cloudrun_input_event
+from judgment_asset_bandit import append_feedback_event, build_bandit_signals, read_feedback_rows, signal_for_candidate
 logger = logging.getLogger(__name__)
 
 # fire-and-forget なバックグラウンド処理（チャット後の記憶保存・ログ記録等）用の共有プール。
@@ -9953,6 +9954,7 @@ def _select_screening_judgment_asset_candidates(
     rows = _load_canonical_judgment_asset_candidates() + _load_autoresearch_judgment_asset_candidates()
     if not rows:
         return []
+    bandit_signals = build_bandit_signals(read_feedback_rows())
     ranked: list[tuple[tuple[float, int, int, str], dict[str, Any]]] = []
     for item in rows:
         if str(item.get("promotion_status") or "") == "rejected_or_deprioritized":
@@ -9960,6 +9962,8 @@ def _select_screening_judgment_asset_candidates(
         if _is_generic_autoresearch_candidate(item):
             continue
         rank = _rank_screening_judgment_asset_candidate(item, context_terms)
+        signal = signal_for_candidate(item, bandit_signals)
+        rank = (rank[0] + signal.rank_bonus, rank[1], rank[2], rank[3])
         if context_terms and rank[1] <= 0 and int(item.get("useful_count") or 0) <= 0 and int(item.get("edit_count") or 0) <= 0:
             continue
         if rank[0] <= 0 and context_terms:
@@ -9991,6 +9995,7 @@ def _select_screening_judgment_asset_candidates(
             "useful_count": int(item.get("useful_count") or 0),
             "rejected_count": int(item.get("rejected_count") or 0),
             "verified_status": str(item.get("verified_status") or "unverified"),
+            "learning": signal_for_candidate(item, bandit_signals).as_dict(),
         }
 
     def _normalized_screening_claim(item: dict[str, Any]) -> str:
@@ -10118,6 +10123,21 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
         [{"id": candidate_id, **current}],
         state,
     )
+    feedback_outcome = {
+        "useful": "helped",
+        "neutral": "neutral",
+        "rejected": "rejected",
+    }.get(req.feedback, "neutral")
+    try:
+        append_feedback_event(
+            asset_id=candidate_id,
+            outcome=feedback_outcome,
+            case_id=req.case_id,
+            note=req.comment or current.get("verification_note") or "",
+            source="judgment_asset_candidate_feedback",
+        )
+    except Exception:
+        pass
     return {"id": candidate_id, **current}
 
 
