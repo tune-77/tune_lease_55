@@ -171,6 +171,30 @@ const judgmentAssetMotion = [
   },
 ];
 
+const judgmentReuseTrace = {
+  id: "JA-DEMO-042",
+  status: "active / human reviewed",
+  rule: "補助金前提案件では、採択可否だけでなく、未採択時の返済原資・発注済みリスク・稼働開始時期を見る。",
+  origin: {
+    label: "Created from",
+    date: "2026-07-12",
+    source: "Human Patch",
+    text: "採択可否じゃない。未採択時に払えるか、発注だけ先に進んでいないかを見る。",
+  },
+  reused: {
+    label: "Reused in",
+    date: "2026-07-18",
+    source: "デモ精密工業 / 工作機械案件",
+    text: "紫苑レビューに「未採択時の返済原資」「発注タイミング」「稼働開始時期」が確認条件として再登場。",
+  },
+  feedback: {
+    label: "Human feedback",
+    source: "判断資産使用フィードバック",
+    value: "helped",
+    text: "稟議コメントに、補助金未採択時の資金繰り表提出を条件として残す流れにつながった。",
+  },
+};
+
 function n(value?: number | null) {
   return new Intl.NumberFormat("ja-JP").format(value ?? 0);
 }
@@ -516,6 +540,71 @@ export default function DemoHomePage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="mt-5 rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.28em] text-stone-500">Reuse Trace</p>
+                <h3 className="mt-2 text-2xl font-black text-stone-950">残った判断が、どこで効いたか。</h3>
+              </div>
+              <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-right">
+                <div className="text-[11px] font-black text-teal-700">{judgmentReuseTrace.id}</div>
+                <div className="mt-1 text-xs font-black text-teal-950">{judgmentReuseTrace.status}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3">
+              <div className="text-[11px] font-black uppercase tracking-widest text-stone-500">Judgment Asset</div>
+              <p className="mt-2 text-sm font-black leading-7 text-stone-950">{judgmentReuseTrace.rule}</p>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-stretch">
+              {[
+                judgmentReuseTrace.origin,
+                judgmentReuseTrace.reused,
+                judgmentReuseTrace.feedback,
+              ].map((item, index) => (
+                <React.Fragment key={item.label}>
+                  <div className="min-h-44 rounded-lg border border-stone-200 bg-[#fffdf8] p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-black uppercase tracking-widest text-stone-500">{item.label}</span>
+                      {"date" in item && (
+                        <span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-black text-stone-600">{item.date}</span>
+                      )}
+                      {"value" in item && (
+                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800">{item.value}</span>
+                      )}
+                    </div>
+                    <div className="mt-3 text-sm font-black text-stone-950">{item.source}</div>
+                    <p className="mt-3 text-sm font-bold leading-7 text-stone-700">{item.text}</p>
+                  </div>
+                  {index < 2 && (
+                    <div className="hidden items-center justify-center text-stone-300 lg:flex">
+                      <ArrowRight className="h-6 w-6" />
+                    </div>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-2 text-xs font-black text-stone-700 sm:grid-cols-4">
+              {[
+                ["commit", "人間修正を保存"],
+                ["checkout", "次回案件で想起"],
+                ["test", "helpedで評価"],
+                ["merge", "active判断資産へ"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg bg-stone-100 px-3 py-2">
+                  <span className="text-stone-500">{label}</span>
+                  <span className="ml-2 text-stone-950">{value}</span>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-xs font-bold leading-6 text-amber-900">
+              ここで示す効果は「事故を防いだ」ではなく、「人間の修正が次の紫苑レビューに確認条件として再登場した」ことです。
+            </p>
           </div>
         </div>
       </section>
