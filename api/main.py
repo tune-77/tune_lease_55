@@ -5130,13 +5130,14 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
             return int(value)
         return len(fallback_items or [])
 
+    daily_clinic = _daily_improvement_clinic(report)
     return {
-        "available": bool(items),
+        "available": bool(items) or bool(daily_clinic),
         "date": str(report.get("date") or ""),
         "generated_at": str(report.get("generated_at") or ""),
         "status": str(report.get("status") or ""),
         "source": str(report_path),
-        "daily_clinic": _daily_improvement_clinic(report),
+        "daily_clinic": daily_clinic,
         "items": items,
         "shion_self_proposal_counts_by_layer": (
             (report.get("shion_self_proposals") or {}).get("counts_by_layer")
@@ -5166,7 +5167,7 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
 def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
     """Keep the daily improvement report available for Shion dialogue consultation."""
     highlights = _load_latest_improvement_highlights(limit=limit)
-    if not highlights.get("available"):
+    if not highlights.get("available") and not highlights.get("source"):
         return ""
 
     counts = highlights.get("counts") or {}
@@ -5196,6 +5197,31 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
     date = str(highlights.get("date") or highlights.get("generated_at") or "").strip()
     if date:
         lines.append(f"対象日: {date}")
+    daily_clinic = highlights.get("daily_clinic")
+    if isinstance(daily_clinic, dict) and daily_clinic:
+        checks = daily_clinic.get("checks") if isinstance(daily_clinic.get("checks"), dict) else {}
+        lines.append(
+            "朝の改善カルテ: "
+            f"状態={daily_clinic.get('health') or 'unknown'} / "
+            f"今日見る1件={str(daily_clinic.get('next_action') or '')[:120]} / "
+            f"異常={int(checks.get('warnings') or 0)} / "
+            f"要レビュー={int(checks.get('needs_review') or 0)} / "
+            f"判断資産 active={int(checks.get('active_rules') or 0)}・"
+            f"伸ばす={int(checks.get('judgment_assets_grow') or 0)}・"
+            f"見直す={int(checks.get('judgment_assets_review') or 0)}・"
+            f"眠ってる={int(checks.get('judgment_assets_sleeping') or 0)} / "
+            f"成長スコア={checks.get('growth_score') if checks.get('growth_score') is not None else '-'}"
+        )
+        warnings = daily_clinic.get("warnings") if isinstance(daily_clinic.get("warnings"), list) else []
+        if warnings:
+            lines.append(
+                "朝の改善カルテの警告: "
+                + " / ".join(
+                    f"{str(w.get('name') or '')}: {str(w.get('message') or '')[:80]}"
+                    for w in warnings[:2]
+                    if isinstance(w, dict)
+                )
+            )
     by_layer = highlights.get("shion_self_proposal_counts_by_layer")
     labels = highlights.get("shion_self_proposal_layer_labels")
     if isinstance(by_layer, dict) and by_layer:
