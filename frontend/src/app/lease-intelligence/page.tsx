@@ -7,6 +7,7 @@ import {
   Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
 
 type KnowledgeRef = {
@@ -1172,6 +1173,10 @@ export default function LeaseIntelligencePage() {
     }
   };
 
+  const openKnowledgeEvidence = (query: string) => {
+    openKnowledgeSpaceFocus(query, "lease_intelligence_dialogue");
+  };
+
   const submitFeedback = async (
     message: Message,
     rating: "shion_like" | "not_shion",
@@ -1932,6 +1937,13 @@ export default function LeaseIntelligencePage() {
                               </span>
                             </span>
                             <div className="flex shrink-0 gap-0.5">
+                              <button
+                                onClick={() => openKnowledgeEvidence(ref.obsidian_ref || ref.file_name || ref.doc_id || message.query || "")}
+                                title="この参考ノートをナレッジ空間で見る"
+                                className="rounded px-1 text-[11px] text-cyan-700 hover:bg-violet-100 disabled:opacity-40"
+                              >
+                                <Network className="h-3 w-3" />
+                              </button>
                               <button
                                 onClick={() => sendRagFeedback(message.id, ref, message.query ?? "", "good")}
                                 disabled={sent}

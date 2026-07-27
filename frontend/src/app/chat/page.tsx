@@ -13,6 +13,7 @@ import {
 import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX, ArrowLeft, ThumbsUp, ThumbsDown } from "lucide-react";
 import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
 import { formatLocalDateKey } from "@/lib/date";
+import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import { buildShionEntryGreeting, type ShionEntryGreeting } from "@/lib/shionEntryGreeting";
 import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
 
@@ -656,10 +657,7 @@ export default function ChatPage() {
   };
 
   const openKnowledgeEvidence = (query: string) => {
-    const trimmed = query.replace(/\s+/g, " ").trim().slice(0, 120);
-    if (!trimmed) return;
-    window.localStorage.setItem("knowledge-space-evidence", trimmed);
-    window.open(`/knowledge-space?focus=${encodeURIComponent(trimmed)}`, "_blank");
+    openKnowledgeSpaceFocus(query, "chat_assistant");
   };
 
   const formatTime = (iso: string) => {
@@ -957,6 +955,14 @@ export default function ChatPage() {
                         <span className="truncate text-[10px] text-slate-400" title={ref.obsidian_ref}>
                           {ref.file_name || ref.obsidian_ref}
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => openKnowledgeEvidence(ref.obsidian_ref || ref.file_name || ref.doc_id || "")}
+                          title="この参考ノートをナレッジ空間で見る"
+                          className="ml-auto inline-flex shrink-0 items-center rounded border border-cyan-100 bg-cyan-50 px-1.5 py-0.5 text-cyan-700 transition hover:bg-cyan-100"
+                        >
+                          <Network className="h-3 w-3" />
+                        </button>
                       </div>
                     ))}
                   </div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { apiClient } from "@/lib/api";
+import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
@@ -1091,7 +1092,15 @@ const buildShionReviewFallback = (
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function AiHeroCard({ result }: { result?: Record<string, any> }) {
+function AiHeroCard({
+  result,
+  data,
+  onOpenKnowledge,
+}: {
+  result?: Record<string, any>;
+  data?: Partial<ScoringFormData>;
+  onOpenKnowledge?: () => void;
+}) {
   if (!result) return null;
   const score = getScreeningScore(result);
   const hantei: string = result.hantei ?? "";
@@ -1140,8 +1149,23 @@ function AiHeroCard({ result }: { result?: Record<string, any> }) {
           <div className="text-[11px] font-bold text-white/60">
             承認ライン: {approvalLine}点以上
           </div>
+          {onOpenKnowledge && (
+            <button
+              type="button"
+              onClick={onOpenKnowledge}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-[11px] font-black text-white backdrop-blur-sm transition hover:bg-white/25"
+            >
+              <Network className="h-3.5 w-3.5" />
+              関連知識を見る
+            </button>
+          )}
         </div>
       </div>
+      {data && (
+        <div className="mt-3 text-[11px] font-bold text-white/60">
+          {[data.industry_sub || data.industry_major, data.asset_name, result.quantum_risk != null ? "Q_risk" : ""].filter(Boolean).join(" / ")}
+        </div>
+      )}
       {result.score_borrower != null && (
         <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
           {[
@@ -2978,6 +3002,21 @@ export default function Dashboard() {
     router.push("/chat");
   };
 
+  const openScreeningKnowledgeSpace = () => {
+    if (!result) return;
+    const qRisk = result.quantum_risk != null ? Number(result.quantum_risk) : null;
+    const terms = [
+      formData.company_name,
+      result.industry_sub || formData.industry_sub,
+      result.industry_major || formData.industry_major,
+      formData.asset_name,
+      formData.asset_purpose,
+      result.hantei,
+      qRisk != null ? `Q_risk ${qRisk.toFixed(1)}` : "",
+    ].filter(Boolean);
+    openKnowledgeSpaceFocus(terms.join(" "), "screening_result");
+  };
+
   const handoffToShionDebate = () => {
     if (!result) return;
     const score = getScreeningScore(result);
@@ -3059,7 +3098,7 @@ export default function Dashboard() {
         </div>
 
         {/* AI審査判定ヒーローカード（結果あり時のみ最上部に表示） */}
-        <AiHeroCard result={result} />
+        <AiHeroCard result={result} data={formData} onOpenKnowledge={openScreeningKnowledgeSpace} />
 
         <div className="flex flex-col 2xl:flex-row gap-6">
 
