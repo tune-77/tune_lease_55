@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-07-27T04:00:48.158307",
+  "fetched_at": "2026-07-28T04:01:03.531525",
   "source": "FinceptTerminal/AkShare (https://github.com/Fincept-Corporation/FinceptTerminal)",
   "boj_policy_rate": {
     "value": 1.0,
@@ -23,7 +23,7 @@
     "source": "akshare.macro_japan_cpi_yearly"
   },
   "leading_indicator": {
-    "value": 116.8,
+    "value": 116.5,
     "prev": 116.1,
     "period": "2026年05月",
     "published": "2026-07-27",
@@ -50,7 +50,7 @@
       },
       "leading_indicator": {
         "score": 10,
-        "comment": "景気先行指数 116.8: 強い拡張局面"
+        "comment": "景気先行指数 116.5: 強い拡張局面"
       },
       "unemployment": {
         "score": 10,

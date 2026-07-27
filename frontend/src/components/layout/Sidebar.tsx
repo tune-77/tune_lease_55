@@ -10,7 +10,7 @@ import {
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   ClipboardList, Brain, Database,
-  Orbit, ShieldCheck, Sparkles, Search, GitBranch, FileCheck2, Mic
+  Orbit, ShieldCheck, Sparkles, Search, GitBranch, FileCheck2, Mic, Stethoscope
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -87,6 +87,7 @@ export default function Sidebar() {
         { name: '1000件早送りデモ', href: '/demo/judgment-evolution', icon: GitBranch, color: 'text-amber-300' },
         { name: '知識ループ確認', href: '/demo/knowledge-loop', icon: Network, color: 'text-cyan-300' },
         { name: '紫苑/一般 比較', href: '/chat-compare', icon: MessageSquare, color: 'text-indigo-300' },
+        { name: '紫苑 評価GUI', href: '/shion-eval-health', icon: Stethoscope, color: 'text-teal-300' },
         { name: '自己同一性検査', href: '/shion-identity-check', icon: ShieldCheck, color: 'text-cyan-300' },
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },

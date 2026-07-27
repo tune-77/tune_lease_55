@@ -1,6 +1,6 @@
 # Loop Engineering Health
 
-- Generated at: `2026-07-27T04:08:35`
+- Generated at: `2026-07-28T04:09:25`
 - Status: `attention`
 - Source coverage: 100.0%
 
@@ -20,9 +20,9 @@
 - Churn rate: 0.0% (healthy dedup: 0, churn: 0)
 
 ## Prompt Feedback Loop
-- Total: 332
-- PDCA applied: 332 (100.0%)
-- Previous response diffs: 121 (36.4%)
+- Total: 333
+- PDCA applied: 333 (100.0%)
+- Previous response diffs: 121 (36.3%)
 
 ## Scoring Coefficients
 - Status: `attention`
@@ -41,7 +41,7 @@
 ## Outcome Loops
 - Status: `ok`
 - outcome_drift: 0 proposals (latest n/a)
-- feedback_pattern: 6 proposals (latest 2026-07-26T03:00:13)
+- feedback_pattern: 9 proposals (latest 2026-07-28T03:00:27)
 - judgment_divergence: 0 proposals (latest n/a)
 - knowledge_gap: 3 proposals (latest 2026-07-03T07:21:31)
 - PDCA effect: measured 0, improved 0, worsened 0, avg delta 0.0

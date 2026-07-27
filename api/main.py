@@ -4548,6 +4548,14 @@ def generate_gunshi_chat(req: GunshiChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class ShionEvalHealthCheckRequest(BaseModel):
+    case_id: str
+    reply: str = ""
+    memory_debug: dict = Field(default_factory=dict)
+    knowledge_refs: list = Field(default_factory=list)
+    daily_clinic_used: Optional[bool] = None
+
+
 @app.get("/api/dashboard/stats")
 def get_dashboard_stats():
     try:
@@ -4564,6 +4572,39 @@ def get_dashboard_stats():
         payload["improvement_highlights"] = _load_latest_improvement_highlights(limit=3)
         payload["lease_system_gaps"] = _load_lease_system_gap_analysis(limit=3)
         return payload
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/shion-eval-health")
+def get_shion_eval_health():
+    try:
+        from shion_eval_health import build_shion_eval_health_payload
+
+        return build_shion_eval_health_payload(Path(_REPO_ROOT))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/shion-eval-health/check")
+def post_shion_eval_health_check(req: ShionEvalHealthCheckRequest):
+    try:
+        from shion_eval_health import case_by_id, evaluate_shion_trace
+
+        case = case_by_id(req.case_id)
+        return evaluate_shion_trace(
+            case,
+            reply=req.reply,
+            memory_debug=req.memory_debug,
+            knowledge_refs=req.knowledge_refs,
+            daily_clinic_used=req.daily_clinic_used,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"eval case not found: {req.case_id}")
     except Exception as e:
         import traceback
         traceback.print_exc()

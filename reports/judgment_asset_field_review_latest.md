@@ -1,10 +1,10 @@
 # Judgment Asset Field Review
 
-- Date: 2026-07-27
+- Date: 2026-07-28
 - Mode: local_review_only
 - Guardrail: review_only_no_promotion_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
-- Active rules: 8
-- Grow: 0 / Review: 0 / Sleeping: 8 / Hold: 0
+- Active rules: 9
+- Grow: 0 / Review: 0 / Sleeping: 9 / Hold: 0
 - Simulation feedback: 3 / included: False
 - Unknown feedback rows: 0
 
@@ -39,6 +39,12 @@
 ### demo_renewal_asset
 - Rule ID: `64e054542be673e4`
 - Statement: 更新設備の増額申込は、既存設備の稼働率、粗利改善見込み、旧設備の処分予定が説明と整合する時だけ前向きに見る。
+- Feedback: used=0, helped=0, challenged=0, rejected=0, neutral=0
+- Reason: active だが実利用フィードバックが未記録
+
+### demo_renewal_asset
+- Rule ID: `a34492fe19a18e3a`
+- Statement: 更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。
 - Feedback: used=0, helped=0, challenged=0, rejected=0, neutral=0
 - Reason: active だが実利用フィードバックが未記録
 

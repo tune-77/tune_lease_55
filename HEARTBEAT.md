@@ -12,3 +12,4 @@
 - The daily improvement pipeline now auto-promotes durable items from `memory/YYYY-MM-DD.md` into `MEMORY.md`.
 - Every few days, review recent `memory/YYYY-MM-DD.md` notes for items the auto-promotion missed.
 - Keep long-term memory concise: fact, impact, next action.
+- Prioritize Shion information health over adding more surfaces. If daily reports, memories, or judgment assets feel noisy, summarize only the top signal and avoid creating new automation.
