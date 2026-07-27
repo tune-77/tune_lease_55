@@ -5014,6 +5014,66 @@ def _latest_recursive_self_improvement_path() -> Path | None:
     return candidates[-1] if candidates else None
 
 
+def _read_report_json(filename: str) -> dict:
+    for reports_dir in _candidate_report_dirs():
+        path = reports_dir / filename
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _daily_improvement_clinic(report: dict) -> dict:
+    field_review = _read_report_json("judgment_asset_field_review_latest.json")
+    growth = _read_report_json("judgment_asset_growth_latest.json")
+    obsidian = _read_report_json("obsidian_environment_monitor_latest.json")
+
+    field_summary = field_review.get("summary") if isinstance(field_review.get("summary"), dict) else {}
+    growth_latest = growth.get("latest") if isinstance(growth.get("latest"), dict) else {}
+    growth_counts = growth_latest.get("counts") if isinstance(growth_latest.get("counts"), dict) else {}
+    obsidian_checks = obsidian.get("checks") if isinstance(obsidian.get("checks"), list) else []
+    warning_checks = [
+        check for check in obsidian_checks
+        if isinstance(check, dict) and str(check.get("status") or "ok").lower() not in {"ok", "pass"}
+    ]
+    needs_review_items = [item for item in (report.get("needs_review") or []) if isinstance(item, dict)]
+    next_action = "判断資産候補に「効いた/外した」を付け、実利用フィードバックを増やす。"
+    if warning_checks:
+        first = warning_checks[0]
+        next_action = f"Obsidian監視: {first.get('name') or 'check'} を確認する。"
+    elif needs_review_items:
+        next_action = f"要レビュー: {str(needs_review_items[0].get('title') or needs_review_items[0].get('id') or '')[:80]}"
+    elif int(field_summary.get("sleeping") or 0) > 0:
+        next_action = "眠っている判断資産を1件、今日の審査で試して評価する。"
+
+    return {
+        "label": "朝の改善カルテ",
+        "health": "warn" if warning_checks or needs_review_items else "ok",
+        "next_action": next_action,
+        "checks": {
+            "warnings": len(warning_checks),
+            "needs_review": len(needs_review_items),
+            "judgment_assets_grow": int(field_summary.get("grow") or 0),
+            "judgment_assets_review": int(field_summary.get("review") or 0),
+            "judgment_assets_sleeping": int(field_summary.get("sleeping") or 0),
+            "active_rules": int(field_summary.get("active_rules") or growth_counts.get("active_rules") or 0),
+            "growth_score": growth_latest.get("score"),
+        },
+        "warnings": [
+            {
+                "name": str(check.get("name") or ""),
+                "status": str(check.get("status") or ""),
+                "message": str(check.get("message") or ""),
+            }
+            for check in warning_checks[:3]
+        ],
+    }
+
+
 def _load_latest_improvement_highlights(limit: int = 3) -> dict:
     report_path = _latest_improvement_report_path()
     if not report_path:
@@ -5076,6 +5136,7 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
         "generated_at": str(report.get("generated_at") or ""),
         "status": str(report.get("status") or ""),
         "source": str(report_path),
+        "daily_clinic": _daily_improvement_clinic(report),
         "items": items,
         "shion_self_proposal_counts_by_layer": (
             (report.get("shion_self_proposals") or {}).get("counts_by_layer")

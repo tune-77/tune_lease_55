@@ -78,6 +78,26 @@ type DashboardStats = {
       auto_fix_candidates?: number;
       needs_review?: number;
       rejected?: number;
+      shion_self_proposals?: number;
+    };
+    daily_clinic?: {
+      label?: string;
+      health?: string;
+      next_action?: string;
+      checks?: {
+        warnings?: number;
+        needs_review?: number;
+        judgment_assets_grow?: number;
+        judgment_assets_review?: number;
+        judgment_assets_sleeping?: number;
+        active_rules?: number;
+        growth_score?: number | null;
+      };
+      warnings?: Array<{
+        name?: string;
+        status?: string;
+        message?: string;
+      }>;
     };
     items?: Array<{
       id?: string;
@@ -353,6 +373,8 @@ export default function HomeDashboard() {
   const recentCases = stats?.recent_cases || [];
   const improvementHighlights = stats?.improvement_highlights?.items || [];
   const improvementCounts = stats?.improvement_highlights?.counts;
+  const dailyClinic = stats?.improvement_highlights?.daily_clinic;
+  const clinicChecks = dailyClinic?.checks || {};
   const gapHighlights = stats?.lease_system_gaps?.items || [];
   const gapCounts = stats?.lease_system_gaps?.counts || {};
   const newsFocus = leaseNewsFocus ?? stats?.lease_news_focus;
@@ -657,10 +679,10 @@ export default function HomeDashboard() {
                   <div>
                     <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
                       <ScrollText className="text-amber-500 w-5 h-5" />
-                      最新の改善項目
+                      朝の改善カルテ
                     </h3>
                     <p className="text-xs text-slate-500 font-bold mt-1">
-                      朝に見る候補は最大3件まで
+                      日次改善レポートから、今日見るべき点だけを表示
                     </p>
                   </div>
                   {stats?.improvement_highlights?.source && (
@@ -669,6 +691,37 @@ export default function HomeDashboard() {
                     </span>
                   )}
                 </div>
+                {dailyClinic && (
+                  <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-black text-white ${dailyClinic.health === "ok" ? "bg-emerald-600" : "bg-amber-600"}`}>
+                        {dailyClinic.health === "ok" ? "正常" : "要確認"}
+                      </span>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-amber-800">
+                        成長 {clinicChecks.growth_score ?? "-"}
+                      </span>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-amber-800">
+                        active {clinicChecks.active_rules ?? 0}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm font-black leading-6 text-amber-950">
+                      {dailyClinic.next_action || "今日見るべき改善候補はありません。"}
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-black text-slate-700 sm:grid-cols-4">
+                      <div className="rounded-lg bg-white px-3 py-2">異常 {clinicChecks.warnings ?? 0}</div>
+                      <div className="rounded-lg bg-white px-3 py-2">要レビュー {clinicChecks.needs_review ?? improvementCounts?.needs_review ?? 0}</div>
+                      <div className="rounded-lg bg-white px-3 py-2">伸ばす {clinicChecks.judgment_assets_grow ?? 0}</div>
+                      <div className="rounded-lg bg-white px-3 py-2">眠ってる {clinicChecks.judgment_assets_sleeping ?? 0}</div>
+                    </div>
+                    {!!dailyClinic.warnings?.length && (
+                      <div className="mt-3 space-y-1 text-xs font-bold text-amber-800">
+                        {dailyClinic.warnings.map((warning) => (
+                          <p key={`${warning.name}-${warning.message}`}>{warning.name}: {warning.message}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {improvementHighlights.length === 0 ? (
                   <p className="text-sm text-slate-500">改善候補がまだありません。</p>
                 ) : (
