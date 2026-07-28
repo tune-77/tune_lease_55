@@ -148,6 +148,20 @@ type DialogueGapAnalysis = {
   items?: DialogueGapItem[];
 };
 
+type DailyNewsDigest = {
+  available?: boolean;
+  date?: string;
+  items?: {
+    id?: string;
+    title?: string;
+    summary_lines?: string[];
+    region?: string;
+    source?: string;
+    article_url?: string;
+    tags?: string[];
+  }[];
+};
+
 type EmotionHistoryEntry = {
   id: number;
   recorded_at: string;
@@ -413,6 +427,7 @@ const buildDailyImprovementReport = (
   log: DialogueImprovementLog | null | undefined,
   pipeline?: DialoguePipelineSummary | null,
   gaps?: DialogueGapAnalysis | null,
+  newsDigest?: DailyNewsDigest | null,
 ) => {
   if (!log || log.status === "NO_REPORT") return "";
   const pmItems = classifyPmImprovementItems((log.items || []).filter((item) => item?.title || item?.id));
@@ -432,6 +447,16 @@ const buildDailyImprovementReport = (
     lines.push("");
     lines.push("## 今日やる候補");
     lines.push("今すぐ触るべき軽い候補は多くありません。安定運用を優先でよさそうです。");
+  }
+  const newsItems = (newsDigest?.items || []).filter((item) => item?.title || item?.summary_lines?.length).slice(0, 3);
+  if (newsDigest?.available && newsItems.length) {
+    lines.push("");
+    lines.push("## 今日のニュースダイジェスト");
+    newsItems.forEach((item) => {
+      const summaries = (item.summary_lines || []).filter(Boolean);
+      lines.push(`- ${item.title || "ニュース"}${summaries[0] ? `: ${summaries[0]}` : ""}`);
+      summaries.slice(1, 3).forEach((summary) => lines.push(`  - ${summary}`));
+    });
   }
   if (pmItems.later.length) {
     lines.push("");
@@ -1366,8 +1391,9 @@ export default function LeaseIntelligencePage() {
       apiClient.get<DialoguePipelineSummary>("/api/improvement-pipeline/summary"),
       apiClient.get<DialogueGapAnalysis>("/api/lease-system-gaps"),
       apiClient.get<{ records?: TriageRecord[] }>("/api/improvement/triage"),
+      apiClient.get<DailyNewsDigest>("/api/lease-news/daily-digest"),
     ])
-      .then(([stateResult, improvementResult, pipelineResult, gapsResult, triageResult]) => {
+      .then(([stateResult, improvementResult, pipelineResult, gapsResult, triageResult, newsDigestResult]) => {
         if (stateResult.status !== "fulfilled") {
           setError("リース知性体の状態を読み込めませんでした。");
           return;
@@ -1391,6 +1417,7 @@ export default function LeaseIntelligencePage() {
             improvementResult.value.data,
             pipelineResult.status === "fulfilled" ? pipelineResult.value.data : null,
             gapsResult.status === "fulfilled" ? gapsResult.value.data : null,
+            newsDigestResult.status === "fulfilled" ? newsDigestResult.value.data : null,
           );
           if (report) {
             const reportMessage: Message = {

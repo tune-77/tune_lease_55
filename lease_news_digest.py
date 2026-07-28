@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -17,6 +18,19 @@ DEFAULT_NEWS_REL_DIRS = (
     Path("リースニュース"),
 )
 METRICS_PATH = Path(__file__).resolve().parent / "data" / "lease_news_metrics.json"
+NEWS_JUDGMENT_SIGNALS_JSONL = Path(__file__).resolve().parent / "data" / "news_judgment_signals.jsonl"
+NEWS_JUDGMENT_SIGNALS_LATEST_JSON = Path(__file__).resolve().parent / "data" / "news_judgment_signals_latest.json"
+
+_NEWS_SIGNAL_REQUIRED_FIELDS = (
+    "claim",
+    "effective_claim",
+    "use_when",
+    "do_not_use_when",
+    "recommended_checks",
+    "condition_impacts",
+    "risk_axis",
+    "valid_until",
+)
 
 
 @dataclass(frozen=True)
@@ -228,6 +242,8 @@ def _news_noise_score(item: dict) -> float:
     score = 0.0
     if _has_any(joined, ("おすすめ", "ランキング", "口コミ", "評判", "比較", "安い", "もらえる", "個人向け")):
         score += 0.75
+    if _has_any(joined, ("新品未使用", "純正部品", "EGRバルブ", "中古パーツ", "部品販売", "Universidad de Sevilla")):
+        score += 0.85
     if _has_any(joined, ("審査なし", "審査が甘い")):
         score += 0.25
     if _has_any(joined, ("市場規模", "トップ35", "スコープ", "予測レポート")):
@@ -832,6 +848,549 @@ def _actions_json_path(date_str: str) -> Path:
 
 def _actions_latest_path() -> Path:
     return Path(__file__).resolve().parent / "data" / "lease_news_actions_latest.json"
+
+
+def _news_signal_id(date_str: str, action: LeaseNewsAction) -> str:
+    seed = "|".join([
+        str(date_str or ""),
+        action.source_path,
+        action.source_title,
+        action.signal,
+    ])
+    return "ns-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+
+def _news_signal_actionability(action: LeaseNewsAction) -> str:
+    if action.noise_score >= 0.7:
+        return "ignore"
+    if action.confidence < 0.55:
+        return "watch"
+    if not action.recommended_checks and not action.condition_impacts:
+        return "watch"
+    return "actionable"
+
+
+def _news_action_to_signal(action: LeaseNewsAction, date_str: str) -> dict:
+    actionability = _news_signal_actionability(action)
+    primary_check = action.recommended_checks[0] if action.recommended_checks else "対象企業の業種・物件・投資時期に関係するか確認する。"
+    primary_impact = action.condition_impacts[0] if action.condition_impacts else "関連が薄い場合は審査条件へ反映しない。"
+    use_when_bits = [*action.affected_industries, *action.affected_assets, *action.risk_flags]
+    use_when = " / ".join(use_when_bits) if use_when_bits else "対象企業の業種・物件・投資時期にニュース内容が直接つながる場合"
+    claim = f"{primary_check} 条件影響: {primary_impact}"
+    effective_claim = claim
+    if action.felt_signal:
+        effective_claim = f"{action.felt_signal} {claim}"
+    signal = {
+        "id": _news_signal_id(date_str, action),
+        "source": "news_judgment_signals",
+        "candidate_type": "confirmation_question",
+        "research_topic": " / ".join(use_when_bits[:5]) or "news_judgment_signal",
+        "research_title": action.source_title or action.signal,
+        "research_date": date_str,
+        "claim": claim[:500],
+        "effective_claim": effective_claim[:700],
+        "edited_claim": "",
+        "edit_count": 0,
+        "evidence_path": action.source_path,
+        "promotion_status": "news_signal",
+        "review_status": "candidate",
+        "verified_status": "news_signal_unverified",
+        "asset_quality": actionability,
+        "actionability": actionability,
+        "use_when": use_when,
+        "do_not_use_when": "ニュースの話題性だけで、対象企業の資金繰り・稼働・物件価値・契約条件へ接続できない場合",
+        "valid_until": action.valid_until,
+        "confidence": action.confidence,
+        "noise_score": action.noise_score,
+        "risk_axis": list(action.risk_flags) + list(action.affected_industries) + list(action.affected_assets),
+        "affected_industries": list(action.affected_industries),
+        "affected_assets": list(action.affected_assets),
+        "recommended_checks": list(action.recommended_checks),
+        "condition_impacts": list(action.condition_impacts),
+        "felt_signal": action.felt_signal,
+        "judgment_tension": action.judgment_tension,
+        "source_title": action.source_title,
+        "source_path": action.source_path,
+        "use_count": 0,
+        "useful_count": 0,
+        "rejected_count": 0,
+        "neutral_count": 0,
+    }
+    signal["signal_signature"] = _news_signal_signature(signal)
+    return signal
+
+
+def _news_signature_text(value: object) -> str:
+    if isinstance(value, list):
+        text = " ".join(str(item) for item in value)
+    else:
+        text = str(value or "")
+    tokens = re.findall(r"[A-Za-z0-9_]{3,}|[一-龥ぁ-んァ-ンー]{2,}", text)
+    weak = {"確認", "条件", "影響", "場合", "する", "ます", "ニュース", "案件", "対象", "企業", "リース"}
+    normalized = sorted({token.lower() for token in tokens if token not in weak})
+    return " ".join(normalized[:16])
+
+
+def _news_signal_signature(signal: dict) -> str:
+    parts = [
+        _news_signature_text(signal.get("risk_axis") or []),
+        _news_signature_text(signal.get("affected_industries") or []),
+        _news_signature_text(signal.get("affected_assets") or []),
+        _news_signature_text((signal.get("recommended_checks") or [])[:2]),
+        _news_signature_text((signal.get("condition_impacts") or [])[:1]),
+    ]
+    compact = "|".join(part for part in parts if part)
+    if not compact:
+        compact = _news_signature_text(signal.get("claim") or signal.get("effective_claim") or "")
+    return hashlib.sha256(compact.encode("utf-8")).hexdigest()[:16]
+
+
+def _signal_rank_value(signal: dict) -> tuple[float, int, str]:
+    confidence = float(signal.get("confidence") or 0.0)
+    noise = float(signal.get("noise_score") or 0.0)
+    specificity = len(_normalize_llm_string_list(signal.get("recommended_checks"), limit=6))
+    specificity += len(_normalize_llm_string_list(signal.get("condition_impacts"), limit=6))
+    return (confidence - noise, specificity, str(signal.get("source_title") or ""))
+
+
+def dedupe_news_judgment_signals(signals: list[dict]) -> tuple[list[dict], dict]:
+    by_signature: dict[str, dict] = {}
+    suppressed = 0
+    for signal in signals:
+        signature = str(signal.get("signal_signature") or _news_signal_signature(signal))
+        signal["signal_signature"] = signature
+        current = by_signature.get(signature)
+        if current is None:
+            signal.setdefault("duplicates_collapsed", [])
+            by_signature[signature] = signal
+            continue
+        suppressed += 1
+        keeper, duplicate = (signal, current) if _signal_rank_value(signal) > _signal_rank_value(current) else (current, signal)
+        duplicates = list(keeper.get("duplicates_collapsed") or [])
+        duplicate_title = str(duplicate.get("source_title") or duplicate.get("research_title") or "")
+        if duplicate_title and duplicate_title not in duplicates:
+            duplicates.append(duplicate_title[:160])
+        keeper["duplicates_collapsed"] = duplicates[:8]
+        by_signature[signature] = keeper
+    deduped = list(by_signature.values())
+    deduped.sort(key=_signal_rank_value, reverse=True)
+    return deduped, {"input": len(signals), "output": len(deduped), "suppressed": suppressed}
+
+
+def _normalize_llm_string_list(value: object, limit: int = 5) -> list[str]:
+    if isinstance(value, str):
+        values = [value]
+    elif isinstance(value, list):
+        values = [str(item) for item in value if str(item).strip()]
+    else:
+        values = []
+    out: list[str] = []
+    for item in values:
+        cleaned = " ".join(str(item).split())[:180]
+        if cleaned and cleaned not in out:
+            out.append(cleaned)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _validate_llm_news_signal(candidate: dict, base_signal: dict, date_str: str) -> tuple[dict, list[str]]:
+    """Merge an LLM candidate into a rule signal, then quarantine weak output.
+
+    The LLM may propose better wording, but it cannot promote, extend validity
+    beyond the rule candidate, or erase use/do-not-use boundaries.
+    """
+    merged = dict(base_signal)
+    findings: list[str] = []
+    for key in _NEWS_SIGNAL_REQUIRED_FIELDS:
+        if key not in candidate or candidate.get(key) in ("", [], None):
+            findings.append(f"missing_{key}")
+
+    for key in ("claim", "effective_claim", "use_when", "do_not_use_when"):
+        value = str(candidate.get(key) or "").strip()
+        if value:
+            merged[key] = value[:700 if key == "effective_claim" else 500]
+    for key in ("recommended_checks", "condition_impacts", "risk_axis", "affected_industries", "affected_assets"):
+        values = _normalize_llm_string_list(candidate.get(key), limit=6)
+        if values:
+            merged[key] = values
+    for key in ("felt_signal", "judgment_tension"):
+        value = str(candidate.get(key) or "").strip()
+        if value:
+            merged[key] = value[:260]
+    try:
+        llm_confidence = float(candidate.get("confidence"))
+        merged["confidence"] = round(max(0.2, min(float(base_signal.get("confidence") or 0.5), llm_confidence)), 2)
+    except (TypeError, ValueError):
+        findings.append("missing_confidence")
+
+    base_valid = str(base_signal.get("valid_until") or "")
+    llm_valid = str(candidate.get("valid_until") or "")
+    if llm_valid and re.match(r"^\d{4}-\d{2}-\d{2}$", llm_valid):
+        merged["valid_until"] = min(base_valid, llm_valid) if base_valid else llm_valid
+    else:
+        findings.append("invalid_valid_until")
+
+    joined = " ".join(str(merged.get(key) or "") for key in ("claim", "effective_claim", "use_when", "do_not_use_when"))
+    if any(marker in joined for marker in ("自動承認", "自動否決", "必ず承認", "必ず否決", "スコアを上げる", "スコアを下げる")):
+        findings.append("direct_decision_or_score_language")
+    if len(str(merged.get("claim") or "")) < 24:
+        findings.append("claim_too_short")
+    if not _normalize_llm_string_list(merged.get("recommended_checks"), limit=3):
+        findings.append("no_recommended_checks")
+    if not str(merged.get("do_not_use_when") or "").strip():
+        findings.append("missing_do_not_use_when")
+
+    if findings:
+        merged["actionability"] = "watch"
+        merged["asset_quality"] = "watch"
+        merged["promotion_status"] = "news_signal_quarantined"
+    else:
+        merged["actionability"] = "actionable"
+        merged["asset_quality"] = "actionable"
+        merged["promotion_status"] = "news_signal"
+    merged["review_status"] = "candidate"
+    merged["verified_status"] = "news_signal_unverified"
+    merged["llm_source"] = "gemini"
+    merged["llm_guard_findings"] = findings
+    merged["llm_schema_version"] = "news_judgment_signal_v1"
+    merged["research_date"] = date_str
+    merged["signal_signature"] = _news_signal_signature(merged)
+    return merged, findings
+
+
+def _llm_news_signal_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "signals": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "source_index": {"type": "integer"},
+                        "claim": {"type": "string"},
+                        "effective_claim": {"type": "string"},
+                        "use_when": {"type": "string"},
+                        "do_not_use_when": {"type": "string"},
+                        "recommended_checks": {"type": "array", "items": {"type": "string"}},
+                        "condition_impacts": {"type": "array", "items": {"type": "string"}},
+                        "risk_axis": {"type": "array", "items": {"type": "string"}},
+                        "affected_industries": {"type": "array", "items": {"type": "string"}},
+                        "affected_assets": {"type": "array", "items": {"type": "string"}},
+                        "felt_signal": {"type": "string"},
+                        "judgment_tension": {"type": "string"},
+                        "valid_until": {"type": "string"},
+                        "confidence": {"type": "number"},
+                    },
+                    "required": [
+                        "source_index",
+                        "claim",
+                        "effective_claim",
+                        "use_when",
+                        "do_not_use_when",
+                        "recommended_checks",
+                        "condition_impacts",
+                        "risk_axis",
+                        "valid_until",
+                        "confidence",
+                    ],
+                },
+            }
+        },
+        "required": ["signals"],
+    }
+
+
+def _generate_llm_news_signal_candidates(base_signals: list[dict]) -> dict:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key or not base_signals:
+        return {"generated": False, "reason": "GEMINI_API_KEY not set", "signals": []}
+    try:
+        from google import genai
+        from google.genai import types
+
+        payload = [
+            {
+                "source_index": index,
+                "title": signal.get("source_title") or signal.get("research_title"),
+                "rule_claim": signal.get("claim"),
+                "rule_effective_claim": signal.get("effective_claim"),
+                "use_when": signal.get("use_when"),
+                "do_not_use_when": signal.get("do_not_use_when"),
+                "risk_axis": signal.get("risk_axis"),
+                "valid_until": signal.get("valid_until"),
+            }
+            for index, signal in enumerate(base_signals)
+        ]
+        prompt = (
+            "ニュースをリース審査で使える News Judgment Signal JSON に変換してください。"
+            "ニュース本文そのものを要約せず、案件で何を疑うか、何を確認するか、どの条件に影響するかへ変換します。"
+            "禁止: 自動承認、自動否決、スコア変更、記事にない事実の断定。"
+            "必ず use_when と do_not_use_when を書き、判断資産本流へ入れる前提にしないでください。"
+            "valid_until は入力より長くしないでください。\n"
+            + json.dumps(payload, ensure_ascii=False)
+        )
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=6000,
+                response_mime_type="application/json",
+                response_json_schema=_llm_news_signal_schema(),
+                http_options=types.HttpOptions(timeout=30000),
+            ),
+        )
+        parsed = json.loads(response.text or "{}")
+        signals = parsed.get("signals") if isinstance(parsed, dict) else []
+        return {"generated": True, "reason": "", "signals": signals if isinstance(signals, list) else []}
+    except Exception as exc:
+        return {"generated": False, "reason": str(exc), "signals": []}
+
+
+def apply_llm_news_signal_candidates(
+    base_signals: list[dict],
+    llm_candidates: list[dict],
+    date_str: str,
+) -> tuple[list[dict], dict]:
+    by_index = {
+        int(item.get("source_index")): item
+        for item in llm_candidates
+        if isinstance(item, dict) and str(item.get("source_index", "")).lstrip("-").isdigit()
+    }
+    merged: list[dict] = []
+    quarantined = 0
+    applied = 0
+    for index, base_signal in enumerate(base_signals):
+        candidate = by_index.get(index)
+        if not candidate:
+            merged.append(base_signal)
+            continue
+        updated, findings = _validate_llm_news_signal(candidate, base_signal, date_str)
+        if findings:
+            quarantined += 1
+        else:
+            applied += 1
+        merged.append(updated)
+    return merged, {"applied": applied, "quarantined": quarantined, "received": len(llm_candidates)}
+
+
+def build_news_judgment_signals(
+    date_str: str | None = None,
+    vault: Path | None = None,
+    limit: int = 5,
+    use_llm: bool | None = None,
+) -> list[dict]:
+    action_date = date_str or dt.date.today().isoformat()
+    actions = build_lease_news_actions(date_str=action_date, vault=vault, limit=limit)
+    if not actions.available:
+        return []
+    signals = [_news_action_to_signal(action, action_date) for action in actions.action_items]
+    signals = [signal for signal in signals if signal.get("actionability") == "actionable"]
+    use_llm = use_llm if use_llm is not None else os.environ.get("LEASE_NEWS_SIGNAL_LLM", "0") == "1"
+    if use_llm and signals:
+        generated = _generate_llm_news_signal_candidates(signals)
+        if generated.get("signals"):
+            signals, summary = apply_llm_news_signal_candidates(
+                signals,
+                [item for item in generated.get("signals", []) if isinstance(item, dict)],
+                action_date,
+            )
+            for signal in signals:
+                signal["llm_loop_summary"] = summary
+        else:
+            for signal in signals:
+                signal["llm_source"] = "rule_fallback"
+                signal["llm_guard_findings"] = [str(generated.get("reason") or "llm_unavailable")[:160]]
+    deduped, dedupe_summary = dedupe_news_judgment_signals(signals)
+    for signal in deduped:
+        signal["dedupe_summary"] = dedupe_summary
+    return deduped
+
+
+def read_news_judgment_signals(path: Path | None = None, limit: int = 500) -> list[dict]:
+    target = path or NEWS_JUDGMENT_SIGNALS_JSONL
+    if not target.exists():
+        return []
+    rows: list[dict] = []
+    try:
+        for line in target.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict):
+                rows.append(item)
+    except OSError:
+        return []
+    rows.sort(key=lambda item: (str(item.get("research_date") or ""), str(item.get("id") or "")), reverse=True)
+    return rows[: max(1, limit)]
+
+
+def write_news_judgment_signals(
+    date_str: str | None = None,
+    vault: Path | None = None,
+    path: Path | None = None,
+    latest_path: Path | None = None,
+    limit: int = 5,
+    use_llm: bool | None = None,
+) -> dict:
+    action_date = date_str or dt.date.today().isoformat()
+    signals = build_news_judgment_signals(date_str=action_date, vault=vault, limit=limit, use_llm=use_llm)
+    target = path or NEWS_JUDGMENT_SIGNALS_JSONL
+    latest = latest_path or NEWS_JUDGMENT_SIGNALS_LATEST_JSON
+    existing_rows = [
+        item for item in read_news_judgment_signals(target, limit=2000)
+        if str(item.get("research_date") or "") != action_date
+    ]
+    active_signatures: set[str] = set()
+    for item in existing_rows:
+        valid_until = str(item.get("valid_until") or "")
+        if valid_until:
+            try:
+                if dt.date.fromisoformat(valid_until[:10]) < dt.date.fromisoformat(action_date[:10]):
+                    continue
+            except ValueError:
+                pass
+        signature = str(item.get("signal_signature") or _news_signal_signature(item))
+        if signature:
+            active_signatures.add(signature)
+    filtered_signals: list[dict] = []
+    repeated_suppressed = 0
+    for signal in signals:
+        signature = str(signal.get("signal_signature") or _news_signal_signature(signal))
+        signal["signal_signature"] = signature
+        if signature in active_signatures:
+            repeated_suppressed += 1
+            continue
+        filtered_signals.append(signal)
+        active_signatures.add(signature)
+    signals = filtered_signals
+    existing = {str(item.get("id") or ""): item for item in existing_rows}
+    for signal in signals:
+        existing[str(signal.get("id") or "")] = signal
+    rows = list(existing.values())
+    rows.sort(key=lambda item: (str(item.get("research_date") or ""), str(item.get("id") or "")))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8") as fh:
+        for item in rows:
+            fh.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
+    payload = {
+        "date": action_date,
+        "count": len(signals),
+        "policy": "news_signals_are_screening_context_not_promoted_judgment_assets",
+        "dedupe_policy": "same_signal_signature_is_suppressed_while_existing_signal_is_valid",
+        "repeated_suppressed": repeated_suppressed,
+        "signals": signals,
+        "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
+    }
+    latest.parent.mkdir(parents=True, exist_ok=True)
+    latest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "date": action_date,
+        "count": len(signals),
+        "repeated_suppressed": repeated_suppressed,
+        "path": str(target),
+        "latest_path": str(latest),
+        "signals": signals,
+    }
+
+
+def build_daily_news_digest(
+    date_str: str | None = None,
+    vault: Path | None = None,
+    limit: int = 3,
+) -> dict:
+    """Build a plain daily news digest from Obsidian news notes."""
+    vault = vault or find_vault()
+    if not vault:
+        return {"available": False, "date": date_str or dt.date.today().isoformat(), "items": []}
+    target_date = date_str or dt.date.today().isoformat()
+    items = [
+        item for item in _recent_news_items(vault, limit=40)
+        if str(item.get("date") or "")[:10] == target_date
+    ]
+    if not items:
+        items = _recent_news_items(vault, limit=limit)
+        if items:
+            target_date = str(items[0].get("date") or target_date)[:10]
+
+    def _plain_news_line(line: str) -> str:
+        text = str(line or "").strip()
+        if not text or text == "（詳細なし）":
+            return ""
+        judgment_markers = (
+            "確認する",
+            "検討する",
+            "審査では",
+            "審査上",
+            "判断資産",
+            "承認条件",
+            "リース期間",
+            "再リース余地",
+        )
+        if any(marker in text for marker in judgment_markers):
+            return ""
+        return text
+
+    clean_items: list[dict] = []
+    for item in items:
+        if _news_noise_score(item) >= 0.7:
+            continue
+        title = str(item.get("title") or "").strip()
+        title_compact = re.sub(r"\s+", "", title)
+        summary_lines = [
+            cleaned for cleaned in (_plain_news_line(line) for line in item.get("summary_lines", []))
+            if cleaned and re.sub(r"\s+", "", cleaned) not in title_compact
+        ]
+        if not title and not summary_lines:
+            continue
+        clean_items.append({
+            "date": str(item.get("date") or target_date)[:10],
+            "title": title,
+            "summary_lines": summary_lines[:3],
+            "region": str(item.get("region") or "国内"),
+            "source": str(item.get("source") or ""),
+            "article_url": str(item.get("article_url") or ""),
+            "tags": [str(tag) for tag in item.get("tags", []) if str(tag).strip()][:5],
+            "note_path": str(item.get("file_path") or ""),
+        })
+        if len(clean_items) >= max(1, limit):
+            break
+    return {
+        "available": bool(clean_items),
+        "date": target_date,
+        "count": len(clean_items),
+        "items": clean_items,
+    }
+
+
+def daily_news_digest_as_text(
+    date_str: str | None = None,
+    vault: Path | None = None,
+    limit: int = 3,
+) -> str:
+    digest = build_daily_news_digest(date_str=date_str, vault=vault, limit=limit)
+    if not digest.get("available"):
+        return ""
+    date = str(digest.get("date") or "").strip()
+    lines = [f"今日はこういうニュースがありました。{f'対象日: {date}' if date else ''}".strip()]
+    for item in digest.get("items", [])[:limit]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "ニュース").strip()
+        summaries = [str(line).strip() for line in item.get("summary_lines", []) if str(line).strip()]
+        if summaries:
+            lines.append(f"- {title}: {summaries[0][:120]}")
+            for summary in summaries[1:3]:
+                lines.append(f"  - {summary[:120]}")
+        else:
+            lines.append(f"- {title}")
+    return "\n".join(lines)
 
 
 def build_lease_news_actions(

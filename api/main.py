@@ -28,6 +28,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import asyncio
+import datetime as dt
 import hashlib
 import ipaddress
 import json
@@ -143,6 +144,8 @@ from api.gunshi_gemini import stream_gunshi_gemini
 from lease_news_digest import (
     find_vault,
     build_lease_news_brief,
+    build_daily_news_digest,
+    daily_news_digest_as_text,
     get_latest_lease_news_focus,
     get_latest_lease_news_reflection,
     get_latest_lease_news_actions,
@@ -5025,6 +5028,15 @@ def get_lease_news_actions_api():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/lease-news/daily-digest")
+def get_lease_news_daily_digest_api(limit: int = 3):
+    """Obsidianの日次ニュースを、対話室の朝報向けに短く返す。"""
+    try:
+        return build_daily_news_digest(limit=max(1, min(int(limit), 5)))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _candidate_report_dirs() -> list[Path]:
     bundle_root = Path(os.environ.get("CLOUDRUN_BUNDLE_DIR") or (Path(_REPO_ROOT) / ".cloudrun_bundle"))
     dirs = [Path(_REPO_ROOT) / "reports", bundle_root / "reports"]
@@ -5286,6 +5298,18 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
             reason_text = f" / 理由: {reason[:90]}" if reason else ""
             lines.append(f"- {status}: {title[:80]}{reason_text}")
     return "\n".join(lines)
+
+
+def _build_dialogue_news_digest_context(limit: int = 3) -> str:
+    text = daily_news_digest_as_text(limit=limit)
+    if not text:
+        return ""
+    return "\n".join([
+        "【対話室・今日のニュースダイジェスト】",
+        "紫苑は、朝の改善カルテと一緒に以下を短いニュース報告として自然に伝える。",
+        "無理に判断資産化せず、まずは普通のニュース要約として扱う。",
+        text,
+    ])
 
 
 # ── Phase 0: 改善ループ観測（planning/shion_improvement_loop_plan.md）─────────
@@ -9158,6 +9182,7 @@ _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedb
 _SCREENING_LOOP_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "screening_loop_feedback.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidates.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidate_state.json"
+_NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signals.jsonl"
 _CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment_rules.json"
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
@@ -9921,6 +9946,53 @@ def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[
     return rows[:limit]
 
 
+def _load_news_judgment_signals(limit: int = 100) -> list[dict[str, Any]]:
+    state: dict[str, Any] = {}
+    if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.exists():
+        try:
+            raw_state = json.loads(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.read_text(encoding="utf-8", errors="ignore"))
+            if isinstance(raw_state, dict):
+                state = raw_state
+        except (json.JSONDecodeError, OSError):
+            state = {}
+    rows: list[dict[str, Any]] = []
+    today = dt.date.today()
+    if _NEWS_JUDGMENT_SIGNALS_JSONL.exists():
+        try:
+            for line in _NEWS_JUDGMENT_SIGNALS_JSONL.read_text(encoding="utf-8", errors="ignore").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("actionability") or "") != "actionable":
+                    continue
+                valid_until = str(item.get("valid_until") or "")
+                if valid_until:
+                    try:
+                        if dt.date.fromisoformat(valid_until[:10]) < today:
+                            continue
+                    except ValueError:
+                        pass
+                signal_state = state.get(str(item.get("id") or ""))
+                if isinstance(signal_state, dict):
+                    item = {**item, **signal_state}
+                rows.append(item)
+        except OSError:
+            rows = []
+    rows.sort(
+        key=lambda item: (
+            str(item.get("research_date") or ""),
+            float(item.get("confidence") or 0.0) - float(item.get("noise_score") or 0.0),
+        ),
+        reverse=True,
+    )
+    return rows[:limit]
+
+
 def _load_canonical_judgment_asset_candidates(limit: int = 100) -> list[dict[str, Any]]:
     import hashlib as _hashlib
 
@@ -10079,7 +10151,11 @@ def _select_screening_judgment_asset_candidates(
     limit: int = 3,
 ) -> list[dict[str, Any]]:
     context_terms = _screening_candidate_terms(industry_major, industry_sub, asset_name, asset_purpose, hantei)
-    rows = _load_canonical_judgment_asset_candidates() + _load_autoresearch_judgment_asset_candidates()
+    rows = (
+        _load_canonical_judgment_asset_candidates()
+        + _load_autoresearch_judgment_asset_candidates()
+        + _load_news_judgment_signals()
+    )
     if not rows:
         return []
     bandit_signals = build_bandit_signals(read_feedback_rows())
@@ -10119,6 +10195,10 @@ def _select_screening_judgment_asset_candidates(
             "evidence_path": str(item.get("evidence_path") or ""),
             "promotion_status": str(item.get("promotion_status") or "not_promoted"),
             "source": str(item.get("source") or "autoresearch_judgment_asset_candidates"),
+            "valid_until": str(item.get("valid_until") or ""),
+            "use_when": str(item.get("use_when") or ""),
+            "do_not_use_when": str(item.get("do_not_use_when") or ""),
+            "actionability": str(item.get("actionability") or ""),
             "use_count": int(item.get("use_count") or 0),
             "useful_count": int(item.get("useful_count") or 0),
             "rejected_count": int(item.get("rejected_count") or 0),
@@ -10190,7 +10270,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
     candidate_id = str(candidate_id or "").strip()
     if not candidate_id:
         raise HTTPException(status_code=422, detail="candidate_id is required")
-    candidates = _load_canonical_judgment_asset_candidates() + _load_autoresearch_judgment_asset_candidates()
+    candidates = _load_canonical_judgment_asset_candidates() + _load_autoresearch_judgment_asset_candidates() + _load_news_judgment_signals()
     if candidates and not any(str(item.get("id") or "") == candidate_id for item in candidates):
         raise HTTPException(status_code=404, detail="candidate not found")
     try:
@@ -13835,6 +13915,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         dialogue_budget,
     )
     improvement_report_context = _build_dialogue_improvement_report_context(limit=4)
+    news_digest_context = _build_dialogue_news_digest_context(limit=3)
     improvement_observability_context = _build_dialogue_improvement_observability_context(full_message)
     # 通常会話での自発報告（常時レイヤ）は同一内容を毎ターン繰り返さないよう抑制する。
     # 改善相談（オンデマンド詳細）はユーザーが明示的に尋ねているので抑制しない。
@@ -13874,6 +13955,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 {user_personal_memory_context}
 {shared_shion_memory_context}
 {improvement_report_context}
+{news_digest_context}
 {improvement_observability_context}
 {improvement_triage_context}
 {build_shion_feminine_tone_block()}
@@ -13934,6 +14016,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         system_prompt += f"\n\n{shared_shion_memory_context}"
     if improvement_report_context:
         system_prompt += f"\n\n{improvement_report_context}"
+    if news_digest_context:
+        system_prompt += f"\n\n{news_digest_context}"
     if improvement_observability_context:
         system_prompt += f"\n\n{improvement_observability_context}"
     if improvement_triage_context:

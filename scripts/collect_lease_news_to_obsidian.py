@@ -35,6 +35,7 @@ if str(_REPO_ROOT) not in sys.path:
 from lease_news_digest import (
     get_lease_news_metrics,
     record_lease_news_collection,
+    write_news_judgment_signals,
     write_lease_news_actions_note,
     write_lease_news_focus_note,
     write_lease_news_reflection_note,
@@ -1073,6 +1074,7 @@ def main(argv: list[str] | None = None) -> int:
     daily_path = _append_daily_digest(vault, daily_dir, news_dir, date_str, articles)
     focus_result = write_lease_news_focus_note(date_str=date_str, vault=vault)
     actions_result = write_lease_news_actions_note(date_str=date_str, vault=vault)
+    signal_result = write_news_judgment_signals(date_str=date_str, vault=vault)
     reflection_result = write_lease_news_reflection_note(date_str=date_str, vault=vault, focus=None)
     if reflection_result:
         try:
@@ -1107,6 +1109,9 @@ def main(argv: list[str] | None = None) -> int:
         actions_path = vault / actions_result.note_path
         focus_paths.append(actions_path)
         print(f"actions_note={actions_path}")
+    if signal_result:
+        print(f"news_judgment_signals={signal_result['path']}")
+        print(f"news_judgment_signals_count={signal_result['count']}")
     if reflection_result:
         reflection_path = Path(reflection_result.note_path)
         focus_paths.append(reflection_path)
@@ -1120,6 +1125,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"focus_saved=1")
     if actions_result:
         print(f"actions_saved=1")
+    if signal_result:
+        print(f"news_judgment_signals_saved=1")
     if reflection_result:
         print(f"reflection_saved=1")
     print(f"news_dir={vault / news_dir}")

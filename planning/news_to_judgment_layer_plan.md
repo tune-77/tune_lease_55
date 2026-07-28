@@ -119,7 +119,7 @@
 
 ### Phase 0: Morning Intelligence Brief
 
-Status: planned
+Status: implemented locally / review-gated
 
 毎朝の調査は、ニュースを大量に保存するためではなく、「今日の審査で気をつける外部環境論点」を3つ作るために使う。
 
@@ -146,6 +146,18 @@ Status: planned
 - その日の案件で使われなければ低優先度へ落とす
 - 1週間使われなければ通常想起から外す
 - 実際に審査コメントやAI回答に使われたら判断記憶へ昇格する
+
+2026-07-28 implementation:
+
+- `lease_news_digest.py` に `build_news_judgment_signals` / `write_news_judgment_signals` / `read_news_judgment_signals` を追加した。
+- `scripts/build_news_judgment_signals.py` で、Obsidianに保存済みのニュースから `data/news_judgment_signals.jsonl` と `data/news_judgment_signals_latest.json` を再生成できる。
+- `scripts/collect_lease_news_to_obsidian.py` は、日次ニュース収集後にニュース判断信号も更新する。
+- `api/main.py` の審査向け判断資産候補選択に `source=news_judgment_signals` を合流させた。ただし `promotion_status=news_signal` のままで、判断資産本流へは自動昇格しない。
+- 生成シグナルは `actionable / watch / ignore` で扱い、案件一致時だけ最大候補に混ぜる。フィードバックは既存の `judgment_asset_usage_feedback.jsonl` に戻せる。
+- 同日再生成時は古い同日シグナルを置き換える。部品販売・口コミ・ランキング等のノイズは通常候補から落とす。
+- LLM段階を追加した。`LEASE_NEWS_SIGNAL_LLM=1` または `scripts/build_news_judgment_signals.py --use-llm` の時だけ、Gemini が `News Judgment Signal` JSON候補を作る。LLM候補は `claim / effective_claim / use_when / do_not_use_when / recommended_checks / condition_impacts / risk_axis / valid_until / confidence` を必須にし、直接承認・否決・スコア変更・期限延長・根拠不明の断定があれば `news_signal_quarantined` に落とす。
+- ループ設計は `LLM生成 -> ルール検疫 -> 案件一致時だけ提示 -> helped/noise/wrong/expiredフィードバック -> 人間レビュー -> 判断資産候補`。LLMは本流へmergeしない。
+- 重複抑制を追加した。業種・物件・リスク軸・確認条件・条件影響から `signal_signature` を作り、同日内で同じ観点は1件へ折りたたむ。過去の有効期限内シグナルと同じ `signal_signature` も新規追加しない。折りたたんだ記事名は `duplicates_collapsed` に残し、`dedupe_summary` で input/output/suppressed を追える。
 
 目的:
 
