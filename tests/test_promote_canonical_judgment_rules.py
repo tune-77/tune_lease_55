@@ -115,6 +115,63 @@ def test_promote_merges_same_semantic_rule_across_material_types():
     assert rule["evidence_paths"] == ["path/a.md", "path/b.md"]
 
 
+def test_promote_preserves_lineage_parent_ids_and_derivation_reason():
+    preview_rules = [
+        {
+            "id": "rule_child",
+            "status": "accepted_preview",
+            "preview": True,
+            "private": False,
+            "material_type": "judgment_rule",
+            "domain": "lease_screening",
+            "concept": "asset_life_and_residual",
+            "canonical_statement": "経済的寿命に加えて残価と出口を見る。",
+            "parent_ids": ["rule_parent"],
+            "derivation_reason": "実案件フィードバックで残価観点を追加",
+            "evidence_count": 2,
+        }
+    ]
+
+    store = promote.promote_rules(preview_rules, {"rules": []}, now="2026-07-12T12:00:00")
+
+    rule = store["rules"][0]
+    assert rule["parent_ids"] == ["rule_parent"]
+    assert rule["derivation_reason"] == "実案件フィードバックで残価観点を追加"
+
+
+def test_promote_keeps_existing_lineage_when_preview_updates_same_rule():
+    preview_rules = [
+        {
+            "id": "rule_child",
+            "status": "accepted_preview",
+            "preview": True,
+            "private": False,
+            "concept": "asset_life_and_residual",
+            "canonical_statement": "経済的寿命に加えて残価と出口を見る。",
+            "evidence_count": 4,
+        }
+    ]
+    existing = {
+        "rules": [
+            {
+                "id": "rule_child",
+                "status": "active",
+                "concept": "asset_life_and_residual",
+                "canonical_statement": "経済的寿命に加えて残価と出口を見る。",
+                "parent_ids": ["rule_parent"],
+                "derivation_reason": "過去の審査メモから派生",
+                "created_at": "2026-07-01T00:00:00",
+            }
+        ]
+    }
+
+    store = promote.promote_rules(preview_rules, existing, now="2026-07-12T12:00:00")
+
+    rule = store["rules"][0]
+    assert rule["parent_ids"] == ["rule_parent"]
+    assert rule["derivation_reason"] == "過去の審査メモから派生"
+
+
 def test_promoted_markdown_declares_active_store_not_obsidian():
     store = {
         "summary": {"active_rules": 1, "promoted": 1, "updated": 0, "skipped": 0},
@@ -136,3 +193,5 @@ def test_promoted_markdown_declares_active_store_not_obsidian():
     assert "Only accepted_preview rules are promoted" in md
     assert "Obsidian is not modified" in md
     assert "judgment_memory" in md
+    assert "Parents:" in md
+    assert "Derivation:" in md

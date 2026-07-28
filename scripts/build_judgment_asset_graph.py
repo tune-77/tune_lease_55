@@ -13,7 +13,7 @@ import argparse
 import html
 import json
 from collections import Counter, defaultdict
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,7 @@ NODE_COLORS = {
 }
 
 EDGE_COLORS = {
+    "lineage": "#0f766e",
     "risk_axis": "#d97706",
     "domain": "#059669",
     "evidence": "#7c3aed",
@@ -142,6 +143,73 @@ def _rule_label(rule: dict[str, Any]) -> str:
     return _shorten(statement, 42) if statement else str(rule.get("id") or "rule")
 
 
+def _rule_sort_key(rule: dict[str, Any]) -> tuple[str, int, int, str]:
+    created = str(rule.get("created_at") or rule.get("updated_at") or "")
+    evidence_count = int(rule.get("evidence_count") or 0)
+    user_evidence_count = int(rule.get("user_evidence_count") or 0)
+    return (created, evidence_count, user_evidence_count, str(rule.get("id") or ""))
+
+
+def _infer_lineage(rules: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Return lineage metadata keyed by rule id.
+
+    Explicit `parent_ids` always win. For older assets that do not yet carry
+    lineage, same-concept variants are connected in stable creation order so
+    the graph can still show a usable family tree without mutating the store.
+    """
+    by_id = {str(rule.get("id") or "").strip(): rule for rule in rules if str(rule.get("id") or "").strip()}
+    concept_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for rule in by_id.values():
+        concept = str(rule.get("concept") or "").strip()
+        if concept:
+            concept_groups[concept].append(rule)
+
+    inferred_parent: dict[str, str] = {}
+    for group in concept_groups.values():
+        if len(group) < 2:
+            continue
+        ordered = sorted(group, key=_rule_sort_key)
+        for parent, child in zip(ordered, ordered[1:]):
+            child_id = str(child.get("id") or "").strip()
+            if not _as_list(child.get("parent_ids")):
+                inferred_parent[child_id] = str(parent.get("id") or "").strip()
+
+    raw_lineage: dict[str, dict[str, Any]] = {}
+    for rule_id, rule in by_id.items():
+        explicit_parent_ids = [parent_id for parent_id in _as_list(rule.get("parent_ids")) if parent_id != rule_id]
+        inferred_parent_ids = [inferred_parent[rule_id]] if rule_id in inferred_parent else []
+        parent_ids = explicit_parent_ids or inferred_parent_ids
+        if parent_ids:
+            reason = str(rule.get("derivation_reason") or "").strip()
+            if not reason:
+                reason = "explicit_parent_ids" if explicit_parent_ids else "same_concept_variant"
+        else:
+            reason = str(rule.get("derivation_reason") or "root_judgment_asset").strip()
+        raw_lineage[rule_id] = {
+            "parent_ids": parent_ids,
+            "derivation_reason": reason,
+            "explicit_parent_ids": bool(explicit_parent_ids),
+        }
+
+    depth_cache: dict[str, int] = {}
+
+    def depth(rule_id: str, seen: set[str] | None = None) -> int:
+        if rule_id in depth_cache:
+            return depth_cache[rule_id]
+        seen = seen or set()
+        if rule_id in seen:
+            return 0
+        seen.add(rule_id)
+        parent_ids = raw_lineage.get(rule_id, {}).get("parent_ids") or []
+        value = 0 if not parent_ids else 1 + max(depth(str(parent_id), set(seen)) for parent_id in parent_ids)
+        depth_cache[rule_id] = value
+        return value
+
+    for rule_id in raw_lineage:
+        raw_lineage[rule_id]["lineage_depth"] = depth(rule_id)
+    return raw_lineage
+
+
 def build_graph_data(
     *,
     canonical: dict[str, Any],
@@ -198,10 +266,12 @@ def build_graph_data(
             nodes[target]["degree"] = int(nodes[target].get("degree") or 0) + 1
 
     rules = [rule for rule in _canonical_rules(canonical) if str(rule.get("status") or "active") == "active"]
+    lineage = _infer_lineage(rules)
     for rule in rules:
         rule_id = str(rule.get("id") or "").strip()
         if not rule_id:
             continue
+        lineage_meta = lineage.get(rule_id, {})
         feedback_counts = feedback_by_rule.get(rule_id, Counter())
         helped = int(feedback_counts.get("helped") or 0)
         challenged = int(feedback_counts.get("challenged") or 0) + int(feedback_counts.get("rejected") or 0)
@@ -223,6 +293,9 @@ def build_graph_data(
                 "feedback_used": used,
                 "feedback_helped": helped,
                 "feedback_challenged": challenged,
+                "parent_ids": lineage_meta.get("parent_ids") or [],
+                "derivation_reason": lineage_meta.get("derivation_reason") or "",
+                "lineage_depth": int(lineage_meta.get("lineage_depth") or 0),
                 "weight": max(8, evidence_count + user_evidence_count * 2 + used * 4),
             }
         )
@@ -267,6 +340,21 @@ def build_graph_data(
             )
             add_edge(f"rule:{rule_id}", evidence_id, "evidence", "evidence", 0.6)
 
+    for rule_id, lineage_meta in lineage.items():
+        child_node_id = f"rule:{rule_id}"
+        if child_node_id not in nodes:
+            continue
+        for parent_id in lineage_meta.get("parent_ids") or []:
+            parent_node_id = f"rule:{parent_id}"
+            if parent_node_id in nodes:
+                add_edge(
+                    parent_node_id,
+                    child_node_id,
+                    "lineage",
+                    str(lineage_meta.get("derivation_reason") or "derived"),
+                    2.4,
+                )
+
     for index, row in enumerate(feedback_rows):
         if _is_simulation_feedback(row):
             continue
@@ -296,6 +384,9 @@ def build_graph_data(
     outcome_counts.pop("", None)
     latest_judgment = growth_evaluation.get("judgment") if isinstance(growth_evaluation.get("judgment"), dict) else {}
     latest_period = growth_evaluation.get("period") if isinstance(growth_evaluation.get("period"), dict) else {}
+    lineage_edges = sum(1 for edge in edges if edge.get("type") == "lineage")
+    lineage_derived = sum(1 for item in lineage.values() if item.get("parent_ids"))
+    lineage_roots = max(0, type_counts.get("rule", 0) - lineage_derived)
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "schema_version": 1,
@@ -309,6 +400,9 @@ def build_graph_data(
             "domains": type_counts.get("domain", 0),
             "evidence": type_counts.get("evidence", 0),
             "cases": type_counts.get("case", 0),
+            "lineage_edges": lineage_edges,
+            "lineage_roots": lineage_roots,
+            "lineage_derived": lineage_derived,
             "feedback": dict(sorted(outcome_counts.items())),
             "growth_label": latest_judgment.get("label", ""),
             "growth_score": latest_judgment.get("score", ""),
@@ -432,7 +526,7 @@ button:hover {{ background: #f1f5f9; }}
 <div class="app">
   <aside>
     <h1>Judgment Asset Graph</h1>
-    <p class="lead">判断資産、リスク軸、根拠ログ、実案件フィードバックのつながりを見るローカル図。</p>
+    <p class="lead">判断資産、親子系統、リスク軸、根拠ログ、実案件フィードバックのつながりを見るローカル図。</p>
     <div class="verdict">
       <strong>{growth_label}</strong>
       <span>Growth score: {growth_score}</span>
@@ -442,6 +536,8 @@ button:hover {{ background: #f1f5f9; }}
       <div class="stat"><b id="stat-edges">{summary.get("edges", 0)}</b><span>edges</span></div>
       <div class="stat"><b>{summary.get("rules", 0)}</b><span>rules</span></div>
       <div class="stat"><b>{summary.get("cases", 0)}</b><span>cases</span></div>
+      <div class="stat"><b>{summary.get("lineage_roots", 0)}</b><span>lineage roots</span></div>
+      <div class="stat"><b>{summary.get("lineage_derived", 0)}</b><span>derived assets</span></div>
     </div>
     <h2>Search</h2>
     <input id="search" type="search" placeholder="concept, risk axis, evidence...">
@@ -460,6 +556,7 @@ button:hover {{ background: #f1f5f9; }}
       <div class="legend-row"><span class="dot" style="background:#10b981"></span>ドメイン</div>
       <div class="legend-row"><span class="dot" style="background:#8b5cf6"></span>根拠ログ</div>
       <div class="legend-row"><span class="dot" style="background:#ef4444"></span>案件フィードバック</div>
+      <div class="legend-row"><span class="dot" style="background:#0f766e"></span>系統エッジ parent_ids</div>
     </div>
     <h2>Actions</h2>
     <button id="reset">Reset layout</button>
@@ -550,7 +647,7 @@ function simulate() {{
     const dx = target.x - source.x;
     const dy = target.y - source.y;
     const dist = Math.max(1, Math.hypot(dx, dy));
-    const targetDist = edge.type === "evidence" ? 155 : edge.type === "domain" ? 125 : 105;
+    const targetDist = edge.type === "evidence" ? 155 : edge.type === "domain" ? 125 : edge.type === "lineage" ? 92 : 105;
     const force = (dist - targetDist) * 0.0025 * Number(edge.weight || 1);
     const fx = dx / dist * force;
     const fy = dy / dist * force;
@@ -608,6 +705,9 @@ function showTooltip(event, node) {{
     `type: ${{node.type}}`,
   ];
   if (node.statement) parts.push(node.statement);
+  if (node.parent_ids && node.parent_ids.length) parts.push(`parents: ${{node.parent_ids.join(", ")}}`);
+  if (node.derivation_reason) parts.push(`derivation: ${{node.derivation_reason}}`);
+  if (node.lineage_depth) parts.push(`lineage depth: ${{node.lineage_depth}}`);
   if (node.evidence_count !== undefined) parts.push(`evidence: ${{node.evidence_count}} / user: ${{node.user_evidence_count || 0}}`);
   if (node.feedback_used) parts.push(`feedback: used ${{node.feedback_used}}, helped ${{node.feedback_helped || 0}}, challenged ${{node.feedback_challenged || 0}}`);
   if (node.title && !node.statement) parts.push(node.title);

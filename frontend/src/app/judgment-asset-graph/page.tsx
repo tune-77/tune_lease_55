@@ -3,7 +3,7 @@
 import React from "react";
 import { Network, ExternalLink, Sparkles } from "lucide-react";
 
-// 判断資産グラフ（紫苑の成長）
+// 判断資産グラフ（紫苑の成長・系統樹）
 // scripts/build_judgment_asset_graph.py が夜間に生成する自己完結HTMLを
 // frontend/public/judgment-asset-graph/index.html として配信し、iframe で表示する。
 // このグラフは evaluate_shion_growth.py の期間成長判定も内包する。
@@ -19,10 +19,10 @@ export default function JudgmentAssetGraphPage() {
           </span>
           <div>
             <h1 className="text-lg font-black tracking-tight text-slate-900 dark:text-slate-100">
-              判断資産グラフ（紫苑の成長）
+              判断資産グラフ（紫苑の成長・系統樹）
             </h1>
             <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
-              紫苑が蓄えた判断ルールが、リスク軸・業種・根拠・実案件とどう繋がり、
+              紫苑が蓄えた判断ルールが、parent_ids の系統、派生理由、リスク軸・業種・根拠・実案件とどう繋がり、
               どれが実戦で
               <span className="font-bold text-emerald-600 dark:text-emerald-400"> 効いた</span>
               ／

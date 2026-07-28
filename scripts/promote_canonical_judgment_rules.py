@@ -60,8 +60,19 @@ def _promotable(rule: dict[str, Any]) -> bool:
     return True
 
 
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value is None:
+        return []
+    normalized = str(value).strip()
+    return [normalized] if normalized else []
+
+
 def _promoted_rule(rule: dict[str, Any], *, now: str, previous: dict[str, Any] | None = None) -> dict[str, Any]:
     previous = previous or {}
+    parent_ids = _string_list(rule.get("parent_ids")) or _string_list(previous.get("parent_ids"))
+    derivation_reason = str(rule.get("derivation_reason") or previous.get("derivation_reason") or "").strip()
     return {
         "id": str(rule.get("id") or previous.get("id") or ""),
         "status": "active",
@@ -76,6 +87,8 @@ def _promoted_rule(rule: dict[str, Any], *, now: str, previous: dict[str, Any] |
         "user_evidence_count": int(rule.get("user_evidence_count") or previous.get("user_evidence_count") or 0),
         "confidence": float(rule.get("confidence") or previous.get("confidence") or 0.7),
         "risk_axis": list(rule.get("risk_axis") or previous.get("risk_axis") or [])[:5],
+        "parent_ids": parent_ids[:8],
+        "derivation_reason": derivation_reason,
         "sample_claims": list(rule.get("sample_claims") or previous.get("sample_claims") or [])[:8],
         "evidence_paths": list(rule.get("evidence_paths") or previous.get("evidence_paths") or [])[:12],
         "created_at": str(previous.get("created_at") or now),
@@ -116,6 +129,13 @@ def _merge_preview_rules(preview_rules: list[dict[str, Any]]) -> list[dict[str, 
                 if value not in values:
                     values.append(value)
             target[field] = values[:limit]
+        for parent_id in _string_list(rule.get("parent_ids")):
+            parent_ids = _string_list(target.get("parent_ids"))
+            if parent_id not in parent_ids:
+                parent_ids.append(parent_id)
+            target["parent_ids"] = parent_ids[:8]
+        if not str(target.get("derivation_reason") or "").strip() and str(rule.get("derivation_reason") or "").strip():
+            target["derivation_reason"] = str(rule.get("derivation_reason") or "").strip()
     return list(merged.values())
 
 
@@ -150,6 +170,13 @@ def _merge_rule_dicts(base: dict[str, Any], incoming: dict[str, Any]) -> dict[st
             if value not in values:
                 values.append(value)
         merged[field] = values[:limit]
+    parent_ids = _string_list(base.get("parent_ids"))
+    for parent_id in _string_list(incoming.get("parent_ids")):
+        if parent_id not in parent_ids:
+            parent_ids.append(parent_id)
+    merged["parent_ids"] = parent_ids[:8]
+    if str(incoming.get("derivation_reason") or "").strip():
+        merged["derivation_reason"] = str(incoming.get("derivation_reason") or "").strip()
     if str(incoming.get("updated_at") or "") > str(base.get("updated_at") or ""):
         merged["updated_at"] = incoming.get("updated_at")
     return merged
@@ -246,6 +273,8 @@ def _markdown(store: dict[str, Any]) -> str:
             f"- Type: {rule.get('material_type')}",
             f"- Confidence: {rule.get('confidence')}",
             f"- Axis: {axes or 'n/a'}",
+            f"- Parents: {', '.join(rule.get('parent_ids') or []) or 'root'}",
+            f"- Derivation: {rule.get('derivation_reason') or 'root_judgment_asset'}",
             "",
         ]
     return "\n".join(lines).rstrip() + "\n"

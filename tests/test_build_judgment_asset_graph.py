@@ -63,6 +63,105 @@ def test_inactive_rules_are_not_rendered():
     assert "rule:draft" not in node_ids
 
 
+def test_build_graph_data_renders_explicit_lineage_edges_and_metadata():
+    payload = graph.build_graph_data(
+        canonical={
+            "rules": [
+                {
+                    "id": "rule-parent",
+                    "status": "active",
+                    "concept": "asset_life",
+                    "canonical_statement": "機械の経済的寿命を見る。",
+                },
+                {
+                    "id": "rule-child",
+                    "status": "active",
+                    "concept": "asset_life_and_residual",
+                    "canonical_statement": "経済的寿命に加えて残価と出口を見る。",
+                    "parent_ids": ["rule-parent"],
+                    "derivation_reason": "実案件フィードバックで残価観点を追加",
+                },
+            ]
+        }
+    )
+
+    by_id = {node["id"]: node for node in payload["nodes"]}
+    lineage_edges = [edge for edge in payload["edges"] if edge["type"] == "lineage"]
+
+    assert by_id["rule:rule-child"]["parent_ids"] == ["rule-parent"]
+    assert by_id["rule:rule-child"]["derivation_reason"] == "実案件フィードバックで残価観点を追加"
+    assert by_id["rule:rule-child"]["lineage_depth"] == 1
+    assert lineage_edges == [
+        {
+            "source": "rule:rule-parent",
+            "target": "rule:rule-child",
+            "type": "lineage",
+            "label": "実案件フィードバックで残価観点を追加",
+            "weight": 2.4,
+            "color": "#0f766e",
+        }
+    ]
+    assert payload["summary"]["lineage_edges"] == 1
+    assert payload["summary"]["lineage_roots"] == 1
+    assert payload["summary"]["lineage_derived"] == 1
+
+
+def test_build_graph_data_infers_same_concept_lineage_for_legacy_assets():
+    payload = graph.build_graph_data(
+        canonical={
+            "rules": [
+                {
+                    "id": "rule-early",
+                    "status": "active",
+                    "concept": "demo_renewal_asset",
+                    "canonical_statement": "公開デモ案件は更新資産の妥当性を見る。",
+                    "created_at": "2026-07-01T00:00:00",
+                },
+                {
+                    "id": "rule-later",
+                    "status": "active",
+                    "concept": "demo_renewal_asset",
+                    "canonical_statement": "更新資産は既存設備との置換関係も見る。",
+                    "created_at": "2026-07-20T00:00:00",
+                },
+            ]
+        }
+    )
+
+    by_id = {node["id"]: node for node in payload["nodes"]}
+    lineage_edges = [edge for edge in payload["edges"] if edge["type"] == "lineage"]
+
+    assert by_id["rule:rule-later"]["parent_ids"] == ["rule-early"]
+    assert by_id["rule:rule-later"]["derivation_reason"] == "same_concept_variant"
+    assert lineage_edges[0]["source"] == "rule:rule-early"
+    assert lineage_edges[0]["target"] == "rule:rule-later"
+
+
+def test_build_graph_data_preserves_missing_explicit_parent_ids_without_edge():
+    payload = graph.build_graph_data(
+        canonical={
+            "rules": [
+                {
+                    "id": "rule-child",
+                    "status": "active",
+                    "concept": "asset_life",
+                    "canonical_statement": "親が未収録でも系統メタデータは保持する。",
+                    "parent_ids": ["external-parent"],
+                    "derivation_reason": "外部ノートから派生",
+                }
+            ]
+        }
+    )
+
+    by_id = {node["id"]: node for node in payload["nodes"]}
+    lineage_edges = [edge for edge in payload["edges"] if edge["type"] == "lineage"]
+
+    assert by_id["rule:rule-child"]["parent_ids"] == ["external-parent"]
+    assert by_id["rule:rule-child"]["derivation_reason"] == "外部ノートから派生"
+    assert lineage_edges == []
+    assert payload["summary"]["lineage_derived"] == 1
+
+
 def test_build_html_is_offline_and_embeds_graph_payload():
     payload = graph.build_graph_data(
         canonical={"rules": [{"id": "rule-1", "status": "active", "concept": "asset_life"}]}
@@ -72,6 +171,7 @@ def test_build_html_is_offline_and_embeds_graph_payload():
 
     assert "<!doctype html>" in html
     assert "Judgment Asset Graph" in html
+    assert "parent_ids" in html
     assert "const graph =" in html
     assert "https://" not in html
     assert "rule:rule-1" in html
