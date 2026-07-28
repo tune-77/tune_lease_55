@@ -10,23 +10,23 @@
     "2026-06": 187,
     "2026-07": 68
   },
-  "gen_date": "2026-07-28",
-  "growth_score": 53.4,
-  "coverage": 61.4,
+  "gen_date": "2026-07-29",
+  "growth_score": 53.7,
+  "coverage": 62.3,
   "reuse": 60.0,
-  "judgment_change": 57.0,
+  "judgment_change": 57.5,
   "human_align": 70.0,
   "field": 0.0,
   "negative": 24.0,
-  "materials": 6,
-  "inbox": 6,
+  "materials": 7,
+  "inbox": 7,
   "active_rules": 9,
   "risk_axes": 4,
   "concepts": 8,
   "user_evidence": 13,
   "growth_judgment": {
     "label": "後退・要点検",
-    "score": 52.9,
+    "score": 53.0,
     "summary": "期間内でスコア低下またはノイズ増加が強く、成長より点検を優先する状態。"
   },
   "feedback_total": 333,
@@ -38,5 +38,5 @@
   "applied_pct": 90,
   "fb_other": 212,
   "fb_other_pct": 63.7,
-  "generated_at": "2026-07-28T04:09:26"
+  "generated_at": "2026-07-29T04:09:00"
 }
