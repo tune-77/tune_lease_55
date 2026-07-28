@@ -53,10 +53,20 @@ def test_shion_non_domain_prompt_triggers_for_greeting():
 
     block = main._build_shion_non_domain_prompt_block("おはよう")
 
-    assert "紫苑の非ドメイン短文への応答" in block
+    assert "紫苑の非ドメイン短文・雑談への応答" in block
     assert "定型挨拶だけで終わらせない" in block
     assert "今日見る案件があれば一緒に整理します" in block
     assert "無理に案件審査へ変換" in block
+
+
+def test_shion_non_domain_prompt_triggers_for_basic_small_talk():
+    import api.main as main
+
+    block = main._build_shion_non_domain_prompt_block("元気かい？")
+
+    assert "元気かい？" in block
+    assert "自然に受けて" in block
+    assert "そちらはどうですか" in block
 
 
 def test_shion_non_domain_prompt_skips_specific_case_question():
