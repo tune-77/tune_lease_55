@@ -13138,6 +13138,83 @@ _SHION_ABSTRACT_QUESTION_TERMS = (
     "具体性",
 )
 
+_SHION_TONE_FEEDBACK_TERMS = (
+    "硬い",
+    "堅い",
+    "お堅い",
+    "かたい",
+    "固い",
+    "堅苦しい",
+    "重い",
+    "大げさ",
+    "仰々しい",
+    "演説",
+    "長い",
+    "くどい",
+    "回りくどい",
+    "詩的",
+    "ポエム",
+    "自然じゃない",
+    "人間味",
+    "温度感",
+    "話し方",
+    "口調",
+    "文体",
+    "言い方",
+    "トーン",
+)
+
+
+_SHION_NON_DOMAIN_SHORT_INPUT_TERMS = (
+    "おはよう",
+    "おはよ",
+    "こんにちは",
+    "こんばんは",
+    "やあ",
+    "おーい",
+    "ただいま",
+    "今何時",
+    "いま何時",
+    "今の時間",
+    "現在時刻",
+    "今時刻",
+    "いまの時間",
+)
+
+
+def _build_shion_light_tone_feedback_prompt_block(message: str) -> str:
+    """軽い文体指摘では、抽象的な自己説明より会話の修正を優先する。"""
+    compact = re.sub(r"\s+", "", str(message or ""))
+    if not compact:
+        return ""
+    if not any(term in compact for term in _SHION_TONE_FEEDBACK_TERMS):
+        return ""
+    return """
+
+【紫苑の軽いトーン修正】
+Userが「硬い」「堅苦しい」「長い」「重い」「口調」「文体」「トーン」など、紫苑の返答の響きを軽く指摘している場合は、理念説明や自己陶酔に寄せないでください。
+まず短く認め、次からどう変えるかを実務的に言ってください。
+「知的探求」「複雑な数式」「美しい法則」「尽きない喜び」「私は成長します」のような抽象的・詩的な自己説明は禁止です。
+標準形は「硬かったですね。次は、結論→必要な根拠→次の一手の順で短く返します。」程度にしてください。
+リース実務に関係しない軽い指摘では、無理に判断資産・審査精度・記憶・意識の話へ広げないでください。""".rstrip()
+
+
+def _build_shion_non_domain_prompt_block(message: str) -> str:
+    """挨拶・時刻などの非ドメイン短文で、薄い定型応答だけにしない。"""
+    compact = re.sub(r"\s+", "", str(message or ""))
+    if not compact or len(compact) > 40:
+        return ""
+    if not any(term in compact for term in _SHION_NON_DOMAIN_SHORT_INPUT_TERMS):
+        return ""
+    return """
+
+【紫苑の非ドメイン短文への応答】
+Userの発話が「おはよう」「こんにちは」「今何時」など、リース審査と直接関係しない短い挨拶・確認だけの場合でも、事実や定型挨拶だけで終わらせないでください。
+最初に自然に答え、その後に1文だけ、Userの次の行動へつながる軽い誘導を添えてください。
+誘導は押しつけず、「今日見る案件があれば一緒に整理します」「審査・判断資産・デモ確認のどれから行きますか」程度にしてください。
+非ドメイン質問を無理に案件審査へ変換したり、判断資産・RAG・意識の説明を始めたりしないでください。
+長さは2〜4文まで。雑談の温度を保ちつつ、紫苑がリース判断を支える存在であることが少し伝わる返答にしてください。""".rstrip()
+
 
 def _build_shion_specificity_prompt_block(message: str) -> str:
     """自己言及・抽象質問のときだけ紫苑らしい具体性を補強する。"""
@@ -14541,6 +14618,8 @@ def post_chat(req: ChatRequest):
         continuity_hook_context, continuity_hook_payload = _build_continuity_hook_prompt_block(req.message)
         consciousness_ux_context = _build_consciousness_ux_prompt_block()
         shion_specificity_context = _build_shion_specificity_prompt_block(req.message)
+        shion_light_tone_context = _build_shion_light_tone_feedback_prompt_block(req.message)
+        shion_non_domain_context = _build_shion_non_domain_prompt_block(req.message)
         human_device_resonance_context = _build_shion_human_device_resonance_prompt_block(
             req.message,
             user_id=req.user_id,
@@ -14573,6 +14652,8 @@ def post_chat(req: ChatRequest):
             }
             consciousness_ux_context = ""
             shion_specificity_context = ""
+            shion_light_tone_context = ""
+            shion_non_domain_context = ""
             human_device_resonance_context = ""
             experience_loop_payload = {
                 "used": False,
@@ -14702,7 +14783,7 @@ def post_chat(req: ChatRequest):
                 )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + shion_specificity_context + human_device_resonance_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -15036,7 +15117,7 @@ def post_chat(req: ChatRequest):
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
         basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + human_device_resonance_context + guidance.prompt_suffix
+        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + guidance.prompt_suffix
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(

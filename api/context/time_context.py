@@ -59,6 +59,7 @@ def current_time_reply_if_requested(message: str, now: dt.datetime | None = None
     return (
         f"今はJSTで{current.strftime('%H:%M')}です。"
         f"{current.strftime('%Y年%m月%d日')}（{weekday}曜日）です。"
+        " 今日の審査や確認したい案件があれば、そのまま投げてください。"
     )
 
 
