@@ -324,10 +324,10 @@ export default function DemoHomePage() {
                 紫苑
               </h1>
               <p className="mt-4 max-w-xl text-2xl font-black leading-tight text-white sm:text-3xl">
-                判断を記憶し、検疫して、次の審査へ戻すAI。
+                なんか変、を捨てないAI。
               </p>
               <p className="mt-5 max-w-2xl text-base leading-8 text-stone-100">
-                案件、過去メモ、ニュース、人間評価を判断資産へ変換します。Cloud Runは実証フィールド、ローカル紫苑は検疫・昇格・本体保護を担う運用基盤です。
+                スコアだけでは拾いにくい違和感、迷い、条件付きなら通せる感覚を言語化し、次の審査で思い出せる形に残します。
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
