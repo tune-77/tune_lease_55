@@ -27,7 +27,7 @@ const securityHeaders = [
       "img-src 'self' data: blob:",
       "font-src 'self'",
       `connect-src ${connectSrc}`,
-      "frame-ancestors 'none'",
+      "frame-ancestors 'self'",
     ].join("; "),
   },
 ];
