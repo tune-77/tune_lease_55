@@ -11,6 +11,7 @@ from shion_eval_health import (
     evaluate_shion_trace,
     repair_operation_loop_health,
     summarize_operation_loop_health,
+    summarize_growth_visibility,
     summarize_recent_trace_health,
 )
 
@@ -521,4 +522,103 @@ def test_build_payload_keeps_read_only_policy(tmp_path: Path):
     assert "自動実装へ接続しない" in payload["practicality_check"]["guardrail"]
     assert payload["operation_loop_health"]["label"] == "Shion Operation Loop Check"
     assert "no_delete" in payload["operation_loop_health"]["guardrail"]
+    assert payload["growth_visibility"]["label"] == "Shion Growth Visibility"
+    assert "no_prompt_change" in payload["growth_visibility"]["guardrail"]
     assert payload["cases"]
+
+
+def test_summarize_growth_visibility_connects_four_lanes(tmp_path: Path):
+    reports = tmp_path / "reports"
+    data = tmp_path / "data"
+    reports.mkdir()
+    data.mkdir()
+    (reports / "judgment_asset_growth_latest.json").write_text(
+        json.dumps(
+            {
+                "latest": {
+                    "score": 70.0,
+                    "generated_at": "2026-07-29T00:00:00+00:00",
+                    "components": {"coverage": 80.0, "field_validation": 10.0, "negative_signal": 0.0},
+                    "counts": {"active_rules": 3},
+                    "field_feedback": {"totals": {"helped": 2, "challenged": 0, "rejected": 0}},
+                },
+                "history": [
+                    {"score": 60.0, "components": {"coverage": 70.0, "field_validation": 0.0, "negative_signal": 10.0}},
+                    {"score": 70.0, "components": {"coverage": 80.0, "field_validation": 10.0, "negative_signal": 0.0}},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (reports / "judgment_asset_field_review_latest.json").write_text(
+        json.dumps({"summary": {"grow": 1, "review": 0, "sleeping": 0}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (reports / "recursive_self_improvement_latest.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-07-29T00:00:00+00:00",
+                "ranked_queue_count": 0,
+                "suppressed_count": 2,
+                "measurement_summary": {"pdca_rate": 100.0, "response_changed_rate": 40.0, "repeat_issue_rate": 0.0},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (reports / "latest.json").write_text(
+        json.dumps({"shion_self_proposals": {"suppressed_resolved_count": 2}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (data / "improvement_quality_log.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"computed_at": "2026-07-28T00:00:00+00:00", "quality_score": 0.4}, ensure_ascii=False),
+                json.dumps({"computed_at": "2026-07-29T00:00:00+00:00", "quality_score": 0.8}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (data / "shion_memory_health_state.json").write_text(
+        json.dumps({"checked_at": "2026-07-29T00:00:00+00:00", "total": 10, "by_status": {"active": 9, "private": 1}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (reports / "obsidian_memory_effectiveness_latest.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-07-29T00:00:00+00:00",
+                "date": "2026-07-29",
+                "summary": {"total": 3, "used": 2, "validated": 1, "dormant": 0, "noisy": 0},
+                "records": [{"effectiveness_score": 40}, {"effectiveness_score": 60}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (data / "obsidian_memory_effectiveness.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"date": "2026-07-28", "effectiveness_score": 30}, ensure_ascii=False),
+                json.dumps({"date": "2026-07-29", "effectiveness_score": 40}, ensure_ascii=False),
+                json.dumps({"date": "2026-07-29", "effectiveness_score": 60}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = summarize_growth_visibility(
+        tmp_path,
+        {"available": True, "status": "ok", "score": 90, "sample_size": 4, "over_reference_count": 0, "findings": []},
+        {"status": "ok", "score": 100, "checks": [], "findings": [], "latest_report": {"path": "reports/latest.json"}},
+    )
+
+    assert result["label"] == "Shion Growth Visibility"
+    assert len(result["lanes"]) == 4
+    assert {lane["label"] for lane in result["lanes"]} == {"評価GUI", "判断資産フィードバック", "改善ログ", "記憶健康診断"}
+    assert any("カバレッジ" in point for point in result["improved_points"])
+    assert any("改善品質スコア" in point for point in result["improved_points"])
+    assert any("記憶効果平均" in point for point in result["improved_points"])
+    assert "no_auto_promotion" in result["guardrail"]

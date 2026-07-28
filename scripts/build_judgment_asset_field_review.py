@@ -143,6 +143,51 @@ def _review_bucket(counts: Counter[str]) -> tuple[str, str]:
     return "hold", "使われているが有効性シグナルはまだ弱い"
 
 
+def _priority_score(item: dict[str, Any]) -> float:
+    confidence = item.get("confidence")
+    if not isinstance(confidence, (int, float)):
+        confidence = 0.0
+    user_evidence = int(item.get("user_evidence_count") or 0)
+    return round(float(confidence) * 10 + min(user_evidence, 5), 3)
+
+
+def _build_action_plan(buckets: dict[str, list[dict[str, Any]]], summary: dict[str, Any]) -> dict[str, Any]:
+    sleeping = sorted(buckets.get("sleeping", []), key=_priority_score, reverse=True)
+    grow = sorted(buckets.get("grow", []), key=lambda item: int((item.get("counts") or {}).get("helped") or 0), reverse=True)
+    review = sorted(
+        buckets.get("review", []),
+        key=lambda item: int((item.get("counts") or {}).get("challenged") or 0) + int((item.get("counts") or {}).get("rejected") or 0),
+        reverse=True,
+    )
+    target_rules = sleeping[:3] or grow[:3] or review[:3]
+    next_case_targets = [
+        {
+            "rule_id": item.get("rule_id"),
+            "concept": item.get("concept"),
+            "statement": item.get("statement"),
+            "reason": (
+                "未使用だが confidence/user evidence が高いため、次の実案件で1回だけ意識して試す"
+                if item.get("bucket") == "sleeping"
+                else item.get("reason")
+            ),
+            "priority_score": _priority_score(item),
+        }
+        for item in target_rules
+    ]
+    return {
+        "label": "Field Feedback Action Plan",
+        "status": "needs_real_case_feedback" if summary.get("sleeping") else "ok",
+        "real_case_feedback_gap": int(summary.get("sleeping") or 0),
+        "next_case_targets": next_case_targets,
+        "feedback_template": {
+            "outcomes": ["helped", "challenged", "neutral", "rejected", "used"],
+            "command": "python scripts/record_judgment_asset_feedback.py <rule_id> <outcome> --case-id <case_id> --note '<what changed>' --source real_case --recompute-growth",
+            "note_rule": "note には『回答/確認/稟議条件の何が変わったか』を1文で残す。",
+        },
+        "cleanup_rule": "sleeping は削除候補ではなく、次回実案件で試す候補。challenged/rejected が出たものだけ文面・適用条件を見直す。",
+    }
+
+
 def build_review(
     *,
     target_date: str,
@@ -210,6 +255,7 @@ def build_review(
         "simulation_feedback": simulation_feedback,
         "include_simulation": include_simulation,
     }
+    action_plan = _build_action_plan(buckets, summary)
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "date": target_date,
@@ -218,6 +264,7 @@ def build_review(
         "guardrail": GUARDRAIL,
         "summary": summary,
         "buckets": buckets,
+        "action_plan": action_plan,
         "notes": [
             "この棚卸しは実利用フィードバックの見える化だけを行う。",
             "source=simulation または sim-* case は既定では試運転として除外する。",
@@ -273,6 +320,18 @@ def build_markdown(payload: dict[str, Any]) -> str:
             if signal.get("case_id") or signal.get("note"):
                 lines.append(f"- Last signal: {signal.get('case_id') or '-'} / {_short(signal.get('note'), 80)}")
             lines.append("")
+    action_plan = payload.get("action_plan") if isinstance(payload.get("action_plan"), dict) else {}
+    targets = action_plan.get("next_case_targets") if isinstance(action_plan.get("next_case_targets"), list) else []
+    lines.extend(["## Next Real Case Feedback", ""])
+    if targets:
+        for item in targets:
+            lines.append(f"- `{item.get('rule_id')}` {item.get('concept')}: {_short(item.get('statement'), 100)}")
+            lines.append(f"  - Why: {_short(item.get('reason'), 100)}")
+    else:
+        lines.append("- None")
+    template = action_plan.get("feedback_template") if isinstance(action_plan.get("feedback_template"), dict) else {}
+    if template.get("command"):
+        lines.extend(["", "### Feedback command", "", f"`{template.get('command')}`", ""])
     lines.extend(["## Notes", ""])
     for note in payload.get("notes") or []:
         lines.append(f"- {note}")

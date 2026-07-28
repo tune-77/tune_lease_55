@@ -12,6 +12,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Stethoscope,
+  TrendingUp,
   XCircle,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
@@ -124,6 +125,28 @@ type OperationLoop = {
   guardrail: string;
 };
 
+type GrowthLane = {
+  label: string;
+  status: "ok" | "warn" | "fail" | "unknown";
+  score: number | null;
+  delta: number | null;
+  generated_at: string;
+  source: string;
+  metrics: Record<string, number | string | boolean | null>;
+  improvements: string[];
+  blockers: string[];
+};
+
+type GrowthVisibility = {
+  label: string;
+  status: "ok" | "warn" | "fail" | "unknown";
+  score: number;
+  lanes: GrowthLane[];
+  improved_points: string[];
+  watch_points: string[];
+  guardrail: string;
+};
+
 type EvalPayload = {
   label: string;
   mode: string;
@@ -141,6 +164,7 @@ type EvalPayload = {
   cases: EvalCase[];
   recent_trace_health: RecentTrace;
   operation_loop_health: OperationLoop;
+  growth_visibility?: GrowthVisibility;
 };
 
 type EvalCheck = {
@@ -316,8 +340,10 @@ export default function ShionEvalHealthPage() {
 
   const trace = payload?.recent_trace_health;
   const operation = payload?.operation_loop_health;
+  const growth = payload?.growth_visibility;
   const TraceIcon = statusIcon(trace?.status || "unknown");
   const OperationIcon = statusIcon(operation?.status || "unknown");
+  const GrowthIcon = statusIcon(growth?.status || "unknown");
   const ResultIcon = statusIcon(result?.eval.status || "unknown");
 
   return (
@@ -352,6 +378,80 @@ export default function ShionEvalHealthPage() {
           <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800">
             {error}
           </div>
+        )}
+
+        {growth && (
+          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-black text-slate-800">
+                  <TrendingUp className="h-5 w-5 text-emerald-600" />
+                  何が良くなったか
+                </div>
+                <p className="mt-1 text-xs font-bold leading-5 text-slate-500">
+                  /shion-eval-health、判断資産フィードバック、改善ログ、記憶健康診断を同じ計器盤で表示します。
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-black ${STATUS_STYLE[growth.status] || STATUS_STYLE.unknown}`}>
+                  <GrowthIcon className="h-3.5 w-3.5" />
+                  {statusLabel(growth.status)}
+                </span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
+                  {growth.score} / 100
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              {growth.lanes.map((lane) => {
+                const LaneIcon = statusIcon(lane.status);
+                const deltaText = lane.delta === null || lane.delta === undefined ? "差分 -" : `${lane.delta > 0 ? "+" : ""}${lane.delta}`;
+                return (
+                  <div key={lane.label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 text-xs font-black text-slate-800">{lane.label}</div>
+                      <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${STATUS_STYLE[lane.status] || STATUS_STYLE.unknown}`}>
+                        <LaneIcon className="h-3 w-3" />
+                        {statusLabel(lane.status)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-end justify-between gap-2">
+                      <div className="text-2xl font-black text-slate-950">{lane.score ?? "-"}</div>
+                      <div className={lane.delta && lane.delta > 0 ? "text-xs font-black text-emerald-700" : lane.delta && lane.delta < 0 ? "text-xs font-black text-rose-700" : "text-xs font-black text-slate-500"}>
+                        {deltaText}
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs font-bold leading-5 text-slate-600">
+                      {(lane.improvements.length ? lane.improvements : lane.blockers.slice(0, 1)).map((line) => (
+                        <p key={line}>{line}</p>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg bg-emerald-50 px-4 py-3">
+                <div className="text-xs font-black text-emerald-900">伸びた点</div>
+                <div className="mt-2 space-y-1 text-xs font-bold leading-5 text-emerald-900">
+                  {(growth.improved_points.length ? growth.improved_points : ["まだ明確な改善点は集計されていません。"]).map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg bg-amber-50 px-4 py-3">
+                <div className="text-xs font-black text-amber-900">次に見る点</div>
+                <div className="mt-2 space-y-1 text-xs font-bold leading-5 text-amber-900">
+                  {(growth.watch_points.length ? growth.watch_points : ["大きな注意点はありません。"]).map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-[11px] font-bold leading-5 text-slate-500">{growth.guardrail}</p>
+          </section>
         )}
 
         <section className="grid gap-4 lg:grid-cols-[0.78fr_1.22fr]">

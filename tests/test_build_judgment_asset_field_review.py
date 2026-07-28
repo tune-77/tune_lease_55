@@ -68,6 +68,9 @@ def test_build_review_buckets_active_assets_by_field_feedback():
     assert payload["buckets"]["grow"][0]["rule_id"] == "rule-helped"
     assert payload["buckets"]["review"][0]["rule_id"] == "rule-challenged"
     assert payload["buckets"]["sleeping"][0]["rule_id"] == "rule-sleeping"
+    assert payload["action_plan"]["status"] == "needs_real_case_feedback"
+    assert payload["action_plan"]["next_case_targets"][0]["rule_id"] == "rule-sleeping"
+    assert "--source real_case" in payload["action_plan"]["feedback_template"]["command"]
 
 
 def test_neutral_or_used_only_feedback_goes_to_hold():
@@ -144,6 +147,8 @@ def test_markdown_contains_operational_buckets():
     assert "## 伸ばす" in markdown
     assert "## 見直す" in markdown
     assert "## 眠ってる" in markdown
+    assert "## Next Real Case Feedback" in markdown
+    assert "Feedback command" in markdown
     assert "business_plan" in markdown
 
 

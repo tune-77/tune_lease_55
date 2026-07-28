@@ -450,6 +450,40 @@ def _compact_text(value: Any, limit: int = 1200) -> str:
     return " ".join(str(value or "").split())[:limit]
 
 
+def _as_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_int(value: Any) -> int:
+    number = _as_float(value)
+    return int(number) if number is not None else 0
+
+
+def _rounded_delta(current: Any, previous: Any, digits: int = 1) -> float | None:
+    current_number = _as_float(current)
+    previous_number = _as_float(previous)
+    if current_number is None or previous_number is None:
+        return None
+    return round(current_number - previous_number, digits)
+
+
+def _latest_and_previous(rows: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    clean = [row for row in rows if isinstance(row, dict)]
+    latest = clean[-1] if clean else {}
+    previous = clean[-2] if len(clean) >= 2 else {}
+    return latest, previous
+
+
 def _write_pipeline_step_log(repo_root: Path, step: str, exit_code: int, duration_s: float) -> None:
     path = repo_root / "data" / "pipeline_step_log.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -926,6 +960,318 @@ def summarize_operation_loop_health(
     }
 
 
+def _summarize_judgment_asset_feedback_visibility(repo_root: Path) -> dict[str, Any]:
+    growth = _read_json(repo_root / "reports" / "judgment_asset_growth_latest.json")
+    latest = growth.get("latest") if isinstance(growth.get("latest"), dict) else growth
+    history = growth.get("history") if isinstance(growth.get("history"), list) else []
+    if not history:
+        history = _load_jsonl_all(repo_root / "data" / "judgment_asset_growth_history.jsonl")
+    history_latest, previous = _latest_and_previous(history)
+    if history_latest:
+        latest = history_latest
+
+    field_review = _read_json(repo_root / "reports" / "judgment_asset_field_review_latest.json")
+    field_summary = field_review.get("summary") if isinstance(field_review.get("summary"), dict) else {}
+    action_plan = field_review.get("action_plan") if isinstance(field_review.get("action_plan"), dict) else {}
+    next_case_targets = action_plan.get("next_case_targets") if isinstance(action_plan.get("next_case_targets"), list) else []
+    components = latest.get("components") if isinstance(latest.get("components"), dict) else {}
+    previous_components = previous.get("components") if isinstance(previous.get("components"), dict) else {}
+    field_feedback = latest.get("field_feedback") if isinstance(latest.get("field_feedback"), dict) else {}
+    feedback_totals = field_feedback.get("totals") if isinstance(field_feedback.get("totals"), dict) else {}
+    score = _as_float(latest.get("score"))
+    score_delta = _rounded_delta(latest.get("score"), previous.get("score"))
+    field_validation = _as_float(components.get("field_validation"))
+    sleeping = _as_int(field_summary.get("sleeping"))
+    grow = _as_int(field_summary.get("grow"))
+    review = _as_int(field_summary.get("review"))
+
+    improvements: list[str] = []
+    for key, label in (
+        ("coverage", "カバレッジ"),
+        ("reuse_proxy", "再利用代理指標"),
+        ("judgment_change_proxy", "判断変化代理指標"),
+        ("human_alignment_proxy", "人間修正との整合"),
+        ("field_validation", "実利用検証"),
+    ):
+        delta = _rounded_delta(components.get(key), previous_components.get(key))
+        if delta is not None and delta > 0:
+            improvements.append(f"{label} +{delta}")
+    negative_delta = _rounded_delta(components.get("negative_signal"), previous_components.get("negative_signal"))
+    if negative_delta is not None and negative_delta < 0:
+        improvements.append(f"負のシグナル {negative_delta}")
+
+    blockers: list[str] = []
+    if field_validation is not None and field_validation <= 0:
+        blockers.append("実案件フィードバックがまだ成長スコアに乗っていません。")
+    if sleeping:
+        blockers.append(f"active判断資産のうち{sleeping}件が未使用のままです。")
+    if next_case_targets:
+        target = next_case_targets[0] if isinstance(next_case_targets[0], dict) else {}
+        concept = str(target.get("concept") or target.get("rule_id") or "").strip()
+        if concept:
+            blockers.append(f"次の実案件で試す候補: {concept}")
+    if review:
+        blockers.append(f"見直し対象の判断資産が{review}件あります。")
+    if not improvements and score_delta is not None and score_delta <= 0:
+        blockers.append("前回比で明確な伸びはまだ見えていません。")
+
+    status = "ok" if score is not None and score >= 70 and not blockers else "warn" if score is not None else "unknown"
+    return {
+        "label": "判断資産フィードバック",
+        "status": status,
+        "score": score,
+        "delta": score_delta,
+        "generated_at": str(latest.get("generated_at") or growth.get("generated_at") or ""),
+        "source": "reports/judgment_asset_growth_latest.json",
+        "metrics": {
+            "active_rules": _as_int((latest.get("counts") or {}).get("active_rules") if isinstance(latest.get("counts"), dict) else 0),
+            "grow": grow,
+            "review": review,
+            "sleeping": sleeping,
+            "field_validation": field_validation,
+            "helped": _as_int(feedback_totals.get("helped")),
+            "challenged": _as_int(feedback_totals.get("challenged")),
+            "rejected": _as_int(feedback_totals.get("rejected")),
+            "simulation_skipped": _as_int(feedback_totals.get("simulation_skipped")),
+            "next_case_targets": len(next_case_targets),
+        },
+        "improvements": improvements[:3],
+        "blockers": blockers[:3],
+    }
+
+
+def _summarize_improvement_log_visibility(repo_root: Path) -> dict[str, Any]:
+    recursive = _read_json(repo_root / "reports" / "recursive_self_improvement_latest.json")
+    measurement = recursive.get("measurement_summary") if isinstance(recursive.get("measurement_summary"), dict) else {}
+    quality_rows = _load_jsonl_all(repo_root / "data" / "improvement_quality_log.jsonl")
+    latest_quality, previous_quality = _latest_and_previous(quality_rows)
+    latest_report = _read_json(repo_root / "reports" / "latest.json")
+
+    quality_score = _as_float(latest_quality.get("quality_score"))
+    quality_delta = _rounded_delta(latest_quality.get("quality_score"), previous_quality.get("quality_score"), 3)
+    needs_review = _as_int(latest_quality.get("needs_review_count"))
+    queued = _as_int(latest_quality.get("queued_count"))
+    succeeded = _as_int(latest_quality.get("succeeded_count"))
+    suppressed = _as_int(recursive.get("suppressed_count"))
+    ranked_queue = _as_int(recursive.get("ranked_queue_count"))
+    self_proposals = latest_report.get("shion_self_proposals") if isinstance(latest_report.get("shion_self_proposals"), dict) else {}
+    suppressed_resolved = _as_int(self_proposals.get("suppressed_resolved_count"))
+
+    improvements: list[str] = []
+    if quality_delta is not None and quality_delta > 0:
+        improvements.append(f"改善品質スコア +{quality_delta}")
+    response_changed = _as_float(measurement.get("response_changed_rate"))
+    if response_changed is not None and response_changed > 0:
+        improvements.append(f"応答変化率 {response_changed}%")
+    if suppressed_resolved:
+        improvements.append(f"解決済み自己提案を{suppressed_resolved}件抑制")
+    if suppressed:
+        improvements.append(f"再帰改善で{suppressed}件を重複抑制")
+
+    blockers: list[str] = []
+    if needs_review:
+        blockers.append(f"要レビュー改善が{needs_review}件残っています。")
+    if queued and succeeded < queued:
+        blockers.append(f"queued {queued}件中 succeeded {succeeded}件です。")
+    if _as_float(measurement.get("repeat_issue_rate")):
+        blockers.append(f"再発率 {measurement.get('repeat_issue_rate')}% を確認してください。")
+    if quality_score is None and not suppressed_resolved and not improvements:
+        blockers.append("本日の改善品質スコアは対象なしです。")
+
+    score = 100.0
+    if quality_score is not None:
+        score = round(max(0.0, min(100.0, quality_score * 100)), 1)
+    if needs_review == 0 and suppressed_resolved:
+        score = max(score, 85.0)
+    status = "ok" if not blockers or (needs_review == 0 and suppressed_resolved) else "warn"
+    return {
+        "label": "改善ログ",
+        "status": status,
+        "score": score,
+        "delta": quality_delta,
+        "generated_at": str(recursive.get("generated_at") or latest_quality.get("computed_at") or ""),
+        "source": "reports/recursive_self_improvement_latest.json",
+        "metrics": {
+            "needs_review": needs_review,
+            "queued": queued,
+            "succeeded": succeeded,
+            "ranked_queue": ranked_queue,
+            "suppressed": suppressed,
+            "suppressed_resolved": suppressed_resolved,
+            "pdca_rate": _as_float(measurement.get("pdca_rate")),
+            "response_changed_rate": response_changed,
+            "repeat_issue_rate": _as_float(measurement.get("repeat_issue_rate")),
+        },
+        "improvements": improvements[:3],
+        "blockers": blockers[:3],
+    }
+
+
+def _summarize_memory_health_visibility(repo_root: Path) -> dict[str, Any]:
+    health_state = _read_json(repo_root / "data" / "shion_memory_health_state.json")
+    effectiveness = _read_json(repo_root / "reports" / "obsidian_memory_effectiveness_latest.json")
+    summary = effectiveness.get("summary") if isinstance(effectiveness.get("summary"), dict) else {}
+    records = effectiveness.get("records") if isinstance(effectiveness.get("records"), list) else []
+    history = _load_jsonl_all(repo_root / "data" / "obsidian_memory_effectiveness.jsonl")
+    latest_rows = [row for row in history if row.get("date") == effectiveness.get("date")]
+    previous_dates = sorted({str(row.get("date")) for row in history if str(row.get("date")) and row.get("date") != effectiveness.get("date")})
+    previous_rows = [row for row in history if row.get("date") == previous_dates[-1]] if previous_dates else []
+
+    current_avg = None
+    previous_avg = None
+    scores = [_as_float(row.get("effectiveness_score")) for row in latest_rows or records]
+    scores = [score for score in scores if score is not None]
+    if scores:
+        current_avg = round(sum(scores) / len(scores), 1)
+    previous_scores = [_as_float(row.get("effectiveness_score")) for row in previous_rows]
+    previous_scores = [score for score in previous_scores if score is not None]
+    if previous_scores:
+        previous_avg = round(sum(previous_scores) / len(previous_scores), 1)
+
+    total = _as_int(health_state.get("total"))
+    active = _as_int((health_state.get("by_status") or {}).get("active") if isinstance(health_state.get("by_status"), dict) else 0)
+    private = _as_int((health_state.get("by_status") or {}).get("private") if isinstance(health_state.get("by_status"), dict) else 0)
+    used = _as_int(summary.get("used"))
+    validated = _as_int(summary.get("validated"))
+    noisy = _as_int(summary.get("noisy"))
+    dormant = _as_int(summary.get("dormant"))
+
+    improvements: list[str] = []
+    avg_delta = _rounded_delta(current_avg, previous_avg)
+    if avg_delta is not None and avg_delta > 0:
+        improvements.append(f"記憶効果平均 +{avg_delta}")
+    if used:
+        improvements.append(f"使われた記憶 {used}件")
+    if validated:
+        improvements.append(f"検証済み記憶 {validated}件")
+    if noisy == 0:
+        improvements.append("ノイズ記憶 0件")
+
+    blockers: list[str] = []
+    if dormant:
+        blockers.append(f"休眠記憶が{dormant}件あります。")
+    if noisy:
+        blockers.append(f"ノイズ記憶が{noisy}件あります。")
+    if not validated:
+        blockers.append("User評価済み・検証済みの記憶がまだ少ないです。")
+
+    score = current_avg
+    if score is None and total:
+        score = round((active / total) * 100, 1)
+    status = "ok" if noisy == 0 and dormant == 0 and used > 0 else "warn" if total or records else "unknown"
+    return {
+        "label": "記憶健康診断",
+        "status": status,
+        "score": score,
+        "delta": avg_delta,
+        "generated_at": str(effectiveness.get("generated_at") or health_state.get("checked_at") or ""),
+        "source": "reports/obsidian_memory_effectiveness_latest.json",
+        "metrics": {
+            "total_memory": total,
+            "active_memory": active,
+            "private_memory": private,
+            "effectiveness_records": _as_int(summary.get("total")),
+            "used": used,
+            "validated": validated,
+            "dormant": dormant,
+            "noisy": noisy,
+            "avg_effectiveness": current_avg,
+        },
+        "improvements": improvements[:3],
+        "blockers": blockers[:3],
+    }
+
+
+def summarize_growth_visibility(repo_root: Path, recent: dict[str, Any], operation_loop: dict[str, Any]) -> dict[str, Any]:
+    """Connect eval health, judgment feedback, improvements, and memory health.
+
+    The result is display-only. It makes improvement visible but does not feed
+    prompts, RAG ranking, scoring, approval, promotion, or automatic repair.
+    """
+    recent_findings = [
+        str(item)
+        for item in (recent.get("findings") or [])
+        if "目立ちません" not in str(item) and "ありません" not in str(item)
+    ]
+    operation_findings = [
+        str(item)
+        for item in (operation_loop.get("findings") or [])
+        if "回っています" not in str(item)
+    ]
+    eval_lane = {
+        "label": "評価GUI",
+        "status": str(operation_loop.get("status") or recent.get("status") or "unknown"),
+        "score": round((_as_float(recent.get("score")) or 0) * 0.45 + (_as_float(operation_loop.get("score")) or 0) * 0.55, 1),
+        "delta": None,
+        "generated_at": str(operation_loop.get("latest_report", {}).get("path") or ""),
+        "source": "/api/shion-eval-health",
+        "metrics": {
+            "trace_score": _as_float(recent.get("score")),
+            "operation_score": _as_float(operation_loop.get("score")),
+            "sample_size": _as_int(recent.get("sample_size")),
+            "over_reference_count": _as_int(recent.get("over_reference_count")),
+            "failed_operation_checks": sum(1 for check in operation_loop.get("checks", []) if isinstance(check, dict) and not check.get("passed")),
+        },
+        "improvements": [
+            line for line in (
+                "参照量の過剰な膨張は目立ちません。" if not _as_int(recent.get("over_reference_count")) and recent.get("available") else "",
+                "運用ループは直近ログ上回っています。" if operation_loop.get("status") == "ok" else "",
+            ) if line
+        ],
+        "blockers": recent_findings[:2] + operation_findings[:2],
+    }
+    lanes = [
+        eval_lane,
+        _summarize_judgment_asset_feedback_visibility(repo_root),
+        _summarize_improvement_log_visibility(repo_root),
+        _summarize_memory_health_visibility(repo_root),
+    ]
+    available_scores = [_as_float(lane.get("score")) for lane in lanes if _as_float(lane.get("score")) is not None]
+    overall_score = round(sum(available_scores) / len(available_scores), 1) if available_scores else 0.0
+    statuses = {str(lane.get("status") or "unknown") for lane in lanes}
+    if "fail" in statuses:
+        status = "fail"
+    elif "warn" in statuses:
+        status = "warn"
+    elif statuses <= {"ok"}:
+        status = "ok"
+    else:
+        status = "unknown"
+    improved_points: list[str] = []
+    for lane in lanes:
+        lane_improvements = lane.get("improvements", [])
+        if lane_improvements:
+            improved_points.append(str(lane_improvements[0]))
+    for lane in lanes:
+        for item in lane.get("improvements", [])[1:]:
+            if len(improved_points) >= 6:
+                break
+            improved_points.append(str(item))
+        if len(improved_points) >= 6:
+            break
+    watch_points: list[str] = []
+    for lane in lanes:
+        lane_blockers = lane.get("blockers", [])
+        if lane_blockers:
+            watch_points.append(str(lane_blockers[0]))
+    for lane in lanes:
+        for item in lane.get("blockers", [])[1:]:
+            if len(watch_points) >= 6:
+                break
+            watch_points.append(str(item))
+        if len(watch_points) >= 6:
+            break
+    return {
+        "label": "Shion Growth Visibility",
+        "status": status,
+        "score": overall_score,
+        "lanes": lanes,
+        "improved_points": improved_points,
+        "watch_points": watch_points,
+        "guardrail": "read_only_visibility_no_scoring_no_auto_promotion_no_prompt_change_no_memory_write",
+    }
+
+
 def repair_operation_loop_health(
     repo_root: Path,
     *,
@@ -1161,6 +1507,7 @@ def repair_operation_loop_health(
 def build_shion_eval_health_payload(repo_root: Path) -> dict[str, Any]:
     recent = summarize_recent_trace_health(repo_root)
     operation_loop = summarize_operation_loop_health(repo_root)
+    growth_visibility = summarize_growth_visibility(repo_root, recent, operation_loop)
     return {
         "label": "紫苑評価GUI",
         "mode": "read_only_information_health",
@@ -1178,4 +1525,5 @@ def build_shion_eval_health_payload(repo_root: Path) -> dict[str, Any]:
         "cases": list_eval_cases(),
         "recent_trace_health": recent,
         "operation_loop_health": operation_loop,
+        "growth_visibility": growth_visibility,
     }

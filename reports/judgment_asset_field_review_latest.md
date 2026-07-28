@@ -1,6 +1,6 @@
 # Judgment Asset Field Review
 
-- Date: 2026-07-28
+- Date: 2026-07-29
 - Mode: local_review_only
 - Guardrail: review_only_no_promotion_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 - Active rules: 9
@@ -75,6 +75,19 @@
 ## 保留
 
 - None
+
+## Next Real Case Feedback
+
+- `b259411afb954d6d` business_plan_specificity: 事業計画は売上見込みだけでなく、受注根拠、稼働計画、資金繰り、返済原資の説明可能性で確認する。
+  - Why: 未使用だが confidence/user evidence が高いため、次の実案件で1回だけ意識して試す
+- `64e054542be673e4` demo_renewal_asset: 更新設備の増額申込は、既存設備の稼働率、粗利改善見込み、旧設備の処分予定が説明と整合する時だけ前向きに見る。
+  - Why: 未使用だが confidence/user evidence が高いため、次の実案件で1回だけ意識して試す
+- `cf61a9701fc8cc42` asset_life_and_residual: リース期間・残価判断では、法定耐用年数だけでなく、実際の使用状況、経済的寿命、換金性、満了後の出口を合わせて確認する。
+  - Why: 未使用だが confidence/user evidence が高いため、次の実案件で1回だけ意識して試す
+
+### Feedback command
+
+`python scripts/record_judgment_asset_feedback.py <rule_id> <outcome> --case-id <case_id> --note '<what changed>' --source real_case --recompute-growth`
 
 ## Notes
 
