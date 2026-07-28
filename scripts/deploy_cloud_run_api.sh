@@ -22,6 +22,7 @@ CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
 # ENABLE_OBSIDIAN_INDEXING の経路で既にロードされるため追加コストは小さい。
 # コレクションは初回起動時にバックグラウンド自動構築される（api/shion_memory_vector.py）。
 SHION_MEMORY_HYBRID="${SHION_MEMORY_HYBRID:-1}"
+REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-0}"
 # Cloud Run demo でも登録・削除を通常操作として試せるよう、既定では
 # DEMO_READONLY を解除する。公開審査などで削除を塞ぎたい時だけ
 # DEMO_READONLY=1 を明示して上書きする。
@@ -78,7 +79,7 @@ deploy_args=(
   # フォールバックに落ちる（根幹の知識ベースが機能しない状態が続く）。
   # ENABLE_GUNSHI_RAG は別経路（リクエスト同期でembeddingモデルを読む）で
   # 過去に共有プロセスの不安定化を招いた実績があるため、意図的に false のまま。
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/demo.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=${SHION_MEMORY_HYBRID},TZ=Asia/Tokyo"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/demo.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=${SHION_MEMORY_HYBRID},REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY},TZ=Asia/Tokyo"
 )
 
 if gcloud secrets describe GEMINI_API_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
