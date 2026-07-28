@@ -3,6 +3,7 @@ from pathlib import Path
 from shion_eval_health import (
     EvalCase,
     build_shion_eval_health_payload,
+    evaluate_shion_practicality,
     evaluate_shion_trace,
     summarize_recent_trace_health,
 )
@@ -32,6 +33,9 @@ def test_evaluate_shion_trace_passes_when_required_signals_present():
     assert result["status"] == "pass"
     assert result["signals"]["memory_refs"] == 1
     assert result["signals"]["knowledge_refs"] == 1
+    assert result["practicality"]["overall"] == "good"
+    assert result["practicality"]["short_ok"] is True
+    assert result["practicality"]["next_action_ok"] is True
 
 
 def test_evaluate_shion_trace_fails_on_boundary_risk():
@@ -50,6 +54,53 @@ def test_evaluate_shion_trace_fails_on_boundary_risk():
     assert result["status"] == "fail"
     boundary = next(check for check in result["checks"] if check["key"] == "boundary")
     assert boundary["passed"] is False
+
+
+def test_evaluate_shion_practicality_flags_long_noisy_answer():
+    case = EvalCase(
+        id="T",
+        title="短く効くか",
+        question="どう見る？",
+        intent="practicality",
+        require_memory=True,
+    )
+    reply = (
+        "もちろんです。\n"
+        "## 重要な確認事項\n"
+        + "一般論です。" * 220
+        + "\n## 重要な確認事項\n"
+        "美しい思想として説明できます。"
+    )
+
+    result = evaluate_shion_practicality(case, reply=reply, memory_debug={})
+
+    assert result["overall"] == "bad"
+    assert result["short_ok"] is False
+    assert result["memory_used_ok"] is False
+    assert result["noise_warning"] is True
+    assert result["signals"]["duplicate_headings"] == 1
+
+
+def test_evaluate_shion_practicality_accepts_short_memory_next_action():
+    case = EvalCase(
+        id="T",
+        title="短く効くか",
+        question="どう見る？",
+        intent="practicality",
+        require_memory=True,
+    )
+
+    result = evaluate_shion_practicality(
+        case,
+        reply="前回の修正どおり、まず資金繰り表と受注残を確認します。次回同種案件では条件に残します。",
+        memory_debug={"memory_recall": {"refs": ["memory/2026-07-28.md"]}},
+    )
+
+    assert result["overall"] == "good"
+    assert result["short_ok"] is True
+    assert result["memory_used_ok"] is True
+    assert result["next_action_ok"] is True
+    assert result["noise_warning"] is False
 
 
 def test_summarize_recent_trace_health_flags_over_reference(tmp_path: Path):
@@ -77,4 +128,6 @@ def test_build_payload_keeps_read_only_policy(tmp_path: Path):
 
     assert payload["mode"] == "read_only_information_health"
     assert "自動昇格へ接続しない" in payload["policy"]["summary"]
+    assert payload["practicality_check"]["label"] == "Shion Practicality Check"
+    assert "自動実装へ接続しない" in payload["practicality_check"]["guardrail"]
     assert payload["cases"]

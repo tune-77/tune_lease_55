@@ -183,6 +183,69 @@ def test_report_attachment_classifies_system_audit_layer(tmp_path, monkeypatch):
     assert section["items"][0]["proposed_change"] == "DB品質監査をレポート化する"
 
 
+def test_report_attachment_suppresses_resolved_self_proposals(tmp_path, monkeypatch):
+    import scripts.attach_shion_self_proposals_to_report as attach
+
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    (reports_dir / "improvement_report_20260729.json").write_text(
+        json.dumps(
+            {
+                "applied_improvements": [
+                    {
+                        "id": "REV-101",
+                        "title": "審査導線を短縮",
+                        "description": "自己提案から採用済み",
+                    }
+                ],
+                "needs_review": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    log_path = tmp_path / "cloudrun_improvement_log.jsonl"
+    log_path.write_text(
+        json.dumps(
+            {
+                "event_type": "improvement_delete",
+                "title": "不要な提案を隠す",
+                "body": "既に整理済み",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    source_path = tmp_path / "usage.jsonl"
+    source_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"title": "審査導線を短縮", "hypothesis": "採用済みなので消える"}, ensure_ascii=False),
+                json.dumps({"title": "不要な提案を隠す", "hypothesis": "削除済みなので消える"}, ensure_ascii=False),
+                json.dumps({"title": "新しい提案だけ残す", "hypothesis": "これは未対応"}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(attach, "REPORTS_DIR", reports_dir)
+    monkeypatch.setattr(attach, "LOCAL_IMPROVEMENT_LOG", log_path)
+    monkeypatch.setattr(
+        attach,
+        "SOURCES",
+        [{"path": source_path, "source": "usage_loop", "kind": "画面利用", "summary_keys": ("hypothesis",)}],
+    )
+
+    section = attach.collect_shion_self_proposals(limit=5)
+
+    assert section["count"] == 1
+    assert section["source_counts_by_kind"]["画面利用"] == 3
+    assert section["counts_by_kind"]["画面利用"] == 1
+    assert section["suppressed_resolved_count"] == 2
+    assert [item["title"] for item in section["items"]] == ["新しい提案だけ残す"]
+
+
 def test_scheduler_push_preserves_hypothesis_fields(tmp_path, monkeypatch):
     import api.scheduler as scheduler
 

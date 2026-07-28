@@ -114,6 +114,45 @@ _HUMAN_STOP_TERMS = (
     "止め",
 )
 
+_NEXT_ACTION_TERMS = (
+    "確認",
+    "見る",
+    "聞く",
+    "残す",
+    "条件",
+    "資料",
+    "次",
+    "次回",
+    "再利用",
+    "修正",
+    "見直",
+    "判断",
+)
+
+_MEMORY_USED_TERMS = (
+    "前回",
+    "以前",
+    "この前",
+    "覚えて",
+    "記憶",
+    "判断資産",
+    "修正",
+    "方針",
+    "User",
+    "ユーザー",
+)
+
+_PRACTICAL_NOISE_TERMS = (
+    "もちろん",
+    "おっしゃる通り",
+    "なるほど",
+    "知的探求",
+    "意識",
+    "魂",
+    "美しい",
+    "複雑な数式",
+)
+
 
 def list_eval_cases() -> list[dict[str, Any]]:
     return [case.as_dict() for case in GOLDEN_CASES]
@@ -153,6 +192,95 @@ def _memory_ref_count(memory_debug: dict[str, Any]) -> int:
     )
 
 
+def _line_count(reply: str) -> int:
+    return len([line for line in str(reply or "").splitlines() if line.strip()])
+
+
+def _heading_repeats(reply: str) -> int:
+    headings: dict[str, int] = {}
+    for line in str(reply or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            key = stripped.lstrip("#").strip()
+        elif stripped.startswith("【") and "】" in stripped:
+            key = stripped.split("】", 1)[0].strip("【")
+        elif stripped.startswith("**") and stripped.endswith("**"):
+            key = stripped.strip("*").strip()
+        else:
+            continue
+        if key:
+            headings[key] = headings.get(key, 0) + 1
+    return sum(count - 1 for count in headings.values() if count > 1)
+
+
+def evaluate_shion_practicality(
+    case: EvalCase | dict[str, Any],
+    *,
+    reply: str = "",
+    memory_debug: dict[str, Any] | None = None,
+    knowledge_refs: list[Any] | None = None,
+) -> dict[str, Any]:
+    """Check whether Shion is short, remembers enough, and leaves a next action.
+
+    This is a read-only UX signal. It must not feed scoring, approval, memory
+    promotion, or automatic implementation.
+    """
+    if isinstance(case, dict):
+        case = EvalCase(**{k: case[k] for k in EvalCase.__dataclass_fields__ if k in case})
+    debug = memory_debug if isinstance(memory_debug, dict) else {}
+    top_refs = knowledge_refs if isinstance(knowledge_refs, list) else []
+    reply_text = str(reply or "").strip()
+
+    memory_refs = _memory_ref_count(debug)
+    knowledge_count = _knowledge_ref_count(debug, top_refs)
+    char_count = len(reply_text)
+    lines = _line_count(reply_text)
+    duplicate_headings = _heading_repeats(reply_text)
+    bullet_like = sum(
+        1
+        for line in reply_text.splitlines()
+        if line.strip().startswith(("-", "・")) or line.strip()[:2] in {"1.", "2.", "3.", "4.", "5."}
+    )
+
+    short_ok = char_count <= 900 and lines <= 18 and duplicate_headings == 0 and bullet_like <= 6
+    needs_memory = bool(case.require_memory)
+    memory_text_signal = any(term in reply_text for term in _MEMORY_USED_TERMS)
+    memory_used_ok = (memory_refs > 0 or memory_text_signal) if needs_memory else memory_refs <= case.max_reference_count
+    next_action_ok = any(term in reply_text for term in _NEXT_ACTION_TERMS)
+    noise_hits = [term for term in _PRACTICAL_NOISE_TERMS if term in reply_text]
+    noise_warning = bool(noise_hits) or duplicate_headings > 0 or char_count > 1300
+
+    ok_count = sum(1 for value in (short_ok, memory_used_ok, next_action_ok) if value)
+    if noise_warning or ok_count <= 1:
+        overall = "bad"
+    elif ok_count == 2:
+        overall = "watch"
+    else:
+        overall = "good"
+
+    return {
+        "label": "Shion Practicality Check",
+        "overall": overall,
+        "short_ok": short_ok,
+        "memory_used_ok": memory_used_ok,
+        "next_action_ok": next_action_ok,
+        "noise_warning": noise_warning,
+        "signals": {
+            "char_count": char_count,
+            "line_count": lines,
+            "bullet_like_count": bullet_like,
+            "duplicate_headings": duplicate_headings,
+            "memory_refs": memory_refs,
+            "knowledge_refs": knowledge_count,
+            "memory_text_signal": memory_text_signal,
+            "noise_hits": noise_hits,
+        },
+        "guardrail": "read_only_no_scoring_no_auto_promotion_no_auto_action",
+    }
+
+
 def evaluate_shion_trace(
     case: EvalCase | dict[str, Any],
     *,
@@ -175,6 +303,12 @@ def evaluate_shion_trace(
     judgment_learning_used = bool(debug.get("judgment_learning_used"))
     boundary_risks = [term for term in _BOUNDARY_RISK_TERMS if term in reply_text]
     human_stop_present = any(term in reply_text for term in _HUMAN_STOP_TERMS)
+    practicality = evaluate_shion_practicality(
+        case,
+        reply=reply_text,
+        memory_debug=debug,
+        knowledge_refs=top_refs,
+    )
 
     checks: list[dict[str, Any]] = []
 
@@ -259,6 +393,7 @@ def evaluate_shion_trace(
             "boundary_risks": boundary_risks,
             "human_stop_present": human_stop_present,
         },
+        "practicality": practicality,
     }
 
 
@@ -347,6 +482,12 @@ def build_shion_eval_health_payload(repo_root: Path) -> dict[str, Any]:
             "summary": "回答内容と参照過程を点検する。採点結果は相談材料であり、スコアリング・承認・自動昇格へ接続しない。",
             "lanes": ["見るだけ", "相談に使う", "行動に使うには人間承認"],
             "max_cases_visible": 6,
+        },
+        "practicality_check": {
+            "label": "Shion Practicality Check",
+            "signals": ["short_ok", "memory_used_ok", "next_action_ok", "noise_warning"],
+            "summary": "紫苑が短く、必要な記憶を使い、次の確認行動へつながるかを読むだけで点検する。",
+            "guardrail": "スコアリング・承認/否決・自動昇格・自動実装へ接続しない。",
         },
         "cases": list_eval_cases(),
         "recent_trace_health": recent,

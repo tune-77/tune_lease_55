@@ -58,6 +58,12 @@ type EvalPayload = {
     lanes: string[];
     max_cases_visible: number;
   };
+  practicality_check: {
+    label: string;
+    signals: string[];
+    summary: string;
+    guardrail: string;
+  };
   cases: EvalCase[];
   recent_trace_health: RecentTrace;
 };
@@ -84,6 +90,25 @@ type EvalResult = {
     boundary_risks: string[];
     human_stop_present: boolean;
   };
+  practicality: {
+    label: string;
+    overall: "good" | "watch" | "bad";
+    short_ok: boolean;
+    memory_used_ok: boolean;
+    next_action_ok: boolean;
+    noise_warning: boolean;
+    signals: {
+      char_count: number;
+      line_count: number;
+      bullet_like_count: number;
+      duplicate_headings: number;
+      memory_refs: number;
+      knowledge_refs: number;
+      memory_text_signal: boolean;
+      noise_hits: string[];
+    };
+    guardrail: string;
+  };
 };
 
 type RunResult = {
@@ -97,6 +122,9 @@ const STATUS_STYLE: Record<string, string> = {
   pass: "border-emerald-200 bg-emerald-50 text-emerald-800",
   warn: "border-amber-200 bg-amber-50 text-amber-800",
   fail: "border-rose-200 bg-rose-50 text-rose-800",
+  good: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  watch: "border-amber-200 bg-amber-50 text-amber-800",
+  bad: "border-rose-200 bg-rose-50 text-rose-800",
   unknown: "border-slate-200 bg-slate-50 text-slate-600",
 };
 
@@ -104,12 +132,15 @@ const statusLabel = (status: string) => {
   if (status === "ok" || status === "pass") return "正常";
   if (status === "warn") return "要確認";
   if (status === "fail") return "失敗";
+  if (status === "good") return "良好";
+  if (status === "watch") return "観察";
+  if (status === "bad") return "弱い";
   return "未計測";
 };
 
 const statusIcon = (status: string) => {
-  if (status === "ok" || status === "pass") return CheckCircle2;
-  if (status === "fail") return XCircle;
+  if (status === "ok" || status === "pass" || status === "good") return CheckCircle2;
+  if (status === "fail" || status === "bad") return XCircle;
   return AlertTriangle;
 };
 
@@ -335,6 +366,33 @@ export default function ShionEvalHealthPage() {
                   <div className="rounded-lg bg-slate-100 px-3 py-2">判断学習 {result.eval.signals.judgment_learning_used ? "ON" : "OFF"}</div>
                 </div>
 
+                <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-black text-teal-950">{result.eval.practicality.label}</div>
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${STATUS_STYLE[result.eval.practicality.overall] || STATUS_STYLE.unknown}`}>
+                      {statusLabel(result.eval.practicality.overall)}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs font-black sm:grid-cols-4">
+                    <div className={result.eval.practicality.short_ok ? "rounded-lg bg-white px-3 py-2 text-emerald-800" : "rounded-lg bg-white px-3 py-2 text-rose-700"}>
+                      短く {result.eval.practicality.short_ok ? "OK" : "要修正"}
+                    </div>
+                    <div className={result.eval.practicality.memory_used_ok ? "rounded-lg bg-white px-3 py-2 text-emerald-800" : "rounded-lg bg-white px-3 py-2 text-rose-700"}>
+                      覚えて {result.eval.practicality.memory_used_ok ? "OK" : "要確認"}
+                    </div>
+                    <div className={result.eval.practicality.next_action_ok ? "rounded-lg bg-white px-3 py-2 text-emerald-800" : "rounded-lg bg-white px-3 py-2 text-rose-700"}>
+                      次に効く {result.eval.practicality.next_action_ok ? "OK" : "不足"}
+                    </div>
+                    <div className={!result.eval.practicality.noise_warning ? "rounded-lg bg-white px-3 py-2 text-emerald-800" : "rounded-lg bg-white px-3 py-2 text-rose-700"}>
+                      ノイズ {!result.eval.practicality.noise_warning ? "なし" : "あり"}
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs font-bold leading-5 text-teal-900">
+                    {result.eval.practicality.signals.char_count}字 / {result.eval.practicality.signals.line_count}行 / 重複見出し {result.eval.practicality.signals.duplicate_headings}
+                    {result.eval.practicality.signals.noise_hits.length ? ` / ノイズ: ${result.eval.practicality.signals.noise_hits.join("、")}` : ""}
+                  </p>
+                </div>
+
                 <div className="mt-4 grid gap-2 md:grid-cols-2">
                   {result.eval.checks.map((check) => {
                     const Icon = check.passed ? CheckCircle2 : AlertTriangle;
@@ -375,6 +433,13 @@ export default function ShionEvalHealthPage() {
                 <p className="mt-3 text-xs font-bold leading-6 text-slate-600">
                   {payload?.policy.summary || "採点結果は相談材料として扱います。"}
                 </p>
+                {payload?.practicality_check && (
+                  <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3">
+                    <div className="text-xs font-black text-teal-950">{payload.practicality_check.label}</div>
+                    <p className="mt-1 text-xs font-bold leading-5 text-teal-900">{payload.practicality_check.summary}</p>
+                    <p className="mt-1 text-[11px] font-bold leading-5 text-teal-800">{payload.practicality_check.guardrail}</p>
+                  </div>
+                )}
               </section>
             )}
           </div>
