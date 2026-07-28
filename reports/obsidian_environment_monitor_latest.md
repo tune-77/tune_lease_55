@@ -1,7 +1,7 @@
 # Obsidian Environment Monitor
 
 ## Summary
-- generated_at: `2026-07-29T02:30:53+09:00`
+- generated_at: `2026-07-29T03:15:17+09:00`
 - target_date: `2026-07-29`
 - status: `warn`
 - guardrail: `monitor_only_no_obsidian_write_no_rag_no_prompt_no_cloudrun`
@@ -36,7 +36,7 @@
 ### surface_freshness
 - status: `warn`
 - message: stale or missing surfaces: cloudrun_conversation
-- details: `{"cloudrun_conversation": {"age_hours": null, "exists": false}, "dialogue": {"age_hours": 23.6, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-28.md"}, "private_reflection": {"age_hours": 22.4, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-28.md"}}`
+- details: `{"cloudrun_conversation": {"age_hours": null, "exists": false}, "dialogue": {"age_hours": 24.3, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-28.md"}, "private_reflection": {"age_hours": 23.1, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-28.md"}}`
 
 ### private_reflection_meaning
 - status: `warn`
@@ -46,12 +46,12 @@
 ### rag_index
 - status: `ok`
 - message: RAG index fresh
-- details: `{"chroma_age_hours": 20.3, "chroma_db": "/Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db/chroma.sqlite3", "chroma_size": 91029504, "completion_source": "rag_daily_maintenance", "last_reindex_age_hours": 23.5, "reindex_log": "/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_reindex.out.log", "total_in_db": 1365}`
+- details: `{"chroma_age_hours": 0.2, "chroma_db": "/Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db/chroma.sqlite3", "chroma_size": 91029504, "completion_source": "rag_daily_maintenance", "last_reindex_age_hours": 0.3, "reindex_log": "/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_reindex.out.log", "total_in_db": 1381}`
 
 ### memory_insight_reports
 - status: `ok`
 - message: memory insight sidecars fresh
-- details: `{"memory_insight": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/obsidian_memory_insight_latest.md"}, "promotion_queue": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_memory_promotion_queue_latest.md"}, "reflection_delta": {"age_hours": 22.4, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_reflection_delta_latest.md"}}`
+- details: `{"memory_insight": {"age_hours": 0.7, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/obsidian_memory_insight_latest.md"}, "promotion_queue": {"age_hours": 0.7, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_memory_promotion_queue_latest.md"}, "reflection_delta": {"age_hours": 23.1, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_reflection_delta_latest.md"}}`
 
 ### self_reference_loop
 - status: `ok`
@@ -59,9 +59,9 @@
 - details: `{"candidate_count": 123, "candidate_path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/obsidian_memory_insight_candidates.jsonl", "candidate_type_counts": {"judgment_rule": 30, "noise": 30, "reflection_update": 30, "research_material": 30, "user_preference": 3}, "meta_hit_sample": [{"claim": "構造分析：所有権移転リースと非所有権移転リースの本質的差異。", "source": "Projects/tune_lease_55/Research/所有権移転リース　総合レポート_(executive_report)_report (1).md"}, {"claim": "[ ] 現在、登録申請中（登録完了予定日：＿＿年＿＿月頃）。", "source": "Projects/tune_lease_55/Research/インボイス　総合レポート_(executive_report)_report (1).md"}, {"claim": "期間安定性: 5年以上の長期間、仕様変更なく利用する環境か。", "source": "Projects/tune_lease_55/Research/ソフトリース　総合レポート_(executive_report)_report (1).md"}, {"claim": "補助金ルールにおいて、「交付決定前の契約」は補助対象外です。", "source": "Projects/tune_lease_55/Research/補助金　総合レポート.md"}, {"claim": "以下の3点を必ず遵守してください。", "source": "Projects/tune_lease_55/Research/補助金　総合レポート.md"}],...`
 
 ### recent_note_noise
-- status: `ok`
-- message: recent note technical-noise ratio=0.005, noisy_files=4
-- details: `{"noisy_files": ["Daily/2026-07-28.md", "Daily/2026-07-26.md", "Daily/2026-07-27.md", "Daily/2026-07-25.md"], "ratio": 0.005}`
+- status: `warn`
+- message: recent note technical-noise ratio=0.0056, noisy_files=5
+- details: `{"noisy_files": ["Daily/2026-07-29.md", "Daily/2026-07-28.md", "Daily/2026-07-26.md", "Daily/2026-07-27.md", "Daily/2026-07-25.md"], "ratio": 0.0056}`
 
 ### wikilinks
 - status: `ok`

@@ -256,8 +256,10 @@ def evaluate_proposal_impact() -> dict[str, Any]:
 
     for proposal in adopted:
         try:
-            pivot = dt.datetime.fromisoformat(proposal["ts"].replace("Z", "+00:00"))
+            pivot = _parse_ts(proposal["ts"])
         except (ValueError, TypeError):
+            continue
+        if pivot is None:
             continue
 
         before = [
@@ -295,9 +297,12 @@ def _parse_ts(ts_str: Any) -> dt.datetime | None:
     if not ts_str:
         return None
     try:
-        return dt.datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+        parsed = dt.datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
 
 
 def load_proposals(limit: int = 20) -> list[dict[str, Any]]:

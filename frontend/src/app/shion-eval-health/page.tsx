@@ -50,6 +50,80 @@ type RecentTrace = {
   }>;
 };
 
+type OperationLoop = {
+  label: string;
+  status: "ok" | "warn" | "fail" | "unknown";
+  score: number;
+  stale_hours: number;
+  findings: string[];
+  checks: Array<{
+    key: string;
+    label: string;
+    passed: boolean;
+    detail: string;
+  }>;
+  latest_report: {
+    path: string;
+    age_hours: number | null;
+    exists: boolean;
+  };
+  loop_engineering: {
+    path: string;
+    exists: boolean;
+    status: string;
+    age_hours: number | null;
+    generated_at: string;
+  };
+  obsidian_environment: {
+    path: string;
+    exists: boolean;
+    status: string;
+    age_hours: number | null;
+    triage_path: string;
+    triage_exists: boolean;
+    triage_age_hours: number | null;
+  };
+  self_proposal_hygiene: {
+    status: string;
+    visible_count: number;
+    stale_count: number;
+    duplicate_count: number;
+    low_signal_count: number;
+    exists: boolean;
+    age_hours: number | null;
+  };
+  improvement_effect: {
+    status: string;
+    issues: string[];
+    quality: {
+      available: boolean;
+      age_hours: number | null;
+      low_quality_count: number;
+    };
+    pdca: {
+      available: boolean;
+      sample_count: number;
+      improved_count: number;
+      degraded_count: number;
+    };
+  };
+  self_proposals: {
+    visible_count: number;
+    visible_sample_count: number;
+    suppressed_resolved_count: number;
+    leaked_resolved_count: number;
+    leaked_titles: string[];
+    attached_at: string;
+  };
+  pipeline_step: {
+    name: string;
+    latest_ts: string;
+    latest_exit_code: number | null;
+    age_hours: number | null;
+  };
+  guardrail: string;
+};
+
 type EvalPayload = {
   label: string;
   mode: string;
@@ -66,6 +140,7 @@ type EvalPayload = {
   };
   cases: EvalCase[];
   recent_trace_health: RecentTrace;
+  operation_loop_health: OperationLoop;
 };
 
 type EvalCheck = {
@@ -117,6 +192,19 @@ type RunResult = {
   elapsedMs: number;
 };
 
+type AutoRepairResult = {
+  label: string;
+  status: "repaired" | "no_change";
+  actions: Array<{
+    name: string;
+    status: "applied" | "failed" | "skipped" | "needs_human_review";
+    exit_code?: number;
+    detail: string;
+  }>;
+  guardrail: string;
+  after: OperationLoop;
+};
+
 const STATUS_STYLE: Record<string, string> = {
   ok: "border-emerald-200 bg-emerald-50 text-emerald-800",
   pass: "border-emerald-200 bg-emerald-50 text-emerald-800",
@@ -149,8 +237,10 @@ export default function ShionEvalHealthPage() {
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<RunResult | null>(null);
+  const [repairResult, setRepairResult] = useState<AutoRepairResult | null>(null);
 
   const selectedCase = useMemo(
     () => payload?.cases.find((item) => item.id === selectedId) || payload?.cases[0] || null,
@@ -208,8 +298,26 @@ export default function ShionEvalHealthPage() {
     }
   };
 
+  const repairOperationLoop = async () => {
+    if (repairing) return;
+    setRepairing(true);
+    setError("");
+    setRepairResult(null);
+    try {
+      const res = await apiClient.post<AutoRepairResult>("/api/shion-eval-health/repair");
+      setRepairResult(res.data);
+      await loadPayload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "自動修復に失敗しました");
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   const trace = payload?.recent_trace_health;
+  const operation = payload?.operation_loop_health;
   const TraceIcon = statusIcon(trace?.status || "unknown");
+  const OperationIcon = statusIcon(operation?.status || "unknown");
   const ResultIcon = statusIcon(result?.eval.status || "unknown");
 
   return (
@@ -270,6 +378,76 @@ export default function ShionEvalHealthPage() {
                   <p key={line}>{line}</p>
                 ))}
               </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-black text-slate-800">
+                  <RefreshCw className="h-5 w-5 text-cyan-600" />
+                  運用ループ
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-black ${STATUS_STYLE[operation?.status || "unknown"]}`}>
+                    <OperationIcon className="h-3.5 w-3.5" />
+                    {statusLabel(operation?.status || "unknown")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={repairOperationLoop}
+                    disabled={repairing || !operation}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 text-[11px] font-black text-cyan-800 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {repairing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    自動修復
+                  </button>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-black text-slate-700">
+                <div className="rounded-lg bg-slate-100 px-3 py-2">スコア {operation?.score ?? "-"}</div>
+                <div className="rounded-lg bg-slate-100 px-3 py-2">鮮度 {operation?.latest_report.age_hours ?? "-"}h</div>
+                <div className="rounded-lg bg-slate-100 px-3 py-2">自己提案 {operation?.self_proposals.visible_count ?? 0}</div>
+                <div className={operation?.self_proposals.leaked_resolved_count ? "rounded-lg bg-rose-50 px-3 py-2 text-rose-700" : "rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800"}>
+                  漏れ {operation?.self_proposals.leaked_resolved_count ?? 0}
+                </div>
+                <div className={operation?.loop_engineering.status === "ok" ? "rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800" : "rounded-lg bg-amber-50 px-3 py-2 text-amber-800"}>
+                  Loop {operation?.loop_engineering.status ?? "-"}
+                </div>
+                <div className="rounded-lg bg-slate-100 px-3 py-2">Loop鮮度 {operation?.loop_engineering.age_hours ?? "-"}h</div>
+                <div className={operation?.obsidian_environment.status === "ok" || operation?.obsidian_environment.triage_exists ? "rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800" : "rounded-lg bg-amber-50 px-3 py-2 text-amber-800"}>
+                  Obsidian {operation?.obsidian_environment.status ?? "-"}
+                </div>
+                <div className="rounded-lg bg-slate-100 px-3 py-2">提案整理 {operation?.self_proposal_hygiene.stale_count ?? 0}/{operation?.self_proposal_hygiene.duplicate_count ?? 0}</div>
+                <div className={operation?.improvement_effect.status === "ok" ? "rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800" : "rounded-lg bg-amber-50 px-3 py-2 text-amber-800"}>
+                  効果測定 {operation?.improvement_effect.status ?? "-"}
+                </div>
+                <div className="rounded-lg bg-slate-100 px-3 py-2">PDCA {operation?.improvement_effect.pdca.sample_count ?? 0}</div>
+              </div>
+              <div className="mt-3 space-y-1 text-xs font-bold leading-5 text-slate-600">
+                {(operation?.findings || ["読み込み中です。"]).map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
+              <div className="mt-3 grid gap-2">
+                {(operation?.checks || []).map((check) => (
+                  <div key={check.key} className={check.passed ? "rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800" : "rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800"}>
+                    {check.label}
+                  </div>
+                ))}
+              </div>
+              {repairResult && (
+                <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2">
+                  <div className="text-xs font-black text-cyan-900">
+                    自動修復 {repairResult.status === "repaired" ? "反映済み" : "変更なし"}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {repairResult.actions.map((action) => (
+                      <p key={`${action.name}-${action.status}`} className="text-xs font-bold leading-5 text-cyan-900">
+                        {action.name}: {action.status}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">

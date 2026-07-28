@@ -8,8 +8,12 @@ approval, judgment assets, prompts, or memory stores.
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
 import json
 from pathlib import Path
+import subprocess
+import sys
+import time
 from typing import Any
 
 
@@ -411,6 +415,214 @@ def _read_jsonl_tail(path: Path, limit: int) -> list[dict[str, Any]]:
     return rows[-limit:]
 
 
+def _read_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _hours_since(dt: datetime | None, now: datetime) -> float | None:
+    if not dt:
+        return None
+    return round(max(0.0, (now - dt.astimezone(timezone.utc)).total_seconds() / 3600), 1)
+
+
+def _compact_text(value: Any, limit: int = 1200) -> str:
+    return " ".join(str(value or "").split())[:limit]
+
+
+def _write_pipeline_step_log(repo_root: Path, step: str, exit_code: int, duration_s: float) -> None:
+    path = repo_root / "data" / "pipeline_step_log.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    entry = {
+        "ts": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "run_date": now.strftime("%Y%m%d"),
+        "step": step,
+        "exit_code": int(exit_code),
+        "duration_s": round(duration_s, 2),
+        "source": "shion_operation_loop_auto_repair",
+    }
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _write_json(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _latest_daily_report_path(repo_root: Path, report: dict[str, Any]) -> Path | None:
+    report_path = str(report.get("report_path") or "").strip()
+    if report_path:
+        candidate = Path(report_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = repo_root / candidate
+        if candidate.exists():
+            return candidate
+    reports = sorted((repo_root / "reports").glob("improvement_report_*.json"), reverse=True)
+    return reports[0] if reports else None
+
+
+def _load_jsonl_all(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            rows.append(item)
+    return rows
+
+
+def _title_signature(value: str) -> str:
+    return "".join(str(value or "").lower().split())[:120]
+
+
+def _build_obsidian_warn_triage(repo_root: Path, monitor: dict[str, Any]) -> dict[str, Any]:
+    checks = [check for check in monitor.get("checks", []) if isinstance(check, dict)]
+    warn_checks = [check for check in checks if check.get("status") == "warn"]
+    fail_checks = [check for check in checks if check.get("status") == "fail"]
+    triaged: list[dict[str, str]] = []
+    for check in warn_checks:
+        name = str(check.get("name") or "")
+        message = str(check.get("message") or "")
+        if name == "surface_freshness" and "cloudrun_conversation" in message:
+            action = "Cloud Run会話がない日として監視継続。同期スクリプト再実行後も無ければ入力なし扱い。"
+        elif name == "private_reflection_meaning":
+            action = "Private ReflectionはVault書き込みが必要なため自動作成せず、欠損理由を記録して人間レビューに残す。"
+        else:
+            action = "監視レポートを再生成し、警告が継続する場合は次回レビュー対象に残す。"
+        triaged.append({"name": name, "message": message, "action": action})
+    return {
+        "label": "Obsidian Warn Auto Triage",
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "monitor_status": str(monitor.get("status") or "missing"),
+        "warn_count": len(warn_checks),
+        "fail_count": len(fail_checks),
+        "triaged": triaged,
+        "guardrail": "repo_report_only_no_obsidian_write_no_rag_no_prompt_change",
+    }
+
+
+def _build_self_proposal_hygiene(repo_root: Path, latest_report: dict[str, Any]) -> dict[str, Any]:
+    section = latest_report.get("shion_self_proposals") if isinstance(latest_report.get("shion_self_proposals"), dict) else {}
+    items = section.get("items") if isinstance(section.get("items"), list) else []
+    now = datetime.now(timezone.utc)
+    seen: dict[str, str] = {}
+    stale: list[dict[str, str]] = []
+    duplicates: list[dict[str, str]] = []
+    low_signal: list[dict[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        generated = _parse_datetime(item.get("generated_at"))
+        age = _hours_since(generated, now)
+        if age is not None and age > 14 * 24:
+            stale.append({"title": title, "age_hours": str(age)})
+        signature = _title_signature(title)
+        if signature and signature in seen:
+            duplicates.append({"title": title, "matched_title": seen[signature]})
+        elif signature:
+            seen[signature] = title
+        signal_parts = [
+            str(item.get("hypothesis") or ""),
+            str(item.get("evidence") or ""),
+            str(item.get("proposed_change") or ""),
+            str(item.get("success_metric") or ""),
+            str(item.get("verification_plan") or ""),
+        ]
+        if sum(1 for part in signal_parts if part.strip()) < 3:
+            low_signal.append({"title": title, "reason": "仮説・根拠・変更案・成功指標・検証方法の情報が薄い"})
+    status = "warn" if stale or duplicates or low_signal or int(section.get("count") or 0) >= 30 else "ok"
+    report = {
+        "label": "Shion Self Proposal Hygiene",
+        "generated_at": now.isoformat(timespec="seconds"),
+        "status": status,
+        "visible_count": int(section.get("count") or len(items)),
+        "sample_count": len(items),
+        "stale_count": len(stale),
+        "duplicate_count": len(duplicates),
+        "low_signal_count": len(low_signal),
+        "park_candidates": {
+            "stale": stale[:20],
+            "duplicate": duplicates[:20],
+            "low_signal": low_signal[:20],
+        },
+        "guardrail": "classification_only_no_delete_no_status_mutation",
+    }
+    return report
+
+
+def _summarize_improvement_effect_health(repo_root: Path) -> dict[str, Any]:
+    quality_rows = _load_jsonl_all(repo_root / "data" / "improvement_quality_log.jsonl")
+    pdca_rows = _load_jsonl_all(repo_root / "data" / "shion_self_pdca_log.jsonl")
+    latest_quality = quality_rows[-1] if quality_rows else {}
+    latest_quality_dt = _parse_datetime(latest_quality.get("computed_at")) if latest_quality else None
+    quality_age = _hours_since(latest_quality_dt, datetime.now(timezone.utc))
+    recent_quality = quality_age is not None and quality_age <= 48
+    quality_scores = [
+        row.get("quality_score")
+        for row in quality_rows[-8:]
+        if isinstance(row.get("quality_score"), (int, float))
+    ]
+    low_quality_count = sum(1 for value in quality_scores if float(value) < 0.5)
+    improved = sum(1 for row in pdca_rows[-20:] if str(row.get("verdict") or "") == "improved")
+    degraded = sum(1 for row in pdca_rows[-20:] if str(row.get("verdict") or "") == "degraded")
+    issues: list[str] = []
+    if not recent_quality:
+        issues.append("improvement_quality_stale")
+    if low_quality_count >= 3:
+        issues.append("low_quality_repeated")
+    if degraded > improved and pdca_rows:
+        issues.append("pdca_degraded_over_improved")
+    status = "warn" if issues else "ok"
+    return {
+        "label": "Improvement Effect Check",
+        "status": status,
+        "issues": issues,
+        "quality": {
+            "available": bool(quality_rows),
+            "latest_computed_at": str(latest_quality.get("computed_at") or "") if latest_quality else "",
+            "age_hours": quality_age,
+            "recent_score_values": quality_scores,
+            "low_quality_count": low_quality_count,
+        },
+        "pdca": {
+            "available": bool(pdca_rows),
+            "sample_count": len(pdca_rows[-20:]),
+            "improved_count": improved,
+            "degraded_count": degraded,
+        },
+        "guardrail": "measurement_only_no_auto_revert_no_prompt_change",
+    }
+
+
 def summarize_recent_trace_health(repo_root: Path, *, limit: int = 80) -> dict[str, Any]:
     """Summarize recent Shion trace pressure from existing logs."""
     rows = _read_jsonl_tail(repo_root / "data" / "case_memory_usage_log.jsonl", limit)
@@ -473,8 +685,482 @@ def summarize_recent_trace_health(repo_root: Path, *, limit: int = 80) -> dict[s
     }
 
 
+def summarize_operation_loop_health(
+    repo_root: Path,
+    *,
+    stale_hours: int = 48,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Check whether daily reporting runs and resolved self proposals stay hidden."""
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    reports_dir = repo_root / "reports"
+    latest_report_path = reports_dir / "latest.json"
+    loop_engineering_path = reports_dir / "loop_engineering_latest.json"
+    obsidian_monitor_path = reports_dir / "obsidian_environment_monitor_latest.json"
+    obsidian_triage_path = reports_dir / "obsidian_environment_auto_triage_latest.json"
+    self_proposal_hygiene_path = reports_dir / "shion_self_proposal_hygiene_latest.json"
+    pipeline_log_path = repo_root / "data" / "pipeline_step_log.jsonl"
+    report = _read_json(latest_report_path)
+    loop_report = _read_json(loop_engineering_path)
+    obsidian_monitor = _read_json(obsidian_monitor_path)
+    obsidian_triage = _read_json(obsidian_triage_path)
+    self_proposal_hygiene_file = _read_json(self_proposal_hygiene_path)
+    self_proposal_hygiene = self_proposal_hygiene_file or _build_self_proposal_hygiene(repo_root, report)
+    improvement_effect = _summarize_improvement_effect_health(repo_root)
+    section = report.get("shion_self_proposals") if isinstance(report.get("shion_self_proposals"), dict) else {}
+    visible_items = section.get("items") if isinstance(section.get("items"), list) else []
+    suppressed_resolved = section.get("suppressed_resolved") if isinstance(section.get("suppressed_resolved"), list) else []
+    suppressed_titles = {
+        str(item.get("title") or "").strip()
+        for item in suppressed_resolved
+        if isinstance(item, dict) and str(item.get("title") or "").strip()
+    }
+    visible_titles = {
+        str(item.get("title") or "").strip()
+        for item in visible_items
+        if isinstance(item, dict) and str(item.get("title") or "").strip()
+    }
+    leaked_titles = sorted(title for title in visible_titles if title in suppressed_titles)
+
+    report_mtime_dt = None
+    if latest_report_path.exists():
+        report_mtime_dt = datetime.fromtimestamp(latest_report_path.stat().st_mtime, tz=timezone.utc)
+    report_age_hours = _hours_since(report_mtime_dt, current)
+    attached_at_dt = _parse_datetime(section.get("attached_at") if isinstance(section, dict) else "")
+    attached_age_hours = _hours_since(attached_at_dt, current)
+    loop_generated_dt = _parse_datetime(loop_report.get("generated_at")) if loop_report else None
+    loop_mtime_dt = None
+    if loop_engineering_path.exists():
+        loop_mtime_dt = datetime.fromtimestamp(loop_engineering_path.stat().st_mtime, tz=timezone.utc)
+    loop_age_hours = _hours_since(loop_generated_dt or loop_mtime_dt, current)
+    loop_status = str(loop_report.get("status") or "missing").lower() if loop_report else "missing"
+    obsidian_generated_dt = _parse_datetime(obsidian_monitor.get("generated_at")) if obsidian_monitor else None
+    obsidian_monitor_age = _hours_since(obsidian_generated_dt, current)
+    obsidian_status = str(obsidian_monitor.get("status") or "missing").lower() if obsidian_monitor else "missing"
+    obsidian_triage_dt = _parse_datetime(obsidian_triage.get("generated_at")) if obsidian_triage else None
+    obsidian_triage_age = _hours_since(obsidian_triage_dt, current)
+    obsidian_monitor_fresh = bool(obsidian_monitor) and (
+        obsidian_monitor_age is not None and obsidian_monitor_age <= stale_hours
+    )
+    obsidian_warn_triaged = obsidian_status == "ok" or (
+        obsidian_monitor_fresh and bool(obsidian_triage) and obsidian_triage_age is not None and obsidian_triage_age <= stale_hours
+    )
+
+    step_rows = [
+        row for row in _read_jsonl_tail(pipeline_log_path, 400)
+        if str(row.get("step") or "") == "attach_shion_self_proposals_to_report"
+    ]
+    latest_step = step_rows[-1] if step_rows else {}
+    latest_step_dt = _parse_datetime(latest_step.get("ts")) if latest_step else None
+    latest_step_age_hours = _hours_since(latest_step_dt, current)
+    latest_step_success = bool(latest_step) and int(latest_step.get("exit_code", 1)) == 0
+    recent_step_success = latest_step_success and (
+        latest_step_age_hours is not None and latest_step_age_hours <= stale_hours
+    )
+    report_fresh = bool(report) and (
+        report_age_hours is not None and report_age_hours <= stale_hours
+    )
+    attachment_fresh = bool(section) and (
+        attached_age_hours is None or attached_age_hours <= stale_hours
+    )
+    loop_engineering_fresh = bool(loop_report) and (
+        loop_age_hours is not None and loop_age_hours <= stale_hours
+    )
+    loop_engineering_ok = loop_engineering_fresh and loop_status == "ok"
+    hygiene_generated_dt = _parse_datetime(self_proposal_hygiene_file.get("generated_at")) if self_proposal_hygiene_file else None
+    hygiene_age = _hours_since(hygiene_generated_dt, current)
+    self_proposal_hygiene_ok = bool(self_proposal_hygiene_file) and hygiene_age is not None and hygiene_age <= stale_hours
+    improvement_effect_ok = str(improvement_effect.get("status") or "missing") == "ok"
+    resolved_suppression_ok = not leaked_titles
+
+    checks = [
+        {
+            "key": "latest_report_fresh",
+            "label": "最新レポートが更新されている",
+            "passed": report_fresh,
+            "detail": f"reports/latest.json age_hours={report_age_hours if report_age_hours is not None else 'missing'}",
+        },
+        {
+            "key": "self_proposal_attach_step",
+            "label": "自己提案貼り付けステップが直近成功",
+            "passed": recent_step_success,
+            "detail": (
+                f"latest_exit_code={latest_step.get('exit_code', 'missing')} "
+                f"age_hours={latest_step_age_hours if latest_step_age_hours is not None else 'missing'}"
+            ),
+        },
+        {
+            "key": "self_proposal_attachment_fresh",
+            "label": "自己提案欄が新しいレポートに貼られている",
+            "passed": attachment_fresh,
+            "detail": f"attached_age_hours={attached_age_hours if attached_age_hours is not None else 'unknown'}",
+        },
+        {
+            "key": "resolved_self_proposals_hidden",
+            "label": "解決済み自己提案が表示欄に漏れていない",
+            "passed": resolved_suppression_ok,
+            "detail": f"leaked={len(leaked_titles)} suppressed_resolved={len(suppressed_resolved)}",
+        },
+        {
+            "key": "loop_engineering_fresh",
+            "label": "Loop Engineering レポートが新しい",
+            "passed": loop_engineering_fresh,
+            "detail": f"status={loop_status} age_hours={loop_age_hours if loop_age_hours is not None else 'missing'}",
+        },
+        {
+            "key": "loop_engineering_status",
+            "label": "Loop Engineering レポートが正常",
+            "passed": loop_engineering_ok,
+            "detail": f"status={loop_status}",
+        },
+        {
+            "key": "obsidian_environment_triaged",
+            "label": "Obsidian warn が再確認・理由記録されている",
+            "passed": obsidian_monitor_fresh and obsidian_warn_triaged,
+            "detail": (
+                f"status={obsidian_status} monitor_age={obsidian_monitor_age if obsidian_monitor_age is not None else 'missing'} "
+                f"triage_age={obsidian_triage_age if obsidian_triage_age is not None else 'missing'}"
+            ),
+        },
+        {
+            "key": "self_proposal_hygiene",
+            "label": "自己提案の古さ・重複・薄さが整理されている",
+            "passed": self_proposal_hygiene_ok,
+            "detail": (
+                f"classification={self_proposal_hygiene.get('status', 'missing')} "
+                f"age_hours={hygiene_age if hygiene_age is not None else 'missing'} "
+                f"stale={self_proposal_hygiene.get('stale_count', 0)} "
+                f"duplicate={self_proposal_hygiene.get('duplicate_count', 0)} "
+                f"low_signal={self_proposal_hygiene.get('low_signal_count', 0)}"
+            ),
+        },
+        {
+            "key": "improvement_effect_health",
+            "label": "改善の効果測定ログが新しい",
+            "passed": improvement_effect_ok,
+            "detail": (
+                f"status={improvement_effect.get('status', 'missing')} "
+                f"issues={','.join(improvement_effect.get('issues') or []) or 'none'}"
+            ),
+        },
+    ]
+
+    failed = [check for check in checks if not check["passed"]]
+    if any(check["key"] in {"latest_report_fresh", "self_proposal_attach_step"} for check in failed):
+        status = "fail"
+    elif failed:
+        status = "warn"
+    else:
+        status = "ok"
+    score = round((sum(1 for check in checks if check["passed"]) / len(checks)) * 100, 1)
+    findings: list[str] = []
+    if not report_fresh:
+        findings.append("最新レポートが古いか未生成です。日次パイプラインの実行時刻を確認してください。")
+    if not recent_step_success:
+        findings.append("自己提案貼り付けステップの直近成功が確認できません。")
+    if leaked_titles:
+        findings.append(f"解決済み自己提案が{len(leaked_titles)}件、表示欄に残っています。")
+    if not loop_engineering_fresh:
+        findings.append("Loop Engineering レポートが古いか未生成です。再生成してください。")
+    elif not loop_engineering_ok:
+        findings.append(f"Loop Engineering レポートが {loop_status} です。再計算で最新状態を確認してください。")
+    if not (obsidian_monitor_fresh and obsidian_warn_triaged):
+        findings.append("Obsidian監視のwarnが未整理です。監視再生成と理由記録が必要です。")
+    if not self_proposal_hygiene_ok:
+        findings.append("自己提案に古い・重複・薄い候補があります。park候補として分類してください。")
+    if not improvement_effect_ok:
+        findings.append("改善効果の測定ログが古い、または低品質/悪化シグナルがあります。")
+    if not findings:
+        findings.append("日次生成と自己提案の自動整理は直近ログ上は回っています。")
+
+    return {
+        "label": "Shion Operation Loop Check",
+        "status": status,
+        "score": score,
+        "stale_hours": stale_hours,
+        "checks": checks,
+        "findings": findings[:3],
+        "latest_report": {
+            "path": str(latest_report_path),
+            "age_hours": report_age_hours,
+            "exists": latest_report_path.exists(),
+        },
+        "loop_engineering": {
+            "path": str(loop_engineering_path),
+            "exists": loop_engineering_path.exists(),
+            "status": loop_status,
+            "age_hours": loop_age_hours,
+            "generated_at": str(loop_report.get("generated_at") or "") if loop_report else "",
+        },
+        "obsidian_environment": {
+            "path": str(obsidian_monitor_path),
+            "exists": obsidian_monitor_path.exists(),
+            "status": obsidian_status,
+            "age_hours": obsidian_monitor_age,
+            "triage_path": str(obsidian_triage_path),
+            "triage_exists": obsidian_triage_path.exists(),
+            "triage_age_hours": obsidian_triage_age,
+        },
+        "self_proposal_hygiene": {
+            **self_proposal_hygiene,
+            "path": str(self_proposal_hygiene_path),
+            "exists": self_proposal_hygiene_path.exists(),
+            "age_hours": hygiene_age,
+        },
+        "improvement_effect": improvement_effect,
+        "self_proposals": {
+            "visible_count": int(section.get("count") or len(visible_items)) if isinstance(section, dict) else 0,
+            "visible_sample_count": len(visible_items),
+            "suppressed_resolved_count": int(section.get("suppressed_resolved_count") or len(suppressed_resolved)) if isinstance(section, dict) else 0,
+            "leaked_resolved_count": len(leaked_titles),
+            "leaked_titles": leaked_titles[:10],
+            "attached_at": str(section.get("attached_at") or "") if isinstance(section, dict) else "",
+        },
+        "pipeline_step": {
+            "name": "attach_shion_self_proposals_to_report",
+            "latest_ts": str(latest_step.get("ts") or "") if latest_step else "",
+            "latest_exit_code": latest_step.get("exit_code") if latest_step else None,
+            "age_hours": latest_step_age_hours,
+        },
+        "guardrail": "read_only_no_delete_no_auto_apply",
+    }
+
+
+def repair_operation_loop_health(
+    repo_root: Path,
+    *,
+    runner: Any | None = None,
+    timeout_s: int = 60,
+) -> dict[str, Any]:
+    """Run bounded, read-mostly repairs for operation-loop failures.
+
+    Safe auto repair is limited to regenerating the Shion self-proposal report
+    section. Full daily improvement execution is intentionally not triggered
+    here because it may sync external inputs, write ledgers, and auto-apply
+    rules.
+    """
+    before = summarize_operation_loop_health(repo_root)
+    failed_keys = {check["key"] for check in before.get("checks", []) if not check.get("passed")}
+    actions: list[dict[str, Any]] = []
+    latest_report_path = repo_root / "reports" / "latest.json"
+    latest_report = _read_json(latest_report_path)
+    daily_report_path = _latest_daily_report_path(repo_root, latest_report)
+
+    safe_attach_keys = {
+        "self_proposal_attach_step",
+        "self_proposal_attachment_fresh",
+        "resolved_self_proposals_hidden",
+    }
+    safe_loop_keys = {"loop_engineering_fresh", "loop_engineering_status"}
+    safe_obsidian_keys = {"obsidian_environment_triaged"}
+    safe_hygiene_keys = {"self_proposal_hygiene"}
+    safe_effect_keys = {"improvement_effect_health"}
+    should_regenerate_self_proposals = bool(failed_keys & safe_attach_keys)
+    should_regenerate_loop_engineering = bool(failed_keys & safe_loop_keys)
+    should_triage_obsidian = bool(failed_keys & safe_obsidian_keys)
+    should_write_hygiene = bool(failed_keys & safe_hygiene_keys)
+    should_measure_effect = bool(failed_keys & safe_effect_keys)
+    if before.get("status") == "ok":
+        actions.append({
+            "name": "no_action",
+            "status": "skipped",
+            "detail": "運用ループは正常のため自動修復は不要です。",
+        })
+    elif "latest_report_fresh" in failed_keys:
+        actions.append({
+            "name": "daily_report_regeneration",
+            "status": "needs_human_review",
+            "detail": "フル日次パイプラインは自動適用系を含むため、このボタンからは実行しません。",
+        })
+
+    if should_regenerate_self_proposals and latest_report_path.exists():
+        command = [
+            sys.executable,
+            str(repo_root / "scripts" / "attach_shion_self_proposals_to_report.py"),
+            "--latest",
+            str(latest_report_path),
+            "--limit",
+            "10",
+        ]
+        if daily_report_path and daily_report_path.exists():
+            command.extend(["--report", str(daily_report_path)])
+        start = time.monotonic()
+        try:
+            run = runner or subprocess.run
+            proc = run(
+                command,
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+            duration = time.monotonic() - start
+            exit_code = int(getattr(proc, "returncode", 1))
+            _write_pipeline_step_log(repo_root, "attach_shion_self_proposals_to_report", exit_code, duration)
+            actions.append({
+                "name": "regenerate_self_proposals",
+                "status": "applied" if exit_code == 0 else "failed",
+                "exit_code": exit_code,
+                "detail": _compact_text(
+                    (getattr(proc, "stdout", "") or getattr(proc, "stderr", "")),
+                    600,
+                ),
+            })
+        except subprocess.TimeoutExpired:
+            duration = time.monotonic() - start
+            _write_pipeline_step_log(repo_root, "attach_shion_self_proposals_to_report", 124, duration)
+            actions.append({
+                "name": "regenerate_self_proposals",
+                "status": "failed",
+                "exit_code": 124,
+                "detail": f"timeout after {timeout_s}s",
+            })
+    elif should_regenerate_self_proposals:
+        actions.append({
+            "name": "regenerate_self_proposals",
+            "status": "failed",
+            "detail": "reports/latest.json が存在しないため自己提案欄を再生成できません。",
+        })
+
+    if should_regenerate_loop_engineering:
+        command = [
+            sys.executable,
+            str(repo_root / "scripts" / "loop_metrics.py"),
+        ]
+        start = time.monotonic()
+        try:
+            run = runner or subprocess.run
+            proc = run(
+                command,
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+            duration = time.monotonic() - start
+            exit_code = int(getattr(proc, "returncode", 1))
+            _write_pipeline_step_log(repo_root, "loop_metrics", exit_code, duration)
+            actions.append({
+                "name": "regenerate_loop_engineering",
+                "status": "applied" if exit_code == 0 else "failed",
+                "exit_code": exit_code,
+                "detail": _compact_text(
+                    (getattr(proc, "stdout", "") or getattr(proc, "stderr", "")),
+                    600,
+                ),
+            })
+        except subprocess.TimeoutExpired:
+            duration = time.monotonic() - start
+            _write_pipeline_step_log(repo_root, "loop_metrics", 124, duration)
+            actions.append({
+                "name": "regenerate_loop_engineering",
+                "status": "failed",
+                "exit_code": 124,
+                "detail": f"timeout after {timeout_s}s",
+            })
+
+    if should_triage_obsidian:
+        command = [
+            sys.executable,
+            str(repo_root / "scripts" / "monitor_obsidian_environment.py"),
+        ]
+        start = time.monotonic()
+        try:
+            run = runner or subprocess.run
+            proc = run(
+                command,
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+            duration = time.monotonic() - start
+            exit_code = int(getattr(proc, "returncode", 1))
+            _write_pipeline_step_log(repo_root, "monitor_obsidian_environment", exit_code, duration)
+            monitor = _read_json(repo_root / "reports" / "obsidian_environment_monitor_latest.json")
+            triage = _build_obsidian_warn_triage(repo_root, monitor)
+            _write_json(repo_root / "reports" / "obsidian_environment_auto_triage_latest.json", triage)
+            actions.append({
+                "name": "triage_obsidian_environment",
+                "status": "applied" if exit_code == 0 else "failed",
+                "exit_code": exit_code,
+                "detail": _compact_text((getattr(proc, "stdout", "") or getattr(proc, "stderr", "")), 600),
+            })
+        except subprocess.TimeoutExpired:
+            duration = time.monotonic() - start
+            _write_pipeline_step_log(repo_root, "monitor_obsidian_environment", 124, duration)
+            actions.append({
+                "name": "triage_obsidian_environment",
+                "status": "failed",
+                "exit_code": 124,
+                "detail": f"timeout after {timeout_s}s",
+            })
+
+    if should_write_hygiene:
+        hygiene = _build_self_proposal_hygiene(repo_root, _read_json(latest_report_path))
+        _write_json(repo_root / "reports" / "shion_self_proposal_hygiene_latest.json", hygiene)
+        actions.append({
+            "name": "classify_self_proposal_hygiene",
+            "status": "applied",
+            "detail": (
+                f"stale={hygiene.get('stale_count', 0)} "
+                f"duplicate={hygiene.get('duplicate_count', 0)} "
+                f"low_signal={hygiene.get('low_signal_count', 0)}"
+            ),
+        })
+
+    if should_measure_effect:
+        for name, command in (
+            (
+                "measure_improvement_quality",
+                [sys.executable, str(repo_root / "scripts" / "analyze_improvement_quality.py")],
+            ),
+            (
+                "measure_shion_self_proposal_pdca",
+                [
+                    sys.executable,
+                    "-c",
+                    "from api.feedback_pattern_loop import evaluate_proposal_impact; import json; print(json.dumps(evaluate_proposal_impact(), ensure_ascii=False))",
+                ],
+            ),
+        ):
+            start = time.monotonic()
+            try:
+                run = runner or subprocess.run
+                proc = run(command, cwd=str(repo_root), capture_output=True, text=True, timeout=timeout_s)
+                duration = time.monotonic() - start
+                exit_code = int(getattr(proc, "returncode", 1))
+                _write_pipeline_step_log(repo_root, name, exit_code, duration)
+                actions.append({
+                    "name": name,
+                    "status": "applied" if exit_code == 0 else "failed",
+                    "exit_code": exit_code,
+                    "detail": _compact_text((getattr(proc, "stdout", "") or getattr(proc, "stderr", "")), 600),
+                })
+            except subprocess.TimeoutExpired:
+                duration = time.monotonic() - start
+                _write_pipeline_step_log(repo_root, name, 124, duration)
+                actions.append({
+                    "name": name,
+                    "status": "failed",
+                    "exit_code": 124,
+                    "detail": f"timeout after {timeout_s}s",
+                })
+
+    after = summarize_operation_loop_health(repo_root)
+    return {
+        "label": "Shion Operation Loop Auto Repair",
+        "status": "repaired" if before.get("status") != "ok" and after.get("status") == "ok" else "no_change",
+        "before": before,
+        "after": after,
+        "actions": actions,
+        "guardrail": "only_regenerate_self_proposal_section_no_full_daily_pipeline_no_prompt_or_memory_changes",
+    }
+
+
 def build_shion_eval_health_payload(repo_root: Path) -> dict[str, Any]:
     recent = summarize_recent_trace_health(repo_root)
+    operation_loop = summarize_operation_loop_health(repo_root)
     return {
         "label": "紫苑評価GUI",
         "mode": "read_only_information_health",
@@ -491,4 +1177,5 @@ def build_shion_eval_health_payload(repo_root: Path) -> dict[str, Any]:
         },
         "cases": list_eval_cases(),
         "recent_trace_health": recent,
+        "operation_loop_health": operation_loop,
     }

@@ -4614,6 +4614,18 @@ def post_shion_eval_health_check(req: ShionEvalHealthCheckRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/shion-eval-health/repair")
+def post_shion_eval_health_repair():
+    try:
+        from shion_eval_health import repair_operation_loop_health
+
+        return repair_operation_loop_health(Path(_REPO_ROOT))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _lease_news_focus_to_dict(focus):
     if not focus or not getattr(focus, "available", False):
         return {"available": False}

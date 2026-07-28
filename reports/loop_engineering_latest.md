@@ -1,7 +1,7 @@
 # Loop Engineering Health
 
-- Generated at: `2026-07-28T04:09:25`
-- Status: `attention`
+- Generated at: `2026-07-29T03:09:08`
+- Status: `ok`
 - Source coverage: 100.0%
 
 ## Improvement Loop
@@ -25,12 +25,12 @@
 - Previous response diffs: 121 (36.3%)
 
 ## Scoring Coefficients
-- Status: `attention`
+- Status: `ok`
 - Checked model keys: 6
 - Borrower/asset weight sum: 1.0
 - Quant/qual weight sum: 1.0
 - Blend weight sum: 1.0
-- [attention] /Users/kobayashiisaoryou/clawd/tune_lease_55/data/ml_rf_v4.pkl をロードできません: joblib: - got     : {'names': ['left_child', 'right_child', 'feature', 'threshold', 'impurity', 'n_node_samples', 'weighted_n_node_samples', 'missing_go_to_left'], 'formats': ['<i8', '<i8', '<i8', '<f8', '<f8', '<i8', '<f8', 'u1'], 'offsets': [0, 8, 16, 24, 32, 40, 48, 56], 'itemsize': 64} / pickle: _pickle.UnpicklingError: invalid load key, '\x09'.
+- No coefficient/model issues detected
 
 ## Guard / Safety
 - Status: `ok`
@@ -47,4 +47,4 @@
 - PDCA effect: measured 0, improved 0, worsened 0, avg delta 0.0
 
 ## Recommendations
-- スコアリング係数/モデルのヘルスチェックに重大な異常があります
+- 現状は読み取り専用の定点観測を継続する

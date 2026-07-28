@@ -281,3 +281,43 @@ def test_scheduler_push_preserves_hypothesis_fields(tmp_path, monkeypatch):
     assert saved["success_metric"] == "/screening 遷移率"
     assert "## 仮説" in saved["body"]
     assert "## 検証方法" in saved["body"]
+
+
+def test_feedback_pattern_pdca_handles_mixed_timezone_timestamps(tmp_path, monkeypatch):
+    import api.feedback_pattern_loop as feedback
+
+    improvement_log = tmp_path / "cloudrun_improvement_log.jsonl"
+    feedback_log = tmp_path / "human_response_feedback.jsonl"
+    pdca_log = tmp_path / "shion_self_pdca_log.jsonl"
+    improvement_log.write_text(
+        json.dumps(
+            {
+                "proposed_by": "shion",
+                "surface": "shion_self_proposal",
+                "title": "短く答える",
+                "ts": "2026-07-29T00:00:00Z",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    feedback_log.write_text(
+        "\n".join(
+            [
+                json.dumps({"ts": "2026-07-28T23:00:00", "rating": "thin"}, ensure_ascii=False),
+                json.dumps({"ts": "2026-07-29T01:00:00+00:00", "rating": "good"}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(feedback, "_IMPROVEMENT_LOG_PATH", improvement_log)
+    monkeypatch.setattr(feedback, "_FEEDBACK_PATH", feedback_log)
+    monkeypatch.setattr(feedback, "_PDCA_LOG_PATH", pdca_log)
+
+    result = feedback.evaluate_proposal_impact()
+
+    assert result["evaluated"] == 1
+    assert result["results"][0]["verdict"] == "improved"
+    assert pdca_log.exists()
