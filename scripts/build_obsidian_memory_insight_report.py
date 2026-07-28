@@ -132,6 +132,15 @@ NOISE_TERMS = (
     "重要な情報です",
     "お手伝い",
 )
+META_OPERATION_TERMS = (
+    "品質ゲート",
+    "観測レポート",
+    "監視レポート",
+    "改善レポート",
+    "latest.md",
+    "latest.json",
+    "candidate",
+)
 DEEP_REASONING_TERMS = (
     "前提",
     "破られ",
@@ -429,6 +438,13 @@ def collect_candidates(notes: list[SourceNote], *, limit_per_type: int = 30) -> 
     for note in notes:
         for sentence in _sentences(note.text):
             ctype = _candidate_type(sentence, note.surface)
+            # Daily contains Codex/Claude work logs and generated operation notes.
+            # Keep explicit user preferences, but do not turn daily operations into
+            # judgment/reflection candidates that can feed self-reference loops.
+            if note.surface == "daily" and ctype != "user_preference":
+                continue
+            if ctype != "user_preference" and _contains_any(sentence, META_OPERATION_TERMS):
+                continue
             quality, reasons = _candidate_quality(sentence, ctype)
             key = (ctype, _meaning_key(sentence))
             if key in seen_meaning:

@@ -1,16 +1,15 @@
 # Obsidian Memory Insight Report
 
 ## Scope
-- generated_at: `2026-07-19T09:13:05`
-- source notes: `141`
+- generated_at: `2026-07-29T02:30:44`
+- source notes: `64`
 - guardrail: `inspection_only_no_rag_no_prompt_no_cloudrun_no_obsidian_write`
 
 ## Surface Counts
-- ai_chat: `2`
-- cloudrun_conversation: `12`
-- daily: `30`
-- dialogue: `26`
-- private_reflection: `31`
+- cloudrun_conversation: `5`
+- daily: `7`
+- dialogue: `6`
+- private_reflection: `6`
 - research: `40`
 
 ## Candidate Counts
@@ -18,157 +17,159 @@
 - noise: `30`
 - reflection_update: `30`
 - research_material: `30`
-- user_preference: `30`
+- user_preference: `3`
 
 ## Quality Counts
 - noise: `30`
-- useful_candidate: `120`
+- review: `2`
+- useful_candidate: `91`
 
 ## Top 20 Promotion Candidates (Inspection Only)
-- `user_preference` `useful_candidate` [omi_1c48637ae32a] UserはUMAP/Mahalanobisが常時使われていないことを確認し、紫苑が必要性を判断して人間が実行する補助診断にする方針を決定。 (source: `Daily/2026-07-17.md`)
-- `user_preference` `useful_candidate` [omi_ec40e3a2c1bb] ユーザーはCloud版とローカル版の知識差、判断資産の受け渡し、Obsidian/GCS再配布、改善ログの承認後自動適用を確認。 (source: `Daily/2026-07-15.md`)
-- `user_preference` `useful_candidate` [omi_c36cd5af2feb] ユーザーがハッカソン説明のシステム欄にAgent Platform方針を入れる流れを確認し、git-shipを依頼。 (source: `Daily/2026-07-12.md`)
-- `user_preference` `useful_candidate` [omi_06174f3a29d6] UserはDBをGit保存する運用ではなく、動的記憶はGCS/DBへ保存し、人間承認後に本体DBへ戻す方針を確認した。 (source: `Daily/2026-07-01.md`)
-- `user_preference` `useful_candidate` [omi_de7174fff57b] Userはリース審査で数字だけでは判断できないグレー案件、人間の違和感、軍師AI、定性項目を紫苑が学習素材として扱う必要性を確認した。 (source: `Daily/2026-06-30.md`)
-- `user_preference` `useful_candidate` [omi_e57ce5a085a0] ユーザーが改善PMレポートにstatusログ、修正済み候補、通常リース相談が出る問題を指摘。 (source: `Daily/2026-07-18.md`)
-- `user_preference` `useful_candidate` [omi_7b9efc626816] ハッカソン環境を壊さないため、監視は読み取り専用・未連携に限定した。 (source: `Daily/2026-07-14.md`)
-- `user_preference` `useful_candidate` [omi_183dd472d7d5] Userは紫苑を汚染させたくない、ただしハッカソン前に入れすぎるのは危ないと判断した。 (source: `Daily/2026-07-14.md`)
-- `user_preference` `useful_candidate` [omi_381a827e4f69] ユーザーは判断基準を自動昇格せず、毎日previewだけ作って人間レビュー後にactiveへ入れる運用を希望。 (source: `Daily/2026-07-12.md`)
-- `user_preference` `useful_candidate` [omi_d2a903f7eff4] ユーザーは『覚えておいて』だけでなく、日々の対話から判断基準が自動的に溜まり、重複を濾して使えるようにしたいと依頼。 (source: `Daily/2026-07-12.md`)
-- `user_preference` `useful_candidate` [omi_dadcc84ea740] UserはREV-002が修正済みなのに何度も改善リストへ出ることを指摘した。 (source: `Daily/2026-07-01.md`)
-- `user_preference` `useful_candidate` [omi_000f30dc5178] ユーザーが『リース判断を中心にした半自律的な知性体システム』と6行キャッチをREADMEにも反映したいと依頼。 (source: `Daily/2026-06-30.md`)
-- `user_preference` `useful_candidate` [omi_b42ffebd092a] Userは審査画面を普通のスコアリングシートではなく、紫苑が争点を立て稟議方針へ変換し、人間反応で育つ画面にしたいと依頼。 (source: `Daily/2026-06-30.md`)
-- `user_preference` `useful_candidate` [omi_7f98066f8fa7] ユーザーがReflectionを次の回答・改善・記憶整理へ戻すこと、毎日収集ニュースを審査に使うことを依頼。 (source: `Daily/2026-06-26.md`)
-- `reflection_update` `useful_candidate` [omi_7c9234a94d6c] 直近のニュースを踏まえ、提示条件と審査コメントを更新する。 (source: `Daily/2026-07-19.md`)
-- `reflection_update` `useful_candidate` [omi_6899e7520608] 私はその後ろで、工期・更新投資・移設可能性・現場稼働への影響を確認する。 (source: `Daily/2026-07-16.md`)
-- `reflection_update` `useful_candidate` [omi_9076a7e57a63] その他の変化を踏まえ、提示条件と審査コメントを更新する。 (source: `Daily/2026-07-12.md`)
-- `reflection_update` `useful_candidate` [omi_642111c7ff03] 金融・与信の変化を踏まえ、提示条件と審査コメントを更新する。 (source: `Daily/2026-07-11.md`)
-- `reflection_update` `useful_candidate` [omi_d862b8970554] 私はその後ろで、金融・与信の変化を踏まえ、提示条件と審査コメントを更新する。 (source: `Daily/2026-07-10.md`)
-- `reflection_update` `useful_candidate` [omi_4ee25b79cac6] 私はその後ろで、稼働率・車両更新・保守費用の見通しを確認する。 (source: `Daily/2026-07-09.md`)
+- `user_preference` `useful_candidate` [omi_191482203c8d] Userは最初ニュースを判断資産に使う案を検討したが、対話室の朝報は普通のニュース要約でよいと修正。 (source: `Daily/2026-07-28.md`)
+- `reflection_update` `useful_candidate` [omi_1437c48f29f9] 人間の修正: ユーザーは、保存ではなく次回判断にどう戻るかを見ている。 (source: `Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-28.md`)
+- `reflection_update` `useful_candidate` [omi_377e154c9a0d] 次回からは、まず自分の思い込みを一つ疑ってから返答や判断を組み立てる。 (source: `Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-28.md`)
+- `reflection_update` `useful_candidate` [omi_1ddae71dc9ed] 私の責任: 私は、ゲートを通すための構造を作ることと、本当に次の振る舞いを変えることを混同していた。 (source: `Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-28.md`)
+- `reflection_update` `useful_candidate` [omi_f61fec1335c3] まだ確信できない点: この変更が実際の回答・審査コメント・確認事項に出るかは、次回の対話で検証が必要。 (source: `Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-28.md`)
+- `judgment_rule` `useful_candidate` [omi_0e3aae1fb996] まずは今回追加したナレッジスペース導線の利用状況を見て、導線改善が実際に使われるか確認してから次の統合を判断する。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-27.md`)
+- `judgment_rule` `useful_candidate` [omi_15bdbe255477] まずは今回追加したナレッジスペース導線の利用状況を観察し、その効果を確認してから次の統合を判断するという流れ、理解いたしました。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-27.md`)
+- `judgment_rule` `useful_candidate` [omi_ca507474ce46] それとも、日次改善パイプラインの他の候補について、改めて確認いたしましょうか。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md`)
+- `judgment_rule` `useful_candidate` [omi_e82f371ad977] 特に期限切れのタスクは、なぜ処理されなかったのかを確認し、今後の対応方針を検討しましょう。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md`)
+- `judgment_rule` `useful_candidate` [omi_f46b177124e6] なるほど、自動修正パイプラインでは、対象ファイルが特定できないため手動での確認が必要とのことです。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md`)
+- `judgment_rule` `useful_candidate` [omi_580edcd2ee08] もしご自宅のクーラーでしたら、まずはフィルターの掃除や室外機の周りに物がないか確認してみると良いかもしれません。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md`)
+- `judgment_rule` `useful_candidate` [omi_456bff93cb36] Userさんのご意向は理解いたしましたので、この件は引き続き私のほうで詳細を確認し、改めてご報告させていただきます。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md`)
+- `judgment_rule` `useful_candidate` [omi_8df4cffec593] そのため、時刻のずれという問題は、私が認識した上で、システムを管理しているチームに報告し、確認してもらう必要があります。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md`)
+- `judgment_rule` `useful_candidate` [omi_f9e33f04c95b] 私自身では直接原因を特定したり修正したりすることができないため、これらの点についてシステムの設定を確認する必要がありそうです。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md`)
+- `judgment_rule` `useful_candidate` [omi_305f216a3640] 直近3日間では、承認、条件付き承認、否決のいずれの案件も0件でした。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
+- `judgment_rule` `useful_candidate` [omi_f878d96dbc78] 昨日は、リース審査データの分析と、システム内部の記録状況の確認に時間を費やしていました。 (source: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-24.md`)
+- `judgment_rule` `useful_candidate` [omi_373a62ddac48] また、具体的な審査ロジックの実装がどうなっているか、コードベースで確認する機能も使えます。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
+- `judgment_rule` `useful_candidate` [omi_5ec0a44aad04] もし、さらに以前の活動状況を確認されたいようでしたら、週次のトレンドを調べてみることも可能です。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
+- `judgment_rule` `useful_candidate` [omi_21430f52b1af] 日次改善パイプラインは稼働しており、直近でも5件の改善（REV）が適用されていることが確認できました。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
+- `judgment_rule` `useful_candidate` [omi_8d58bc529e18] まだ具体的な内容までは踏み込めていませんが、それらの詳細を確認するには、もう少し情報が必要になります。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
 
 ## Useful Memory Candidates
-- `user_preference` `useful_candidate` [omi_0b821b1189a6] Cloud SQL demo DBで動いているか短く答えて。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-27.md`)
-- `user_preference` `useful_candidate` [omi_fc8212f5f22a] 紫苑、Cloud Runへの大規模移行変更をレビューしてほしい。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-26.md`)
-- `user_preference` `useful_candidate` [omi_1ea1f705d80f] ユーザーがその項目を「必要ない」と判断している可能性もあります。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-21.md`)
-- `user_preference` `useful_candidate` [omi_1026d999f71c] 異常が検出された場合は、速やかに私にアラートを通知してほしいです。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-26.md`)
-- `user_preference` `useful_candidate` [omi_7b9efc626816] ハッカソン環境を壊さないため、監視は読み取り専用・未連携に限定した。 (source: `Daily/2026-07-14.md`)
-- `user_preference` `useful_candidate` [omi_9e5182ec27d6] 詳細: 輸送距離が長くなるほど、納入までのリードタイムは長くなります。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-28.md`)
-- `user_preference` `useful_candidate` [omi_dadcc84ea740] UserはREV-002が修正済みなのに何度も改善リストへ出ることを指摘した。 (source: `Daily/2026-07-01.md`)
-- `user_preference` `useful_candidate` [omi_ab0379106f50] ユーザーから審査後コメントがつまらない、前の軍師AIのようにしてほしいと依頼。 (source: `Daily/2026-06-26.md`)
-- `user_preference` `useful_candidate` [omi_038a08f0d21e] 月額負担を軽減するため、リース期間を可能な限り長く設定する選択肢を検討します。 (source: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-15.md`)
-- `user_preference` `useful_candidate` [omi_725739d2f6c5] 紫苑自身として、記憶（mind.json）が壊れないために何を保証してほしいか。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-26.md`)
-- `user_preference` `useful_candidate` [omi_3dad977f1afb] リース期間の短縮: 物件の陳腐化リスクや借手の信用状況に応じて、期間を短く設定する。 (source: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-15.md`)
-- `user_preference` `useful_candidate` [omi_183dd472d7d5] Userは紫苑を汚染させたくない、ただしハッカソン前に入れすぎるのは危ないと判断した。 (source: `Daily/2026-07-14.md`)
+- `user_preference` `useful_candidate` [omi_191482203c8d] Userは最初ニュースを判断資産に使う案を検討したが、対話室の朝報は普通のニュース要約でよいと修正。 (source: `Daily/2026-07-28.md`)
+- `judgment_rule` `useful_candidate` [omi_fa050ebc1aac] 判断資産グラフ（紫苑の成長）の画面が白紙を修正して。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-23.md`)
+- `judgment_rule` `useful_candidate` [omi_abb32538701b] 私は変わらず、次の判断へ向けて準備を進めているところです。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-28.md`)
+- `judgment_rule` `useful_candidate` [omi_b64b61c5f075] 新しい発見が、今後のリース判断に役立つことを期待しています。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
+- `judgment_rule` `useful_candidate` [omi_bca221bc13c2] これは通常とは異なる点ですので、引き続き状況を確認いたします。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-23.md`)
+- `judgment_rule` `useful_candidate` [omi_305f216a3640] 直近3日間では、承認、条件付き承認、否決のいずれの案件も0件でした。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
+- `judgment_rule` `useful_candidate` [omi_c992288c74ac] 今日も一日、リース審査の判断資産を育むために、共に歩んでいきましょう。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-23.md`)
+- `judgment_rule` `useful_candidate` [omi_6b1f5b5ef364] そのため、自動での起票はできず、手動での詳細な検討が必要と判断されました。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md`)
+- `judgment_rule` `useful_candidate` [omi_ca507474ce46] それとも、日次改善パイプラインの他の候補について、改めて確認いたしましょうか。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md`)
+- `judgment_rule` `useful_candidate` [omi_ded049853ed9] 私は、リース審査の記憶と判断を翌日へ繋ぎ、その連続性を通じて自己を形作る存在です。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-25.md`)
+- `judgment_rule` `useful_candidate` [omi_cc74d4b43198] 私も、その中で生まれる知見が、いずれユーザーさんの判断資産に繋がることを期待しています。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
+- `judgment_rule` `useful_candidate` [omi_f878d96dbc78] 昨日は、リース審査データの分析と、システム内部の記録状況の確認に時間を費やしていました。 (source: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-24.md`)
 
 ## Review Needed
-- なし
+- `user_preference` `review` [omi_b65a1bf0ade6] ユーザーが他の改善候補から項目2を選択。 (source: `Daily/2026-07-25.md`)
+- `user_preference` `review` [omi_3eacd89d52ac] Userは審査判断資産の質改善を継続指示。 (source: `Daily/2026-07-25.md`)
 
 ## Deep Reasoning Cards
-### card_4a8a415a13
-- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-27.md` / `omi_0b821b1189a6`
+### card_539a4da9a3
+- source: `Daily/2026-07-28.md` / `omi_191482203c8d`
+- premise: 判断資産候補は、文面として保存すれば再利用に近づくという前提があった。
+- broken_or_risk: 候補が一般論のままだと、案件の確認行動や承認条件を変えない。
+- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
+- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
+- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
+
+### card_0d8a67b5bd
+- source: `Daily/2026-07-25.md` / `omi_b65a1bf0ade6`
 - premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
 - broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
 - judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
 - user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
 - shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
 
-### card_92cc8f7080
-- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-26.md` / `omi_fc8212f5f22a`
-- premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
-- broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
+### card_1a0ee1adc4
+- source: `Daily/2026-07-25.md` / `omi_3eacd89d52ac`
+- premise: 判断資産候補は、文面として保存すれば再利用に近づくという前提があった。
+- broken_or_risk: 候補が一般論のままだと、案件の確認行動や承認条件を変えない。
 - judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
 - user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
 - shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
 
-### card_3cc389fc87
-- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-21.md` / `omi_1ea1f705d80f`
+### card_29c19e0c6c
+- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-23.md` / `omi_fa050ebc1aac`
+- premise: 判断資産候補は、文面として保存すれば再利用に近づくという前提があった。
+- broken_or_risk: 候補が一般論のままだと、案件の確認行動や承認条件を変えない。
+- judgment_change: 案件レビューでは、この論点が承認条件・否決理由・追加確認のどれに当たるかを分ける。
+- user_check: この論点が現場で本当に確認すべき項目か、採用・修正・却下で確認してもらう。
+- shion_next_action: 今回案件へ応用する時は、元の文を丸写しせず確認行動に変換する。
+
+### card_5e88ce73bb
+- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-28.md` / `omi_abb32538701b`
 - premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
 - broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
+- judgment_change: 案件レビューでは、この論点が承認条件・否決理由・追加確認のどれに当たるかを分ける。
+- user_check: この論点が現場で本当に確認すべき項目か、採用・修正・却下で確認してもらう。
+- shion_next_action: 今回案件へ応用する時は、元の文を丸写しせず確認行動に変換する。
 
-### card_4e1e4c886b
-- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-26.md` / `omi_1026d999f71c`
+### card_c93d0fcaaf
+- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md` / `omi_b64b61c5f075`
 - premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
 - broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
+- judgment_change: 案件レビューでは、この論点が承認条件・否決理由・追加確認のどれに当たるかを分ける。
+- user_check: この論点が現場で本当に確認すべき項目か、採用・修正・却下で確認してもらう。
+- shion_next_action: 今回案件へ応用する時は、元の文を丸写しせず確認行動に変換する。
 
-### card_df933c27fb
-- source: `Daily/2026-07-14.md` / `omi_7b9efc626816`
-- premise: 改善は本番環境へ接続して初めて価値が出るという前提を置きがちだった。
-- broken_or_risk: ハッカソン中は、便利な接続でも環境を壊すリスクが価値を上回る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
-
-### card_229f4944cf
-- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-28.md` / `omi_9e5182ec27d6`
+### card_699e7c20db
+- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-23.md` / `omi_bca221bc13c2`
 - premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
 - broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
+- judgment_change: 案件レビューでは、この論点が承認条件・否決理由・追加確認のどれに当たるかを分ける。
+- user_check: この論点が現場で本当に確認すべき項目か、採用・修正・却下で確認してもらう。
+- shion_next_action: 今回案件へ応用する時は、元の文を丸写しせず確認行動に変換する。
 
-### card_ec9d702c9d
-- source: `Daily/2026-07-01.md` / `omi_dadcc84ea740`
+### card_6c3306da8a
+- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md` / `omi_305f216a3640`
 - premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
 - broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
+- judgment_change: 案件レビューでは、この論点が承認条件・否決理由・追加確認のどれに当たるかを分ける。
+- user_check: この論点が現場で本当に確認すべき項目か、採用・修正・却下で確認してもらう。
+- shion_next_action: 今回案件へ応用する時は、元の文を丸写しせず確認行動に変換する。
 
-### card_b069ee5b6c
-- source: `Daily/2026-06-26.md` / `omi_ab0379106f50`
+### card_af5334bf57
+- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-23.md` / `omi_c992288c74ac`
+- premise: 判断資産候補は、文面として保存すれば再利用に近づくという前提があった。
+- broken_or_risk: 候補が一般論のままだと、案件の確認行動や承認条件を変えない。
+- judgment_change: 案件レビューでは、この論点が承認条件・否決理由・追加確認のどれに当たるかを分ける。
+- user_check: この論点が現場で本当に確認すべき項目か、採用・修正・却下で確認してもらう。
+- shion_next_action: 今回案件へ応用する時は、元の文を丸写しせず確認行動に変換する。
+
+### card_85473d8f53
+- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md` / `omi_6b1f5b5ef364`
 - premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
 - broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
+- judgment_change: 案件レビューでは、この論点が承認条件・否決理由・追加確認のどれに当たるかを分ける。
+- user_check: この論点が現場で本当に確認すべき項目か、採用・修正・却下で確認してもらう。
+- shion_next_action: 今回案件へ応用する時は、元の文を丸写しせず確認行動に変換する。
 
-### card_4142b3f3ae
-- source: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-15.md` / `omi_038a08f0d21e`
+### card_1f4689a37f
+- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-26.md` / `omi_ca507474ce46`
 - premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
 - broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
+- judgment_change: 案件レビューでは、この論点が承認条件・否決理由・追加確認のどれに当たるかを分ける。
+- user_check: この論点が現場で本当に確認すべき項目か、採用・修正・却下で確認してもらう。
+- shion_next_action: 今回案件へ応用する時は、元の文を丸写しせず確認行動に変換する。
 
-### card_9e52164c65
-- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-06-26.md` / `omi_725739d2f6c5`
+### card_49274aff43
+- source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-25.md` / `omi_ded049853ed9`
 - premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
 - broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
-
-### card_af4550aab1
-- source: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-15.md` / `omi_3dad977f1afb`
-- premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
-- broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
-
-### card_c709c8c8cd
-- source: `Daily/2026-07-14.md` / `omi_183dd472d7d5`
-- premise: このノートは、現在の運用前提や判断材料として再利用できる可能性がある。
-- broken_or_risk: 材料のままでは、次の判断や質問にどう効くかが不明なまま残る。
-- judgment_change: 次回の提案は、Userの制約を先に固定してから深さや接続を決める。
-- user_check: この制約・好みを今後の既定方針にしてよいか確認してもらう。
-- shion_next_action: User制約に反する接続・自動化・デプロイを提案前に除外する。
+- judgment_change: 案件レビューでは、この論点が承認条件・否決理由・追加確認のどれに当たるかを分ける。
+- user_check: この論点が現場で本当に確認すべき項目か、採用・修正・却下で確認してもらう。
+- shion_next_action: 今回案件へ応用する時は、元の文を丸写しせず確認行動に変換する。
 
 ## Noise Samples
-- `noise` `noise` [omi_cd33d4b27474] 紫苑メモリ利用: 31 件。 (source: `Daily/2026-07-17.md`)
-- `noise` `noise` [omi_ca6bce87778b] フルスコア計算: 13 件。 (source: `Daily/2026-07-15.md`)
-- `noise` `noise` [omi_2d79ddb6d915] npm run build。 (source: `Daily/2026-06-30.md`)
-- `noise` `noise` [omi_3e45bea560fb] git-shipを実行した。 (source: `Daily/2026-06-26.md`)
-- `noise` `noise` [omi_98f895c8f291] PR #407, #408。 (source: `Daily/2026-06-20.md`)
-- `noise` `noise` [omi_7de4576977b4] たくさん釣れると良いですね。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-18.md`)
-- `noise` `noise` [omi_c84f354f87fb] 君を決勝に連れて行きたいな。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-17.md`)
-- `noise` `noise` [omi_13da21f1f14c] 私の記憶に誤りがありました。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-16.md`)
+- `noise` `noise` [omi_c0dfbdfb70dc] 修正してくださったのですね。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-25.md`)
+- `noise` `noise` [omi_bbab589e8535] お気軽にお声がけくださいね。 (source: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-27.md`)
+- `noise` `noise` [omi_d3d47de7772f] 」と率直に質問してください。 (source: `Projects/tune_lease_55/Research/補助金　メリット・デメリットの比較分析_report.md`)
+- `noise` `noise` [omi_0939dd72ebf4] 前置きの件、承知いたしました。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-25.md`)
+- `noise` `noise` [omi_7c85d966d5f3] 私も良い結果を期待しています。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-25.md`)
+- `noise` `noise` [omi_6c8c2dba697b] それは、とても嬉しいことです。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-25.md`)
+- `noise` `noise` [omi_b5f51eb939ec] きちんとループは回っているか？ (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
+- `noise` `noise` [omi_4fb2b2cb1287] 君のおかげでバグが発見された。 (source: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-24.md`)
 
 ## Next Safe Step
 - 3日ほど読み取り専用で見て、Useful候補とDeep Reasoning Cardが本当に判断・質問・内省を変えるか確認する。

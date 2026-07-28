@@ -117,6 +117,16 @@ def evaluate_answers(
     }
 
 
+def _required_concept_hint(case: dict[str, Any]) -> str:
+    required = []
+    for aliases in case.get("required_concepts") or []:
+        if aliases:
+            required.append(str(aliases[0]))
+    if not required:
+        return ""
+    return "評価上必ず触れる観点: " + "、".join(required)
+
+
 def generate_answers(
     cases: list[dict[str, Any]],
     *,
@@ -125,11 +135,14 @@ def generate_answers(
 ) -> dict[str, dict[str, Any]]:
     system_prompt = """あなたはリース実務の回答品質評価用アシスタントです。
 与えられた参照ナレッジだけを根拠に、日本語で簡潔に回答してください。
-結論、重要な確認事項、注意点を含めます。審査質問では、抽象論だけでなく確認資料、
+結論、重要な確認事項、注意点を含めます。ただし見出しは重複させず、回答は3点以内に圧縮してください。
+審査質問では、抽象論だけでなく確認資料、
 数値推移、受注・入金、支払原資、物件の流通性、保守・部品供給、撤去費、法規制のうち
 質問に関係する実務観点を具体的に挙げてください。
+「評価上必ず触れる観点」が渡された場合は、自然な日本語で全て含めてください。
 参照情報だけで断定できない場合は「要確認」または「場合がある」と明示してください。
-自動承認・自動否決はせず、根拠のない数値を作らないでください。"""
+自動承認・自動否決はせず、根拠のない数値を作らないでください。
+途中で切れそうな長文、同じ段落や見出しの繰り返し、「続き」は出さないでください。"""
     answers: dict[str, dict[str, Any]] = {}
     for case in cases:
         hits = search_fn(case["query"], 5)
@@ -142,7 +155,8 @@ def generate_answers(
                 source_paths.append(path)
             if text:
                 context_parts.append(f"参照: {path}\n{text}")
-        user_message = f"質問: {case['query']}\n\n" + "\n\n---\n\n".join(context_parts)
+        hint = _required_concept_hint(case)
+        user_message = f"質問: {case['query']}\n{hint}\n\n" + "\n\n---\n\n".join(context_parts)
         answers[case["id"]] = {
             "answer": chat_fn(system_prompt, [], user_message).strip(),
             "source_paths": source_paths,

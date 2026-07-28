@@ -1,8 +1,8 @@
 # Obsidian Environment Monitor
 
 ## Summary
-- generated_at: `2026-07-28T04:09:04+09:00`
-- target_date: `2026-07-28`
+- generated_at: `2026-07-29T02:30:53+09:00`
+- target_date: `2026-07-29`
 - status: `warn`
 - guardrail: `monitor_only_no_obsidian_write_no_rag_no_prompt_no_cloudrun`
 
@@ -20,8 +20,8 @@
 ## Checks
 ### vault
 - status: `ok`
-- message: Vault reachable, markdown files=1600
-- details: `{"md_count": 1600}`
+- message: Vault reachable, markdown files=1612
+- details: `{"md_count": 1612}`
 
 ### key_paths
 - status: `ok`
@@ -34,39 +34,39 @@
 - details: `{"today": true, "yesterday": true}`
 
 ### surface_freshness
-- status: `ok`
-- message: dialogue/reflection surfaces fresh
-- details: `{"cloudrun_conversation": {"age_hours": 0.1, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-27.md"}, "dialogue": {"age_hours": 1.2, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-28.md"}, "private_reflection": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-28.md"}}`
+- status: `warn`
+- message: stale or missing surfaces: cloudrun_conversation
+- details: `{"cloudrun_conversation": {"age_hours": null, "exists": false}, "dialogue": {"age_hours": 23.6, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-28.md"}, "private_reflection": {"age_hours": 22.4, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-28.md"}}`
 
 ### private_reflection_meaning
-- status: `ok`
-- message: Private Reflection has meaningful update signals
-- details: `{"matched_labels": ["今日の観察:", "私の見落とし:", "仮説の更新:", "次回の小さな実験:", "前回の入力:", "前回の判断:", "人間の修正:", "紫苑が外した点:", "次回から変える確認事項:", "判断資産候補:", "まだ確信できない点:", "私の責任:", "更新する信念:", "次回の検証方法:"], "missing_categories": [], "required_categories": ["misread", "next_behavior", "self_responsibility", "user_expectation"], "similarity_to_yesterday": 0.782, "today_length": 3653, "today_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-28.md", "yesterday_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-27.md"}`
+- status: `warn`
+- message: today Private Reflection missing: 2026-07-29.md
+- details: `{"today_exists": false}`
 
 ### rag_index
 - status: `ok`
 - message: RAG index fresh
-- details: `{"chroma_age_hours": 0.1, "chroma_db": "/Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db/chroma.sqlite3", "chroma_size": 91029504, "completion_source": "rag_daily_maintenance", "last_reindex_age_hours": 1.1, "reindex_log": "/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_reindex.out.log", "total_in_db": 1365}`
+- details: `{"chroma_age_hours": 20.3, "chroma_db": "/Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db/chroma.sqlite3", "chroma_size": 91029504, "completion_source": "rag_daily_maintenance", "last_reindex_age_hours": 23.5, "reindex_log": "/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_reindex.out.log", "total_in_db": 1365}`
 
 ### memory_insight_reports
-- status: `warn`
-- message: stale or missing sidecars: memory_insight
-- details: `{"memory_insight": {"age_hours": 189.3, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/obsidian_memory_insight_latest.md"}, "promotion_queue": {"age_hours": 24.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_memory_promotion_queue_latest.md"}, "reflection_delta": {"age_hours": 24.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_reflection_delta_latest.md"}}`
+- status: `ok`
+- message: memory insight sidecars fresh
+- details: `{"memory_insight": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/obsidian_memory_insight_latest.md"}, "promotion_queue": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_memory_promotion_queue_latest.md"}, "reflection_delta": {"age_hours": 22.4, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_reflection_delta_latest.md"}}`
 
 ### self_reference_loop
 - status: `ok`
 - message: no obvious self-reference loop in memory candidates
-- details: `{"candidate_count": 150, "candidate_path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/obsidian_memory_insight_candidates.jsonl", "candidate_type_counts": {"judgment_rule": 30, "noise": 30, "reflection_update": 30, "research_material": 30, "user_preference": 30}, "meta_hit_sample": [{"claim": "ハッカソン環境を壊さないため、監視は読み取り専用・未連携に限定した。", "source": "Daily/2026-07-14.md"}, {"claim": "ユーザーが改善PMレポートにstatusログ、修正済み候補、通常リース相談が出る問題を指摘。", "source": "Daily/2026-07-18.md"}, {"claim": "明日は、観測レポートだけで終わらせず、退屈の原因を1つ選んで小さく変える。", "source": "Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-19.md"}, {"claim": "構造分析：所有権移転リースと非所有権移転リースの本質的差異。", "source": "Projects/tune_lease_55/Research/所有権移転リース　総合レポート_(executive_report)_report (1).md"}, {"claim": "[ ] 現在、登録申請中（登録完了予定日：＿＿年＿＿月頃）。", "source": "Projects/tune_lease_55/Research/インボイス　総合レポート_(executive_report)_report (1).md"}, {"claim": "期間安定...`
+- details: `{"candidate_count": 123, "candidate_path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/obsidian_memory_insight_candidates.jsonl", "candidate_type_counts": {"judgment_rule": 30, "noise": 30, "reflection_update": 30, "research_material": 30, "user_preference": 3}, "meta_hit_sample": [{"claim": "構造分析：所有権移転リースと非所有権移転リースの本質的差異。", "source": "Projects/tune_lease_55/Research/所有権移転リース　総合レポート_(executive_report)_report (1).md"}, {"claim": "[ ] 現在、登録申請中（登録完了予定日：＿＿年＿＿月頃）。", "source": "Projects/tune_lease_55/Research/インボイス　総合レポート_(executive_report)_report (1).md"}, {"claim": "期間安定性: 5年以上の長期間、仕様変更なく利用する環境か。", "source": "Projects/tune_lease_55/Research/ソフトリース　総合レポート_(executive_report)_report (1).md"}, {"claim": "補助金ルールにおいて、「交付決定前の契約」は補助対象外です。", "source": "Projects/tune_lease_55/Research/補助金　総合レポート.md"}, {"claim": "以下の3点を必ず遵守してください。", "source": "Projects/tune_lease_55/Research/補助金　総合レポート.md"}],...`
 
 ### recent_note_noise
 - status: `ok`
-- message: recent note technical-noise ratio=0.0034, noisy_files=4
-- details: `{"noisy_files": ["Daily/2026-07-26.md", "Daily/2026-07-27.md", "Daily/2026-07-28.md", "Daily/2026-07-25.md"], "ratio": 0.0034}`
+- message: recent note technical-noise ratio=0.005, noisy_files=4
+- details: `{"noisy_files": ["Daily/2026-07-28.md", "Daily/2026-07-26.md", "Daily/2026-07-27.md", "Daily/2026-07-25.md"], "ratio": 0.005}`
 
 ### wikilinks
 - status: `ok`
-- message: recent wikilinks=103, unresolved_sample=0
-- details: `{"link_count": 103, "unresolved_sample": []}`
+- message: recent wikilinks=100, unresolved_sample=0
+- details: `{"link_count": 100, "unresolved_sample": []}`
 
 ## Next Safe Action
 - `warn` が出た項目だけ手動で確認する。

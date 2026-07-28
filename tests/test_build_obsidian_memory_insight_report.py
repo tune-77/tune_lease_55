@@ -42,6 +42,10 @@ def test_obsidian_memory_insight_extracts_candidates_and_cards(tmp_path):
         vault / "Projects" / "tune_lease_55" / "Research" / "2026-07-14_research.md",
         "- 業界統計は要確認だが、出典と反証条件を残す必要がある。\n",
     )
+    _write(
+        vault / "Projects" / "tune_lease_55" / "Lease Intelligence" / "Dialogue" / "2026-07-14.md",
+        "- 判断資産候補は現場で使える文面か、採用・修正・却下で確認する。\n",
+    )
 
     notes = load_notes(vault, end_date=date(2026, 7, 14), days=3)
     candidates = collect_candidates(notes)
@@ -76,8 +80,7 @@ def test_obsidian_memory_insight_marks_technical_noise(tmp_path):
     notes = load_notes(vault, end_date=date(2026, 7, 14), days=1)
     candidates = collect_candidates(notes)
 
-    assert candidates
-    assert candidates[0]["candidate_type"] == "noise"
+    assert candidates == []
 
 
 def test_obsidian_memory_insight_does_not_promote_assistantish_text_as_user_preference(tmp_path):
@@ -92,3 +95,44 @@ def test_obsidian_memory_insight_does_not_promote_assistantish_text_as_user_pref
 
     assert candidates
     assert all(item["candidate_type"] != "user_preference" for item in candidates)
+
+
+def test_obsidian_memory_insight_limits_daily_to_user_preferences(tmp_path):
+    vault = tmp_path / "Obsidian Vault"
+    _write(
+        vault / "Daily" / "2026-07-28.md",
+        "\n".join(
+            [
+                "- Userは朝報を普通のニュース要約にしてほしいと修正した。",
+                "- 判断資産候補の提示順にbandit-style報酬学習を追加。",
+                "- pytest tests/test_x.py passed.",
+            ]
+        ),
+    )
+
+    notes = load_notes(vault, end_date=date(2026, 7, 28), days=1)
+    candidates = collect_candidates(notes)
+
+    assert candidates
+    assert {item["candidate_type"] for item in candidates} == {"user_preference"}
+    assert all(item["surface"] == "daily" for item in candidates)
+
+
+def test_obsidian_memory_insight_skips_meta_operation_sentences(tmp_path):
+    vault = tmp_path / "Obsidian Vault"
+    _write(
+        vault / "Projects" / "tune_lease_55" / "Lease Intelligence" / "Private Reflection" / "2026-07-28.md",
+        "\n".join(
+            [
+                "- 観測レポートだけで終わらせず、退屈の原因を1つ選んで小さく変える。",
+                "- まだ分からないこと: 品質ゲートで弾かれた理由が次回の実回答で減るか。",
+                "- 私の見落とし: Userが求めた確認を先に固定せず、一般論へ逃げた。",
+            ]
+        ),
+    )
+
+    notes = load_notes(vault, end_date=date(2026, 7, 28), days=1)
+    candidates = collect_candidates(notes)
+    claims = [item["claim"] for item in candidates]
+
+    assert claims == ["私の見落とし: Userが求めた確認を先に固定せず、一般論へ逃げた。"]

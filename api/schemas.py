@@ -79,7 +79,7 @@ class ScoringResponse(BaseModel):
     asset_score: Optional[float] = None        # 経路依存: Full審査では加重合成、quickでは警告・表示用
     asset_warnings: Optional[list] = None      # 物件リスク警告フラグ（BEP・換金性・残存価値）
     asset_bonuses: Optional[list] = None       # 物件プラス評価（換金性・残存価値優位）
-    default_warnings: list = []                # 高リスク財務パターン警告（実PDではない・スコア非影響）
+    default_warnings: list = Field(default_factory=list)  # 高リスク財務パターン警告（実PDではない・スコア非影響）
     quantum_risk: Optional[float] = None       # 量子干渉リスクスコア 0-100（財務矛盾検出）
     financial_consistency_score: Optional[float] = None  # 旧Q_risk: 財務・入力整合性チェック 0-100
     financial_consistency_risk: Optional[dict] = None  # 旧Q_risk詳細 {score, level, patterns, pattern_details}
@@ -106,7 +106,7 @@ class CaseRegisterRequest(BaseModel):
     final_rate: float
     base_rate_at_time: float
     lost_reason: Optional[str] = ""
-    loan_conditions: list = []
+    loan_conditions: list = Field(default_factory=list)
     competitor_name: Optional[str] = ""
     competitor_rate: Optional[float] = None
     note: Optional[str] = ""
@@ -138,12 +138,12 @@ class LeaseNewsSummarizeRequest(BaseModel):
 class LeaseNewsSummaryItem(BaseModel):
     date: str
     title: str
-    summary_lines: list[str] = []
+    summary_lines: list[str] = Field(default_factory=list)
     usage_memo: str = ""
-    summary_codes: list[str] = []
-    usage_codes: list[str] = []
-    key_phrases: list[str] = []
-    tags: list[str] = []
+    summary_codes: list[str] = Field(default_factory=list)
+    usage_codes: list[str] = Field(default_factory=list)
+    key_phrases: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     region: str = "国内"
     importance: str = "通常"
     source: str = ""

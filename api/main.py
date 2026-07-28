@@ -4088,9 +4088,9 @@ class GunshiStreamRequest(BaseModel):
     equity_ratio: float = 0.0
     bank_credit: float = 0.0
     lease_credit: float = 0.0
-    asset_warnings: list = []
-    asset_bonuses: list = []
-    default_warnings: list = []
+    asset_warnings: list = Field(default_factory=list)
+    asset_bonuses: list = Field(default_factory=list)
+    default_warnings: list = Field(default_factory=list)
     estat_context: Optional[dict] = None
 
 
