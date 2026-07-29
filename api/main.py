@@ -9064,6 +9064,125 @@ class ChatRequest(BaseModel):
     caller: str = ""
     debug_memory: bool = False
     response_mode: Literal["shion", "shio", "general"] = "shion"
+    allow_external_research: bool = False
+    external_research_topic: str = ""
+
+
+def _external_research_topic_from_message(message: str) -> str:
+    text = re.sub(r"\s+", " ", (message or "").strip())
+    text = re.sub(
+        r"(ネットで|Webで|ウェブで|外部調査で|調査器官で|調べて|調べてから|検索して|リサーチして|回答に使って)",
+        "",
+        text,
+    ).strip(" 。、")
+    if not text:
+        text = (message or "").strip()
+    return text[:120]
+
+
+def _build_external_research_suggestion(
+    message: str,
+    *,
+    question_category: str,
+    knowledge_ref_count: int,
+    response_mode: str,
+) -> dict[str, Any]:
+    """Return a consent request when a chat turn should use fresh web research.
+
+    This only asks for permission. It does not call web services, write Obsidian,
+    or promote anything into judgment assets.
+    """
+    if (response_mode or "shion").strip().lower() == "general":
+        return {"needed": False}
+    text = (message or "").strip()
+    if not text or len(text) < 8:
+        return {"needed": False}
+
+    lower = text.lower()
+    explicit_research = any(
+        term in lower
+        for term in (
+            "ネットで調べ",
+            "webで調べ",
+            "ウェブで調べ",
+            "検索して",
+            "リサーチして",
+            "外部調査",
+            "調査器官",
+        )
+    )
+    if not explicit_research:
+        return {"needed": False}
+
+    topic = _external_research_topic_from_message(text)
+    reason_parts: list[str] = []
+    if explicit_research:
+        reason_parts.append("ユーザーが外部調査を求めています")
+    if knowledge_ref_count == 0 and question_category not in {"general", "news_summarize"}:
+        reason_parts.append("Obsidian/RAGの参照が薄い論点です")
+    reason = " / ".join(reason_parts[:2]) or "外部情報で補う価値があります"
+    return {
+        "needed": True,
+        "topic": topic,
+        "reason": reason,
+        "output_dir": "Projects/tune_lease_55/Research/Auto Research/",
+    }
+
+
+def _external_research_permission_reply(suggestion: dict[str, Any]) -> str:
+    topic = str(suggestion.get("topic") or "").strip() or "この論点"
+    reason = str(suggestion.get("reason") or "").strip() or "外部情報で補う価値があります"
+    return (
+        "ここは手元の記憶だけで断定しない方がいいです。\n\n"
+        f"- 足りない情報: {topic}\n"
+        f"- 理由: {reason}\n\n"
+        "ネットで調べて、ObsidianのResearchノートに保存してから回答に使っていいですか？"
+    )
+
+
+def _run_external_research_for_chat(topic: str) -> dict[str, Any]:
+    topic = (topic or "").strip()[:160]
+    if not topic:
+        return {"used": False, "error": "調査テーマが空です"}
+    vault = _research_organ_vault_path()
+    from scripts.auto_research_lease_judgment import DEFAULT_OUTPUT_DIR, run as run_auto_research
+
+    result = run_auto_research(vault, DEFAULT_OUTPUT_DIR, topic, False)
+    display = _research_run_display(result)
+    note_path = str(result.get("path") or "")
+    rel_path = ""
+    if note_path:
+        try:
+            rel_path = Path(note_path).resolve().relative_to(vault.resolve()).as_posix()
+        except Exception:
+            rel_path = note_path
+    summary = [str(item).strip() for item in display.get("summary", []) if str(item).strip()]
+    use_cases = [str(item).strip() for item in display.get("use_cases", []) if str(item).strip()]
+    questions = [str(item).strip() for item in display.get("review_questions", []) if str(item).strip()]
+    context_lines = [
+        "【外部調査Researchノート】",
+        f"- テーマ: {result.get('title') or topic}",
+        f"- 保存先: {rel_path or note_path}",
+        f"- 出典URL数: {result.get('source_count', 0)}",
+        "- 注意: この調査は needs_human_review の材料。承認/否決/スコアを直接変更せず、確認質問・条件・留保として使う。",
+    ]
+    if summary:
+        context_lines.append("結論:")
+        context_lines.extend(f"- {item}" for item in summary[:3])
+    if use_cases:
+        context_lines.append("リース審査への適用:")
+        context_lines.extend(f"- {item}" for item in use_cases[:4])
+    if questions:
+        context_lines.append("担当者が確認する質問:")
+        context_lines.extend(f"- {item}" for item in questions[:3])
+    return {
+        "used": True,
+        "topic": topic,
+        "result": result,
+        "display": display,
+        "note_path": rel_path or note_path,
+        "prompt_context": "\n".join(context_lines),
+    }
 
 
 def _build_chat_basic_lease_question_context(message: str) -> str:
@@ -14805,9 +14924,46 @@ def post_chat(req: ChatRequest):
                     delta_awareness=delta_awareness_payload,
                     memory_to_judgment=memory_to_judgment_payload,
                 )
+            external_research = {"used": False}
+            research_suggestion = _build_external_research_suggestion(
+                req.message,
+                question_category=question_category,
+                knowledge_ref_count=0,
+                response_mode=req.response_mode,
+            )
+            if research_suggestion.get("needed") and not req.allow_external_research:
+                reply = _external_research_permission_reply(research_suggestion)
+                save_message(req.user_id, "user", req.message)
+                save_message(req.user_id, "assistant", reply)
+                _record_cloudrun_chat_exchange(
+                    surface="next_chat_research_permission",
+                    user_id=req.user_id,
+                    user_message=req.message,
+                    assistant_reply=reply,
+                    category="external_research_permission",
+                    response_mode=req.response_mode,
+                    metadata={"suggestion": research_suggestion},
+                )
+                total = get_message_count(req.user_id)
+                return {
+                    "reply": reply,
+                    "total_messages": total,
+                    "external_research_request": research_suggestion,
+                    "lease_news_focus": news_focus,
+                    "lease_news_brief": news_brief,
+                    "lease_news_actions": news_actions,
+                    "long_input_mode": chat_long_input,
+                    "context_mode": context_mode,
+                    "response_mode": req.response_mode,
+                }
+            if req.allow_external_research:
+                external_research = _run_external_research_for_chat(
+                    req.external_research_topic or str(research_suggestion.get("topic") or "") or req.message
+                )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
+            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + external_research_context + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -14950,6 +15106,7 @@ def post_chat(req: ChatRequest):
                 "response_impact_prediction": response_impact_prediction,
                 "judgment_asset_capture": judgment_asset_capture,
                 "response_mode": req.response_mode,
+                "external_research": external_research,
                 "obsidian_daily_intelligence": {
                     "used": bool(obsidian_daily_context),
                     "injected": obsidian_daily_injected,
@@ -15028,6 +15185,61 @@ def post_chat(req: ChatRequest):
             fallback_hits = _search_chat_vault_markdown_fallback(req.message, top_k=rag_top_k)
             if fallback_hits:
                 rag_context = _collect_rag_hits(fallback_hits)
+
+        external_research = {"used": False}
+        research_suggestion = _build_external_research_suggestion(
+            req.message,
+            question_category=question_category,
+            knowledge_ref_count=len(rag_refs),
+            response_mode=req.response_mode,
+        )
+        if research_suggestion.get("needed") and not req.allow_external_research:
+            reply = _external_research_permission_reply(research_suggestion)
+            save_message(req.user_id, "user", req.message)
+            save_message(req.user_id, "assistant", reply)
+            _record_cloudrun_chat_exchange(
+                surface="next_chat_research_permission",
+                user_id=req.user_id,
+                user_message=req.message,
+                assistant_reply=reply,
+                category="external_research_permission",
+                response_mode=req.response_mode,
+                metadata={
+                    "context_mode": context_mode,
+                    "knowledge_refs": len(rag_refs),
+                    "suggestion": research_suggestion,
+                },
+            )
+            total = get_message_count(req.user_id)
+            return {
+                "reply": reply,
+                "total_messages": total,
+                "knowledge_refs": rag_knowledge_refs,
+                "external_research_request": research_suggestion,
+                "lease_news_focus": news_focus,
+                "lease_news_brief": news_brief,
+                "lease_news_actions": news_actions,
+                "long_input_mode": chat_long_input,
+                "context_mode": context_mode,
+                "response_mode": req.response_mode,
+            }
+        if req.allow_external_research:
+            external_research = _run_external_research_for_chat(
+                req.external_research_topic or str(research_suggestion.get("topic") or "") or req.message
+            )
+            note_ref = str(external_research.get("note_path") or "").strip()
+            if note_ref:
+                rag_refs.append(note_ref)
+                rag_knowledge_refs.append(
+                    {
+                        "doc_id": "",
+                        "obsidian_ref": note_ref,
+                        "file_name": Path(note_ref).name,
+                        "rank_score": None,
+                        "confidence": 1.0,
+                        "confidence_level": "high",
+                    }
+                )
 
         # DB直接参照: ユーザーが実データ分析を求めている場合にSQLite統計を注入
         db_context = ""
@@ -15141,7 +15353,8 @@ def post_chat(req: ChatRequest):
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
         basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + guidance.prompt_suffix
+        external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
+        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + external_research_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + guidance.prompt_suffix
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(
@@ -15321,6 +15534,7 @@ def post_chat(req: ChatRequest):
             "response_impact_prediction": response_impact_prediction,
             "judgment_asset_capture": judgment_asset_capture,
             "response_mode": req.response_mode,
+            "external_research": external_research,
             "obsidian_daily_intelligence": {
                 "used": bool(obsidian_daily_context),
                 "injected": obsidian_daily_injected,

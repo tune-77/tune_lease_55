@@ -24,7 +24,16 @@ interface ChatMessage {
   content: string;
   created_at: string;
   knowledge_refs?: RagKnowledgeRef[];
+  external_research_request?: ExternalResearchRequest;
+  original_user_message?: string;
 }
+
+type ExternalResearchRequest = {
+  needed?: boolean;
+  topic?: string;
+  reason?: string;
+  output_dir?: string;
+};
 
 type ChatContext = {
   score?: number;
@@ -203,6 +212,7 @@ export default function ChatPage() {
   const [showDailyNewsBrief, setShowDailyNewsBrief] = useState(false);
   const [newsPrefectureReady, setNewsPrefectureReady] = useState(false);
   const [feedbackGiven, setFeedbackGiven] = useState<Record<number, "shion_like" | "not_shion">>({});
+  const [researchRunning, setResearchRunning] = useState<Record<number, boolean>>({});
   const [speechEnabled, setSpeechEnabled] = useState(true);
   const [speaking, setSpeaking] = useState(false);
   const [entryGreeting, setEntryGreeting] = useState<ShionEntryGreeting>({
@@ -461,6 +471,8 @@ export default function ChatPage() {
         content: reply,
         created_at: new Date().toISOString(),
         knowledge_refs: parseKnowledgeRefs(res.data?.knowledge_refs),
+        external_research_request: res.data?.external_research_request,
+        original_user_message: text,
       };
       setMessages((prev) => {
         const next = [...prev, assistantMessage];
@@ -527,6 +539,8 @@ export default function ChatPage() {
         content: res.data.reply,
         created_at: new Date().toISOString(),
         knowledge_refs: parseKnowledgeRefs(res.data?.knowledge_refs),
+        external_research_request: res.data?.external_research_request,
+        original_user_message: text,
       };
       setMessages((prev) => {
         const next = [...prev, assistantMsg];
@@ -552,6 +566,68 @@ export default function ChatPage() {
         return next;
       });
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const runExternalResearchAndAnswer = async (assistantMessage: ChatMessage) => {
+    const request = assistantMessage.external_research_request;
+    const original = assistantMessage.original_user_message || "";
+    if (!request?.topic || !original || loading || researchRunning[assistantMessage.id]) return;
+    setResearchRunning((prev) => ({ ...prev, [assistantMessage.id]: true }));
+    setLoading(true);
+    try {
+      const res = await apiClient.post("/api/chat", {
+        message: original,
+        user_id: userId,
+        prefecture: normalizePrefecture(newsPrefecture),
+        industry: chatContext.industry_sub || chatContext.industry_major || "",
+        response_mode: answerMode,
+        allow_external_research: true,
+        external_research_topic: request.topic,
+      });
+      if (res.data?.lease_news_focus) {
+        setLeaseNewsFocus(res.data.lease_news_focus);
+      }
+      if (res.data?.lease_news_brief) {
+        setLeaseNewsBrief(res.data.lease_news_brief);
+      }
+      const reply = String(res.data?.reply || "調査は完了しましたが、回答が空でした。");
+      const researchedMessage: ChatMessage = {
+        id: Date.now() + 1,
+        user_id: userId,
+        role: "assistant",
+        content: reply,
+        created_at: new Date().toISOString(),
+        knowledge_refs: parseKnowledgeRefs(res.data?.knowledge_refs),
+        original_user_message: original,
+      };
+      setMessages((prev) => {
+        const next = [...prev, researchedMessage];
+        saveLocalChatHistory(userId, next);
+        return next;
+      });
+      const notePath = res.data?.external_research?.note_path;
+      if (notePath) {
+        setSaveToast("Researchノートを保存して回答に反映しました");
+        setTimeout(() => setSaveToast(null), 2400);
+      }
+      speakText(reply);
+    } catch {
+      const failedMessage: ChatMessage = {
+        id: Date.now() + 1,
+        user_id: userId,
+        role: "assistant",
+        content: "外部調査器官の実行に失敗しました。テーマを短くするか、Research画面から実行してください。",
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => {
+        const next = [...prev, failedMessage];
+        saveLocalChatHistory(userId, next);
+        return next;
+      });
+    } finally {
+      setResearchRunning((prev) => ({ ...prev, [assistantMessage.id]: false }));
       setLoading(false);
     }
   };
@@ -965,6 +1041,55 @@ export default function ChatPage() {
                         </button>
                       </div>
                     ))}
+                  </div>
+                )}
+                {msg.role === "assistant" && msg.external_research_request?.needed && (
+                  <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
+                    <div className="flex items-start gap-2">
+                      <Network className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-black uppercase tracking-wide text-sky-700">
+                          外部調査の確認
+                        </p>
+                        <p className="mt-1 text-xs font-bold leading-relaxed text-slate-700">
+                          {msg.external_research_request.topic}
+                        </p>
+                        {msg.external_research_request.reason && (
+                          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                            {msg.external_research_request.reason}
+                          </p>
+                        )}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => runExternalResearchAndAnswer(msg)}
+                            disabled={loading || Boolean(researchRunning[msg.id])}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-black text-white transition hover:bg-sky-700 disabled:bg-slate-300"
+                          >
+                            {researchRunning[msg.id] ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Network className="h-3.5 w-3.5" />
+                            )}
+                            ネットで調べて回答に使う
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInput(msg.original_user_message || msg.external_research_request?.topic || "");
+                              textareaRef.current?.focus();
+                              window.setTimeout(resizeTextarea, 0);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-black text-sky-700 transition hover:bg-sky-100"
+                          >
+                            文面を直す
+                          </button>
+                        </div>
+                        <p className="mt-2 text-[10px] leading-relaxed text-sky-700">
+                          保存先: {msg.external_research_request.output_dir || "Projects/tune_lease_55/Research/Auto Research/"}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
                 {msg.role === "assistant" && (
