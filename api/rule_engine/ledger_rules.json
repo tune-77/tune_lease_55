@@ -683,27 +683,43 @@
   {
     "rev_id": "REV-041a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] sync_improvement_reports_post が過去7日で失敗率66%（2/3件, 2日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-07-28T19:01:43Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-07-29T19:01:57Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
   },
   {
     "rev_id": "REV-042a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] recursive_self_improvement_post が過去7日で失敗率66%（2/3件, 2日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-07-28T19:01:43Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-07-29T19:01:57Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_06_12_lease_news_reflection",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-06-12_lease-news-reflection が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-06-12_lease-news-reflection",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-07-29T19:01:57.394350+00:00"
   }
 ]

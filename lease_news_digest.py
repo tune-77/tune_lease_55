@@ -214,6 +214,27 @@ def _parse_news_note(path: Path) -> dict:
     elif item["source"].startswith(("http://", "https://")):
         item["article_url"] = item["source"]
 
+    title_compact = re.sub(r"\s+", "", str(item.get("title") or "")).lower()
+    title_plain = re.sub(r"[^\w]", "", str(item.get("title") or "").lower())
+    memo_compact = re.sub(r"\s+", "", str(item.get("usage_memo") or "")).lower()
+    clean_summary_lines: list[str] = []
+    for line in item.get("summary_lines") or []:
+        text = str(line or "").strip()
+        compact = re.sub(r"\s+", "", text).lower()
+        plain = re.sub(r"[^\w]", "", text.lower())
+        if not text or text == "（詳細なし）":
+            continue
+        if memo_compact and compact == memo_compact:
+            continue
+        if title_compact and title_compact in compact:
+            continue
+        if title_plain and plain and (title_plain in plain or plain in title_plain):
+            continue
+        if compact in {re.sub(r"\s+", "", existing).lower() for existing in clean_summary_lines}:
+            continue
+        clean_summary_lines.append(text)
+    item["summary_lines"] = clean_summary_lines[:3]
+
     return item
 
 
@@ -227,7 +248,30 @@ def _recent_news_items(vault: Path, limit: int = 10) -> list[dict]:
     if not md_files:
         return []
     md_files = sorted(md_files, key=lambda p: p.stat().st_mtime, reverse=True)
-    items = [_parse_news_note(fpath) for fpath in md_files[:limit]]
+
+    def _dedupe_key(item: dict) -> str:
+        url = str(item.get("article_url") or item.get("source") or "").strip().lower()
+        if url.startswith(("http://", "https://")):
+            return f"url:{url.rstrip('/')}"
+        title = re.sub(r"\s+", "", str(item.get("title") or "")).lower()
+        first_summary = ""
+        for line in item.get("summary_lines") or []:
+            first_summary = re.sub(r"\s+", "", str(line or "")).lower()
+            if first_summary:
+                break
+        return f"text:{title}|{first_summary[:80]}"
+
+    items: list[dict] = []
+    seen: set[str] = set()
+    for fpath in md_files:
+        item = _parse_news_note(fpath)
+        key = _dedupe_key(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(item)
+        if len(items) >= limit:
+            break
     return items
 
 

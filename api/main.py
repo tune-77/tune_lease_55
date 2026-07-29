@@ -17201,8 +17201,21 @@ def get_recent_lease_news(limit: int = 5):
 
     md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
     items: list[dict] = []
+    seen_keys: set[str] = set()
 
-    for fpath in md_files[:limit]:
+    def _recent_news_dedupe_key(item: dict) -> str:
+        url = str(item.get("article_url") or item.get("source") or "").strip().lower()
+        if url.startswith(("http://", "https://")):
+            return f"url:{url.rstrip('/')}"
+        title = re.sub(r"\s+", "", str(item.get("title") or "")).lower()
+        first_summary = ""
+        for line in item.get("summary_lines") or []:
+            first_summary = re.sub(r"\s+", "", str(line or "")).lower()
+            if first_summary:
+                break
+        return f"text:{title}|{first_summary[:80]}"
+
+    for fpath in md_files:
         try:
             raw = fpath.read_text(encoding="utf-8")
         except Exception:
@@ -17287,7 +17300,36 @@ def get_recent_lease_news(limit: int = 5):
         elif item["source"].startswith(("http://", "https://")):
             item["article_url"] = item["source"]
 
+        title_compact = re.sub(r"\s+", "", str(item.get("title") or "")).lower()
+        title_plain = re.sub(r"[^\w]", "", str(item.get("title") or "").lower())
+        memo_compact = re.sub(r"\s+", "", str(item.get("usage_memo") or "")).lower()
+        clean_summary_lines: list[str] = []
+        seen_summary_lines: set[str] = set()
+        for line in item.get("summary_lines") or []:
+            text = str(line or "").strip()
+            compact = re.sub(r"\s+", "", text).lower()
+            plain = re.sub(r"[^\w]", "", text.lower())
+            if not text or text == "（詳細なし）":
+                continue
+            if memo_compact and compact == memo_compact:
+                continue
+            if title_compact and title_compact in compact:
+                continue
+            if title_plain and plain and (title_plain in plain or plain in title_plain):
+                continue
+            if compact in seen_summary_lines:
+                continue
+            seen_summary_lines.add(compact)
+            clean_summary_lines.append(text)
+        item["summary_lines"] = clean_summary_lines[:3]
+
+        dedupe_key = _recent_news_dedupe_key(item)
+        if dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
         items.append(item)
+        if len(items) >= max(1, min(int(limit), 20)):
+            break
 
     return {"items": items}
 
