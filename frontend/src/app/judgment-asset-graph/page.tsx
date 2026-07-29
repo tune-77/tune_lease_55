@@ -22,7 +22,7 @@ export default function JudgmentAssetGraphPage() {
               判断資産グラフ（紫苑の成長・系統樹）
             </h1>
             <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
-              紫苑が蓄えた判断ルールが、parent_ids の系統、派生理由、リスク軸・業種・根拠・実案件とどう繋がり、
+              紫苑が蓄えた判断ルールが、親判断・派生理由・リスク軸・業種・根拠・実案件とどう繋がり、
               どれが実戦で
               <span className="font-bold text-emerald-600 dark:text-emerald-400"> 効いた</span>
               ／

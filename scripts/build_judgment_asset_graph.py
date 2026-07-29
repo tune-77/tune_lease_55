@@ -182,9 +182,9 @@ def _infer_lineage(rules: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         if parent_ids:
             reason = str(rule.get("derivation_reason") or "").strip()
             if not reason:
-                reason = "explicit_parent_ids" if explicit_parent_ids else "same_concept_variant"
+                reason = "明示された親判断資産から派生" if explicit_parent_ids else "同じ判断テーマから派生"
         else:
-            reason = str(rule.get("derivation_reason") or "root_judgment_asset").strip()
+            reason = str(rule.get("derivation_reason") or "根の判断資産").strip()
         raw_lineage[rule_id] = {
             "parent_ids": parent_ids,
             "derivation_reason": reason,
@@ -351,7 +351,7 @@ def build_graph_data(
                     parent_node_id,
                     child_node_id,
                     "lineage",
-                    str(lineage_meta.get("derivation_reason") or "derived"),
+                    str(lineage_meta.get("derivation_reason") or "派生"),
                     2.4,
                 )
 
@@ -427,7 +427,7 @@ def build_html(graph: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Judgment Asset Graph</title>
+<title>判断資産系統樹</title>
 <style>
 :root {{
   color-scheme: light;
@@ -525,45 +525,45 @@ button:hover {{ background: #f1f5f9; }}
 <body>
 <div class="app">
   <aside>
-    <h1>Judgment Asset Graph</h1>
-    <p class="lead">判断資産、親子系統、リスク軸、根拠ログ、実案件フィードバックのつながりを見るローカル図。</p>
+    <h1>判断資産系統樹</h1>
+    <p class="lead">判断資産がどの考えから生まれ、どの判断へ育ったかを、親子関係・派生理由・根拠・実案件フィードバックで見る図。</p>
     <div class="verdict">
       <strong>{growth_label}</strong>
-      <span>Growth score: {growth_score}</span>
+      <span>成長スコア: {growth_score}</span>
     </div>
     <div class="stats">
-      <div class="stat"><b id="stat-nodes">{summary.get("nodes", 0)}</b><span>nodes</span></div>
-      <div class="stat"><b id="stat-edges">{summary.get("edges", 0)}</b><span>edges</span></div>
-      <div class="stat"><b>{summary.get("rules", 0)}</b><span>rules</span></div>
-      <div class="stat"><b>{summary.get("cases", 0)}</b><span>cases</span></div>
-      <div class="stat"><b>{summary.get("lineage_roots", 0)}</b><span>lineage roots</span></div>
-      <div class="stat"><b>{summary.get("lineage_derived", 0)}</b><span>derived assets</span></div>
+      <div class="stat"><b id="stat-nodes">{summary.get("nodes", 0)}</b><span>表示項目</span></div>
+      <div class="stat"><b id="stat-edges">{summary.get("edges", 0)}</b><span>つながり</span></div>
+      <div class="stat"><b>{summary.get("rules", 0)}</b><span>判断資産</span></div>
+      <div class="stat"><b>{summary.get("cases", 0)}</b><span>実案件</span></div>
+      <div class="stat"><b>{summary.get("lineage_roots", 0)}</b><span>起点の判断</span></div>
+      <div class="stat"><b>{summary.get("lineage_derived", 0)}</b><span>派生した判断</span></div>
     </div>
-    <h2>Search</h2>
-    <input id="search" type="search" placeholder="concept, risk axis, evidence...">
-    <h2>Show</h2>
+    <h2>検索</h2>
+    <input id="search" type="search" placeholder="判断テーマ、リスク軸、根拠ログ...">
+    <h2>表示</h2>
     <div class="filters">
-      <label><input type="checkbox" data-type="rule" checked> Judgment assets</label>
-      <label><input type="checkbox" data-type="risk_axis" checked> Risk axes</label>
-      <label><input type="checkbox" data-type="domain" checked> Domains</label>
-      <label><input type="checkbox" data-type="evidence" checked> Evidence logs</label>
-      <label><input type="checkbox" data-type="case" checked> Cases / feedback</label>
+      <label><input type="checkbox" data-type="rule" checked> 判断資産</label>
+      <label><input type="checkbox" data-type="risk_axis" checked> リスク軸</label>
+      <label><input type="checkbox" data-type="domain" checked> ドメイン</label>
+      <label><input type="checkbox" data-type="evidence" checked> 根拠ログ</label>
+      <label><input type="checkbox" data-type="case" checked> 実案件フィードバック</label>
     </div>
-    <h2>Legend</h2>
+    <h2>凡例</h2>
     <div class="legend">
       <div class="legend-row"><span class="dot" style="background:#2563eb"></span>判断資産</div>
       <div class="legend-row"><span class="dot" style="background:#f59e0b"></span>リスク軸</div>
       <div class="legend-row"><span class="dot" style="background:#10b981"></span>ドメイン</div>
       <div class="legend-row"><span class="dot" style="background:#8b5cf6"></span>根拠ログ</div>
       <div class="legend-row"><span class="dot" style="background:#ef4444"></span>案件フィードバック</div>
-      <div class="legend-row"><span class="dot" style="background:#0f766e"></span>系統エッジ parent_ids</div>
+      <div class="legend-row"><span class="dot" style="background:#0f766e"></span>親子関係</div>
     </div>
-    <h2>Actions</h2>
-    <button id="reset">Reset layout</button>
-    <p class="note">Generated: {generated}<br>Offline HTML. No CDN. No external calls.</p>
+    <h2>操作</h2>
+    <button id="reset">配置をリセット</button>
+    <p class="note">生成日時: {generated}<br>自己完結HTML。外部通信なし。</p>
   </aside>
   <main>
-    <svg id="graph" role="img" aria-label="Judgment asset network graph"></svg>
+    <svg id="graph" role="img" aria-label="判断資産系統樹"></svg>
     <div id="tooltip" class="tooltip"></div>
   </main>
 </div>
@@ -702,19 +702,29 @@ function showTooltip(event, node) {{
   if (!node) return;
   const parts = [
     `<strong>${{node.label || node.id}}</strong>`,
-    `type: ${{node.type}}`,
+    `種類: ${{typeLabel(node.type)}}`,
   ];
   if (node.statement) parts.push(node.statement);
-  if (node.parent_ids && node.parent_ids.length) parts.push(`parents: ${{node.parent_ids.join(", ")}}`);
-  if (node.derivation_reason) parts.push(`derivation: ${{node.derivation_reason}}`);
-  if (node.lineage_depth) parts.push(`lineage depth: ${{node.lineage_depth}}`);
-  if (node.evidence_count !== undefined) parts.push(`evidence: ${{node.evidence_count}} / user: ${{node.user_evidence_count || 0}}`);
-  if (node.feedback_used) parts.push(`feedback: used ${{node.feedback_used}}, helped ${{node.feedback_helped || 0}}, challenged ${{node.feedback_challenged || 0}}`);
+  if (node.parent_ids && node.parent_ids.length) parts.push(`親判断: ${{node.parent_ids.join(", ")}}`);
+  if (node.derivation_reason) parts.push(`派生理由: ${{node.derivation_reason}}`);
+  if (node.lineage_depth) parts.push(`世代: ${{node.lineage_depth}}`);
+  if (node.evidence_count !== undefined) parts.push(`根拠数: ${{node.evidence_count}} / ユーザー根拠: ${{node.user_evidence_count || 0}}`);
+  if (node.feedback_used) parts.push(`実案件反応: 使用 ${{node.feedback_used}}, 効いた ${{node.feedback_helped || 0}}, 見直し ${{node.feedback_challenged || 0}}`);
   if (node.title && !node.statement) parts.push(node.title);
   tooltip.innerHTML = parts.join("<br>");
   tooltip.style.opacity = "1";
   tooltip.style.left = `${{event.clientX}}px`;
   tooltip.style.top = `${{event.clientY}}px`;
+}}
+
+function typeLabel(type) {{
+  return {{
+    rule: "判断資産",
+    risk_axis: "リスク軸",
+    domain: "ドメイン",
+    evidence: "根拠ログ",
+    case: "実案件",
+  }}[type] || type;
 }}
 
 function hideTooltip() {{
@@ -774,8 +784,8 @@ def main() -> int:
     args.output_html.parent.mkdir(parents=True, exist_ok=True)
     args.output_html.write_text(build_html(graph), encoding="utf-8")
     print(
-        "Judgment Asset Graph: "
-        f"{graph['summary']['nodes']} nodes / {graph['summary']['edges']} edges -> {args.output_html}"
+        "判断資産系統樹: "
+        f"{graph['summary']['nodes']}項目 / {graph['summary']['edges']}つながり -> {args.output_html}"
     )
     return 0
 

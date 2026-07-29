@@ -132,7 +132,7 @@ def test_build_graph_data_infers_same_concept_lineage_for_legacy_assets():
     lineage_edges = [edge for edge in payload["edges"] if edge["type"] == "lineage"]
 
     assert by_id["rule:rule-later"]["parent_ids"] == ["rule-early"]
-    assert by_id["rule:rule-later"]["derivation_reason"] == "same_concept_variant"
+    assert by_id["rule:rule-later"]["derivation_reason"] == "同じ判断テーマから派生"
     assert lineage_edges[0]["source"] == "rule:rule-early"
     assert lineage_edges[0]["target"] == "rule:rule-later"
 
@@ -170,8 +170,8 @@ def test_build_html_is_offline_and_embeds_graph_payload():
     html = graph.build_html(payload)
 
     assert "<!doctype html>" in html
-    assert "Judgment Asset Graph" in html
-    assert "parent_ids" in html
+    assert "判断資産系統樹" in html
+    assert "親子関係" in html
     assert "const graph =" in html
     assert "https://" not in html
     assert "rule:rule-1" in html

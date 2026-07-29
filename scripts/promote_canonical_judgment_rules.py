@@ -273,8 +273,8 @@ def _markdown(store: dict[str, Any]) -> str:
             f"- Type: {rule.get('material_type')}",
             f"- Confidence: {rule.get('confidence')}",
             f"- Axis: {axes or 'n/a'}",
-            f"- Parents: {', '.join(rule.get('parent_ids') or []) or 'root'}",
-            f"- Derivation: {rule.get('derivation_reason') or 'root_judgment_asset'}",
+            f"- 親判断: {', '.join(rule.get('parent_ids') or []) or '根の判断資産'}",
+            f"- 派生理由: {rule.get('derivation_reason') or '根の判断資産'}",
             "",
         ]
     return "\n".join(lines).rstrip() + "\n"

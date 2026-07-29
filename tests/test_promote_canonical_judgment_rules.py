@@ -193,5 +193,5 @@ def test_promoted_markdown_declares_active_store_not_obsidian():
     assert "Only accepted_preview rules are promoted" in md
     assert "Obsidian is not modified" in md
     assert "judgment_memory" in md
-    assert "Parents:" in md
-    assert "Derivation:" in md
+    assert "親判断:" in md
+    assert "派生理由:" in md
