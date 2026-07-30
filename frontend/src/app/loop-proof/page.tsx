@@ -312,7 +312,7 @@ export default function LoopProofPage() {
             <li className="flex gap-2.5">
               <span className="mt-2 h-1.5 w-1.5 flex-none rounded-full bg-amber-500" />
               <span>
-                <b className="text-slate-900 dark:text-slate-100">スコアリング健全性に要注意フラグ。</b> ローカルのRFモデル読込でヘルスチェックが {d.scoring_status}。デモ本番前に再学習/検証で解消予定。
+                <b className="text-slate-900 dark:text-slate-100">スコアリング健全性に要注意フラグ。</b> ローカルのRFモデル読込でヘルスチェックが {d.scoring_status}。通常運用前に再学習/検証で解消予定。
               </span>
             </li>
           ) : null}

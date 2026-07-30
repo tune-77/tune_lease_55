@@ -15,7 +15,6 @@ import {
   Search,
   Send,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 
 type ConciergeMessage = {
@@ -70,7 +69,7 @@ type DailyGreeting = {
 };
 
 type ShionPersona = {
-  id: "guide" | "screening" | "research" | "memory" | "demo";
+  id: "guide" | "screening" | "research" | "memory";
   name: string;
   title: string;
   image: string;
@@ -158,30 +157,9 @@ const SHION_PERSONAS: ShionPersona[] = [
     keywords: ["前回", "記憶", "過去", "履歴", "案件", "続き", "Obsidian"],
     routeHrefs: ["/chat", "/cases", "/history-dash", "/lease-intelligence"],
   },
-  {
-    id: "demo",
-    name: "デモ紫苑",
-    title: "ハッカソン説明",
-    image: SHION_AVATAR_IMAGE,
-    color: "from-yellow-400 to-pink-500",
-    border: "border-yellow-300/35",
-    role: "System Overview、ハッカソン訴求、見せる順番を担当します。",
-    catchphrase: "見せるなら、この順番がいちばん伝わります。",
-    keywords: ["デモ", "ハッカソン", "発表", "概要", "system", "System"],
-    routeHrefs: ["/system-overview", "/demo", "/demo-home"],
-  },
 ];
 
 const ROUTES: RouteSuggestion[] = [
-  {
-    label: "デモ本番入口",
-    href: "/demo-home",
-    description: "ハッカソンで最初に見せる入口。紫苑の価値、1分デモ、見せ場へ進む",
-    icon: Sparkles,
-    tone: "from-yellow-400 to-pink-500",
-    keywords: ["デモ", "ハッカソン", "発表", "優勝", "見せる", "本番"],
-    nextSteps: ["デモホームを開く", "1分デモで全体像を掴ませる", "審査入力やSystem Overviewへつなぐ"],
-  },
   {
     label: "審査入力",
     href: "/screening",
@@ -212,11 +190,11 @@ const ROUTES: RouteSuggestion[] = [
   {
     label: "System Overview",
     href: "/system-overview",
-    description: "ハッカソン向けに、構成・OCR・PII除去・記憶設計を見せる",
+    description: "構成・OCR・PII除去・記憶設計を確認する",
     icon: Orbit,
     tone: "from-indigo-500 to-violet-600",
-    keywords: ["デモ", "ハッカソン", "概要", "system", "発表"],
-  nextSteps: ["ハッカソン訴求カードを見る", "OCR/PII除去/外部調査の流れを説明する", "必要なら実画面へ戻ってデモする"],
+    keywords: ["概要", "system", "構成", "設計"],
+    nextSteps: ["システム構成を見る", "OCR/PII除去/外部調査の流れを確認する", "必要なら実画面へ戻る"],
   },
 ];
 
@@ -236,7 +214,7 @@ function pickSuggestions(input: string): RouteSuggestion[] {
 function shionReply(input: string, suggestions: RouteSuggestion[]) {
   const first = suggestions[0];
   if (!input.trim()) {
-    return "今日は入口から整理します。デモ本番、審査入力、外部調査、紫苑チャットのどこへ進むか、ここで私が案内します。";
+    return "今日は入口から整理します。審査入力、外部調査、紫苑チャット、システム概要のどこへ進むか、ここで私が案内します。";
   }
   return `了解。今の文脈なら、まず「${first.label}」に進むのが自然です。必要なら、その後に判断材料を紫苑チャットやResearchへ戻して、単発作業ではなく次の判断資産にします。`;
 }
@@ -253,9 +231,9 @@ function buildGuidance(input: string, suggestions: RouteSuggestion[]): Concierge
   } else if (input.includes("調査") || lower.includes("research") || input.includes("市況")) {
     reason = "外部情報を先に固める文脈なので、Researchノート化してから判断へ戻すのが安全です。";
     handoff = "保存後は紫苑RAGの判断資産として、次のチャットや審査で参照できます。";
-  } else if (input.includes("デモ") || input.includes("ハッカソン") || lower.includes("system")) {
-    reason = "見せ方の文脈なので、まずデモ本番入口から入り、審査入力とSystem Overviewへつなぐのが自然です。";
-    handoff = "デモホームで価値を掴ませたあと、OCR、審査入力、軍師AI、記憶の順で実演すると伝わります。";
+  } else if (lower.includes("system") || input.includes("概要") || input.includes("構成")) {
+    reason = "構成確認の文脈なので、まずSystem Overviewで全体像を見るのが自然です。";
+    handoff = "全体像を見たあと、必要な作業を審査入力、紫苑チャット、Researchへ戻します。";
   }
   return { primary, alternatives: suggestions.slice(1, 3), reason, handoff, persona };
 }
@@ -298,11 +276,11 @@ function predictFromActivity(activity: ActivityItem[]): PredictedAction {
       icon: ShieldCheck,
     };
   }
-  if (last.path === "/system-overview" || last.path === "/demo" || last.path === "/demo-home") {
+  if (last.path === "/system-overview") {
     return {
-      label: "審査実演へ進む",
+      label: "審査へ進む",
       href: "/screening",
-      reason: "前回はデモ導線を見ています。次はOCRから審査、軍師AI、記憶への流れを実演できます。",
+      reason: "前回はシステム概要を見ています。次は審査入力で実案件の判断に戻します。",
       icon: ShieldCheck,
     };
   }
@@ -351,7 +329,7 @@ function formatActivityTime(ts: number) {
 }
 
 function etaForHref(href: string) {
-  if (href === "/chat" || href === "/system-overview" || href === "/demo-home") return "2分";
+  if (href === "/chat" || href === "/system-overview") return "2分";
   if (href === "/screening") return "5分";
   return "3分";
 }
@@ -364,17 +342,17 @@ function buildWorkQueue(
   const predictedRoute = routeByHref(predicted.href);
   const predictedPersona = personaForPrediction(predicted, activity);
   const last = activity.find((item) => item.path !== "/");
-  const firstRoute = routeByHref("/demo-home");
+  const firstRoute = routeByHref("/screening");
   const firstPersona = selectPersona(firstRoute.label, firstRoute.href);
   const thirdRoute = last?.path === "/research-organ" ? routeByHref("/screening") : routeByHref("/research-organ");
   const thirdPersona = selectPersona(thirdRoute.label, thirdRoute.href);
 
   return [
     {
-      id: "hackathon:demo-home",
-      title: "デモ本番の入口を開く",
+      id: "main:screening",
+      title: "審査入力を開く",
       href: firstRoute.href,
-      reason: "審査AIではなく、判断資産として育つ紫苑を最初に見せます。",
+      reason: "普通に案件を入れて、固定した判断資産が効くか見ます。",
       eta: etaForHref(firstRoute.href),
       persona: firstPersona,
       route: firstRoute,
@@ -522,7 +500,7 @@ export default function ShionConciergeHome() {
                 紫苑システム
               </h1>
               <p className="mt-3 max-w-2xl text-sm font-bold leading-7 text-slate-600">
-                おかえりなさい。紫苑が今日の入口を整理して、審査、調査、記憶、デモのどこへ進むかを案内します。
+                おかえりなさい。紫苑が今日の入口を整理して、審査、調査、記憶、システム確認のどこへ進むかを案内します。
               </p>
               <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50/70 p-4">
                 <p className="text-sm font-black leading-7 text-violet-950">
@@ -624,7 +602,7 @@ export default function ShionConciergeHome() {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") submit();
                 }}
-                placeholder="例: 決算書を読んで審査したい / 調査してから判断したい / デモを見せたい"
+                placeholder="例: 決算書を読んで審査したい / 調査してから判断したい / システム構成を確認したい"
                 className="min-h-12 flex-1 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
               />
               <button

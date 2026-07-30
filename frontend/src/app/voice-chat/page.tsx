@@ -346,10 +346,10 @@ export default function VoiceChatPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
-              href="/demo-home"
+              href="/home"
               className="inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-black text-stone-700 hover:bg-stone-100"
             >
-              デモホーム
+              ホーム
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link

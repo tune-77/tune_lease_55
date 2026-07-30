@@ -156,10 +156,10 @@ export default function ShionMemorySystemPage() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                href="/demo/knowledge-loop"
+                href="/knowledge-space"
                 className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-white"
               >
-                知識ループ
+                知識宇宙マップ
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>

@@ -20,6 +20,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CANONICAL_JSON = PROJECT_ROOT / "data" / "canonical_judgment_rules.json"
 DEFAULT_FEEDBACK_JSONL = PROJECT_ROOT / "data" / "judgment_asset_usage_feedback.jsonl"
+DEFAULT_NEXT_CASE_TARGETS_JSON = PROJECT_ROOT / "data" / "judgment_asset_next_case_targets.json"
 DEFAULT_OUTPUT_JSON = PROJECT_ROOT / "reports" / "judgment_asset_field_review_latest.json"
 DEFAULT_OUTPUT_MD = PROJECT_ROOT / "reports" / "judgment_asset_field_review_latest.md"
 
@@ -151,7 +152,42 @@ def _priority_score(item: dict[str, Any]) -> float:
     return round(float(confidence) * 10 + min(user_evidence, 5), 3)
 
 
-def _build_action_plan(buckets: dict[str, list[dict[str, Any]]], summary: dict[str, Any]) -> dict[str, Any]:
+def _fixed_next_case_targets(
+    target_config: dict[str, Any],
+    rules_by_id: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    targets = target_config.get("targets")
+    if not isinstance(targets, list):
+        return []
+
+    fixed: list[dict[str, Any]] = []
+    for row in targets:
+        if not isinstance(row, dict):
+            continue
+        rule_id = str(row.get("rule_id") or "").strip()
+        if not rule_id or rule_id not in rules_by_id:
+            continue
+        item = rules_by_id[rule_id]
+        fixed.append(
+            {
+                "rule_id": item.get("rule_id"),
+                "concept": item.get("concept"),
+                "statement": item.get("statement"),
+                "reason": str(row.get("reason") or "Userが次の実案件で試す対象として固定").strip(),
+                "priority_score": _priority_score(item),
+                "fixed": True,
+                "fixed_at": str(target_config.get("fixed_at") or "").strip(),
+                "owner": str(target_config.get("owner") or "").strip(),
+            }
+        )
+    return fixed
+
+
+def _build_action_plan(
+    buckets: dict[str, list[dict[str, Any]]],
+    summary: dict[str, Any],
+    next_case_target_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     sleeping = sorted(buckets.get("sleeping", []), key=_priority_score, reverse=True)
     grow = sorted(buckets.get("grow", []), key=lambda item: int((item.get("counts") or {}).get("helped") or 0), reverse=True)
     review = sorted(
@@ -159,24 +195,31 @@ def _build_action_plan(buckets: dict[str, list[dict[str, Any]]], summary: dict[s
         key=lambda item: int((item.get("counts") or {}).get("challenged") or 0) + int((item.get("counts") or {}).get("rejected") or 0),
         reverse=True,
     )
-    target_rules = sleeping[:3] or grow[:3] or review[:3]
-    next_case_targets = [
-        {
-            "rule_id": item.get("rule_id"),
-            "concept": item.get("concept"),
-            "statement": item.get("statement"),
-            "reason": (
-                "未使用だが confidence/user evidence が高いため、次の実案件で1回だけ意識して試す"
-                if item.get("bucket") == "sleeping"
-                else item.get("reason")
-            ),
-            "priority_score": _priority_score(item),
-        }
-        for item in target_rules
-    ]
+    all_items = grow + review + sleeping + buckets.get("hold", [])
+    rules_by_id = {str(item.get("rule_id") or ""): item for item in all_items}
+    next_case_targets = _fixed_next_case_targets(next_case_target_config or {}, rules_by_id)
+    selection_mode = "fixed" if next_case_targets else "auto"
+    if not next_case_targets:
+        target_rules = sleeping[:3] or grow[:3] or review[:3]
+        next_case_targets = [
+            {
+                "rule_id": item.get("rule_id"),
+                "concept": item.get("concept"),
+                "statement": item.get("statement"),
+                "reason": (
+                    "未使用だが confidence/user evidence が高いため、次の実案件で1回だけ意識して試す"
+                    if item.get("bucket") == "sleeping"
+                    else item.get("reason")
+                ),
+                "priority_score": _priority_score(item),
+                "fixed": False,
+            }
+            for item in target_rules
+        ]
     return {
         "label": "Field Feedback Action Plan",
         "status": "needs_real_case_feedback" if summary.get("sleeping") else "ok",
+        "selection_mode": selection_mode,
         "real_case_feedback_gap": int(summary.get("sleeping") or 0),
         "next_case_targets": next_case_targets,
         "feedback_template": {
@@ -194,6 +237,7 @@ def build_review(
     canonical: dict[str, Any],
     feedback_rows: list[dict[str, Any]] | None = None,
     include_simulation: bool = False,
+    next_case_target_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     feedback_rows = feedback_rows or []
     rules = active_rules(canonical)
@@ -255,7 +299,7 @@ def build_review(
         "simulation_feedback": simulation_feedback,
         "include_simulation": include_simulation,
     }
-    action_plan = _build_action_plan(buckets, summary)
+    action_plan = _build_action_plan(buckets, summary, next_case_target_config)
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "date": target_date,
@@ -323,6 +367,8 @@ def build_markdown(payload: dict[str, Any]) -> str:
     action_plan = payload.get("action_plan") if isinstance(payload.get("action_plan"), dict) else {}
     targets = action_plan.get("next_case_targets") if isinstance(action_plan.get("next_case_targets"), list) else []
     lines.extend(["## Next Real Case Feedback", ""])
+    if action_plan.get("selection_mode") == "fixed":
+        lines.extend(["- Selection: fixed by User for the next real case", ""])
     if targets:
         for item in targets:
             lines.append(f"- `{item.get('rule_id')}` {item.get('concept')}: {_short(item.get('statement'), 100)}")
@@ -344,6 +390,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--canonical-json", type=Path, default=DEFAULT_CANONICAL_JSON)
     parser.add_argument("--feedback-jsonl", type=Path, default=DEFAULT_FEEDBACK_JSONL)
+    parser.add_argument("--next-case-targets-json", type=Path, default=DEFAULT_NEXT_CASE_TARGETS_JSON)
     parser.add_argument("--output-json", type=Path, default=DEFAULT_OUTPUT_JSON)
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
     parser.add_argument(
@@ -361,6 +408,7 @@ def main() -> int:
         canonical=_read_json(args.canonical_json),
         feedback_rows=_read_jsonl(args.feedback_jsonl),
         include_simulation=args.include_simulation,
+        next_case_target_config=_read_json(args.next_case_targets_json),
     )
     _write_json(args.output_json, payload)
     args.output_md.parent.mkdir(parents=True, exist_ok=True)
