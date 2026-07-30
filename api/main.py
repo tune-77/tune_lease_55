@@ -8808,6 +8808,42 @@ _GENERAL_CHAT_SYSTEM_PROMPT = """あなたはめぶきちゃん、tuneリース�
   /lease-intelligence チャットへ誘導する。"""
 
 
+def _is_lightweight_chat_observation(message: str) -> bool:
+    """Return True for short conversational observations that do not need RAG.
+
+    A sentence like "キーエンスは検査機器の製造業だから...リースも増えそうだね"
+    is useful as a hypothesis to react to, but sending it through category
+    classification and vault RAG makes the chat feel slow.
+    """
+    text = str(message or "").strip()
+    if not text or len(text) > 360 or "\n" in text:
+        return False
+
+    lower = text.lower()
+    if any(mark in text for mark in ("?", "？")):
+        return False
+    request_terms = (
+        "教えて", "調べて", "検索", "要約", "まとめ", "保存", "分析して", "比較して",
+        "詳しく", "根拠", "確認して", "直して", "修正", "追加", "作って", "実装",
+        "どう思う", "なぜ", "理由", "方法", "手順",
+    )
+    if any(term in text or term in lower for term in request_terms):
+        return False
+
+    observation_endings = (
+        "だね", "ですね", "そうだね", "そうですね", "そう", "そうだ", "そうです",
+        "かも", "かもしれない", "気がする", "と思う", "と思います", "っぽい", "っぽいね",
+    )
+    if text.endswith(observation_endings):
+        return True
+
+    # Japanese statements with causal connectors are often user hypotheses, not
+    # requests. Keep this conservative so real screening questions still use RAG.
+    causal_terms = ("だから", "なので", "ということは", "と言う事は", "ってことは")
+    business_terms = ("リース", "審査", "製造業", "設備", "生産", "検査機", "機械")
+    return any(term in text for term in causal_terms) and any(term in text for term in business_terms)
+
+
 def _classify_question(message: str) -> str:
     """Gemini で質問カテゴリを判定する。返り値は 'lease_screening'/'lease_knowledge'/'general'/'news_summarize'。"""
     import json as _json, re as _re
@@ -8818,6 +8854,8 @@ def _classify_question(message: str) -> str:
         return "news_summarize"
     if ("http://" in low or "https://" in low) and ("要約" in message or "まとめ" in message or "保存" in message):
         return "news_summarize"
+    if _is_lightweight_chat_observation(message):
+        return "general"
 
     try:
         from api.chat_memory import call_gemini_chat as _g
