@@ -33,7 +33,7 @@ ORIGIN_VAULT = Path(
     "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
 )
 LEASE_VAULT = Path(
-    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault"
+    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/lease-wiki-vault"
 )
 SYNC_ROOT = LEASE_VAULT / "99_Synced_From_Origin"
 DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"

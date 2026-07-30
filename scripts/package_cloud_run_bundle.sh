@@ -7,6 +7,10 @@ DATA_OUT="$BUNDLE_DIR/data"
 VAULT_OUT="$BUNDLE_DIR/obsidian_vault"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
 
+if [[ -d "$BUNDLE_DIR" ]]; then
+  find "$BUNDLE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+fi
+
 SOURCE_VAULT="${OBSIDIAN_VAULT_PATH:-}"
 if [[ -z "$SOURCE_VAULT" ]]; then
   for candidate in \
@@ -108,24 +112,15 @@ fi
 for rel in \
   "Projects/tune_lease_55" \
   "05-クリップ_記事/リースニュース" \
-  "リース知識"; do
+  "リース知識" \
+  "lease-wiki-vault"; do
   src="$SOURCE_VAULT/$rel"
   dst="$VAULT_OUT/$rel"
   if [[ -e "$src" ]]; then
     mkdir -p "$(dirname "$dst")"
     cp -R "$src" "$dst"
+    echo "📚 $rel をバンドルに追加"
   fi
 done
-
-# lease-wiki-vault を追加
-LEASE_WIKI_SRC="${HOME}/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault/"
-if [ -d "$LEASE_WIKI_SRC" ]; then
-  echo "📚 lease-wiki-vault をバンドルに追加..."
-  rsync -av --include="*/" --include="*.md" --exclude="*" \
-    "$LEASE_WIKI_SRC" \
-    ".cloudrun_bundle/obsidian_vault/lease-wiki-vault/"
-else
-  echo "⚠️  lease-wiki-vault が見つかりません（ローカルにない場合は正常）"
-fi
 
 echo "Cloud Run bundle prepared at $BUNDLE_DIR"
