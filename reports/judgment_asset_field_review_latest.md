@@ -1,6 +1,6 @@
 # Judgment Asset Field Review
 
-- Date: 2026-07-30
+- Date: 2026-07-31
 - Mode: local_review_only
 - Guardrail: review_only_no_promotion_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 - Active rules: 9

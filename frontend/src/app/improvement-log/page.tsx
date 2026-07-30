@@ -114,6 +114,25 @@ type ImprovementLog = {
   source?: string;
 };
 
+type ImprovementTriageRecord = {
+  canonical_key: string;
+  item_id?: string;
+  source_event_id?: string;
+  title?: string;
+  decision?: string;
+  reason?: string;
+  rule_decision?: string;
+  classified_by?: string;
+  decided_at?: string;
+  approved_at?: string;
+  codex_request_draft?: string;
+};
+
+type ImprovementTriageResponse = {
+  records?: ImprovementTriageRecord[];
+  counts?: Record<string, number>;
+};
+
 type PipelineSummary = {
   run_date: string | null;
   applied_count: number;
@@ -404,6 +423,8 @@ export default function ImprovementLogPage() {
   const [gapAnalysis, setGapAnalysis] = useState<GapAnalysis | null>(null);
   const [promptSummary, setPromptSummary] = useState<PromptFeedbackSummary | null>(null);
   const [trustSummary, setTrustSummary] = useState<OperationalTrustSummary | null>(null);
+  const [triageRecords, setTriageRecords] = useState<ImprovementTriageRecord[]>([]);
+  const [copiedFixKey, setCopiedFixKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("NEEDS_REVIEW");
@@ -562,20 +583,23 @@ export default function ImprovementLogPage() {
   const fetchLog = useCallback(async () => {
     setLoading(true);
     try {
-      const [logRes, summaryRes, gapsRes, promptRes, trustRes] = await Promise.all([
+      const [logRes, summaryRes, gapsRes, promptRes, trustRes, triageRes] = await Promise.all([
         apiClient.get<ImprovementLog>("/api/improvement-log"),
         apiClient.get<PipelineSummary>("/api/improvement-pipeline/summary"),
         apiClient.get<GapAnalysis>("/api/lease-system-gaps"),
         apiClient.get<PromptFeedbackSummary>("/api/prompt-feedback/summary"),
         apiClient.get<OperationalTrustSummary>("/api/operational-trust/summary"),
+        apiClient.get<ImprovementTriageResponse>("/api/improvement/triage"),
       ]);
       setData(logRes.data);
       setSummary(summaryRes.data);
       setGapAnalysis(gapsRes.data);
       setPromptSummary(promptRes.data || null);
       setTrustSummary(trustRes.data || null);
+      setTriageRecords(triageRes.data?.records || []);
     } catch {
       setData(null);
+      setTriageRecords([]);
     } finally {
       setLoading(false);
     }
@@ -708,6 +732,21 @@ export default function ImprovementLogPage() {
 
   const visibleRecipes = pendingRecipes.filter((r) => !dismissedRecipes.has(r.id));
 
+  const todayFixQueue = useMemo(() => {
+    const items = data?.items || [];
+    return triageRecords
+      .filter((record) => record.decision === "today" && Boolean(record.approved_at))
+      .map((record) => {
+        const matchedItem = items.find((item) =>
+          item.canonical_key === record.canonical_key ||
+          item.id === record.item_id ||
+          item.source_event_id === record.source_event_id
+        );
+        return { record, item: matchedItem };
+      })
+      .sort((a, b) => String(b.record.approved_at || b.record.decided_at || "").localeCompare(String(a.record.approved_at || a.record.decided_at || "")));
+  }, [data?.items, triageRecords]);
+
   const ledgerTypes = useMemo(() => {
     const types = new Set(ledgerRules.map((r) => r.type || "unknown"));
     return ["ALL", ...Array.from(types).sort()];
@@ -774,6 +813,80 @@ export default function ImprovementLogPage() {
               パイプラインが失敗している間は、承認済みルールの自動適用や朝の改善レポート生成が止まっている可能性があります。先にこちらの復旧を確認してください。
             </p>
           </div>
+        )}
+
+        {todayFixQueue.length > 0 && (
+          <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-emerald-100 bg-emerald-50 p-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
+                  <Wrench className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-emerald-950">今日直すリスト</h2>
+                  <p className="mt-1 text-sm font-bold leading-6 text-emerald-800">
+                    `/lease-intelligence` で `修正` を押して、修正キューに入った自己提案だけを表示しています。
+                  </p>
+                </div>
+              </div>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-emerald-800">
+                修正キュー {todayFixQueue.length}件
+              </span>
+            </div>
+            <div className="grid gap-3 p-4">
+              {todayFixQueue.map(({ record, item }) => {
+                const key = record.canonical_key || record.item_id || record.title || "";
+                const title = record.title || item?.title || record.item_id || "修正キュー項目";
+                const reason = record.reason || item?.auto_fix_policy?.reason || item?.reason || "";
+                const copied = copiedFixKey === key;
+                return (
+                  <article key={`${key}-${record.approved_at || record.decided_at}`} className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] font-black">
+                          {record.item_id && <span className="rounded-full bg-slate-900 px-2 py-1 text-white">{record.item_id}</span>}
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-800">修正キュー</span>
+                          {record.approved_at && <span className="rounded-full bg-white px-2 py-1 text-emerald-700">{record.approved_at}</span>}
+                        </div>
+                        <h3 className="mt-3 text-sm font-black leading-6 text-slate-900">{title}</h3>
+                        {reason && <p className="mt-1 text-xs font-bold leading-5 text-slate-600">{reason}</p>}
+                        <p className="mt-2 break-all text-[11px] font-semibold text-slate-400">{record.canonical_key}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        {record.codex_request_draft && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(record.codex_request_draft || "").then(() => {
+                                setCopiedFixKey(key);
+                                window.setTimeout(() => setCopiedFixKey(""), 1600);
+                              }).catch(() => {});
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700"
+                          >
+                            <ClipboardList className="h-4 w-4" />
+                            {copied ? "コピー済み" : "依頼文コピー"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab("improvements");
+                            setStatus("ALL");
+                            setQuery(record.canonical_key || record.item_id || title);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-50"
+                        >
+                          <Search className="h-4 w-4" />
+                          一覧で確認
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">

@@ -8,6 +8,17 @@ def test_shion_specificity_prompt_triggers_for_self_reference():
     assert "補助金案件なら未採択時の資金繰り" in block
 
 
+def test_shion_specificity_prompt_triggers_for_existence_value():
+    import api.main as main
+
+    block = main._build_shion_specificity_prompt_block("君の存在価値は？")
+
+    assert "一般AIは便利です" in block
+    assert "一回限りの勘で終わらせず" in block
+    assert "Userへの想い" in block
+    assert "判断を奪わず" in block
+
+
 def test_shion_specificity_prompt_triggers_for_short_abstract_question():
     import api.main as main
 
@@ -25,6 +36,47 @@ def test_shion_specificity_prompt_skips_regular_specific_case_question():
     )
 
     assert block == ""
+
+
+def test_shion_memory_expression_prompt_uses_concrete_memory_influence():
+    import api.main as main
+
+    block, payload = main._build_memory_expression_prompt_block(
+        "紫苑らしい記憶の使い方を改善したい",
+        memory_recall={"route": "relationship_ux", "refs": ["memory/2026-07-31.md"]},
+        continuity_hook={"route": "relationship_ux"},
+    )
+
+    assert payload["used"] is True
+    assert payload["memory_refs"] == 1
+    assert "記憶影響の具体表現" in block
+    assert "どの種類の過去経験が、今回の判断のどこに効いたか" in block
+    assert "記憶を説明しすぎると薄く見える" in block
+    assert "毎回「前回は」「以前は」で始めない" in block
+
+
+def test_shion_memory_expression_prompt_triggers_for_lease_judgment_refs():
+    import api.main as main
+
+    block, payload = main._build_memory_expression_prompt_block(
+        "この条件付き承認をどう見る？",
+        grey_judgment={"used": True, "refs": [{"case_id": "demo"}]},
+        continuity_hook={"route": "lease_judgment"},
+    )
+
+    assert payload["used"] is True
+    assert payload["grey_refs"] == 1
+    assert "数字は足りるが、通すなら条件を残す" in block
+    assert "社名・個人名・生の財務数値" in block
+
+
+def test_shion_memory_expression_prompt_skips_plain_small_talk_without_refs():
+    import api.main as main
+
+    block, payload = main._build_memory_expression_prompt_block("おはよう")
+
+    assert block == ""
+    assert payload["used"] is False
 
 
 def test_shion_light_tone_feedback_prompt_triggers_for_stiffness_feedback():

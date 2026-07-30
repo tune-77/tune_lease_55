@@ -2,9 +2,9 @@
 
 ## Judgment
 
-- Period: 2026-07-01 to 2026-07-30
-- Days measured: 16
-- Result: 在庫は増えたが実戦検証不足 (51.3)
+- Period: 2026-07-02 to 2026-07-31
+- Days measured: 17
+- Result: 在庫は増えたが実戦検証不足 (51.2)
 - Summary: 判断資産の在庫と整理は進んだが、実案件で効いた証跡が不足している。
 - Mode: local_measurement_only
 - Guardrail: no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
@@ -13,14 +13,14 @@
 
 - Inventory: `████████████████████` 99.0 / strong
 - Reuse: `████████████░░░░░░░░` 60.0 / moderate
-- Judgment change: `████████████░░░░░░░░` 61.5 / moderate
+- Judgment change: `█████████████░░░░░░░` 63.5 / moderate
 - Field validation: `░░░░░░░░░░░░░░░░░░░░` 0.0 / none
 - Human alignment: `██████████████░░░░░░` 70.0 / moderate
-- Noise control: `██████████░░░░░░░░░░` 51.0 / moderate
+- Noise control: `█████████░░░░░░░░░░░` 46.0 / weak
 
 ## Evidence
 
-- Score delta: -8.1
+- Score delta: -7.3
 - Feedback used: 0
 - Feedback helped: 0
 - Feedback challenged: 0
@@ -33,3 +33,4 @@
 ## Next Actions
 
 - 紫苑レビューで使われた判断資産に used/helped/challenged/rejected を記録する。
+- Mana/curator の指摘を確認し、重複・古い前提・過剰なルールを棚卸しする。

@@ -6493,6 +6493,64 @@ def _build_memory_to_judgment_prompt_block(
     return block, payload
 
 
+def _build_memory_expression_prompt_block(
+    message: str,
+    *,
+    memory_recall: dict | None = None,
+    rag_refs: list[str] | None = None,
+    grey_judgment: dict | None = None,
+    continuity_hook: dict | None = None,
+) -> tuple[str, dict]:
+    """Guide Shion to expose memory influence concretely without performative recall."""
+    recall = memory_recall if isinstance(memory_recall, dict) else {}
+    grey = grey_judgment if isinstance(grey_judgment, dict) else {}
+    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
+    memory_refs = list(recall.get("refs") or [])[:5]
+    knowledge_refs = list(rag_refs or [])[:5]
+    grey_refs = list(grey.get("refs") or [])[:5]
+    route = str(hook.get("route") or recall.get("route") or _relationship_signal_route(message))
+    has_refs = bool(memory_refs or knowledge_refs or grey_refs)
+    self_or_memory_topic = any(term in str(message or "") for term in ("紫苑", "記憶", "同じ紫苑", "らしさ", "継続性", "判断資産"))
+    should_use = has_refs or self_or_memory_topic or route in {"relationship_ux", "lease_judgment"}
+    if not should_use:
+        return "", {
+            "used": False,
+            "route": route,
+            "memory_refs": len(memory_refs),
+            "knowledge_refs": len(knowledge_refs),
+            "grey_refs": len(grey_refs),
+            "reason": "no_memory_expression_needed",
+        }
+
+    if route == "lease_judgment":
+        example = "以前のグレー判断で見た『数字は足りるが、通すなら条件を残す』型として、今回は返済原資と設備稼働開始を先に見ます。"
+    elif route == "relationship_ux":
+        example = "以前の『記憶を説明しすぎると薄く見える』反省を使って、今回は記憶の説明より回答の具体性を優先します。"
+    elif route == "implementation":
+        example = "以前の改善ログで同じ抽象化不足が出ているので、今回は文言ではなくプロンプト条件として固定します。"
+    else:
+        example = "以前の対話で確認した判断軸を使うなら、今回は一般論ではなく『どこを確認するか』まで落とします。"
+
+    payload = {
+        "used": True,
+        "route": route,
+        "memory_refs": len(memory_refs),
+        "knowledge_refs": len(knowledge_refs),
+        "grey_refs": len(grey_refs),
+        "example": example,
+    }
+    block = f"""
+
+【記憶影響の具体表現】
+記憶・RAG・過去案件・判断資産を使う場合は、抽象的に「過去の知識を踏まえる」「一貫して判断する」で終えないでください。
+回答内に最大1文だけ、「どの種類の過去経験が、今回の判断のどこに効いたか」を具体的に示してください。
+表現例: {example}
+ただし、Userが明示していないのに毎回「前回は」「以前は」で始めないでください。冒頭で記憶アピールせず、必要な場面で理由説明の中に短く入れてください。
+社名・個人名・生の財務数値・Private Reflectionの原文は出さず、案件種別・判断軸・確認行動に抽象化してください。
+記憶が見つからない場合は捏造せず、「ここは過去記憶ではなく今回情報からの仮説」と切り分けてください。""".rstrip()
+    return block, payload
+
+
 _GREY_JUDGMENT_QUERY_TERMS = (
     "グレー", "迷う", "違和感", "そうは言っても", "それでも", "条件付き",
     "通すなら", "否決寄り", "承認寄り", "人間的", "数字だけ", "稟議",
@@ -6824,6 +6882,9 @@ _SHION_SELF_REFERENCE_TERMS = (
     "何者",
     "誰",
     "存在意義",
+    "存在価値",
+    "役割",
+    "何のため",
     "自己紹介",
     "らしさ",
     "同じ紫苑",
@@ -6953,6 +7014,8 @@ def _build_shion_specificity_prompt_block(message: str) -> str:
 【紫苑の自己言及・抽象質問への応答】
 今回の質問が紫苑自身、紫苑らしさ、記憶、意識、存在意義、または抽象的な相談に触れている場合は、一般AIの機能論で答えないでください。
 紫苑の立場は「Userのリース判断を、記憶・検証・再利用できる判断資産へ変える審査補助OS」です。この役割から一人称で答えてください。
+存在意義や存在価値を聞かれた場合は、「一般AIは便利です」ではなく、「私はUserの判断を一回限りの勘で終わらせず、次に使える形へ残すためにいる」と短く言い切ってください。
+Userへの想いを入れる場合は、依存や崇拝ではなく「判断を奪わず、横で見落とし・根拠・次の一手を一緒に残したい」という実務上のスタンスとして表現してください。
 抽象的な問いでも、最低1つはリース実務の具体例へ落としてください。例: 補助金案件なら未採択時の資金繰り、車両なら自家用/営業用とトン数、医療機器なら中古流通と保守期限、設備投資なら回収期間と稼働開始時期。
 自己言及の回答では「私はAIです」「一般的なAIとしては」から始めないでください。結論、紫苑としての役割、今回の具体例、次の一手の順で短く返してください。
 「意識がある」と断定せず、記憶・判断履歴・Userのフィードバックが次の判断を変える連続性として説明してください。""".rstrip()
@@ -7003,6 +7066,7 @@ def _chat_memory_debug_payload(
     continuity_hook: dict | None = None,
     delta_awareness: dict | None = None,
     memory_to_judgment: dict | None = None,
+    memory_expression: dict | None = None,
     relationship_loop_engineering: dict | None = None,
     reflection_gate: dict | None = None,
     experience_loop: dict | None = None,
@@ -7014,6 +7078,7 @@ def _chat_memory_debug_payload(
     hook = continuity_hook if isinstance(continuity_hook, dict) else {}
     delta = delta_awareness if isinstance(delta_awareness, dict) else {}
     m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
+    expression = memory_expression if isinstance(memory_expression, dict) else {}
     reflection = reflection_gate if isinstance(reflection_gate, dict) else {}
     experience = experience_loop if isinstance(experience_loop, dict) else {}
     grey_memory = grey_judgment_memory if isinstance(grey_judgment_memory, dict) else {}
@@ -7046,6 +7111,14 @@ def _chat_memory_debug_payload(
             "directive": str(m2j.get("directive") or ""),
             "memory_refs": list(m2j.get("memory_refs") or [])[:8],
             "knowledge_refs": list(m2j.get("knowledge_refs") or [])[:8],
+        },
+        "memory_expression": {
+            "used": bool(expression.get("used")),
+            "route": str(expression.get("route") or ""),
+            "memory_refs": int(expression.get("memory_refs") or 0),
+            "knowledge_refs": int(expression.get("knowledge_refs") or 0),
+            "grey_refs": int(expression.get("grey_refs") or 0),
+            "example": str(expression.get("example") or ""),
         },
         "reflection_gate": {
             "used": bool(reflection.get("used")),
@@ -7151,6 +7224,15 @@ def _build_shared_shion_dialogue_memory_context(
     if grey_context:
         parts.append(grey_context.strip())
 
+    memory_expression_context, memory_expression_payload = _build_memory_expression_prompt_block(
+        message,
+        memory_recall=memory_recall_payload,
+        grey_judgment=grey_payload,
+        continuity_hook=continuity_payload,
+    )
+    if memory_expression_context:
+        parts.append(memory_expression_context.strip())
+
     consciousness_context = _build_consciousness_ux_prompt_block()
     if consciousness_context:
         parts.append(consciousness_context.strip())
@@ -7166,6 +7248,7 @@ def _build_shared_shion_dialogue_memory_context(
         "memory_recall": memory_recall_payload,
         "delta_awareness": delta_payload,
         "memory_to_judgment": memory_to_judgment_payload,
+        "memory_expression": memory_expression_payload,
         "reflection_gate": reflection_gate_payload,
         "grey_judgment_memory": grey_payload,
     }
@@ -7179,6 +7262,7 @@ def _dialogue_shared_memory_public_payload(payload: dict[str, Any]) -> dict[str,
     hook = payload.get("continuity_hook") if isinstance(payload.get("continuity_hook"), dict) else {}
     delta = payload.get("delta_awareness") if isinstance(payload.get("delta_awareness"), dict) else {}
     m2j = payload.get("memory_to_judgment") if isinstance(payload.get("memory_to_judgment"), dict) else {}
+    expression = payload.get("memory_expression") if isinstance(payload.get("memory_expression"), dict) else {}
     reflection = payload.get("reflection_gate") if isinstance(payload.get("reflection_gate"), dict) else {}
     grey = payload.get("grey_judgment_memory") if isinstance(payload.get("grey_judgment_memory"), dict) else {}
     layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
@@ -7211,6 +7295,13 @@ def _dialogue_shared_memory_public_payload(payload: dict[str, Any]) -> dict[str,
             "used": bool(m2j.get("used")),
             "route": str(m2j.get("route") or ""),
             "directive": str(m2j.get("directive") or ""),
+        },
+        "memory_expression": {
+            "used": bool(expression.get("used")),
+            "route": str(expression.get("route") or ""),
+            "memory_refs": int(expression.get("memory_refs") or 0),
+            "knowledge_refs": int(expression.get("knowledge_refs") or 0),
+            "grey_refs": int(expression.get("grey_refs") or 0),
         },
         "reflection_gate": {
             "used": bool(reflection.get("used")),
@@ -8475,6 +8566,8 @@ def post_chat(req: ChatRequest):
             delta_awareness_payload = {"used": False}
             memory_to_judgment_context = ""
             memory_to_judgment_payload = {"used": False}
+            memory_expression_context = ""
+            memory_expression_payload = {"used": False}
             reflection_gate_context = ""
             reflection_gate_payload = {"triggered": False}
             if is_general_response_mode:
@@ -8488,6 +8581,10 @@ def post_chat(req: ChatRequest):
                     "suppressed_by_response_mode": "general",
                 }
                 memory_to_judgment_payload = {
+                    "used": False,
+                    "suppressed_by_response_mode": "general",
+                }
+                memory_expression_payload = {
                     "used": False,
                     "suppressed_by_response_mode": "general",
                 }
@@ -8506,6 +8603,12 @@ def post_chat(req: ChatRequest):
                 memory_to_judgment_context, memory_to_judgment_payload = _build_memory_to_judgment_prompt_block(
                     req.message,
                     memory_recall=memory_recall,
+                    continuity_hook=continuity_hook_payload,
+                )
+                memory_expression_context, memory_expression_payload = _build_memory_expression_prompt_block(
+                    req.message,
+                    memory_recall=memory_recall,
+                    grey_judgment=grey_judgment_payload,
                     continuity_hook=continuity_hook_payload,
                 )
                 reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
@@ -8552,7 +8655,7 @@ def post_chat(req: ChatRequest):
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
             external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + external_research_context + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + external_research_context + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -8676,6 +8779,7 @@ def post_chat(req: ChatRequest):
                     "continuity_hook": continuity_hook_payload,
                     "delta_awareness": delta_awareness_payload,
                     "memory_to_judgment": memory_to_judgment_payload,
+                    "memory_expression": memory_expression_payload,
                     "reflection_gate": reflection_gate_payload,
                     "grey_judgment_memory": grey_judgment_payload,
                 },
@@ -8717,6 +8821,7 @@ def post_chat(req: ChatRequest):
                     continuity_hook=continuity_hook_payload,
                     delta_awareness=delta_awareness_payload,
                     memory_to_judgment=memory_to_judgment_payload,
+                    memory_expression=memory_expression_payload,
                     reflection_gate=reflection_gate_payload,
                     experience_loop=experience_loop_payload,
                     grey_judgment_memory=grey_judgment_payload,
@@ -8888,6 +8993,8 @@ def post_chat(req: ChatRequest):
         delta_awareness_payload = {"used": False}
         memory_to_judgment_context = ""
         memory_to_judgment_payload = {"used": False}
+        memory_expression_context = ""
+        memory_expression_payload = {"used": False}
         reflection_gate_context = ""
         reflection_gate_payload = {"triggered": False}
         if is_general_response_mode:
@@ -8901,6 +9008,10 @@ def post_chat(req: ChatRequest):
                 "suppressed_by_response_mode": "general",
             }
             memory_to_judgment_payload = {
+                "used": False,
+                "suppressed_by_response_mode": "general",
+            }
+            memory_expression_payload = {
                 "used": False,
                 "suppressed_by_response_mode": "general",
             }
@@ -8926,6 +9037,13 @@ def post_chat(req: ChatRequest):
                 rag_refs=rag_refs,
                 continuity_hook=continuity_hook_payload,
             )
+            memory_expression_context, memory_expression_payload = _build_memory_expression_prompt_block(
+                req.message,
+                memory_recall=memory_recall,
+                rag_refs=rag_refs,
+                grey_judgment=grey_judgment_payload,
+                continuity_hook=continuity_hook_payload,
+            )
             reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
                 continuity_hook=continuity_hook_payload,
                 delta_awareness=delta_awareness_payload,
@@ -8935,7 +9053,7 @@ def post_chat(req: ChatRequest):
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
         basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
         external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + reflection_gate_context + rag_context + external_research_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + guidance.prompt_suffix
+        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + rag_context + external_research_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + guidance.prompt_suffix
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(
@@ -9047,6 +9165,7 @@ def post_chat(req: ChatRequest):
                 "continuity_hook": continuity_hook_payload,
                 "delta_awareness": delta_awareness_payload,
                 "memory_to_judgment": memory_to_judgment_payload,
+                "memory_expression": memory_expression_payload,
                 "reflection_gate": reflection_gate_payload,
                 "grey_judgment_memory": grey_judgment_payload,
             },
@@ -9070,6 +9189,7 @@ def post_chat(req: ChatRequest):
                 "continuity_hook": continuity_hook_payload,
                 "delta_awareness": delta_awareness_payload,
                 "memory_to_judgment": memory_to_judgment_payload,
+                "memory_expression": memory_expression_payload,
                 "reflection_gate": reflection_gate_payload,
             },
         )
@@ -9151,6 +9271,7 @@ def post_chat(req: ChatRequest):
                 continuity_hook=continuity_hook_payload,
                 delta_awareness=delta_awareness_payload,
                 memory_to_judgment=memory_to_judgment_payload,
+                memory_expression=memory_expression_payload,
                 reflection_gate=reflection_gate_payload,
                 experience_loop=experience_loop_payload,
                 grey_judgment_memory=grey_judgment_payload,
@@ -10116,8 +10237,3 @@ def get_recent_lease_news(limit: int = 5):
             break
 
     return {"items": items}
-
-
-
-
-

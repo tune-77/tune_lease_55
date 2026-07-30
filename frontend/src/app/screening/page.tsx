@@ -16,6 +16,7 @@ import { toThousandYenPayload } from "../../lib/scoringUnits";
 import IndicatorCards from "../../components/analysis/IndicatorCards";
 import RealGraphs from "../../components/analysis/RealGraphs";
 import GunshiAdvice from "../../components/analysis/GunshiAdvice";
+import LeasePaymentSimulator from "../../components/analysis/LeasePaymentSimulator";
 import QRiskPanel from "../../components/analysis/QRiskPanel";
 import MahalanobisPanel from "../../components/analysis/MahalanobisPanel";
 import UMAPPanel from "../../components/analysis/UMAPPanel";
@@ -3261,6 +3262,14 @@ export default function Dashboard() {
                 <section id="form-general" className="scroll-mt-28">
                   <FormGeneral data={formData} onChange={handleFieldChange} />
                 </section>
+                <LeasePaymentSimulator
+                  source="screening"
+                  initialPriceMillion={Number(formData.acquisition_cost) || 10}
+                  initialYears={Number(formData.lease_term) || 5}
+                  defaultOpen={false}
+                  title="案件条件で取得方法を比較"
+                  description="入力中の取得価格・リース期間を使い、支払方法別の実質負担をその場で確認します。"
+                />
                 <section id="form-financial" className="scroll-mt-28">
                   <FormFinancial data={formData} onChange={handleFieldChange} />
                 </section>
@@ -3348,6 +3357,14 @@ export default function Dashboard() {
                       saving={experienceSaving}
                     />
                     <ScreeningLoopFeedbackPanel result={result} data={formData} />
+                    <LeasePaymentSimulator
+                      source="screening"
+                      initialPriceMillion={Number(formData.acquisition_cost) || 10}
+                      initialYears={Number(formData.lease_term) || 5}
+                      defaultOpen={false}
+                      title="条件変更時の支払負担を見る"
+                      description="審査結果を見ながら、期間・金利・税率を動かして承認条件や稟議補足の材料にします。"
+                    />
                     <IndicatorCards data={result} />
 
                     {/* REV-224: 審査ゲーム理論パネル */}

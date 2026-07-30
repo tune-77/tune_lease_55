@@ -5,8 +5,8 @@
 - role: `obsidian_curator_and_shion_runaway_guard`
 - identity: `same_as_shion_upper_authority_mana_value_memory`
 - identity_note: Mana Curator is not a separate agent; it is the existing Mana upper authority applied to Obsidian memory operations.
-- generated_at: `2026-07-30T04:13:42+09:00`
-- target_date: `2026-07-30`
+- generated_at: `2026-07-31T04:10:25+09:00`
+- target_date: `2026-07-31`
 - status: `hold`
 - action_summary: private_reflection_not_meaningful: Private Reflection を User要求・誤読・次回行動が分かる形で再生成する。
 - guardrail: `read_only_no_obsidian_write_no_rag_no_prompt_no_scoring_no_cloudrun_no_deploy`
@@ -22,7 +22,12 @@
 ### private_reflection_not_meaningful
 - level: `hold`
 - message: Private Reflectionの意味更新が弱い。記憶昇格やRAG接続は保留する。
-- evidence: `{"check_message": "Private Reflection exists but meaningful update is weak: too_similar_to_yesterday:0.934", "details": {"matched_labels": ["今日の観察:", "私の見落とし:", "仮説の更新:", "次回の小さな実験:", "前回の入力:", "前回の判断:", "人間の修正:", "紫苑が外した点:", "次回から変える確認事項:", "判断資産候補:", "まだ確信できない点:", "私の責任:", "更新する信念:", "次回の検証方法:"], "missing_categories": [], "required_categories": ["misread", "next_behavior", "self_responsibility", "user_expectation"], "similarity_to_yesterday": 0.934, "today_length": 3039, "today_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-30.md", "yesterday_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-29.md"}, "status": "warn"}`
+- evidence: `{"check_message": "Private Reflection exists but meaningful update is weak: too_similar_to_yesterday:0.934", "details": {"matched_labels": ["今日の観察:", "私の見落とし:", "仮説の更新:", "次回の小さな実験:", "前回の入力:", "前回の判断:", "人間の修正:", "紫苑が外した点:", "次回から変える確認事項:", "判断資産候補:", "まだ確信できない点:", "私の責任:", "更新する信念:", "次回の検証方法:"], "missing_categories": [], "required_categories": ["misread", "next_behavior", "self_responsibility", "user_expectation"], "similarity_to_yesterday": 0.934, "today_length": 3077, "today_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-31.md", "yesterday_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-07-30.md"}, "status": "warn"}`
+
+### memory_insight_reports_warning
+- level: `watch`
+- message: memory_insight_reports に警告。自動接続せず、該当箇所だけ確認する。
+- evidence: `{"check_message": "stale or missing sidecars: memory_insight", "status": "warn"}`
 
 ### reflection_too_similar
 - level: `watch`
