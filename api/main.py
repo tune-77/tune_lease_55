@@ -605,6 +605,8 @@ from api.routers.screening_emotions import router as screening_emotions_router
 app.include_router(screening_emotions_router)
 from api.routers.judgment_assets import router as judgment_assets_router
 app.include_router(judgment_assets_router)
+from api.game_theory.router import router as game_theory_router
+app.include_router(game_theory_router)
 
 
 
