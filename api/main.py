@@ -589,6 +589,7 @@ app.include_router(screening_misc_router)
 
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
+from api.routers.feedback_loop import JudgmentAssetCandidateManualRequest, ScreeningExperienceCaseRequest  # used by chat/improvement endpoints
 
 from api.routers.misc_endpoints import router as misc_endpoints_router
 app.include_router(misc_endpoints_router)

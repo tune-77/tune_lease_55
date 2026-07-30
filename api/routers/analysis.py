@@ -166,7 +166,7 @@ def get_auto_optimizer_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/model_review/status")
+@router.get("/api/model_review/status")
 def get_model_review_status_api():
     from model_review_hooks import get_model_review_hook_status
     try:
@@ -175,7 +175,7 @@ def get_model_review_status_api():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/model_review/run")
+@router.post("/api/model_review/run")
 def run_model_review_hooks_api():
     from model_review_hooks import run_model_review_hooks
     try:
