@@ -572,6 +572,15 @@ app.include_router(analysis_router)
 from api.routers.cases import router as cases_router
 app.include_router(cases_router)
 
+from api.routers.shion_eval_health import router as shion_eval_health_router
+app.include_router(shion_eval_health_router)
+
+from api.routers.chronicle import router as chronicle_router
+app.include_router(chronicle_router)
+
+from api.routers.recipes import router as recipes_router
+app.include_router(recipes_router)
+
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
@@ -3037,18 +3046,6 @@ def delete_case(case_id: str, background_tasks: BackgroundTasks):
         pass
     background_tasks.add_task(_git_push_db)
     return {"message": "Deleted if existed", "case_id": case_id}
-
-
-
-
-class ShionEvalHealthCheckRequest(BaseModel):
-    case_id: str
-    reply: str = ""
-    memory_debug: dict = Field(default_factory=dict)
-    knowledge_refs: list = Field(default_factory=list)
-    daily_clinic_used: Optional[bool] = None
-
-
 @app.get("/api/dashboard/stats")
 def get_dashboard_stats():
     try:
@@ -3065,51 +3062,6 @@ def get_dashboard_stats():
         payload["improvement_highlights"] = _load_latest_improvement_highlights(limit=3)
         payload["lease_system_gaps"] = _load_lease_system_gap_analysis(limit=3)
         return payload
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/shion-eval-health")
-def get_shion_eval_health():
-    try:
-        from shion_eval_health import build_shion_eval_health_payload
-
-        return build_shion_eval_health_payload(Path(_REPO_ROOT))
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/shion-eval-health/check")
-def post_shion_eval_health_check(req: ShionEvalHealthCheckRequest):
-    try:
-        from shion_eval_health import case_by_id, evaluate_shion_trace
-
-        case = case_by_id(req.case_id)
-        return evaluate_shion_trace(
-            case,
-            reply=req.reply,
-            memory_debug=req.memory_debug,
-            knowledge_refs=req.knowledge_refs,
-            daily_clinic_used=req.daily_clinic_used,
-        )
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"eval case not found: {req.case_id}")
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/shion-eval-health/repair")
-def post_shion_eval_health_repair():
-    try:
-        from shion_eval_health import repair_operation_loop_health
-
-        return repair_operation_loop_health(Path(_REPO_ROOT))
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -6139,112 +6091,6 @@ def run_agent_api(req: AgentRunRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-# ── 文明年代記 / シミュレーション 関連 ───────────────────────────────────────────
-
-def _compute_approval_rates_standalone(cases: list):
-    """civilization_chronicle.py の _compute_approval_rates をインライン化（streamlit非依存）。"""
-    from scoring_core import APPROVAL_LINE as _APPROVAL_LINE
-    scored = [
-        c for c in cases
-        if c.get("result") and c["result"].get("score") is not None
-    ]
-    if len(scored) < 10:
-        return None, None
-    all_scores = [c["result"]["score"] for c in scored]
-    baseline_rate = sum(1 for s in all_scores if s >= _APPROVAL_LINE) / len(all_scores)
-    recent = all_scores[-30:]
-    recent_rate = sum(1 for s in recent if s >= _APPROVAL_LINE) / len(recent)
-    return baseline_rate, recent_rate
-
-@app.get("/api/chronicle/summary")
-def get_chronicle_summary_api():
-    from data_cases import load_all_cases
-    try:
-        cases = load_all_cases()
-        baseline, recent = _compute_approval_rates_standalone(cases)
-        return {
-            "baseline_rate": baseline or 0,
-            "recent_rate": recent or 0,
-            "drift": abs((recent or 0) - (baseline or 0)),
-            "warn_threshold": 0.15,
-            "total_cases": len(cases)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/chronicle/history")
-def get_chronicle_history_api():
-    from data_cases import load_coeff_history
-    try:
-        history = load_coeff_history()
-        return {"history": history[:100]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/chronicle/snapshots")
-def get_chronicle_snapshots_api():
-    """ガバナンスのスナップショット一覧を返す。data_cases.py のロジックをインライン化。"""
-    import json as _json
-    snap_path = os.path.join(_REPO_ROOT, "data", "governance_snapshots.json")
-    try:
-        if not os.path.exists(snap_path):
-            return {"snapshots": []}
-        with open(snap_path, "r", encoding="utf-8") as f:
-            snaps = _json.load(f)
-        return {"snapshots": list(reversed(snaps)) if snaps else []}
-    except Exception as e:
-        return {"snapshots": [], "error": str(e)}
-
-class RollbackRequest(BaseModel):
-    snapshot_id: str
-
-@app.post("/api/chronicle/rollback")
-def post_chronicle_rollback_api(req: RollbackRequest):
-    from data_cases import load_governance_snapshots, save_coeff_overrides
-    try:
-        snaps = load_governance_snapshots()
-        target = next((s for s in snaps if s.get("id") == req.snapshot_id), None)
-        if not target:
-            raise HTTPException(status_code=404, detail="Snapshot not found")
-            
-        overrides = target.get("overrides", {})
-        comment = f"Rollback to {req.snapshot_id} (via API)"
-        success = save_coeff_overrides(overrides, comment=comment)
-        
-        return {"status": "success" if success else "failed"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/chronicle/simulation/round")
-def run_simulation_round_api():
-    from novel_simulation import run_simulation_round
-    try:
-        res = run_simulation_round()
-        if "error" in res:
-            raise HTTPException(status_code=400, detail=res["error"])
-        return res
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/chronicle/simulation/history")
-def get_simulation_history_api(limit: int = 20):
-    from novel_simulation import get_round_history
-    try:
-        return {"history": get_round_history(limit)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/chronicle/simulation/archaia_log")
-def get_archaia_log_api(limit: int = 30):
-    from novel_simulation import get_archaia_log
-    try:
-        return {"logs": get_archaia_log(limit)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 # ── スタンドアロン実行ヘルパー（Streamlit依存回避） ────────────────────────────────
 
@@ -15092,122 +14938,6 @@ def get_recent_lease_news(limit: int = 5):
 
     return {"items": items}
 
-
-# ---------- recipes エンドポイント ----------
-
-_RECIPES_ROOT = Path(_REPO_ROOT) / "data" / "recipes"
-
-
-def _recipe_count(dirname: str) -> int:
-    path = _RECIPES_ROOT / dirname
-    if not path.exists():
-        return 0
-    return sum(1 for item in path.glob("*.json") if item.is_file())
-
-
-def _recipe_risk_level(recipe: dict) -> str:
-    safety = recipe.get("safety", "none")
-    files = recipe.get("files", [])
-    total_changes = sum(len(f.get("changes", [])) for f in files)
-    if total_changes >= 10 or safety == "tsc":
-        return "medium"
-    return "low"
-
-
-@app.get("/api/recipes/status")
-def get_recipes_status():
-    latest_path = _latest_improvement_report_path()
-    latest: dict = {}
-    if latest_path and latest_path.exists():
-        try:
-            latest = json.loads(latest_path.read_text(encoding="utf-8"))
-        except Exception:
-            latest = {}
-    codex_queue = latest.get("codex_auto_queue") if isinstance(latest.get("codex_auto_queue"), dict) else {}
-    return {
-        "pending_count": _recipe_count("pending"),
-        "approved_count": _recipe_count("approved"),
-        "applied_count": _recipe_count("applied"),
-        "rejected_count": _recipe_count("rejected"),
-        "codex_auto_queue": {
-            "status": codex_queue.get("status", ""),
-            "queued_count": codex_queue.get("queued_count", 0),
-            "safe_count": codex_queue.get("safe_count", 0),
-            "maybe_count": codex_queue.get("maybe_count", 0),
-            "manual_or_blocked_count": codex_queue.get("manual_or_blocked_count", 0),
-        },
-        "note": "今回の修正案を適用待ちへ送る操作です。実適用は scripts/apply_recipe.py が適用待ちを処理します。",
-    }
-
-
-@app.get("/api/recipes/pending")
-def get_pending_recipes():
-    pending_dir = _RECIPES_ROOT / "pending"
-    recipes: list[dict] = []
-    if not pending_dir.exists():
-        return {"recipes": recipes}
-    for path in sorted(pending_dir.glob("*.json")):
-        try:
-            recipe = json.loads(path.read_text(encoding="utf-8"))
-            recipe["id"] = path.stem
-            recipe.setdefault("risk_level", _recipe_risk_level(recipe))
-            recipes.append(recipe)
-        except Exception:
-            pass
-    return {"recipes": recipes}
-
-
-@app.post("/api/recipes/{recipe_id}/approve")
-def approve_recipe(recipe_id: str):
-    src = _RECIPES_ROOT / "pending" / f"{recipe_id}.json"
-    if not src.exists():
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    dst_dir = _RECIPES_ROOT / "approved"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    src.rename(dst_dir / f"{recipe_id}.json")
-    return {"status": "approved", "id": recipe_id}
-
-
-@app.post("/api/recipes/{recipe_id}/approve-and-apply")
-def approve_and_apply_recipe(recipe_id: str):
-    if os.environ.get("K_SERVICE"):
-        raise HTTPException(
-            status_code=409,
-            detail="レシピの自動適用はローカルの作業ツリーへ修正を入れる処理のため、Cloud Run上では実行できません。",
-        )
-    src = _RECIPES_ROOT / "pending" / f"{recipe_id}.json"
-    if not src.exists():
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    try:
-        from datetime import datetime as _dt, timezone as _timezone
-        from scripts.apply_recipe import _check_git_clean, _process_recipe
-
-        # Dirty tree のまま pending -> approved だけ進めると復旧が面倒なので、移動前に止める。
-        _check_git_clean()
-        recipe = json.loads(src.read_text(encoding="utf-8"))
-        recipe["approved_at"] = _dt.now(_timezone.utc).isoformat()
-        dst_dir = _RECIPES_ROOT / "approved"
-        dst_dir.mkdir(parents=True, exist_ok=True)
-        dst = dst_dir / f"{recipe_id}.json"
-        dst.write_text(json.dumps(recipe, ensure_ascii=False, indent=2), encoding="utf-8")
-        src.unlink()
-        status, message = _process_recipe(dst)
-        return {"status": status, "id": recipe_id, "message": message}
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-@app.post("/api/recipes/{recipe_id}/reject")
-def reject_recipe(recipe_id: str):
-    src = _RECIPES_ROOT / "pending" / f"{recipe_id}.json"
-    if not src.exists():
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    dst_dir = _RECIPES_ROOT / "rejected"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    src.rename(dst_dir / f"{recipe_id}.json")
-    return {"status": "rejected", "id": recipe_id}
 
 
 # ── 世界認識 通知ステータス ────────────────────────────────────────────────
