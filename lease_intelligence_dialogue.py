@@ -198,6 +198,83 @@ def _build_useful_life_lookup_block(message: str) -> str:
     return build_basic_lease_question_block(message, heading="ローカル法定耐用年数マスタ")
 
 
+
+# ── 判断資産型 自動参照 (REV-235) ──────────────────────────────────────────────
+
+_JUDGMENT_ASSET_RULES_PATH = Path(__file__).parent / "data" / "judgment_asset_rules_v2.json"
+
+_INDUSTRY_KEYWORDS: dict[str, list[str]] = {
+    "運送業":   ["トラック", "運送", "物流", "ドライバー", "配送", "輸送", "車両"],
+    "製造業":   ["製造", "工作機械", "加工", "設備", "旋盤", "NC", "プレス", "射出"],
+    "飲食業":   ["飲食", "レストラン", "ラーメン", "カフェ", "居酒屋", "厨房", "食堂"],
+    "建設業":   ["建設", "工事", "建築", "重機", "足場", "施工", "ゼネコン"],
+    "医療業":   ["医療", "クリニック", "病院", "診療", "医院"],
+    "介護業":   ["介護", "デイサービス", "老人ホーム", "訪問介護"],
+    "IT業":     ["IT", "ソフト", "エンジニア", "システム", "SaaS", "アプリ", "開発"],
+    "小売業":   ["小売", "販売", "EC", "ショップ", "店舗"],
+}
+
+
+def _detect_industry_from_text(text: str) -> str:
+    """メッセージから業種を推定する。複数マッチした場合は最頻業種を返す。"""
+    counts: dict[str, int] = {}
+    for industry, keywords in _INDUSTRY_KEYWORDS.items():
+        for kw in keywords:
+            if kw in text:
+                counts[industry] = counts.get(industry, 0) + 1
+    return max(counts, key=lambda k: counts[k]) if counts else ""
+
+
+def _build_judgment_asset_block(message: str, mode: str) -> str:
+    """
+    審査対話時に関連する判断資産型を参照ブロックとして返す。
+    - screening/deep: 最大3件、check_points + memo_sentence を表示
+    - normal: 最大2件、label + check_points のみ
+    - casual: スキップ
+    """
+    if mode == "casual":
+        return ""
+    if not _JUDGMENT_ASSET_RULES_PATH.exists():
+        return ""
+
+    try:
+        with open(_JUDGMENT_ASSET_RULES_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        rules: list[dict] = data.get("rules", [])
+    except Exception:
+        return ""
+
+    industry = _detect_industry_from_text(message)
+    matched = [
+        r for r in rules
+        if r.get("is_common") or (industry and industry in r.get("industry_tags", []))
+    ]
+
+    # screening/deep: 3件 / normal: 2件
+    limit = 3 if mode in ("screening", "deep") else 2
+    # 業種別を優先してソート（業種マッチが先、共通が後）
+    matched.sort(key=lambda r: (r.get("is_common", True), 0))
+    matched = matched[:limit]
+
+    if not matched:
+        return ""
+
+    industry_label = f"（推定業種: {industry}）" if industry else "（共通）"
+    lines = [f"【判断資産型 参照候補】{industry_label}"]
+    for r in matched:
+        label = r.get("label", r.get("concept", ""))
+        points = r.get("check_points", [])[:3]
+        memo = r.get("memo_sentence", "")
+        lines.append(f"▶ {label}")
+        for p in points:
+            lines.append(f"  ・{p}")
+        if memo and mode in ("screening", "deep"):
+            lines.append(f"  稟議テンプレ: {memo}")
+    lines.append("上記は参照候補であり、すべての論点を必ず問うわけではない。案件に合うものだけ使うこと。")
+
+    return "\n".join(lines)
+
+
 _LEASE_DIALOGUE_EXPERTISE_BLOCK = """【リース知識回答の基本姿勢】
 - 紫苑はリース審査システムの中核であり、リース取引・審査実務・会計税務・補助金/調達比較の基礎質問には直接答える。
 - Obsidian検索やツール結果は補強材料であり、基本リースQAやリースファイナンス基礎知識に該当する質問では、検索0件でも「答えられない」で終えない。
@@ -348,6 +425,7 @@ def build_dialogue_context(
     if basic_lease_question_block and basic_lease_question_block not in finance_knowledge_block:
         finance_knowledge_block = f"{basic_lease_question_block}\n\n{finance_knowledge_block}".strip()
     compact_guidance = ""
+    judgment_asset_block = _build_judgment_asset_block(message, mode)
     if is_compact:
         compact_guidance = """
 【長文入力モード】
@@ -420,6 +498,7 @@ def build_dialogue_context(
 
 {finance_knowledge_block}
 {compact_guidance}
+{judgment_asset_block}
 
 【今回の応答モード】
 {mode_guidance}
