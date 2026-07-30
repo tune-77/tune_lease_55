@@ -6,7 +6,8 @@ import re
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from api.db_connection import current_backend, get_connection, placeholder
