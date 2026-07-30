@@ -603,6 +603,8 @@ from api.routers.system_misc import router as system_misc_router
 app.include_router(system_misc_router)
 from api.routers.screening_emotions import router as screening_emotions_router
 app.include_router(screening_emotions_router)
+from api.routers.judgment_assets import router as judgment_assets_router
+app.include_router(judgment_assets_router)
 
 
 
