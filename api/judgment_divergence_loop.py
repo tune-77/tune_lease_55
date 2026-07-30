@@ -57,6 +57,9 @@ def aggregate_divergence(limit_examples: int = 12) -> dict[str, Any]:
 
 
 def _build_prompt(aggregate: dict[str, Any]) -> str:
+    from api.domestic_mode import build_domestic_memory_context
+
+    domestic_context = build_domestic_memory_context()
     examples_lines = "\n".join(
         f"- [{ex['target']}/{ex['rating']}] score={ex['score']}, hantei={ex['hantei']}: "
         f"{ex['text']}" + (f"（メモ: {ex['comment']}）" if ex["comment"] else "")
@@ -73,6 +76,8 @@ AI提案に対して残したフィードバックを分析し、審査ロジッ
 【否定的・修正が必要だった事例（争点/稟議方針テキストと当時のスコア・判定）】
 {examples_lines}
 
+{domestic_context}
+
 これらの事例に共通する傾向を分析し、審査担当者が実際に scoring_core.py 側の
 ロジックや基準を見直す際の着眼点を2〜4件、以下のJSON配列形式のみで返してください
 （前後の説明テキストは不要）:
@@ -86,10 +91,15 @@ AI提案に対して残したフィードバックを分析し、審査ロジッ
 ]
 
 重要: あなたはscoring_core.pyの係数や閾値を直接変更する権限を持ちません。
-提案はすべて「人間が確認・検証すべき観点」として書いてください。"""
+提案はすべて「人間が確認・検証すべき観点」として書いてください。
+2〜4件のうち最大1件だけ、少し突拍子のない「跳躍提案」を入れて構いません。
+跳躍提案でも、リース審査の判断資産や確認観点に関係させ、検証方法とリスクを必ず書いてください。
+跳躍提案には "proposal_style": "leap" を付けてください。"""
 
 
 def generate_proposals() -> dict[str, Any]:
+    from api.domestic_mode import connect_self_proposal_to_domestic_mode
+
     aggregate = aggregate_divergence()
     if aggregate["total_feedback"] == 0:
         return {"generated": False, "reason": "審査フィードバックデータがまだありません", "proposals": []}
@@ -119,10 +129,16 @@ def generate_proposals() -> dict[str, Any]:
             "title": str(item.get("title") or "").strip(),
             "observation": str(item.get("observation") or "").strip(),
             "review_point": str(item.get("review_point") or "").strip(),
+            "proposal_style": str(item.get("proposal_style") or "").strip(),
             "generated_at": generated_at,
             "status": "needs_human_review",
         }
         append_jsonl(_PROPOSALS_PATH, entry)
+        entry["domestic_connection"] = connect_self_proposal_to_domestic_mode(
+            entry,
+            source="judgment_divergence_loop",
+            kind="審査判断乖離",
+        )
         saved.append(entry)
 
     return {"generated": True, "aggregate": aggregate, "proposals": saved}

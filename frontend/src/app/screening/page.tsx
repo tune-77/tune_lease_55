@@ -3074,7 +3074,7 @@ export default function Dashboard() {
       </div>
 
       <div className="px-4 md:px-6 lg:px-8 max-w-[1600px] mx-auto pb-20">
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           <Link href="/lease-kun" className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3">
             <div>
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Primary</div>
@@ -3096,6 +3096,14 @@ export default function Dashboard() {
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Insight</div>
               <div className="font-black text-slate-800 mt-1 flex items-center gap-2"><Share2 className="w-4 h-4 text-orange-500" />競合関係グラフ</div>
               <div className="text-xs text-slate-500 mt-1">競合の勢力図を確認。</div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400" />
+          </Link>
+          <Link href="/help" className="bg-white border border-emerald-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Support</div>
+              <div className="font-black text-slate-800 mt-1 flex items-center gap-2"><BadgeInfo className="w-4 h-4 text-emerald-500" />審査ヘルプ</div>
+              <div className="text-xs text-slate-500 mt-1">FAQ・残価・営業説明をまとめて確認。</div>
             </div>
             <ArrowRight className="w-4 h-4 text-slate-400" />
           </Link>

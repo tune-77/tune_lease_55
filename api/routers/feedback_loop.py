@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import datetime as dt
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -12,6 +13,12 @@ from pydantic import BaseModel, Field
 
 from api.db_connection import current_backend, get_connection, placeholder
 from api.cloudrun_writeback import record_cloudrun_input_event
+from judgment_asset_bandit import (
+    append_feedback_event,
+    build_bandit_signals,
+    read_feedback_rows,
+    signal_for_candidate,
+)
 
 _SCRIPT_DIR = str(Path(__file__).resolve().parent)
 _REPO_ROOT = str(Path(_SCRIPT_DIR).parent.parent)
@@ -36,6 +43,34 @@ _CLOUDRUN_RETURN_REVIEW_TABLES = {
 _CLOUDRUN_RETURN_STATUSES = {"candidate", "approved", "held", "rejected"}
 
 router = APIRouter(tags=["feedback-loop"])
+
+_SELF_PROPOSAL_LAYER_LABELS = {
+    "usage_based": "利用ログ由来",
+    "feedback_based": "人間反応・判断ログ由来",
+    "system_audit_based": "システム監査由来",
+}
+
+
+def _with_self_proposal_review_meta(
+    proposals: list[dict[str, Any]],
+    *,
+    evidence_layer: str,
+) -> list[dict[str, Any]]:
+    """Add lightweight review metadata for older persisted self proposals."""
+    enriched: list[dict[str, Any]] = []
+    for proposal in proposals:
+        if not isinstance(proposal, dict):
+            continue
+        item = dict(proposal)
+        item.setdefault("evidence_layer", evidence_layer)
+        item.setdefault("evidence_layer_label", _SELF_PROPOSAL_LAYER_LABELS.get(evidence_layer, evidence_layer))
+        item.setdefault("review_policy", "human_decision_required")
+        item.setdefault("effect_tracking", "採用/保留/却下と、success_metric の事後変化で確認する")
+        if not item.get("review_status_label"):
+            item["review_status_label"] = "レビュー候補" if item.get("success_metric") else "観測継続"
+        enriched.append(item)
+    return enriched
+
 
 class HumanResponseFeedbackRequest(BaseModel):
     message: str = ""
@@ -132,6 +167,12 @@ class CloudRunReturnReviewRequest(BaseModel):
 
 class CloudRunReturnPromotionRequest(BaseModel):
     kind: Literal["judgment_asset"] = "judgment_asset"
+
+
+class DomesticModeEvaluateRequest(BaseModel):
+    memo: str = ""
+    heuristic: dict[str, Any] = Field(default_factory=dict)
+
 
 def _append_human_response_feedback(req: HumanResponseFeedbackRequest) -> dict:
     import datetime as _dt
@@ -2764,11 +2805,39 @@ def post_usage_loop_propose(days: int = 30) -> dict:
 
 
 @router.get("/api/usage-loop/proposals")
-def get_usage_loop_proposals(limit: int = 20) -> dict:
+def get_usage_loop_proposals(limit: int = 3) -> dict:
     """画面利用ループエンジニアリング: Persist。保存済みの改善案を返す。"""
     from api.usage_loop_engineering import load_proposals
 
-    return {"proposals": load_proposals(limit=limit)}
+    return {"proposals": _with_self_proposal_review_meta(load_proposals(limit=limit), evidence_layer="usage_based")}
+
+
+@router.post("/api/domestic-mode/evaluate")
+def post_domestic_mode_evaluate(req: DomesticModeEvaluateRequest) -> dict:
+    """紫苑 内政モード: 人間の内政メモをGeminiで採用/保留/却下/観測継続に再判定する。"""
+    from api.domestic_mode import evaluate_domestic_mode_memo, save_domestic_mode_proposal
+
+    try:
+        result = evaluate_domestic_mode_memo(req.memo, req.heuristic)
+        if str(req.memo or "").strip() and result.get("generated"):
+            result["persistence"] = save_domestic_mode_proposal(req.memo, req.heuristic, result)
+        else:
+            result["persistence"] = {"saved": False, "reason": "未入力またはGemini未生成のため保存しませんでした"}
+        return result
+    except Exception as exc:
+        return {
+            "generated": False,
+            "status": "hold",
+            "label": "保留",
+            "reason": f"Gemini再判定に失敗しました: {exc}",
+            "next_action": "画面内の初期判定を使い、必要なら後で再判定してください。",
+            "decision_layer": "文脈不足",
+            "missing_inputs": [],
+            "success_metric": "",
+            "review_timing": "",
+            "model": "fallback",
+            "persistence": {"saved": False, "reason": "Gemini再判定に失敗したため保存しませんでした"},
+        }
 
 
 @router.post("/api/judgment-divergence/analyze")
@@ -2780,10 +2849,10 @@ def post_judgment_divergence_analyze() -> dict:
 
 
 @router.get("/api/judgment-divergence/proposals")
-def get_judgment_divergence_proposals(limit: int = 20) -> dict:
+def get_judgment_divergence_proposals(limit: int = 3) -> dict:
     from api.judgment_divergence_loop import load_proposals
 
-    return {"proposals": load_proposals(limit=limit)}
+    return {"proposals": _with_self_proposal_review_meta(load_proposals(limit=limit), evidence_layer="feedback_based")}
 
 
 @router.post("/api/feedback-pattern/analyze")
@@ -2795,10 +2864,10 @@ def post_feedback_pattern_analyze() -> dict:
 
 
 @router.get("/api/feedback-pattern/proposals")
-def get_feedback_pattern_proposals(limit: int = 20) -> dict:
+def get_feedback_pattern_proposals(limit: int = 3) -> dict:
     from api.feedback_pattern_loop import load_proposals
 
-    return {"proposals": load_proposals(limit=limit)}
+    return {"proposals": _with_self_proposal_review_meta(load_proposals(limit=limit), evidence_layer="feedback_based")}
 
 
 @router.post("/api/outcome-drift/analyze")
@@ -2810,10 +2879,10 @@ def post_outcome_drift_analyze() -> dict:
 
 
 @router.get("/api/outcome-drift/proposals")
-def get_outcome_drift_proposals(limit: int = 20) -> dict:
+def get_outcome_drift_proposals(limit: int = 3) -> dict:
     from api.outcome_drift_loop import load_proposals
 
-    return {"proposals": load_proposals(limit=limit)}
+    return {"proposals": _with_self_proposal_review_meta(load_proposals(limit=limit), evidence_layer="feedback_based")}
 
 
 @router.post("/api/knowledge-gap/analyze")
@@ -2825,7 +2894,7 @@ def post_knowledge_gap_analyze() -> dict:
 
 
 @router.get("/api/knowledge-gap/proposals")
-def get_knowledge_gap_proposals(limit: int = 20) -> dict:
+def get_knowledge_gap_proposals(limit: int = 3) -> dict:
     from api.knowledge_gap_loop import load_proposals
 
-    return {"proposals": load_proposals(limit=limit)}
+    return {"proposals": _with_self_proposal_review_meta(load_proposals(limit=limit), evidence_layer="feedback_based")}

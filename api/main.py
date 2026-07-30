@@ -2335,6 +2335,11 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
 
     needs_review_items = report.get("needs_review") or []
     raw_items = needs_review_items or report.get("auto_fix_candidates") or report.get("improvements") or []
+    shion_self = report.get("shion_self_proposals") if isinstance(report.get("shion_self_proposals"), dict) else {}
+    shion_self_items = [
+        item for item in (shion_self.get("items") or [])
+        if isinstance(item, dict)
+    ][:3]
     items: list[dict[str, str]] = []
     for raw in raw_items:
         if len(items) >= limit:
@@ -2389,6 +2394,8 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
         "source": str(report_path),
         "daily_clinic": daily_clinic,
         "items": items,
+        "shion_self_proposal_items": shion_self_items,
+        "shion_self_proposal_quality_policy": shion_self.get("quality_policy") or {},
         "shion_self_proposal_counts_by_layer": (
             (report.get("shion_self_proposals") or {}).get("counts_by_layer")
             if isinstance(report.get("shion_self_proposals"), dict)
@@ -2412,6 +2419,55 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
             ),
         },
     }
+
+
+def _load_agent_worklog_digest(limit: int = 4) -> dict[str, Any]:
+    path = Path(_REPO_ROOT) / "reports" / "agent_worklog_digest_latest.json"
+    if not path.exists():
+        return {"available": False, "items": [], "source": str(path)}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"available": False, "items": [], "source": str(path)}
+    items = [item for item in (payload.get("items") or []) if isinstance(item, dict)]
+    return {
+        "available": bool(items),
+        "source": str(path),
+        "generated_at": str(payload.get("generated_at") or ""),
+        "items": items[:limit],
+        "policy": payload.get("policy") if isinstance(payload.get("policy"), dict) else {},
+    }
+
+
+def _build_agent_worklog_digest_context(limit: int = 4) -> str:
+    digest = _load_agent_worklog_digest(limit=limit)
+    if not digest.get("available"):
+        return ""
+    lines = [
+        "【Codex/Claude 作業録ダイジェスト】",
+        "これは全文ログではなく、紫苑の内政モード向けに圧縮した作業要約です。",
+        "Userが何を意図し、どの判断を採用/保留し、どの制約を重視したかを、自己提案の補正情報として使ってください。",
+        "顧客情報の推測、Private Reflection原文引用、人間承認なしの判断資産昇格には使わないでください。",
+    ]
+    generated_at = str(digest.get("generated_at") or "").strip()
+    if generated_at:
+        lines.append(f"生成: {generated_at}")
+    for item in digest.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        title = f"{item.get('date') or ''} {item.get('time') or ''} {item.get('agent') or ''}".strip()
+        summary = " / ".join(str(x) for x in (item.get("summary") or []) if str(x).strip())[:180]
+        decisions = " / ".join(str(x) for x in (item.get("decisions") or []) if str(x).strip())[:220]
+        changes = " / ".join(str(x) for x in (item.get("changes") or []) if str(x).strip())[:180]
+        line = f"- {title}"
+        if summary:
+            line += f" / 要約: {summary}"
+        if decisions:
+            line += f" / 判断: {decisions}"
+        if changes:
+            line += f" / 変更: {changes}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
@@ -2443,6 +2499,9 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
         "紫苑の自己提案は通常の要確認ではなく、ログから出した仮説として扱う。",
         "紫苑の自己提案は根拠層を明示する: usage_based=画面利用ログ由来、feedback_based=人間反応・判断ログ由来、system_audit_based=コード/レポート/運用監査由来。",
         "利用回数だけの提案は断定せず、導線不足・価値不足・作業文脈不足を切り分ける。system_audit_based は影響範囲と確認方法を先に述べる。",
+        "自己提案は件数を増やしすぎない。Userへ出す時は上位3件までに絞り、採用/保留/却下と success_metric の事後変化で効いたかを見る。",
+        "自己提案の内政判断では、Userが与える意図・使用文脈・残す理由・削ってよい条件・触らない線・成功指標・再判定時期をログより強い補正情報として扱う。",
+        "内政判断のラベルは、価値不足 / 発見性不足 / 文脈不足 / 削除候補 / 再配置候補 / 観測継続 に分ける。",
     ]
     date = str(highlights.get("date") or highlights.get("generated_at") or "").strip()
     if date:
@@ -2480,9 +2539,26 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
         for key in ("usage_based", "feedback_based", "system_audit_based"):
             parts.append(f"{labels.get(key, key)} {int(by_layer.get(key) or 0)}件")
         lines.append(f"紫苑自己提案の根拠層: {' / '.join(parts)}")
+    shion_self_items = highlights.get("shion_self_proposal_items") or []
+    if shion_self_items:
+        lines.append("紫苑自己提案の上位候補（最大3件）:")
+        for item in shion_self_items[:3]:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "自己提案").strip()
+            layer = str(item.get("evidence_layer_label") or item.get("evidence_layer") or "").strip()
+            score = item.get("quality_score")
+            status = str(item.get("review_status_label") or item.get("proposal_maturity") or "").strip()
+            metric = str(item.get("success_metric") or "").strip()
+            metric_text = f" / 効果確認: {metric[:70]}" if metric else ""
+            score_text = f" / 品質={score}" if score not in (None, "") else ""
+            lines.append(f"- {title[:90]} / 根拠層={layer or '-'}{score_text} / 状態={status or '-'}{metric_text}")
     shadow_line = _build_codex_queue_shadow_line()
     if shadow_line:
         lines.append(shadow_line)
+    worklog_context = _build_agent_worklog_digest_context(limit=3)
+    if worklog_context:
+        lines.append(worklog_context)
     items = highlights.get("items") or []
     if items:
         lines.append("主な相談候補:")

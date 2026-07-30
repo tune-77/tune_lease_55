@@ -9,6 +9,12 @@ type GenericProposal = {
   priority?: "high" | "medium" | "low" | string;
   generated_at?: string;
   status?: string;
+  evidence_layer?: string;
+  evidence_layer_label?: string;
+  quality_score?: number;
+  proposal_maturity?: string;
+  review_status_label?: string;
+  effect_tracking?: string;
   [key: string]: unknown;
 };
 
@@ -38,6 +44,12 @@ const PRIORITY_STYLE: Record<string, string> = {
   high: "border-rose-200 bg-rose-50 text-rose-700",
   medium: "border-amber-200 bg-amber-50 text-amber-700",
   low: "border-slate-200 bg-slate-50 text-slate-600",
+};
+
+const MATURITY_STYLE: Record<string, string> = {
+  ready_for_review: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  watch: "border-sky-200 bg-sky-50 text-sky-700",
+  thin: "border-slate-200 bg-white text-slate-500",
 };
 
 export default function LoopEngineeringCard({
@@ -134,6 +146,25 @@ export default function LoopEngineeringCard({
                         {proposal.priority}
                       </span>
                     )}
+                    {(proposal.evidence_layer_label || proposal.evidence_layer) && (
+                      <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-black text-violet-700">
+                        {String(proposal.evidence_layer_label || proposal.evidence_layer)}
+                      </span>
+                    )}
+                    {(proposal.review_status_label || proposal.proposal_maturity) && (
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                          MATURITY_STYLE[String(proposal.proposal_maturity || "")] || MATURITY_STYLE.watch
+                        }`}
+                      >
+                        {String(proposal.review_status_label || proposal.proposal_maturity)}
+                      </span>
+                    )}
+                    {typeof proposal.quality_score === "number" && (
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black text-slate-600">
+                        quality {proposal.quality_score}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm font-bold text-slate-900">{proposal.title}</p>
                 </div>
@@ -148,6 +179,12 @@ export default function LoopEngineeringCard({
                   </p>
                 );
               })}
+              {proposal.effect_tracking && (
+                <p className="mt-2 border-t border-slate-200 pt-2 text-xs leading-relaxed text-slate-500">
+                  <span className="font-bold text-slate-700">効き方の追跡: </span>
+                  {String(proposal.effect_tracking)}
+                </p>
+              )}
             </div>
           ))
         )}

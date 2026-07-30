@@ -72,6 +72,9 @@ def aggregate_outcomes() -> dict[str, Any]:
 
 
 def _build_prompt(aggregate: dict[str, Any]) -> str:
+    from api.domestic_mode import build_domestic_memory_context
+
+    domestic_context = build_domestic_memory_context()
     bucket_lines = "\n".join(
         f"- {b['bucket']}: 件数={b['total']}, 延滞/デフォルト率={b['bad_rate'] * 100:.1f}%, "
         f"延滞金額合計={b['overdue_amount_sum']}千円"
@@ -86,6 +89,8 @@ def _build_prompt(aggregate: dict[str, Any]) -> str:
 【スコア帯ごとの実績】（承認圏=本来低リスクのはずの帯）
 {bucket_lines}
 
+{domestic_context}
+
 この集計を見て、「本来低リスクなはずの帯で延滞・デフォルト率が高い」
 「帯によって傾向が想定と逆になっている」等の乖離があれば、審査担当者が
 確認すべき観点を2〜4件、以下のJSON配列形式のみで返してください
@@ -97,10 +102,16 @@ def _build_prompt(aggregate: dict[str, Any]) -> str:
     "observation": "どの帯でどんな乖離が見えたか、数字を根拠に（100字程度）",
     "review_point": "審査担当者が確認すべき具体的な観点（統計的な精緻さは限定的である前提で、断定せず確認を促す表現にする）"
   }}
-]"""
+]
+
+2〜4件のうち最大1件だけ、少し突拍子のない「跳躍提案」を入れて構いません。
+跳躍提案でも、支払い実績・審査判断・判断資産のどれかに関係させ、確認方法とリスクを必ず書いてください。
+跳躍提案には "proposal_style": "leap" を付けてください。"""
 
 
 def generate_proposals() -> dict[str, Any]:
+    from api.domestic_mode import connect_self_proposal_to_domestic_mode
+
     aggregate = aggregate_outcomes()
     if not aggregate["available"]:
         return {"generated": False, "reason": aggregate.get("reason", "データ取得に失敗しました"), "proposals": []}
@@ -129,10 +140,16 @@ def generate_proposals() -> dict[str, Any]:
             "title": str(item.get("title") or "").strip(),
             "observation": str(item.get("observation") or "").strip(),
             "review_point": str(item.get("review_point") or "").strip(),
+            "proposal_style": str(item.get("proposal_style") or "").strip(),
             "generated_at": generated_at,
             "status": "needs_human_review",
         }
         append_jsonl(_PROPOSALS_PATH, entry)
+        entry["domestic_connection"] = connect_self_proposal_to_domestic_mode(
+            entry,
+            source="outcome_drift_loop",
+            kind="実績ドリフト",
+        )
         saved.append(entry)
 
     return {"generated": True, "aggregate": aggregate, "proposals": saved}

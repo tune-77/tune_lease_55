@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown, Brain, Check, ClipboardList, Clock, Copy, Database, Loader2, Mic, MicOff,
-  Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
+  HelpCircle, Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
@@ -1634,6 +1634,22 @@ export default function LeaseIntelligencePage() {
               <p className="mt-2 text-sm leading-relaxed text-slate-600">
                 記憶とObsidian知識を参照しながら、あなたと継続的に話し合います。
               </p>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <Link
+                  href="/help"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-black text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" />
+                  ヘルプ
+                </Link>
+                <Link
+                  href="/faq"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] font-black text-violet-700 transition hover:bg-violet-100"
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  FAQ
+                </Link>
+              </div>
               <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold">
                 <span className="rounded-full bg-violet-100 px-3 py-1 text-violet-800">
                   継続 {Math.floor((Date.now() - new Date('2026-06-12').getTime()) / 86400000) + 1}日

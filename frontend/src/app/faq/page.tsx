@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import {
   HelpCircle, ChevronDown, ChevronUp, BookOpen, Cpu, Zap,
   Building2, TrendingDown, Clock, RefreshCw, Wrench,
@@ -1171,6 +1172,23 @@ export default function FaqPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">ナレッジベース・FAQ</h1>
           <p className="text-sm text-slate-500">リース審査に関する基礎知識・用語解説・審査基準をまとめています。</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-black">目的別に探す場合はサポートハブへ</p>
+            <p className="mt-1 text-xs font-medium text-emerald-700">
+              FAQ、残価ガイド、営業説明、審査画面への戻り口をまとめています。
+            </p>
+          </div>
+          <Link
+            href="/help"
+            className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700"
+          >
+            サポートハブ
+          </Link>
         </div>
       </div>
 

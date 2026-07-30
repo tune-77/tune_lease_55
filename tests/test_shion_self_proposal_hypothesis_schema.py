@@ -5,9 +5,14 @@ import json
 
 def test_usage_loop_saves_verifiable_hypothesis_schema(tmp_path, monkeypatch):
     import api.usage_loop_engineering as usage
+    import api.domestic_mode as domestic
 
     proposals_path = tmp_path / "usage_loop_proposals.jsonl"
+    captured_prompt = {}
     monkeypatch.setattr(usage, "_PROPOSALS_PATH", proposals_path)
+    monkeypatch.setattr(domestic, "_PROPOSALS_PATH", tmp_path / "domestic_mode_proposals.jsonl")
+    monkeypatch.setattr(domestic, "_IMPROVEMENT_LOG_PATH", tmp_path / "cloudrun_improvement_log.jsonl")
+    monkeypatch.setattr(domestic, "build_domestic_memory_context", lambda: "【内政モード判断メモリ】\n- FAQ: status=rejected")
     monkeypatch.setattr(
         usage,
         "aggregate_usage",
@@ -18,10 +23,10 @@ def test_usage_loop_saves_verifiable_hypothesis_schema(tmp_path, monkeypatch):
             "least_used": [{"path": "/help", "visit_count": 1, "last_visited": "2026-07-26T03:01:00"}],
         },
     )
-    monkeypatch.setattr(
-        usage,
-        "_call_gemini",
-        lambda _prompt: json.dumps(
+
+    def fake_usage_gemini(prompt: str) -> str:
+        captured_prompt["prompt"] = prompt
+        return json.dumps(
             [
                 {
                     "title": "審査導線を短縮",
@@ -36,7 +41,12 @@ def test_usage_loop_saves_verifiable_hypothesis_schema(tmp_path, monkeypatch):
                 }
             ],
             ensure_ascii=False,
-        ),
+        )
+
+    monkeypatch.setattr(
+        usage,
+        "_call_gemini",
+        fake_usage_gemini,
     )
 
     result = usage.generate_proposals()
@@ -47,13 +57,19 @@ def test_usage_loop_saves_verifiable_hypothesis_schema(tmp_path, monkeypatch):
     assert saved["human_decision_status"] == "needs_human_review"
     assert saved["hypothesis"].startswith("トップから審査へ")
     assert saved["success_metric"] == "/ から /screening への遷移率"
+    assert "内政モード判断メモリ" in captured_prompt["prompt"]
+    assert '"proposal_style": "leap"' in captured_prompt["prompt"]
+    assert result["proposals"][0]["domestic_connection"]["saved"] is True
 
 
 def test_feedback_pattern_saves_verifiable_hypothesis_schema(tmp_path, monkeypatch):
     import api.feedback_pattern_loop as feedback
+    import api.domestic_mode as domestic
 
     proposals_path = tmp_path / "feedback_pattern_proposals.jsonl"
     monkeypatch.setattr(feedback, "_PROPOSALS_PATH", proposals_path)
+    monkeypatch.setattr(domestic, "_PROPOSALS_PATH", tmp_path / "domestic_mode_proposals.jsonl")
+    monkeypatch.setattr(domestic, "_IMPROVEMENT_LOG_PATH", tmp_path / "cloudrun_improvement_log.jsonl")
     monkeypatch.setattr(
         feedback,
         "aggregate_feedback",
@@ -92,6 +108,7 @@ def test_feedback_pattern_saves_verifiable_hypothesis_schema(tmp_path, monkeypat
     assert saved["proposal_schema"] == "shion_self_hypothesis_v1"
     assert saved["hypothesis"] == "根拠を先に出すとthin評価が減る"
     assert saved["verification_plan"].startswith("変更前後7日")
+    assert result["proposals"][0]["domestic_connection"]["saved"] is True
 
 
 def test_report_attachment_preserves_hypothesis_fields(tmp_path, monkeypatch):
@@ -131,6 +148,103 @@ def test_report_attachment_preserves_hypothesis_fields(tmp_path, monkeypatch):
     assert section["items"][0]["proposal_schema"] == "shion_self_hypothesis_v1"
     assert section["items"][0]["hypothesis"].startswith("トップから審査へ")
     assert section["items"][0]["success_metric"] == "/screening 遷移率"
+    assert section["items"][0]["quality_score"] >= 70
+    assert section["items"][0]["review_status_label"] == "レビュー候補"
+    assert section["items"][0]["effect_tracking"].startswith("採用/保留/却下")
+
+
+def test_report_attachment_limits_review_items_to_top_three(tmp_path, monkeypatch):
+    import scripts.attach_shion_self_proposals_to_report as attach
+
+    source_path = tmp_path / "usage.jsonl"
+    rows = []
+    for idx in range(5):
+        rows.append(
+            {
+                "title": f"提案{idx}",
+                "target_page": f"/p{idx}",
+                "hypothesis": f"仮説{idx}",
+                "evidence": f"/p{idx} が {idx + 1}回利用",
+                "proposed_change": f"変更{idx}",
+                "success_metric": f"利用回数 {idx}",
+                "verification_plan": "変更前後7日で比較",
+                "risk": "画面が少し複雑になる",
+                "priority": "high" if idx == 4 else "medium",
+                "generated_at": f"2026-07-31T03:0{idx}:00",
+                "proposal_schema": "shion_self_hypothesis_v1",
+            }
+        )
+    source_path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        attach,
+        "SOURCES",
+        [{"path": source_path, "source": "usage_loop", "kind": "画面利用", "summary_keys": ("hypothesis", "evidence")}],
+    )
+
+    section = attach.collect_shion_self_proposals(limit=10)
+
+    assert section["count"] == 5
+    assert section["review_limit"] == 3
+    assert section["displayed_count"] == 3
+    assert len(section["items"]) == 3
+    assert section["quality_policy"]["top_limit"] == 3
+    assert section["quality_policy"]["domestic_mode_doc"] == "docs/shion_domestic_mode_inputs.md"
+    assert "usage_context" in section["quality_policy"]["domestic_mode_input_fields"]
+    assert "do_not_touch" in section["quality_policy"]["domestic_mode_input_fields"]
+    assert section["items"][0]["title"] == "提案4"
+
+
+def test_report_attachment_keeps_one_leap_slot(tmp_path, monkeypatch):
+    import scripts.attach_shion_self_proposals_to_report as attach
+
+    source_path = tmp_path / "usage.jsonl"
+    rows = []
+    for idx in range(4):
+        rows.append(
+            {
+                "title": f"堅実提案{idx}",
+                "target_page": f"/solid{idx}",
+                "hypothesis": f"仮説{idx}",
+                "evidence": f"/solid{idx} が {idx + 10}回利用",
+                "proposed_change": f"変更{idx}",
+                "success_metric": f"利用率 {idx}",
+                "verification_plan": "変更前後7日で比較",
+                "risk": "画面が少し複雑になる",
+                "priority": "high",
+                "generated_at": f"2026-07-31T04:0{idx}:00",
+                "proposal_schema": "shion_self_hypothesis_v1",
+            }
+        )
+    rows.append(
+        {
+            "title": "違和感の名前を付ける",
+            "target_page": "/screening",
+            "hypothesis": "案件ごとの違和感を短い名前にすると、判断資産として再利用しやすい",
+            "evidence": "審査レビューの抽象表現が多い",
+            "proposed_change": "稟議メモに違和感ラベルを1つ出す",
+            "success_metric": "判断資産への再利用率",
+            "verification_plan": "30日後に利用ログを確認",
+            "risk": "表現が遊びすぎる",
+            "priority": "low",
+            "proposal_style": "leap",
+            "generated_at": "2026-07-31T04:59:00",
+            "proposal_schema": "shion_self_hypothesis_v1",
+        }
+    )
+    source_path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        attach,
+        "SOURCES",
+        [{"path": source_path, "source": "usage_loop", "kind": "画面利用", "summary_keys": ("hypothesis", "evidence")}],
+    )
+
+    section = attach.collect_shion_self_proposals(limit=10)
+
+    assert section["review_limit"] == 3
+    assert section["quality_policy"]["leap_limit"] == 1
+    assert len(section["items"]) == 3
+    assert sum(1 for item in section["items"] if item["is_leap_proposal"]) == 1
+    assert any(item["title"] == "違和感の名前を付ける" for item in section["items"])
 
 
 def test_report_attachment_classifies_system_audit_layer(tmp_path, monkeypatch):
@@ -181,6 +295,55 @@ def test_report_attachment_classifies_system_audit_layer(tmp_path, monkeypatch):
     assert section["items"][0]["evidence_layer"] == "system_audit_based"
     assert section["items"][0]["kind"] == "システム監査"
     assert section["items"][0]["proposed_change"] == "DB品質監査をレポート化する"
+
+
+def test_report_attachment_includes_domestic_mode_layer(tmp_path, monkeypatch):
+    import scripts.attach_shion_self_proposals_to_report as attach
+
+    source_path = tmp_path / "domestic_mode_proposals.jsonl"
+    source_path.write_text(
+        json.dumps(
+            {
+                "title": "内政再判定: FAQを観測継続で扱う",
+                "target": "FAQ",
+                "hypothesis": "問い合わせ減少に効く可能性はあるが導線根拠が足りない",
+                "evidence": "内政メモ + 画面内一次判定 + Gemini再判定",
+                "proposed_change": "30日だけ導線ログを見ます",
+                "success_metric": "問い合わせ件数",
+                "verification_plan": "30日後に採用/保留/却下後の効果を確認する。",
+                "risk": "不足入力: 残す理由",
+                "priority": "medium",
+                "generated_at": "2026-07-31T08:00:00",
+                "proposal_schema": "shion_self_hypothesis_v1",
+                "human_decision_status": "needs_human_review",
+                "decision_layer": "観測継続",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        attach,
+        "SOURCES",
+        [
+            {
+                "path": source_path,
+                "source": "domestic_mode",
+                "kind": "内政モード",
+                "evidence_layer": "domestic_mode_based",
+                "summary_keys": ("hypothesis", "decision_layer", "proposed_change", "success_metric"),
+            }
+        ],
+    )
+
+    section = attach.collect_shion_self_proposals(limit=5)
+
+    assert section["count"] == 1
+    assert section["counts_by_layer"]["domestic_mode_based"] == 1
+    assert section["layer_labels"]["domestic_mode_based"] == "内政モード由来"
+    assert section["items"][0]["kind"] == "内政モード"
+    assert section["items"][0]["evidence_layer"] == "domestic_mode_based"
 
 
 def test_report_attachment_suppresses_resolved_self_proposals(tmp_path, monkeypatch):

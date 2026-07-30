@@ -121,6 +121,9 @@ def _call_gemini(prompt: str) -> str:
 
 
 def _build_prompt(usage: dict[str, Any]) -> str:
+    from api.domestic_mode import build_domestic_memory_context
+
+    domestic_context = build_domestic_memory_context()
     most_used_lines = "\n".join(
         f"- {p['path']}: {p['visit_count']}回, 最終訪問 {p['last_visited']}"
         for p in usage["most_used"]
@@ -140,6 +143,8 @@ UI/UXや機能の改善案を考えるのがあなたの役目の一つです。
 
 あまり使われていない画面:
 {least_used_lines}
+
+{domestic_context}
 
 この利用状況を踏まえて、実務上価値のある改善案を3〜5件、以下のJSON配列形式のみで返してください
 （前後の説明テキストは不要）:
@@ -161,7 +166,10 @@ UI/UXや機能の改善案を考えるのがあなたの役目の一つです。
 よく使われる画面はさらに使いやすくする改善案を、あまり使われない画面は理由を推測して
 統合・削除・導線改善などを提案してください。一般論ではなく、与えられた利用状況の数字を
 根拠にした具体的な提案にしてください。
-提案は「自動実装する指示」ではなく、人間が採用・保留・却下を判断する検証可能な仮説として書いてください。"""
+提案は「自動実装する指示」ではなく、人間が採用・保留・却下を判断する検証可能な仮説として書いてください。
+3〜5件のうち最大1件だけ、少し突拍子のない「跳躍提案」を入れて構いません。
+跳躍提案でも、リース審査・判断資産・画面導線のどれかに関係させ、success_metric と risk を必ず書いてください。
+跳躍提案には "proposal_style": "leap" を付けてください。"""
 
 
 def _proposal_text(item: dict[str, Any], key: str, fallback: str = "") -> str:
@@ -170,6 +178,8 @@ def _proposal_text(item: dict[str, Any], key: str, fallback: str = "") -> str:
 
 def generate_proposals(days: int = _LOOKBACK_DAYS) -> dict[str, Any]:
     """利用状況を集計し、Geminiで改善案を生成して保存する。"""
+    from api.domestic_mode import connect_self_proposal_to_domestic_mode
+
     usage = aggregate_usage(days)
     if usage["total_events"] == 0:
         return {"generated": False, "reason": "利用データがまだありません", "proposals": []}
@@ -201,12 +211,18 @@ def generate_proposals(days: int = _LOOKBACK_DAYS) -> dict[str, Any]:
                 "risk": _proposal_text(item, "risk"),
                 "reason": str(item.get("reason") or item.get("evidence") or "").strip(),
                 "priority": str(item.get("priority") or "medium").strip(),
+                "proposal_style": str(item.get("proposal_style") or "").strip(),
                 "generated_at": generated_at,
                 "status": "proposed",
                 "proposal_schema": "shion_self_hypothesis_v1",
                 "human_decision_status": "needs_human_review",
             }
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            entry["domestic_connection"] = connect_self_proposal_to_domestic_mode(
+                entry,
+                source="usage_loop",
+                kind="画面利用",
+            )
             saved.append(entry)
 
     return {"generated": True, "usage_summary": usage, "proposals": saved}

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/lib/api";
 import {
@@ -381,6 +382,168 @@ const RELATED_FEATURE_ACTIONS: RelatedFeatureAction[] = [
   },
 ];
 
+const DOMESTIC_MEMO_TEMPLATE = `内政メモ:
+対象:
+意図:
+使う場面:
+残す理由:
+削ってよい条件:
+触らない線:
+成功指標:
+再判定時期:`;
+
+const DOMESTIC_INPUTS = [
+  "利用ログ",
+  "人間反応",
+  "Codex/Claude作業録",
+  "内政メモ",
+];
+
+const DOMESTIC_DECISIONS = [
+  "価値不足",
+  "発見性不足",
+  "文脈不足",
+  "削除候補",
+  "再配置候補",
+  "観測継続",
+];
+
+const DOMESTIC_INTENT_PRESETS = [
+  {
+    id: "routing",
+    label: "導線改善",
+    intent: "必要な場面で迷わず辿り着けるようにする",
+    successMetric: "対象画面への遷移率",
+  },
+  {
+    id: "delete",
+    label: "削除検討",
+    intent: "使われていない情報を整理し、判断導線を軽くする",
+    successMetric: "迷い・問い合わせ・低利用の減少",
+  },
+  {
+    id: "observe",
+    label: "観測継続",
+    intent: "今は決め切らず、効果を測ってから判断する",
+    successMetric: "30日間の利用回数と反応",
+  },
+  {
+    id: "memory",
+    label: "記憶運用",
+    intent: "紫苑が過去の判断や作業録を次の回答に使いやすくする",
+    successMetric: "記憶参照の具体性と再利用率",
+  },
+];
+
+type DomesticVerdict = {
+  status: "adopt" | "hold" | "reject" | "observe";
+  label: string;
+  className: string;
+  reason: string;
+  nextAction: string;
+};
+
+type ShionDomesticVerdict = {
+  generated: boolean;
+  status: "adopt" | "hold" | "reject" | "observe" | string;
+  label: string;
+  reason: string;
+  next_action: string;
+  decision_layer?: string;
+  missing_inputs?: string[];
+  success_metric?: string;
+  review_timing?: string;
+  model?: string;
+  persistence?: {
+    saved?: boolean;
+    reason?: string;
+    event_id?: string;
+    title?: string;
+    canonical_key?: string;
+  };
+};
+
+const DOMESTIC_STATUS_CLASS: Record<string, string> = {
+  adopt: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  hold: "border-amber-200 bg-amber-50 text-amber-800",
+  reject: "border-rose-200 bg-rose-50 text-rose-700",
+  observe: "border-blue-200 bg-blue-50 text-blue-700",
+};
+
+function extractDomesticMemoValue(memo: string, field: string): string {
+  const match = memo.match(new RegExp(`${field}:\\s*([^\\n]*)`));
+  return match?.[1]?.trim() || "";
+}
+
+function evaluateDomesticMemo(memo: string): DomesticVerdict {
+  const normalized = memo.toLowerCase();
+  const intent = extractDomesticMemoValue(memo, "意図");
+  const useCase = extractDomesticMemoValue(memo, "使う場面");
+  const keepReason = extractDomesticMemoValue(memo, "残す理由");
+  const deleteCondition = extractDomesticMemoValue(memo, "削ってよい条件");
+  const guardrail = extractDomesticMemoValue(memo, "触らない線");
+  const successMetric = extractDomesticMemoValue(memo, "成功指標");
+  const reviewTiming = extractDomesticMemoValue(memo, "再判定時期");
+
+  if (!memo.trim()) {
+    return {
+      status: "hold",
+      label: "未入力",
+      className: "border-slate-200 bg-slate-50 text-slate-600",
+      reason: "内政メモを貼ると、紫苑の初期判定をここに出します。",
+      nextAction: "対象、意図、成功指標を最低限入れてください。",
+    };
+  }
+
+  if (guardrail || normalized.includes("触らない") || normalized.includes("禁止")) {
+    return {
+      status: "hold",
+      label: "保留",
+      className: "border-amber-200 bg-amber-50 text-amber-800",
+      reason: "触らない線が指定されています。先に影響範囲を切り分ける判断です。",
+      nextAction: "対象を狭め、触ってよい範囲だけを自己提案に回します。",
+    };
+  }
+
+  if (deleteCondition && !keepReason && !useCase) {
+    return {
+      status: "reject",
+      label: "却下候補",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+      reason: "削ってよい条件はありますが、残す理由や使用場面が弱いです。",
+      nextAction: "削除候補として扱い、代替導線が必要かだけ確認します。",
+    };
+  }
+
+  if (intent && keepReason && successMetric) {
+    return {
+      status: "adopt",
+      label: "採用候補",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      reason: "意図、残す理由、成功指標が揃っています。実装または再配置に進める状態です。",
+      nextAction: reviewTiming ? `${reviewTiming} に効果を見直します。` : "30日後に効果を見直します。",
+    };
+  }
+
+  if (successMetric || reviewTiming || normalized.includes("観測")) {
+    return {
+      status: "observe",
+      label: "観測継続",
+      className: "border-blue-200 bg-blue-50 text-blue-700",
+      reason: "効果を見る条件はありますが、採用判断には根拠が少し足りません。",
+      nextAction: "利用率、問い合わせ、反応ログを次の自己提案に渡します。",
+    };
+  }
+
+  return {
+    status: "hold",
+    label: "保留",
+    className: "border-amber-200 bg-amber-50 text-amber-800",
+    reason: "対象や意図は見えますが、残す理由か成功指標が不足しています。",
+    nextAction: "残す理由、削ってよい条件、成功指標を足して再判定します。",
+  };
+}
+
 function relatedFeatureActionsFor(item: ImprovementItem): RelatedFeatureAction[] {
   const haystack = [
     item.title,
@@ -425,6 +588,21 @@ export default function ImprovementLogPage() {
   const [trustSummary, setTrustSummary] = useState<OperationalTrustSummary | null>(null);
   const [triageRecords, setTriageRecords] = useState<ImprovementTriageRecord[]>([]);
   const [copiedFixKey, setCopiedFixKey] = useState("");
+  const [copiedDomesticMemo, setCopiedDomesticMemo] = useState(false);
+  const [domesticMemo, setDomesticMemo] = useState("");
+  const [domesticTarget, setDomesticTarget] = useState("");
+  const [domesticIntent, setDomesticIntent] = useState("");
+  const [domesticSuccessMetric, setDomesticSuccessMetric] = useState("");
+  const [domesticUseCase, setDomesticUseCase] = useState("");
+  const [domesticKeepReason, setDomesticKeepReason] = useState("");
+  const [domesticDeleteCondition, setDomesticDeleteCondition] = useState("");
+  const [domesticGuardrail, setDomesticGuardrail] = useState("");
+  const [domesticReviewTiming, setDomesticReviewTiming] = useState("");
+  const [shionDomesticVerdict, setShionDomesticVerdict] = useState<ShionDomesticVerdict | null>(null);
+  const [shionDomesticLoading, setShionDomesticLoading] = useState(false);
+  const [shionDomesticError, setShionDomesticError] = useState("");
+  const [domesticReviewLoading, setDomesticReviewLoading] = useState("");
+  const [domesticReviewMessage, setDomesticReviewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("NEEDS_REVIEW");
@@ -446,6 +624,57 @@ export default function ImprovementLogPage() {
   const [judgmentAssetPromotionError, setJudgmentAssetPromotionError] = useState("");
   const [judgmentAssetPromotionMessage, setJudgmentAssetPromotionMessage] = useState("");
   const [judgmentAssetActionLoading, setJudgmentAssetActionLoading] = useState<Record<string, boolean>>({});
+  const domesticRequiredReady = Boolean(domesticTarget.trim() && domesticIntent.trim() && domesticSuccessMetric.trim());
+  const generatedDomesticMemo = useMemo(() => {
+    return [
+      "内政メモ:",
+      `対象: ${domesticTarget}`,
+      `意図: ${domesticIntent}`,
+      `使う場面: ${domesticUseCase}`,
+      `残す理由: ${domesticKeepReason}`,
+      `削ってよい条件: ${domesticDeleteCondition}`,
+      `触らない線: ${domesticGuardrail}`,
+      `成功指標: ${domesticSuccessMetric}`,
+      `再判定時期: ${domesticReviewTiming}`,
+    ].join("\n");
+  }, [
+    domesticDeleteCondition,
+    domesticGuardrail,
+    domesticIntent,
+    domesticKeepReason,
+    domesticReviewTiming,
+    domesticSuccessMetric,
+    domesticTarget,
+    domesticUseCase,
+  ]);
+  const domesticVerdict = useMemo(() => evaluateDomesticMemo(domesticMemo), [domesticMemo]);
+
+  const handleShionDomesticEvaluate = useCallback(async () => {
+    setShionDomesticLoading(true);
+    setShionDomesticError("");
+    setDomesticReviewMessage("");
+    try {
+      const res = await apiClient.post<ShionDomesticVerdict>("/api/domestic-mode/evaluate", {
+        memo: domesticMemo,
+        heuristic: {
+          status: domesticVerdict.status,
+          label: domesticVerdict.label,
+          reason: domesticVerdict.reason,
+          next_action: domesticVerdict.nextAction,
+        },
+      });
+      setShionDomesticVerdict(res.data);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "紫苑の再判定に失敗しました";
+      setShionDomesticError(message);
+    } finally {
+      setShionDomesticLoading(false);
+    }
+  }, [domesticMemo, domesticVerdict]);
+
+  useEffect(() => {
+    setDomesticMemo(generatedDomesticMemo);
+  }, [generatedDomesticMemo]);
 
   const fetchJudgmentAssetPromotion = useCallback(async () => {
     setJudgmentAssetPromotionLoading(true);
@@ -604,6 +833,36 @@ export default function ImprovementLogPage() {
       setLoading(false);
     }
   }, []);
+
+  const handleDomesticProposalReview = useCallback(async (action: "approved" | "rejected" | "deferred") => {
+    const persistence = shionDomesticVerdict?.persistence;
+    const key = persistence?.canonical_key || persistence?.event_id || "";
+    if (!key || !persistence?.saved) return;
+    setDomesticReviewLoading(action);
+    setDomesticReviewMessage("");
+    try {
+      await apiClient.post("/api/improvement-log/review", {
+        key,
+        title: persistence.title || `内政再判定: ${shionDomesticVerdict?.label || "紫苑提案"}`,
+        action,
+        reason: [
+          `内政モードUI経由で${action}`,
+          shionDomesticVerdict?.decision_layer ? `decision_layer: ${shionDomesticVerdict.decision_layer}` : "",
+          shionDomesticVerdict?.reason ? `reason: ${shionDomesticVerdict.reason}` : "",
+          shionDomesticVerdict?.success_metric ? `success_metric: ${shionDomesticVerdict.success_metric}` : "",
+          shionDomesticVerdict?.review_timing ? `review_timing: ${shionDomesticVerdict.review_timing}` : "",
+        ].filter(Boolean).join("\n"),
+      });
+      const label = action === "approved" ? "採用" : action === "rejected" ? "却下" : "保留";
+      setDomesticReviewMessage(`${label}として記録しました。`);
+      await fetchLog();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "内政モード提案の判断記録に失敗しました";
+      setDomesticReviewMessage(message);
+    } finally {
+      setDomesticReviewLoading("");
+    }
+  }, [fetchLog, shionDomesticVerdict]);
 
   useEffect(() => {
     setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
@@ -1000,6 +1259,315 @@ export default function ImprovementLogPage() {
               </div>
             )}
           </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-xs font-black text-white">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  紫苑 内政モード
+                </span>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+                  自己提案を上位3件に圧縮
+                </span>
+                <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                  根拠・影響・観測で判定
+                </span>
+              </div>
+              <h2 className="mt-3 text-lg font-black text-slate-900">
+                画面・導線・記憶運用を、削る/移す/残す/測るで見直す場所
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm font-bold leading-6 text-slate-600">
+                紫苑が利用ログ、反応、作業録、人間の内政メモを合わせて、改善候補を実務判断できる形に整えます。
+                低利用だけで削除せず、価値不足か、発見性不足か、文脈不足かを分けて扱います。
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(domesticMemo).then(() => {
+                    setCopiedDomesticMemo(true);
+                    window.setTimeout(() => setCopiedDomesticMemo(false), 1600);
+                  }).catch(() => {});
+                }}
+                className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-700"
+              >
+                <ClipboardList className="h-4 w-4" />
+                {copiedDomesticMemo ? "コピー済み" : "内政メモコピー"}
+              </button>
+              <Link
+                href="/lease-intelligence"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+              >
+                <MessageCircleHeart className="h-4 w-4" />
+                紫苑に渡す
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1.1fr_1fr_1fr]">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-black uppercase text-slate-500">Input</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {DOMESTIC_INPUTS.map((input) => (
+                  <span key={input} className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700">
+                    {input}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-black uppercase text-slate-500">Decision</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {DOMESTIC_DECISIONS.map((decision) => (
+                  <span key={decision} className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700">
+                    {decision}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-black uppercase text-slate-500">Output</p>
+              <div className="mt-2 space-y-1 text-xs font-bold leading-5 text-slate-700">
+                <p>上位3件だけを表示</p>
+                <p>根拠層・品質点・レビュー状態を付与</p>
+                <p>採用/保留/却下後の効果を追跡</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="text-xs font-black text-slate-700">
+                  対象
+                  <input
+                    value={domesticTarget}
+                    onChange={(event) => setDomesticTarget(event.target.value)}
+                    placeholder="例: FAQ / サポート導線"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                  />
+                </label>
+                <label className="text-xs font-black text-slate-700">
+                  意図
+                  <input
+                    value={domesticIntent}
+                    onChange={(event) => setDomesticIntent(event.target.value)}
+                    placeholder="何のために変えるか"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                  />
+                </label>
+                <label className="text-xs font-black text-slate-700">
+                  成功指標
+                  <input
+                    value={domesticSuccessMetric}
+                    onChange={(event) => setDomesticSuccessMetric(event.target.value)}
+                    placeholder="例: 問い合わせ件数"
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                  />
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {DOMESTIC_INTENT_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      setDomesticIntent(preset.intent);
+                      setDomesticSuccessMetric(preset.successMetric);
+                    }}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-white"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              <details className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <summary className="cursor-pointer text-xs font-black text-slate-700">詳細を足す</summary>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <label className="text-xs font-black text-slate-700">
+                    使う場面
+                    <input
+                      value={domesticUseCase}
+                      onChange={(event) => setDomesticUseCase(event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none"
+                    />
+                  </label>
+                  <label className="text-xs font-black text-slate-700">
+                    残す理由
+                    <input
+                      value={domesticKeepReason}
+                      onChange={(event) => setDomesticKeepReason(event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none"
+                    />
+                  </label>
+                  <label className="text-xs font-black text-slate-700">
+                    削ってよい条件
+                    <input
+                      value={domesticDeleteCondition}
+                      onChange={(event) => setDomesticDeleteCondition(event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none"
+                    />
+                  </label>
+                  <label className="text-xs font-black text-slate-700">
+                    触らない線
+                    <input
+                      value={domesticGuardrail}
+                      onChange={(event) => setDomesticGuardrail(event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none"
+                    />
+                  </label>
+                  <label className="text-xs font-black text-slate-700 md:col-span-2">
+                    再判定時期
+                    <input
+                      value={domesticReviewTiming}
+                      onChange={(event) => setDomesticReviewTiming(event.target.value)}
+                      placeholder="例: 30日後"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none"
+                    />
+                  </label>
+                </div>
+              </details>
+
+              <details className="rounded-lg border border-slate-200 bg-slate-950 p-3">
+                <summary className="cursor-pointer text-xs font-black text-slate-100">生成された内政メモ</summary>
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs font-semibold leading-5 text-slate-100">
+                  {domesticMemo}
+                </pre>
+              </details>
+            </div>
+            <div className={`rounded-lg border p-4 ${domesticVerdict.className}`}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-black text-current">紫苑の初期判定</p>
+                <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-black text-current">
+                  {domesticVerdict.label}
+                </span>
+              </div>
+              <p className="mt-3 text-sm font-black leading-6 text-current">{domesticVerdict.reason}</p>
+              <div className="mt-3 rounded-lg bg-white/70 p-3">
+                <p className="text-[11px] font-black text-slate-500">次の扱い</p>
+                <p className="mt-1 text-xs font-bold leading-5 text-slate-700">{domesticVerdict.nextAction}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDomesticTarget("FAQ / ヘルプ導線");
+                  setDomesticIntent("必要な場面で迷わず辿り着けるようにする");
+                  setDomesticSuccessMetric("問い合わせ件数と対象画面への遷移率");
+                  setDomesticReviewTiming("30日後");
+                }}
+                className="mt-3 inline-flex items-center gap-1 rounded-lg border border-white/80 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+              >
+                <ClipboardList className="h-4 w-4" />
+                例を入れる
+              </button>
+              <button
+                type="button"
+                onClick={handleShionDomesticEvaluate}
+                disabled={shionDomesticLoading || !domesticRequiredReady}
+                className="mt-3 ml-2 inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Sparkles className={`h-4 w-4 ${shionDomesticLoading ? "animate-pulse" : ""}`} />
+                {shionDomesticLoading ? "再判定中" : "紫苑で再判定"}
+              </button>
+            </div>
+          </div>
+
+          {(shionDomesticError || shionDomesticVerdict) && (
+            <div className="mt-3">
+              {shionDomesticError && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">
+                  {shionDomesticError}
+                </div>
+              )}
+              {shionDomesticVerdict && (
+                <div className={`rounded-lg border p-4 ${DOMESTIC_STATUS_CLASS[shionDomesticVerdict.status] || "border-slate-200 bg-slate-50 text-slate-700"}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-black text-current">
+                      紫苑再判定: {shionDomesticVerdict.label}
+                    </span>
+                    {shionDomesticVerdict.decision_layer && (
+                      <span className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-black text-current">
+                        {shionDomesticVerdict.decision_layer}
+                      </span>
+                    )}
+                    <span className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-black text-current">
+                      {shionDomesticVerdict.model || "gemini"}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm font-black leading-6 text-current">{shionDomesticVerdict.reason}</p>
+                  <p className="mt-2 text-xs font-bold leading-5 text-current">{shionDomesticVerdict.next_action}</p>
+                  {shionDomesticVerdict.persistence && (
+                    <div className="mt-3 rounded-lg bg-white/70 p-3 text-xs font-bold text-slate-700">
+                      <p className="text-[11px] font-black text-slate-500">Self Proposal Log</p>
+                      <p className="mt-1 leading-5">
+                        {shionDomesticVerdict.persistence.saved
+                          ? `保存済み: ${shionDomesticVerdict.persistence.canonical_key || shionDomesticVerdict.persistence.event_id || "domestic_mode"}`
+                          : shionDomesticVerdict.persistence.reason || "未保存"}
+                      </p>
+                      {shionDomesticVerdict.persistence.saved && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleDomesticProposalReview("approved")}
+                            disabled={!!domesticReviewLoading}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            {domesticReviewLoading === "approved" ? "記録中" : "採用"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDomesticProposalReview("deferred")}
+                            disabled={!!domesticReviewLoading}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Clock className="h-4 w-4" />
+                            {domesticReviewLoading === "deferred" ? "記録中" : "保留"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDomesticProposalReview("rejected")}
+                            disabled={!!domesticReviewLoading}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <XCircle className="h-4 w-4" />
+                            {domesticReviewLoading === "rejected" ? "記録中" : "却下"}
+                          </button>
+                        </div>
+                      )}
+                      {domesticReviewMessage && (
+                        <p className="mt-2 text-xs font-black text-slate-700">{domesticReviewMessage}</p>
+                      )}
+                    </div>
+                  )}
+                  {(shionDomesticVerdict.success_metric || shionDomesticVerdict.review_timing || (shionDomesticVerdict.missing_inputs?.length ?? 0) > 0) && (
+                    <div className="mt-3 grid gap-2 text-xs font-bold text-slate-700 lg:grid-cols-3">
+                      <div className="rounded-lg bg-white/70 p-3">
+                        <p className="text-[11px] font-black text-slate-500">Success Metric</p>
+                        <p className="mt-1 leading-5">{shionDomesticVerdict.success_metric || "未指定"}</p>
+                      </div>
+                      <div className="rounded-lg bg-white/70 p-3">
+                        <p className="text-[11px] font-black text-slate-500">Review Timing</p>
+                        <p className="mt-1 leading-5">{shionDomesticVerdict.review_timing || "未指定"}</p>
+                      </div>
+                      <div className="rounded-lg bg-white/70 p-3">
+                        <p className="text-[11px] font-black text-slate-500">Missing Inputs</p>
+                        <p className="mt-1 leading-5">
+                          {shionDomesticVerdict.missing_inputs?.length ? shionDomesticVerdict.missing_inputs.join(" / ") : "なし"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         <div className="space-y-3">

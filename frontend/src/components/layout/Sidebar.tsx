@@ -109,7 +109,8 @@ export default function Sidebar() {
         { name: '残価設定ガイドライン', href: '/residual-guide', icon: Calculator, color: 'text-purple-400' },
         { name: '営業向け説明ガイド', href: '/sales-guide', icon: Megaphone, color: 'text-blue-500' },
         { name: 'リース/融資/現金 比較', href: '/simulator', icon: Calculator, color: 'text-blue-400' },
-        { name: 'FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
+        { name: 'サポートハブ', href: '/help', icon: HelpCircle, color: 'text-emerald-400' },
+        { name: 'リース知識FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
       ]
     },
     {

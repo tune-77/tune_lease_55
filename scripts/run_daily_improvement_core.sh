@@ -232,6 +232,17 @@ if [ -f "${RESULT_FILE}" ]; then
     fi
 
     echo ""
+    echo "[反映] Codex/Claude 作業録ダイジェストを生成中..."
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/build_agent_worklog_digest.py" \
+        --days 14 \
+        --limit 12
+    AGENT_WORKLOG_DIGEST_EXIT=$?
+    log_step "build_agent_worklog_digest" ${AGENT_WORKLOG_DIGEST_EXIT}
+    if [ ${AGENT_WORKLOG_DIGEST_EXIT} -ne 0 ]; then
+        echo "警告: Codex/Claude 作業録ダイジェスト生成に失敗しました（終了コード ${AGENT_WORKLOG_DIGEST_EXIT}）"
+    fi
+
+    echo ""
     echo "[反映] 紫苑の自己提案を改善レポートへ別枠追記中..."
     "${PYTHON}" "${PROJECT_ROOT}/scripts/attach_shion_self_proposals_to_report.py" \
         --report "${RESULT_FILE}" \

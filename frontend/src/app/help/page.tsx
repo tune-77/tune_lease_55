@@ -166,15 +166,54 @@ const FEATURES: FeatureGroup[] = [
   },
 ];
 
+const SUPPORT_SHORTCUTS = [
+  {
+    label: "審査中に迷った",
+    href: "/faq",
+    detail: "リース基礎、審査観点、補助金、物件別FAQを確認",
+  },
+  {
+    label: "残価や料率を確認",
+    href: "/residual-guide",
+    detail: "物件カテゴリ別の残価目安と考え方を確認",
+  },
+  {
+    label: "顧客説明を作る",
+    href: "/sales-guide",
+    detail: "承認、条件付き承認、否決時の説明観点を確認",
+  },
+  {
+    label: "入力から始める",
+    href: "/screening",
+    detail: "審査画面に戻って、入力と分析を進める",
+  },
+];
+
 export default function HelpPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-start gap-3">
         <LifeBuoy className="text-blue-500 mt-1" size={26} />
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">システム機能一覧</h1>
-          <p className="text-sm text-slate-500">リース審査AIシステムで利用できる機能の全体像。各ページへのリンク付き。</p>
+          <h1 className="text-2xl font-bold text-slate-800">サポートハブ</h1>
+          <p className="text-sm text-slate-500">FAQ、残価ガイド、営業説明、審査画面への戻り口をここに集約しています。</p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        {SUPPORT_SHORTCUTS.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-black text-emerald-900">{item.label}</p>
+              <ExternalLink size={12} className="text-emerald-500" />
+            </div>
+            <p className="mt-1 text-xs font-medium leading-relaxed text-emerald-700">{item.detail}</p>
+          </Link>
+        ))}
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">

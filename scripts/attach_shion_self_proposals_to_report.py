@@ -22,7 +22,51 @@ LAYER_LABELS = {
     "usage_based": "利用ログ由来",
     "feedback_based": "人間反応・判断ログ由来",
     "system_audit_based": "システム監査由来",
+    "domestic_mode_based": "内政モード由来",
 }
+
+DEFAULT_REVIEW_LIMIT = 3
+DEFAULT_LEAP_LIMIT = 1
+REQUIRED_HYPOTHESIS_FIELDS = (
+    "hypothesis",
+    "evidence",
+    "proposed_change",
+    "success_metric",
+    "verification_plan",
+    "risk",
+)
+DOMESTIC_MODE_INPUT_FIELDS = (
+    "importance",
+    "usage_context",
+    "intent",
+    "decision_rule",
+    "do_not_touch",
+    "success_metric",
+    "review_timing",
+)
+LAYER_QUALITY_WEIGHTS = {
+    "feedback_based": 30,
+    "system_audit_based": 24,
+    "domestic_mode_based": 34,
+    "usage_based": 18,
+}
+PRIORITY_QUALITY_WEIGHTS = {
+    "high": 8,
+    "medium": 5,
+    "low": 2,
+}
+LEAP_MARKERS = (
+    "跳躍",
+    "実験",
+    "探索",
+    "違和感",
+    "逆算",
+    "弁護",
+    "仮称",
+    "思い切って",
+    "あえて",
+    "意外",
+)
 
 SOURCES = [
     {
@@ -59,6 +103,13 @@ SOURCES = [
         "kind": "ナレッジ穴探し",
         "evidence_layer": "feedback_based",
         "summary_keys": ("reason", "search_hint"),
+    },
+    {
+        "path": DATA_DIR / "domestic_mode_proposals.jsonl",
+        "source": "domestic_mode",
+        "kind": "内政モード",
+        "evidence_layer": "domestic_mode_based",
+        "summary_keys": ("hypothesis", "decision_layer", "proposed_change", "success_metric"),
     },
     {
         "path": REPORTS_DIR / "lease_system_gap_analysis.json",
@@ -153,6 +204,65 @@ def _summary(item: dict[str, Any], keys: tuple[str, ...]) -> str:
 
 def _proposal_sort_key(item: dict[str, Any]) -> str:
     return str(item.get("generated_at") or item.get("ts") or "")
+
+
+def _proposal_quality_score(item: dict[str, Any]) -> int:
+    """Score proposals for review ordering without auto-approving them."""
+    score = LAYER_QUALITY_WEIGHTS.get(str(item.get("evidence_layer") or ""), 12)
+    priority = str(item.get("priority") or "").lower()
+    score += PRIORITY_QUALITY_WEIGHTS.get(priority, 0)
+
+    populated_fields = 0
+    for field in REQUIRED_HYPOTHESIS_FIELDS:
+        value = str(item.get(field) or "").strip()
+        if value:
+            populated_fields += 1
+            score += 6
+    evidence_text = str(item.get("evidence") or "")
+    verification_text = str(item.get("verification_plan") or "")
+    success_text = str(item.get("success_metric") or "")
+    if re.search(r"\d|/|件|回|日|率|ログ|評価|比較", evidence_text):
+        score += 8
+    if any(term in verification_text for term in ("比較", "計測", "確認", "変更後", "前後", "1ヶ月", "7日", "30日")):
+        score += 6
+    if any(term in success_text for term in ("率", "件", "回", "減少", "増加", "低下", "向上", "時間")):
+        score += 5
+    if populated_fields <= 2:
+        score -= 12
+    return max(0, min(100, score))
+
+
+def _is_leap_proposal(item: dict[str, Any]) -> bool:
+    text = " ".join(
+        str(item.get(key) or "")
+        for key in ("title", "hypothesis", "proposed_change", "summary", "risk", "verification_plan")
+    )
+    if str(item.get("proposal_style") or "").strip() == "leap":
+        return True
+    return any(marker in text for marker in LEAP_MARKERS)
+
+
+def _proposal_maturity(score: int) -> str:
+    if score >= 72:
+        return "ready_for_review"
+    if score >= 52:
+        return "watch"
+    return "thin"
+
+
+def _review_status_label(maturity: str) -> str:
+    return {
+        "ready_for_review": "レビュー候補",
+        "watch": "観測継続",
+        "thin": "根拠不足",
+    }.get(maturity, "観測継続")
+
+
+def _proposal_rank_key(item: dict[str, Any]) -> tuple[int, str]:
+    return (
+        int(item.get("quality_score") or 0),
+        _proposal_sort_key(item),
+    )
 
 
 def _compact_text(value: Any, limit: int = 1200) -> str:
@@ -305,10 +415,23 @@ def collect_shion_self_proposals(limit: int = 10) -> dict[str, Any]:
                 "risk": str(row.get("risk") or "").strip(),
                 "proposal_schema": str(row.get("proposal_schema") or ""),
                 "human_decision_status": str(row.get("human_decision_status") or row.get("status") or ""),
+                "proposal_style": str(row.get("proposal_style") or ""),
                 "summary": _summary(row, source["summary_keys"]),
                 "canonical_key": str(row.get("canonical_key") or row.get("key") or "").strip()
                 or _canonical_key(title, body),
             }
+            item["is_leap_proposal"] = _is_leap_proposal(item)
+            quality_score = _proposal_quality_score(item)
+            maturity = _proposal_maturity(quality_score)
+            item.update(
+                {
+                    "quality_score": quality_score,
+                    "proposal_maturity": maturity,
+                    "review_status_label": _review_status_label(maturity),
+                    "review_policy": "human_decision_required",
+                    "effect_tracking": "採用/保留/却下と、success_metric の事後変化で確認する",
+                }
+            )
             if _is_resolved_proposal(item, resolved_refs):
                 suppressed_resolved.append(
                     {
@@ -322,18 +445,37 @@ def collect_shion_self_proposals(limit: int = 10) -> dict[str, Any]:
             counts_by_layer[evidence_layer] = counts_by_layer.get(evidence_layer, 0) + 1
             items.append(item)
 
-    items.sort(key=_proposal_sort_key, reverse=True)
+    items.sort(key=_proposal_rank_key, reverse=True)
+    review_limit = min(max(0, limit), DEFAULT_REVIEW_LIMIT)
+    regular_items = [item for item in items if not item.get("is_leap_proposal")]
+    leap_items = [item for item in items if item.get("is_leap_proposal")]
+    review_items = regular_items[:review_limit]
+    if leap_items and len(review_items) >= review_limit and DEFAULT_LEAP_LIMIT > 0:
+        review_items = review_items[: review_limit - DEFAULT_LEAP_LIMIT] + leap_items[:DEFAULT_LEAP_LIMIT]
+    elif leap_items and len(review_items) < review_limit:
+        review_items.extend(leap_items[: review_limit - len(review_items)])
     return {
         "label": "紫苑の自己提案",
-        "note": "通常のneeds_reviewではなく、紫苑がログから出した改善仮説。採用判断は人間が行う。",
+        "note": "通常のneeds_reviewではなく、紫苑がログから出した改善仮説。採用判断は人間が行う。表示は上位3件に絞り、根拠層・検証可能性・効果追跡を優先する。",
         "count": len(items),
+        "review_limit": review_limit,
+        "displayed_count": len(review_items),
+        "quality_policy": {
+            "sort": "quality_score desc, generated_at desc",
+            "top_limit": DEFAULT_REVIEW_LIMIT,
+            "leap_limit": DEFAULT_LEAP_LIMIT,
+            "required_fields": list(REQUIRED_HYPOTHESIS_FIELDS),
+            "domestic_mode_input_fields": list(DOMESTIC_MODE_INPUT_FIELDS),
+            "domestic_mode_doc": "docs/shion_domestic_mode_inputs.md",
+            "human_review_required": True,
+        },
         "counts_by_kind": counts_by_kind,
         "source_counts_by_kind": source_counts_by_kind,
         "counts_by_layer": counts_by_layer,
         "layer_labels": LAYER_LABELS,
         "suppressed_resolved_count": len(suppressed_resolved),
         "suppressed_resolved": suppressed_resolved[:50],
-        "items": items[: max(0, limit)],
+        "items": review_items,
     }
 
 
