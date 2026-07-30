@@ -11,7 +11,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 _ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
-ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "lease-wiki-vault"          # RAG インデックス対象
+ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault" / "lease-wiki-vault"  # RAG インデックス対象（Vault統合後）
 ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"       # メインVault（reindex_obsidian._DEFAULT_VAULT と同一）
 VAULT_PATH = ICLOUD_MAIN_VAULT_PATH
 LATEST_JSON = PROJECT_ROOT / "reports" / "latest.json"

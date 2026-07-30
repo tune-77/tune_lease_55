@@ -23,7 +23,7 @@ EXPORT_FILE = Path(os.environ.get("EXPORT_FILE", "/tmp/obsidian_improvements_exp
 # Vault パス（iCloud のメイン Vault を既定にする）
 _VAULT_PATH = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
 _ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
-_ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "lease-wiki-vault"
+_ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault" / "lease-wiki-vault"
 _ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"   # reindex_obsidian._DEFAULT_VAULT と同一
 
 
