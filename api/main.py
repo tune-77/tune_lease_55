@@ -542,6 +542,12 @@ app.include_router(knowledge_router, prefix="/api")
 from api.routers.demo import router as demo_router
 app.include_router(demo_router, prefix="/api")
 
+from api.routers.judgment_drill import router as judgment_drill_router
+app.include_router(judgment_drill_router)
+
+from api.routers.timesfm import router as timesfm_router
+app.include_router(timesfm_router)
+
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
@@ -6181,156 +6187,6 @@ def api_forecast(req: ForecastRequest):
     )
 
 # ── TimesFM 時系列予測 (timesfm) 関連 ──────────────────────────────────────────
-
-class TfmCompanyScoreRequest(BaseModel):
-    company_name: str
-    horizon_months: int = 12
-
-@app.post("/api/timesfm/company_score")
-def api_tfm_company_score(req: TfmCompanyScoreRequest):
-    from data_cases import load_all_cases
-    from timesfm_engine import forecast_company_score
-    cases = load_all_cases()
-    company_cases = sorted(
-        [c for c in cases if (c.get("company_name") or c.get("inputs", {}).get("company_name", "")) == req.company_name],
-        key=lambda x: x.get("timestamp", ""),
-    )
-    if not company_cases:
-        raise HTTPException(status_code=404, detail="Company not found")
-    result = forecast_company_score(company_cases, horizon_months=req.horizon_months)
-    import numpy as np
-    # Convert numpy values to standard python floats for JSON serialization
-    for k, v in result.items():
-        if isinstance(v, list):
-            result[k] = [float(x) if not isinstance(x, str) else x for x in v]
-    return result
-
-class TfmIndustryTrendRequest(BaseModel):
-    industry: str
-    horizon_months: int = 24
-
-@app.post("/api/timesfm/industry_trend")
-def api_tfm_industry_trend(req: TfmIndustryTrendRequest):
-    from data_cases import load_all_cases
-    from timesfm_engine import forecast_industry_trend
-    cases = load_all_cases()
-    result = forecast_industry_trend(req.industry, cases, horizon_months=req.horizon_months)
-    for k, v in result.items():
-        if isinstance(v, list):
-            result[k] = [float(x) if not isinstance(x, str) else x for x in v]
-    return result
-
-class TfmFinalRateRequest(BaseModel):
-    industry: str = ""
-    horizon_months: int = 6
-
-@app.post("/api/timesfm/final_rate")
-def api_tfm_final_rate(req: TfmFinalRateRequest):
-    from data_cases import load_all_cases
-    from timesfm_engine import forecast_final_rate
-    cases = load_all_cases()
-    result = forecast_final_rate(cases, industry=req.industry, horizon_months=req.horizon_months)
-    for k, v in result.items():
-        if isinstance(v, list):
-            result[k] = [float(x) if not isinstance(x, str) else x for x in v]
-    return result
-
-class TfmFinancialPathsRequest(BaseModel):
-    company_name: str
-    n_periods: int = 12
-    current_revenue: Optional[float] = None
-    current_revenue_unit: str = "thousand_yen"
-
-@app.post("/api/timesfm/financial_paths")
-def api_tfm_financial_paths(req: TfmFinancialPathsRequest):
-    from data_cases import load_all_cases
-    from timesfm_engine import forecast_financial_paths, TIMESFM_AVAILABLE
-    import numpy as np
-
-    def _to_thousand_yen(value, unit: str = "thousand_yen") -> Optional[float]:
-        try:
-            v = float(value)
-        except (TypeError, ValueError):
-            return None
-        if not np.isfinite(v) or v <= 0:
-            return None
-        normalized_unit = (unit or "thousand_yen").lower()
-        if normalized_unit in {"million_yen", "million", "m_yen"}:
-            return v * 1000.0
-        return v
-
-    cases = load_all_cases()
-    company_cases = sorted(
-        [c for c in cases if (c.get("company_name") or c.get("inputs", {}).get("company_name", "")) == req.company_name],
-        key=lambda x: x.get("timestamp", ""),
-    )
-    revenues = []
-    for c in company_cases:
-        inp = c.get("inputs", {})
-        if isinstance(inp, str):
-            import json
-            try: inp = json.loads(inp)
-            except: inp = {}
-        v = inp.get("nenshu", inp.get("revenue"))
-        if v:
-            parsed = _to_thousand_yen(v)
-            if parsed is not None:
-                revenues.append(parsed)
-
-    current_revenue = _to_thousand_yen(req.current_revenue, req.current_revenue_unit)
-    if current_revenue is not None:
-        if not revenues or abs(revenues[-1] - current_revenue) > max(1.0, current_revenue * 0.001):
-            revenues.append(current_revenue)
-
-    if not revenues:
-        revenues = [200_000.0]
-    
-    # 200 paths, downsampled to 50 for frontend drawing to save bandwidth
-    raw_gbm = forecast_financial_paths(revenues, req.n_periods, n_paths=200)
-    gbm_paths = raw_gbm[:50].tolist()
-    gbm_median = np.median(raw_gbm, axis=0).tolist()
-    
-    tfm_paths = []
-    tfm_median = []
-    if TIMESFM_AVAILABLE:
-        raw_tfm = forecast_financial_paths(revenues, req.n_periods, n_paths=200)
-        tfm_paths = raw_tfm[:50].tolist()
-        tfm_median = np.median(raw_tfm, axis=0).tolist()
-        
-    return {
-        "gbm_paths": gbm_paths,
-        "gbm_median": gbm_median,
-        "tfm_paths": tfm_paths,
-        "tfm_median": tfm_median,
-        "revenues": revenues,
-        "timesfm_available": TIMESFM_AVAILABLE
-    }
-
-
-class TfmBaseRateRequest(BaseModel):
-    term_col: str = "r_5y"
-    horizon_months: int = 6
-
-class TfmBaseRateAllRequest(BaseModel):
-    horizon_months: int = 6
-
-@app.post("/api/timesfm/base_rate")
-def api_tfm_base_rate(req: TfmBaseRateRequest):
-    from timesfm_engine import forecast_base_rate
-    try:
-        result = forecast_base_rate(req.term_col, req.horizon_months)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/timesfm/base_rate_all")
-def api_tfm_base_rate_all(req: TfmBaseRateAllRequest):
-    from timesfm_engine import forecast_base_rate_all
-    try:
-        result = forecast_base_rate_all(req.horizon_months)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================
@@ -14773,6 +14629,14 @@ def post_chat(req: ChatRequest):
                 "lease_news_actions": news_actions,
             }
 
+        # 改善提案キーワード検知は general / RAG の両分岐で参照する。
+        _IMPROVEMENT_KEYWORDS = (
+            "改善", "わかりにくい", "分かりにくい", "使いにくい", "説明",
+            "入力しにくい", "導線", "バグ", "不具合", "直して", "変えて",
+            "修正して", "追加して", "欲しい", "要望", "提案",
+        )
+        _is_improvement_msg = any(k in req.message for k in _IMPROVEMENT_KEYWORDS)
+
         # カテゴリ判定
         question_category = _classify_question(req.message)
         basic_lease_question_context = _build_chat_basic_lease_question_context(req.message)
@@ -15289,14 +15153,9 @@ def post_chat(req: ChatRequest):
                 print(f"[DB Query] 統計取得エラー: {e}")
 
         # 改善提案キーワード検知 → 既存パイプライン候補と照合してコンテキスト注入
-        _IMPROVEMENT_KEYWORDS = (
-            "改善", "わかりにくい", "分かりにくい", "使いにくい", "説明",
-            "入力しにくい", "導線", "バグ", "不具合", "直して", "変えて",
-            "修正して", "追加して", "欲しい", "要望", "提案",
-        )
         improvement_context = ""
         similar_existing: list[dict] = []
-        if any(k in req.message for k in _IMPROVEMENT_KEYWORDS):
+        if _is_improvement_msg:
             try:
                 similar_existing = _find_similar_pipeline_items(req.message, threshold=0.35)
                 if similar_existing:
@@ -15313,9 +15172,6 @@ def post_chat(req: ChatRequest):
                     )
             except Exception as _ie:
                 print(f"[改善照合] エラー: {_ie}")
-
-        _is_improvement_msg = any(k in req.message for k in _IMPROVEMENT_KEYWORDS)
-
         history = get_recent_messages(req.user_id, limit=int(context_budget["history_limit"]))
         if chat_long_input or context_mode in ("casual", "long"):
             history = _compact_dialogue_history(
@@ -17778,87 +17634,3 @@ def get_central_synthesis():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ── 判断ドリル API ─────────────────────────────────────────────────────────────
-
-_DRILL_CSV = Path(__file__).resolve().parent.parent / "data" / "judgment_drills" / "judgment_drill_1000_20260725.csv"
-
-_DRILL_EDITABLE = {
-    "credit_score_20", "repayment_source_score_20", "asset_exit_score_20",
-    "plan_specificity_score_20", "uncertainty_control_score_20", "total_score_100",
-    "user_decision", "heaviest_issue", "additional_checks", "ringi_sentence",
-    "score_decision_gap_note", "ai_feedback_outcome", "ai_feedback_note",
-    "okf_candidate_tags", "presentation_use_ok", "reviewer", "judged_at", "status",
-}
-
-
-def _load_drill_rows() -> list[dict]:
-    import csv as _csv
-    if not _DRILL_CSV.exists():
-        return []
-    with _DRILL_CSV.open(newline="", encoding="utf-8") as f:
-        return list(_csv.DictReader(f))
-
-
-def _save_drill_rows(rows: list[dict]) -> None:
-    import csv as _csv
-    if not rows:
-        return
-    _DRILL_CSV.parent.mkdir(parents=True, exist_ok=True)
-    with _DRILL_CSV.open("w", newline="", encoding="utf-8") as f:
-        writer = _csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
-
-
-@app.get("/api/judgment-drill/cases")
-def get_judgment_drill_cases(status: Optional[str] = None, limit: int = 50, offset: int = 0):
-    rows = _load_drill_rows()
-    if status:
-        rows = [r for r in rows if r.get("status") == status]
-    total = len(rows)
-    page = rows[offset: offset + limit]
-    return {"total": total, "offset": offset, "limit": limit, "cases": page}
-
-
-@app.get("/api/judgment-drill/cases/{case_id}")
-def get_judgment_drill_case(case_id: str):
-    rows = _load_drill_rows()
-    for row in rows:
-        if row.get("case_id") == case_id:
-            return row
-    raise HTTPException(status_code=404, detail=f"case_id={case_id} not found")
-
-
-class JudgmentDrillUpdate(BaseModel):
-    fields: dict
-
-
-@app.patch("/api/judgment-drill/cases/{case_id}")
-def update_judgment_drill_case(case_id: str, req: JudgmentDrillUpdate):
-    rows = _load_drill_rows()
-    found = False
-    for row in rows:
-        if row.get("case_id") == case_id:
-            for k, v in req.fields.items():
-                if k in _DRILL_EDITABLE:
-                    row[k] = v
-            found = True
-            break
-    if not found:
-        raise HTTPException(status_code=404, detail=f"case_id={case_id} not found")
-    _save_drill_rows(rows)
-    return {"ok": True, "case_id": case_id}
-
-
-@app.get("/api/judgment-drill/stats")
-def get_judgment_drill_stats():
-    rows = _load_drill_rows()
-    total = len(rows)
-    judged = sum(1 for r in rows if r.get("status") == "judged")
-    pending = sum(1 for r in rows if r.get("status") == "pending_user_judgment")
-    decisions = {}
-    for r in rows:
-        d = r.get("user_decision", "")
-        if d:
-            decisions[d] = decisions.get(d, 0) + 1
-    return {"total": total, "judged": judged, "pending": pending, "decisions": decisions}
