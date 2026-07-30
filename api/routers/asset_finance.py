@@ -336,26 +336,6 @@ def _build_asset_finance_obsidian_graph(
     return {"nodes": nodes, "edges": edges, "summary": summary, "legend": legend}
 
 
-BATCH_MAX_CSV_BYTES = 5 * 1024 * 1024
-BATCH_MAX_ROWS = 1000
-BATCH_TOKEN_TTL_SECONDS = 30 * 60
-_batch_result_cache: dict[str, dict] = {}
-
-
-@app.get("/api/batch/template")
-def get_batch_template():
-    """バッチ審査CSVテンプレートを返す。"""
-    try:
-        from components.batch_scoring import _get_csv_template
-        return Response(
-            content=_get_csv_template(),
-            media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": 'attachment; filename="batch_shinsa_template.csv"'},
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.post("/evaluate")
 def evaluate_asset_finance(req: AssetFinanceRequest):
     """物件保全性・BEP・定性緩和因子を統合した物件ファイナンス審査。"""
