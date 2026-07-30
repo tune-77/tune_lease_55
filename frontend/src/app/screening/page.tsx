@@ -2370,6 +2370,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [result, setResult] = useState<any>(null);
+  const [gameTheoryResult, setGameTheoryResult] = useState<any>(null);
   const [formData, setFormData] = useState<ScoringFormData>(defaultFormData);
   const [gunshiText, setGunshiText] = useState<string>("");
   const [shionReview, setShionReview] = useState<ShionScreeningReview | null>(null);
@@ -2888,6 +2889,15 @@ export default function Dashboard() {
       const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(targetFormData));
       setResult(res.data);
       setActiveTab("analysis");
+      // REV-224: 審査ゲーム理論分析（並列・非ブロッキング）
+      apiClient.post("/api/game-theory/screening", {
+        industry_major: targetFormData.industry_major ?? "",
+        nenshu: Number(targetFormData.nenshu ?? 0),
+        op_profit: Number(targetFormData.op_profit ?? 0),
+        net_income: Number(targetFormData.net_income ?? 0),
+        net_assets: Number(targetFormData.net_assets ?? 0),
+        total_assets: Number(targetFormData.total_assets ?? 0),
+      }).then((gtRes) => setGameTheoryResult(gtRes.data)).catch(() => {});
       void fetchExperienceCasesForContext(findDemoScreeningCase(targetFormData)?.id || "", targetFormData, res.data);
       void requestShionReview(res.data, targetFormData);
 
@@ -3340,6 +3350,76 @@ export default function Dashboard() {
                     <ScreeningLoopFeedbackPanel result={result} data={formData} />
                     <IndicatorCards data={result} />
 
+                    {/* REV-224: 審査ゲーム理論パネル */}
+                    {gameTheoryResult && (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <h3 className="flex items-center gap-2 text-sm font-black text-amber-900">
+                            <ShieldCheck className="h-4 w-4" />
+                            審査ゲーム理論分析
+                          </h3>
+                          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-black ${
+                            gameTheoryResult.risk_level === "高"
+                              ? "bg-rose-100 text-rose-700"
+                              : gameTheoryResult.risk_level === "中"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            操作リスク: {gameTheoryResult.risk_level}
+                          </span>
+                        </div>
+
+                        {/* 操作疑いスコアバー */}
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-amber-800 mb-1">
+                            <span>情報操作疑いスコア</span>
+                            <span>{(gameTheoryResult.manipulation_suspicion_score * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-amber-100">
+                            <div
+                              className={`h-full rounded-full transition-all duration-700 ${
+                                gameTheoryResult.manipulation_suspicion_score >= 0.6 ? "bg-rose-500" :
+                                gameTheoryResult.manipulation_suspicion_score >= 0.3 ? "bg-amber-400" : "bg-emerald-400"
+                              }`}
+                              style={{ width: `${gameTheoryResult.manipulation_suspicion_score * 100}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* 支配戦略 */}
+                        <div className="mb-3 rounded-xl bg-white border border-amber-100 px-3 py-2">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-amber-600 mb-1">支配戦略（ナッシュ均衡）</div>
+                          <div className="text-xs font-bold text-slate-800">
+                            {gameTheoryResult.dominant_strategy_analysis?.nash_equilibrium}
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                            正直申告の期待利得 {((gameTheoryResult.dominant_strategy_analysis?.honest_expected_payoff ?? 0) * 100).toFixed(0)}%
+                            　vs　操作申告 {((gameTheoryResult.dominant_strategy_analysis?.manipulated_expected_payoff ?? 0) * 100).toFixed(0)}%
+                          </div>
+                        </div>
+
+                        {/* フラグ一覧 */}
+                        {gameTheoryResult.strategy_flags?.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="text-[10px] font-black uppercase tracking-wider text-amber-700">
+                              検出シグナル ({gameTheoryResult.flag_count}件)
+                            </div>
+                            {gameTheoryResult.strategy_flags.slice(0, 4).map((flag: any, i: number) => (
+                              <div key={i} className="flex items-start gap-2 rounded-lg bg-white border border-amber-100 px-3 py-2">
+                                <AlertTriangle className={`h-3 w-3 mt-0.5 shrink-0 ${
+                                  (flag.suspicion ?? 0) >= 0.4 ? "text-rose-500" : "text-amber-400"
+                                }`} />
+                                <p className="text-[10px] leading-relaxed text-slate-700">{flag.message}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {(!gameTheoryResult.strategy_flags || gameTheoryResult.strategy_flags.length === 0) && (
+                          <p className="text-[11px] text-emerald-700 font-bold">✓ 操作シグナルは検出されませんでした</p>
+                        )}
+                      </div>
+                    )}
+
                     <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
@@ -3348,7 +3428,7 @@ export default function Dashboard() {
                             この審査結果を紫苑へ渡す
                           </h3>
                           <p className="mt-1 text-xs font-bold leading-relaxed text-violet-700">
-                            通常相談は紫苑チャットへ。要審議・境界案件は、懐疑派・楽観派・統合派のマルチ紫苑討論に回します。
+                            通常相談は紫苑チャットへ。要審議・境界案件は、懐疑派・楽観派・統合派の討論に回します。
                           </p>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
@@ -3365,7 +3445,7 @@ export default function Dashboard() {
                             onClick={handoffToShionDebate}
                             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white transition hover:bg-slate-800"
                           >
-                            マルチ紫苑で討論
+                            討論で確認
                             <Swords className="h-4 w-4" />
                           </button>
                         </div>
