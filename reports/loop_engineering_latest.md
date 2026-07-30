@@ -1,11 +1,11 @@
 # Loop Engineering Health
 
-- Generated at: `2026-07-30T04:13:54`
+- Generated at: `2026-07-31T04:10:35`
 - Status: `attention`
 - Source coverage: 100.0%
 
 ## Improvement Loop
-- Applied: 0
+- Applied: 1
 - Needs review: 0
 - Failed: 0
 - Review pressure: 0.0%
@@ -20,9 +20,9 @@
 - Churn rate: 0.0% (healthy dedup: 0, churn: 0)
 
 ## Prompt Feedback Loop
-- Total: 340
-- PDCA applied: 340 (100.0%)
-- Previous response diffs: 125 (36.8%)
+- Total: 342
+- PDCA applied: 342 (100.0%)
+- Previous response diffs: 126 (36.8%)
 
 ## Scoring Coefficients
 - Status: `attention`
@@ -41,10 +41,10 @@
 ## Outcome Loops
 - Status: `ok`
 - outcome_drift: 0 proposals (latest n/a)
-- feedback_pattern: 9 proposals (latest 2026-07-28T03:00:27)
+- feedback_pattern: 11 proposals (latest 2026-07-31T03:00:25)
 - judgment_divergence: 0 proposals (latest n/a)
 - knowledge_gap: 3 proposals (latest 2026-07-03T07:21:31)
-- PDCA effect: measured 21, improved 21, worsened 0, avg delta -0.444
+- PDCA effect: measured 44, improved 44, worsened 0, avg delta -0.432
 
 ## Recommendations
 - スコアリング係数/モデルのヘルスチェックに重大な異常があります

@@ -9,6 +9,7 @@ import {
 import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
+import LeasePaymentSimulator from "@/components/analysis/LeasePaymentSimulator";
 
 type KnowledgeRef = {
   doc_id: string;
@@ -94,6 +95,7 @@ type DialogueImprovementItem = {
 };
 
 type TriageDecision = "today" | "later" | "discard";
+type TriageQuickAction = "fix" | "hold" | "reject";
 
 type TriageRecord = {
   canonical_key: string;
@@ -1125,12 +1127,12 @@ export default function LeaseIntelligencePage() {
     return rows;
   }, [improvementLog]);
 
-  const sendTriage = async (
+  const saveTriageDecision = async (
     row: { item: DialogueImprovementItem; rule: TriageDecision },
     decision: TriageDecision,
   ) => {
     const key = String(row.item.canonical_key || row.item.id || "");
-    if (!key || triageSavingKey) return;
+    if (!key) return null;
     setTriageSavingKey(key);
     try {
       const res = await apiClient.post<{ record?: TriageRecord }>("/api/improvement/triage", {
@@ -1145,8 +1147,10 @@ export default function LeaseIntelligencePage() {
       });
       const record = res.data?.record || { canonical_key: key, decision };
       setTriageByKey((prev) => ({ ...prev, [key]: record }));
+      return record;
     } catch {
       setError("トリアージの保存に失敗しました。API接続を確認してください。");
+      return null;
     } finally {
       setTriageSavingKey("");
     }
@@ -1166,6 +1170,19 @@ export default function LeaseIntelligencePage() {
     } finally {
       setTriageSavingKey("");
     }
+  };
+
+  const sendQuickTriageAction = async (
+    row: { item: DialogueImprovementItem; rule: TriageDecision },
+    action: TriageQuickAction,
+  ) => {
+    if (triageSavingKey) return;
+    const decision: TriageDecision =
+      action === "fix" ? "today" : action === "hold" ? "later" : "discard";
+    const record = await saveTriageDecision(row, decision);
+    if (!record || action !== "fix") return;
+    const key = String(record.canonical_key || row.item.canonical_key || row.item.id || "");
+    if (key) await sendTriageApprove(key);
   };
 
   const loadTrend = async () => {
@@ -1760,6 +1777,14 @@ export default function LeaseIntelligencePage() {
             )}
           </section>
 
+          <LeasePaymentSimulator
+            source="lease-intelligence"
+            compact
+            defaultOpen={false}
+            title="対話中の簡易シミュレーション"
+            description="相談しながら取得価格・期間・金利を動かし、条件案の負担感を確認します。"
+          />
+
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="flex items-center gap-2 text-sm font-black text-slate-800">
               <Database className="h-4 w-4 text-emerald-600" /> 知識接続
@@ -1820,13 +1845,13 @@ export default function LeaseIntelligencePage() {
                 className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-bold text-violet-700 transition hover:bg-violet-50"
               >
                 <ClipboardList className="h-4 w-4" />
-                改善トリアージ（確定 {triageCandidates.filter((row) => triageByKey[String(row.item.canonical_key || row.item.id || "")]).length} / {triageCandidates.length} 件）
+                紫苑の自己提案（判断済み {triageCandidates.filter((row) => triageByKey[String(row.item.canonical_key || row.item.id || "")]).length} / {triageCandidates.length} 件）
                 <span className="text-slate-400">{triageOpen ? "▲" : "▼"}</span>
               </button>
               {triageOpen && (
                 <div className="mt-2 space-y-1.5 pb-1">
                   <p className="text-[11px] text-slate-400">
-                    破線が初期値（紫苑のLLM提案があればそれ、なければルール分類）。ボタンで確定すると記録されます（未確定分は持ち越し・自動昇格なし）。
+                    修正は実装キューへ送り、保留は持ち越し、却下は候補から外す判断として記録します。未判断分は自動昇格しません。
                   </p>
                   {triageCandidates.map((row) => {
                     const key = String(row.item.canonical_key || row.item.id || "");
@@ -1838,6 +1863,11 @@ export default function LeaseIntelligencePage() {
                     const proposalDefault = llmProposal || row.rule;
                     const approved = isUserRecord && Boolean(triageRecord?.approved_at);
                     const draft = approved ? triageRecord?.codex_request_draft || "" : "";
+                    const actions: Array<{ action: TriageQuickAction; decision: TriageDecision; label: string }> = [
+                      { action: "fix", decision: "today", label: "修正" },
+                      { action: "hold", decision: "later", label: "保留" },
+                      { action: "reject", decision: "discard", label: "却下" },
+                    ];
                     return (
                       <div key={key} className="space-y-1 rounded-xl border border-slate-100 px-2.5 py-1.5">
                         <div className="flex items-center justify-between gap-2">
@@ -1848,7 +1878,7 @@ export default function LeaseIntelligencePage() {
                           {readableImprovementTitle(row.item)}
                         </span>
                         <div className="flex shrink-0 gap-1">
-                          {(["today", "later", "discard"] as TriageDecision[]).map((decision) => {
+                          {actions.map(({ action, decision, label }) => {
                             const isConfirmed = confirmed === decision;
                             const isRuleDefault = !confirmed && proposalDefault === decision;
                             const palette =
@@ -1869,16 +1899,15 @@ export default function LeaseIntelligencePage() {
                                     : isRuleDefault
                                       ? "border border-dashed border-slate-400 bg-slate-100 text-slate-600"
                                       : "border border-slate-200 text-slate-500 hover:bg-slate-100";
-                            const label = decision === "today" ? "今日やる" : decision === "later" ? "後回し" : "捨てる";
                             return (
                               <button
                                 key={decision}
                                 type="button"
                                 disabled={triageSavingKey === key}
-                                onClick={() => sendTriage(row, decision)}
+                                onClick={() => sendQuickTriageAction(row, action)}
                                 className={`rounded-lg px-2 py-1 text-[11px] font-bold transition disabled:opacity-40 ${palette}`}
                               >
-                                {label}
+                                {triageSavingKey === key && action === "fix" ? "記録中" : label}
                               </button>
                             );
                           })}
@@ -1886,17 +1915,17 @@ export default function LeaseIntelligencePage() {
                             approved ? (
                               <span className="inline-flex items-center gap-0.5 rounded-lg bg-violet-100 px-2 py-1 text-[11px] font-bold text-violet-700">
                                 <Check className="h-3 w-3" />
-                                承認済み
+                                修正キュー
                               </span>
                             ) : (
                               <button
                                 type="button"
                                 disabled={triageSavingKey === key}
                                 onClick={() => sendTriageApprove(key)}
-                                title="紫苑依頼文の作成対象にする実装承認"
+                                title="既に修正判断済みの候補を実装キューへ送ります"
                                 className="rounded-lg border border-violet-300 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-700 transition hover:bg-violet-100 disabled:opacity-40"
                               >
-                                実装承認
+                                修正キューへ
                               </button>
                             )
                           )}

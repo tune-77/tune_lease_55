@@ -179,7 +179,7 @@ def review_improvement(req: ReviewImprovementRequest):
 
 _TRIAGE_DECISIONS = {"today", "later", "discard"}
 _TRIAGE_CLASSIFIERS = {"rule", "llm", "user"}
-_TRIAGE_DECISION_LABELS = {"today": "今日やる", "later": "後回し", "discard": "捨てる"}
+_TRIAGE_DECISION_LABELS = {"today": "修正", "later": "保留", "discard": "却下"}
 
 
 class ImprovementTriageRequest(BaseModel):
@@ -452,4 +452,3 @@ def get_improvement_pipeline_summary():
         "failed_count": report.get("failed_count", 0),
         "commit_result": report.get("commit_result"),
     }
-
