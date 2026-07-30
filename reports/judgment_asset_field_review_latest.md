@@ -78,12 +78,14 @@
 
 ## Next Real Case Feedback
 
+- Selection: fixed by User for the next real case
+
 - `b259411afb954d6d` business_plan_specificity: 事業計画は売上見込みだけでなく、受注根拠、稼働計画、資金繰り、返済原資の説明可能性で確認する。
-  - Why: 未使用だが confidence/user evidence が高いため、次の実案件で1回だけ意識して試す
+  - Why: 次の実案件で、受注根拠・稼働計画・資金繰り・返済原資の説明可能性が確認行動や稟議条件を具体化するか見る。
 - `64e054542be673e4` demo_renewal_asset: 更新設備の増額申込は、既存設備の稼働率、粗利改善見込み、旧設備の処分予定が説明と整合する時だけ前向きに見る。
-  - Why: 未使用だが confidence/user evidence が高いため、次の実案件で1回だけ意識して試す
+  - Why: 次の更新・増額・設備更改案件で、既存設備の稼働率・粗利改善見込み・旧設備処分予定を確認する観点として効くか見る。
 - `cf61a9701fc8cc42` asset_life_and_residual: リース期間・残価判断では、法定耐用年数だけでなく、実際の使用状況、経済的寿命、換金性、満了後の出口を合わせて確認する。
-  - Why: 未使用だが confidence/user evidence が高いため、次の実案件で1回だけ意識して試す
+  - Why: 次の物件期間・残価・出口が絡む案件で、法定耐用年数だけでなく実使用・経済的寿命・換金性・満了後出口まで見られるか確認する。
 
 ### Feedback command
 

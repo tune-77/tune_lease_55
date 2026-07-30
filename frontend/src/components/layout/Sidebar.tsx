@@ -10,7 +10,7 @@ import {
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   ClipboardList, Brain, Database,
-  Orbit, ShieldCheck, Sparkles, Search, GitBranch, FileCheck2, Mic, Stethoscope
+  Orbit, ShieldCheck, Search, GitBranch, FileCheck2, Mic, Stethoscope
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -34,7 +34,6 @@ type SidebarItem = {
 export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggleSidebar, isMobileOpen, toggleMobile } = useSidebar();
-  const hideMobileEdgeToggle = pathname === '/multi-shion-demo';
   const [isCloudRunHost, setIsCloudRunHost] = useState(true);
   const [frequentItems, setFrequentItems] = useState<Array<SidebarItem & { count: number }>>([]);
   const hideResearchOrgan =
@@ -46,10 +45,9 @@ export default function Sidebar() {
 
   const menuGroups: Array<{ title: string; defaultOpen: boolean; items: SidebarItem[] }> = [
     {
-      title: '🏆 本番デモ導線',
+      title: 'メイン導線',
       defaultOpen: true,
       items: [
-        { name: 'デモホーム', href: '/demo-home', icon: Sparkles, color: 'text-yellow-300' },
         { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: '1000本判断ドリル', href: '/judgment-drill', icon: ClipboardList, color: 'text-lime-300' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
@@ -63,7 +61,6 @@ export default function Sidebar() {
         ...(!isCloudRunHost
           ? [{ name: '帰還データ検疫', href: '/cloudrun-return-review', icon: ShieldCheck, color: 'text-teal-300' }]
           : []),
-        { name: 'マルチ紫苑デモ', href: '/multi-shion-demo', icon: Users, color: 'text-pink-300' },
       ]
     },
     {
@@ -81,12 +78,9 @@ export default function Sidebar() {
       ]
     },
     {
-      title: 'デモ補助',
+      title: '検証・補助',
       defaultOpen: false,
       items: [
-        { name: 'ハッカソン演出デモ', href: '/demo', icon: Sparkles, color: 'text-yellow-300' },
-        { name: '1000件早送りデモ', href: '/demo/judgment-evolution', icon: GitBranch, color: 'text-amber-300' },
-        { name: '知識ループ確認', href: '/demo/knowledge-loop', icon: Network, color: 'text-cyan-300' },
         { name: '紫苑/一般 比較', href: '/chat-compare', icon: MessageSquare, color: 'text-indigo-300' },
         { name: '紫苑 評価GUI', href: '/shion-eval-health', icon: Stethoscope, color: 'text-teal-300' },
         { name: '自己同一性検査', href: '/shion-identity-check', icon: ShieldCheck, color: 'text-cyan-300' },
@@ -214,7 +208,7 @@ export default function Sidebar() {
               {!isCollapsed && (
                 <div className="px-3 mb-3">
                   <div className="flex items-center gap-1.5 text-[11px] font-black text-emerald-300 uppercase tracking-widest">
-                    <Sparkles className="h-3.5 w-3.5" />
+                    <Brain className="h-3.5 w-3.5" />
                     紫苑がよく使う
                   </div>
                   <p className="mt-1 text-[10px] font-bold text-slate-500">利用履歴で自動更新</p>
@@ -329,15 +323,13 @@ export default function Sidebar() {
       </button>
 
       {/* モバイル用 画面右端固定トグルボタン */}
-      {!hideMobileEdgeToggle && (
-        <button
-          onClick={toggleMobile}
-          aria-label={isMobileOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
-          className="lg:hidden fixed right-0 top-[58vh] -translate-y-1/2 z-[70] w-14 h-20 bg-slate-800 border border-slate-700 border-r-0 rounded-l-2xl flex items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition-all active:scale-95"
-        >
-          {isMobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      )}
+      <button
+        onClick={toggleMobile}
+        aria-label={isMobileOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+        className="lg:hidden fixed right-0 top-[58vh] -translate-y-1/2 z-[70] w-14 h-20 bg-slate-800 border border-slate-700 border-r-0 rounded-l-2xl flex items-center justify-center shadow-lg text-slate-400 hover:text-white hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition-all active:scale-95"
+      >
+        {isMobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      </button>
     </>
   );
 }

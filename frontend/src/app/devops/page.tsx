@@ -109,10 +109,10 @@ export default function DevOpsPage() {
             </div>
             <div className="grid gap-3 text-sm font-bold text-slate-700 sm:grid-cols-3 lg:w-[520px]">
               <Link
-                href="/demo"
+                href="/system-overview"
                 className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-white"
               >
-                ハッカソンデモ
+                システム概要
                 <ArrowRight className="h-4 w-4" />
               </Link>
               {!isCloudRunHost && (

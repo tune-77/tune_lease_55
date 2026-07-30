@@ -152,6 +152,33 @@ def test_markdown_contains_operational_buckets():
     assert "business_plan" in markdown
 
 
+def test_fixed_next_case_targets_override_auto_selection():
+    payload = review.build_review(
+        target_date="2026-07-25",
+        canonical=_canonical_payload(),
+        feedback_rows=[],
+        next_case_target_config={
+            "fixed_at": "2026-07-30",
+            "owner": "User",
+            "targets": [
+                {
+                    "rule_id": "rule-sleeping",
+                    "reason": "次の実案件で固定して見る",
+                }
+            ],
+        },
+    )
+
+    targets = payload["action_plan"]["next_case_targets"]
+    assert payload["action_plan"]["selection_mode"] == "fixed"
+    assert targets[0]["rule_id"] == "rule-sleeping"
+    assert targets[0]["fixed"] is True
+    assert targets[0]["fixed_at"] == "2026-07-30"
+
+    markdown = review.build_markdown(payload)
+    assert "Selection: fixed by User" in markdown
+
+
 def test_main_writes_json_and_markdown(tmp_path):
     canonical = tmp_path / "canonical.json"
     feedback_jsonl = tmp_path / "feedback.jsonl"

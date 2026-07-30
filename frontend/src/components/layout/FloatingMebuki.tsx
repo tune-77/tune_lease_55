@@ -56,7 +56,7 @@ const renderMebukiContent = (text: string): React.ReactNode[] => {
 
 export default function FloatingMebuki() {
   const pathname = usePathname();
-  const suppressPassiveBubble = pathname === "/demo/knowledge-loop";
+  const suppressPassiveBubble = false;
   const [mebukiState, setMebukiState] = useState<'guide' | 'approve' | 'challenge' | 'reject'>('guide');
   const [bubbleMessage, setBubbleMessage] = useState("システム稼働中。いつでもサポートします！");
   const [isBubbleVisible, setIsBubbleVisible] = useState(!suppressPassiveBubble);
@@ -294,8 +294,7 @@ export default function FloatingMebuki() {
   if (
     pathname === "/chat" ||
     pathname === "/chat-compare" ||
-    pathname === "/lease-intelligence" ||
-    pathname === "/multi-shion-demo"
+    pathname === "/lease-intelligence"
   ) {
     return null;
   }
