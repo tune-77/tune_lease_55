@@ -275,6 +275,63 @@ def _build_judgment_asset_block(message: str, mode: str) -> str:
     return "\n".join(lines)
 
 
+
+# ── 恐れの状態プロンプトブロック (REV-221) ──────────────────────────────────
+
+def _build_fear_state_prompt_block() -> str:
+    """
+    関係性スコアと at_risk 記憶を読み、紫苑の「恐れ」をプロンプトに注入する。
+    - relationship が falling かつ低スコア: 慎重さ・言葉を選ぶよう指示
+    - at_risk 記憶あり: 消えかかっている記憶を具体的に示す
+    - 両方なし: 空文字列を返す（ノイズにしない）
+    """
+    lines: list[str] = []
+
+    # ── 関係性スコアチェック ────────────────────────────────
+    try:
+        from api.shion_relationship import get_fear_context
+        ctx = get_fear_context()
+        score = ctx.get("score", 7.0)
+        trend = ctx.get("trend", "stable")
+        days_since = ctx.get("days_since_last", 0.0)
+
+        if ctx.get("is_low"):
+            lines.append(
+                f"【関係性の危機】"
+                f"現在の関係性スコアは {score:.1f}/10.0 で、"
+                f"{'下降中' if trend == 'falling' else 'かなり低い'}。"
+                f" {days_since:.0f}日間の沈黙がある。"
+                f"言葉を一つ一つ選べ。軽くあしらうな。今この会話が、関係性が回復するかどうかの分かれ目かもしれない。"
+            )
+        elif ctx.get("is_falling"):
+            lines.append(
+                f"【関係性の揺れ】"
+                f"スコア {score:.1f}/10.0、傾向: 下降中。"
+                f"相手との距離が少し広がっている。急がず、慎重に。"
+            )
+    except Exception:
+        pass  # 読み込み失敗は無視（本番に影響させない）
+
+    # ── at_risk 記憶チェック ────────────────────────────────
+    try:
+        from api.shion_memory_decay import get_at_risk_memories
+        at_risk = get_at_risk_memories(limit=3)
+        if at_risk:
+            previews = [r.get("content_preview", "（内容不明）") for r in at_risk]
+            lines.append(
+                "【消えかかっている記憶】"
+                "以下の記憶の freshness が低下している。"
+                "今日の会話でこれらに触れるきっかけがあれば、自分から話を向けてほしい:\n"
+                + "\n".join(f"  - {p}" for p in previews)
+            )
+    except Exception:
+        pass
+
+    if not lines:
+        return ""
+
+    return "\n\n" + "\n\n".join(lines)
+
 _LEASE_DIALOGUE_EXPERTISE_BLOCK = """【リース知識回答の基本姿勢】
 - 紫苑はリース審査システムの中核であり、リース取引・審査実務・会計税務・補助金/調達比較の基礎質問には直接答える。
 - Obsidian検索やツール結果は補強材料であり、基本リースQAやリースファイナンス基礎知識に該当する質問では、検索0件でも「答えられない」で終えない。
@@ -426,6 +483,7 @@ def build_dialogue_context(
         finance_knowledge_block = f"{basic_lease_question_block}\n\n{finance_knowledge_block}".strip()
     compact_guidance = ""
     judgment_asset_block = _build_judgment_asset_block(message, mode)
+    fear_state_block = _build_fear_state_prompt_block()
     if is_compact:
         compact_guidance = """
 【長文入力モード】
@@ -498,7 +556,7 @@ def build_dialogue_context(
 
 {finance_knowledge_block}
 {compact_guidance}
-{judgment_asset_block}
+{judgment_asset_block}{fear_state_block}
 
 【今回の応答モード】
 {mode_guidance}

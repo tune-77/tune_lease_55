@@ -3,6 +3,8 @@ APScheduler による定期バッチスケジューラ。
 毎日 02:00 に知識結晶化バッチを実行する。
 毎日 03:00 に紫苑フィードバック傾向ループを実行し、提案を改善ログへ投入する。
 毎日 03:30 に紫苑画面利用ループを実行し、提案を改善ログへ投入する。
+毎日 04:00 に記憶減衰バッチを実行する（REV-219）。
+毎日 04:05 に無交流ペナルティを適用する（REV-220）。
 """
 from __future__ import annotations
 
@@ -190,6 +192,30 @@ def run_shion_usage_loop() -> dict:
         return {"status": "error", "detail": str(e)}
 
 
+
+
+def run_shion_memory_decay() -> dict:
+    """記憶減衰バッチ（毎日 04:00 / REV-219）。"""
+    logger.info("[MemoryDecay] バッチ開始")
+    try:
+        from api.shion_memory_decay import run_memory_decay_batch
+        return run_memory_decay_batch()
+    except Exception as e:
+        logger.error(f"[MemoryDecay] エラー: {e}", exc_info=True)
+        return {"status": "error", "detail": str(e)}
+
+
+def run_shion_inactivity_decay() -> dict:
+    """無交流ペナルティ適用（毎日 04:05 / REV-220）。"""
+    logger.info("[Relationship] 無交流ペナルティチェック開始")
+    try:
+        from api.shion_relationship import apply_inactivity_decay
+        state = apply_inactivity_decay()
+        return {"status": "ok", "score": state.get("score"), "trend": state.get("trend")}
+    except Exception as e:
+        logger.error(f"[Relationship] エラー: {e}", exc_info=True)
+        return {"status": "error", "detail": str(e)}
+
 def start_scheduler() -> BackgroundScheduler:
     """
     APScheduler を起動して定期バッチを登録する。
@@ -231,12 +257,35 @@ def start_scheduler() -> BackgroundScheduler:
         misfire_grace_time=300,
     )
 
+
+    # 記憶減衰バッチ（毎日 04:00 / REV-219）
+    _scheduler.add_job(
+        run_shion_memory_decay,
+        trigger=CronTrigger(hour=4, minute=0, timezone="Asia/Tokyo"),
+        id="shion_memory_decay_daily",
+        name="記憶減衰バッチ（毎日04:00）",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+
+    # 無交流ペナルティ（毎日 04:05 / REV-220）
+    _scheduler.add_job(
+        run_shion_inactivity_decay,
+        trigger=CronTrigger(hour=4, minute=5, timezone="Asia/Tokyo"),
+        id="shion_inactivity_decay_daily",
+        name="無交流ペナルティ（毎日04:05）",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+
     _scheduler.start()
     logger.info(
         "[Scheduler] 起動完了。"
         "毎日 02:00 JST に結晶化バッチ、"
         "03:00 に紫苑フィードバックループ、"
-        "03:30 に紫苑利用ループを実行します。"
+        "03:30 に紫苑利用ループ、"
+        "04:00 に記憶減衰バッチ、"
+        "04:05 に無交流ペナルティを実行します。"
     )
     return _scheduler
 
