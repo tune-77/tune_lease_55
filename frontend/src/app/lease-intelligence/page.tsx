@@ -19,6 +19,15 @@ type KnowledgeRef = {
   confidence_level?: RagConfidenceLevel;
 };
 
+
+type RelationshipState = {
+  score?: number;
+  trend?: "rising" | "stable" | "falling";
+  is_falling?: boolean;
+  is_low?: boolean;
+  days_since_last?: number;
+  total_interactions?: number;
+};
 type AttachedFile = {
   name: string;
   type: "csv" | "image";
@@ -1077,6 +1086,7 @@ export default function LeaseIntelligencePage() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [ragFeedbackSent, setRagFeedbackSent] = useState<Set<string>>(new Set());
   const [feedbackGiven, setFeedbackGiven] = useState<Record<number, "shion_like" | "not_shion">>({});
+  const [relationshipState, setRelationshipState] = useState<RelationshipState | null>(null);
 
   // 改善トリアージ state（Phase 1: planning/shion_improvement_loop_plan.md）
   const [improvementLog, setImprovementLog] = useState<DialogueImprovementLog | null>(null);
@@ -1215,6 +1225,15 @@ export default function LeaseIntelligencePage() {
         rating,
         route: "lease_judgment",
       });
+      // REV-223: 関係性スコア更新
+      try {
+        const fbType = rating === "shion_like" ? "positive" : "negative";
+        const relRes = await apiClient.post<RelationshipState>("/api/relationship/feedback", {
+          feedback_type: fbType,
+          topic_depth: "normal",
+        });
+        if (relRes.data) setRelationshipState(relRes.data);
+      } catch { /* 関係性更新の失敗は対話体験をブロックしない */ }
     } catch {
       // フィードバック送信の失敗は対話体験をブロックしない
     }
@@ -1392,8 +1411,9 @@ export default function LeaseIntelligencePage() {
       apiClient.get<DialogueGapAnalysis>("/api/lease-system-gaps"),
       apiClient.get<{ records?: TriageRecord[] }>("/api/improvement/triage"),
       apiClient.get<DailyNewsDigest>("/api/lease-news/daily-digest"),
+      apiClient.get<RelationshipState>("/api/relationship/state"),
     ])
-      .then(([stateResult, improvementResult, pipelineResult, gapsResult, triageResult, newsDigestResult]) => {
+      .then(([stateResult, improvementResult, pipelineResult, gapsResult, triageResult, newsDigestResult, relationshipResult]) => {
         if (stateResult.status !== "fulfilled") {
           setError("リース知性体の状態を読み込めませんでした。");
           return;
@@ -1408,6 +1428,9 @@ export default function LeaseIntelligencePage() {
             if (record?.canonical_key) map[record.canonical_key] = record;
           });
           setTriageByKey(map);
+        }
+        if (relationshipResult.status === "fulfilled") {
+          setRelationshipState(relationshipResult.value.data || null);
         }
         const serverMessages = stateResult.value.data?.messages || [];
         const localMessages = loadLocalDialogueMessages();
@@ -1623,6 +1646,35 @@ export default function LeaseIntelligencePage() {
                     ))}
                   </div>
                   <EmotionFeedbackArea />
+                  {/* REV-223: 関係性スコア */}
+                  {relationshipState && (
+                    <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-violet-800">関係性</span>
+                        <span className={`text-[11px] font-black ${
+                          (relationshipState.score ?? 7) >= 7 ? "text-emerald-600" :
+                          (relationshipState.score ?? 7) >= 5 ? "text-amber-600" : "text-rose-600"
+                        }`}>
+                          {(relationshipState.score ?? 0).toFixed(1)} / 10.0
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-violet-100">
+                        <div
+                          className={`h-full rounded-full transition-all duration-700 ${
+                            (relationshipState.score ?? 7) >= 7 ? "bg-emerald-400" :
+                            (relationshipState.score ?? 7) >= 5 ? "bg-amber-400" : "bg-rose-400"
+                          }`}
+                          style={{ width: `${((relationshipState.score ?? 0) / 10) * 100}%` }}
+                        />
+                      </div>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        {relationshipState.trend === "rising" ? "↑ 上昇中" :
+                         relationshipState.trend === "falling" ? "↓ 下降中" : "→ 安定"}
+                        {(relationshipState.days_since_last ?? 0) > 2
+                          ? ` · ${Math.floor(relationshipState.days_since_last ?? 0)}日間隔` : ""}
+                      </p>
+                    </div>
+                  )}
                   {/* 過去30日の傾向ボタン */}
                   <div className="mt-3">
                     <button
@@ -1742,13 +1794,6 @@ export default function LeaseIntelligencePage() {
               <p className="mt-1 text-xs text-slate-500">会話はObsidian Vaultにも日付別で記録されます。</p>
             </div>
             <div className="flex items-center gap-2">
-              <Link
-                href="/multi-shion-demo"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-700 transition hover:bg-cyan-100"
-              >
-                <Network className="h-4 w-4" />
-                多人数デモ
-              </Link>
               <button
                 type="button"
                 onClick={showDemoGreeting}
