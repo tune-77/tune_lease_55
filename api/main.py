@@ -9099,6 +9099,20 @@ def post_chat(req: ChatRequest):
         if not _is_improvement_msg:
             _background_executor.submit(_auto_save_chat_to_obsidian, req.message, reply)
 
+        # REV-222: 対話ごとに関係性スコアを更新（バックグラウンド実行）
+        def _record_relationship_interaction(ctx_mode: str) -> None:
+            try:
+                from api.shion_relationship import record_interaction
+                _depth_map = {"screening": "deep", "deep": "deep", "casual": "shallow"}
+                record_interaction(
+                    feedback_type="neutral",
+                    topic_depth=_depth_map.get(ctx_mode, "normal"),
+                )
+            except Exception as _rel_err:
+                import logging
+                logging.getLogger(__name__).debug(f"[Relationship] record_interaction skipped: {_rel_err}")
+        _background_executor.submit(_record_relationship_interaction, context_mode)
+
         response_payload = {
             "reply": reply,
             "total_messages": total,
@@ -9155,6 +9169,49 @@ def post_chat(req: ChatRequest):
                 detail="【AI応答エラー】\nGemini APIキー未設定またはクォータ超過のため、回答を生成できませんでした。",
             )
         raise HTTPException(status_code=500, detail="内部エラーが発生しました")
+
+
+
+
+# ── REV-222: 関係性スコア参照・フィードバック ────────────────────────────────
+
+@app.get("/api/relationship/state")
+def get_relationship_state_endpoint():
+    """関係性スコアの現在状態を返す（デバッグ・フロント参照用）。"""
+    try:
+        from api.shion_relationship import get_relationship_state
+        return get_relationship_state()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class RelationshipFeedbackRequest(BaseModel):
+    feedback_type: str = "neutral"  # "positive" | "negative" | "neutral"
+    topic_depth: str = "normal"     # "shallow" | "normal" | "deep"
+
+
+@app.post("/api/relationship/feedback")
+def post_relationship_feedback(req: RelationshipFeedbackRequest):
+    """
+    フロントから明示的なフィードバックを受け取り関係性スコアを更新する。
+    チャット画面の「良かった／残念」ボタンなどから呼ぶ。
+    """
+    from typing import Literal
+    valid_fb = {"positive", "negative", "neutral"}
+    valid_depth = {"shallow", "normal", "deep"}
+    if req.feedback_type not in valid_fb:
+        raise HTTPException(status_code=422, detail=f"feedback_type must be one of {valid_fb}")
+    if req.topic_depth not in valid_depth:
+        raise HTTPException(status_code=422, detail=f"topic_depth must be one of {valid_depth}")
+    try:
+        from api.shion_relationship import record_interaction
+        state = record_interaction(
+            feedback_type=req.feedback_type,   # type: ignore[arg-type]
+            topic_depth=req.topic_depth,       # type: ignore[arg-type]
+        )
+        return {"status": "ok", "score": state["score"], "trend": state["trend"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/chat/history")
