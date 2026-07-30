@@ -327,6 +327,18 @@ def _build_fear_state_prompt_block() -> str:
     except Exception:
         pass
 
+    # ── 対話ゲーム戦略 (REV-224 Game Theory #3) ─────────────────────────────
+    try:
+        from api.shion_relationship import get_relationship_state
+        from api.game_theory.dialogue import analyze_dialogue_game
+        rel_state = get_relationship_state()
+        dialogue = analyze_dialogue_game(rel_state)
+        modifier = dialogue.get("prompt_modifier", "")
+        if modifier:
+            lines.append(modifier)
+    except Exception:
+        pass
+
     if not lines:
         return ""
 
