@@ -554,6 +554,20 @@ app.include_router(asset_finance_router)
 from api.routers.improvement import router as improvement_router
 app.include_router(improvement_router)
 
+# REV-234でルーターへ分割後もこのファイル内(_build_dialogue_triage_context等)や
+# 既存テストがモジュール直下の名前で参照しているため、後方互換の再exportを残す。
+from api.routers.improvement import (  # noqa: E402
+    ImprovementTriageApproveRequest,
+    ImprovementTriageRequest,
+    MonitorReportRequest,
+    _TRIAGE_DECISION_LABELS,
+    _load_improvement_triage_latest,
+    approve_improvement_triage,
+    get_improvement_triage,
+    record_improvement_triage,
+    record_monitor_report,
+)
+
 from api.routers.gunshi import router as gunshi_router
 app.include_router(gunshi_router)
 
