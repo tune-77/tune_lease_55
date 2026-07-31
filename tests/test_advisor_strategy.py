@@ -1,13 +1,4 @@
-import sys
-from pathlib import Path
-
-
-ROOT = Path(__file__).resolve().parents[1]
-MOBILE_APP = ROOT / "mobile_app"
-if str(MOBILE_APP) not in sys.path:
-    sys.path.insert(0, str(MOBILE_APP))
-
-from advisor_strategy import _extract_gemini_json, build_gemini_strategy_advice, build_strategy_advice
+from mobile_app.advisor_strategy import _extract_gemini_json, build_gemini_strategy_advice, build_strategy_advice
 
 
 def test_advisor_high_qrisk_adds_integrity_condition():
