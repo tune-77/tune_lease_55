@@ -80,13 +80,23 @@ from data_cases import load_past_cases
 from industry_normalizer import normalize_industry_major, normalize_industry_sub
 
 # ── 既存先 Step2 / 共通: RF 52特徴量メインモデル ─────────────────────────
-_bundle   = joblib.load(os.path.join(_HERE, "simple_model.pkl"))
-_le_ind   = joblib.load(os.path.join(_HERE, "industry_encoder.pkl"))
-_model    = _bundle["model"]       # 既存先の最終予測に使う
-_features = _bundle["feature_names"]
-_encoders = _bundle["encoders"]
-_imputer  = _bundle["imputer"]
-_medians  = dict(zip(_features, _imputer.statistics_))
+_bundle   = None
+_le_ind   = None
+_model    = None
+_features = []
+_encoders = {}
+_imputer  = None
+_medians  = {}
+try:
+    _bundle   = joblib.load(os.path.join(_HERE, "simple_model.pkl"))
+    _le_ind   = joblib.load(os.path.join(_HERE, "industry_encoder.pkl"))
+    _model    = _bundle["model"]       # 既存先の最終予測に使う
+    _features = _bundle["feature_names"]
+    _encoders = _bundle["encoders"]
+    _imputer  = _bundle["imputer"]
+    _medians  = dict(zip(_features, _imputer.statistics_))
+except Exception as e:
+    print(f"[api] メインRF: 未ロード（simple_model.pkl と scikit-learn のバージョン不一致等）→ {e}")
 
 # ── 新規先専用 RF モデル（52特徴量・新規先データのみで学習） ───────────────
 _rf_new_bundle = None
