@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 import subprocess
 import sys
 
@@ -14,11 +15,18 @@ def test_system_monitor_section_present_in_message():
     assert "*システム監視*" in payload["text"]
 
 
-def test_script_dry_run_works_when_executed_by_path():
+def test_script_dry_run_works_when_executed_by_path(tmp_path):
+    # 実運用の reports/latest.json（.gitignore対象で本番実行でのみ生成される）に
+    # 依存させず、--report で自己完結した最小レポートを渡す。
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps({"applied_count": 0}), encoding="utf-8")
+
     result = subprocess.run(
         [
             sys.executable,
             "scripts/send_daily_improvement_slack.py",
+            "--report",
+            str(report_path),
             "--date",
             "2026-07-25",
             "--dry-run",
