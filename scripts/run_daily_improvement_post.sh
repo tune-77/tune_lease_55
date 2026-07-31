@@ -173,6 +173,11 @@ echo "[記憶] Obsidian Memory Effectiveness を生成（保存→想起→使�
 log_step "obsidian_memory_effectiveness_report" $?
 
 echo ""
+echo "[育成] Obsidianグラフの複雑さが判断に効いているかを測定（観測のみ）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_obsidian_graph_judgment_effect.py"
+log_step "build_obsidian_graph_judgment_effect" $?
+
+echo ""
 echo "[成長] Judgment Asset Growth Score を記録（Slack日次レポート / loop-proof が参照）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/judgment_asset_growth_report.py" \
   --date "${PIPELINE_DATE}"

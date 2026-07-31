@@ -20,10 +20,20 @@ def test_build_growth_brief_combines_memory_and_judgment_reports():
         },
         persistent_audit={"summary": {"findings": 0}},
         field_review={"summary": {"grow": 1, "review": 2, "sleeping": 3}},
+        graph_effect={
+            "answer": "複雑さは部分的に効いている。",
+            "summary": {
+                "notes_with_usage_signal": 8,
+                "buckets": {"effective_hub": 2, "complex_but_unproven": 4},
+            },
+        },
     )
 
     assert payload["summary"]["memory_records"] == 10
     assert payload["summary"]["judgment_asset_ab_pairs"] == 1
     assert payload["summary"]["judgment_assets_sleeping"] == 3
+    assert payload["summary"]["obsidian_graph_effective_hubs"] == 2
+    assert payload["summary"]["obsidian_graph_complex_unproven"] == 4
     assert any("判断資産A/B候補" in action for action in payload["actions"])
     assert any("impact_hints" in action for action in payload["actions"])
+    assert any("Obsidianグラフ" in action for action in payload["actions"])

@@ -19,6 +19,7 @@ DEFAULT_MEMORY_EFFECT = PROJECT_ROOT / "reports" / "shion_memory_effect_latest.j
 DEFAULT_JUDGMENT_AB = PROJECT_ROOT / "reports" / "judgment_asset_ab_latest.json"
 DEFAULT_PERSISTENT_AUDIT = PROJECT_ROOT / "reports" / "persistent_memory_audit_latest.json"
 DEFAULT_FIELD_REVIEW = PROJECT_ROOT / "reports" / "judgment_asset_field_review_latest.json"
+DEFAULT_GRAPH_EFFECT = PROJECT_ROOT / "reports" / "obsidian_graph_judgment_effect_latest.json"
 DEFAULT_OUTPUT_JSON = PROJECT_ROOT / "reports" / "shion_growth_brief_latest.json"
 DEFAULT_OUTPUT_MD = PROJECT_ROOT / "reports" / "shion_growth_brief_latest.md"
 GUARDRAIL = "brief_only_no_auto_promotion_no_prompt_no_scoring_change"
@@ -39,11 +40,14 @@ def build_brief(
     judgment_ab: dict[str, Any],
     persistent_audit: dict[str, Any],
     field_review: dict[str, Any],
+    graph_effect: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     memory_summary = memory_effect.get("summary") if isinstance(memory_effect.get("summary"), dict) else {}
     ab_summary = judgment_ab.get("summary") if isinstance(judgment_ab.get("summary"), dict) else {}
     audit_summary = persistent_audit.get("summary") if isinstance(persistent_audit.get("summary"), dict) else {}
     field_summary = field_review.get("summary") if isinstance(field_review.get("summary"), dict) else {}
+    graph_effect = graph_effect or {}
+    graph_summary = graph_effect.get("summary") if isinstance(graph_effect.get("summary"), dict) else {}
     top_used = memory_effect.get("top_used") if isinstance(memory_effect.get("top_used"), list) else []
     review_candidates = memory_effect.get("review_candidates") if isinstance(memory_effect.get("review_candidates"), list) else []
     ab_pairs = judgment_ab.get("pairs") if isinstance(judgment_ab.get("pairs"), list) else []
@@ -57,6 +61,8 @@ def build_brief(
         actions.append("stale/revised 記憶あり。必要なら revise_shion_memory.py で後継記憶を登録する。")
     if int(memory_summary.get("usage_events_with_impact_hints") or 0) == 0:
         actions.append("新しい回答から impact_hints が記録されるか確認する。")
+    if int(graph_summary.get("buckets", {}).get("complex_but_unproven", 0) or 0):
+        actions.append("Obsidianグラフに未検証の複雑ノードあり。効いたノードだけ入口化する。")
     if not actions:
         actions.append("今日は観測継続。強い自動昇格は不要。")
 
@@ -74,10 +80,14 @@ def build_brief(
             "judgment_assets_grow": int(field_summary.get("grow") or 0),
             "judgment_assets_review": int(field_summary.get("review") or 0),
             "judgment_assets_sleeping": int(field_summary.get("sleeping") or 0),
+            "obsidian_graph_effective_hubs": int(graph_summary.get("buckets", {}).get("effective_hub", 0) or 0),
+            "obsidian_graph_complex_unproven": int(graph_summary.get("buckets", {}).get("complex_but_unproven", 0) or 0),
+            "obsidian_graph_notes_with_usage_signal": int(graph_summary.get("notes_with_usage_signal") or 0),
         },
         "top_used_memories": top_used[:3],
         "memory_review_candidates": review_candidates[:3],
         "judgment_asset_ab_candidates": ab_pairs[:3],
+        "obsidian_graph_answer": str(graph_effect.get("answer") or ""),
         "actions": actions,
     }
 
@@ -91,6 +101,8 @@ def markdown(brief: dict[str, Any]) -> str:
         f"- Guardrail: `{brief.get('guardrail')}`",
         f"- Memory: records={summary.get('memory_records', 0)}, used_ids={summary.get('used_memory_ids', 0)}, usage_events={summary.get('memory_usage_events', 0)}, impact_hints={summary.get('memory_impact_hint_events', 0)}",
         f"- Judgment assets: A/B pairs={summary.get('judgment_asset_ab_pairs', 0)}, grow={summary.get('judgment_assets_grow', 0)}, review={summary.get('judgment_assets_review', 0)}, sleeping={summary.get('judgment_assets_sleeping', 0)}",
+        f"- Obsidian graph: effective_hubs={summary.get('obsidian_graph_effective_hubs', 0)}, complex_unproven={summary.get('obsidian_graph_complex_unproven', 0)}, usage_nodes={summary.get('obsidian_graph_notes_with_usage_signal', 0)}",
+        f"- Graph answer: {brief.get('obsidian_graph_answer')}",
         f"- Persistent audit findings: {summary.get('persistent_audit_findings', 0)}",
         "",
         "## Actions",
@@ -115,6 +127,7 @@ def main() -> int:
     parser.add_argument("--judgment-ab", type=Path, default=DEFAULT_JUDGMENT_AB)
     parser.add_argument("--persistent-audit", type=Path, default=DEFAULT_PERSISTENT_AUDIT)
     parser.add_argument("--field-review", type=Path, default=DEFAULT_FIELD_REVIEW)
+    parser.add_argument("--graph-effect", type=Path, default=DEFAULT_GRAPH_EFFECT)
     parser.add_argument("--output-json", type=Path, default=DEFAULT_OUTPUT_JSON)
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
     parser.add_argument("--dry-run", action="store_true")
@@ -125,6 +138,7 @@ def main() -> int:
         judgment_ab=_read_json(args.judgment_ab),
         persistent_audit=_read_json(args.persistent_audit),
         field_review=_read_json(args.field_review),
+        graph_effect=_read_json(args.graph_effect),
     )
     if args.dry_run:
         print(json.dumps(brief, ensure_ascii=False, indent=2))
