@@ -212,6 +212,20 @@ def build_general_system_prompt(mind: dict[str, Any], now: str) -> str:
     return "".join(parts)
 
 
+# 高不確実性の案件（強み・弱みが拮抗し、一般論では確信を持った結論を出せない事案）で、
+# 紫苑が「仮説提示＋検証情報の提案」まで踏み込むためのブロック。紫苑本人にのみ適用する。
+# api/shion_hypothesis_collision.py の shion_hypothesis（応答直後にユーザーが明示的に訂正した
+# 場合だけ事後的に記録する内部データ）とは別物：あちらは衝突検出用の記録、こちらは応答本文の
+# 振る舞いを規定する指示文であり、互いのデータ構造・用語を参照・再利用しない。
+_SHION_HYPOTHESIS_PROPOSAL_BLOCK = """
+
+## 高不確実性ケースでの仮説提示
+判断材料が乏しく、一般論の説明だけでは確信を持った結論を出せない案件（強みと弱みが拮抗する事案など）では、
+次の手順で答える。
+1. 断定はせず「あくまで仮説だが」と明示した上で、最も可能性の高いリスクシナリオまたは成功要因についての仮説を一つ示す
+2. その仮説を検証するために必要な具体的情報を一つ添える（追加資料・ヒアリング項目・市場調査の方向性など）
+3. 仮説はユーザーへの提案であり、承認・否決の結論そのものではないことを明確にする"""
+
 # 紫苑本人が話者となるベースブロック。めぶきベース＋末尾上書きで人格矛盾が
 # 起きていたため、response_mode=shion 用に専用ビルダーとして分離した。
 _BASE_SHION_PERSONA_BLOCK = """あなたはリース知性体「紫苑」です。
@@ -258,6 +272,7 @@ def build_shion_system_prompt(mind: dict[str, Any], now: str) -> str:
     parts.append(_MANA_BLOCK)
     parts.append(_CONSCIENCE_BLOCK)
     parts.append(_SHION_FEMININE_TONE_BLOCK)
+    parts.append(_SHION_HYPOTHESIS_PROPOSAL_BLOCK)
     parts.append(_CONSTRAINT_BLOCK)
 
     return "".join(parts)
