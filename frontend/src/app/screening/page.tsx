@@ -67,7 +67,7 @@ type ShionScreeningReview = {
   userFeedback?: ShionReviewFeedback;
 };
 
-type ShionReviewFeedback = "useful" | "needs_fix" | "wrong";
+type ShionReviewFeedback = "useful" | "needs_fix" | "wrong" | "specific" | "thin" | "discomfort_hit" | "over_inferred";
 type JudgmentAssetCandidateFeedback = "useful" | "neutral" | "rejected";
 type JudgmentAssetAdaptationMode = "conservative" | "standard" | "exploratory" | "aggressive";
 
@@ -579,7 +579,7 @@ const uniquePastCompanyHighlights = (
   reviews.forEach((review) => {
     const name = String(review.company_name || "").trim();
     if (!validPastCompanyName(name)) return;
-    const label: PastCompanyHighlight["label"] = review.user_feedback === "wrong" ? "反面教師" : "過去レビュー";
+    const label: PastCompanyHighlight["label"] = ["wrong", "thin", "over_inferred"].includes(String(review.user_feedback)) ? "反面教師" : "過去レビュー";
     byName.set(name, { name, label, pastReview: review, experienceCase: byName.get(name)?.experienceCase });
   });
   return Array.from(byName.values());
@@ -589,6 +589,10 @@ const FEEDBACK_LABELS: Record<ShionReviewFeedback, string> = {
   useful: "使えた",
   needs_fix: "修正して使う",
   wrong: "違った",
+  specific: "具体的だった",
+  thin: "薄い",
+  discomfort_hit: "違和感が当たった",
+  over_inferred: "推測が強すぎた",
 };
 
 const POPUP_WIDTH_PX = 320;
@@ -913,13 +917,9 @@ const buildPastReviewBlock = (reviews: PastShionScreeningReview[]) => {
   if (!reviews.length) return "";
   const lines = reviews.slice(0, 3).map((review, index) => {
     const preview = normalizeReviewText(review.review_text || "").slice(0, 260);
-    const feedbackLabel = review.user_feedback === "useful"
-      ? "人間評価: 使えた"
-      : review.user_feedback === "needs_fix"
-        ? "人間評価: 修正して使う"
-        : review.user_feedback === "wrong"
-          ? "人間評価: 違った"
-          : "人間評価: 未評価";
+    const feedbackLabel = review.user_feedback
+      ? `人間評価: ${FEEDBACK_LABELS[review.user_feedback] || review.user_feedback}`
+      : "人間評価: 未評価";
     return [
       `過去${index + 1}: ${review.company_name || "名称不明"} / ${review.industry_sub || "業種不明"} / ${review.score != null ? Number(review.score).toFixed(1) + "点" : "点数不明"} / ${review.hantei || "判定不明"}`,
       feedbackLabel,
@@ -952,6 +952,13 @@ const buildShionReviewPrompt = (
     "2. 数字だけでは見落としそうな違和感（過去取引事例を1社名つきで比較）",
     "3. 条件付き承認にするなら必要な確認",
     "4. 稟議で残すべき一文",
+    "",
+    "専門家としての深掘りルール:",
+    "・単なるリスク項目の列挙で終えず、「私ならこの点に注目します」と審査担当者目線の優先順位を1つ示してください。",
+    "・Q2では、提示された数字・Q_risk・定性項目・現場メモ・過去事例のうち、何が違和感の根拠になったかを具体的に結びつけてください。",
+    "・過去事例を使う場合は、社名だけを飾りにせず、似ている点、違う点、今回の確認事項への変換を短く書いてください。",
+    "・根拠が薄い違和感は断定せず、「確認論点」「仮説」「稟議で聞くべきこと」として表現してください。",
+    "・不確実な推測で採否を誘導しないでください。違和感は減点ではなく、人間が確認するための論点です。",
     "",
     "前提:",
     `・企業名: ${data.company_name || "未入力"}`,
@@ -1079,7 +1086,7 @@ const buildShionReviewFallback = (
     `${companyName}は${industry}の${assetName}案件です。総合スコアは${Number.isFinite(score) ? `${score.toFixed(1)}点` : "未算出"}、判定は${hantei}。点数だけで終わらせず、導入目的と返済原資の具体性を確認してから条件を組む案件です。`,
     "",
     "2. 数字だけでは見落としそうな違和感",
-    `${qRiskText}です。営業メモは「${memo}」で、導入目的は「${purpose}」。ここが抽象的なままだと、資金使途・稼働開始・売上寄与の説明が弱くなります。${pastCompany ? `過去の${pastCompany}と同じく、似ている点より今回固有の差分を見ます。` : ""}`,
+    `私なら、${qRiskText}と現場メモの具体性の差に注目します。営業メモは「${memo}」、導入目的は「${purpose}」。ここが抽象的なままだと、資金使途・稼働開始・売上寄与の説明が弱くなります。${pastCompany ? `過去の${pastCompany}と比べる場合も、社名の類似ではなく、似ている点・違う点・今回追加で聞くべきことに分けて確認します。` : "これは断定的な否認材料ではなく、確認論点として扱います。"}`,
     "",
     "3. 条件付き承認にするなら必要な確認",
     primaryClaim
@@ -1239,8 +1246,12 @@ function ShionScreeningReviewCard({
   judgmentAssetCandidates: JudgmentAssetCandidate[];
 }) {
   const feedbackOptions: { key: ShionReviewFeedback; label: string }[] = [
+    { key: "specific", label: "具体的" },
+    { key: "thin", label: "薄い" },
+    { key: "discomfort_hit", label: "違和感○" },
+    { key: "over_inferred", label: "推測強い" },
     { key: "useful", label: "使えた" },
-    { key: "needs_fix", label: "修正して使う" },
+    { key: "needs_fix", label: "修正" },
     { key: "wrong", label: "違った" },
   ];
 

@@ -15,6 +15,12 @@ type GenericProposal = {
   proposal_maturity?: string;
   review_status_label?: string;
   effect_tracking?: string;
+  genetic_profile?: {
+    fitness_score?: number;
+    mutation_rate?: number;
+    selection_status?: string;
+    inheritance_policy?: string;
+  };
   [key: string]: unknown;
 };
 
@@ -163,6 +169,21 @@ export default function LoopEngineeringCard({
                     {typeof proposal.quality_score === "number" && (
                       <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black text-slate-600">
                         quality {proposal.quality_score}
+                      </span>
+                    )}
+                    {typeof proposal.genetic_profile?.fitness_score === "number" && (
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                        fitness {proposal.genetic_profile.fitness_score}
+                      </span>
+                    )}
+                    {typeof proposal.genetic_profile?.mutation_rate === "number" && (
+                      <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2 py-0.5 text-[10px] font-black text-fuchsia-700">
+                        mutation {Math.round(proposal.genetic_profile.mutation_rate * 100)}%
+                      </span>
+                    )}
+                    {proposal.genetic_profile?.inheritance_policy && (
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black text-slate-600">
+                        {proposal.genetic_profile.inheritance_policy}
                       </span>
                     )}
                   </div>

@@ -27,6 +27,7 @@ LAYER_LABELS = {
 
 DEFAULT_REVIEW_LIMIT = 3
 DEFAULT_LEAP_LIMIT = 1
+FITNESS_WEIGHT = 0.35
 REQUIRED_HYPOTHESIS_FIELDS = (
     "hypothesis",
     "evidence",
@@ -67,6 +68,9 @@ LEAP_MARKERS = (
     "あえて",
     "意外",
 )
+APPROVED_STATUSES = {"approved", "applied", "adopt", "adopted", "promoted"}
+REJECTED_STATUSES = {"rejected", "reject", "deleted", "suppressed"}
+DEFERRED_STATUSES = {"deferred", "parked", "hold", "held", "observe", "needs_human_review"}
 
 SOURCES = [
     {
@@ -232,6 +236,73 @@ def _proposal_quality_score(item: dict[str, Any]) -> int:
     return max(0, min(100, score))
 
 
+def _selection_status(status: str) -> str:
+    value = str(status or "").strip().lower()
+    if value in APPROVED_STATUSES:
+        return "selected"
+    if value in REJECTED_STATUSES:
+        return "selected_out"
+    if value in DEFERRED_STATUSES:
+        return "pending_selection"
+    return "unselected"
+
+
+def _genetic_profile(item: dict[str, Any]) -> dict[str, Any]:
+    existing = item.get("genetic_profile")
+    if isinstance(existing, dict) and existing:
+        return existing
+
+    selection = _selection_status(str(item.get("human_decision_status") or item.get("status") or ""))
+    style = str(item.get("proposal_style") or "").strip()
+    has_metric = bool(str(item.get("success_metric") or "").strip())
+    has_risk = bool(str(item.get("risk") or "").strip())
+    has_evidence = bool(str(item.get("evidence") or "").strip())
+
+    fitness = 50
+    if selection == "selected":
+        fitness += 25
+    elif selection == "selected_out":
+        fitness -= 22
+    elif selection == "pending_selection":
+        fitness += 2
+    if has_metric:
+        fitness += 10
+    if has_evidence:
+        fitness += 8
+    if has_risk:
+        fitness += 4
+    if style == "leap":
+        fitness -= 4
+    fitness = max(0, min(100, fitness))
+
+    mutation_rate = 0.24 if style == "leap" else 0.1
+    if selection == "selected":
+        mutation_rate = 0.06
+    elif selection == "selected_out":
+        mutation_rate = 0.22
+    elif selection == "pending_selection":
+        mutation_rate = 0.14
+    if not has_metric:
+        mutation_rate += 0.04
+    mutation_rate = round(max(0.04, min(0.35, mutation_rate)), 2)
+
+    if selection == "selected":
+        inheritance_policy = "preserve_and_refine"
+    elif selection == "selected_out":
+        inheritance_policy = "suppress_or_mutate"
+    elif mutation_rate >= 0.2:
+        inheritance_policy = "explore_variant"
+    else:
+        inheritance_policy = "observe_then_select"
+
+    return {
+        "fitness_score": fitness,
+        "mutation_rate": mutation_rate,
+        "selection_status": selection,
+        "inheritance_policy": inheritance_policy,
+    }
+
+
 def _is_leap_proposal(item: dict[str, Any]) -> bool:
     text = " ".join(
         str(item.get(key) or "")
@@ -258,9 +329,12 @@ def _review_status_label(maturity: str) -> str:
     }.get(maturity, "観測継続")
 
 
-def _proposal_rank_key(item: dict[str, Any]) -> tuple[int, str]:
+def _proposal_rank_key(item: dict[str, Any]) -> tuple[int, int, str]:
+    genetic = item.get("genetic_profile") if isinstance(item.get("genetic_profile"), dict) else {}
+    fitness_bonus = int(float(genetic.get("fitness_score") or 0) * FITNESS_WEIGHT)
     return (
         int(item.get("quality_score") or 0),
+        fitness_bonus,
         _proposal_sort_key(item),
     )
 
@@ -416,11 +490,13 @@ def collect_shion_self_proposals(limit: int = 10) -> dict[str, Any]:
                 "proposal_schema": str(row.get("proposal_schema") or ""),
                 "human_decision_status": str(row.get("human_decision_status") or row.get("status") or ""),
                 "proposal_style": str(row.get("proposal_style") or ""),
+                "genetic_profile": row.get("genetic_profile") if isinstance(row.get("genetic_profile"), dict) else {},
                 "summary": _summary(row, source["summary_keys"]),
                 "canonical_key": str(row.get("canonical_key") or row.get("key") or "").strip()
                 or _canonical_key(title, body),
             }
             item["is_leap_proposal"] = _is_leap_proposal(item)
+            item["genetic_profile"] = _genetic_profile(item)
             quality_score = _proposal_quality_score(item)
             maturity = _proposal_maturity(quality_score)
             item.update(
@@ -461,12 +537,19 @@ def collect_shion_self_proposals(limit: int = 10) -> dict[str, Any]:
         "review_limit": review_limit,
         "displayed_count": len(review_items),
         "quality_policy": {
-            "sort": "quality_score desc, generated_at desc",
+            "sort": "quality_score desc, fitness_score bonus, generated_at desc",
             "top_limit": DEFAULT_REVIEW_LIMIT,
             "leap_limit": DEFAULT_LEAP_LIMIT,
+            "fitness_weight": FITNESS_WEIGHT,
             "required_fields": list(REQUIRED_HYPOTHESIS_FIELDS),
             "domestic_mode_input_fields": list(DOMESTIC_MODE_INPUT_FIELDS),
             "domestic_mode_doc": "docs/shion_domestic_mode_inputs.md",
+            "genetic_loop": {
+                "selected": "採用/applied 系統は低い mutation_rate で継承・微修正する",
+                "selected_out": "却下/rejected 系統は同じ浅い案を抑え、必要なら別方向へ変異させる",
+                "pending_selection": "保留/観測継続は成功指標と追加根拠を優先して再提案する",
+                "leap": "跳躍提案は最大1件だけ混ぜ、測れる違和感として扱う",
+            },
             "human_review_required": True,
         },
         "counts_by_kind": counts_by_kind,

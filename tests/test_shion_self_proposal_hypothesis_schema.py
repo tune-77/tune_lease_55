@@ -191,7 +191,11 @@ def test_report_attachment_limits_review_items_to_top_three(tmp_path, monkeypatc
     assert section["quality_policy"]["domestic_mode_doc"] == "docs/shion_domestic_mode_inputs.md"
     assert "usage_context" in section["quality_policy"]["domestic_mode_input_fields"]
     assert "do_not_touch" in section["quality_policy"]["domestic_mode_input_fields"]
+    assert section["quality_policy"]["fitness_weight"] == 0.35
+    assert section["quality_policy"]["genetic_loop"]["selected"]
     assert section["items"][0]["title"] == "提案4"
+    assert "genetic_profile" in section["items"][0]
+    assert "fitness_score" in section["items"][0]["genetic_profile"]
 
 
 def test_report_attachment_keeps_one_leap_slot(tmp_path, monkeypatch):
@@ -242,6 +246,7 @@ def test_report_attachment_keeps_one_leap_slot(tmp_path, monkeypatch):
 
     assert section["review_limit"] == 3
     assert section["quality_policy"]["leap_limit"] == 1
+    assert section["quality_policy"]["genetic_loop"]["leap"]
     assert len(section["items"]) == 3
     assert sum(1 for item in section["items"] if item["is_leap_proposal"]) == 1
     assert any(item["title"] == "違和感の名前を付ける" for item in section["items"])

@@ -20,6 +20,9 @@ _STATUS_LABELS = {
     "reject": "却下候補",
     "observe": "観測継続",
 }
+_APPROVED_STATUSES = {"approved", "applied", "adopt", "adopted", "promoted"}
+_REJECTED_STATUSES = {"rejected", "reject", "deleted", "suppressed"}
+_DEFERRED_STATUSES = {"deferred", "parked", "hold", "held", "observe", "needs_human_review"}
 
 
 def _append_jsonl(path: Path, entry: dict[str, Any]) -> None:
@@ -38,6 +41,82 @@ def _memo_field(memo: str, field: str) -> str:
         if line.startswith(f"{field}:"):
             return line.split(":", 1)[1].strip()
     return ""
+
+
+def _selection_status(status: str) -> str:
+    value = str(status or "").strip().lower()
+    if value in _APPROVED_STATUSES:
+        return "selected"
+    if value in _REJECTED_STATUSES:
+        return "selected_out"
+    if value in _DEFERRED_STATUSES:
+        return "pending_selection"
+    return "unselected"
+
+
+def build_genetic_profile(proposal: dict[str, Any], status: str = "") -> dict[str, Any]:
+    """Return lightweight evolutionary metadata for domestic-mode proposals.
+
+    This is deliberately heuristic. It does not auto-approve proposals; it only
+    tells the next self-proposal prompt how much to preserve or mutate a lineage.
+    """
+    effective_status = status or str(
+        proposal.get("human_decision_status") or proposal.get("domestic_status") or proposal.get("status") or ""
+    )
+    selection_status = _selection_status(effective_status)
+    style = str(proposal.get("proposal_style") or "").strip()
+    has_metric = bool(str(proposal.get("success_metric") or "").strip())
+    has_risk = bool(str(proposal.get("risk") or "").strip())
+    has_evidence = bool(str(proposal.get("evidence") or "").strip())
+
+    fitness = 50
+    if selection_status == "selected":
+        fitness += 25
+    elif selection_status == "selected_out":
+        fitness -= 22
+    elif selection_status == "pending_selection":
+        fitness += 2
+    if has_metric:
+        fitness += 10
+    if has_evidence:
+        fitness += 8
+    if has_risk:
+        fitness += 4
+    if style == "leap":
+        fitness -= 4
+    fitness = max(0, min(100, fitness))
+
+    mutation_rate = 0.1
+    if style == "leap":
+        mutation_rate = 0.24
+    if selection_status == "selected":
+        mutation_rate = 0.06
+    elif selection_status == "selected_out":
+        mutation_rate = 0.22
+    elif selection_status == "pending_selection":
+        mutation_rate = 0.14
+    if not has_metric:
+        mutation_rate += 0.04
+    mutation_rate = round(max(0.04, min(0.35, mutation_rate)), 2)
+
+    if selection_status == "selected":
+        inheritance_policy = "preserve_and_refine"
+    elif selection_status == "selected_out":
+        inheritance_policy = "suppress_or_mutate"
+    elif mutation_rate >= 0.2:
+        inheritance_policy = "explore_variant"
+    else:
+        inheritance_policy = "observe_then_select"
+
+    return {
+        "fitness_score": fitness,
+        "mutation_rate": mutation_rate,
+        "selection_status": selection_status,
+        "inheritance_policy": inheritance_policy,
+        "parent_ids": [str(proposal.get("source_canonical_key") or "").strip()] if proposal.get("source_canonical_key") else [],
+        "derivation_reason": str(proposal.get("decision_layer") or proposal.get("hypothesis") or "").strip()[:160],
+        "validation_status": selection_status,
+    }
 
 
 def build_domestic_mode_prompt(memo: str, heuristic: dict[str, Any] | None = None) -> str:
@@ -196,6 +275,7 @@ def _build_proposal_entry(memo: str, heuristic: dict[str, Any], verdict: dict[st
         "canonical_key": _canonical_key(title, body),
         "body": body,
     }
+    entry["genetic_profile"] = build_genetic_profile(entry, str(verdict.get("status") or ""))
     return entry
 
 
@@ -216,6 +296,7 @@ def save_domestic_mode_proposal(memo: str, heuristic: dict[str, Any], verdict: d
                 "decision_layer": entry["decision_layer"],
                 "success_metric": entry["success_metric"],
                 "review_timing": entry["review_timing"],
+                "genetic_profile": entry["genetic_profile"],
             },
         },
     )
@@ -329,6 +410,7 @@ def connect_self_proposal_to_domestic_mode(
         "canonical_key": domestic_key,
         "body": body,
     }
+    entry["genetic_profile"] = build_genetic_profile(entry, "observe")
     _append_jsonl(_PROPOSALS_PATH, entry)
     return {
         "saved": True,
@@ -378,7 +460,15 @@ def build_domestic_memory_context(limit: int = 6) -> str:
         layer = str(row.get("decision_layer") or "").strip()
         metric = str(row.get("success_metric") or "").strip()
         risk = str(row.get("risk") or "").strip()
+        genetic_profile = row.get("genetic_profile") if isinstance(row.get("genetic_profile"), dict) else {}
+        if not genetic_profile:
+            genetic_profile = build_genetic_profile(row, status)
         line = f"- {title}: status={status or '-'}"
+        line += (
+            f" / fitness={genetic_profile.get('fitness_score', '-')}"
+            f" / mutation_rate={genetic_profile.get('mutation_rate', '-')}"
+            f" / inheritance={genetic_profile.get('inheritance_policy', '-')}"
+        )
         if layer:
             line += f" / layer={layer}"
         if metric:
@@ -396,4 +486,6 @@ def build_domestic_memory_context(limit: int = 6) -> str:
 - rejected は同じ浅い提案を繰り返さない
 - deferred/parked/observe は追加根拠か成功指標を添えて提案する
 - guardrail/触らない線がある場合は必ず守る
+- fitness が高い系統は小さく継承・改善し、mutation_rate が高い系統は別方向の検証可能な変異案として出す
+- 跳躍提案は最大1件まで。突然変異は面白さではなく、測れる違和感として出す
 """ + "\n".join(selected)

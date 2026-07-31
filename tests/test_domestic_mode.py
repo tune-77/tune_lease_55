@@ -94,9 +94,13 @@ def test_domestic_mode_saves_self_proposal_logs(tmp_path, monkeypatch):
     assert proposal["source"] == "domestic_mode"
     assert proposal["proposal_schema"] == "shion_self_hypothesis_v1"
     assert proposal["human_decision_status"] == "needs_human_review"
+    assert proposal["genetic_profile"]["selection_status"] == "pending_selection"
+    assert proposal["genetic_profile"]["fitness_score"] > 50
+    assert proposal["genetic_profile"]["mutation_rate"] > 0
     assert improvement["surface"] == "shion_self_proposal"
     assert improvement["proposed_by"] == "shion"
     assert improvement["event_type"] == "domestic_mode_self_proposal"
+    assert improvement["payload"]["genetic_profile"]["inheritance_policy"] == "observe_then_select"
 
 
 def test_domestic_memory_context_summarizes_latest_status(tmp_path, monkeypatch):
@@ -125,6 +129,8 @@ def test_domestic_memory_context_summarizes_latest_status(tmp_path, monkeypatch)
 
     assert "内政モード判断メモリ" in context
     assert "status=approved" in context
+    assert "fitness=" in context
+    assert "mutation_rate=" in context
     assert "問い合わせ件数" in context
     assert "触らない線" in context
 
@@ -168,3 +174,33 @@ def test_self_proposal_auto_connects_to_domestic_mode(tmp_path, monkeypatch):
     assert rows[0]["source_proposal_source"] == "usage_loop"
     assert rows[0]["domestic_status"] == "observe"
     assert rows[0]["success_metric"] == "問い合わせ件数"
+    assert rows[0]["genetic_profile"]["selection_status"] == "pending_selection"
+    assert rows[0]["genetic_profile"]["parent_ids"]
+
+
+def test_genetic_profile_mutates_rejected_leap_more_than_approved_regular():
+    import api.domestic_mode as domestic
+
+    approved = domestic.build_genetic_profile(
+        {
+            "success_metric": "問い合わせ件数",
+            "evidence": "30日ログ",
+            "risk": "導線が増える",
+        },
+        "approved",
+    )
+    rejected_leap = domestic.build_genetic_profile(
+        {
+            "proposal_style": "leap",
+            "success_metric": "利用率",
+            "evidence": "低利用",
+            "risk": "混乱",
+        },
+        "rejected",
+    )
+
+    assert approved["selection_status"] == "selected"
+    assert approved["inheritance_policy"] == "preserve_and_refine"
+    assert rejected_leap["selection_status"] == "selected_out"
+    assert rejected_leap["inheritance_policy"] == "suppress_or_mutate"
+    assert rejected_leap["mutation_rate"] > approved["mutation_rate"]

@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from api.db_connection import current_backend, get_connection, placeholder
@@ -57,6 +56,8 @@ def _with_self_proposal_review_meta(
     evidence_layer: str,
 ) -> list[dict[str, Any]]:
     """Add lightweight review metadata for older persisted self proposals."""
+    from api.domestic_mode import build_genetic_profile
+
     enriched: list[dict[str, Any]] = []
     for proposal in proposals:
         if not isinstance(proposal, dict):
@@ -66,6 +67,8 @@ def _with_self_proposal_review_meta(
         item.setdefault("evidence_layer_label", _SELF_PROPOSAL_LAYER_LABELS.get(evidence_layer, evidence_layer))
         item.setdefault("review_policy", "human_decision_required")
         item.setdefault("effect_tracking", "採用/保留/却下と、success_metric の事後変化で確認する")
+        if not isinstance(item.get("genetic_profile"), dict) or not item.get("genetic_profile"):
+            item["genetic_profile"] = build_genetic_profile(item)
         if not item.get("review_status_label"):
             item["review_status_label"] = "レビュー候補" if item.get("success_metric") else "観測継続"
         enriched.append(item)
@@ -116,7 +119,15 @@ class ShionScreeningReviewSaveRequest(BaseModel):
 
 
 class ShionScreeningReviewFeedbackRequest(BaseModel):
-    user_feedback: Literal["useful", "needs_fix", "wrong"]
+    user_feedback: Literal[
+        "useful",
+        "needs_fix",
+        "wrong",
+        "specific",
+        "thin",
+        "discomfort_hit",
+        "over_inferred",
+    ]
 
 
 class JudgmentAssetCandidateFeedbackRequest(BaseModel):
@@ -351,8 +362,9 @@ def _update_shion_screening_review_feedback(review_id: int, user_feedback: str) 
     _ensure_shion_screening_reviews_table()
     ph = placeholder()
     normalized = str(user_feedback or "").strip()
-    if normalized not in {"useful", "needs_fix", "wrong"}:
-        raise HTTPException(status_code=422, detail="user_feedback must be useful, needs_fix, or wrong")
+    allowed = {"useful", "needs_fix", "wrong", "specific", "thin", "discomfort_hit", "over_inferred"}
+    if normalized not in allowed:
+        raise HTTPException(status_code=422, detail=f"user_feedback must be one of: {', '.join(sorted(allowed))}")
     with get_connection() as conn:
         cur = conn.cursor()
         if current_backend() == "postgresql":
@@ -389,7 +401,15 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
     from pathlib import Path as _Path
 
     _FEEDBACK_JSONL = _Path(__file__).resolve().parent.parent / "data" / "judgment_asset_usage_feedback.jsonl"
-    _OUTCOME_MAP = {"useful": "helped", "needs_fix": "challenged", "wrong": "rejected"}
+    _OUTCOME_MAP = {
+        "useful": "helped",
+        "specific": "helped",
+        "discomfort_hit": "helped",
+        "needs_fix": "challenged",
+        "thin": "challenged",
+        "over_inferred": "challenged",
+        "wrong": "rejected",
+    }
     outcome = _OUTCOME_MAP.get(str(user_feedback or "").strip())
     if not outcome:
         return
