@@ -14,8 +14,12 @@ from fastapi import HTTPException
 @pytest.fixture()
 def main_module(tmp_path, monkeypatch):
     import api.main as main
+    import api.routers.improvement as improvement
 
     monkeypatch.setattr(main, "_REPO_ROOT", str(tmp_path))
+    # record_improvement_triage 等の実体は REV-234 分割で api.routers.improvement に
+    # 移動済み。ファイルパスはそちらのモジュール変数を見て決まるため、こちらも固定する。
+    monkeypatch.setattr(improvement, "_REPO_ROOT", str(tmp_path))
     # 実行環境の実台帳（~/Library/Logs/tunelease/ledger.jsonl）に依存しないよう固定
     monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: {})
     return main
