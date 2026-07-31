@@ -6,7 +6,7 @@ numpy==1.26.4
 plotly==6.3.0
 matplotlib==3.10.7
 seaborn==0.13.2
-scikit-learn==1.2.2
+scikit-learn==1.7.2
 umap-learn==0.5.7
 lightgbm==4.6.0
 # shap>=0.44.0  # Mac では llvmlite のビルドに失敗することがある。conda install -c conda-forge shap で対応
