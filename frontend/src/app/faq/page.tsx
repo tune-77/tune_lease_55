@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   HelpCircle, ChevronDown, ChevronUp, BookOpen, Cpu, Zap,
   Building2, TrendingDown, Clock, RefreshCw, Wrench,
-  Ban, RotateCcw, Factory, Percent, Landmark, Package, Trash2, HardHat
+  Ban, RotateCcw, Factory, Percent, Landmark, Package, Trash2, HardHat, ArrowLeft
 } from 'lucide-react';
 
 type FaqItem = {
@@ -1167,12 +1167,21 @@ export default function FaqPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <HelpCircle className="text-indigo-500" size={26} />
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">ナレッジベース・FAQ</h1>
-          <p className="text-sm text-slate-500">リース審査に関する基礎知識・用語解説・審査基準をまとめています。</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <HelpCircle className="text-indigo-500" size={26} />
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">ナレッジベース・FAQ</h1>
+            <p className="text-sm text-slate-500">リース審査に関する基礎知識・用語解説・審査基準をまとめています。</p>
+          </div>
         </div>
+        <Link
+          href="/lease-intelligence"
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 hover:border-violet-300 hover:text-violet-700 flex-shrink-0"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          対話室に戻る
+        </Link>
       </div>
 
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { LifeBuoy, ExternalLink, Info, AlertTriangle, CheckCircle2, TrendingDown } from "lucide-react";
+import { LifeBuoy, ExternalLink, Info, AlertTriangle, CheckCircle2, TrendingDown, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 type FeatureItem = {
@@ -192,12 +192,21 @@ const SUPPORT_SHORTCUTS = [
 export default function HelpPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-start gap-3">
-        <LifeBuoy className="text-blue-500 mt-1" size={26} />
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">サポートハブ</h1>
-          <p className="text-sm text-slate-500">FAQ、残価ガイド、営業説明、審査画面への戻り口をここに集約しています。</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <LifeBuoy className="text-blue-500 mt-1" size={26} />
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">サポートハブ</h1>
+            <p className="text-sm text-slate-500">FAQ、残価ガイド、営業説明、審査画面への戻り口をここに集約しています。</p>
+          </div>
         </div>
+        <Link
+          href="/lease-intelligence"
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 hover:border-violet-300 hover:text-violet-700 flex-shrink-0"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          対話室に戻る
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
