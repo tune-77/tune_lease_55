@@ -65,7 +65,7 @@ def test_daily_experience_persists_memory_and_self_state(tmp_path):
     }
     assert summary["mood_image_url"].startswith("/lease-intelligence/moods/")
     assert summary["dominant_complex_emotion"]
-    assert len(summary["complex_emotions"]) == 3
+    assert len(summary["complex_emotions"]) == 7  # _derive_complex_emotions の候補7種を常に全件返す
     assert all("description" in item for item in summary["complex_emotions"])
     assert {"hope", "frustration", "loneliness", "accomplishment"} <= set(
         summary["mood_dimensions"]

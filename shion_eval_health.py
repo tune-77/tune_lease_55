@@ -613,12 +613,12 @@ def _build_self_proposal_hygiene(repo_root: Path, latest_report: dict[str, Any])
     return report
 
 
-def _summarize_improvement_effect_health(repo_root: Path) -> dict[str, Any]:
+def _summarize_improvement_effect_health(repo_root: Path, *, now: datetime | None = None) -> dict[str, Any]:
     quality_rows = _load_jsonl_all(repo_root / "data" / "improvement_quality_log.jsonl")
     pdca_rows = _load_jsonl_all(repo_root / "data" / "shion_self_pdca_log.jsonl")
     latest_quality = quality_rows[-1] if quality_rows else {}
     latest_quality_dt = _parse_datetime(latest_quality.get("computed_at")) if latest_quality else None
-    quality_age = _hours_since(latest_quality_dt, datetime.now(timezone.utc))
+    quality_age = _hours_since(latest_quality_dt, now or datetime.now(timezone.utc))
     recent_quality = quality_age is not None and quality_age <= 48
     quality_scores = [
         row.get("quality_score")
@@ -740,7 +740,7 @@ def summarize_operation_loop_health(
     obsidian_triage = _read_json(obsidian_triage_path)
     self_proposal_hygiene_file = _read_json(self_proposal_hygiene_path)
     self_proposal_hygiene = self_proposal_hygiene_file or _build_self_proposal_hygiene(repo_root, report)
-    improvement_effect = _summarize_improvement_effect_health(repo_root)
+    improvement_effect = _summarize_improvement_effect_health(repo_root, now=current)
     section = report.get("shion_self_proposals") if isinstance(report.get("shion_self_proposals"), dict) else {}
     visible_items = section.get("items") if isinstance(section.get("items"), list) else []
     suppressed_resolved = section.get("suppressed_resolved") if isinstance(section.get("suppressed_resolved"), list) else []

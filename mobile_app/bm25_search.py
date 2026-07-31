@@ -186,14 +186,25 @@ class SimpleBM25SearchEngine:
         logger.info("✅ Simple BM25 検索エンジン初期化完了（非依存版）")
 
     def _tokenize_simple(self, text: str) -> List[str]:
-        """簡易トークン化（形態素解析なし）"""
+        """簡易トークン化（形態素解析なし）。
+
+        空白区切りだけだと日本語（分かち書きされない言語）が1トークンの
+        巨大な塊になり検索が機能しない。ASCII語はそのまま、非ASCII
+        （日本語等）は文字2-gramに分割し、rank_bm25/fugashi 非導入環境でも
+        最低限の部分一致検索ができるようにする。
+        """
         import re
-        # 日本語と英数字を保持
         text = text.lower()
-        # 連続した空白を単一スペースに
-        text = re.sub(r'\s+', ' ', text)
-        # 単語に分割
-        return text.split()
+        text = re.sub(r'\s+', ' ', text).strip()
+        tokens: List[str] = []
+        for word in text.split():
+            if word.isascii():
+                tokens.append(word)
+            elif len(word) < 2:
+                tokens.append(word)
+            else:
+                tokens.extend(word[i:i + 2] for i in range(len(word) - 1))
+        return tokens
 
     def index_documents(self, documents: List[Dict]):
         """ドキュメントをインデックス"""
