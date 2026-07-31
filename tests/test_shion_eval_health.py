@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import subprocess
@@ -332,6 +332,7 @@ def test_repair_operation_loop_health_regenerates_self_proposals(tmp_path: Path)
 
 
 def test_repair_operation_loop_health_regenerates_loop_engineering(tmp_path: Path):
+    base = datetime.now(timezone.utc)
     reports = tmp_path / "reports"
     data = tmp_path / "data"
     scripts = tmp_path / "scripts"
@@ -346,39 +347,39 @@ def test_repair_operation_loop_health_regenerates_loop_engineering(tmp_path: Pat
                     "count": 0,
                     "items": [],
                     "suppressed_resolved": [],
-                    "attached_at": "2026-07-29T00:30:00+00:00",
+                    "attached_at": base.isoformat(),
                 }
             },
             ensure_ascii=False,
         ),
         encoding="utf-8",
     )
-    os.utime(reports / "latest.json", (datetime(2026, 7, 29, 0, 30, tzinfo=timezone.utc).timestamp(),) * 2)
+    os.utime(reports / "latest.json", (base.timestamp(),) * 2)
     loop_report = reports / "loop_engineering_latest.json"
     loop_report.write_text(
-        json.dumps({"status": "attention", "generated_at": "2026-07-26T00:00:00+00:00"}, ensure_ascii=False),
+        json.dumps({"status": "attention", "generated_at": (base - timedelta(days=3)).isoformat()}, ensure_ascii=False),
         encoding="utf-8",
     )
     (data / "pipeline_step_log.jsonl").write_text(
-        '{"ts":"2026-07-29T00:31:00Z","run_date":"20260729","step":"attach_shion_self_proposals_to_report","exit_code":0,"duration_s":0}\n',
+        json.dumps({"ts": (base + timedelta(minutes=1)).isoformat(), "run_date": "20260729", "step": "attach_shion_self_proposals_to_report", "exit_code": 0, "duration_s": 0}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     (reports / "obsidian_environment_monitor_latest.json").write_text(
-        json.dumps({"status": "ok", "generated_at": "2026-07-29T00:30:00+00:00", "checks": []}, ensure_ascii=False),
+        json.dumps({"status": "ok", "generated_at": base.isoformat(), "checks": []}, ensure_ascii=False),
         encoding="utf-8",
     )
     (reports / "shion_self_proposal_hygiene_latest.json").write_text(
-        json.dumps({"status": "ok", "generated_at": "2026-07-29T00:30:00+00:00"}, ensure_ascii=False),
+        json.dumps({"status": "ok", "generated_at": base.isoformat()}, ensure_ascii=False),
         encoding="utf-8",
     )
     (data / "improvement_quality_log.jsonl").write_text(
-        json.dumps({"computed_at": "2026-07-29T00:30:00+00:00", "quality_score": 1.0}, ensure_ascii=False) + "\n",
+        json.dumps({"computed_at": base.isoformat(), "quality_score": 1.0}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 
     def fake_runner(command, **_kwargs):
         loop_report.write_text(
-            json.dumps({"status": "ok", "generated_at": "2026-07-29T00:40:00+00:00"}, ensure_ascii=False),
+            json.dumps({"status": "ok", "generated_at": (base + timedelta(minutes=10)).isoformat()}, ensure_ascii=False),
             encoding="utf-8",
         )
         return subprocess.CompletedProcess(command, 0, "loop_engineering_latest.json written", "")
@@ -395,6 +396,7 @@ def test_repair_operation_loop_health_regenerates_loop_engineering(tmp_path: Pat
 
 
 def test_repair_operation_loop_health_triages_obsidian_warn(tmp_path: Path):
+    base = datetime.now(timezone.utc)
     reports = tmp_path / "reports"
     data = tmp_path / "data"
     scripts = tmp_path / "scripts"
@@ -402,17 +404,17 @@ def test_repair_operation_loop_health_triages_obsidian_warn(tmp_path: Path):
     data.mkdir()
     scripts.mkdir()
     (scripts / "monitor_obsidian_environment.py").write_text("# fake\n", encoding="utf-8")
-    _write_operation_ok_sidecars(tmp_path, generated_at="2026-07-29T00:30:00+00:00")
+    _write_operation_ok_sidecars(tmp_path, generated_at=base.isoformat())
     (reports / "latest.json").write_text(
-        json.dumps({"shion_self_proposals": {"count": 0, "items": [], "attached_at": "2026-07-29T00:30:00+00:00"}}, ensure_ascii=False),
+        json.dumps({"shion_self_proposals": {"count": 0, "items": [], "attached_at": base.isoformat()}}, ensure_ascii=False),
         encoding="utf-8",
     )
-    os.utime(reports / "latest.json", (datetime(2026, 7, 29, 0, 30, tzinfo=timezone.utc).timestamp(),) * 2)
+    os.utime(reports / "latest.json", (base.timestamp(),) * 2)
     (reports / "obsidian_environment_monitor_latest.json").write_text(
         json.dumps(
             {
                 "status": "warn",
-                "generated_at": "2026-07-29T00:30:00+00:00",
+                "generated_at": base.isoformat(),
                 "checks": [{"name": "surface_freshness", "status": "warn", "message": "stale or missing surfaces: cloudrun_conversation"}],
             },
             ensure_ascii=False,
@@ -420,7 +422,7 @@ def test_repair_operation_loop_health_triages_obsidian_warn(tmp_path: Path):
         encoding="utf-8",
     )
     (data / "pipeline_step_log.jsonl").write_text(
-        '{"ts":"2026-07-29T00:31:00Z","run_date":"20260729","step":"attach_shion_self_proposals_to_report","exit_code":0,"duration_s":0}\n',
+        json.dumps({"ts": (base + timedelta(minutes=1)).isoformat(), "run_date": "20260729", "step": "attach_shion_self_proposals_to_report", "exit_code": 0, "duration_s": 0}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 
@@ -436,11 +438,13 @@ def test_repair_operation_loop_health_triages_obsidian_warn(tmp_path: Path):
 
 
 def test_repair_operation_loop_health_writes_self_proposal_hygiene(tmp_path: Path):
+    base = datetime.now(timezone.utc)
+    old = base - timedelta(days=28)
     reports = tmp_path / "reports"
     data = tmp_path / "data"
     reports.mkdir()
     data.mkdir()
-    _write_operation_ok_sidecars(tmp_path, generated_at="2026-07-29T00:30:00+00:00")
+    _write_operation_ok_sidecars(tmp_path, generated_at=base.isoformat())
     (reports / "shion_self_proposal_hygiene_latest.json").unlink()
     (reports / "latest.json").write_text(
         json.dumps(
@@ -448,19 +452,19 @@ def test_repair_operation_loop_health_writes_self_proposal_hygiene(tmp_path: Pat
                 "shion_self_proposals": {
                     "count": 2,
                     "items": [
-                        {"title": "古い提案", "generated_at": "2026-07-01T00:00:00+00:00", "hypothesis": "薄い"},
-                        {"title": "古い提案", "generated_at": "2026-07-01T00:00:00+00:00", "hypothesis": "薄い"},
+                        {"title": "古い提案", "generated_at": old.isoformat(), "hypothesis": "薄い"},
+                        {"title": "古い提案", "generated_at": old.isoformat(), "hypothesis": "薄い"},
                     ],
-                    "attached_at": "2026-07-29T00:30:00+00:00",
+                    "attached_at": base.isoformat(),
                 }
             },
             ensure_ascii=False,
         ),
         encoding="utf-8",
     )
-    os.utime(reports / "latest.json", (datetime(2026, 7, 29, 0, 30, tzinfo=timezone.utc).timestamp(),) * 2)
+    os.utime(reports / "latest.json", (base.timestamp(),) * 2)
     (data / "pipeline_step_log.jsonl").write_text(
-        '{"ts":"2026-07-29T00:31:00Z","run_date":"20260729","step":"attach_shion_self_proposals_to_report","exit_code":0,"duration_s":0}\n',
+        json.dumps({"ts": (base + timedelta(minutes=1)).isoformat(), "run_date": "20260729", "step": "attach_shion_self_proposals_to_report", "exit_code": 0, "duration_s": 0}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 
@@ -473,6 +477,7 @@ def test_repair_operation_loop_health_writes_self_proposal_hygiene(tmp_path: Pat
 
 
 def test_repair_operation_loop_health_measures_improvement_effect(tmp_path: Path):
+    base = datetime.now(timezone.utc)
     reports = tmp_path / "reports"
     data = tmp_path / "data"
     scripts = tmp_path / "scripts"
@@ -480,25 +485,25 @@ def test_repair_operation_loop_health_measures_improvement_effect(tmp_path: Path
     data.mkdir()
     scripts.mkdir()
     (scripts / "analyze_improvement_quality.py").write_text("# fake\n", encoding="utf-8")
-    _write_operation_ok_sidecars(tmp_path, generated_at="2026-07-29T00:30:00+00:00")
+    _write_operation_ok_sidecars(tmp_path, generated_at=base.isoformat())
     (reports / "latest.json").write_text(
-        json.dumps({"shion_self_proposals": {"count": 0, "items": [], "attached_at": "2026-07-29T00:30:00+00:00"}}, ensure_ascii=False),
+        json.dumps({"shion_self_proposals": {"count": 0, "items": [], "attached_at": base.isoformat()}}, ensure_ascii=False),
         encoding="utf-8",
     )
-    os.utime(reports / "latest.json", (datetime(2026, 7, 29, 0, 30, tzinfo=timezone.utc).timestamp(),) * 2)
+    os.utime(reports / "latest.json", (base.timestamp(),) * 2)
     (data / "improvement_quality_log.jsonl").write_text(
-        json.dumps({"computed_at": "2026-07-26T00:00:00+00:00", "quality_score": 0.0}, ensure_ascii=False) + "\n",
+        json.dumps({"computed_at": (base - timedelta(days=3)).isoformat(), "quality_score": 0.0}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     (data / "pipeline_step_log.jsonl").write_text(
-        '{"ts":"2026-07-29T00:31:00Z","run_date":"20260729","step":"attach_shion_self_proposals_to_report","exit_code":0,"duration_s":0}\n',
+        json.dumps({"ts": (base + timedelta(minutes=1)).isoformat(), "run_date": "20260729", "step": "attach_shion_self_proposals_to_report", "exit_code": 0, "duration_s": 0}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 
     def fake_runner(command, **_kwargs):
         if any("analyze_improvement_quality.py" in str(part) for part in command):
             (data / "improvement_quality_log.jsonl").write_text(
-                json.dumps({"computed_at": "2026-07-29T00:45:00+00:00", "quality_score": 1.0}, ensure_ascii=False) + "\n",
+                json.dumps({"computed_at": (base + timedelta(minutes=15)).isoformat(), "quality_score": 1.0}, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
         return subprocess.CompletedProcess(command, 0, "measured", "")
