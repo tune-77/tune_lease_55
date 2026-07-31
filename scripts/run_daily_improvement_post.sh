@@ -246,6 +246,10 @@ echo "[監査] 審査用語監査を生成（Slack日次レポートが参照）
 "${PYTHON}" "${PROJECT_ROOT}/scripts/screening_terms_audit.py"; log_step "screening_terms_audit" $?
 
 echo ""
+echo "[監査] コミット済みモデルpickleの依存バージョン互換性チェック（読み取り専用）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/check_model_pickle_compat.py"; log_step "check_model_pickle_compat" $?
+
+echo ""
 echo "[提案] 紫苑（LLM）のトリアージ上書き提案（差分のみ・User確定は上書きしない）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/shion_llm_triage_proposal.py" --apply; log_step "shion_llm_triage_proposal" $?
 
