@@ -414,6 +414,69 @@ def test_report_attachment_suppresses_resolved_self_proposals(tmp_path, monkeypa
     assert [item["title"] for item in section["items"]] == ["新しい提案だけ残す"]
 
 
+def test_report_attachment_suppresses_proposals_resolved_in_repo_ledger(tmp_path, monkeypatch):
+    import scripts.attach_shion_self_proposals_to_report as attach
+
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    log_path = tmp_path / "cloudrun_improvement_log.jsonl"
+    ledger_path = tmp_path / "improvement_ledger.jsonl"
+    ledger_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "key": "misc_e60667034c5f",
+                        "status": "needs_review",
+                        "title": "シミュレーター機能の文脈統合",
+                        "canonical_key": "misc_e60667034c5f",
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "key": "misc_e60667034c5f",
+                        "status": "applied",
+                        "title": "シミュレーター機能の文脈統合",
+                        "canonical_key": "misc_e60667034c5f",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    source_path = tmp_path / "usage.jsonl"
+    source_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {"title": "シミュレーター機能の文脈統合", "hypothesis": "台帳でapplied済みなので消える"},
+                    ensure_ascii=False,
+                ),
+                json.dumps({"title": "新しい提案だけ残す", "hypothesis": "これは未対応"}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(attach, "REPORTS_DIR", reports_dir)
+    monkeypatch.setattr(attach, "LOCAL_IMPROVEMENT_LOG", log_path)
+    monkeypatch.setattr(attach, "REPO_LEDGER", ledger_path)
+    monkeypatch.setattr(
+        attach,
+        "SOURCES",
+        [{"path": source_path, "source": "usage_loop", "kind": "画面利用", "summary_keys": ("hypothesis",)}],
+    )
+
+    section = attach.collect_shion_self_proposals(limit=5)
+
+    assert section["count"] == 1
+    assert section["suppressed_resolved_count"] == 1
+    assert [item["title"] for item in section["items"]] == ["新しい提案だけ残す"]
+
+
 def test_scheduler_push_preserves_hypothesis_fields(tmp_path, monkeypatch):
     import api.scheduler as scheduler
 

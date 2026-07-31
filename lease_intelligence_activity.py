@@ -15,8 +15,15 @@ ACTIVITY_LOG = PROJECT_ROOT / "data" / "lease_intelligence_activity.jsonl"
 PROMPT_LOG = PROJECT_ROOT / "data" / "prompt_feedback_log.jsonl"
 NEWS_METRICS = PROJECT_ROOT / "data" / "lease_news_metrics.json"
 
-ALLOWED_SURFACES = {"home", "chat", "improvement_log", "lease_intelligence_dialogue"}
-ALLOWED_ACTIONS = {"page_view"}
+ALLOWED_SURFACES = {
+    "home",
+    "chat",
+    "improvement_log",
+    "lease_intelligence_dialogue",
+    "simulator:screening",
+    "simulator:lease-intelligence",
+}
+ALLOWED_ACTIONS = {"page_view", "simulator_view", "simulator_input_changed"}
 
 INTEREST_RULES = {
     "車・移動": ("車", "車検", "レンタカー", "電車", "トラック", "EV"),

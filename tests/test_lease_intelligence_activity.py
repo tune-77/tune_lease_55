@@ -1,6 +1,7 @@
 import json
 
 from lease_intelligence_activity import (
+    ALLOWED_ACTIONS,
     ALLOWED_SURFACES,
     observe_user_behavior,
     record_user_activity,
@@ -86,8 +87,40 @@ def test_observation_stores_categories_not_question_text(tmp_path):
 
 def test_frontend_surfaces_are_all_allowed():
     # フロントエンドが送る surface がサイレントに捨てられないことの番人テスト
-    for surface in ("home", "chat", "improvement_log", "lease_intelligence_dialogue"):
+    for surface in (
+        "home",
+        "chat",
+        "improvement_log",
+        "lease_intelligence_dialogue",
+        "simulator:screening",
+        "simulator:lease-intelligence",
+    ):
         assert surface in ALLOWED_SURFACES
+
+
+def test_simulator_activity_is_recorded_not_silently_dropped(tmp_path):
+    # LeasePaymentSimulator (screening / lease-intelligence 埋め込み) が送る
+    # action がサイレントに捨てられないことの番人テスト
+    log = tmp_path / "activity.jsonl"
+    for action in ("simulator_view", "simulator_input_changed"):
+        assert action in ALLOWED_ACTIONS
+
+    assert record_user_activity(
+        "simulator:screening",
+        "simulator_view",
+        event_id="simulator-view-1",
+        occurred_at="2026-07-31T09:00:00",
+        log_path=log,
+    )
+    assert record_user_activity(
+        "simulator:lease-intelligence",
+        "simulator_input_changed",
+        event_id="simulator-input-1",
+        occurred_at="2026-07-31T09:01:00",
+        log_path=log,
+    )
+    rows = log.read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 2
 
 
 def test_dialogue_visit_is_recorded_and_reflected_in_understanding(tmp_path):
