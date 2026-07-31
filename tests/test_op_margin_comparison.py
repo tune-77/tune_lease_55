@@ -10,7 +10,7 @@ def test_negative_op_margin_is_not_described_as_high_even_if_better_than_negativ
 
 def test_negative_op_margin_below_positive_benchmark_is_red_flag():
     assert _format_op_margin_comparison(-1.0, 3.0) == "赤字（業界平均を下回り要注意）"
-    assert _op_margin_judgement(-1.0, 3.0).startswith("赤字（業界平均を下回る")
+    assert _op_margin_judgement(-1.0, 3.0).startswith("赤字（業界平均を下回り要注意）")
 
 
 def test_positive_op_margin_keeps_normal_benchmark_comparison():
