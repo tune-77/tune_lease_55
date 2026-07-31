@@ -40,8 +40,14 @@ import sqlite3
 from contextlib import closing, contextmanager
 
 
-def _open_db(path: str = DB_PATH):
-    """WAL + busy_timeout を設定した SQLite 接続を返す共通ヘルパ。"""
+def _open_db(path: str | None = None):
+    """WAL + busy_timeout を設定した SQLite 接続を返す共通ヘルパ。
+
+    path省略時はDB_PATHを呼び出し時点の値で参照する（デフォルト引数だと
+    モジュールimport時の値に固定され、テストでのDB_PATH差し替えが効かない）。
+    """
+    if path is None:
+        path = DB_PATH
     ensure_cloudrun_demo_db_seeded()
     conn = sqlite3.connect(path, timeout=10)
     try:

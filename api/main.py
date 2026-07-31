@@ -597,6 +597,7 @@ app.include_router(recipes_router)
 
 from api.routers.vault_hub import router as vault_hub_router
 app.include_router(vault_hub_router)
+from api.routers.vault_hub import _read_obsidian_files  # noqa: F401 - re-exported for tests/back-compat
 
 from api.routers.screening_misc import router as screening_misc_router
 app.include_router(screening_misc_router)
@@ -604,6 +605,8 @@ app.include_router(screening_misc_router)
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
 from api.routers.feedback_loop import JudgmentAssetCandidateManualRequest, ScreeningExperienceCaseRequest  # used by chat/improvement endpoints
+from api.routers.feedback_loop import _CHAT_JUDGMENT_ASSET_TRIGGERS, _CHAT_JUDGMENT_ASSET_ACTIONS  # used by _extract_chat_judgment_asset_claim
+from api.routers.feedback_loop import _SCREENING_EXPERIENCE_DEMO_SEEDS, _score_screening_experience_case  # noqa: F401 - re-exported for tests/back-compat
 
 from api.routers.misc_endpoints import router as misc_endpoints_router
 app.include_router(misc_endpoints_router)

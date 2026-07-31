@@ -241,8 +241,8 @@ def test_no_industry_specified():
     }})
     assert 0.0 <= r["quantum_risk"] <= 100.0
     assert r["verdict"] in ("正常", "要再審", "高リスク")
-    # 業種ペアがないので anomalies は BASE_PAIRS の 3 ペアのみ
-    assert len(r["pair_anomalies"]) <= 3
+    # 業種ペアがないので anomalies は _BASE_PAIRS の4ペアのみ
+    assert len(r["pair_anomalies"]) <= 4
 
 
 def test_invalid_grade():
