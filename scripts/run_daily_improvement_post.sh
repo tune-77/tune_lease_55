@@ -100,6 +100,22 @@ echo "[記録] memory/ から MEMORY.md へ長期記憶を自動昇格..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/sync_memory_from_daily.py"; log_step "sync_memory_from_daily" $?
 
 echo ""
+echo "[育成] 昇格後の紫苑記憶インデックスを再構築..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_index.py"; log_step "build_shion_memory_index_post_promotion" $?
+
+echo ""
+echo "[育成] 昇格後の記憶鮮度を更新..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/update_shion_memory_freshness.py"; log_step "update_shion_memory_freshness_post_promotion" $?
+
+echo ""
+echo "[育成] 紫苑記憶の効果測定レポートを生成（観測のみ）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_effect_report.py"; log_step "build_shion_memory_effect_report" $?
+
+echo ""
+echo "[育成] 永続記憶監査を生成（観測のみ）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/audit_persistent_memory.py"; log_step "audit_persistent_memory" $?
+
+echo ""
 echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/weekly_self_management.py"; log_step "weekly_self_management" $?
 
@@ -167,6 +183,17 @@ echo "[成長] 判断資産の実利用棚卸しを生成（伸ばす/見直す/
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_field_review.py" \
   --date "${PIPELINE_DATE}"
 log_step "build_judgment_asset_field_review" $?
+
+echo ""
+echo "[育成] 判断資産A/B候補レポートを生成（勝者自動確定なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_ab_report.py"
+log_step "build_judgment_asset_ab_report" $?
+
+echo ""
+echo "[育成] 紫苑育成ブリーフを生成（朝の確認用・自動昇格なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_growth_brief.py" \
+  --date "${PIPELINE_DATE}"
+log_step "build_shion_growth_brief" $?
 
 echo ""
 echo "[成長] 紫苑の期間成長判定を生成（判断資産グラフのみが参照する末端）..."

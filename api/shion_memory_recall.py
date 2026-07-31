@@ -18,6 +18,7 @@ from typing import Any
 
 from api.shion_practical_knowledge import infer_practical_scene
 from api.shion_memory_taxonomy import MemoryType, RECALL_ROUTES
+from api.shion_memory_impact import build_memory_impact_hints
 from scoring_core import APPROVAL_LINE, REVIEW_LINE
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -157,6 +158,7 @@ def recall_memories(
         pass  # リランカーは補助段。失敗しても従来順序で続行する
     selected = _select_records(scored, route=route, limit=max(0, limit))
     practical_scene = infer_practical_scene(question)
+    impact_hints = build_memory_impact_hints({"memories": selected})
     # なぜその記憶が選ばれたかの内訳（debug_memory=true で確認できる説明可能性用）
     match_reasons = []
     for r in selected:
@@ -181,6 +183,7 @@ def recall_memories(
         "memories": selected,
         "refs": [str(r.get("id") or "") for r in selected if r.get("id")],
         "match_reasons": match_reasons,
+        "impact_hints": impact_hints,
     }
 
 
@@ -231,8 +234,16 @@ def build_recall_prompt_block(
     for idx, record in enumerate(memories, start=1):
         mtype = str(record.get("memory_type") or "memory")
         status = str(record.get("status") or "active")
+        layer = str(record.get("memory_layer") or "retrieval")
         content = str(record.get("content") or "").strip()
-        lines.append(f"{idx}. [{mtype}/{status}] {content[:260]}")
+        lines.append(f"{idx}. [{layer}/{mtype}/{status}] {content[:260]}")
+    impact_hints = recalled.get("impact_hints") or []
+    if impact_hints:
+        lines.append("")
+        lines.append("【記憶の効かせ方】")
+        for hint in impact_hints[:3]:
+            if isinstance(hint, dict):
+                lines.append(f"- {hint.get('id')}: {hint.get('hint')}")
     return "\n".join(lines), recalled
 
 
@@ -247,6 +258,7 @@ def _append_usage_log(
         "ts": datetime.now().isoformat(timespec="seconds"),
         "route": str(recalled.get("route") or ""),
         "refs": refs,
+        "impact_hints": recalled.get("impact_hints") or [],
         # 評価セット候補化（build_shion_eval_candidates.py）に使う。
         # 会話全文は chat_exchange 経路で既に記録されるため短く切り詰めるだけにする
         "question": str(question or "")[:120],

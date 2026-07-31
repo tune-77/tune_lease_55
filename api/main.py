@@ -5196,6 +5196,7 @@ def _load_user_personal_memory_payload() -> dict:
     for path, all_lines, limit in (
         (personal_path, True, 80),
         (root_personal_path, True, 80),
+        (Path(_REPO_ROOT) / "PERSISTENT_MEMORY.md", False, 20),
         (Path(_REPO_ROOT) / "USER.md", False, 24),
         (Path(_REPO_ROOT) / "MEMORY.md", False, 32),
     ):
@@ -7213,6 +7214,7 @@ def _chat_memory_debug_payload(
         "memory_recall": {
             "route": recall.get("route", ""),
             "refs": list(recall.get("refs") or [])[:12],
+            "impact_hints": list(recall.get("impact_hints") or [])[:8],
             "practical_scene": recall.get("practical_scene") or {},
         },
         "identity_memory": {
@@ -8100,6 +8102,13 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                         vault,
                         message,
                         _dt.date.today().isoformat(),
+                    )
+                elif destination == "judgment_asset_candidate":
+                    _capture_chat_judgment_asset_if_needed(
+                        message,
+                        user_id=DIALOGUE_USER_ID,
+                        surface="lease_intelligence_dialogue",
+                        response_mode="shion",
                     )
             except Exception as _mem_exc:
                 print(f"[DialogueMemoryPipeline] 更新に失敗: {_mem_exc}")

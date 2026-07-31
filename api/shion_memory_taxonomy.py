@@ -23,6 +23,8 @@ MemoryType = Literal[
 
 MemoryStatus = Literal["active", "revised", "deprecated", "private", "stale"]
 
+MemoryLayer = Literal["short_term", "mid_term", "long_term", "persistent", "retrieval"]
+
 MEMORY_TYPES: dict[MemoryType, dict[str, str]] = {
     "factual_memory": {
         "label": "事実記憶",
@@ -82,6 +84,7 @@ class MemoryRecord:
     confidence: float = 0.7
     source: str = ""
     source_path: str = ""
+    memory_layer: MemoryLayer = "retrieval"
     created_at: str = field(default_factory=lambda: date.today().isoformat())
     last_used_at: str = ""
     applies_when: list[str] = field(default_factory=list)
@@ -152,6 +155,7 @@ def make_memory_record(
     status: MemoryStatus = "active",
     confidence: float = 0.7,
     private: bool = False,
+    memory_layer: MemoryLayer | None = None,
 ) -> MemoryRecord:
     cleaned = " ".join(str(content or "").split())
     mtype = memory_type or classify_memory_text(cleaned, source=source_path or source)
@@ -165,6 +169,7 @@ def make_memory_record(
         confidence=max(0.0, min(1.0, float(confidence))),
         source=source,
         source_path=source_path,
+        memory_layer=memory_layer or infer_memory_layer(source, source_path),
         applies_when=infer_applies_when(cleaned),
         private=private,
     )
@@ -172,3 +177,15 @@ def make_memory_record(
 
 def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
     return any(term.lower() in text.lower() for term in terms)
+
+
+def infer_memory_layer(source: str = "", source_path: str = "") -> MemoryLayer:
+    """保存元から記憶レイヤを保守的に推定する。"""
+    src = f"{source}\n{source_path}".lower()
+    if "persistent_memory.md" in src or "persistent" in src:
+        return "persistent"
+    if "memory.md" in src or "long_term_memory" in src or "promoted_memory" in src:
+        return "long_term"
+    if "/memory/20" in src or "memory/20" in src or "daily_memory" in src:
+        return "mid_term"
+    return "retrieval"

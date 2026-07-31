@@ -28,7 +28,7 @@ def _read_text(path: Path) -> str:
         return ""
 
 
-def _memory_bullets_from_markdown(path: Path, source: str) -> list[dict[str, Any]]:
+def _memory_bullets_from_markdown(path: Path, source: str, *, memory_layer: str | None = None) -> list[dict[str, Any]]:
     text = _read_text(path)
     records: list[dict[str, Any]] = []
     for line in text.splitlines():
@@ -44,6 +44,7 @@ def _memory_bullets_from_markdown(path: Path, source: str) -> list[dict[str, Any
                 content,
                 source=source,
                 source_path=str(path.relative_to(REPO_ROOT)),
+                memory_layer=memory_layer,  # type: ignore[arg-type]
                 private=private,
             ).to_dict()
         )
@@ -261,14 +262,30 @@ def build_index(
 ) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
 
+    persistent_path = REPO_ROOT / "PERSISTENT_MEMORY.md"
+    if persistent_path.exists():
+        records.extend(
+            _memory_bullets_from_markdown(
+                persistent_path,
+                "persistent_memory",
+                memory_layer="persistent",
+            )
+        )
+
     memory_path = REPO_ROOT / "MEMORY.md"
     if memory_path.exists():
-        records.extend(_memory_bullets_from_markdown(memory_path, "long_term_memory"))
+        records.extend(
+            _memory_bullets_from_markdown(
+                memory_path,
+                "long_term_memory",
+                memory_layer="long_term",
+            )
+        )
 
     memory_dir = REPO_ROOT / "memory"
     if memory_dir.exists():
         for path in sorted(memory_dir.glob("20*.md"))[-14:]:
-            records.extend(_memory_bullets_from_markdown(path, "daily_memory"))
+            records.extend(_memory_bullets_from_markdown(path, "daily_memory", memory_layer="mid_term"))
 
     mind_path = REPO_ROOT / "data" / "mind.json"
     if mind_path.exists():
@@ -277,7 +294,7 @@ def build_index(
     # 会話から承認を経て昇格した長期記憶（apply_shion_memory_promotions.py が追記）
     promoted_path = REPO_ROOT / "knowledge_base" / "shion_promoted_memories.md"
     if promoted_path.exists():
-        records.extend(_memory_bullets_from_markdown(promoted_path, "promoted_memory"))
+        records.extend(_memory_bullets_from_markdown(promoted_path, "promoted_memory", memory_layer="long_term"))
 
     records.extend(_knowledge_markdown_records())
 
@@ -324,6 +341,7 @@ def build_index(
         final_records = [r for r in final_records if not _is_demo_unsafe(r)]
 
     counts = Counter(str(r.get("memory_type") or "unknown") for r in final_records)
+    layer_counts = Counter(str(r.get("memory_layer") or "unknown") for r in final_records)
     status_counts = Counter(str(r.get("status") or "active") for r in final_records)
 
     return {
@@ -334,6 +352,7 @@ def build_index(
         "summary": {
             "total_records": len(final_records),
             "by_type": dict(sorted(counts.items())),
+            "by_layer": dict(sorted(layer_counts.items())),
             "by_status": dict(sorted(status_counts.items())),
         },
         "records": final_records,

@@ -117,10 +117,13 @@ def test_build_recall_prompt_block(tmp_path):
     assert recalled["route"] == "shion_identity"
     assert "【紫苑の想起メモ】" in block
     assert "想起ルート" in block
+    assert "【記憶の効かせ方】" in block
+    assert recalled["impact_hints"][0]["id"] == "mem_identity"
     # 想起された記憶IDが使用ログへ追記される（last_used_at 更新の材料）
     logged = json.loads(usage_log.read_text(encoding="utf-8").splitlines()[0])
     assert logged["refs"] == ["mem_identity"]
     assert logged["route"] == "shion_identity"
+    assert logged["impact_hints"][0]["id"] == "mem_identity"
 
 
 def test_usage_log_gcs_mirror_runs_in_background_thread(tmp_path, monkeypatch):

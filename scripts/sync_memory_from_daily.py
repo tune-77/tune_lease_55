@@ -21,6 +21,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MEMORY_DIR = PROJECT_ROOT / "memory"
 MEMORY_FILE = PROJECT_ROOT / "MEMORY.md"
+PERSISTENT_MEMORY_FILE = PROJECT_ROOT / "PERSISTENT_MEMORY.md"
 STATE_FILE = MEMORY_DIR / "memory_sync_state.json"
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
@@ -72,10 +73,10 @@ def _save_state(promoted_keys: set[str]) -> None:
     STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _load_memory_text() -> str:
-    if not MEMORY_FILE.exists():
+def _load_memory_text(path: Path = MEMORY_FILE) -> str:
+    if not path.exists():
         return ""
-    return MEMORY_FILE.read_text(encoding="utf-8", errors="ignore")
+    return path.read_text(encoding="utf-8", errors="ignore")
 
 
 def _normalize(text: str) -> str:
@@ -117,11 +118,11 @@ def _extract_existing_keys(memory_text: str) -> set[str]:
     return keys
 
 
-def _render_section(promotions: list[Promotion]) -> str:
+def _render_section(promotions: list[Promotion], *, title: str = "Auto Promotions") -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = [
         "",
-        f"## Auto Promotions {now}",
+        f"## {title} {now}",
     ]
     for promo in promotions:
         rel = promo.source.relative_to(PROJECT_ROOT)
@@ -134,8 +135,9 @@ def sync_memory(dry_run: bool = False) -> dict[str, int]:
         return {"scanned": 0, "promoted": 0, "skipped": 0}
 
     state_keys = _load_state()
-    memory_text = _load_memory_text()
-    existing_keys = _extract_existing_keys(memory_text)
+    memory_text = _load_memory_text(MEMORY_FILE)
+    persistent_text = _load_memory_text(PERSISTENT_MEMORY_FILE)
+    existing_keys = _extract_existing_keys(memory_text) | _extract_existing_keys(persistent_text)
 
     promotions: list[Promotion] = []
     scanned = 0
@@ -150,21 +152,47 @@ def sync_memory(dry_run: bool = False) -> dict[str, int]:
         promotions.extend(_extract_promotions(path))
 
     new_promotions: list[Promotion] = []
+    persistent_promotions: list[Promotion] = []
+    long_term_promotions: list[Promotion] = []
+    judgment_asset_candidates = 0
     for promo in promotions:
         key = promo.key
         if key in state_keys or key in existing_keys:
             continue
         new_promotions.append(promo)
         state_keys.add(key)
+        try:
+            from memory_promotion_policy import classify_memory_promotion
+
+            decision = classify_memory_promotion(promo.text)
+        except Exception:
+            decision = None
+        if decision and decision.affects_judgment_assets:
+            judgment_asset_candidates += 1
+        if decision and decision.memory_layer == "persistent":
+            persistent_promotions.append(promo)
+        else:
+            long_term_promotions.append(promo)
 
     if new_promotions and not dry_run:
-        with MEMORY_FILE.open("a", encoding="utf-8") as f:
-            f.write(_render_section(new_promotions))
+        if long_term_promotions:
+            with MEMORY_FILE.open("a", encoding="utf-8") as f:
+                f.write(_render_section(long_term_promotions))
+        if persistent_promotions:
+            with PERSISTENT_MEMORY_FILE.open("a", encoding="utf-8") as f:
+                f.write(_render_section(persistent_promotions, title="Auto Persistent Promotions"))
         _save_state(state_keys)
     elif not dry_run:
         _save_state(state_keys)
 
-    return {"scanned": scanned, "promoted": len(new_promotions), "skipped": max(0, len(promotions) - len(new_promotions))}
+    return {
+        "scanned": scanned,
+        "promoted": len(new_promotions),
+        "long_term_promoted": len(long_term_promotions),
+        "persistent_promoted": len(persistent_promotions),
+        "judgment_asset_candidates": judgment_asset_candidates,
+        "skipped": max(0, len(promotions) - len(new_promotions)),
+    }
 
 
 def main() -> int:

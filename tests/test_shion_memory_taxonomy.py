@@ -1,7 +1,6 @@
 import json
-from pathlib import Path
 
-from api.shion_memory_taxonomy import classify_memory_text, make_memory_record
+from api.shion_memory_taxonomy import classify_memory_text, infer_memory_layer, make_memory_record
 import scripts.build_shion_memory_index as builder
 
 
@@ -52,6 +51,13 @@ def test_memory_record_has_stable_metadata():
     assert record.memory_type == "value_memory"
     assert record.status == "active"
     assert "否決・警戒判断" in record.applies_when
+
+
+def test_infers_memory_layer_from_source():
+    assert infer_memory_layer("persistent_memory", "PERSISTENT_MEMORY.md") == "persistent"
+    assert infer_memory_layer("long_term_memory", "MEMORY.md") == "long_term"
+    assert infer_memory_layer("daily_memory", "memory/2026-07-31.md") == "mid_term"
+    assert infer_memory_layer("knowledge_base", "knowledge_base/rule.md") == "retrieval"
 
 
 def test_build_index_carries_over_created_at(tmp_path, monkeypatch):
@@ -107,6 +113,10 @@ def test_build_index_reads_memory_and_mind(tmp_path, monkeypatch):
     repo = tmp_path
     (repo / "memory").mkdir()
     (repo / "data").mkdir()
+    (repo / "PERSISTENT_MEMORY.md").write_text(
+        "- 記憶は寿命、役割、根拠、更新責任で分ける。\n",
+        encoding="utf-8",
+    )
     (repo / "MEMORY.md").write_text("- Mana は紫苑の上位規範。\n", encoding="utf-8")
     (repo / "memory" / "2026-06-25.md").write_text(
         "- 境界案件では条件付き承認を検討する。\n",
@@ -133,4 +143,7 @@ def test_build_index_reads_memory_and_mind(tmp_path, monkeypatch):
 
     assert index["summary"]["total_records"] >= 3
     assert index["summary"]["by_type"]["value_memory"] >= 1
+    assert index["summary"]["by_layer"]["persistent"] == 1
+    assert index["summary"]["by_layer"]["long_term"] == 1
+    assert index["summary"]["by_layer"]["mid_term"] == 1
     assert any(r["source"] == "mind.upper_authority" for r in index["records"])
