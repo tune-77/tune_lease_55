@@ -17,6 +17,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 DEFAULT_LATEST = REPORTS_DIR / "latest.json"
 LOCAL_IMPROVEMENT_LOG = DATA_DIR / "cloudrun_improvement_log.jsonl"
+REPO_LEDGER = PROJECT_ROOT / "scripts" / "improvement_ledger.jsonl"
 
 LAYER_LABELS = {
     "usage_based": "利用ログ由来",
@@ -424,6 +425,20 @@ def _collect_resolved_self_proposal_refs() -> dict[str, Any]:
         payload_status = str(payload.get("status") or payload.get("action") or "").lower()
         if event_type == "improvement_delete" or status in resolved_statuses or payload_status in resolved_statuses:
             mark({**payload, **row})
+
+    # scripts/improvement_ledger.jsonl は追記形式で最後のエントリが有効(CLAUDE.md)。
+    # ここを見ていないと、台帳でapplied/rejected済みにした自己提案が
+    # 次回生成でも消えず出続けてしまう。
+    latest_ledger_rows: dict[str, dict[str, Any]] = {}
+    for row in _load_jsonl(REPO_LEDGER):
+        ledger_key = str(row.get("key") or row.get("canonical_key") or "").strip()
+        if not ledger_key:
+            continue
+        latest_ledger_rows[ledger_key] = row
+    for row in latest_ledger_rows.values():
+        status = str(row.get("status") or "").lower()
+        if status in resolved_statuses:
+            mark(row)
 
     return {
         "keys": resolved_keys,
