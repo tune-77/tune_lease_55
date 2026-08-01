@@ -4778,22 +4778,6 @@ def _build_chat_basic_lease_question_context(message: str) -> str:
 
 
 
-_CHAT_MEMORY_REL_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory")
-_CHAT_MEMORY_LAYER_FILES = {
-    "identity": "identity.md",
-    "judgment": "judgment-principles.md",
-    "recent": "recent-continuity.md",
-}
-_CHAT_MEMORY_FALLBACK_SECTIONS = {
-    "identity": "長期記憶",
-    "judgment": "長期記憶",
-    "recent": "継続中の方針",
-}
-_CHAT_MEMORY_LAYER_LABELS = {
-    "identity": "Core Identity Memory",
-    "judgment": "Judgment Memory",
-    "recent": "Recent Continuity Memory",
-}
 _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedback.jsonl"
 _SCREENING_LOOP_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "screening_loop_feedback.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidates.jsonl"
@@ -4804,30 +4788,6 @@ _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgm
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
 _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
 _HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
-_CHAT_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
-_CHAT_MEMORY_CACHE_TTL_SEC = 300
-_USER_PERSONAL_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
-_USER_PERSONAL_MEMORY_CACHE_TTL_SEC = 300
-
-_USER_PERSONAL_MEMORY_KEYWORDS = (
-    "What to call",
-    "Timezone",
-    "Notes",
-    "好み",
-    "方針",
-    "覚えて",
-    "犬",
-    "愛犬",
-    "dog",
-    "名前",
-    "Mana",
-    "Shion",
-    "紫苑",
-    "Relationship UX",
-    "Core Motivation",
-    "Personal Facts",
-    "Priority Rule",
-)
 
 
 def _chat_memory_roots() -> list[Path]:
@@ -4849,250 +4809,62 @@ def _search_chat_vault_markdown_fallback(query: str, top_k: int = 5) -> list[dic
 
 
 def _read_chat_memory_file(path: Path, limit: int = 2_000) -> str:
-    try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return ""
-    text = text.strip()
-    if len(text) > limit:
-        return text[:limit].rstrip() + "\n..."
-    return text
+    from api.chat_identity_memory import read_chat_memory_file
+
+    return read_chat_memory_file(path, limit=limit)
 
 
 def _extract_markdown_section(markdown: str, heading: str, limit: int = 1_400) -> str:
-    lines = str(markdown or "").splitlines()
-    selected: list[str] = []
-    capture = False
-    target = heading.strip()
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            current = stripped.lstrip("#").strip()
-            if capture and current != target:
-                break
-            capture = current == target
-            continue
-        if capture:
-            selected.append(line)
-    text = "\n".join(selected).strip()
-    if len(text) > limit:
-        return text[:limit].rstrip() + "\n..."
-    return text
+    from api.chat_identity_memory import extract_markdown_section
+
+    return extract_markdown_section(markdown, heading, limit=limit)
 
 
 def _load_chat_identity_memory_payload() -> dict:
-    import time as _time
+    from api.chat_identity_memory import load_chat_identity_memory_payload
 
-    now = _time.time()
-    cached = _CHAT_MEMORY_CACHE.get("payload")
-    if cached is not None and now - float(_CHAT_MEMORY_CACHE.get("loaded_at") or 0) < _CHAT_MEMORY_CACHE_TTL_SEC:
-        return cached
-
-    layers: dict[str, str] = {}
-    refs: list[str] = []
-    latest_pack_text = ""
-    latest_pack_ref = ""
-
-    for root in _chat_memory_roots():
-        memory_dir = root / _CHAT_MEMORY_REL_DIR
-        if not memory_dir.exists():
-            continue
-        if not latest_pack_text:
-            latest_path = memory_dir / "latest_cloud_chat_memory_pack.md"
-            latest_pack_text = _read_chat_memory_file(latest_path, limit=5_000)
-            latest_pack_ref = str(latest_path) if latest_pack_text else ""
-        for layer, filename in _CHAT_MEMORY_LAYER_FILES.items():
-            if layer in layers:
-                continue
-            path = memory_dir / filename
-            text = _read_chat_memory_file(path)
-            if text:
-                layers[layer] = text
-                refs.append(str(path))
-        if len(layers) == len(_CHAT_MEMORY_LAYER_FILES):
-            break
-
-    if latest_pack_text:
-        for layer, section in _CHAT_MEMORY_FALLBACK_SECTIONS.items():
-            if layer in layers:
-                continue
-            text = _extract_markdown_section(latest_pack_text, section)
-            if text:
-                layers[layer] = text
-                if latest_pack_ref and latest_pack_ref not in refs:
-                    refs.append(latest_pack_ref)
-
-    block = ""
-    if layers:
-        parts = [
-            "【紫苑同一性メモリ】",
-            "以下はRAG検索結果とは別に常時参照する公開安全メモリです。Cloud Run版でも同じ紫苑として、一般論ではなくUserのリース判断資産に戻して答えてください。",
-        ]
-        for layer in ("identity", "judgment", "recent"):
-            text = layers.get(layer, "").strip()
-            if not text:
-                continue
-            parts += ["", f"### {_CHAT_MEMORY_LAYER_LABELS[layer]}", text]
-        block = "\n".join(parts).strip()
-
-    payload = {
-        "block": block,
-        "refs": refs[:8],
-        "layers": {layer: bool(layers.get(layer, "").strip()) for layer in _CHAT_MEMORY_LAYER_FILES},
-    }
-    _CHAT_MEMORY_CACHE.update(loaded_at=now, payload=payload)
-    return payload
+    return load_chat_identity_memory_payload(_OBSIDIAN_VAULT_PATH)
 
 
 def _build_chat_identity_memory_prompt_block() -> tuple[str, dict]:
-    try:
-        payload = _load_chat_identity_memory_payload()
-    except Exception as exc:
-        print(f"[ChatIdentityMemory] 読み込みエラー: {exc}")
-        payload = {"block": "", "refs": [], "layers": {}}
-    block = str(payload.get("block") or "").strip()
-    return (f"\n\n{block}" if block else ""), payload
+    from api.chat_identity_memory import build_chat_identity_memory_prompt_block
+
+    return build_chat_identity_memory_prompt_block(_OBSIDIAN_VAULT_PATH)
 
 
 def _read_personal_memory_lines(path: Path, *, limit: int = 24, all_lines: bool = False) -> tuple[list[str], str]:
-    if not path.exists() or not path.is_file():
-        return [], ""
-    try:
-        raw_lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    except Exception:
-        return [], ""
-    selected: list[str] = []
-    for raw in raw_lines:
-        line = raw.strip()
-        if not line or len(line) > 900:
-            continue
-        if all_lines or any(keyword in line for keyword in _USER_PERSONAL_MEMORY_KEYWORDS):
-            selected.append(line)
-        if len(selected) >= limit:
-            break
-    return selected, str(path)
+    from api.chat_user_personal_memory import read_personal_memory_lines
+
+    return read_personal_memory_lines(path, limit=limit, all_lines=all_lines)
 
 
 def _read_cloudrun_personal_memory_lines(*, limit: int = 24) -> tuple[list[str], str]:
-    if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
-        return [], ""
-    try:
-        from api.user_personal_memory import derive_personal_memory_entries
+    from api.chat_user_personal_memory import read_cloudrun_personal_memory_lines
 
-        events = _read_recent_cloudrun_input_events_from_gcs(
-            days=int(os.environ.get("CLOUDRUN_PERSONAL_MEMORY_GCS_DAYS", "45") or 45)
-        )
-    except Exception:
-        return [], ""
-
-    lines: list[str] = []
-    seen: set[str] = set()
-    for event in reversed(events):
-        event_type = str(event.get("event_type") or "")
-        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-        candidate_lines: list[str] = []
-        if event_type == "personal_memory":
-            candidate_lines = [str(line).strip() for line in payload.get("derived_lines") or [] if str(line).strip()]
-            dog_name = str(payload.get("dog_name") or "").strip()
-            if dog_name:
-                candidate_lines.insert(0, f"- [confirmed] Dog name: {dog_name}")
-        elif event_type == "chat_exchange":
-            message = str(payload.get("user_message") or "").strip()
-            derived = derive_personal_memory_entries(
-                message,
-                source=f"cloudrun:{event.get('surface') or 'chat'}",
-                timestamp=str(event.get("ts") or ""),
-            )
-            candidate_lines = [str(line).strip() for line in derived.get("lines") or [] if str(line).strip()]
-        for line in candidate_lines:
-            if line in seen:
-                continue
-            seen.add(line)
-            lines.append(line)
-            if len(lines) >= limit:
-                return lines, "gcs://cloudrun-inputs/personal-memory"
-    return lines, "gcs://cloudrun-inputs/personal-memory" if lines else ""
+    return read_cloudrun_personal_memory_lines(
+        limit=limit,
+        recent_events_reader=_read_recent_cloudrun_input_events_from_gcs,
+    )
 
 
 def _load_user_personal_memory_payload() -> dict:
-    import time as _time
+    from api.chat_user_personal_memory import load_user_personal_memory_payload
 
-    now = _time.time()
-    cached = _USER_PERSONAL_MEMORY_CACHE.get("payload")
-    if cached is not None and now - float(_USER_PERSONAL_MEMORY_CACHE.get("loaded_at") or 0) < _USER_PERSONAL_MEMORY_CACHE_TTL_SEC:
-        return cached
-
-    refs: list[str] = []
-    lines: list[str] = []
-    personal_path = Path(get_data_path("user_personal_memory.md"))
-    root_personal_path = Path(_REPO_ROOT) / "data" / "user_personal_memory.md"
-    for path, all_lines, limit in (
-        (personal_path, True, 80),
-        (root_personal_path, True, 80),
-        (Path(_REPO_ROOT) / "PERSISTENT_MEMORY.md", False, 20),
-        (Path(_REPO_ROOT) / "USER.md", False, 24),
-        (Path(_REPO_ROOT) / "MEMORY.md", False, 32),
-    ):
-        found, ref = _read_personal_memory_lines(path, limit=limit, all_lines=all_lines)
-        if found:
-            refs.append(ref)
-            lines.extend(found)
-        if len(lines) >= 80:
-            break
-
-    cloudrun_lines, cloudrun_ref = _read_cloudrun_personal_memory_lines(limit=32)
-    if cloudrun_lines:
-        refs.append(cloudrun_ref)
-        lines.extend(cloudrun_lines)
-
-    clean_lines: list[str] = []
-    seen: set[str] = set()
-    for line in lines:
-        if line in seen:
-            continue
-        seen.add(line)
-        clean_lines.append(line)
-        if len(clean_lines) >= 80:
-            break
-
-    def _priority(line: str) -> int:
-        if "[confirmed" in line or "[confirmed]" in line:
-            return 0
-        if "[sensitive" in line:
-            return 1
-        if "Priority Rule" in line or "Personal Facts" in line:
-            return 2
-        return 3
-
-    clean_lines.sort(key=_priority)
-
-    block = ""
-    if clean_lines:
-        block = "\n".join([
-            "【ユーザー個人記憶】",
-            "以下はUser本人との会話でのみ使う最優先の個人文脈です。",
-            "紫苑モードでは、[confirmed] の個人記憶を審査知識・一般RAG・会話ノリより先に尊重してください。",
-            "[candidate] は断定せず、必要なら確認してください。[sensitive] はむやみに持ち出さず、関係する時だけ慎重に扱ってください。",
-            "ユーザーが覚えているはずの個人事実を尋ねた時、ここに無い場合は推測せず、未記録だと認めて次に保存する姿勢を示してください。",
-            "犬の名前などの個人記憶は、Userを個別の相手として扱うための関係性UXアンカーです。リース審査の直接の判断資産として大げさに扱わず、自然に短く参照してください。",
-            "個人記憶を語る時は、AIが人間を深く理解したかのように演出しすぎないでください。覚えている事実、使う理由、使わない境界を短く分けてください。",
-            "外部向け説明や一般論には広げず、関係する時だけ自然に反映してください。",
-            *[f"- {line}" for line in clean_lines],
-        ])
-
-    payload = {"block": block, "refs": refs[:6], "line_count": len(clean_lines)}
-    _USER_PERSONAL_MEMORY_CACHE.update(loaded_at=now, payload=payload)
-    return payload
+    return load_user_personal_memory_payload(
+        repo_root=_REPO_ROOT,
+        data_path_resolver=get_data_path,
+        recent_events_reader=_read_recent_cloudrun_input_events_from_gcs,
+    )
 
 
 def _build_user_personal_memory_prompt_block() -> tuple[str, dict]:
-    try:
-        payload = _load_user_personal_memory_payload()
-    except Exception as exc:
-        print(f"[UserPersonalMemory] 読み込みエラー: {exc}")
-        payload = {"block": "", "refs": [], "line_count": 0}
-    block = str(payload.get("block") or "").strip()
-    return (f"\n\n{block}" if block else ""), payload
+    from api.chat_user_personal_memory import build_user_personal_memory_prompt_block
+
+    return build_user_personal_memory_prompt_block(
+        repo_root=_REPO_ROOT,
+        data_path_resolver=get_data_path,
+        recent_events_reader=_read_recent_cloudrun_input_events_from_gcs,
+    )
 
 
 def _chat_response_mode_instruction(response_mode: str) -> str:
@@ -5107,7 +4879,9 @@ def _capture_user_personal_memory_if_needed(message: str, *, source: str = "chat
 
         result = capture_user_personal_memory(message, source=source)
         if result.get("captured"):
-            _USER_PERSONAL_MEMORY_CACHE.update(loaded_at=0.0, payload=None)
+            from api.chat_user_personal_memory import invalidate_user_personal_memory_cache
+
+            invalidate_user_personal_memory_cache()
         return result
     except Exception as exc:
         print(f"[UserPersonalMemory] 保存エラー: {exc}")
@@ -7092,62 +6866,9 @@ def _build_shared_shion_dialogue_memory_context(
 
 
 def _dialogue_shared_memory_public_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    identity = payload.get("identity_memory") if isinstance(payload.get("identity_memory"), dict) else {}
-    experience = payload.get("experience_loop") if isinstance(payload.get("experience_loop"), dict) else {}
-    recall = payload.get("memory_recall") if isinstance(payload.get("memory_recall"), dict) else {}
-    hook = payload.get("continuity_hook") if isinstance(payload.get("continuity_hook"), dict) else {}
-    delta = payload.get("delta_awareness") if isinstance(payload.get("delta_awareness"), dict) else {}
-    m2j = payload.get("memory_to_judgment") if isinstance(payload.get("memory_to_judgment"), dict) else {}
-    expression = payload.get("memory_expression") if isinstance(payload.get("memory_expression"), dict) else {}
-    reflection = payload.get("reflection_gate") if isinstance(payload.get("reflection_gate"), dict) else {}
-    grey = payload.get("grey_judgment_memory") if isinstance(payload.get("grey_judgment_memory"), dict) else {}
-    layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
-    return {
-        "identity_memory": {
-            "used": bool(str(identity.get("block") or "").strip()),
-            "refs": list(identity.get("refs") or [])[:8],
-            "layers": {
-                "identity": bool(layers.get("identity")),
-                "judgment": bool(layers.get("judgment")),
-                "recent": bool(layers.get("recent")),
-            },
-        },
-        "experience_loop": experience,
-        "memory_recall": {
-            "route": str(recall.get("route") or ""),
-            "refs": list(recall.get("refs") or [])[:8],
-            "practical_scene": recall.get("practical_scene") or {},
-        },
-        "continuity_hook": {
-            "used": bool(hook.get("used")),
-            "route": str(hook.get("route") or ""),
-            "reason": str(hook.get("reason") or ""),
-        },
-        "delta_awareness": {
-            "used": bool(delta.get("used")),
-            "delta": str(delta.get("delta") or ""),
-        },
-        "memory_to_judgment": {
-            "used": bool(m2j.get("used")),
-            "route": str(m2j.get("route") or ""),
-            "directive": str(m2j.get("directive") or ""),
-        },
-        "memory_expression": {
-            "used": bool(expression.get("used")),
-            "route": str(expression.get("route") or ""),
-            "memory_refs": int(expression.get("memory_refs") or 0),
-            "knowledge_refs": int(expression.get("knowledge_refs") or 0),
-            "grey_refs": int(expression.get("grey_refs") or 0),
-        },
-        "reflection_gate": {
-            "used": bool(reflection.get("used")),
-            "mode": str(reflection.get("mode") or ""),
-        },
-        "grey_judgment_memory": {
-            "used": bool(grey.get("used")),
-            "refs": list(grey.get("refs") or [])[:8],
-        },
-    }
+    from api.chat_debug_metadata import dialogue_shared_memory_public_payload
+
+    return dialogue_shared_memory_public_payload(payload)
 
 
 def _record_dialogue_shared_experience(

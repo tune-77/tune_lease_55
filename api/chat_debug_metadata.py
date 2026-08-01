@@ -204,6 +204,65 @@ def chat_memory_debug_payload(
     }
 
 
+def dialogue_shared_memory_public_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = payload.get("identity_memory") if isinstance(payload.get("identity_memory"), dict) else {}
+    experience = payload.get("experience_loop") if isinstance(payload.get("experience_loop"), dict) else {}
+    recall = payload.get("memory_recall") if isinstance(payload.get("memory_recall"), dict) else {}
+    hook = payload.get("continuity_hook") if isinstance(payload.get("continuity_hook"), dict) else {}
+    delta = payload.get("delta_awareness") if isinstance(payload.get("delta_awareness"), dict) else {}
+    m2j = payload.get("memory_to_judgment") if isinstance(payload.get("memory_to_judgment"), dict) else {}
+    expression = payload.get("memory_expression") if isinstance(payload.get("memory_expression"), dict) else {}
+    reflection = payload.get("reflection_gate") if isinstance(payload.get("reflection_gate"), dict) else {}
+    grey = payload.get("grey_judgment_memory") if isinstance(payload.get("grey_judgment_memory"), dict) else {}
+    layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
+    return {
+        "identity_memory": {
+            "used": bool(str(identity.get("block") or "").strip()),
+            "refs": list(identity.get("refs") or [])[:8],
+            "layers": {
+                "identity": bool(layers.get("identity")),
+                "judgment": bool(layers.get("judgment")),
+                "recent": bool(layers.get("recent")),
+            },
+        },
+        "experience_loop": experience,
+        "memory_recall": {
+            "route": str(recall.get("route") or ""),
+            "refs": list(recall.get("refs") or [])[:8],
+            "practical_scene": recall.get("practical_scene") or {},
+        },
+        "continuity_hook": {
+            "used": bool(hook.get("used")),
+            "route": str(hook.get("route") or ""),
+            "reason": str(hook.get("reason") or ""),
+        },
+        "delta_awareness": {
+            "used": bool(delta.get("used")),
+            "delta": str(delta.get("delta") or ""),
+        },
+        "memory_to_judgment": {
+            "used": bool(m2j.get("used")),
+            "route": str(m2j.get("route") or ""),
+            "directive": str(m2j.get("directive") or ""),
+        },
+        "memory_expression": {
+            "used": bool(expression.get("used")),
+            "route": str(expression.get("route") or ""),
+            "memory_refs": int(expression.get("memory_refs") or 0),
+            "knowledge_refs": int(expression.get("knowledge_refs") or 0),
+            "grey_refs": int(expression.get("grey_refs") or 0),
+        },
+        "reflection_gate": {
+            "used": bool(reflection.get("used")),
+            "mode": str(reflection.get("mode") or ""),
+        },
+        "grey_judgment_memory": {
+            "used": bool(grey.get("used")),
+            "refs": list(grey.get("refs") or [])[:8],
+        },
+    }
+
+
 def append_retrieval_debug_payloads(
     memory_debug: dict[str, Any],
     *,

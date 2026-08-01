@@ -2,6 +2,7 @@ from api.chat_debug_metadata import (
     append_chat_debug_metadata,
     append_retrieval_debug_payloads,
     chat_memory_debug_payload,
+    dialogue_shared_memory_public_payload,
     relationship_loop_engineering_payload,
     user_personal_memory_debug_payload,
     vertex_answer_public_payload,
@@ -116,6 +117,35 @@ def test_relationship_loop_engineering_payload_summarizes_loop_evidence():
     assert payload["loop"][0]["evidence"] == {"positive_count": 3, "negative_count": 1}
     assert payload["loop"][4]["evidence"] == {"directive": "審査へ戻す"}
     assert payload["closed_loop"] is True
+
+
+def test_dialogue_shared_memory_public_payload_keeps_compact_shape():
+    payload = dialogue_shared_memory_public_payload(
+        {
+            "identity_memory": {
+                "block": "identity",
+                "refs": list(range(20)),
+                "layers": {"identity": True, "judgment": False, "recent": True},
+            },
+            "experience_loop": {"used": True},
+            "memory_recall": {"route": "local", "refs": list(range(20)), "practical_scene": {"scene": "dialogue"}},
+            "continuity_hook": {"used": True, "route": "lease", "reason": "続き"},
+            "delta_awareness": {"used": True, "delta": "changed"},
+            "memory_to_judgment": {"used": True, "route": "lease", "directive": "審査へ戻す"},
+            "memory_expression": {"used": True, "route": "lease", "memory_refs": 2, "knowledge_refs": 3, "grey_refs": 4},
+            "reflection_gate": {"used": True, "mode": "check"},
+            "grey_judgment_memory": {"used": True, "refs": list(range(20))},
+        }
+    )
+
+    assert payload["identity_memory"] == {
+        "used": True,
+        "refs": list(range(8)),
+        "layers": {"identity": True, "judgment": False, "recent": True},
+    }
+    assert payload["memory_recall"]["refs"] == list(range(8))
+    assert payload["memory_recall"]["practical_scene"] == {"scene": "dialogue"}
+    assert payload["grey_judgment_memory"]["refs"] == list(range(8))
 
 
 def test_prompt_block_helpers_preserve_existing_concat_behavior():
