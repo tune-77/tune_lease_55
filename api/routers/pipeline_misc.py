@@ -241,8 +241,8 @@ def _load_title_to_rev() -> dict[str, str]:
 
 def _load_obsidian_implemented_titles() -> set[str]:
     """Obsidian 実装済み改善一覧のタイトルを返す。"""
-    from pathlib import Path as _Path
-    vault = _Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+    from runtime_paths import resolve_obsidian_vault  # type: ignore[import]
+    vault = resolve_obsidian_vault()
     index_file = vault / "tuneLease55/改善策インデックス_2026.md"
     if not index_file.exists():
         return set()

@@ -16,23 +16,24 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOCAL_INPUT_DIR = Path(os.environ.get("LOCAL_CLOUDRUN_INPUT_DIR", PROJECT_ROOT / "data" / "cloudrun_inputs"))
-DEFAULT_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "Obsidian Vault"
-)
-OBSIDIAN_VAULT = Path(os.environ.get("OBSIDIAN_VAULT", str(DEFAULT_VAULT))).expanduser()
+# env の優先順はここで決めない。以前は OBSIDIAN_VAULT しか見ておらず、
+# OBSIDIAN_VAULT_PATH だけ設定された環境では既定 Vault に落ちていた。
+OBSIDIAN_VAULT = resolve_obsidian_vault()
 OUTPUT_SUBDIR = Path("Projects") / "tune_lease_55" / "Cloud Run Inputs"
 IMPROVEMENT_LOG_SUBDIR = Path("Projects") / "tune_lease_55" / "AI Chat" / "Improvement Log"
 CHAT_LOG_SUBDIR = Path("Projects") / "tune_lease_55" / "AI Chat" / "Cloud Run Conversation Log"

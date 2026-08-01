@@ -26,8 +26,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Paths
-VAULT_ROOT = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
+from runtime_paths import resolve_obsidian_vault
+
+# Paths（監視対象は env → iCloud の解決結果。索引先とずれないよう runtime_paths に従う）
+VAULT_ROOT = resolve_obsidian_vault()
 PROJECT_ROOT = Path.home() / "clawd" / "tune_lease_55"
 LOGS_DIR = Path.home() / "Library" / "Logs" / "tunelease"
 

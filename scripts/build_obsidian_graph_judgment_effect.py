@@ -11,14 +11,21 @@ import argparse
 import json
 import math
 import re
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_VAULT = Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+DEFAULT_VAULT = resolve_obsidian_vault()
 DEFAULT_MEMORY_INDEX = PROJECT_ROOT / "data" / "shion_memory_index.json"
 DEFAULT_MEMORY_USAGE = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
 DEFAULT_RAG_SEARCH = PROJECT_ROOT / "data" / "rag_search_log.jsonl"
