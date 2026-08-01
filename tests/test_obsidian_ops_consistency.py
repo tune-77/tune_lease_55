@@ -139,26 +139,45 @@ def test_non_vault_job_collision_is_ignored():
 
 # ---------- interpreters ----------
 
-def test_single_interpreter_is_clean():
+VENV_PY = "/repo/tune_lease_55/.venv/bin/python"
+
+
+def test_single_venv_interpreter_is_clean():
     jobs = [
-        _job(VAULT_LABEL, BOTH, program=["/venv/bin/python", "x.py"]),
-        _job(OTHER_VAULT_LABEL, BOTH, program=["/venv/bin/python", "y.py"]),
+        _job(VAULT_LABEL, BOTH, program=[VENV_PY, "x.py"]),
+        _job(OTHER_VAULT_LABEL, BOTH, program=[VENV_PY, "y.py"]),
     ]
     assert checker.check_interpreters(jobs) == []
 
 
-def test_split_interpreters_warn():
+def test_split_interpreters_is_an_error():
     jobs = [
-        _job(VAULT_LABEL, BOTH, program=["/venv/bin/python", "x.py"]),
+        _job(VAULT_LABEL, BOTH, program=[VENV_PY, "x.py"]),
         _job(OTHER_VAULT_LABEL, BOTH, program=["/anaconda3/bin/python3", "y.py"]),
     ]
     findings = checker.check_interpreters(jobs)
+    assert any(f.level == checker.ERROR for f in findings)
+
+
+def test_non_venv_interpreter_warns_even_when_unified():
+    jobs = [
+        _job(VAULT_LABEL, BOTH, program=["/anaconda3/bin/python", "x.py"]),
+        _job(OTHER_VAULT_LABEL, BOTH, program=["/anaconda3/bin/python", "y.py"]),
+    ]
+    findings = checker.check_interpreters(jobs)
     assert [f.level for f in findings] == [checker.WARNING]
+    assert "venv" in findings[0].message
 
 
 def test_interpreter_from_python_bin_env_is_detected():
     job = _job(VAULT_LABEL, {**BOTH, "PYTHON_BIN": "/anaconda3/bin/python"}, program=["/bin/zsh", "run.sh"])
     assert job.interpreter == "/anaconda3/bin/python"
+
+
+def test_repo_launchd_uses_a_single_venv_interpreter():
+    jobs = checker.load_jobs(checker.DEFAULT_LAUNCHD_DIR)
+    findings = checker.check_interpreters(jobs)
+    assert findings == [], "\n".join(f.message for f in findings)
 
 
 # ---------- regression over the real plists ----------
@@ -181,6 +200,30 @@ def test_repo_launchd_has_no_schedule_collisions():
     jobs = checker.load_jobs(checker.DEFAULT_LAUNCHD_DIR)
     collisions = checker.check_schedule_collisions(jobs)
     assert collisions == [], "\n".join(f.message for f in collisions)
+
+
+def test_no_hardcoded_vault_paths_remain():
+    findings = checker.scan_hardcoded_vault_paths()
+    assert findings == [], "\n".join(f.message for f in findings)
+
+
+def test_hardcoded_scan_flags_a_new_offender(tmp_path):
+    offender = tmp_path / "bad.py"
+    offender.write_text(
+        'VAULT = "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"\n',
+        encoding="utf-8",
+    )
+    findings = checker.scan_hardcoded_vault_paths(tmp_path)
+    assert [f.level for f in findings] == [checker.ERROR]
+    assert "bad.py" in findings[0].message
+
+
+def test_hardcoded_scan_ignores_tests(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text(
+        'assert "iCloud~md~obsidian" in path\n', encoding="utf-8"
+    )
+    assert checker.scan_hardcoded_vault_paths(tmp_path) == []
 
 
 def test_every_vault_job_label_has_a_plist():

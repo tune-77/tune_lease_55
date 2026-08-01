@@ -7,7 +7,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/kobayashiisaoryou/anaconda3/bin/python3</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/backup_case_data.py</string>
     <string>--keep</string>
     <string>12</string>
@@ -18,12 +18,14 @@
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
     <key>CASE_DATA_BACKUP_ROOT</key>
     <string>/Users/kobayashiisaoryou/Library/Mobile Documents/com~apple~CloudDocs/tune_lease_55_backups/case_data</string>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
     <key>PATH</key>
-    <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
   </dict>
 
   <!-- 毎週日曜 01:30 に実行（01:00 の Obsidian バックアップ後、夜間の書き込みジョブ群より前） -->

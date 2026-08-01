@@ -13,14 +13,17 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-_WIKI_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "lease-wiki-vault"
-)
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_icloud_obsidian_documents  # noqa: E402
+
+_WIKI_VAULT = resolve_icloud_obsidian_documents() / "lease-wiki-vault"
 _LAST_PROCESSED_FILE = Path("/tmp/wiki_vault_last_processed.txt")
 
 # 「行動を促す」パターン → タイトルへの変換ルール

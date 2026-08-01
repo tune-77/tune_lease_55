@@ -16,15 +16,29 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import (  # noqa: E402
+    resolve_icloud_obsidian_documents,
+    resolve_obsidian_vault,
+)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AURION_DIR = PROJECT_ROOT / "data" / "aurion_daily"
 EXPORT_FILE = Path(os.environ.get("EXPORT_FILE", "/tmp/obsidian_improvements_export.txt"))
 
 # Vault パス（iCloud のメイン Vault を既定にする）
-_VAULT_PATH = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
-_ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
-_ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault" / "lease-wiki-vault"
-_ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"   # reindex_obsidian._DEFAULT_VAULT と同一
+# Vault 名は runtime_paths が決める（"Obsidian Vault" を組み立て直すと新旧の切替に追随できない）
+_VAULT_PATH = resolve_obsidian_vault()
+_ICLOUD_DOCS = resolve_icloud_obsidian_documents()
+_ICLOUD_MAIN_VAULT_PATH = _VAULT_PATH
+_ICLOUD_VAULT_PATH = _VAULT_PATH / "lease-wiki-vault"
 
 
 def find_latest_state() -> Path | None:

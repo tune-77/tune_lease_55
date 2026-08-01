@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from runtime_paths import resolve_obsidian_vault
+
 
 DEFAULT_NEWS_REL_DIRS = (
     Path("05-クリップ_記事") / "業界リスクニュース",
@@ -496,7 +498,8 @@ def _vault_candidates() -> list[Path]:
     raw_candidates = [
         os.environ.get("OBSIDIAN_VAULT_PATH"),
         os.environ.get("OBSIDIAN_VAULT"),
-        str(home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"),
+        # 直書きせず runtime_paths に解決させる（env も既定も一箇所で決まる）
+        str(resolve_obsidian_vault()),
         str(home / "Documents" / "Obsidian Vault"),
         str(home / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault"),
     ]

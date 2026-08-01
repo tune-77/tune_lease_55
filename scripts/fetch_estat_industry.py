@@ -23,14 +23,23 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 from urllib.parse import urlencode
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = REPO_ROOT / "static_data"
 BENCHMARKS_PATH = STATIC_DIR / "industry_benchmarks.json"
 CACHE_PATH = STATIC_DIR / "industry_estat_cache.json"
 
 # iCloud メインVault（write_daily_brief.py / check_aurion_state.py と同一定義）
-_ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
-ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"
+ICLOUD_MAIN_VAULT_PATH = resolve_obsidian_vault()
 
 # e-Stat API エンドポイント
 ESTAT_BASE_URL = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsData"

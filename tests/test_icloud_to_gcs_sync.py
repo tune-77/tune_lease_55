@@ -192,7 +192,12 @@ def test_collect_md_files_uses_chat_knowledge_allowlist(tmp_path):
 
 
 def test_default_local_vault_dir_points_to_icloud_vault():
-    assert "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault" in LOCAL_VAULT_DIR
+    # ディレクトリ名を直書きせず runtime_paths の解決結果に追随する
+    # （新旧の Vault 名を切り替えてもここが嘘にならないようにするため）
+    from runtime_paths import resolve_obsidian_vault
+
+    assert LOCAL_VAULT_DIR == str(resolve_obsidian_vault())
+    assert "Library/Mobile Documents/iCloud~md~obsidian/Documents" in LOCAL_VAULT_DIR
 
 
 # ------------------------------------------------------------------

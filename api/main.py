@@ -10142,7 +10142,10 @@ def _news_vault_root() -> Path | None:
     vault = find_vault()
     if vault and vault.is_dir():
         return vault
-    fallback = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
+    # 直書きせず runtime_paths に解決させる（env も既定も一箇所で決まる）
+    from runtime_paths import resolve_obsidian_vault
+
+    fallback = resolve_obsidian_vault()
     return fallback if fallback.is_dir() else None
 
 

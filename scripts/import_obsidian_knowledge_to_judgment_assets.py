@@ -20,20 +20,23 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 DEFAULT_OUTPUT_JSONL = DATA_DIR / "autoresearch_judgment_asset_candidates.jsonl"
 DEFAULT_STATE_JSON = DATA_DIR / "autoresearch_judgment_asset_candidate_state.json"
-DEFAULT_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "Obsidian Vault"
-)
+DEFAULT_VAULT = resolve_obsidian_vault()
 DEFAULT_SOURCE_DIRS = (
     Path("Projects") / "tune_lease_55" / "Asset Knowledge",
     Path("Projects") / "tune_lease_55" / "Lease Intelligence" / "Knowledge",

@@ -11,10 +11,15 @@ LOG_DATE="${LOG_DATE:-$(date +%Y%m%d)}"
 # 全ステップが健全性監視の死角だった。主要ステップを pipeline_step_log.jsonl に記録する。
 source "$(dirname "${BASH_SOURCE[0]}")/pipeline_log_step.sh"
 MANA_MAX_REFLECTION_REPAIRS="${MANA_MAX_REFLECTION_REPAIRS:-3}"
-# Vault の env 優先順は runtime_paths.OBSIDIAN_VAULT_ENV_VARS に合わせる
-# （以前はここだけ OBSIDIAN_VAULT が先で、RAG 側と逆順だった）
-DEFAULT_OBSIDIAN_VAULT="${HOME}/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
-REFLECTION_VAULT="${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-${DEFAULT_OBSIDIAN_VAULT}}}"
+# Vault パスは runtime_paths が唯一の解決窓口（env の優先順も既定もそちらで決まる）。
+# 以前はここだけ OBSIDIAN_VAULT を先に読み、既定パスも直書きしていたため RAG 側とずれえた。
+source "$(dirname "${BASH_SOURCE[0]}")/resolve_obsidian_vault.sh"
+REFLECTION_VAULT="$(resolve_obsidian_vault)"
+if [ -z "${REFLECTION_VAULT}" ]; then
+  # Python が使えない環境でも朝の処理を止めない
+  REFLECTION_VAULT="${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-}}"
+  echo "[post] runtime_paths から Vault を解決できませんでした。env にフォールバック: ${REFLECTION_VAULT:-(未設定)}"
+fi
 REFLECTION_DIR="${REFLECTION_VAULT}/Projects/tune_lease_55/Lease Intelligence/Private Reflection"
 MANA_REPORT_JSON="${PROJECT_ROOT}/reports/mana_obsidian_curator_latest.json"
 SCREENING_TERMS_REPORT_JSON="${PROJECT_ROOT}/reports/screening_terms_audit_latest.json"

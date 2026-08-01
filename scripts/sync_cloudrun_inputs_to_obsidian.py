@@ -21,17 +21,20 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOCAL_INPUT_DIR = Path(os.environ.get("LOCAL_CLOUDRUN_INPUT_DIR", PROJECT_ROOT / "data" / "cloudrun_inputs"))
-DEFAULT_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "Obsidian Vault"
-)
+DEFAULT_VAULT = resolve_obsidian_vault()
 OBSIDIAN_VAULT = Path(os.environ.get("OBSIDIAN_VAULT", str(DEFAULT_VAULT))).expanduser()
 OUTPUT_SUBDIR = Path("Projects") / "tune_lease_55" / "Cloud Run Inputs"
 IMPROVEMENT_LOG_SUBDIR = Path("Projects") / "tune_lease_55" / "AI Chat" / "Improvement Log"

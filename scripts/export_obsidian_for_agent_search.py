@@ -13,13 +13,18 @@ import hashlib
 import json
 import re
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-DEFAULT_VAULT = Path(
-    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
-)
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
+# Vault パスは runtime_paths が唯一の解決窓口（直書きすると RAG の索引先とずれる）
+DEFAULT_VAULT = resolve_obsidian_vault()
 DEFAULT_PROJECT_REL = Path("Projects") / "tune_lease_55"
 DEFAULT_OUTPUT = Path("data") / "agent_search" / "lease_knowledge_export"
 DEFAULT_GCS_PREFIX = "gs://tune-lease-55-data/agent-search/lease-knowledge"

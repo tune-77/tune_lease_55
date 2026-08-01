@@ -31,17 +31,23 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from runtime_paths import (  # noqa: E402
+    resolve_icloud_obsidian_documents,
+    resolve_obsidian_vault,
+)
+
 from obsidian_query import iter_vault_md_files  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Vault detection
 # ---------------------------------------------------------------------------
 
+# 先頭は runtime_paths の解決結果（env の優先順も既定もそちらが決める）。
+# 以前は OBSIDIAN_VAULT だけを直接読んでおり、OBSIDIAN_VAULT_PATH のみ設定された
+# launchd ジョブとこのスクリプトで別の Vault を指しえた。
 _DEFAULT_VAULT_CANDIDATES = [
-    Path(os.environ.get("OBSIDIAN_VAULT", "")).expanduser()
-    if os.environ.get("OBSIDIAN_VAULT") else None,
-    Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
-    Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
+    resolve_obsidian_vault(),
+    resolve_icloud_obsidian_documents(),
 ]
 
 TARGET_FOLDERS = (

@@ -7,7 +7,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/kobayashiisaoryou/anaconda3/bin/python</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/daily_knowledge_feed.py</string>
   </array>
 
@@ -22,7 +22,7 @@
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
     <key>PATH</key>
-    <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
   </dict>
 
   <!-- 毎月1日 07:00 に実行（以前は 06:00 で、毎月1日だけ朝の Vault 書き込みが3重になっていた） -->

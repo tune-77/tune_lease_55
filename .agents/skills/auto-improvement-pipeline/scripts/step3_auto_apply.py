@@ -14,6 +14,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[4])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 # ── Claude Agent パイプライン拡張モジュール（オプション）──────────────────
 _CLASSIFIER_AVAILABLE = False
 _AGENT_RUNNER_AVAILABLE = False
@@ -1212,7 +1222,7 @@ class Step3AutoApplier:
         vault_candidates = (
             [Path(env_vault)]
             if env_vault
-            else [Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"]
+            else [resolve_obsidian_vault()]
         )
         vault = next((v for v in vault_candidates if v.exists()), None)
         if not vault:

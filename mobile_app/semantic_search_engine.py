@@ -59,7 +59,10 @@ class SemanticSearchEngine:
         self.model_name = model_name or _default_model_name()
         self.embeddings_cache = {}
         self.embedding_model = None
-        self.vault_path = "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+        # 直書きせず runtime_paths に解決させる（env も既定も一箇所で決まる）
+        from runtime_paths import resolve_obsidian_vault
+
+        self.vault_path = str(resolve_obsidian_vault())
         self.cache_file = "mobile_app/.embeddings_cache.json"
         
         if EMBEDDING_AVAILABLE:

@@ -186,9 +186,12 @@ def task_machinery_orders_to_vault() -> dict:
     latest_month = meta["latest_month"]  # e.g. "2026-03"
     signal = core["macro_signal"]
 
-    icloud_docs = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
+    # パスは runtime_paths が唯一の解決窓口（直書きすると RAG の索引先とずれる）
+    from runtime_paths import resolve_icloud_obsidian_documents, resolve_obsidian_vault
+
+    icloud_docs = resolve_icloud_obsidian_documents()
     lease_wiki_vault = icloud_docs / "lease-wiki-vault"
-    icloud_main_vault = icloud_docs / "Obsidian Vault"   # reindex_obsidian._DEFAULT_VAULT と同一
+    icloud_main_vault = resolve_obsidian_vault()
 
     if not lease_wiki_vault.exists() and not icloud_main_vault.exists():
         return {"skipped": True, "reason": "iCloud Vault が見つかりません"}

@@ -10,18 +10,12 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from runtime_paths import get_data_path
+from runtime_paths import get_data_path, resolve_icloud_obsidian_documents
 
 _REPO_PATH = Path(__file__).parent
 
-_LEASE_WIKI_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "lease-wiki-vault"
-)
+# パスは runtime_paths が唯一の解決窓口（直書きすると RAG の索引先とずれる）
+_LEASE_WIKI_VAULT = resolve_icloud_obsidian_documents() / "lease-wiki-vault"
 _WIKI_CACHE_PATH = get_data_path("wiki_embedding_cache.json")
 
 DB_PATH = get_data_path("lease_data.db")

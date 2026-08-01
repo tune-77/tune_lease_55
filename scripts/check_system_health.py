@@ -13,12 +13,22 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VAULT = Path(
     os.environ.get(
         "OBSIDIAN_VAULT",
-        Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
+        resolve_obsidian_vault(),
     )
 )
 DEFAULT_BACKUP_ROOT = Path(

@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from obsidian_query import split_query_terms
+from runtime_paths import (
+    DEFAULT_OBSIDIAN_VAULT,
+    LEGACY_OBSIDIAN_VAULT,
+    OBSIDIAN_VAULT_ENV_VARS,
+)
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
 
@@ -45,11 +50,21 @@ def _home_candidates() -> list[Path]:
     # 知識宇宙では obsidian-vault を優先し、なければ従来の Obsidian Vault にフォールバックする。
     # lease-wiki-vault はユーザーが明示指定した場合だけ使うため、アプリの最近使用順より後に置く。
     app_vaults = _obsidian_app_vaults()
-    env_vault = Path(os.getenv("OBSIDIAN_VAULT", "")).expanduser() if os.getenv("OBSIDIAN_VAULT") else None
-    icloud_docs = home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
+    # env は runtime_paths と同じ優先順で読む。以前は OBSIDIAN_VAULT しか見ておらず、
+    # OBSIDIAN_VAULT_PATH だけを設定した launchd ジョブとこのブリッジが別の Vault を
+    # 指しうる状態だった（書き込み先と RAG 索引先の分裂）。
+    env_vault = next(
+        (
+            Path(raw).expanduser()
+            for name in OBSIDIAN_VAULT_ENV_VARS
+            if (raw := (os.getenv(name) or "").strip())
+        ),
+        None,
+    )
+    icloud_docs = DEFAULT_OBSIDIAN_VAULT.parent
     default_vaults = [
-        icloud_docs / "obsidian-vault",
-        icloud_docs / "Obsidian Vault",
+        DEFAULT_OBSIDIAN_VAULT,
+        LEGACY_OBSIDIAN_VAULT,
         home / "Documents" / "Obsidian Vault",
     ]
     regular_app_vaults = [p for p in app_vaults if p.name != "lease-wiki-vault"]

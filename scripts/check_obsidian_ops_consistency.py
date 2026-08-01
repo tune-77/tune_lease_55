@@ -213,26 +213,46 @@ def check_schedule_collisions(
     return findings
 
 
+CANONICAL_INTERPRETER_SUFFIX = "/.venv/bin/python"
+
+
 def check_interpreters(jobs: Iterable[Job]) -> list[Finding]:
-    """Python 実行系がジョブ間でばらついていないか（依存differences の温床）。"""
+    """Python 実行系がジョブ間で統一されているか。
+
+    実行系が割れていると、あるジョブにだけ入っているパッケージに依存したコードが
+    別のジョブでは ImportError になる。全ジョブがプロジェクトの venv を使うのが規約。
+    """
     interpreters: dict[str, list[str]] = {}
     for job in jobs:
         interp = job.interpreter
         if interp:
             interpreters.setdefault(interp, []).append(job.label)
 
-    if len(interpreters) <= 1:
-        return []
+    findings: list[Finding] = []
 
-    detail = json.dumps(interpreters, ensure_ascii=False, indent=2)
-    return [
-        Finding(
-            WARNING,
-            "interpreter",
-            f"Python 実行系が {len(interpreters)} 種類に分かれています。"
-            f"インストール済みパッケージが揃わずジョブごとに失敗しえます:\n{detail}",
+    if len(interpreters) > 1:
+        detail = json.dumps(interpreters, ensure_ascii=False, indent=2)
+        findings.append(
+            Finding(
+                ERROR,
+                "interpreter",
+                f"Python 実行系が {len(interpreters)} 種類に分かれています。"
+                f"インストール済みパッケージが揃わずジョブごとに失敗します:\n{detail}",
+            )
         )
-    ]
+
+    for interp, labels in interpreters.items():
+        if not interp.endswith(CANONICAL_INTERPRETER_SUFFIX):
+            findings.append(
+                Finding(
+                    WARNING,
+                    "interpreter",
+                    f"{sorted(labels)} がプロジェクトの venv 以外の Python を使っています: {interp}"
+                    f"（規約: *{CANONICAL_INTERPRETER_SUFFIX}）",
+                )
+            )
+
+    return findings
 
 
 def check_vault_resolution() -> list[Finding]:
@@ -252,14 +272,15 @@ def check_vault_resolution() -> list[Finding]:
 
 
 def scan_hardcoded_vault_paths(repo_root: Path = REPO_ROOT) -> list[Finding]:
-    """runtime_paths を経由せず Vault パスを直書きしているファイルを数える。
+    """runtime_paths を経由せず Vault パスを直書きしているファイルを検出する。
 
-    既存コードを壊さないため、ここでは報告だけして修正はしない。
+    集約は完了済みなので、新たな直書きが入ったら error として止める。
+    テストは「iCloud 配下であること」を確かめる目的で文字列を持つため除外する。
     """
     pattern = re.compile(r"iCloud~md~obsidian")
     allowlist = {
-        repo_root / "runtime_paths.py",
-        Path(__file__).resolve(),
+        repo_root / "runtime_paths.py",  # 解決窓口そのもの
+        Path(__file__).resolve(),  # この検査スクリプト
     }
     hits: list[str] = []
     for suffix in ("*.py", "*.sh"):
@@ -267,6 +288,8 @@ def scan_hardcoded_vault_paths(repo_root: Path = REPO_ROOT) -> list[Finding]:
             if path.resolve() in allowlist:
                 continue
             if any(part in {".git", "node_modules", "_archive", ".venv"} for part in path.parts):
+                continue
+            if path.name.startswith("test_") or "tests" in path.parts:
                 continue
             try:
                 text = path.read_text(encoding="utf-8", errors="ignore")
@@ -277,12 +300,13 @@ def scan_hardcoded_vault_paths(repo_root: Path = REPO_ROOT) -> list[Finding]:
 
     if not hits:
         return []
+    listed = "\n".join(f"  - {h}" for h in sorted(hits))
     return [
         Finding(
-            INFO,
+            ERROR,
             "hardcoded_paths",
-            f"Vault パスを直書きしているファイル: {len(hits)} 件"
-            "（runtime_paths への集約は未完。新規コードでは直書きしないこと）",
+            f"Vault パスを直書きしているファイルが {len(hits)} 件あります。"
+            f"runtime_paths の解決窓口を使ってください:\n{listed}",
         )
     ]
 

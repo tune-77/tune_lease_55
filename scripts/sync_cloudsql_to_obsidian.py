@@ -48,6 +48,16 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 # ── 接続設定（環境変数から取得） ────────────────────────────────────────────────
 
 def rewrite_cloudsql_socket_dsn(dsn: str, host: str, port: int) -> str:
@@ -198,14 +208,7 @@ def _unreachable_cloudsql_socket(dsn: str) -> str:
     return ""
 
 
-DEFAULT_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "Obsidian Vault"
-)
+DEFAULT_VAULT = resolve_obsidian_vault()
 VAULT_PATH = Path(os.environ.get("OBSIDIAN_VAULT", os.environ.get("OBSIDIAN_VAULT_PATH", str(DEFAULT_VAULT)))).expanduser()
 OUTPUT_SUBDIR = "Projects/tune_lease_55/Cloud SQL Summaries"
 STATE_FILE = Path(__file__).parent / ".sync_state_cloudsql.json"

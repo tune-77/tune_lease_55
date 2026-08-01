@@ -12,7 +12,8 @@ It is intentionally conservative:
 - it keeps only the newest N snapshots per vault prefix
 
 Environment variables:
-- OBSIDIAN_VAULT: override source vault path
+- OBSIDIAN_VAULT_PATH / OBSIDIAN_VAULT: override source vault path
+  （runtime_paths.OBSIDIAN_VAULT_ENV_VARS と同じ優先順で読む）
 - OBSIDIAN_BACKUP_ROOT: override backup root path
 """
 
@@ -33,6 +34,8 @@ from typing import Iterable
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_icloud_obsidian_documents  # noqa: E402
 
 from runtime_paths import (  # noqa: E402
     DEFAULT_OBSIDIAN_VAULT,
@@ -59,7 +62,7 @@ DEFAULT_VAULT_CANDIDATES = [
     *_env_vault_candidates(),
     DEFAULT_OBSIDIAN_VAULT,
     LEGACY_OBSIDIAN_VAULT,
-    Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
+    resolve_icloud_obsidian_documents(),
     Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault",
 ]
 

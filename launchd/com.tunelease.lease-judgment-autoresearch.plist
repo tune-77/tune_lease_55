@@ -7,7 +7,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/kobayashiisaoryou/anaconda3/bin/python</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/auto_research_lease_judgment.py</string>
   </array>
 
@@ -22,7 +22,7 @@
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
     <key>PATH</key>
-    <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
   </dict>
 
   <!-- 毎朝 06:40 に実行（06:20 の aurion 朝報告の後。以前は 06:10 で朝の3ジョブが密集していた） -->

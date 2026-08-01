@@ -10,6 +10,16 @@ import re
 import sys
 from pathlib import Path
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 _PIPELINE_SCRIPTS_DIR = (
     Path(__file__).resolve().parent.parent
     / ".agents"
@@ -37,7 +47,7 @@ def _title_key(title: str) -> str:
 
 # Vault パス候補（環境変数 OBSIDIAN_VAULT_PATH > iCloud パス）
 _DEFAULT_VAULT_PATHS = [
-    Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault",
+    resolve_obsidian_vault(),
 ]
 
 OUTPUT_FILE = Path("/tmp/obsidian_improvements_export.txt")

@@ -73,7 +73,10 @@ def extract_metadata(path: Path, text: str) -> dict[str, Any]:
             "has_wikilinks": true,
         }
     """
-    vault_root = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
+    # 直書きせず runtime_paths に解決させる（env も既定も一箇所で決まる）
+    from runtime_paths import resolve_obsidian_vault
+
+    vault_root = resolve_obsidian_vault()
     try:
         rel_path = path.relative_to(vault_root)
     except ValueError:

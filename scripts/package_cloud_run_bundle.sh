@@ -11,15 +11,11 @@ if [[ -d "$BUNDLE_DIR" ]]; then
   find "$BUNDLE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 fi
 
-SOURCE_VAULT="${OBSIDIAN_VAULT_PATH:-}"
-if [[ -z "$SOURCE_VAULT" ]]; then
-  for candidate in \
-    "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"; do
-    if [[ -d "$candidate" ]]; then
-      SOURCE_VAULT="$candidate"
-      break
-    fi
-  done
+# Vault パスは runtime_paths が唯一の解決窓口（既定パスをここに直書きしない）
+source "$ROOT_DIR/scripts/resolve_obsidian_vault.sh"
+SOURCE_VAULT="$(resolve_obsidian_vault)"
+if [[ -n "$SOURCE_VAULT" && ! -d "$SOURCE_VAULT" ]]; then
+  SOURCE_VAULT=""
 fi
 
 mkdir -p "$DATA_OUT" "$VAULT_OUT"

@@ -17,15 +17,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_RETURN_DB = PROJECT_ROOT / "data" / "cloudrun_experience_return.db"
 MAIN_LEASE_DB = PROJECT_ROOT / "data" / "lease_data.db"
 DEFAULT_TARGET_DB = PROJECT_ROOT / "data" / "demo.db"
 DEFAULT_BACKUP_DIR = PROJECT_ROOT / "data" / "backups"
-DEFAULT_OBSIDIAN_VAULT = Path(
-    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
-)
+DEFAULT_OBSIDIAN_VAULT = resolve_obsidian_vault()
 JUDGMENT_ASSET_OBSIDIAN_REL_DIR = Path("Projects") / "tune_lease_55" / "Judgment Assets" / "Cloud Run Return"
 SUPPORTED_KINDS = ("shion_review", "score_input", "ocr_result", "judgment_asset")
 

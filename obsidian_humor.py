@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from obsidian_query import split_query_terms
+from runtime_paths import resolve_obsidian_vault
 
 
-DEFAULT_VAULT = Path("/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault")
+# Vault パスは runtime_paths が唯一の解決窓口（直書きすると RAG の索引先とずれる）
+DEFAULT_VAULT = resolve_obsidian_vault()
 HUMOR_NOTES = {
     "tone": Path("Humor/口調ルール.md"),
     "ng": Path("Humor/NG表現.md"),

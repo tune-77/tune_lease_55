@@ -9,9 +9,19 @@ import os
 from datetime import datetime
 import pandas as pd
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 # パス設定
 DB_PATH = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db"
-VAULT_PATH = "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+VAULT_PATH = str(resolve_obsidian_vault())
 OUTPUT_DIR = f"{VAULT_PATH}/02-開発中_代替案/leaseDb_データ"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
