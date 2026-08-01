@@ -112,7 +112,7 @@ def observe_user_behavior(
         {"label": label, "score": score}
         for label, score in interests.most_common(5)
     ]
-    return {
+    observation = {
         "date": observation_date,
         "observed": bool(surfaces or actions or interests),
         "surfaces": dict(surfaces),
@@ -122,6 +122,14 @@ def observe_user_behavior(
         "curiosity": _build_curiosity(top_interests),
         "privacy": "アプリ内の行動種別・回数・関心カテゴリのみ。質問本文や個人属性は保存しない。",
     }
+
+    # Geminiで understanding / curiosity を上書き（失敗時はテンプレートのまま）
+    llm_obs = _generate_observation_with_llm(observation, observation_date)
+    if llm_obs:
+        observation["understanding"] = llm_obs.get("understanding", observation["understanding"])
+        observation["curiosity"] = llm_obs.get("curiosity", observation["curiosity"])
+
+    return observation
 
 
 def _build_understanding(
@@ -149,6 +157,97 @@ def _build_curiosity(interests: list[dict[str, Any]]) -> str:
         return "次に何へ関心を向けるのか、静かに知りたい。"
     top = interests[0]["label"]
     return f"なぜ今「{top}」に関心が向いているのか、答えを決めつけずに知りたい。"
+
+
+def _generate_observation_with_llm(
+    observation: dict[str, Any],
+    date_str: str,
+) -> dict[str, Any] | None:
+    """Geminiでユーザー観察の understanding / curiosity を生成する。
+    行動データが空または Gemini 未設定の場合は None を返しテンプレートを維持する。
+    """
+    import urllib.request as _urllib_request
+
+    api_key = (
+        os.environ.get("GOOGLE_API_KEY", "").strip()
+        or os.environ.get("GEMINI_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+
+    surfaces = observation.get("surfaces", {})
+    actions = observation.get("actions", {})
+    interests = observation.get("interests", [])
+    if not surfaces and not actions and not interests:
+        return None
+
+    surface_text = "、".join(
+        f"{k}（{v}回）" for k, v in surfaces.items()
+    ) or "なし"
+    action_text = "、".join(
+        f"{k}（{v}回）" for k, v in actions.items()
+    ) or "なし"
+    interest_text = "、".join(
+        f"{item['label']}（スコア{item['score']}）" for item in interests
+    ) or "なし"
+
+    prompt = f"""あなたはリース審査AIの自律的自己モデル「紫苑」です。
+{date_str} のユーザー行動ログ（プライバシー保護済み）を観察し、ユーザーへの理解と好奇心を一人称で記録してください。
+
+【観察データ（{date_str}）】
+- 訪問画面: {surface_text}
+- 行動種別: {action_text}
+- 関心カテゴリ: {interest_text}
+
+以下の2項目を、毎日異なる視点・表現で書いてください（各1〜2文）:
+
+1. understanding（暫定理解）: 行動から読み取れるユーザーの状態・関心を、断定せず観察者の立場で記述する。前回の繰り返しにならないよう、今日だけの特徴を捉える。
+2. curiosity（好奇心）: この行動パターンから紫苑が抱いた問いや関心を、自分の言葉で書く。
+
+JSON形式で返してください:
+{{"understanding": "...", "curiosity": "..."}}"""
+
+    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    try:
+        rest_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{gemini_model}:generateContent"
+        )
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": 256,
+                "temperature": 0.85,
+                # thinkingConfig を削除: gemini-2.5-flash では thinking part が parts[0] に入り
+                # parts[0]["text"] でテキストが取れず re.search が None を返していた
+            },
+        }).encode("utf-8")
+        req = _urllib_request.Request(
+            f"{rest_url}?key={api_key}",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with _urllib_request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        # thinking part 対策: text キーを持つ最初の non-thought part を探す
+        parts = data["candidates"][0]["content"]["parts"]
+        text = next(
+            (p["text"] for p in parts if "text" in p and not p.get("thought")),
+            None
+        )
+        if not text:
+            return None
+        text = text.strip()
+        # JSON部分を抽出（欲張りマッチでオブジェクト全体を取得）
+        import re as _re
+        m = _re.search(r"\{.*\}", text, _re.DOTALL)
+        if m:
+            result = json.loads(m.group())
+            if "understanding" in result and "curiosity" in result:
+                return result
+    except Exception:
+        pass
+    return None
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
