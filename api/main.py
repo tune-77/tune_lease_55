@@ -8388,29 +8388,6 @@ def _log_shion_query_class(message: str) -> None:
     _background_executor.submit(_run)
 
 
-def _extract_vertex_search_hint(message: str) -> str:
-    """Use a compact embedded search hint for Vertex when a long prompt provides one."""
-    text = str(message or "")
-    marker = "【Vertex補助検索ヒント】"
-    if marker not in text:
-        return text
-    after = text.split(marker, 1)[1]
-    lines: list[str] = []
-    for raw_line in after.splitlines():
-        line = raw_line.strip()
-        if not line:
-            if lines:
-                break
-            continue
-        if line.startswith("【") and line.endswith("】"):
-            break
-        lines.append(line.lstrip("・- ").strip())
-        if len(" ".join(lines)) >= 220:
-            break
-    hint = " ".join(line for line in lines if line).strip()
-    return hint or text
-
-
 def _log_information_weighting_shadow(
     message: str,
     *,
@@ -8630,96 +8607,65 @@ def post_chat(req: ChatRequest):
         )
         _is_improvement_msg = any(k in req.message for k in _IMPROVEMENT_KEYWORDS)
 
-        # カテゴリ判定
-        question_category = _classify_question(req.message)
-        basic_lease_question_context = _build_chat_basic_lease_question_context(req.message)
-        if basic_lease_question_context and question_category == "general":
-            question_category = "lease_knowledge"
-        context_mode = _chat_context_mode(
-            req.message,
-            question_category,
-            long_input=chat_long_input,
-        )
-        context_budget = _chat_context_budget(context_mode)
-        mode_instruction = _chat_mode_instruction(context_mode)
-        if not context_budget.get("use_news"):
-            news_focus_context = ""
-            news_brief_context = ""
-            news_actions_context = ""
-        if not context_budget.get("use_obsidian_daily"):
-            obsidian_daily_context = ""
-        identity_memory_context, identity_memory_payload = _build_chat_identity_memory_prompt_block()
-        user_personal_memory_context, user_personal_memory_payload = _build_user_personal_memory_prompt_block()
-        response_mode_context = _chat_response_mode_instruction(req.response_mode)
-        response_mode_key = (req.response_mode or "shion").strip().lower()
-        is_general_response_mode = response_mode_key == "general"
-        continuity_hook_context, continuity_hook_payload = _build_continuity_hook_prompt_block(req.message)
-        consciousness_ux_context = _build_consciousness_ux_prompt_block()
-        shion_specificity_context = _build_shion_specificity_prompt_block(req.message)
-        shion_light_tone_context = _build_shion_light_tone_feedback_prompt_block(req.message)
-        shion_non_domain_context = _build_shion_non_domain_prompt_block(req.message)
-        human_device_resonance_context = _build_shion_human_device_resonance_prompt_block(
-            req.message,
+        from api.chat_context_builder import ChatContextBuilderDeps, build_chat_context_state
+
+        context_state = build_chat_context_state(
+            message=req.message,
+            response_mode=req.response_mode,
             user_id=req.user_id,
             now=_chat_now,
+            long_input=chat_long_input,
+            news_focus_context=news_focus_context,
+            news_brief_context=news_brief_context,
+            news_actions_context=news_actions_context,
+            obsidian_daily_context=obsidian_daily_context,
+            deps=ChatContextBuilderDeps(
+                classify_question=_classify_question,
+                build_basic_lease_question_context=_build_chat_basic_lease_question_context,
+                chat_context_mode=_chat_context_mode,
+                chat_context_budget=_chat_context_budget,
+                chat_mode_instruction=_chat_mode_instruction,
+                response_mode_instruction=_chat_response_mode_instruction,
+                build_identity_memory=_build_chat_identity_memory_prompt_block,
+                build_user_personal_memory=_build_user_personal_memory_prompt_block,
+                build_continuity_hook=_build_continuity_hook_prompt_block,
+                build_consciousness_ux=_build_consciousness_ux_prompt_block,
+                build_shion_specificity=_build_shion_specificity_prompt_block,
+                build_shion_light_tone=_build_shion_light_tone_feedback_prompt_block,
+                build_shion_non_domain=_build_shion_non_domain_prompt_block,
+                build_human_device_resonance=_build_shion_human_device_resonance_prompt_block,
+                build_judgment_response_shape=_build_shion_judgment_response_shape_prompt_block,
+                build_grey_judgment=_build_grey_judgment_prompt_block,
+            ),
         )
-        judgment_response_shape_context = _build_shion_judgment_response_shape_prompt_block(req.message)
-        experience_loop_context = ""
-        experience_loop_payload: dict = {"used": False}
-        grey_judgment_context = ""
-        grey_judgment_payload: dict = {"used": False}
-        if is_general_response_mode:
-            obsidian_daily_context = ""
-            identity_memory_context = ""
-            identity_memory_payload = {
-                "block": "",
-                "refs": [],
-                "layers": {},
-                "suppressed_by_response_mode": "general",
-            }
-            user_personal_memory_context = ""
-            user_personal_memory_payload = {
-                "block": "",
-                "refs": [],
-                "line_count": 0,
-                "suppressed_by_response_mode": "general",
-            }
-            continuity_hook_context = ""
-            continuity_hook_payload = {
-                "used": False,
-                "suppressed_by_response_mode": "general",
-            }
-            consciousness_ux_context = ""
-            shion_specificity_context = ""
-            shion_light_tone_context = ""
-            shion_non_domain_context = ""
-            human_device_resonance_context = ""
-            judgment_response_shape_context = ""
-            experience_loop_payload = {
-                "used": False,
-                "suppressed_by_response_mode": "general",
-            }
-            grey_judgment_payload = {
-                "used": False,
-                "suppressed_by_response_mode": "general",
-            }
-        if not is_general_response_mode and context_budget.get("use_experience_loop"):
-            try:
-                from api.shion_experience_loop import build_experience_prompt_block
-
-                experience_loop_context, experience_loop_payload = build_experience_prompt_block()
-            except Exception as _experience_loop_error:
-                print(f"[ShionExperienceLoop] 読み込みエラー: {_experience_loop_error}")
-        if not is_general_response_mode:
-            grey_judgment_context, grey_judgment_payload = _build_grey_judgment_prompt_block(req.message)
-        # 事業計画相談モード（例:「ラーメン屋をやりたい」）: intent 分岐には触れず
-        # 追加プロンプトブロックとしてのみ作用する
-        business_plan_consult_context = ""
-        try:
-            from api.business_plan_check import build_business_plan_chat_block
-            business_plan_consult_context = build_business_plan_chat_block(req.message)
-        except Exception as _bplan_error:
-            print(f"[BusinessPlanConsult] ブロック生成エラー: {_bplan_error}")
+        question_category = context_state.question_category
+        basic_lease_question_context = context_state.basic_lease_question_context
+        context_mode = context_state.context_mode
+        context_budget = context_state.context_budget
+        mode_instruction = context_state.mode_instruction
+        response_mode_context = context_state.response_mode_context
+        is_general_response_mode = context_state.is_general_response_mode
+        news_focus_context = context_state.news_focus_context
+        news_brief_context = context_state.news_brief_context
+        news_actions_context = context_state.news_actions_context
+        obsidian_daily_context = context_state.obsidian_daily_context
+        identity_memory_context = context_state.identity_memory_context
+        identity_memory_payload = context_state.identity_memory_payload
+        user_personal_memory_context = context_state.user_personal_memory_context
+        user_personal_memory_payload = context_state.user_personal_memory_payload
+        continuity_hook_context = context_state.continuity_hook_context
+        continuity_hook_payload = context_state.continuity_hook_payload
+        consciousness_ux_context = context_state.consciousness_ux_context
+        shion_specificity_context = context_state.shion_specificity_context
+        shion_light_tone_context = context_state.shion_light_tone_context
+        shion_non_domain_context = context_state.shion_non_domain_context
+        human_device_resonance_context = context_state.human_device_resonance_context
+        judgment_response_shape_context = context_state.judgment_response_shape_context
+        experience_loop_context = context_state.experience_loop_context
+        experience_loop_payload = context_state.experience_loop_payload
+        grey_judgment_context = context_state.grey_judgment_context
+        grey_judgment_payload = context_state.grey_judgment_payload
+        business_plan_consult_context = context_state.business_plan_consult_context
         neutral_general_system_prompt = (
             "あなたはリース審査にも詳しい一般AIアシスタントです。"
             "中立で分かりやすく、日本語で簡潔に答えてください。"
@@ -8872,7 +8818,42 @@ def post_chat(req: ChatRequest):
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
             external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + external_research_context + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + judgment_response_shape_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
+            from api.chat_response_pipeline import (
+                build_chat_response_payload,
+                build_prompt_feedback_snapshot,
+                obsidian_daily_intelligence_payload,
+            )
+            from api.chat_side_effects import chat_exchange_metadata, memory_usage_extra, prompt_feedback_extra
+
+            base_system_prompt = join_prompt_blocks([
+                base_system_root,
+                mode_instruction,
+                response_mode_context,
+                basic_lease_question_prompt,
+                news_focus_context,
+                news_brief_context,
+                news_actions_context,
+                obsidian_daily_context,
+                identity_memory_context,
+                user_personal_memory_context,
+                experience_loop_context,
+                grey_judgment_context,
+                business_plan_consult_context,
+                continuity_hook_context,
+                delta_awareness_context,
+                memory_to_judgment_context,
+                memory_expression_context,
+                reflection_gate_context,
+                external_research_context,
+                consciousness_ux_context,
+                shion_specificity_context,
+                shion_light_tone_context,
+                shion_non_domain_context,
+                human_device_resonance_context,
+                judgment_response_shape_context,
+                f"\n\n{memory_recall_context}" if memory_recall_context else "",
+            ])
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -8883,7 +8864,7 @@ def post_chat(req: ChatRequest):
                 else ""
             )
             effective_system_prompt = _cap_system_prompt(
-                base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else ""),
+                append_optional_block(base_system_prompt, pdca_block),
                 surface="next_chat_general",
             )
             obsidian_daily_injected = {}
@@ -8913,7 +8894,7 @@ def post_chat(req: ChatRequest):
                 assistant_reply=reply,
                 category="general",
                 response_mode=req.response_mode,
-                metadata={"context_mode": context_mode},
+                metadata=chat_exchange_metadata(context_mode=context_mode),
             )
             language_material_capture = _capture_language_judgment_material(
                 req.message,
@@ -8956,22 +8937,14 @@ def post_chat(req: ChatRequest):
             _record_prompt_feedback_if_available(
                 surface="next_chat_general",
                 question=req.message,
-                base_prompt="\n\n".join([
-                    base_system_prompt,
-                    "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
-                    f"user: {req.message}",
-                ]),
-                final_prompt="\n\n".join([
-                    effective_system_prompt,
-                    "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
-                    f"user: {req.message}",
-                ]),
+                base_prompt=build_prompt_feedback_snapshot(base_system_prompt, history_for_gemini, req.message),
+                final_prompt=build_prompt_feedback_snapshot(effective_system_prompt, history_for_gemini, req.message),
                 response=reply,
-                extra={
-                    "user_id": req.user_id,
-                    "intent": req.intent or "",
-                    "category": "general",
-                },
+                extra=prompt_feedback_extra(
+                    user_id=req.user_id,
+                    intent=req.intent or "",
+                    category="general",
+                ),
             )
             _record_memory_usage_if_available(
                 surface="next_chat_general",
@@ -8980,49 +8953,41 @@ def post_chat(req: ChatRequest):
                 knowledge_refs=[],
                 pdca_block=pdca_block,
                 judgment_learning_used=False,
-                extra={
-                    "user_id": req.user_id,
-                    "category": "general",
-                    "memory_recall": {
-                        "route": memory_recall.get("route"),
-                        "refs": memory_recall.get("refs", [])[:8],
-                        "practical_scene": memory_recall.get("practical_scene") or {},
-                    },
-                    "identity_memory": {
-                        "used": bool(identity_memory_payload.get("block")),
-                        "refs": identity_memory_payload.get("refs", [])[:8],
-                        "layers": identity_memory_payload.get("layers", {}),
-                    },
-                    "continuity_hook": continuity_hook_payload,
-                    "delta_awareness": delta_awareness_payload,
-                    "memory_to_judgment": memory_to_judgment_payload,
-                    "memory_expression": memory_expression_payload,
-                    "reflection_gate": reflection_gate_payload,
-                    "grey_judgment_memory": grey_judgment_payload,
-                },
+                extra=memory_usage_extra(
+                    user_id=req.user_id,
+                    category="general",
+                    memory_recall=memory_recall,
+                    identity_memory=identity_memory_payload,
+                    continuity_hook=continuity_hook_payload,
+                    delta_awareness=delta_awareness_payload,
+                    memory_to_judgment=memory_to_judgment_payload,
+                    memory_expression=memory_expression_payload,
+                    reflection_gate=reflection_gate_payload,
+                    grey_judgment_memory=grey_judgment_payload,
+                ),
             )
             _record_chat_knowledge_correction_if_needed(req.message)
             total = get_message_count(req.user_id)
-            response_payload = {
-                "reply": reply,
-                "total_messages": total,
-                "lease_news_focus": news_focus,
-                "lease_news_brief": news_brief,
-                "lease_news_actions": news_actions,
-                "long_input_mode": chat_long_input,
-                "context_mode": context_mode,
-                "personal_memory_capture": personal_memory_capture,
-                "language_material_capture": language_material_capture,
-                "response_impact_prediction": response_impact_prediction,
-                "judgment_asset_capture": judgment_asset_capture,
-                "response_mode": req.response_mode,
-                "external_research": external_research,
-                "obsidian_daily_intelligence": {
-                    "used": bool(obsidian_daily_context),
-                    "injected": obsidian_daily_injected,
-                    "effect": obsidian_daily_effect,
-                },
-            }
+            response_payload = build_chat_response_payload(
+                reply=reply,
+                total_messages=total,
+                lease_news_focus=news_focus,
+                lease_news_brief=news_brief,
+                lease_news_actions=news_actions,
+                long_input_mode=chat_long_input,
+                context_mode=context_mode,
+                personal_memory_capture=personal_memory_capture,
+                language_material_capture=language_material_capture,
+                response_impact_prediction=response_impact_prediction,
+                judgment_asset_capture=judgment_asset_capture,
+                response_mode=req.response_mode,
+                external_research=external_research,
+                obsidian_daily_intelligence=obsidian_daily_intelligence_payload(
+                    used=bool(obsidian_daily_context),
+                    injected=obsidian_daily_injected,
+                    effect=obsidian_daily_effect,
+                ),
+            )
             if req.debug_memory:
                 response_payload["memory_debug"] = _chat_memory_debug_payload(
                     category="general",
@@ -9050,107 +9015,21 @@ def post_chat(req: ChatRequest):
                 }
             return response_payload
 
-        # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
-        # 未キャッシュでもキーワード検索へフォールバックする。
-        rag_context = ""
-        rag_refs: list[str] = []
-        rag_knowledge_refs: list[dict] = []
-        vertex_agent_search: dict[str, Any] = {"used": False, "status": "not_attempted", "refs": []}
-        vertex_answer_api: dict[str, Any] = {"used": False, "status": "not_attempted", "refs": []}
         rag_top_k = int(context_budget["rag_top_k"])
+        from api.chat_retrieval import build_chat_retrieval_context
 
-        def _collect_rag_hits(hits: list[dict]) -> str:
-            from api.knowledge.vector_store import confidence_for_hit
-
-            all_docs = []
-            for hit in hits:
-                text = str(hit.get("text") or "").strip()
-                ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
-                if not text:
-                    continue
-                prefix = f"{ref}: " if ref else ""
-                all_docs.append((prefix + text)[:600])
-                if ref:
-                    rag_refs.append(ref)
-                if hit.get("doc_id") or ref:
-                    _conf, _conf_level = confidence_for_hit(hit)
-                    rag_knowledge_refs.append({
-                        "doc_id": hit.get("doc_id", ""),
-                        "obsidian_ref": ref,
-                        "file_name": str(hit.get("file_name") or ""),
-                        "rank_score": hit.get("rank_score"),
-                        "confidence": _conf,
-                        "confidence_level": _conf_level,
-                    })
-            if not all_docs:
-                return ""
-            return "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
-
-        if rag_top_k > 0:
-            try:
-                from api.knowledge.vector_store import get_store
-
-                hits = get_store().search(req.message, top_k=rag_top_k)
-                rag_context = _collect_rag_hits(hits)
-            except Exception as e:
-                print(f"[RAG] 検索エラー: {e}")
-        if rag_top_k > 0 and not rag_context:
-            fallback_hits = _search_chat_vault_markdown_fallback(req.message, top_k=rag_top_k)
-            if fallback_hits:
-                rag_context = _collect_rag_hits(fallback_hits)
-
-        # Vertex AI Search is a supplementary layer: keep local Obsidian RAG as
-        # the primary source, and append cloud search only for lease-domain RAG
-        # turns. Any auth/network failure must degrade to the existing path.
-        if rag_top_k > 0 and not is_general_response_mode and question_category != "general":
-            try:
-                from api.vertex_agent_search import answer_prompt_context, answer_vertex_agent, search_vertex_agent
-
-                vertex_search_query = _extract_vertex_search_hint(req.message)
-                vertex_agent_search = search_vertex_agent(vertex_search_query)
-                vertex_agent_search["query"] = vertex_search_query[:500]
-                vertex_context = str(vertex_agent_search.get("prompt_context") or "").strip()
-                if vertex_context:
-                    rag_context = (rag_context + "\n\n" + vertex_context).strip() if rag_context else vertex_context
-                for ref in list(vertex_agent_search.get("refs") or [])[:5]:
-                    ref_text = str(ref or "").strip()
-                    if not ref_text or ref_text in rag_refs:
-                        continue
-                    rag_refs.append(ref_text)
-                    rag_knowledge_refs.append(
-                        {
-                            "doc_id": "",
-                            "obsidian_ref": ref_text,
-                            "file_name": Path(ref_text).name,
-                            "rank_score": None,
-                            "confidence": 0.72,
-                            "confidence_level": "medium",
-                            "source": "vertex_ai_search",
-                        }
-                    )
-                if "【Vertex補助検索ヒント】" in req.message:
-                    vertex_answer_api = answer_vertex_agent(
-                        vertex_search_query,
-                        page_size=5,
-                        include_grounding_supports=True,
-                        grounding_filtering_level=os.environ.get("VERTEX_ANSWER_GROUNDING_FILTERING_LEVEL") or None,
-                    )
-                    answer_context = answer_prompt_context(vertex_answer_api)
-                    if answer_context:
-                        rag_context = (rag_context + "\n\n" + answer_context).strip() if rag_context else answer_context
-            except Exception as _vertex_exc:
-                vertex_agent_search = {
-                    "used": False,
-                    "status": "error",
-                    "error": str(_vertex_exc)[:240],
-                    "refs": [],
-                }
-                vertex_answer_api = {
-                    "used": False,
-                    "status": "error",
-                    "error": str(_vertex_exc)[:240],
-                    "refs": [],
-                }
+        retrieval = build_chat_retrieval_context(
+            req.message,
+            rag_top_k=rag_top_k,
+            question_category=question_category,
+            is_general_response_mode=is_general_response_mode,
+            fallback_search=_search_chat_vault_markdown_fallback,
+        )
+        rag_context = retrieval.rag_context
+        rag_refs = retrieval.rag_refs
+        rag_knowledge_refs = retrieval.rag_knowledge_refs
+        vertex_agent_search = retrieval.vertex_agent_search
+        vertex_answer_api = retrieval.vertex_answer_api
 
         external_research = {"used": False}
         research_suggestion = _build_external_research_suggestion(
@@ -9325,7 +9204,56 @@ def post_chat(req: ChatRequest):
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
         basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
         external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + rag_context + external_research_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + judgment_response_shape_context + guidance.prompt_suffix
+        from api.chat_debug_metadata import (
+            append_chat_debug_metadata,
+        )
+        from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
+        from api.chat_response_pipeline import (
+            build_chat_response_payload,
+            build_prompt_feedback_snapshot,
+            obsidian_daily_intelligence_payload,
+            vertex_retrieval_response_extra,
+        )
+        from api.chat_side_effects import (
+            chat_exchange_metadata,
+            memory_usage_extra,
+            prompt_feedback_extra,
+            should_auto_save_chat,
+        )
+
+        base_effective_prompt = join_prompt_blocks([
+            base_prompt_root,
+            mode_instruction,
+            response_mode_context,
+            basic_lease_question_prompt,
+            news_focus_context,
+            news_brief_context,
+            news_actions_context,
+            obsidian_daily_context,
+            identity_memory_context,
+            user_personal_memory_context,
+            experience_loop_context,
+            grey_judgment_context,
+            business_plan_consult_context,
+            continuity_hook_context,
+            delta_awareness_context,
+            memory_to_judgment_context,
+            memory_expression_context,
+            reflection_gate_context,
+            rag_context,
+            external_research_context,
+            db_context,
+            improvement_context,
+            judgment_learning_context,
+            f"\n\n{memory_recall_context}" if memory_recall_context else "",
+            consciousness_ux_context,
+            shion_specificity_context,
+            shion_light_tone_context,
+            shion_non_domain_context,
+            human_device_resonance_context,
+            judgment_response_shape_context,
+            guidance.prompt_suffix,
+        ])
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(
@@ -9336,7 +9264,7 @@ def post_chat(req: ChatRequest):
             else ""
         )
         effective_prompt = _cap_system_prompt(
-            base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else ""),
+            append_optional_block(base_effective_prompt, pdca_block),
             surface="next_chat_rag",
         )
         obsidian_daily_injected = {}
@@ -9366,25 +9294,14 @@ def post_chat(req: ChatRequest):
             assistant_reply=reply,
             category=question_category,
             response_mode=req.response_mode,
-            metadata={
-                "context_mode": context_mode,
-                "knowledge_refs": len(rag_refs),
-                "improvement_mode": bool(_is_improvement_msg),
-                "vertex_ai_search": {
-                    "used": bool(vertex_agent_search.get("used")),
-                    "status": vertex_agent_search.get("status"),
-                    "refs": list(vertex_agent_search.get("refs") or [])[:5],
-                },
-                "vertex_answer_api": {
-                    "used": bool(vertex_answer_api.get("used")),
-                    "status": vertex_answer_api.get("status"),
-                    "grounding_score": vertex_answer_api.get("grounding_score"),
-                    "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
-                    "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
-                    "support_count": vertex_answer_api.get("support_count", 0),
-                    "refs": list(vertex_answer_api.get("refs") or [])[:5],
-                },
-            },
+            metadata=chat_exchange_metadata(
+                context_mode=context_mode,
+                knowledge_ref_count=len(rag_refs),
+                improvement_mode=_is_improvement_msg,
+                include_improvement_mode=True,
+                vertex_ai_search=vertex_agent_search,
+                vertex_answer_api=vertex_answer_api,
+            ),
         )
         language_material_capture = _capture_language_judgment_material(
             req.message,
@@ -9427,34 +9344,22 @@ def post_chat(req: ChatRequest):
         _record_prompt_feedback_if_available(
             surface="next_chat_rag",
             question=req.message,
-            base_prompt="\n\n".join([
-                base_effective_prompt,
-                "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
-                f"user: {req.message}",
-            ]),
-            final_prompt="\n\n".join([
-                effective_prompt,
-                "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
-                f"user: {req.message}",
-            ]),
+            base_prompt=build_prompt_feedback_snapshot(base_effective_prompt, history_for_gemini, req.message),
+            final_prompt=build_prompt_feedback_snapshot(effective_prompt, history_for_gemini, req.message),
             response=reply,
-            extra={
-                "user_id": req.user_id,
-                "intent": req.intent or "",
-                "category": "rag",
-                "improvement_mode": bool(_is_improvement_msg),
-                "memory_recall": {
-                    "route": memory_recall.get("route"),
-                    "refs": memory_recall.get("refs", [])[:8],
-                    "practical_scene": memory_recall.get("practical_scene") or {},
-                },
-                "continuity_hook": continuity_hook_payload,
-                "delta_awareness": delta_awareness_payload,
-                "memory_to_judgment": memory_to_judgment_payload,
-                "memory_expression": memory_expression_payload,
-                "reflection_gate": reflection_gate_payload,
-                "grey_judgment_memory": grey_judgment_payload,
-            },
+            extra=prompt_feedback_extra(
+                user_id=req.user_id,
+                intent=req.intent or "",
+                category="rag",
+                improvement_mode=_is_improvement_msg,
+                memory_recall=memory_recall,
+                continuity_hook=continuity_hook_payload,
+                delta_awareness=delta_awareness_payload,
+                memory_to_judgment=memory_to_judgment_payload,
+                memory_expression=memory_expression_payload,
+                reflection_gate=reflection_gate_payload,
+                grey_judgment_memory=grey_judgment_payload,
+            ),
         )
         _record_memory_usage_if_available(
             surface="next_chat_rag",
@@ -9463,35 +9368,19 @@ def post_chat(req: ChatRequest):
             knowledge_refs=rag_refs,
             pdca_block=pdca_block,
             judgment_learning_used=bool(judgment_learning_context),
-            extra={
-                "user_id": req.user_id,
-                "category": "rag",
-                "improvement_mode": bool(_is_improvement_msg),
-                "vertex_ai_search": {
-                    "used": bool(vertex_agent_search.get("used")),
-                    "status": vertex_agent_search.get("status"),
-                    "refs": list(vertex_agent_search.get("refs") or [])[:5],
-                },
-                "vertex_answer_api": {
-                    "used": bool(vertex_answer_api.get("used")),
-                    "status": vertex_answer_api.get("status"),
-                    "grounding_score": vertex_answer_api.get("grounding_score"),
-                    "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
-                    "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
-                    "support_count": vertex_answer_api.get("support_count", 0),
-                    "refs": list(vertex_answer_api.get("refs") or [])[:5],
-                },
-                "identity_memory": {
-                    "used": bool(identity_memory_payload.get("block")),
-                    "refs": identity_memory_payload.get("refs", [])[:8],
-                    "layers": identity_memory_payload.get("layers", {}),
-                },
-                "continuity_hook": continuity_hook_payload,
-                "delta_awareness": delta_awareness_payload,
-                "memory_to_judgment": memory_to_judgment_payload,
-                "memory_expression": memory_expression_payload,
-                "reflection_gate": reflection_gate_payload,
-            },
+            extra=memory_usage_extra(
+                user_id=req.user_id,
+                category="rag",
+                improvement_mode=_is_improvement_msg,
+                vertex_ai_search=vertex_agent_search,
+                vertex_answer_api=vertex_answer_api,
+                identity_memory=identity_memory_payload,
+                continuity_hook=continuity_hook_payload,
+                delta_awareness=delta_awareness_payload,
+                memory_to_judgment=memory_to_judgment_payload,
+                memory_expression=memory_expression_payload,
+                reflection_gate=reflection_gate_payload,
+            ),
         )
         _record_chat_knowledge_correction_if_needed(req.message)
         total = get_message_count(req.user_id)
@@ -9518,7 +9407,7 @@ def post_chat(req: ChatRequest):
 
         # 重要な知見をObsidianへ自動保存（AIが取捨選択・バックグラウンド実行でレスポンス遅延なし）
         # 改善キーワードを含むメッセージはImprovementLogで既に処理済みのためスキップ
-        if not _is_improvement_msg:
+        if should_auto_save_chat(improvement_mode=_is_improvement_msg):
             _background_executor.submit(_auto_save_chat_to_obsidian, req.message, reply)
 
         # REV-222: 対話ごとに関係性スコアを更新（バックグラウンド実行）
@@ -9535,41 +9424,31 @@ def post_chat(req: ChatRequest):
                 logging.getLogger(__name__).debug(f"[Relationship] record_interaction skipped: {_rel_err}")
         _background_executor.submit(_record_relationship_interaction, context_mode)
 
-        response_payload = {
-            "reply": reply,
-            "total_messages": total,
-            "knowledge_refs": rag_knowledge_refs,
-            "lease_news_focus": news_focus,
-            "lease_news_brief": news_brief,
-            "lease_news_actions": news_actions,
-            "long_input_mode": chat_long_input,
-            "context_mode": context_mode,
-            "personal_memory_capture": personal_memory_capture,
-            "language_material_capture": language_material_capture,
-            "response_impact_prediction": response_impact_prediction,
-            "judgment_asset_capture": judgment_asset_capture,
-            "response_mode": req.response_mode,
-            "external_research": external_research,
-            "vertex_ai_search": {
-                "used": bool(vertex_agent_search.get("used")),
-                "status": vertex_agent_search.get("status"),
-                "refs": list(vertex_agent_search.get("refs") or [])[:5],
-            },
-            "vertex_answer_api": {
-                "used": bool(vertex_answer_api.get("used")),
-                "status": vertex_answer_api.get("status"),
-                "grounding_score": vertex_answer_api.get("grounding_score"),
-                "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
-                "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
-                "support_count": vertex_answer_api.get("support_count", 0),
-                "refs": list(vertex_answer_api.get("refs") or [])[:5],
-            },
-            "obsidian_daily_intelligence": {
-                "used": bool(obsidian_daily_context),
-                "injected": obsidian_daily_injected,
-                "effect": obsidian_daily_effect,
-            },
-        }
+        response_payload = build_chat_response_payload(
+            reply=reply,
+            total_messages=total,
+            knowledge_refs=rag_knowledge_refs,
+            lease_news_focus=news_focus,
+            lease_news_brief=news_brief,
+            lease_news_actions=news_actions,
+            long_input_mode=chat_long_input,
+            context_mode=context_mode,
+            personal_memory_capture=personal_memory_capture,
+            language_material_capture=language_material_capture,
+            response_impact_prediction=response_impact_prediction,
+            judgment_asset_capture=judgment_asset_capture,
+            response_mode=req.response_mode,
+            external_research=external_research,
+            obsidian_daily_intelligence=obsidian_daily_intelligence_payload(
+                used=bool(obsidian_daily_context),
+                injected=obsidian_daily_injected,
+                effect=obsidian_daily_effect,
+            ),
+            extra=vertex_retrieval_response_extra(
+                vertex_ai_search=vertex_agent_search,
+                vertex_answer_api=vertex_answer_api,
+            ),
+        )
         if req.debug_memory:
             response_payload["memory_debug"] = _chat_memory_debug_payload(
                 category="rag",
@@ -9590,28 +9469,12 @@ def post_chat(req: ChatRequest):
                 experience_loop=experience_loop_payload,
                 grey_judgment_memory=grey_judgment_payload,
             )
-            response_payload["memory_debug"]["user_personal_memory"] = {
-                "used": bool(user_personal_memory_payload.get("block")),
-                "refs": user_personal_memory_payload.get("refs", [])[:6],
-                "line_count": user_personal_memory_payload.get("line_count", 0),
-            }
-            response_payload["memory_debug"]["vertex_ai_search"] = {
-                "used": bool(vertex_agent_search.get("used")),
-                "status": vertex_agent_search.get("status"),
-                "refs": list(vertex_agent_search.get("refs") or [])[:8],
-                "summary_preview": str(vertex_agent_search.get("summary") or "")[:500],
-            }
-            response_payload["memory_debug"]["vertex_answer_api"] = {
-                "used": bool(vertex_answer_api.get("used")),
-                "status": vertex_answer_api.get("status"),
-                "grounding_score": vertex_answer_api.get("grounding_score"),
-                "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
-                "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
-                "support_count": vertex_answer_api.get("support_count", 0),
-                "refs": list(vertex_answer_api.get("refs") or [])[:8],
-                "answer_preview": str(vertex_answer_api.get("answer_text") or "")[:800],
-                "grounding_supports": list(vertex_answer_api.get("grounding_supports") or [])[:5],
-            }
+            append_chat_debug_metadata(
+                response_payload["memory_debug"],
+                user_personal_memory=user_personal_memory_payload,
+                vertex_ai_search=vertex_agent_search,
+                vertex_answer_api=vertex_answer_api,
+            )
         return response_payload
     except Exception as e:
         import traceback
