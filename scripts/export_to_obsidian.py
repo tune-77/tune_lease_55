@@ -9,8 +9,13 @@ Obsidian Vault の「チャット記録/」フォルダに日付別 Markdown フ
     python3 scripts/export_to_obsidian.py [--db-path PATH] [--vault-path PATH] [--dry-run]
 
 環境変数:
-    DATABASE_URL  - 設定時は Cloud SQL (PostgreSQL) に接続
-                  - 未設定時は SQLite を使用
+    DATABASE_URL        - 設定時は Cloud SQL (PostgreSQL) に接続
+                        - 未設定時は SQLite を使用
+    OBSIDIAN_VAULT_PATH - Vault パス（`OBSIDIAN_VAULT` より優先）
+    OBSIDIAN_VAULT      - Vault パス（上記が未設定のときに使用）
+
+Vault パスは `runtime_paths.resolve_obsidian_vault()` で解決する
+（env → iCloud 上の Vault の順。ローカルの ~/Documents/Obsidian Vault は使わない）。
 """
 
 from __future__ import annotations
@@ -27,9 +32,13 @@ from typing import Any
 
 # ── デフォルトパス ────────────────────────────────────────────────────────────
 
-REPO_ROOT = Path(__file__).parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from runtime_paths import describe_obsidian_vault_resolution  # noqa: E402
+
 DEFAULT_DB_PATH = REPO_ROOT / "data" / "lease_data.db"
-DEFAULT_VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
 OUTPUT_SUBDIR = "チャット記録"
 
 # user_id の表示名マッピング
@@ -396,7 +405,12 @@ def export_to_obsidian(
 def main() -> None:
     parser = argparse.ArgumentParser(description="会話データを Obsidian にエクスポートする")
     parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH, help="SQLite DB パス")
-    parser.add_argument("--vault-path", type=Path, default=DEFAULT_VAULT_PATH, help="Obsidian Vault パス")
+    parser.add_argument(
+        "--vault-path",
+        type=Path,
+        default=None,
+        help="Obsidian Vault パス（既定: OBSIDIAN_VAULT_PATH / OBSIDIAN_VAULT、なければ iCloud 上の Vault）",
+    )
     parser.add_argument("--dry-run", action="store_true", help="ファイルを実際には書かず内容を確認する")
     parser.add_argument("--no-demo", action="store_true", help="demo.db のデータを統合しない")
     args = parser.parse_args()
@@ -405,13 +419,23 @@ def main() -> None:
         print(f"エラー: DB ファイルが見つかりません: {args.db_path}", file=sys.stderr)
         sys.exit(1)
 
-    if not args.vault_path.exists():
-        print(f"エラー: Vault パスが見つかりません: {args.vault_path}", file=sys.stderr)
+    if args.vault_path is not None:
+        vault_path = args.vault_path
+    else:
+        # 解決元と警告を必ず出す。書き込み先が黙って別 Vault にずれるのを防ぐ。
+        resolution = describe_obsidian_vault_resolution()
+        print(f"[Vault] {resolution.path}（解決元: {resolution.source}）")
+        for warning in resolution.warnings:
+            print(f"[Vault] 警告: {warning}", file=sys.stderr)
+        vault_path = resolution.path
+
+    if not vault_path.exists():
+        print(f"エラー: Vault パスが見つかりません: {vault_path}", file=sys.stderr)
         sys.exit(1)
 
     export_to_obsidian(
         db_path=args.db_path,
-        vault_path=args.vault_path,
+        vault_path=vault_path,
         dry_run=args.dry_run,
         also_demo_db=not args.no_demo,
     )

@@ -6,7 +6,14 @@ Claude / Dispatch 会話ログ → Obsidian Vault エクスポート
 Obsidian Vault の「Claude会話記録/」フォルダに日付別 Markdown として保存する。
 
 使用方法:
-    python3 scripts/export_claude_to_obsidian.py [--dry-run] [--days N]
+    python3 scripts/export_claude_to_obsidian.py [--dry-run] [--days N] [--vault-path PATH]
+
+環境変数:
+    OBSIDIAN_VAULT_PATH - Vault パス（`OBSIDIAN_VAULT` より優先）
+    OBSIDIAN_VAULT      - Vault パス（上記が未設定のときに使用）
+
+Vault パスは `runtime_paths.resolve_obsidian_vault()` で解決する
+（env → iCloud 上の Vault の順。ローカルの ~/Documents/Obsidian Vault は使わない）。
 """
 
 from __future__ import annotations
@@ -18,7 +25,12 @@ from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from runtime_paths import describe_obsidian_vault_resolution  # noqa: E402
+
 OUTPUT_SUBDIR = "Claude会話記録"
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 
@@ -155,18 +167,39 @@ def render_md(date_str: str, messages: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--days", type=int, default=7, help="何日分を対象にするか（デフォルト7）")
+    parser.add_argument(
+        "--vault-path",
+        type=Path,
+        default=None,
+        help="Obsidian Vault パス（既定: OBSIDIAN_VAULT_PATH / OBSIDIAN_VAULT、なければ iCloud 上の Vault）",
+    )
     args = parser.parse_args()
+
+    if args.vault_path is not None:
+        vault_path = args.vault_path
+    else:
+        # 解決元と警告を必ず出す。書き込み先が黙って別 Vault にずれるのを防ぐ。
+        resolution = describe_obsidian_vault_resolution()
+        print(f"[Vault] {resolution.path}（解決元: {resolution.source}）")
+        for warning in resolution.warnings:
+            print(f"[Vault] 警告: {warning}", file=sys.stderr)
+        vault_path = resolution.path
+
+    # Vault 自体が無いまま mkdir すると、空の Vault もどきを作って書き込み先が分裂する。
+    if not vault_path.exists():
+        print(f"エラー: Vault パスが見つかりません: {vault_path}", file=sys.stderr)
+        return 1
 
     by_date = load_sessions(args.days)
     if not by_date:
         print("対象セッションなし")
-        return
+        return 0
 
-    out_dir = VAULT_PATH / OUTPUT_SUBDIR
+    out_dir = vault_path / OUTPUT_SUBDIR
     if not args.dry_run:
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -183,6 +216,8 @@ def main():
     else:
         print("完了")
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
