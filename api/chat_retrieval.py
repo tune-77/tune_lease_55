@@ -51,6 +51,116 @@ def extract_vertex_search_hint(message: str) -> str:
     return hint or text
 
 
+def chat_memory_roots(obsidian_vault_path: str = "") -> list[Path]:
+    roots: list[Path] = []
+    candidates = [
+        os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vault"),
+        obsidian_vault_path,
+        os.environ.get("OBSIDIAN_VAULT_PATH", ""),
+        os.environ.get("OBSIDIAN_VAULT", ""),
+        "/app/obsidian_vault",
+    ]
+    seen: set[str] = set()
+    for raw in candidates:
+        if not raw:
+            continue
+        path = Path(str(raw)).expanduser()
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(path)
+    return roots
+
+
+def display_vault_ref(root: Path, file_path: str, section: str = "") -> str:
+    path = Path(file_path)
+    try:
+        rel = path.relative_to(root)
+        label = rel.as_posix()
+    except ValueError:
+        label = path.name
+    stem = Path(label).with_suffix("").as_posix()
+    return f"[[{stem}#{section}]]" if section else f"[[{stem}]]"
+
+
+def search_chat_vault_markdown_fallback(
+    query: str,
+    top_k: int = 5,
+    *,
+    obsidian_vault_path: str = "",
+) -> list[dict[str, Any]]:
+    """Search the synced Markdown vault when Chroma has no Cloud Run index."""
+    try:
+        from api.knowledge.obsidian_loader import scan_vault
+        from obsidian_query import split_query_terms
+    except Exception as exc:
+        print(f"[RAGFallback] loader unavailable: {exc}")
+        return []
+
+    terms = [term for term in split_query_terms(query) if len(term) >= 2]
+    if not terms:
+        return []
+    weak_terms = {"確認", "注意", "リスク", "観点", "整理", "短く", "使える", "判断"}
+    strong_terms = [term for term in terms if term not in weak_terms]
+    scoring_terms = strong_terms or terms
+    results: list[tuple[int, float, dict[str, str]]] = []
+
+    preferred_prefixes = (
+        "リース知識/",
+        "Projects/tune_lease_55/Asset Knowledge/",
+        "Projects/tune_lease_55/Research/",
+        "Projects/tune_lease_55/Lease Intelligence/Public/",
+        "Projects/tune_lease_55/News/",
+        "05-クリップ_記事/業界リスクニュース/",
+        "05-クリップ_記事/リースニュース/",
+    )
+    roots = [root for root in chat_memory_roots(obsidian_vault_path) if root.exists()]
+    seen: set[tuple[str, str]] = set()
+    for root in roots:
+        for chunk in scan_vault(str(root)):
+            text = str(chunk.text or "")
+            file_path = str(chunk.file_path or "")
+            section = str(chunk.section or "")
+            haystack = f"{text}\n{chunk.file_name}\n{section}\n{file_path}".lower()
+            matched = [term for term in scoring_terms if term.lower() in haystack]
+            if not matched:
+                continue
+            try:
+                rel = Path(file_path).relative_to(root).as_posix()
+            except ValueError:
+                rel = file_path
+            key = (rel, section)
+            if key in seen:
+                continue
+            seen.add(key)
+            path_score = 0.0
+            for idx, prefix in enumerate(preferred_prefixes):
+                if rel.startswith(prefix):
+                    path_score = max(0.0, 0.35 - idx * 0.03)
+                    break
+            if "AI Chat" in rel or "Improvement Log" in rel or "Weekly Review" in rel:
+                path_score -= 0.25
+            score = len(matched) * 10 + min(8, sum(text.lower().count(term.lower()) for term in matched)) + path_score
+            results.append((
+                int(score * 100),
+                chunk.mtime,
+                {
+                    "doc_id": chunk.doc_id,
+                    "text": text[:900],
+                    "ref": display_vault_ref(root, file_path, section),
+                    "file_name": chunk.file_name,
+                    "file_path": file_path,
+                    "section": section,
+                    "mtime": chunk.mtime,
+                    "score": score,
+                    "source": "vault_markdown_fallback",
+                },
+            ))
+    results.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [item[2] for item in results[:top_k]]
+
+
 def _append_rag_hits(
     hits: list[dict[str, Any]],
     *,
@@ -92,7 +202,8 @@ def build_chat_retrieval_context(
     rag_top_k: int,
     question_category: str,
     is_general_response_mode: bool,
-    fallback_search: FallbackSearch,
+    fallback_search: FallbackSearch | None = None,
+    obsidian_vault_path: str = "",
 ) -> ChatRetrievalResult:
     """Build local RAG plus optional Vertex supplemental context for chat."""
     result = ChatRetrievalResult()
@@ -112,6 +223,12 @@ def build_chat_retrieval_context(
         print(f"[RAG] 検索エラー: {exc}")
 
     if not result.rag_context:
+        if fallback_search is None:
+            fallback_search = lambda query, top_k: search_chat_vault_markdown_fallback(
+                query,
+                top_k,
+                obsidian_vault_path=obsidian_vault_path,
+            )
         fallback_hits = fallback_search(message, rag_top_k)
         if fallback_hits:
             result.rag_context = _append_rag_hits(

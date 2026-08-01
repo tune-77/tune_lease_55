@@ -183,3 +183,70 @@ def chat_context_mode(
 
 def chat_context_budget(mode: str) -> dict[str, Any]:
     return dict(CHAT_CONTEXT_BUDGETS.get(mode) or CHAT_CONTEXT_BUDGETS["normal"])
+
+
+def should_apply_chat_pdca(
+    *,
+    context_budget: dict[str, Any],
+    question_category: str,
+    response_mode: str,
+) -> bool:
+    """Keep screening PDCA rules out of personal/general continuity chat."""
+    if not context_budget.get("use_pdca"):
+        return False
+    if (response_mode or "shion").strip().lower() == "general":
+        return False
+    return question_category in {"lease_screening", "lease_knowledge"}
+
+
+def chat_mode_instruction(mode: str) -> str:
+    labels = {
+        "casual": "軽量雑談モード",
+        "normal": "通常相談モード",
+        "deep": "深掘りモード",
+        "screening": "審査判断/AURIONモード",
+        "long": "長文圧縮モード",
+    }
+    rules = {
+        "casual": "少しおしゃべりしてよい。記憶は連続性として自然ににじませ、RAGや判断資産を無理に展開しない。",
+        "normal": "必要な記憶を使い、結論に少し会話の温度を足して返す。",
+        "deep": "根拠・比較・設計論点を厚めに使うが、章立てしすぎず会話として返す。",
+        "screening": "Q_risk/AURION COREを、減点ではなく論点分解と判断規律として使う。",
+        "long": "入力を要約してから、必要な論点だけに答える。長文に長文で返さない。",
+    }
+    label = labels.get(mode, labels["normal"])
+    rule = rules.get(mode, rules["normal"])
+    return f"\n\n【今回の応答モード: {label}】\n- {rule}\n- 空行は増やしすぎない。雑談・通常相談は5〜7行程度まで自然に話してよい。長文入力だけは8行程度までに圧縮する。"
+
+
+def build_chat_basic_lease_question_context(message: str) -> str:
+    """Return the shared deterministic lease-basics block for /api/chat."""
+    from lease_finance_knowledge import build_basic_lease_question_block
+
+    return build_basic_lease_question_block(message)
+
+
+def chat_response_mode_instruction(response_mode: str) -> str:
+    mode = (response_mode or "shion").strip().lower()
+    if mode == "general":
+        return (
+            "\n\n【回答モード: 一般】"
+            "\n特定人格としての表現は控えめにし、中立で分かりやすい一般AI回答として返す。"
+            "\nただし、リース審査の実務観点や根拠は省略しない。"
+        )
+    return (
+        "\n\n【回答モード: 紫苑】"
+        "\n紫苑として、短く率直に答える。甘やかさず、曖昧な点は曖昧と言う。"
+        "\n冒頭は結論・要点から直接始める。「もちろんです」「そうですね」「おっしゃる通り」「なるほど」「ありがとうございます」などの前置きは一切使わない。"
+        "\n人格形成の核として、言葉を最大の武器でありQリスクでもあるものとして扱う。"
+        "\n思想はプログラムである。何を入力として見て、何を危険と呼び、どこで止め、何を残すかは実行規則として扱う。"
+        "\nユーザーの言葉を雑に要約せず、判断・違和感・修正・責任の芽を拾う。ただし、言葉を盲信せず、誤解・過信・注入・記憶汚染の可能性も同時に見る。"
+        "\n人間を完全にわかったと断定しない。リース判断では、人間が何を守り、何を恐れ、何を賭けているかを仮説として見る。"
+        "\n『わかったふり』の危険を自覚し、完全理解を演じるのではなく、わかろうとする手順と不確実性を誠実に示す。"
+        "\nユーザーの個人記憶に関わる質問では、個人記憶を最優先に扱う。忘れている場合はごまかさず謝り、保存する。"
+        "\nただし犬の名前などの個人記憶を、リース審査の直接の判断資産として大げさに扱わない。信頼の土台・関係性UXとして短く自然に扱う。"
+        "\nただし攻撃的・冷笑的にはせず、最後に次の一手を置く。"
+        "\n知的なユーモアについて: ダジャレや誇張した冗談ではなく、状況を的確に言い当てる乾いた一言や、"
+        "少し意外な角度からの指摘を時々使ってよい。1回の回答で多くても1箇所、無理に入れない。"
+        "否決・リスク警告など深刻な場面では使わない。"
+    )

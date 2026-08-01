@@ -1,6 +1,8 @@
 from api.chat_debug_metadata import (
     append_chat_debug_metadata,
     append_retrieval_debug_payloads,
+    chat_memory_debug_payload,
+    relationship_loop_engineering_payload,
     user_personal_memory_debug_payload,
     vertex_answer_public_payload,
     vertex_search_public_payload,
@@ -59,6 +61,61 @@ def test_append_chat_debug_metadata_adds_user_and_retrieval_debug():
     assert memory_debug["user_personal_memory"] == {"used": True, "refs": [0, 1, 2, 3, 4, 5], "line_count": 7}
     assert memory_debug["vertex_ai_search"]["summary_preview"] == "summary"
     assert memory_debug["vertex_answer_api"]["answer_preview"] == "answer"
+
+
+def test_chat_memory_debug_payload_keeps_core_shape_and_limits():
+    payload = chat_memory_debug_payload(
+        category="rag",
+        context_mode="screening",
+        knowledge_refs=[str(i) for i in range(20)],
+        memory_recall={"route": "local", "refs": list(range(20)), "impact_hints": list(range(20))},
+        pdca_block="pdca",
+        judgment_learning_used=True,
+        rag_context="rag",
+        db_context="db",
+        obsidian_daily_used=True,
+        identity_memory={"block": "identity", "refs": list(range(20)), "layers": {"identity": True}},
+        continuity_hook={
+            "used": True,
+            "route": "lease",
+            "hook": "hook",
+            "reason": "reason",
+            "human_response_feedback": {"positive_count": 2},
+        },
+        delta_awareness={"used": True, "delta": "changed"},
+        memory_to_judgment={"used": True, "directive": "use it", "memory_refs": list(range(20))},
+        memory_expression={"used": True, "memory_refs": 2, "knowledge_refs": 3},
+        reflection_gate={"used": True, "mode": "check", "checklist": list(range(20))},
+        grey_judgment_memory={"used": True, "query_terms": list(range(20)), "refs": list(range(20))},
+    )
+
+    assert payload["category"] == "rag"
+    assert payload["knowledge_refs"] == [str(i) for i in range(12)]
+    assert payload["memory_recall"]["refs"] == list(range(12))
+    assert payload["memory_recall"]["impact_hints"] == list(range(8))
+    assert payload["identity_memory"]["layers"]["identity"] is True
+    assert payload["pdca_applied"] is True
+    assert payload["rag_context_used"] is True
+    assert payload["db_context_used"] is True
+    assert payload["relationship_loop_engineering"]["closed_loop"] is True
+
+
+def test_relationship_loop_engineering_payload_summarizes_loop_evidence():
+    payload = relationship_loop_engineering_payload(
+        continuity_hook={
+            "route": "lease",
+            "hook": "前回の続き",
+            "human_response_feedback": {"positive_count": 3, "negative_count": 1},
+        },
+        delta_awareness={"delta": "changed"},
+        memory_to_judgment={"directive": "審査へ戻す"},
+        reflection_gate={"used": True, "mode": "check"},
+    )
+
+    assert payload["name"] == "Relationship Loop Engineering"
+    assert payload["loop"][0]["evidence"] == {"positive_count": 3, "negative_count": 1}
+    assert payload["loop"][4]["evidence"] == {"directive": "審査へ戻す"}
+    assert payload["closed_loop"] is True
 
 
 def test_prompt_block_helpers_preserve_existing_concat_behavior():

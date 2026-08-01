@@ -1,8 +1,12 @@
 from api.chat_routing import (
+    build_chat_basic_lease_question_context,
     chat_context_budget,
     chat_context_mode,
+    chat_mode_instruction,
+    chat_response_mode_instruction,
     classify_question,
     is_lightweight_chat_observation,
+    should_apply_chat_pdca,
 )
 
 
@@ -33,3 +37,43 @@ def test_context_mode_and_budget_stable_shapes():
     assert screening_budget["rag_top_k"] == 5
     assert screening_budget["use_db"] is True
     assert chat_context_budget("unknown")["history_limit"] == 32
+
+
+def test_pdca_routing_excludes_general_and_disabled_budget():
+    assert should_apply_chat_pdca(
+        context_budget={"use_pdca": True},
+        question_category="lease_knowledge",
+        response_mode="shion",
+    ) is True
+    assert should_apply_chat_pdca(
+        context_budget={"use_pdca": True},
+        question_category="lease_knowledge",
+        response_mode="general",
+    ) is False
+    assert should_apply_chat_pdca(
+        context_budget={"use_pdca": False},
+        question_category="lease_screening",
+        response_mode="shion",
+    ) is False
+
+
+def test_chat_mode_instruction_keeps_known_labels_and_fallback():
+    assert "審査判断/AURIONモード" in chat_mode_instruction("screening")
+    assert "通常相談モード" in chat_mode_instruction("unknown")
+
+
+def test_chat_response_mode_instruction_keeps_general_and_shion_modes():
+    general = chat_response_mode_instruction("general")
+    shion = chat_response_mode_instruction("shion")
+
+    assert "【回答モード: 一般】" in general
+    assert "中立で分かりやすい一般AI回答" in general
+    assert "【回答モード: 紫苑】" in shion
+    assert "言葉を最大の武器でありQリスクでもある" in shion
+
+
+def test_basic_lease_question_context_uses_shared_knowledge_block():
+    block = build_chat_basic_lease_question_context("ファイナンスリースとは？")
+
+    assert "基本リースQA" in block
+    assert "ファイナンス・リース" in block
