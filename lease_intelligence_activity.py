@@ -58,6 +58,71 @@ def record_user_activity(
     return True
 
 
+# [REV-237] 利用パターンから「関連するが使っていない機能」を1件だけ提案する。
+# ルールは vault (static_data/・notes/) に出典のない設計上の推測であり、統計的検証はしていない
+# （このシステムはユーザー1人・拡大予定なしのためA/Bテストは行わない。IMPLEMENTATION_DECISION_FOR_1USER.md参照）。
+SUGGESTION_RULES: tuple[dict[str, Any], ...] = (
+    {
+        "trigger_surface": "improvement_log",
+        "trigger_min": 5,
+        "target_surface": "lease_intelligence_dialogue",
+        "target_max": 1,
+        "message": "システム改善への関心が高いようです。紫苑との対話室では、改善案について直接やり取りできます。",
+        "link": "/lease-intelligence",
+    },
+    {
+        "trigger_surface": "simulator:screening",
+        "trigger_min": 3,
+        "target_surface": "simulator:lease-intelligence",
+        "target_max": 0,
+        "message": "審査画面の返済シミュレーターをよく使っていますね。対話室内でも同じシミュレーターが使えます。",
+        "link": "/lease-intelligence",
+    },
+    {
+        "trigger_surface": "simulator:lease-intelligence",
+        "trigger_min": 3,
+        "target_surface": "simulator:screening",
+        "target_max": 0,
+        "message": "対話室のシミュレーターをよく使っていますね。審査画面内でも同じシミュレーターが使えます。",
+        "link": "/screening",
+    },
+)
+
+
+def suggest_related_feature(
+    window_days: int = 14,
+    activity_log: Path | None = None,
+    today: dt.date | None = None,
+) -> dict[str, str] | None:
+    """直近 window_days 日の利用状況から、関連するが未使用の機能を最大1件提案する。"""
+    target = Path(activity_log) if activity_log else ACTIVITY_LOG
+    reference_date = today or dt.date.today()
+    start_date = reference_date - dt.timedelta(days=window_days)
+    counts: Counter[str] = Counter()
+    for event in _read_jsonl(target):
+        try:
+            event_date = dt.date.fromisoformat(str(event.get("timestamp", ""))[:10])
+        except ValueError:
+            continue
+        if not (start_date <= event_date <= reference_date):
+            continue
+        surface = str(event.get("surface", ""))
+        if surface in ALLOWED_SURFACES:
+            counts[surface] += 1
+
+    for rule in SUGGESTION_RULES:
+        if (
+            counts.get(rule["trigger_surface"], 0) >= rule["trigger_min"]
+            and counts.get(rule["target_surface"], 0) <= rule["target_max"]
+        ):
+            return {
+                "message": rule["message"],
+                "link": rule["link"],
+                "surface": rule["target_surface"],
+            }
+    return None
+
+
 def observe_user_behavior(
     date_str: str,
     activity_log: Path | None = None,

@@ -326,10 +326,25 @@ export default function HomeDashboard() {
         });
       }
     };
+    const fetchRelatedSuggestion = async () => {
+      const seenKey = `related-suggestion-seen-${formatLocalDateKey()}`;
+      if (window.localStorage.getItem(seenKey)) return;
+      try {
+        const res = await apiClient.get(`/api/lease-intelligence/related-suggestion`);
+        const suggestion = res.data?.suggestion;
+        if (suggestion?.message) {
+          triggerMebuki('guide', suggestion.message);
+          window.localStorage.setItem(seenKey, "1");
+        }
+      } catch {
+        // ignore
+      }
+    };
     fetchStats();
     fetchRecentNews();
     fetchLeaseNewsFocus();
     fetchDailyGreeting();
+    fetchRelatedSuggestion();
     const activityKey = `lease-intelligence-activity:home:${formatLocalDateKey(new Date())}`;
     if (!window.sessionStorage.getItem(activityKey)) {
       apiClient.post("/api/lease-intelligence/activity", {
