@@ -9722,6 +9722,13 @@ def record_lease_intelligence_activity_api(req: LeaseIntelligenceActivityRequest
     }
 
 
+@app.get("/api/lease-intelligence/related-suggestion")
+def get_lease_intelligence_related_suggestion_api():
+    """直近の利用状況から、関連するが未使用の機能を最大1件提案する（REV-237）。"""
+    from lease_intelligence_activity import suggest_related_feature
+
+    return {"suggestion": suggest_related_feature()}
+
 
 @app.post("/api/lease-news/judgment-change")
 def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest, background_tasks: BackgroundTasks):

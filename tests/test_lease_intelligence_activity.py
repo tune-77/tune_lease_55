@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 
 from lease_intelligence_activity import (
@@ -5,6 +6,7 @@ from lease_intelligence_activity import (
     ALLOWED_SURFACES,
     observe_user_behavior,
     record_user_activity,
+    suggest_related_feature,
 )
 
 
@@ -145,3 +147,64 @@ def test_dialogue_visit_is_recorded_and_reflected_in_understanding(tmp_path):
     assert observation["observed"] is True
     assert observation["surfaces"]["lease_intelligence_dialogue"] == 1
     assert "対話室" in observation["understanding"]
+
+
+def test_suggest_related_feature_none_when_no_pattern_matches(tmp_path):
+    log = tmp_path / "activity.jsonl"
+    assert suggest_related_feature(activity_log=log, today=dt.date(2026, 8, 1)) is None
+
+
+def test_suggest_related_feature_flags_heavy_improvement_log_use(tmp_path):
+    log = tmp_path / "activity.jsonl"
+    for i in range(5):
+        record_user_activity(
+            "improvement_log",
+            "page_view",
+            event_id=f"improvement-log-{i}",
+            occurred_at=f"2026-07-2{i}T09:00:00",
+            log_path=log,
+        )
+    suggestion = suggest_related_feature(activity_log=log, today=dt.date(2026, 8, 1))
+    assert suggestion is not None
+    assert suggestion["surface"] == "lease_intelligence_dialogue"
+    assert suggestion["link"] == "/lease-intelligence"
+
+
+def test_suggest_related_feature_stays_quiet_once_target_already_used(tmp_path):
+    log = tmp_path / "activity.jsonl"
+    for i in range(5):
+        record_user_activity(
+            "improvement_log",
+            "page_view",
+            event_id=f"improvement-log-{i}",
+            occurred_at=f"2026-07-2{i}T09:00:00",
+            log_path=log,
+        )
+    record_user_activity(
+        "lease_intelligence_dialogue",
+        "page_view",
+        event_id="dialogue-already-visited-1",
+        occurred_at="2026-07-26T09:00:00",
+        log_path=log,
+    )
+    record_user_activity(
+        "lease_intelligence_dialogue",
+        "page_view",
+        event_id="dialogue-already-visited-2",
+        occurred_at="2026-07-27T09:00:00",
+        log_path=log,
+    )
+    assert suggest_related_feature(activity_log=log, today=dt.date(2026, 8, 1)) is None
+
+
+def test_suggest_related_feature_ignores_events_outside_window(tmp_path):
+    log = tmp_path / "activity.jsonl"
+    for i in range(5):
+        record_user_activity(
+            "improvement_log",
+            "page_view",
+            event_id=f"improvement-log-old-{i}",
+            occurred_at=f"2026-01-0{i + 1}T09:00:00",
+            log_path=log,
+        )
+    assert suggest_related_feature(activity_log=log, today=dt.date(2026, 8, 1)) is None
