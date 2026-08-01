@@ -9,12 +9,19 @@ from __future__ import annotations
 import datetime as dt
 import os
 import re
+import sys
 import time
 import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
 
 from obsidian_query import split_query_terms
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import ICLOUD_OBSIDIAN_DOCS, resolve_obsidian_vault  # noqa: E402
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
 
@@ -42,12 +49,14 @@ def _obsidian_app_vaults() -> list[Path]:
 
 def _home_candidates() -> list[Path]:
     home = Path.home()
-    # 知識宇宙では obsidian-vault を優先し、なければ従来の Obsidian Vault にフォールバックする。
+    # 先頭は runtime_paths の解決結果（env → obsidian-vault → Obsidian Vault）。
+    # 以前はここで OBSIDIAN_VAULT だけを見ており、OBSIDIAN_VAULT_PATH しか
+    # 設定されていない環境では索引先が他モジュールとずれていた。
     # lease-wiki-vault はユーザーが明示指定した場合だけ使うため、アプリの最近使用順より後に置く。
     app_vaults = _obsidian_app_vaults()
-    env_vault = Path(os.getenv("OBSIDIAN_VAULT", "")).expanduser() if os.getenv("OBSIDIAN_VAULT") else None
-    icloud_docs = home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
+    icloud_docs = ICLOUD_OBSIDIAN_DOCS
     default_vaults = [
+        resolve_obsidian_vault(),
         icloud_docs / "obsidian-vault",
         icloud_docs / "Obsidian Vault",
         home / "Documents" / "Obsidian Vault",
@@ -55,7 +64,6 @@ def _home_candidates() -> list[Path]:
     regular_app_vaults = [p for p in app_vaults if p.name != "lease-wiki-vault"]
     lease_wiki_vaults = [p for p in app_vaults if p.name == "lease-wiki-vault"]
     roots = [
-        env_vault,
         *default_vaults,
         *regular_app_vaults,
         home / "Documents",

@@ -12,8 +12,11 @@ from typing import Mapping
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = REPO_ROOT / "data"
-DEFAULT_OBSIDIAN_VAULT = Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/obsidian-vault"
-LEGACY_OBSIDIAN_VAULT = Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+# Obsidian の iCloud 同期領域。Vault そのものではなく、Vault が並ぶ親ディレクトリ。
+# Vault 探索のフォールバック候補としてここを走査する実装が複数あるため定数化している。
+ICLOUD_OBSIDIAN_DOCS = Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents"
+DEFAULT_OBSIDIAN_VAULT = ICLOUD_OBSIDIAN_DOCS / "obsidian-vault"
+LEGACY_OBSIDIAN_VAULT = ICLOUD_OBSIDIAN_DOCS / "Obsidian Vault"
 
 # Vault パス解決の正準な環境変数と優先順位。
 # 履歴的に `OBSIDIAN_VAULT_PATH` 優先の実装（本モジュール・rag_daily_maintenance）と
