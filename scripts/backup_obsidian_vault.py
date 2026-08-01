@@ -30,9 +30,35 @@ from pathlib import Path
 from typing import Iterable
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import (  # noqa: E402
+    DEFAULT_OBSIDIAN_VAULT,
+    LEGACY_OBSIDIAN_VAULT,
+    OBSIDIAN_VAULT_ENV_VARS,
+)
+
+
+def _env_vault_candidates() -> list[Path]:
+    """env 由来の候補を runtime_paths と同じ優先順で返す。
+
+    以前は OBSIDIAN_VAULT しか読んでおらず、OBSIDIAN_VAULT_PATH だけが設定された
+    launchd ジョブ（obsidian-reindex 等）と別の Vault をバックアップしうる状態だった。
+    """
+    out: list[Path] = []
+    for name in OBSIDIAN_VAULT_ENV_VARS:
+        raw = (os.environ.get(name) or "").strip()
+        if raw:
+            out.append(Path(raw).expanduser())
+    return out
+
+
 DEFAULT_VAULT_CANDIDATES = [
-    Path(os.environ.get("OBSIDIAN_VAULT", "")).expanduser() if os.environ.get("OBSIDIAN_VAULT") else None,
-    Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
+    *_env_vault_candidates(),
+    DEFAULT_OBSIDIAN_VAULT,
+    LEGACY_OBSIDIAN_VAULT,
     Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
     Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault",
 ]
@@ -82,7 +108,8 @@ def find_vault(override: str | None = None) -> Path:
     candidates = _candidate_vaults()
     if not candidates:
         raise FileNotFoundError(
-            "iCloud 上の Obsidian Vault が見つかりません。OBSIDIAN_VAULT を設定するか --vault を指定してください。"
+            "iCloud 上の Obsidian Vault が見つかりません。"
+            f"{OBSIDIAN_VAULT_ENV_VARS[0]} を設定するか --vault を指定してください。"
         )
     return candidates[0]
 

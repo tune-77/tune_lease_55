@@ -36,9 +36,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("reindex_obsidian")
 
-# デフォルト Vault: env で上書き可
-_DEFAULT_VAULT = "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
-VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", _DEFAULT_VAULT)
+# Vault パスは runtime_paths が唯一の解決窓口（OBSIDIAN_VAULT_PATH → OBSIDIAN_VAULT → 既定）
+from runtime_paths import describe_obsidian_vault_resolution  # noqa: E402
+
+_VAULT_RESOLUTION = describe_obsidian_vault_resolution()
+VAULT_PATH = str(_VAULT_RESOLUTION.path)
+for _warning in _VAULT_RESOLUTION.warnings:
+    logger.warning("[reindex] %s", _warning)
 
 
 def full_reindex(vault_path: str) -> tuple[int, int]:

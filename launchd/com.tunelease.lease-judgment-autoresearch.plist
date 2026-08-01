@@ -13,6 +13,10 @@
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>OBSIDIAN_VAULT_PATH</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>OBSIDIAN_VAULT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>PYTHONPATH</key>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
     <key>PYTHONUNBUFFERED</key>
@@ -21,12 +25,13 @@
     <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
+  <!-- 毎朝 06:40 に実行（06:20 の aurion 朝報告の後。以前は 06:10 で朝の3ジョブが密集していた） -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
     <integer>6</integer>
     <key>Minute</key>
-    <integer>10</integer>
+    <integer>40</integer>
   </dict>
 
   <key>WorkingDirectory</key>

@@ -26,13 +26,13 @@
     <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
-  <!-- 毎週日曜 04:30 に実行（04:00 の Obsidian バックアップ後、05:00 の健全性チェック前） -->
+  <!-- 毎週日曜 01:30 に実行（01:00 の Obsidian バックアップ後、夜間の書き込みジョブ群より前） -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Weekday</key>
     <integer>0</integer>
     <key>Hour</key>
-    <integer>4</integer>
+    <integer>1</integer>
     <key>Minute</key>
     <integer>30</integer>
   </dict>

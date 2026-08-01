@@ -15,6 +15,8 @@
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>OBSIDIAN_VAULT_PATH</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>OBSIDIAN_VAULT</key>
     <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>OBSIDIAN_BACKUP_ROOT</key>
@@ -27,13 +29,15 @@
     <string>1</string>
   </dict>
 
-  <!-- 毎週日曜 04:00 に実行 -->
+  <!-- 毎週日曜 01:00 に実行（Vault へ書き込む夜間ジョブ群より前にスナップショットを取る。
+       以前は 04:00 で、02:00 aurion / 03:00 reindex / 04:00 改善パイプラインと重なり
+       書き込み途中の Vault を写す恐れがあった） -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Weekday</key>
     <integer>0</integer>
     <key>Hour</key>
-    <integer>4</integer>
+    <integer>1</integer>
     <key>Minute</key>
     <integer>0</integer>
   </dict>

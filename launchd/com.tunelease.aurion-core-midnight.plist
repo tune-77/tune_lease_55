@@ -15,6 +15,10 @@
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>OBSIDIAN_VAULT_PATH</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>OBSIDIAN_VAULT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>PYTHONPATH</key>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
     <key>PYTHONUNBUFFERED</key>
@@ -23,12 +27,14 @@
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/anaconda3/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
+  <!-- 毎晩 02:00 に実行（03:00 の obsidian-reindex より前に Vault へ書き終える。
+       以前は 03:30 で reindex の後だったため、書いた内容が索引に入るのが翌日だった） -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
-    <integer>3</integer>
+    <integer>2</integer>
     <key>Minute</key>
-    <integer>30</integer>
+    <integer>0</integer>
   </dict>
 
   <key>WorkingDirectory</key>

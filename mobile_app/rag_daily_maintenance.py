@@ -19,6 +19,7 @@ import logging
 import json
 import os
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 from mobile_app.integrated_rag_pipeline import IntegratedRAGSystem
@@ -28,6 +29,11 @@ logging.basicConfig(level=logging.INFO)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPORTS_DIR = PROJECT_ROOT / "reports"
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from runtime_paths import describe_obsidian_vault_resolution  # noqa: E402
 
 
 # ===== ChromaDB 再インデックス機能
@@ -178,21 +184,26 @@ def run_daily_maintenance():
     print(f"   実行時刻: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80 + "\n")
     
-    vault_path = os.environ.get(
-        "OBSIDIAN_VAULT_PATH",
-        "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
-    )
-    
+    # Vault パスは runtime_paths が唯一の解決窓口。ここで直書きの既定値を持つと
+    # 書き込み側スクリプトと索引先がずれ、RAG が黙って古い Vault を見続ける。
+    vault_resolution = describe_obsidian_vault_resolution()
+    vault_path = str(vault_resolution.path)
+
     maintenance_report = {
         "timestamp": datetime.now().isoformat(),
         "vault_path": vault_path,
+        "vault_resolution": vault_resolution.as_dict(),
         "chroma_reindex": {},
         "chroma_storage": {},
         "rag_maintenance": {},
-        "alerts": [],
+        "alerts": list(vault_resolution.warnings),
         "status": "success"
     }
-    
+
+    print(f"📂 Vault: {vault_path}（解決元: {vault_resolution.source}）")
+    for warning in vault_resolution.warnings:
+        print(f"   ⚠️  {warning}")
+
     try:
         # ================== タスク0: ChromaDB 再インデックス ==================
         print("🔵 【タスク0】ChromaDB 再インデックス中...")

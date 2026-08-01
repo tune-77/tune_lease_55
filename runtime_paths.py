@@ -5,13 +5,22 @@ import os
 import shutil
 import sqlite3
 import threading
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Mapping
 
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = REPO_ROOT / "data"
 DEFAULT_OBSIDIAN_VAULT = Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/obsidian-vault"
 LEGACY_OBSIDIAN_VAULT = Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+
+# Vault パス解決の正準な環境変数と優先順位。
+# 履歴的に `OBSIDIAN_VAULT_PATH` 優先の実装（本モジュール・rag_daily_maintenance）と
+# `OBSIDIAN_VAULT` 優先の実装（monitor_obsidian_environment・run_daily_improvement_post.sh）が
+# 併存していた。両方が別の値で設定されると RAG の索引先と書き込み先がずれるため、
+# 順序をここ一箇所に固定し、食い違いは警告として表面化させる。
+OBSIDIAN_VAULT_ENV_VARS: tuple[str, ...] = ("OBSIDIAN_VAULT_PATH", "OBSIDIAN_VAULT")
 
 
 def get_data_dir() -> Path:
@@ -99,14 +108,97 @@ def _do_ensure_cloudrun_demo_db_seeded() -> None:
         print(f"[runtime_paths] restored demo DB from bundle: {dst}")
 
 
+@dataclass
+class ObsidianVaultResolution:
+    """Where the Obsidian vault path came from, and what looks wrong about it."""
+
+    path: Path
+    source: str
+    exists: bool
+    warnings: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict:
+        return {
+            "path": str(self.path),
+            "source": self.source,
+            "exists": self.exists,
+            "warnings": list(self.warnings),
+        }
+
+
+def describe_obsidian_vault_resolution(
+    env: Mapping[str, str] | None = None,
+) -> ObsidianVaultResolution:
+    """Resolve the vault path and report how it was chosen.
+
+    Resolution order (single source of truth for the whole repo):
+      1. ``OBSIDIAN_VAULT_PATH``
+      2. ``OBSIDIAN_VAULT``
+      3. ``DEFAULT_OBSIDIAN_VAULT`` if it exists
+      4. ``LEGACY_OBSIDIAN_VAULT`` if it exists
+      5. ``DEFAULT_OBSIDIAN_VAULT`` (may not exist)
+
+    Warnings are returned rather than raised: the nightly jobs must keep running
+    even when the environment is inconsistent, but the inconsistency has to be
+    visible in their reports instead of silently splitting the vault in two.
+    """
+    environ = os.environ if env is None else env
+    warnings: list[str] = []
+
+    set_vars = {
+        name: value.strip()
+        for name in OBSIDIAN_VAULT_ENV_VARS
+        if (value := (environ.get(name) or "")).strip()
+    }
+
+    distinct = {str(Path(value).expanduser()) for value in set_vars.values()}
+    if len(distinct) > 1:
+        detail = ", ".join(f"{name}={value}" for name, value in set_vars.items())
+        warnings.append(
+            f"Obsidian vault の環境変数が食い違っています（{detail}）。"
+            f"{OBSIDIAN_VAULT_ENV_VARS[0]} を優先します"
+        )
+
+    for name in OBSIDIAN_VAULT_ENV_VARS:
+        raw = set_vars.get(name)
+        if raw:
+            path = Path(raw).expanduser()
+            resolution = ObsidianVaultResolution(
+                path=path, source=f"env:{name}", exists=path.is_dir(), warnings=warnings
+            )
+            break
+    else:
+        if DEFAULT_OBSIDIAN_VAULT.is_dir() and LEGACY_OBSIDIAN_VAULT.is_dir():
+            warnings.append(
+                f"新旧の Vault ディレクトリが両方存在します"
+                f"（{DEFAULT_OBSIDIAN_VAULT} / {LEGACY_OBSIDIAN_VAULT}）。"
+                "書き込み先と RAG 索引先がずれる恐れがあるため、"
+                f"{OBSIDIAN_VAULT_ENV_VARS[0]} で明示してください"
+            )
+
+        if DEFAULT_OBSIDIAN_VAULT.exists():
+            resolution = ObsidianVaultResolution(
+                path=DEFAULT_OBSIDIAN_VAULT, source="default", exists=True, warnings=warnings
+            )
+        elif LEGACY_OBSIDIAN_VAULT.exists():
+            resolution = ObsidianVaultResolution(
+                path=LEGACY_OBSIDIAN_VAULT, source="legacy", exists=True, warnings=warnings
+            )
+        else:
+            resolution = ObsidianVaultResolution(
+                path=DEFAULT_OBSIDIAN_VAULT, source="fallback", exists=False, warnings=warnings
+            )
+
+    if not resolution.exists:
+        warnings.append(f"Obsidian vault が見つかりません: {resolution.path}")
+
+    return resolution
+
+
+def resolve_obsidian_vault(env: Mapping[str, str] | None = None) -> Path:
+    """Canonical vault path as a ``Path``. Prefer this over ad-hoc constants."""
+    return describe_obsidian_vault_resolution(env).path
+
+
 def get_obsidian_vault_path() -> str:
-    raw = os.environ.get("OBSIDIAN_VAULT_PATH") or os.environ.get("OBSIDIAN_VAULT") or ""
-    if raw:
-        return raw
-
-    if DEFAULT_OBSIDIAN_VAULT.exists():
-        return str(DEFAULT_OBSIDIAN_VAULT)
-    if LEGACY_OBSIDIAN_VAULT.exists():
-        return str(LEGACY_OBSIDIAN_VAULT)
-
-    return str(DEFAULT_OBSIDIAN_VAULT)
+    return str(resolve_obsidian_vault())
