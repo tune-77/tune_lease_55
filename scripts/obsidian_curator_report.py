@@ -14,6 +14,7 @@ active judgment-rule stores.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -136,6 +137,12 @@ def _meaning_key(value: str) -> str:
     return normalized[:72]
 
 
+def _candidate_id(material_type: str, meaning_key: str) -> str:
+    """Inbox候補の安定ID。人間承認（scripts/promote_curator_inbox_candidates.py）の参照キーに使う。"""
+    raw = f"{material_type}|{meaning_key}"
+    return "cur_" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
 def select_inbox_candidates(materials: list[dict[str, Any]], *, limit: int = 20) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -153,12 +160,14 @@ def select_inbox_candidates(materials: list[dict[str, Any]], *, limit: int = 20)
         material_type = str(item.get("material_type") or item.get("candidate_type") or "unknown")
         if not claim or material_type not in {"judgment_rule", "risk_signal", "user_preference"}:
             continue
-        key = (material_type, _meaning_key(claim))
+        meaning_key = _meaning_key(claim)
+        key = (material_type, meaning_key)
         if key in seen:
             continue
         seen.add(key)
         selected.append(
             {
+                "candidate_id": _candidate_id(material_type, meaning_key),
                 "type": material_type,
                 "claim": claim,
                 "source": str(item.get("evidence_path") or item.get("source_path") or ""),
@@ -327,6 +336,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         "## Next Safe Step",
         "- Inbox候補を人間が採用・修正・却下・後回しに分類する。",
         "- このレポート自体はObsidian本文、RAG、Cloud Run、active storeへ接続しない。",
+        "- 採用する場合は candidate_id を data/curator_inbox_decisions.jsonl に"
+        ' {"candidate_id": "...", "decision": "adopt"} として追記し、'
+        "scripts/promote_curator_inbox_candidates.py を実行する（Mana許可時のみpreviewへ反映、activeへは既存のpromote_canonical_judgment_rules.pyを人間が実行）。",
         "",
     ]
     return "\n".join(lines)
@@ -349,7 +361,7 @@ def _candidate_lines(items: list[dict[str, Any]]) -> list[str]:
         return ["- なし"]
     lines: list[str] = []
     for item in items[:12]:
-        lines.append(f"- `{item['type']}` {item['claim']} / source=`{item['source']}`")
+        lines.append(f"- `{item.get('candidate_id', '')}` `{item['type']}` {item['claim']} / source=`{item['source']}`")
     return lines
 
 

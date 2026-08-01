@@ -9,11 +9,19 @@
     python scripts/auto_wikilink.py --vault /path    # Vault を直接指定
     python scripts/auto_wikilink.py --dry-run        # 変更なしで確認
     python scripts/auto_wikilink.py --file foo.md    # 特定ファイルのみ処理
+
+graph effect レポート連携（scripts/build_obsidian_graph_judgment_effect.py）:
+    reports/obsidian_graph_judgment_effect_latest.json が存在する場合、
+    isolated_but_used / bridge_candidate に分類されたノートへ、
+    判断に効いている effective_hub への [[wikilink]] を自動で1本追加する
+    （レポートの next_action 提案をそのまま実行するだけで、新規の判定ロジックは持たない）。
+    --no-graph-effect-links で無効化できる。
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import os
 import re
 import sys
@@ -49,6 +57,11 @@ _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
 # 日付ログファイル: Cases/ AI Chat/ Asset Finance/ 直下の YYYY-MM-DD.md
 _DATE_LOG_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 
+DEFAULT_GRAPH_EFFECT_JSON = _REPO_ROOT / "reports" / "obsidian_graph_judgment_effect_latest.json"
+_GRAPH_EFFECT_LINK_BUCKETS = ("isolated_but_used", "bridge_candidates")
+_GRAPH_EFFECT_SECTION_HEADER = "## 関連（判断効果分析による自動リンク）"
+_GRAPH_EFFECT_MAX_HUBS_PER_NOTE = 2
+
 
 def find_vault(override: str | None = None) -> Path:
     if override:
@@ -81,6 +94,65 @@ def build_title_index(vault: Path) -> dict[str, str]:
         if stem not in index:
             index[stem] = rel
     return index
+
+
+# ---------------------------------------------------------------------------
+# Graph judgment effect report integration
+# (scripts/build_obsidian_graph_judgment_effect.py の next_action 提案を反映する)
+# ---------------------------------------------------------------------------
+
+def load_graph_effect_link_targets(report_path: Path) -> dict[str, list[str]]:
+    """graph judgment effect レポートから『どのノートにハブへのリンクを足すか』を返す。
+
+    isolated_but_used / bridge_candidate に分類されたノート（vault相対パス）を key に、
+    上位 effective_hub の wikilink stem（拡張子なし相対パス）のリストを value として返す。
+    レポートが読めない・hub が無い場合は空 dict（no-op）。
+    """
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(report, dict):
+        return {}
+
+    hub_stems: list[str] = []
+    for item in report.get("top_effective_hubs") or []:
+        path = str(item.get("path") or "").strip()
+        if path.lower().endswith(".md"):
+            path = path[:-3]
+        if path:
+            hub_stems.append(path)
+    if not hub_stems:
+        return {}
+
+    targets: dict[str, list[str]] = {}
+    for bucket in _GRAPH_EFFECT_LINK_BUCKETS:
+        for item in report.get(bucket) or []:
+            path = str(item.get("path") or "").strip()
+            if not path:
+                continue
+            targets[path] = hub_stems[:_GRAPH_EFFECT_MAX_HUBS_PER_NOTE]
+    return targets
+
+
+def add_graph_effect_links(body: str, rel_path: str, targets: dict[str, list[str]]) -> tuple[str, int]:
+    """孤立/橋渡しノートへ、判断に効いているハブへの [[wikilink]] を追加する。
+
+    既にセクションを追加済み、または全ハブへ既にリンク済みなら何もしない。
+    Returns:
+        (new_body, added_count)
+    """
+    hub_stems = targets.get(rel_path)
+    if not hub_stems or _GRAPH_EFFECT_SECTION_HEADER in body:
+        return body, 0
+
+    linked_stems = {m.group(1).split("|", 1)[0].split("#", 1)[0].strip() for m in _WIKILINK_RE.finditer(body)}
+    new_hubs = [stem for stem in hub_stems if stem not in linked_stems]
+    if not new_hubs:
+        return body, 0
+
+    section = "\n\n" + _GRAPH_EFFECT_SECTION_HEADER + "\n" + "\n".join(f"- [[{stem}]]" for stem in new_hubs) + "\n"
+    return body.rstrip("\n") + section, len(new_hubs)
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +318,7 @@ def process_file(
     title_index: dict[str, str],
     *,
     dry_run: bool = False,
+    graph_effect_targets: dict[str, list[str]] | None = None,
 ) -> dict:
     """1ファイルを処理して変更内容を返す。"""
     try:
@@ -255,10 +328,11 @@ def process_file(
 
     frontmatter, body = split_frontmatter(raw)
     own_stem = path.stem
+    rel_path = path.relative_to(vault).as_posix()
 
-    original_body = body
     link_changes = 0
     nav_changed = False
+    graph_effect_links_added = 0
 
     # wikiリンク付与
     body, link_changes = linkify_body(body, title_index, own_stem)
@@ -267,18 +341,23 @@ def process_file(
     if _DATE_LOG_RE.match(path.name):
         body, nav_changed = add_date_nav(path, vault, body)
 
-    total_changes = link_changes + (1 if nav_changed else 0)
+    # graph judgment effect レポート連携（isolated_but_used / bridge_candidate へのハブリンク）
+    if graph_effect_targets:
+        body, graph_effect_links_added = add_graph_effect_links(body, rel_path, graph_effect_targets)
+
+    total_changes = link_changes + (1 if nav_changed else 0) + graph_effect_links_added
     if total_changes == 0:
-        return {"path": str(path.relative_to(vault)), "changes": 0}
+        return {"path": rel_path, "changes": 0}
 
     new_content = frontmatter + body
     if not dry_run:
         path.write_text(new_content, encoding="utf-8")
 
     return {
-        "path": str(path.relative_to(vault)),
+        "path": rel_path,
         "link_changes": link_changes,
         "nav_changed": nav_changed,
+        "graph_effect_links_added": graph_effect_links_added,
         "changes": total_changes,
     }
 
@@ -288,6 +367,7 @@ def process_vault(
     *,
     dry_run: bool = False,
     target_paths: list[Path] | None = None,
+    graph_effect_targets: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     """対象フォルダを走査してwikiリンクを付与する。"""
     title_index = build_title_index(vault)
@@ -300,7 +380,7 @@ def process_vault(
 
     results = []
     for p in sorted(paths):
-        r = process_file(p, vault, title_index, dry_run=dry_run)
+        r = process_file(p, vault, title_index, dry_run=dry_run, graph_effect_targets=graph_effect_targets)
         if r.get("changes", 0) > 0 or r.get("error"):
             results.append(r)
     return results
@@ -344,6 +424,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--file", dest="files", metavar="PATH", nargs="+",
                    help="処理対象ファイルを直接指定（省略時は対象フォルダ全体）")
     p.add_argument("--verbose", "-v", action="store_true", help="変更なしのファイルも表示")
+    p.add_argument("--graph-effect-report", type=Path, default=DEFAULT_GRAPH_EFFECT_JSON,
+                   help="scripts/build_obsidian_graph_judgment_effect.py の出力JSON")
+    p.add_argument("--no-graph-effect-links", action="store_true",
+                   help="graph effect レポートに基づくハブリンク自動追加を無効化")
     return p
 
 
@@ -362,10 +446,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.files:
         target_paths = [Path(f).expanduser().resolve() for f in args.files]
 
-    results = process_vault(vault, dry_run=args.dry_run, target_paths=target_paths)
+    graph_effect_targets: dict[str, list[str]] = {}
+    if not args.no_graph_effect_links:
+        graph_effect_targets = load_graph_effect_link_targets(args.graph_effect_report)
+        if graph_effect_targets:
+            print(
+                f"[auto_wikilink] graph effect report: {len(graph_effect_targets)} note(s) targeted "
+                f"({args.graph_effect_report})",
+                file=sys.stderr,
+            )
+
+    results = process_vault(
+        vault,
+        dry_run=args.dry_run,
+        target_paths=target_paths,
+        graph_effect_targets=graph_effect_targets,
+    )
 
     changed = [r for r in results if r.get("changes", 0) > 0]
     errors = [r for r in results if r.get("error")]
+    graph_effect_total = sum(r.get("graph_effect_links_added", 0) for r in results)
 
     for r in results:
         if r.get("error"):
@@ -373,10 +473,12 @@ def main(argv: list[str] | None = None) -> int:
         elif r.get("changes", 0) > 0 or args.verbose:
             link_n = r.get("link_changes", 0)
             nav = " +nav" if r.get("nav_changed") else ""
+            hub_n = r.get("graph_effect_links_added", 0)
+            hub = f" +{hub_n} hub-link" if hub_n else ""
             mode = "[dry-run]" if args.dry_run else "[updated]"
-            print(f"  {mode} {r['path']} (+{link_n} links{nav})")
+            print(f"  {mode} {r['path']} (+{link_n} links{nav}{hub})")
 
-    print(f"\ntotal changed: {len(changed)}, errors: {len(errors)}")
+    print(f"\ntotal changed: {len(changed)}, errors: {len(errors)}, graph-effect hub-links: {graph_effect_total}")
     return 0 if not errors else 1
 
 

@@ -36,7 +36,10 @@ class HybridSearchEngine:
         self,
         semantic_weight: float = 0.6,
         bm25_weight: float = 0.4,
-        enable_logging: bool = True
+        enable_logging: bool = True,
+        enable_query_expansion: bool = True,
+        query_expansion_max_variants: int = 4,
+        query_expansion_decay: float = 0.4,
     ):
         """
         初期化
@@ -45,6 +48,9 @@ class HybridSearchEngine:
             semantic_weight: セマンティック検索のウェイト（0-1）
             bm25_weight: BM25 検索のウェイト（0-1）
             enable_logging: ログ出力を有効化するか
+            enable_query_expansion: ドメイン辞書によるクエリ拡張（P7-002）を有効化するか
+            query_expansion_max_variants: 拡張バリエーション上限
+            query_expansion_decay: 拡張ヒットのスコア減衰率
         """
         if abs((semantic_weight + bm25_weight) - 1.0) > 0.001:
             raise ValueError(
@@ -55,6 +61,9 @@ class HybridSearchEngine:
 
         self.semantic_weight = semantic_weight
         self.bm25_weight = bm25_weight
+        self.enable_query_expansion = enable_query_expansion
+        self.query_expansion_max_variants = query_expansion_max_variants
+        self.query_expansion_decay = query_expansion_decay
 
         # セマンティック検索器を初期化
         try:
@@ -182,6 +191,10 @@ class HybridSearchEngine:
                 logger.warning(f"⚠️  BM25 Search エラー: {e}")
                 self.bm25_available = False
 
+        # Step 2.5: ドメイン辞書によるクエリ拡張（P7-002）で取りこぼしを補完
+        if self.enable_query_expansion:
+            self._expand_scores(query, top_k, semantic_scores, bm25_scores)
+
         # Step 3: スコアを正規化
         semantic_normalized = self._normalize_scores(semantic_scores)
         bm25_normalized = self._normalize_scores(bm25_scores)
@@ -225,6 +238,64 @@ class HybridSearchEngine:
             )
 
         return results
+
+    def _expand_scores(
+        self,
+        query: str,
+        top_k: int,
+        semantic_scores: Dict[str, float],
+        bm25_scores: Dict[str, float],
+    ) -> None:
+        """ドメイン辞書のシノニムでクエリを展開し、取りこぼしたヒットを減衰スコアで補完する。
+
+        api.knowledge.vector_store.KnowledgeVectorStore._merge_expanded_hits と同じ方針
+        （P7-002 / BR-711, BR-712）: 元クエリで既にヒットしたdoc_idのスコアは上書きせず、
+        辞書不在・例外時は何もしない no-op として振る舞う。semantic_scores / bm25_scores を
+        in-place で更新する。
+        """
+        try:
+            from api.knowledge.query_expansion import expand_query
+        except Exception as exc:
+            logger.debug(f"[HybridSearch] query expansion unavailable: {exc}")
+            return
+
+        try:
+            variants = expand_query(
+                query,
+                max_variants=self.query_expansion_max_variants,
+                decay=self.query_expansion_decay,
+            )[1:]
+        except Exception as exc:
+            logger.warning(f"⚠️  クエリ拡張に失敗: {exc}")
+            return
+
+        for variant in variants:
+            weight = float(variant.get("weight") or 0.0)
+            if weight <= 0:
+                continue
+            expanded_query = variant["query"]
+
+            if self.semantic_available:
+                try:
+                    results = self.semantic_retriever.retrieve(expanded_query, top_k=min(top_k * 2, 10))
+                    for doc in results:
+                        doc_id = doc.get('path', doc.get('id'))
+                        if doc_id in semantic_scores:
+                            continue
+                        semantic_scores[doc_id] = doc.get('similarity_score', 0.0) * weight
+                except Exception as exc:
+                    logger.warning(f"⚠️  拡張クエリのSemantic Searchエラー: {exc}")
+
+            if self.bm25_available:
+                try:
+                    results = self.bm25_engine.search(expanded_query, top_k=min(top_k * 2, 10))
+                    for doc, score in results:
+                        doc_id = doc.get('path', doc.get('id'))
+                        if doc_id in bm25_scores:
+                            continue
+                        bm25_scores[doc_id] = score * weight
+                except Exception as exc:
+                    logger.warning(f"⚠️  拡張クエリのBM25 Searchエラー: {exc}")
 
     def _normalize_scores(self, scores: Dict[str, float]) -> Dict[str, float]:
         """
@@ -273,7 +344,8 @@ class HybridSearchEngine:
             'semantic_available': self.semantic_available,
             'bm25_available': self.bm25_available,
             'semantic_weight': self.semantic_weight,
-            'bm25_weight': self.bm25_weight
+            'bm25_weight': self.bm25_weight,
+            'query_expansion_enabled': self.enable_query_expansion,
         }
 
     def health_check(self) -> bool:

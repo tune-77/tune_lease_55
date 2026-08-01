@@ -50,6 +50,7 @@ def test_curator_selects_inbox_candidates_and_search_terms(tmp_path):
 
     assert candidates
     assert candidates[0]["status_suggestion"] == "review"
+    assert candidates[0]["candidate_id"].startswith("cur_")
     assert "厨房設備" in terms
     assert "換金性" in terms
     assert "Obsidian Curator Report" in markdown
