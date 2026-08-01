@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-07-31T04:10:26`
+- generated_at: `2026-08-02T04:10:13`
 - status: `ok`
-- scanned_files: `436`
+- scanned_files: `445`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
 - review: `64`
-- ok: `2084`
+- ok: `2106`
 
 ## Glossary
 
@@ -24,41 +24,41 @@
   - `default_prob = max(0.0, 1 - (credit_score / 100) * 0.8 - collateral_ratio * 0.2)`
 - `review` `actual_pd` `api/game_theory/negotiation.py:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `safety_utility = 1.0 - default_prob`
-- `review` `actual_pd` `api/main.py:6168` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:6256` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:6192` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:6280` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
-- `review` `actual_pd` `api/outcome_drift_loop.py:89` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/outcome_drift_loop.py:94` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `この集計を見て、「本来低リスクなはずの帯で延滞・デフォルト率が高い」`
-- `review` `actual_pd` `api/routers/feedback_loop.py:320` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/routers/feedback_loop.py:373` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE shion_screening_reviews`
-- `review` `actual_pd` `api/routers/feedback_loop.py:332` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/routers/feedback_loop.py:385` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",`
-- `review` `actual_pd` `api/routers/feedback_loop.py:1803` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/routers/feedback_loop.py:1864` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table_name}`
 - `review` `actual_pd` `api/shion_conscience.py:85` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `cautions.append("デフォルト確率が高い場合は、承認可否より先に返済原資の説明可能性を見る。")`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:258` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/faq/page.tsx:259` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `// REV-079: PD用語説明`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:261` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/faq/page.tsx:262` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `title: 'PD（デフォルト確率）の解説',`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:266` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/faq/page.tsx:267` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `q: 'PD（デフォルト確率）とは何ですか？',`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:269` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/faq/page.tsx:270` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `<p><strong>PD（Probability of Default）</strong>とは、借手企業が将来一定期間内に<strong>債務不履行（デフォルト）を起こす確率</strong>を統計モデルで推定した指標です。</p>`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:275` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/faq/page.tsx:276` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `q: 'PDの数値をどう解釈すればよいですか？',`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:292` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/faq/page.tsx:293` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `<p className="text-xs text-slate-500">※ 上記は目安であり、物件・期間・保証条件によって判断が変わります。PDのみで機械的に判断せず、定性情報と合わせて総合判断してください。</p>`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:297` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/faq/page.tsx:298` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `q: 'PDとAIスコアの関係は？',`
-- `review` `score` `frontend/src/app/faq/page.tsx:297` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `score` `frontend/src/app/faq/page.tsx:298` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `q: 'PDとAIスコアの関係は？',`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:305` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/faq/page.tsx:306` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `['60pt未満', '否決推奨', 'PD以外の財務・格付要因も確認'],`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:319` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/faq/page.tsx:320` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `q: 'スプレッドとPDの関係は？',`
 - `review` `actual_pd` `frontend/src/app/report/page.tsx:66` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `label: 'デフォルト確率（PD）',`

@@ -250,7 +250,7 @@
   {
     "rev_id": "DIFF-SIGNAL-HIGH_SCORE_LOST",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "score_gap_learning",
     "description": "[スコア乖離自動検出] high_score_lost: 147件 — 高スコアでも失注した非スコア要因を確認する。価格・競合・銀行支援・補助金タイミング・営業導線を、人間が案件記録で判定する。",
     "status": "pending_review",
@@ -264,7 +264,7 @@
   {
     "rev_id": "DIFF-SIGNAL-LOW_SCORE_CONTRACTED",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "score_gap_learning",
     "description": "[スコア乖離自動検出] low_score_contracted: 218件 — 低スコアでも成約した補強要因を確認する。保証・前受金・銀行支援・物件換金性・取引実績を、人間が案件記録で判定する。",
     "status": "pending_review",
@@ -278,7 +278,7 @@
   {
     "rev_id": "DIFF-SIGNAL-HIGH_SCORE_DELINQUENT",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "score_gap_learning",
     "description": "[スコア乖離自動検出] high_score_delinquent: 21件 — 高スコア後に延滞した見落としを確認する。資金繰り推移・受注残・返済原資・集中リスク・外部環境を、人間が案件記録で判定する。",
     "status": "pending_review",
@@ -307,7 +307,7 @@
   {
     "rev_id": "REV-025w",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "wizard_field_empty",
     "description": "[ウィザード入力] フィールド 'industry_detail' の空欄率が100%（15/15件, 直近14日）",
     "status": "pending_review",
@@ -339,21 +339,9 @@
     "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
   },
   {
-    "rev_id": "RAG-UNRATED-2026_05_13____________",
-    "type": "rag_boost_adjust",
-    "pending_review": true,
-    "description": "RAGヒット済み未評価: 2026-05-13_自動車タイプ別自動車税 が直近30日で検索ヒットしたが評価なし（要内容確認）",
-    "source": "analyze_rag_feedback.py",
-    "target": "config/rag_ranking.json",
-    "path": "2026-05-13_自動車タイプ別自動車税",
-    "action": "review_content",
-    "penalty_strength": "weak",
-    "generated_at": "2026-07-01T19:00:33.273177+00:00"
-  },
-  {
     "rev_id": "RAG-UNRATED-2026_05_13_all_file_ingest_index",
     "type": "rag_boost_adjust",
-    "pending_review": true,
+    "pending_review": false,
     "description": "RAGヒット済み未評価: 2026-05-13_all_file_ingest_index が直近30日で検索ヒットしたが評価なし（要内容確認）",
     "source": "analyze_rag_feedback.py",
     "target": "config/rag_ranking.json",
@@ -395,7 +383,7 @@
   {
     "rev_id": "REV-029w",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "wizard_field_empty",
     "description": "[ウィザード入力] フィールド 'asset_detail' の空欄率が53%（23/43件, 直近14日）",
     "status": "pending_review",
@@ -414,7 +402,7 @@
   {
     "rev_id": "REV-030w",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "wizard_field_empty",
     "description": "[ウィザード入力] フィールド 'asset_purpose' の空欄率が53%（23/43件, 直近14日）",
     "status": "pending_review",
@@ -433,7 +421,7 @@
   {
     "rev_id": "REV-031r",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "rag_staleness",
     "description": "[RAG陳腐化] 33日間アクセスなし: [[2026-06-13#13:11:11]]",
     "status": "pending_review",
@@ -448,7 +436,7 @@
   {
     "rev_id": "REV-032r",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "rag_staleness",
     "description": "[RAG陳腐化] 33日間アクセスなし: [[2026-06-21#06:53:20]]",
     "status": "pending_review",
@@ -463,7 +451,7 @@
   {
     "rev_id": "REV-033r",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "rag_staleness",
     "description": "[RAG陳腐化] 33日間アクセスなし: [[2026-06-17#11:00:18]]",
     "status": "pending_review",
@@ -478,7 +466,7 @@
   {
     "rev_id": "REV-034r",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "rag_staleness",
     "description": "[RAG陳腐化] 33日間アクセスなし: [[2026-06-14#09:18:06]]",
     "status": "pending_review",
@@ -493,7 +481,7 @@
   {
     "rev_id": "REV-035r",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "rag_staleness",
     "description": "[RAG陳腐化] 33日間アクセスなし: [[2026-06-18_reflection#概要]]",
     "status": "pending_review",
@@ -523,7 +511,7 @@
   {
     "rev_id": "RAG-UNRATED-2026_05_13________",
     "type": "rag_boost_adjust",
-    "pending_review": true,
+    "pending_review": false,
     "description": "RAGヒット済み未評価: 2026-05-13_ユーモアまとめ が直近30日で検索ヒットしたが評価なし（要内容確認）",
     "source": "analyze_rag_feedback.py",
     "target": "config/rag_ranking.json",
@@ -535,7 +523,7 @@
   {
     "rev_id": "RAG-UNRATED-2026_05_13______AI_____",
     "type": "rag_boost_adjust",
-    "pending_review": true,
+    "pending_review": false,
     "description": "RAGヒット済み未評価: 2026-05-13_リース審査AI_知識分解 が直近30日で検索ヒットしたが評価なし（要内容確認）",
     "source": "analyze_rag_feedback.py",
     "target": "config/rag_ranking.json",
@@ -547,7 +535,7 @@
   {
     "rev_id": "RAG-UNRATED-2026_05_13_______",
     "type": "rag_boost_adjust",
-    "pending_review": true,
+    "pending_review": false,
     "description": "RAGヒット済み未評価: 2026-05-13_失注要因分析 が直近30日で検索ヒットしたが評価なし（要内容確認）",
     "source": "analyze_rag_feedback.py",
     "target": "config/rag_ranking.json",
@@ -559,7 +547,7 @@
   {
     "rev_id": "RAG-UNRATED-2026_05_13________autoresearch",
     "type": "rag_boost_adjust",
-    "pending_review": true,
+    "pending_review": false,
     "description": "RAGヒット済み未評価: 2026-05-13_期待使用期間_autoresearch が直近30日で検索ヒットしたが評価なし（要内容確認）",
     "source": "analyze_rag_feedback.py",
     "target": "config/rag_ranking.json",
@@ -571,7 +559,7 @@
   {
     "rev_id": "RAG-UNRATED-2026_06_06_cash_flow",
     "type": "rag_boost_adjust",
-    "pending_review": true,
+    "pending_review": false,
     "description": "RAGヒット済み未評価: 2026-06-06_cash-flow が直近30日で検索ヒットしたが評価なし（要内容確認）",
     "source": "analyze_rag_feedback.py",
     "target": "config/rag_ranking.json",
@@ -583,7 +571,7 @@
   {
     "rev_id": "REV-037w",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "wizard_field_empty",
     "description": "[ウィザード入力] フィールド 'asset_name' の空欄率が51%（17/33件, 直近14日）",
     "status": "pending_review",
@@ -602,7 +590,7 @@
   {
     "rev_id": "REV-038w",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "wizard_field_empty",
     "description": "[ウィザード入力] フィールド 'acquisition_cost' の空欄率が51%（17/33件, 直近14日）",
     "status": "pending_review",
@@ -621,7 +609,7 @@
   {
     "rev_id": "REV-039w",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "wizard_field_empty",
     "description": "[ウィザード入力] フィールド 'op_profit' の空欄率が51%（17/33件, 直近14日）",
     "status": "pending_review",
@@ -640,7 +628,7 @@
   {
     "rev_id": "REV-040w",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "wizard_field_empty",
     "description": "[ウィザード入力] フィールド 'nenshu' の空欄率が51%（17/33件, 直近14日）",
     "status": "pending_review",
@@ -659,7 +647,7 @@
   {
     "rev_id": "RAG-UNRATED-2026_06_06_______________autoresearch",
     "type": "rag_boost_adjust",
-    "pending_review": true,
+    "pending_review": false,
     "description": "RAGヒット済み未評価: 2026-06-06_新リース会計基準と審査実務_autoresearch が直近30日で検索ヒットしたが評価なし（要内容確認）",
     "source": "analyze_rag_feedback.py",
     "target": "config/rag_ranking.json",
@@ -671,7 +659,7 @@
   {
     "rev_id": "RAG-UNRATED-2026_06_11_contract_ownership",
     "type": "rag_boost_adjust",
-    "pending_review": true,
+    "pending_review": false,
     "description": "RAGヒット済み未評価: 2026-06-11_contract-ownership が直近30日で検索ヒットしたが評価なし（要内容確認）",
     "source": "analyze_rag_feedback.py",
     "target": "config/rag_ranking.json",
@@ -713,7 +701,7 @@
   {
     "rev_id": "RAG-UNRATED-2026_06_12_lease_news_reflection",
     "type": "rag_boost_adjust",
-    "pending_review": true,
+    "pending_review": false,
     "description": "RAGヒット済み未評価: 2026-06-12_lease-news-reflection が直近30日で検索ヒットしたが評価なし（要内容確認）",
     "source": "analyze_rag_feedback.py",
     "target": "config/rag_ranking.json",
@@ -721,5 +709,58 @@
     "action": "review_content",
     "penalty_strength": "weak",
     "generated_at": "2026-07-29T19:01:57.394350+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_06_13_asset_operation",
+    "type": "rag_boost_adjust",
+    "pending_review": false,
+    "description": "RAGヒット済み未評価: 2026-06-13_asset-operation が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-06-13_asset-operation",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-07-31T19:01:59.411208+00:00"
+  },
+  {
+    "rev_id": "REV-043a",
+    "type": "manual",
+    "pending_review": false,
+    "category": "pipeline_fix",
+    "description": "[パイプライン自動検出] sync_improvement_reports_post が過去7日で失敗率50%（3/6件, 3日失敗）",
+    "status": "stale_resolved",
+    "source": "analyze_pipeline_health",
+    "detected_at": "2026-07-31T19:01:59Z",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-08-01T19:02:01Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
+  },
+  {
+    "rev_id": "REV-044a",
+    "type": "manual",
+    "pending_review": false,
+    "category": "pipeline_fix",
+    "description": "[パイプライン自動検出] recursive_self_improvement_post が過去7日で失敗率50%（3/6件, 3日失敗）",
+    "status": "pending_review",
+    "source": "analyze_pipeline_health",
+    "detected_at": "2026-07-31T19:01:59Z",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
+  },
+  {
+    "rev_id": "REV-045a",
+    "type": "manual",
+    "pending_review": true,
+    "category": "pipeline_fix",
+    "description": "[パイプライン自動検出] sync_improvement_reports_post が過去7日で失敗率57%（4/7件, 4日失敗）",
+    "status": "pending_review",
+    "source": "analyze_pipeline_health",
+    "detected_at": "2026-08-01T19:02:01Z",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
   }
 ]

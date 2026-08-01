@@ -1,11 +1,11 @@
 {
-  "fetched_at": "2026-07-31T04:00:47.266927",
+  "fetched_at": "2026-08-02T04:00:46.921775",
   "source": "FinceptTerminal/AkShare (https://github.com/Fincept-Corporation/FinceptTerminal)",
   "boj_policy_rate": {
     "value": 1.0,
-    "prev": 0.75,
-    "period": "2026年06月",
-    "published": "2026-06-16",
+    "prev": 1.0,
+    "period": "2026年07月",
+    "published": "2026-07-31",
     "source": "akshare.macro_japan_bank_rate"
   },
   "core_cpi": {
@@ -30,10 +30,14 @@
     "source": "akshare.macro_japan_head_indicator"
   },
   "unemployment": {
-    "error": "Response ended prematurely"
+    "value": 2.5,
+    "prev": 2.5,
+    "period": "2026年06月",
+    "published": "2026-07-31",
+    "source": "akshare.macro_japan_unemployment_rate"
   },
   "assessment": {
-    "macro_risk_score": 33.3,
+    "macro_risk_score": 27.5,
     "macro_env": "中立",
     "factors": {
       "policy_rate": {
@@ -47,6 +51,10 @@
       "leading_indicator": {
         "score": 10,
         "comment": "景気先行指数 116.5: 強い拡張局面"
+      },
+      "unemployment": {
+        "score": 10,
+        "comment": "失業率 2.5%: 完全雇用水準"
       }
     }
   }

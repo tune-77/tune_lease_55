@@ -383,7 +383,12 @@ def _load_recent_conversation_summary(vault: Path, max_chars: int = 400) -> str:
         match = _re.search(r"##\s*会話サマリー\n+(.*?)(?=\n##|\Z)", text, _re.DOTALL)
         if not match:
             continue
-        body = match.group(1).strip()
+        # "Private Reflectionからの学び" 行は除外（循環ループ防止）
+        lines = [
+            line for line in match.group(1).splitlines()
+            if "Private Reflectionからの学び" not in line
+        ]
+        body = "\n".join(lines).strip()
         if body and "記録すべき会話キーポイントはなかった" not in body:
             return f"（{date_str}）\n{body[:max_chars]}"
     return ""
@@ -910,6 +915,7 @@ def generate_private_reflection(vault: str | Path, date_str: str) -> str:
         if isinstance(e, dict)
         and e.get("type") in ("conversation_keypoint", "compressed_memory")
         and e.get("content")
+        and "Private Reflectionからの学び" not in str(e.get("content", ""))  # 循環ループ防止
     )[-1500:]
 
     conv_summary = _load_recent_conversation_summary(vault, max_chars=800)

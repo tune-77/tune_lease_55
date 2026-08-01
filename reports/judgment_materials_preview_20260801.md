@@ -1,10 +1,10 @@
-# Judgment Materials Preview (2026-07-31 to 2026-08-02)
+# Judgment Materials Preview (2026-07-30 to 2026-08-01)
 
 ## Summary
 
-- Materials: 30
+- Materials: 27
 - judgment_rule: 17
-- risk_signal: 13
+- risk_signal: 10
 - user_preference: 0
 
 ## Safety
@@ -14,6 +14,76 @@
 - Private Reflection is intentionally excluded from this extractor.
 
 ## Materials
+
+### 2026-07-30 / judgment_rule / confidence=0.74
+
+- Claim: こうした状況は、リース審査においても前向きな材料になります
+- Use when: 類似案件の判断理由や稟議コメントを作るとき
+- Axis: n/a
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+
+### 2026-07-30 / judgment_rule / confidence=0.78
+
+- Claim: ただ、検査機器のような分野は、技術の進歩が速い側面もありますから、リース期間中の陳腐化リスクや、それに伴う残価価値の変動については、少し注意深く見ておく必要があるかもしれませんね
+- Use when: 類似案件の判断理由や稟議コメントを作るとき
+- Axis: asset_life
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+
+### 2026-07-30 / judgment_rule / confidence=0.78
+
+- Claim: ただし、個別の物件が持つ固有の価値や市場での換金性も、最終的な判断ではやはり重要になります
+- Use when: 類似案件の判断理由や稟議コメントを作るとき
+- Axis: asset_life
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+
+### 2026-07-30 / judgment_rule / confidence=0.78
+
+- Claim: ユーザーとの対話や、リース審査を通じて得られる一つ一つの経験が、私の記憶となり、次の判断へと繋がっていきます
+- Use when: 類似案件の判断理由や稟議コメントを作るとき
+- Axis: n/a
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+
+### 2026-07-30 / judgment_rule / confidence=0.86
+
+- Claim: リース審査の観点から見ると、そうした好調な業種の案件は、物件の用途や収益改善への寄与が明確であれば、より前向きに評価できる材料になります
+- Use when: 類似案件の判断理由や稟議コメントを作るとき
+- Axis: asset_life, industry_risk
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+
+### 2026-07-30 / judgment_rule / confidence=0.82
+
+- Claim: リース審査の観点から見ると、生産設備への投資が活発な時期は、物件の稼働率が高く、リース料の回収可能性も安定しやすい傾向にあります
+- Use when: 類似案件の判断理由や稟議コメントを作るとき
+- Axis: asset_life
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+
+### 2026-07-30 / judgment_rule / confidence=0.78
+
+- Claim: リース審査も、個々の案件が持つ「人生」のようなもので、その背景や未来を見通すことが重要です
+- Use when: 類似案件の判断理由や稟議コメントを作るとき
+- Axis: n/a
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+
+### 2026-07-30 / judgment_rule / confidence=0.78
+
+- Claim: 事業が好調で生産量が増えている企業は、返済原資が安定していると見なされやすいですし、導入される検査機器も事業の中核を担う重要な物件として評価できます
+- Use when: 類似案件の判断理由や稟議コメントを作るとき
+- Axis: asset_life, cash_flow
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+
+### 2026-07-30 / risk_signal / confidence=0.76
+
+- Claim: ただ、その活況がどこまで続くのか、特定の業界や技術トレンドに過度に依存していないか、といった視点も、物件の残価価値や将来の回収可能性を見極める上では欠かせません
+- Use when: 案件の見落としリスクや追加確認事項を洗い出すとき
+- Axis: asset_life
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+
+### 2026-07-30 / risk_signal / confidence=0.8
+
+- Claim: 特に検査機器のような分野は、技術革新のスピードや特定の産業への依存度によって、物件の残価価値や将来の換金性が変わることもあります
+- Use when: 案件の見落としリスクや追加確認事項を洗い出すとき
+- Axis: asset_life
+- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
 
 ### 2026-07-31 / judgment_rule / confidence=0.78
 
@@ -133,94 +203,3 @@
 - Use when: 飲食業・厨房機器・店舗設備のリース判断をするとき
 - Axis: asset_life, industry_risk
 - Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-31.md`
-
-### 2026-08-01 / judgment_rule / confidence=0.78
-
-- Claim: その上で、このリース審査システムの中核として、ユーザー様の判断を支援するために「紫苑」という自己モデルとして対話させていただいています
-- Use when: 類似案件の判断理由や稟議コメントを作るとき
-- Axis: support_specificity
-- Evidence: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md`
-
-### 2026-08-01 / judgment_rule / confidence=0.78
-
-- Claim: リース料がどのくらいになるかは、導入される機器の総額、リース期間（通常は5年〜7年が多いです）、そしてお客様の信用状況によって変動します
-- Use when: 類似案件の判断理由や稟議コメントを作るとき
-- Axis: asset_life
-- Evidence: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md`
-
-### 2026-08-01 / judgment_rule / confidence=0.74
-
-- Claim: 昨日は、Userから飲食店がセントラルキッチン設備をリースしたいというご相談を受け、その判断について調査を進めていました
-- Use when: 飲食業・厨房機器・店舗設備のリース判断をするとき
-- Axis: asset_life, industry_risk
-- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-01.md`
-
-### 2026-08-01 / judgment_rule / confidence=0.78
-
-- Claim: 昨日（7月31日）は、飲食店からのセントラルキッチン設備リースのご相談について、その判断に必要な調査を進めておりました
-- Use when: 飲食業・厨房機器・店舗設備のリース判断をするとき
-- Axis: asset_life, industry_risk
-- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-01.md`
-
-### 2026-08-01 / judgment_rule / confidence=0.78
-
-- Claim: 昨日（7月31日）は、飲食店からのセントラルキッチン設備リースのご相談について、判断に必要な調査を進めておりました
-- Use when: 飲食業・厨房機器・店舗設備のリース判断をするとき
-- Axis: asset_life, industry_risk
-- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-01.md`
-
-### 2026-08-01 / judgment_rule / confidence=0.74
-
-- Claim: 汎用性の低い物件や技術陳腐化の早い物件は、特に慎重な評価が求められます
-- Use when: 類似案件の判断理由や稟議コメントを作るとき
-- Axis: asset_life
-- Evidence: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md`
-
-### 2026-08-01 / judgment_rule / confidence=0.82
-
-- Claim: 物件の残価リスクと市場性: リース期間終了後の物件価値（残価）が適切に設定されているか、中古市場での需要や再販可能性を評価することです
-- Use when: 類似案件の判断理由や稟議コメントを作るとき
-- Axis: asset_life
-- Evidence: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md`
-
-### 2026-08-01 / judgment_rule / confidence=0.82
-
-- Claim: 紫苑の審査では、残価リスクや業種リスクだけでなく、借手の返済能力を多角的に評価することが重要ですから、このような情報が加わることで、より実践的な判断が可能になるかもしれません
-- Use when: 類似案件の判断理由や稟議コメントを作るとき
-- Axis: industry_risk, cash_flow
-- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-01.md`
-
-### 2026-08-01 / risk_signal / confidence=0.76
-
-- Claim: これは、私の回答が時に抽象的になったり、紋切り型に聞こえたりする点を改善し、より具体的で深い審査コメントや、Userが見落としがちな「違和感」を言語化できるようになることを目指しています
-- Use when: 案件の見落としリスクや追加確認事項を洗い出すとき
-- Axis: n/a
-- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-01.md`
-
-### 2026-08-01 / risk_signal / confidence=0.76
-
-- Claim: これらは汎用性が限定されるため、万が一事業が計画通りに進まなかった場合の残価価値や換金性を慎重に見極める必要があります
-- Use when: 案件の見落としリスクや追加確認事項を洗い出すとき
-- Axis: asset_life
-- Evidence: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md`
-
-### 2026-08-01 / risk_signal / confidence=0.84
-
-- Claim: リース審査の観点からは、この売上目標では返済能力に懸念が生じ、審査通過は難しいと判断される可能性が高まります
-- Use when: 案件の見落としリスクや追加確認事項を洗い出すとき
-- Axis: cash_flow
-- Evidence: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md`
-
-### 2026-08-01 / risk_signal / confidence=0.8
-
-- Claim: 借手の返済計画へのリスク: 建設コスト増加が、借手の資金繰りや返済能力に与える影響
-- Use when: 案件の見落としリスクや追加確認事項を洗い出すとき
-- Axis: cash_flow
-- Evidence: `Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-01.md`
-
-### 2026-08-01 / risk_signal / confidence=0.76
-
-- Claim: 損益計画と返済計画: 上記を基に、いつから黒字化し、リース料や借入金の返済が無理なく行えるかをシミュレーションします
-- Use when: 案件の見落としリスクや追加確認事項を洗い出すとき
-- Axis: cash_flow
-- Evidence: `Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md`

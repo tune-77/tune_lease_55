@@ -51,6 +51,8 @@ def test_shion_memory_expression_prompt_uses_concrete_memory_influence():
     assert payload["memory_refs"] == 1
     assert "記憶影響の具体表現" in block
     assert "どの種類の過去経験が、今回の判断のどこに効いたか" in block
+    assert "過去の記憶 / 2. 今回見るべき違和感" in block
+    assert "確認結果ごとの判断分岐" in block
     assert "記憶を説明しすぎると薄く見える" in block
     assert "毎回「前回は」「以前は」で始めない" in block
 
@@ -68,6 +70,28 @@ def test_shion_memory_expression_prompt_triggers_for_lease_judgment_refs():
     assert payload["grey_refs"] == 1
     assert "数字は足りるが、通すなら条件を残す" in block
     assert "社名・個人名・生の財務数値" in block
+
+
+def test_shion_judgment_response_shape_prompt_triggers_for_expert_review():
+    import api.main as main
+
+    block = main._build_shion_judgment_response_shape_prompt_block(
+        "専門家としてこの条件付き承認をどう深掘りする？"
+    )
+
+    assert "紫苑の実務回答の型" in block
+    assert "過去の記憶または今回情報からの仮説" in block
+    assert "今回見るべき違和感" in block
+    assert "確認結果ごとの判断分岐" in block
+    assert "条件付き承認寄り / 未確認なら保留または否決寄り" in block
+
+
+def test_shion_judgment_response_shape_prompt_skips_small_talk():
+    import api.main as main
+
+    block = main._build_shion_judgment_response_shape_prompt_block("おはよう")
+
+    assert block == ""
 
 
 def test_shion_memory_expression_prompt_skips_plain_small_talk_without_refs():
