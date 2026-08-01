@@ -14,6 +14,15 @@ def test_extract_chat_judgment_asset_claim_requires_teaching_signal():
     assert "撤退条件" in claim
 
 
+def test_extract_chat_judgment_asset_claim_ignores_screening_review_prompt():
+    claim = main._extract_chat_judgment_asset_claim(
+        "【審査分析画面からの紫苑レビュー依頼】この案件をレビューしてください。"
+        "【Vertex補助検索ヒント】工作機械 補助金 条件付き承認 確認論点"
+    )
+
+    assert claim == ""
+
+
 def test_capture_chat_judgment_asset_creates_manual_candidate(tmp_path, monkeypatch):
     candidates = tmp_path / "candidates.jsonl"
     state = tmp_path / "state.json"

@@ -1,6 +1,6 @@
 # Obsidian Memory Effectiveness
 
-- Date: 2026-07-31
+- Date: 2026-08-02
 - Mode: read_only_observation
 - Guardrail: no_rag_rank_change_no_prompt_change_no_obsidian_write_no_auto_promotion
 - Knowledge dir: `/Users/kobayashiisaoryou/clawd/tune_lease_55/knowledge_base/okf_lease_concepts`
@@ -34,7 +34,7 @@
 - Ref: `knowledge_base/okf_lease_concepts/rules/q_risk_interpretation.md`
 - Type: `risk_signal` / Domain: `q_risk`
 - State: `used` / Score: 40.0
-- Signals: recalled=6, used=4, helped=0, challenged=0, rejected=0
+- Signals: recalled=6, used=5, helped=0, challenged=0, rejected=0
 - Next: User評価を取り、helped / neutral / challenged を記録する。
 
 ### スコア60-80帯の成約率逆転
@@ -49,6 +49,13 @@
 - Type: `lease_rule` / Domain: `contract`
 - State: `used` / Score: 40.0
 - Signals: recalled=8, used=3, helped=0, challenged=0, rejected=0
+- Next: User評価を取り、helped / neutral / challenged を記録する。
+
+### 医療機器の保守期限・撤去費・再販リスク
+- Ref: `knowledge_base/okf_lease_concepts/assets/medical_equipment_resale_risk.md`
+- Type: `asset_profile` / Domain: `asset_life`
+- State: `used` / Score: 36.0
+- Signals: recalled=6, used=2, helped=0, challenged=0, rejected=0
 - Next: User評価を取り、helped / neutral / challenged を記録する。
 
 ### 条件付き承認の判断ルール
@@ -67,13 +74,6 @@
 
 ### フォークリフトの残価・再販リスク
 - Ref: `knowledge_base/okf_lease_concepts/assets/forklift_resale_risk.md`
-- Type: `asset_profile` / Domain: `asset_life`
-- State: `used` / Score: 28.0
-- Signals: recalled=6, used=1, helped=0, challenged=0, rejected=0
-- Next: User評価を取り、helped / neutral / challenged を記録する。
-
-### 医療機器の保守期限・撤去費・再販リスク
-- Ref: `knowledge_base/okf_lease_concepts/assets/medical_equipment_resale_risk.md`
 - Type: `asset_profile` / Domain: `asset_life`
 - State: `used` / Score: 28.0
 - Signals: recalled=6, used=1, helped=0, challenged=0, rejected=0

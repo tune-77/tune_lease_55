@@ -1,7 +1,7 @@
 # Codex/Claude 作業録ダイジェスト
 
-- generated_at: 2026-07-31T07:21:51
-- source_count: 34
+- generated_at: 2026-08-02T04:02:00
+- source_count: 36
 - displayed: 12
 
 ## Shion Use Policy
@@ -9,6 +9,46 @@
 - 禁止: 顧客情報の推測、Private Reflection原文の引用、人間承認なしの判断資産昇格
 
 ## Items
+
+### 2026-07-31 14:14 Codex
+- Summary: Obsidianグラフの複雑さが判断に効いているかを測定するレポートを追加してgit ship
+- Chat Summary: ユーザー要望: Obsidianグラフの複雑さが判断に効いているかを見る。wikilink構造とRAG/記憶使用ログを突き合わせる観測レポートを追加した。
+- Decisions: Obsidian本文、RAG順位、プロンプト、スコアリング、判断資産active storeは変更しない。観測レポートと育成ブリーフ反映までに限定。
+- Changes: scripts/build_obsidian_graph_judgment_effect.py、tests/test_obsidian_graph_judgment_effect.py、reports/obsidian_graph_judgment_effect_latest.md を追加。scripts/build_shion_growth_brief.py と run_daily_improvement_post.sh に接続。
+- Verification: pytest tests/test_obsidian_graph_judgment_effect.py tests/test_shion_growth_brief.py: 4 passed。py_compile OK。bash -n scripts/run_daily_improvement_post.sh OK。preflight_pr_guard 警告なし。
+- Open Items: -
+
+### 2026-07-31 12:20 Codex
+- Summary: 紫苑の記憶育成ループを日次化して git ship
+- Chat Summary: 4層記憶、昇格、判断資産候補、効果測定、A/B、永続監査、手放し育成ブリーフを日次運用へ接続し、将来のGemini/Claude/Codex会議は保留する判断を保存した。
+- Decisions: data/配下はコミット対象から除外。判断資産active化やスコアリング変更は自動化せず、観測・候補・ブリーフ生成までに限定。
+- Changes: PERSISTENT_MEMORY.md、memory_layers、memory_promotion_policy、shion_memory_impact、記憶効果/A-B/永続監査/育成ブリーフ scripts、run_daily_improvement_post.sh、関連テスト、latest report md を追加/更新。
+- Verification: pytest関連36件 passed、py_compile OK、bash -n scripts/run_daily_improvement_post.sh OK、preflight_pr_guardは既存api/main.py警告のみ。
+- Open Items: -
+
+### 2026-07-31 11:36 Codex
+- Summary: ✅ 実装済: 紫苑の手放し育成ループを日次postパイプラインへ接続
+- Chat Summary: ユーザー要望: 育成フェーズを手をかけずに回す。日次で記憶効果測定、判断資産A/B、永続記憶監査、育成ブリーフを生成する形にした。
+- Decisions: 判断資産active化、スコアリング変更、本番プロンプト改造は自動化しない。観測・候補・ブリーフ生成までを自動化する。
+- Changes: scripts/run_daily_improvement_post.sh に育成ステップ追加。scripts/build_shion_growth_brief.py を追加。既存の記憶効果/A-B/永続監査レポートを日次で統合。
+- Verification: pytest関連36件 passed、py_compile OK、bash -n scripts/run_daily_improvement_post.sh OK、実データで shion_growth_brief_latest を生成済み。
+- Open Items: -
+
+### 2026-07-31 10:23 Codex
+- Summary: 判断資産育種ループと紫苑レビュー評価を強化した。内政モード提案へ genetic_profile を追加し、自己提案レポートとUIに fitness/mutation を表示。審査入力簡便化調査も保存した。
+- Chat Summary: Userは、内部は世界一尖らせ、企業向けには薄めた判断資産として切り出す方針を確認。そのうえで、使い続けるための審査入力簡便化、詳細財務・定性項目の扱い、紫苑レビューの違和感言語化と評価粒度を詰めた。
+- Decisions: 詳細財務と定性項目は削除しない。通常入力では畳めるが、詳細財務はスコアに効き、定性項目は将来分析と判断資産育種に必要。違和感は断定ではなく、根拠付きの確認論点として扱う。
+- Changes: api/domestic_mode.py: genetic_profile追加。scripts/attach_shion_self_proposals_to_report.py: fitness/mutationを自己提案順位とpolicyへ反映。LoopEngineeringCard: fitness/mutation表示。/screening: 紫苑レビューの深掘りプロンプトと人間評価を拡張。feedback_loop API: review feedback値を拡張。docs/screening_input_simplification_audit.md追加。
+- Verification: pytest -q tests/test_domestic_mode.py tests/test_shion_self_proposal_hypothesis_schema.py、python -m py_compile api/domestic_mode.py api/routers/feedback_loop.py scripts/attach_shion_self_proposals_to_report.py、npm run typecheck、python scripts/attach_shion_self_proposals_to_report.py、preflight_pr_guard 警告なし。
+- Open Items: -
+
+### 2026-07-31 08:22 Codex
+- Summary: 紫苑の内政モードと自己提案ループを接続し、使うほど判断メモリが増える改善運用にした。
+- Chat Summary: ユーザーは、自己提案を内政モードに集約し、採用/保留/却下と効果追跡までつなげる方針を採用。さらに突拍子のない跳躍提案も少量混ぜたいと指定した。
+- Decisions: 内政モードを、直接改善依頼・自己提案・作業録要約が集まる判断メモリの入口として扱う。通常提案は根拠と成功指標を必須化し、跳躍提案は最大1件だけ許容する。
+- Changes: api/domestic_mode.pyを追加。/api/domestic-mode/evaluateを追加。/improvement-logに内政モード入力、Gemini再判定、採用/保留/却下を統合。自己提案5ループにdomestic_connectionを追加。作業録digest生成を追加。FAQ/helpをサポート導線へ再配置。
+- Verification: python -m py_compile 対象API/スクリプト、pytest -q tests/test_domestic_mode.py tests/test_shion_self_proposal_hypothesis_schema.py、npm run typecheck を実行済み。preflight_pr_guardは警告のみで、今回追加箇所の未定義importは修正済み。
+- Open Items: -
 
 ### 2026-07-31 06:45 Codex
 - Summary: シミュレータ統合と紫苑の記憶表現改善をgitshipした
@@ -64,44 +104,4 @@
 - Decisions: 自律進化は自動昇格ではなく、読み取り専用の成長可視化と人間レビュー付き実案件フィードバックで扱う。未使用判断資産は削除候補ではなく次の実案件で試す候補にする。
 - Changes: shion_eval_health.py: growth_visibility 追加 / frontend/src/app/shion-eval-health/page.tsx: 何が良くなったかパネル追加 / scripts/build_judgment_asset_field_review.py: action_plan と次回実案件フィードバック候補追加
 - Verification: pytest tests/test_build_judgment_asset_field_review.py tests/test_shion_eval_health.py -> 21 passed / npm run typecheck -> passed
-- Open Items: -
-
-### 2026-07-29 03:18 Codex
-- Summary: 紫苑の運用ループ自動修復を拡張
-- Chat Summary: ユーザーが、ループエンジニアリング化できる箇所として Obsidian warn整理、自己提案hygiene、改善効果測定の1.2.3実装を依頼。/shion-eval-health にチェックと安全な自動修復を追加し、git shipした。
-- Decisions: 自動修復はrepo内レポート再生成・分類・測定に限定し、Vault本文作成、プロンプト変更、記憶ルール変更、審査スコア、自動実装には接続しない。
-- Changes: shion_eval_health.py / api/main.py / api/feedback_pattern_loop.py / frontend/src/app/shion-eval-health/page.tsx / tests / reports
-- Verification: 関連62テスト通過、py_compile通過、frontend typecheck通過、preflightは既存unused import警告のみ
-- Open Items: -
-
-### 2026-07-29 02:48 Codex
-- Summary: 紫苑の実用性チェックと自己提案整理を追加
-- Chat Summary: ユーザーから、紫苑が短く・覚えて・次に効く状態かを確認する機能と、修正済み自己提案を自動で消す運用を依頼された。表示側のread-onlyチェックと、解決済み自己提案の自動除外を実装してgit shipした。
-- Decisions: 自己提案は元ログを削除せず、applied/deleted/rejected等の解決済み状態なら日次レポートの自己提案欄から自動除外する。
-- Changes: shion_eval_health.py / frontend/src/app/shion-eval-health/page.tsx / scripts/attach_shion_self_proposals_to_report.py / tests
-- Verification: pytest関連48件通過、py_compile通過、preflight_pr_guard警告なし
-- Open Items: -
-
-### 2026-07-29 02:33 Codex
-- Summary: 回答品質評価、Pydantic list既定値、Obsidian memory insight監視ノイズの改善を実装してpushした。
-- Chat Summary: Userが追加改善候補1/2/3の実施とGitshipを依頼。スコアリング本体やdata配下の実行時JSONは触らず、低リスクな品質・監視改善に絞った。
-- Decisions: 回答品質評価は必須観点を明示し、3点以内・重複見出し禁止で生成を安定化する。Daily作業ログやメタ運用文は記憶候補化しない。
-- Changes: api/main.py, api/schemas.py: Pydantic list defaultsをdefault_factoryへ変更 / scripts/evaluate_answer_quality.py: 必須観点ヒントと簡潔回答ガードを追加 / scripts/build_obsidian_memory_insight_report.py: Daily作業ログ/メタ運用文フィルタを追加
-- Verification: pytest対象52件 passed / preflight_pr_guard.py: 既存unused import警告のみ、終了コード0
-- Open Items: -
-
-### 2026-07-29 02:25 Codex
-- Summary: 紫苑の基本的な雑談・関係確認への応答を自然化し、GitHubへpushした。
-- Chat Summary: Userから緊急改善候補の確認、保留38の改善レポート同期、最後にGitshipを依頼された。data配下の実行時JSONはコミット対象から外した。
-- Decisions: リース審査に関係しない短い雑談は、RAGや判断資産へ無理に広げず自然に受けてから軽い次アクションへ誘導する。
-- Changes: api/main.py: 非ドメイン短文トリガーに元気・調子確認系を追加 / tests/test_shion_specificity_prompt.py: 元気かい？の回帰テストを追加 / memory/2026-07-28.md: 方針メモを追記
-- Verification: pytest: tests/test_shion_specificity_prompt.py tests/test_news_judgment_signals.py tests/test_improvement_log_recursive_summary.py -> 31 passed / preflight_pr_guard.py -> 既存unused import警告のみ、終了コード0
-- Open Items: -
-
-### 2026-07-28 20:13 Codex
-- Summary: 非ドメイン短文の応答誘導を追加
-- Chat Summary: Userから非ドメイン質問対応戦略の提案を受け、今何時・おはよう等で薄い定型返答に終わらない応答方針を実装した。gitship指示により master へ直接コミット・push した。
-- Decisions: 挨拶・時刻などは自然に答えた後、審査・判断資産・デモ確認など次の行動へ軽く誘導する。ただし無理に案件審査化しない。
-- Changes: api/main.py: 非ドメイン短文プロンプトブロック追加 / api/context/time_context.py: 時刻即答に軽い誘導文を追加 / tests/test_shion_specificity_prompt.py tests/test_time_context.py: 回帰テスト追加・更新
-- Verification: pytest tests/test_shion_specificity_prompt.py tests/test_time_context.py -q: 12 passed / python -m py_compile api/main.py api/context/time_context.py: OK
 - Open Items: -

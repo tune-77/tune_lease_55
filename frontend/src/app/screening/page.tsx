@@ -63,6 +63,15 @@ type ShionScreeningReview = {
   memoryRefs: number;
   knowledgeRefs: number;
   identityUsed: boolean;
+  vertexUsed?: boolean;
+  vertexStatus?: string;
+  vertexRefs?: string[];
+  vertexAnswerUsed?: boolean;
+  vertexAnswerStatus?: string;
+  groundingScore?: number | null;
+  groundingScoreSource?: string;
+  lowSupportClaimCount?: number;
+  supportCount?: number;
   savedId?: number;
   userFeedback?: ShionReviewFeedback;
 };
@@ -933,6 +942,26 @@ const buildPastReviewBlock = (reviews: PastShionScreeningReview[]) => {
   ].join("\n");
 };
 
+const buildVertexSearchHint = (result: Record<string, any>, data: ScoringFormData) => {
+  const terms = [
+    result.industry_sub || data.industry_sub || result.industry_major || data.industry_major,
+    data.asset_name,
+    data.asset_purpose,
+    data.contract_type,
+    data.customer_type,
+    data.main_bank,
+    data.deal_source,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const memo = [data.passion_text, data.industry_detail, data.asset_detail].join(" ");
+  if (/補助金|助成金|ものづくり|省力化/.test(memo)) terms.push("補助金", "リース料軽減", "公募要領", "対象経費");
+  if (/再リース|延長|満了/.test(memo)) terms.push("再リース", "残価", "耐用年数", "中古流動性");
+  if (/工作機械|機械|設備/.test(`${data.asset_name || ""} ${data.asset_detail || ""}`)) terms.push("工作機械", "設備稼働率", "保守", "更新投資");
+  if (Number(result.quantum_risk) >= 35) terms.push("Q_risk", "違和感", "確認論点");
+  return Array.from(new Set(terms)).slice(0, 14).join(" ");
+};
+
 const buildShionReviewPrompt = (
   result: Record<string, any>,
   data: ScoringFormData,
@@ -943,9 +972,13 @@ const buildShionReviewPrompt = (
 ) => {
   const score = getScreeningScore(result);
   const baseScore = Number(result.score_base);
+  const vertexSearchHint = buildVertexSearchHint(result, data);
   const lines = [
     "【審査分析画面からの紫苑レビュー依頼】",
     "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
+    "",
+    "【Vertex補助検索ヒント】",
+    vertexSearchHint || "リース審査 判断資産 物件リスク 返済余力 承認条件",
     "",
     "出力は短く、次の4項目でお願いします。",
     "1. 紫苑の第一印象",
@@ -1308,8 +1341,27 @@ function ShionScreeningReviewCard({
                   <span className="rounded-full bg-white px-2.5 py-1">記憶 {review.memoryRefs}件</span>
                   <span className="rounded-full bg-white px-2.5 py-1">知識 {review.knowledgeRefs}件</span>
                   <span className="rounded-full bg-white px-2.5 py-1">同一性 {review.identityUsed ? "ON" : "OFF"}</span>
+                  <span className={`rounded-full px-2.5 py-1 ${review.vertexUsed ? "bg-teal-100 text-teal-700" : "bg-white"}`}>
+                    Vertex {review.vertexUsed ? "ON" : review.vertexStatus || "OFF"}
+                  </span>
+                  <span className={`rounded-full px-2.5 py-1 ${review.vertexAnswerUsed ? "bg-cyan-100 text-cyan-800" : "bg-white"}`}>
+                    Answer {review.vertexAnswerUsed ? "ON" : review.vertexAnswerStatus || "OFF"}
+                    {typeof review.groundingScore === "number" ? ` / 根拠${Math.round(review.groundingScore * 100)}%` : ""}
+                  </span>
+                  {review.lowSupportClaimCount ? (
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">低根拠 {review.lowSupportClaimCount}件</span>
+                  ) : null}
                   {review.savedId && <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">経験保存済 #{review.savedId}</span>}
                 </div>
+                {review.vertexRefs?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-black text-teal-700">
+                    {review.vertexRefs.slice(0, 3).map((ref, index) => (
+                      <span key={`${ref}-${index}`} className="rounded-full bg-white px-2.5 py-1">
+                        {ref.split("/").pop() || ref}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-violet-100 pt-3">
                   <span className="text-[11px] font-black text-violet-500">人間評価</span>
                   {feedbackOptions.map((option) => (
@@ -2803,6 +2855,14 @@ export default function Dashboard() {
       const memoryDebug = res.data?.memory_debug || {};
       const memoryRecall = memoryDebug.memory_recall || {};
       const identityMemory = memoryDebug.identity_memory || {};
+      const vertexSearch = memoryDebug.vertex_ai_search || res.data?.vertex_ai_search || {};
+      const vertexAnswer = memoryDebug.vertex_answer_api || res.data?.vertex_answer_api || {};
+      const parsedGroundingScore =
+        typeof vertexAnswer.grounding_score === "number"
+          ? vertexAnswer.grounding_score
+          : vertexAnswer.grounding_score != null
+            ? Number(vertexAnswer.grounding_score)
+            : null;
       const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0;
       const memoryRefs = Array.isArray(memoryRecall.refs) ? memoryRecall.refs.length : 0;
       const nextReview: ShionScreeningReview = {
@@ -2816,6 +2876,15 @@ export default function Dashboard() {
         memoryRefs,
         knowledgeRefs,
         identityUsed: Boolean(identityMemory.used),
+        vertexUsed: Boolean(vertexSearch.used),
+        vertexStatus: String(vertexSearch.status || ""),
+        vertexRefs: Array.isArray(vertexSearch.refs) ? vertexSearch.refs.map(String) : [],
+        vertexAnswerUsed: Boolean(vertexAnswer.used),
+        vertexAnswerStatus: String(vertexAnswer.status || ""),
+        groundingScore: Number.isFinite(parsedGroundingScore) ? parsedGroundingScore : null,
+        groundingScoreSource: String(vertexAnswer.grounding_score_source || ""),
+        lowSupportClaimCount: Number(vertexAnswer.low_support_claim_count || 0),
+        supportCount: Number(vertexAnswer.support_count || 0),
       };
       setShionReview(nextReview);
       saveShionScreeningReview(targetResult, targetFormData, promptText, nextReview)
@@ -2847,6 +2916,15 @@ export default function Dashboard() {
         memoryRefs: fallbackPastReviews.length,
         knowledgeRefs: fallbackCandidates.length,
         identityUsed: false,
+        vertexUsed: false,
+        vertexStatus: "fallback",
+        vertexRefs: [],
+        vertexAnswerUsed: false,
+        vertexAnswerStatus: "fallback",
+        groundingScore: null,
+        groundingScoreSource: "",
+        lowSupportClaimCount: 0,
+        supportCount: 0,
       };
       setShionReview(fallbackReview);
       setShionReviewError("");

@@ -406,6 +406,8 @@ sync_standalone_assets
 echo ""
 
 echo "Starting FastAPI on http://${API_HOST}:${API_PORT}"
+# Obsidian インデックス有効化（SentenceTransformer セマンティック検索）
+export ENABLE_OBSIDIAN_INDEXING="${ENABLE_OBSIDIAN_INDEXING:-true}"
 # .venv が存在すればそちらを優先（uv run はキャッシュ権限エラーを起こす場合があるため）
 if [ -f ".venv/bin/python" ]; then
   API_RUNNER=(".venv/bin/python")

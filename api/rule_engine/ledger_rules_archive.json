@@ -238,5 +238,20 @@
     "parked_reason": "30日以上レビューされなかったため自動保留（weak penalty通知）",
     "parked_at": "2026-07-28T19:01:43Z",
     "parked_by": "cleanup_rag_unrated_rules"
+  },
+  {
+    "rev_id": "RAG-UNRATED-2026_05_13____________",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 2026-05-13_自動車タイプ別自動車税 が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "2026-05-13_自動車タイプ別自動車税",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-07-01T19:00:33.273177+00:00",
+    "parked_reason": "30日以上レビューされなかったため自動保留（weak penalty通知）",
+    "parked_at": "2026-07-31T19:01:59Z",
+    "parked_by": "cleanup_rag_unrated_rules"
   }
 ]

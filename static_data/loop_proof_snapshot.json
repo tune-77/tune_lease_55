@@ -10,23 +10,23 @@
     "2026-06": 187,
     "2026-07": 74
   },
-  "gen_date": "2026-07-31",
-  "growth_score": 57.1,
-  "coverage": 83.1,
+  "gen_date": "2026-08-02",
+  "growth_score": 57.4,
+  "coverage": 84.0,
   "reuse": 60.0,
-  "judgment_change": 63.5,
+  "judgment_change": 64.0,
   "human_align": 70.0,
   "field": 0.0,
   "negative": 54.0,
-  "materials": 19,
-  "inbox": 19,
+  "materials": 30,
+  "inbox": 20,
   "active_rules": 9,
   "risk_axes": 4,
   "concepts": 8,
   "user_evidence": 13,
   "growth_judgment": {
     "label": "在庫は増えたが実戦検証不足",
-    "score": 51.2,
+    "score": 51.3,
     "summary": "判断資産の在庫と整理は進んだが、実案件で効いた証跡が不足している。"
   },
   "feedback_total": 342,
@@ -38,5 +38,5 @@
   "applied_pct": 91,
   "fb_other": 216,
   "fb_other_pct": 63.2,
-  "generated_at": "2026-07-31T04:10:36"
+  "generated_at": "2026-08-02T04:10:23"
 }

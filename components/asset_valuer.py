@@ -6,6 +6,35 @@ from components.agent_hub import _ai_call
 from expected_usage_period import find_item_by_name
 from runtime_paths import REPO_ROOT
 
+# 汎用性が低く、リース満了時の転売・再流通が困難な「特注・造作・専用設備」を
+# 検出するためのキーワード。該当する場合、AIが楽観的な流動性係数を返しても
+# 上限値でキャップし、残価設定が市場価値に見合わない事態を防ぐ。
+# 根拠: SHION-9BADD3（紫苑の自己提案）— セントラルキッチン等の特注厨房設備は
+# 汎用性・中古市場での需要が乏しく、残価回収リスクが高い。
+LOW_VERSATILITY_KEYWORDS = [
+    "セントラルキッチン", "central kitchen",
+    "特注", "オーダーメイド", "造作", "専用什器", "専用設備",
+    "特別仕様", "オンリーワン", "一品もの", "設計施工一式",
+    "内装工事", "什器一式", "店舗設計", "店舗内装", "テナント工事", "造作工事",
+]
+
+# 特注・造作設備と判定された場合の流動性補正係数の上限。
+# Aランク（0.95）等の楽観値をそのまま採用せず、市場流動性の乏しさを
+# 保守的に反映する。
+LOW_VERSATILITY_LIQUIDITY_CAP = 0.6
+
+
+def _detect_low_versatility(asset_name: str, model_no: str) -> Optional[str]:
+    """物件名・型番から汎用性の低い特注/造作設備かどうかを判定する。
+    該当する場合はマッチしたキーワードを返し、該当しなければ None を返す。
+    """
+    haystack = f"{asset_name or ''} {model_no or ''}".lower()
+    for kw in LOW_VERSATILITY_KEYWORDS:
+        if kw.lower() in haystack:
+            return kw
+    return None
+
+
 def _load_nta_useful_life() -> dict:
     """static_data/useful_life_equipment.json を読み込む"""
     path = REPO_ROOT / "static_data" / "useful_life_equipment.json"
@@ -109,6 +138,15 @@ def evaluate_asset_value(asset_name: str, model_no: str, acquisition_cost: float
     except (TypeError, ValueError):
         liquidity_factor = 0.8
 
+    # ── 汎用性チェック（SHION-9BADD3対応） ──
+    # AIの流動性係数が、特注・造作設備（例: セントラルキッチン等）の転売困難性を
+    # 過小評価している場合に備え、ルールベースで上限をキャップする。
+    low_versatility_kw = _detect_low_versatility(asset_name, model_no)
+    versatility_capped = False
+    if low_versatility_kw and liquidity_factor > LOW_VERSATILITY_LIQUIDITY_CAP:
+        versatility_capped = True
+        liquidity_factor = LOW_VERSATILITY_LIQUIDITY_CAP
+
     # 定率法 (200%償却ベース)
     depreciation_rate = 2.0 / useful_life
     years = term_months / 12.0
@@ -122,6 +160,10 @@ def evaluate_asset_value(asset_name: str, model_no: str, acquisition_cost: float
     eval_data["suggested_depreciation_rate"] = round(depreciation_rate * 100.0, 1)
     eval_data["useful_life_years"] = useful_life
     eval_data["master_item_name"] = master_item_name
+    eval_data["liquidity_factor"] = round(liquidity_factor, 2)
+    eval_data["low_versatility_flag"] = bool(low_versatility_kw)
+    eval_data["low_versatility_keyword"] = low_versatility_kw
+    eval_data["versatility_capped"] = versatility_capped
     
     return eval_data
 
@@ -150,6 +192,13 @@ def render_asset_valuer():
             res = evaluate_asset_value(asset_name, model_no, acquisition_cost, term_months)
             
         st.success(f"評価が完了しました！ (判定カテゴリ: {res.get('master_item_name', '不明')})")
+
+        if res.get("low_versatility_flag"):
+            cap_note = "（AI評価値を保守的に補正済み）" if res.get("versatility_capped") else ""
+            st.warning(
+                f"⚠️ 汎用性チェック: 「{res.get('low_versatility_keyword')}」に該当する特注・造作設備の可能性があります。"
+                f"転用・転売が困難で残価回収リスクが高いため、残価設定は保守的に検討してください{cap_note}。"
+            )
         
         col_a, col_b, col_c, col_d = st.columns(4)
         with col_a:
@@ -168,7 +217,9 @@ def render_asset_valuer():
         # アセットエンジンとの連動アドバイス
         st.markdown("### 🛠️ 与信ロジックへの反映")
         st.caption("現在の配点ルールに対するアドバイスです。")
-        if res['liquidity_rank'] in ['A', 'B']:
+        if res.get("low_versatility_flag"):
+            st.error("⚠️ 特注・造作設備のため汎用性が低く、リース満了時の転売性が乏しい可能性があります。物件担保力を過大評価せず、企業の返済能力（PD）を主軸に審査してください。")
+        elif res['liquidity_rank'] in ['A', 'B']:
             st.success("👍 物件の換価性が高いため、財務審査が厳しい場合でも「条件付き承認」に引き上げる保全力があります。")
         else:
             st.error("⚠️ 物件価値に依存した審査（アセットファイナンス）は危険です。企業の純粋な返済能力（PD）を厳格に評価してください。")

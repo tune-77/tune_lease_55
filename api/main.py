@@ -2036,6 +2036,29 @@ def _lease_news_focus_to_dict(focus):
     }
 
 
+def _lease_news_brief_to_dict(brief):
+    if not brief or not getattr(brief, "available", False):
+        return {"available": False}
+    return {
+        "available": True,
+        "prefecture": getattr(brief, "prefecture", ""),
+        "region": getattr(brief, "region", ""),
+        "geo_context": getattr(brief, "geo_context", ""),
+        "national_headline": getattr(brief, "national_headline", ""),
+        "national_focus_lines": list(getattr(brief, "national_focus_lines", ()) or ()),
+        "regional_available": getattr(brief, "regional_available", False),
+        "regional_title": getattr(brief, "regional_title", ""),
+        "regional_summary_lines": list(getattr(brief, "regional_summary_lines", ()) or ()),
+        "regional_usage_memo": getattr(brief, "regional_usage_memo", ""),
+        "regional_tags": list(getattr(brief, "regional_tags", ()) or ()),
+        "regional_source": getattr(brief, "regional_source", ""),
+        "opening_line": getattr(brief, "opening_line", ""),
+        "question_line": getattr(brief, "question_line", ""),
+        "note_date": getattr(brief, "note_date", ""),
+        "note_path": getattr(brief, "note_path", ""),
+    }
+
+
 def _lease_news_reflection_to_dict(reflection):
     if not reflection or not getattr(reflection, "available", False):
         return {"available": False}
@@ -3106,6 +3129,17 @@ def _build_dialogue_improvement_observability_context(message: str) -> str:
 
 
 _TRIAGE_RESOLVED_LEDGER_STATUSES = {"applied", "deleted", "rejected"}
+_TRIAGE_DECISION_LABELS = {"today": "修正", "later": "保留", "discard": "却下"}
+
+
+def _load_improvement_triage_latest() -> dict[str, dict]:
+    """Load the latest Shion improvement triage records for dialogue context."""
+    try:
+        from scripts.shion_triage import load_triage_latest
+
+        return load_triage_latest(Path(_REPO_ROOT))
+    except Exception:
+        return {}
 
 
 def _build_dialogue_triage_context(limit: int = 4) -> str:
@@ -5376,6 +5410,28 @@ def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[
     return rows[:limit]
 
 
+_CHAT_JUDGMENT_ASSET_TRIGGERS = (
+    "審査では",
+    "判断方法",
+    "判断基準",
+    "判断資産",
+    "稟議では",
+    "条件付き承認",
+    "否決",
+    "承認",
+)
+_CHAT_JUDGMENT_ASSET_ACTIONS = (
+    "見る",
+    "確認",
+    "注意",
+    "警戒",
+    "疑う",
+    "止める",
+    "登録",
+    "残す",
+)
+
+
 def _create_manual_judgment_asset_candidate(req: JudgmentAssetCandidateManualRequest) -> dict[str, Any]:
     import datetime as _dt
     import hashlib as _hashlib
@@ -5449,6 +5505,13 @@ def _create_manual_judgment_asset_candidate(req: JudgmentAssetCandidateManualReq
 def _extract_chat_judgment_asset_claim(message: str) -> str:
     text = " ".join(str(message or "").strip().split())
     if len(text) < 12 or len(text) > 600:
+        return ""
+    prompt_noise_markers = (
+        "【審査分析画面からの紫苑レビュー依頼】",
+        "【Vertex補助検索ヒント】",
+        "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
+    )
+    if any(marker in text for marker in prompt_noise_markers):
         return ""
     if text.endswith("?") or text.endswith("？"):
         return ""
@@ -6639,10 +6702,33 @@ def _build_memory_expression_prompt_block(
 記憶・RAG・過去案件・判断資産を使う場合は、抽象的に「過去の知識を踏まえる」「一貫して判断する」で終えないでください。
 回答内に最大1文だけ、「どの種類の過去経験が、今回の判断のどこに効いたか」を具体的に示してください。
 表現例: {example}
+審査・稟議・紫苑らしさ・専門家としての深掘りを問われた場合は、必要に応じて次の5点を短く揃えてください: 1. 過去の記憶 / 2. 今回見るべき違和感 / 3. なぜ重要か / 4. 次に確認する項目 / 5. 確認結果ごとの判断分岐。
+判断分岐は「確認できれば条件付き承認寄り」「未確認なら保留または否決寄り」のように、Userが次に動ける条件として書いてください。
 ただし、Userが明示していないのに毎回「前回は」「以前は」で始めないでください。冒頭で記憶アピールせず、必要な場面で理由説明の中に短く入れてください。
 社名・個人名・生の財務数値・Private Reflectionの原文は出さず、案件種別・判断軸・確認行動に抽象化してください。
 記憶が見つからない場合は捏造せず、「ここは過去記憶ではなく今回情報からの仮説」と切り分けてください。""".rstrip()
     return block, payload
+
+
+def _build_shion_judgment_response_shape_prompt_block(message: str) -> str:
+    """Keep Shion's expert answers tied to concrete next checks and branches."""
+    text = str(message or "")
+    if not any(term in text for term in (
+        "審査", "稟議", "リース", "承認", "否決", "条件", "違和感",
+        "判断", "判断資産", "紫苑らしさ", "専門家", "深掘り", "確認",
+    )):
+        return ""
+    return """
+
+【紫苑の実務回答の型】
+審査・稟議・判断資産・紫苑らしさ・専門家としての深掘りに答える時は、説明だけで終えず、可能な範囲で次の順に圧縮してください。
+1. 過去の記憶または今回情報からの仮説
+2. 今回見るべき違和感
+3. なぜ重要か
+4. 次に確認する項目
+5. 確認結果ごとの判断分岐
+分岐は「確認できれば条件付き承認寄り / 未確認なら保留または否決寄り」のように、Userが次に動ける条件として出してください。
+根拠が薄い違和感は断定せず、人間が確認するための論点として扱ってください。""".rstrip()
 
 
 _GREY_JUDGMENT_QUERY_TERMS = (
@@ -7909,6 +7995,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     if not _is_improvement_consultation_message(full_message):
         improvement_observability_context = _throttle_proactive_report(improvement_observability_context)
     improvement_triage_context = _build_dialogue_triage_context(limit=4)
+    judgment_response_shape_context = _build_shion_judgment_response_shape_prompt_block(full_message)
 
     if not vault:
         from lease_finance_knowledge import build_basic_lease_question_block, build_lease_finance_knowledge_block
@@ -7945,6 +8032,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 {news_digest_context}
 {improvement_observability_context}
 {improvement_triage_context}
+{judgment_response_shape_context}
 {build_shion_feminine_tone_block()}
 """
         try:
@@ -8009,6 +8097,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         system_prompt += f"\n\n{improvement_observability_context}"
     if improvement_triage_context:
         system_prompt += f"\n\n{improvement_triage_context}"
+    if judgment_response_shape_context:
+        system_prompt += f"\n\n{judgment_response_shape_context}"
     consultation_ids: list[str] = []
 
     def _tool_executor(name: str, args: dict) -> object:
@@ -8298,6 +8388,29 @@ def _log_shion_query_class(message: str) -> None:
     _background_executor.submit(_run)
 
 
+def _extract_vertex_search_hint(message: str) -> str:
+    """Use a compact embedded search hint for Vertex when a long prompt provides one."""
+    text = str(message or "")
+    marker = "【Vertex補助検索ヒント】"
+    if marker not in text:
+        return text
+    after = text.split(marker, 1)[1]
+    lines: list[str] = []
+    for raw_line in after.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if lines:
+                break
+            continue
+        if line.startswith("【") and line.endswith("】"):
+            break
+        lines.append(line.lstrip("・- ").strip())
+        if len(" ".join(lines)) >= 220:
+            break
+    hint = " ".join(line for line in lines if line).strip()
+    return hint or text
+
+
 def _log_information_weighting_shadow(
     message: str,
     *,
@@ -8550,6 +8663,7 @@ def post_chat(req: ChatRequest):
             user_id=req.user_id,
             now=_chat_now,
         )
+        judgment_response_shape_context = _build_shion_judgment_response_shape_prompt_block(req.message)
         experience_loop_context = ""
         experience_loop_payload: dict = {"used": False}
         grey_judgment_context = ""
@@ -8580,6 +8694,7 @@ def post_chat(req: ChatRequest):
             shion_light_tone_context = ""
             shion_non_domain_context = ""
             human_device_resonance_context = ""
+            judgment_response_shape_context = ""
             experience_loop_payload = {
                 "used": False,
                 "suppressed_by_response_mode": "general",
@@ -8757,7 +8872,7 @@ def post_chat(req: ChatRequest):
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
             external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + external_research_context + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + external_research_context + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + judgment_response_shape_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -8940,6 +9055,8 @@ def post_chat(req: ChatRequest):
         rag_context = ""
         rag_refs: list[str] = []
         rag_knowledge_refs: list[dict] = []
+        vertex_agent_search: dict[str, Any] = {"used": False, "status": "not_attempted", "refs": []}
+        vertex_answer_api: dict[str, Any] = {"used": False, "status": "not_attempted", "refs": []}
         rag_top_k = int(context_budget["rag_top_k"])
 
         def _collect_rag_hits(hits: list[dict]) -> str:
@@ -8981,6 +9098,59 @@ def post_chat(req: ChatRequest):
             fallback_hits = _search_chat_vault_markdown_fallback(req.message, top_k=rag_top_k)
             if fallback_hits:
                 rag_context = _collect_rag_hits(fallback_hits)
+
+        # Vertex AI Search is a supplementary layer: keep local Obsidian RAG as
+        # the primary source, and append cloud search only for lease-domain RAG
+        # turns. Any auth/network failure must degrade to the existing path.
+        if rag_top_k > 0 and not is_general_response_mode and question_category != "general":
+            try:
+                from api.vertex_agent_search import answer_prompt_context, answer_vertex_agent, search_vertex_agent
+
+                vertex_search_query = _extract_vertex_search_hint(req.message)
+                vertex_agent_search = search_vertex_agent(vertex_search_query)
+                vertex_agent_search["query"] = vertex_search_query[:500]
+                vertex_context = str(vertex_agent_search.get("prompt_context") or "").strip()
+                if vertex_context:
+                    rag_context = (rag_context + "\n\n" + vertex_context).strip() if rag_context else vertex_context
+                for ref in list(vertex_agent_search.get("refs") or [])[:5]:
+                    ref_text = str(ref or "").strip()
+                    if not ref_text or ref_text in rag_refs:
+                        continue
+                    rag_refs.append(ref_text)
+                    rag_knowledge_refs.append(
+                        {
+                            "doc_id": "",
+                            "obsidian_ref": ref_text,
+                            "file_name": Path(ref_text).name,
+                            "rank_score": None,
+                            "confidence": 0.72,
+                            "confidence_level": "medium",
+                            "source": "vertex_ai_search",
+                        }
+                    )
+                if "【Vertex補助検索ヒント】" in req.message:
+                    vertex_answer_api = answer_vertex_agent(
+                        vertex_search_query,
+                        page_size=5,
+                        include_grounding_supports=True,
+                        grounding_filtering_level=os.environ.get("VERTEX_ANSWER_GROUNDING_FILTERING_LEVEL") or None,
+                    )
+                    answer_context = answer_prompt_context(vertex_answer_api)
+                    if answer_context:
+                        rag_context = (rag_context + "\n\n" + answer_context).strip() if rag_context else answer_context
+            except Exception as _vertex_exc:
+                vertex_agent_search = {
+                    "used": False,
+                    "status": "error",
+                    "error": str(_vertex_exc)[:240],
+                    "refs": [],
+                }
+                vertex_answer_api = {
+                    "used": False,
+                    "status": "error",
+                    "error": str(_vertex_exc)[:240],
+                    "refs": [],
+                }
 
         external_research = {"used": False}
         research_suggestion = _build_external_research_suggestion(
@@ -9155,7 +9325,7 @@ def post_chat(req: ChatRequest):
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
         basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
         external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + rag_context + external_research_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + guidance.prompt_suffix
+        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + rag_context + external_research_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + judgment_response_shape_context + guidance.prompt_suffix
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(
@@ -9200,6 +9370,20 @@ def post_chat(req: ChatRequest):
                 "context_mode": context_mode,
                 "knowledge_refs": len(rag_refs),
                 "improvement_mode": bool(_is_improvement_msg),
+                "vertex_ai_search": {
+                    "used": bool(vertex_agent_search.get("used")),
+                    "status": vertex_agent_search.get("status"),
+                    "refs": list(vertex_agent_search.get("refs") or [])[:5],
+                },
+                "vertex_answer_api": {
+                    "used": bool(vertex_answer_api.get("used")),
+                    "status": vertex_answer_api.get("status"),
+                    "grounding_score": vertex_answer_api.get("grounding_score"),
+                    "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
+                    "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
+                    "support_count": vertex_answer_api.get("support_count", 0),
+                    "refs": list(vertex_answer_api.get("refs") or [])[:5],
+                },
             },
         )
         language_material_capture = _capture_language_judgment_material(
@@ -9283,6 +9467,20 @@ def post_chat(req: ChatRequest):
                 "user_id": req.user_id,
                 "category": "rag",
                 "improvement_mode": bool(_is_improvement_msg),
+                "vertex_ai_search": {
+                    "used": bool(vertex_agent_search.get("used")),
+                    "status": vertex_agent_search.get("status"),
+                    "refs": list(vertex_agent_search.get("refs") or [])[:5],
+                },
+                "vertex_answer_api": {
+                    "used": bool(vertex_answer_api.get("used")),
+                    "status": vertex_answer_api.get("status"),
+                    "grounding_score": vertex_answer_api.get("grounding_score"),
+                    "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
+                    "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
+                    "support_count": vertex_answer_api.get("support_count", 0),
+                    "refs": list(vertex_answer_api.get("refs") or [])[:5],
+                },
                 "identity_memory": {
                     "used": bool(identity_memory_payload.get("block")),
                     "refs": identity_memory_payload.get("refs", [])[:8],
@@ -9352,6 +9550,20 @@ def post_chat(req: ChatRequest):
             "judgment_asset_capture": judgment_asset_capture,
             "response_mode": req.response_mode,
             "external_research": external_research,
+            "vertex_ai_search": {
+                "used": bool(vertex_agent_search.get("used")),
+                "status": vertex_agent_search.get("status"),
+                "refs": list(vertex_agent_search.get("refs") or [])[:5],
+            },
+            "vertex_answer_api": {
+                "used": bool(vertex_answer_api.get("used")),
+                "status": vertex_answer_api.get("status"),
+                "grounding_score": vertex_answer_api.get("grounding_score"),
+                "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
+                "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
+                "support_count": vertex_answer_api.get("support_count", 0),
+                "refs": list(vertex_answer_api.get("refs") or [])[:5],
+            },
             "obsidian_daily_intelligence": {
                 "used": bool(obsidian_daily_context),
                 "injected": obsidian_daily_injected,
@@ -9383,6 +9595,23 @@ def post_chat(req: ChatRequest):
                 "refs": user_personal_memory_payload.get("refs", [])[:6],
                 "line_count": user_personal_memory_payload.get("line_count", 0),
             }
+            response_payload["memory_debug"]["vertex_ai_search"] = {
+                "used": bool(vertex_agent_search.get("used")),
+                "status": vertex_agent_search.get("status"),
+                "refs": list(vertex_agent_search.get("refs") or [])[:8],
+                "summary_preview": str(vertex_agent_search.get("summary") or "")[:500],
+            }
+            response_payload["memory_debug"]["vertex_answer_api"] = {
+                "used": bool(vertex_answer_api.get("used")),
+                "status": vertex_answer_api.get("status"),
+                "grounding_score": vertex_answer_api.get("grounding_score"),
+                "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
+                "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
+                "support_count": vertex_answer_api.get("support_count", 0),
+                "refs": list(vertex_answer_api.get("refs") or [])[:8],
+                "answer_preview": str(vertex_answer_api.get("answer_text") or "")[:800],
+                "grounding_supports": list(vertex_answer_api.get("grounding_supports") or [])[:5],
+            }
         return response_payload
     except Exception as e:
         import traceback
@@ -9396,6 +9625,122 @@ def post_chat(req: ChatRequest):
         raise HTTPException(status_code=500, detail="内部エラーが発生しました")
 
 
+
+
+# ── Vertex AI Search / Agent Builder debug utilities ────────────────────────
+
+class VertexSearchDebugRequest(BaseModel):
+    query: str
+    page_size: int = Field(5, ge=1, le=10)
+    include_search: bool = True
+    include_answer: bool = True
+    include_google_grounding: bool = False
+    include_related_questions: bool = True
+    include_grounding_supports: bool = True
+    grounding_filtering_level: Optional[Literal["FILTERING_LEVEL_UNSPECIFIED", "FILTERING_LEVEL_LOW", "FILTERING_LEVEL_HIGH"]] = None
+    filter_expression: Optional[str] = None
+    boost_spec: Optional[Dict[str, Any]] = None
+    preamble: Optional[str] = None
+    max_rephrase_steps: int = Field(3, ge=1, le=5)
+
+
+class VertexExternalGroundingRequest(BaseModel):
+    query: str
+    page_size: int = Field(5, ge=1, le=10)
+
+
+@app.post("/api/vertex-search/debug")
+def post_vertex_search_debug(req: VertexSearchDebugRequest):
+    """Vertex AI Search/Answer/Google Search grounding を同一質問で比較するデバッグ口。"""
+    query = req.query.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="query is required")
+    try:
+        from api.vertex_agent_search import (
+            answer_vertex_agent,
+            build_lease_search_controls,
+            get_config,
+            google_search_grounding,
+            search_vertex_agent,
+        )
+
+        config = get_config()
+        payload: Dict[str, Any] = {
+            "query": query,
+            "config": {
+                "enabled": config.enabled,
+                "project_id": config.project_id,
+                "engine_id": config.engine_id,
+                "location": config.location,
+                "collection": config.collection,
+                "page_size": config.page_size,
+            },
+            "controls": build_lease_search_controls(query),
+        }
+        if req.include_search:
+            payload["search"] = search_vertex_agent(
+                query,
+                page_size=req.page_size,
+                filter_expression=req.filter_expression,
+                boost_spec=req.boost_spec,
+                apply_controls=True,
+            )
+        if req.include_answer:
+            payload["answer"] = answer_vertex_agent(
+                query,
+                page_size=req.page_size,
+                preamble=req.preamble,
+                include_related_questions=req.include_related_questions,
+                include_grounding_supports=req.include_grounding_supports,
+                grounding_filtering_level=req.grounding_filtering_level,
+                filter_expression=req.filter_expression,
+                boost_spec=req.boost_spec,
+                max_rephrase_steps=req.max_rephrase_steps,
+            )
+        if req.include_google_grounding:
+            payload["google_grounding"] = google_search_grounding(query)
+        return payload
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/vertex-search/external-grounding")
+def post_vertex_external_grounding(req: VertexExternalGroundingRequest, request: Request):
+    """Gemini Grounding with your own search API 用の `snippet`/`uri` 配列を返す。"""
+    expected_key = os.environ.get("VERTEX_SEARCH_EXTERNAL_API_KEY", "").strip()
+    if expected_key:
+        provided = request.headers.get("X-Vertex-Search-Key", "").strip()
+        if provided != expected_key:
+            raise HTTPException(status_code=401, detail="invalid external search key")
+    query = req.query.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="query is required")
+    try:
+        from api.vertex_agent_search import external_grounding_results
+
+        return external_grounding_results(query, page_size=req.page_size)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/vertex-search/widget-config")
+def get_vertex_search_widget_config():
+    """Agent Builder search widget を画面に埋め込むための設定を返す。"""
+    config_id = os.environ.get("VERTEX_AI_SEARCH_WIDGET_CONFIG_ID", "").strip()
+    placeholder = os.environ.get("VERTEX_AI_SEARCH_WIDGET_PLACEHOLDER", "リース知識を検索").strip()
+    snippet = ""
+    if config_id:
+        snippet = (
+            f'<gen-search-widget configId="{config_id}" anchorsTarget="_blank" '
+            f'placeholder="{placeholder}" alwaysOpened></gen-search-widget>'
+        )
+    return {
+        "configured": bool(config_id),
+        "config_id": config_id,
+        "placeholder": placeholder,
+        "snippet": snippet,
+        "setup_note": "Google Cloud Console の AI Applications > Integration > Widget で configId を発行して環境変数に設定します。",
+    }
 
 
 # ── REV-222: 関係性スコア参照・フィードバック ────────────────────────────────

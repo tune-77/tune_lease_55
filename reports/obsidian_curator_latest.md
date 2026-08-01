@@ -1,30 +1,30 @@
 # Obsidian Curator Report
 
 ## Summary
-- generated_at: `2026-07-31T04:10:25`
+- generated_at: `2026-08-02T04:10:10`
 - agent: `Obsidian Curator`
 - mode: `read_only_report_only`
 - guardrail: `no_obsidian_write_no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun`
-- materials: `19`
+- materials: `30`
 - mana_status: `hold`
 
 ## Material Counts
-- judgment_rule: `16`
-- risk_signal: `3`
+- judgment_rule: `17`
+- risk_signal: `13`
 
 ## Inbox Candidates
-- `judgment_rule` また、補助金の対象範囲（リース料全額か、事業期間内のみか）や、採択の確実性、入金時期とリース料支払開始時期の調整を顧客と確認する必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-29.md`
-- `judgment_rule` ① 確認点 1. 対象要件の確認: 補助金の対象となるディーゼル車両や機械が、リースを検討されている物件と合致するか、また、申請者様が補助金の対象事業者であるかを確認する必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-29.md`
-- `judgment_rule` 審査上の主な確認点: - 対象設備と要件: リース対象物件が補助金の対象となるディーゼル車両・機器の仕様や最新の排出ガス規制（例: ポスト新長期規制）などの要件に合致しているかを確認します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-29.md`
-- `judgment_rule` リース審査の観点から見ると、そうした好調な業種の案件は、物件の用途や収益改善への寄与が明確であれば、より前向きに評価できる材料になります / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
-- `judgment_rule` また、補助金がリース契約に適用されるかどうか、採択された場合の資金繰りへの影響など、リース審査の観点から確認すべき点を整理し、ご案内することも可能です / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-29.md`
-- `judgment_rule` リース審査の観点から見ると、生産設備への投資が活発な時期は、物件の稼働率が高く、リース料の回収可能性も安定しやすい傾向にあります / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
-- `risk_signal` 特に検査機器のような分野は、技術革新のスピードや特定の産業への依存度によって、物件の残価価値や将来の換金性が変わることもあります / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
-- `judgment_rule` 導入効果: 補助金活用による省力化、生産性向上、人件費・処理量・粗利改善といった具体的な事業効果や投資回収期間を評価します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-29.md`
-- `judgment_rule` 入金時期と資金繰り: 補助金の入金時期がいつ頃になるか、リース料の支払開始時期との整合性を確認します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-29.md`
-- `judgment_rule` 特に、補助金が返済原資の大部分を占めるような計画は、慎重な評価が必要です / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-29.md`
-- `judgment_rule` 採択されたとしても、入金までの期間や、万が一採択されなかった場合のリース料の返済能力を審査では重視します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-29.md`
-- `judgment_rule` 事業が好調で生産量が増えている企業は、返済原資が安定していると見なされやすいですし、導入される検査機器も事業の中核を担う重要な物件として評価できます / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-30.md`
+- `risk_signal` リース審査の観点からは、この売上目標では返済能力に懸念が生じ、審査通過は難しいと判断される可能性が高まります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md`
+- `judgment_rule` 機械受注統計や業種別審査チェックリスト（小売業）、補助金関連のノートがヒットしましたが、セントラルキッチン自体のリース物件としての特性を深掘りする内容ではありませんでした / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-31.md`
+- `judgment_rule` メインバンクの支援が薄い場合、リース会社としては、借手の返済能力と物件の担保価値をより慎重に評価する必要があります / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-31.md`
+- `judgment_rule` 紫苑の審査では、残価リスクや業種リスクだけでなく、借手の返済能力を多角的に評価することが重要ですから、このような情報が加わることで、より実践的な判断が可能になるかもしれません / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-01.md`
+- `judgment_rule` 特に、以前のグレー判断で見た「返済原資が弱く、物件保全も弱いなら条件付き承認に逃げない」という判断層の記憶を踏まえると、否決判断の根拠が明確であったか、そしてその根拠が実際にリスクとして現れたかを検証することが重要です / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-31.md`
+- `judgment_rule` 物件の残価リスクと市場性: リース期間終了後の物件価値（残価）が適切に設定されているか、中古市場での需要や再販可能性を評価することです / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md`
+- `risk_signal` 借手の返済計画へのリスク: 建設コスト増加が、借手の資金繰りや返済能力に与える影響 / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-01.md`
+- `judgment_rule` リース審査の限界とは何か 300文字以内で答えて / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-31.md`
+- `judgment_rule` Judgment Memory: 残価リスクや補助金案件、業種リスクの判断原則、承認/否決だけでなく条件付き承認へ落とし込むこと、過去事例を判断の型として再利用することなどが記されています / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-31.md`
+- `judgment_rule` もしメインバンクからの支援が期待できない場合、連帯保証人の追加や頭金の増額、またはリース期間の短期化といった条件は検討可能でしょうか / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-31.md`
+- `judgment_rule` これらの情報から、メインバンクの支援に頼らない、自立した返済能力と保全策の有無を評価し、リース実行の可否や条件を検討したいと思います / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-31.md`
+- `judgment_rule` 創業3年の飲食店でセントラルキッチン設備とのこと、黒字である点は評価できますが、自己資本の薄さと物件の特性から、慎重な検討が必要です / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-31.md`
 
 ## Duplicate Clusters
 - なし
@@ -32,6 +32,7 @@
 ## Search Terms To Add
 - 再販価値
 - 採択前
+- 新店舗
 
 ## Related Gaps
 - `Projects/tune_lease_55/検索語インデックス.md` related_section_missing missing=
