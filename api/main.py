@@ -23,12 +23,10 @@ from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import asyncio
-import datetime as dt
 import hashlib
 import ipaddress
 import json
@@ -54,7 +52,6 @@ sys.path.insert(0, _REPO_ROOT)
 from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
 from api.db_connection import current_backend, get_connection, placeholder
 from api.cloudrun_writeback import record_cloudrun_input_event
-from judgment_asset_bandit import append_feedback_event, build_bandit_signals, read_feedback_rows, signal_for_candidate
 logger = logging.getLogger(__name__)
 
 # fire-and-forget なバックグラウンド処理（チャット後の記憶保存・ログ記録等）用の共有プール。
@@ -140,7 +137,6 @@ def _gemini_generate_url() -> str:
 
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from api.scoring_full import run_full_scoring_api
-from api.gunshi_gemini import stream_gunshi_gemini
 from lease_news_digest import (
     find_vault,
     build_lease_news_brief,
@@ -152,7 +148,6 @@ from lease_news_digest import (
     lease_news_actions_as_text,
     record_lease_news_collection,
     record_lease_news_judgment_change,
-    record_lease_news_view,
     lease_news_focus_as_text,
 )
 from obsidian_daily_intelligence import (
@@ -162,16 +157,9 @@ from obsidian_daily_intelligence import (
 from api.schemas import (
     ScoringRequest,
     ScoringResponse,
-    CaseRegisterRequest,
     DealClosureRequest,
     DealClosureResponse,
     LeaseNewsSummarizeRequest,
-    LeaseNewsSummaryItem,
-    ReviewImprovementRequest,
-    PromptRuleRegisterRequest,
-    WorkLogRequest,
-    WorkLogResponse,
-    BusinessPlanCheckRequest,
 )
 from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Literal, Optional
@@ -557,15 +545,8 @@ app.include_router(improvement_router)
 # REV-234でルーターへ分割後もこのファイル内(_build_dialogue_triage_context等)や
 # 既存テストがモジュール直下の名前で参照しているため、後方互換の再exportを残す。
 from api.routers.improvement import (  # noqa: E402
-    ImprovementTriageApproveRequest,
-    ImprovementTriageRequest,
-    MonitorReportRequest,
     _TRIAGE_DECISION_LABELS,
     _load_improvement_triage_latest,
-    approve_improvement_triage,
-    get_improvement_triage,
-    record_improvement_triage,
-    record_monitor_report,
 )
 
 from api.routers.gunshi import router as gunshi_router
@@ -597,7 +578,6 @@ app.include_router(recipes_router)
 
 from api.routers.vault_hub import router as vault_hub_router
 app.include_router(vault_hub_router)
-from api.routers.vault_hub import _read_obsidian_files  # noqa: F401 - re-exported for tests/back-compat
 
 from api.routers.screening_misc import router as screening_misc_router
 app.include_router(screening_misc_router)
@@ -606,7 +586,16 @@ from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
 from api.routers.feedback_loop import JudgmentAssetCandidateManualRequest, ScreeningExperienceCaseRequest  # used by chat/improvement endpoints
 from api.routers.feedback_loop import _CHAT_JUDGMENT_ASSET_TRIGGERS, _CHAT_JUDGMENT_ASSET_ACTIONS  # used by _extract_chat_judgment_asset_claim
-from api.routers.feedback_loop import _SCREENING_EXPERIENCE_DEMO_SEEDS, _score_screening_experience_case  # noqa: F401 - re-exported for tests/back-compat
+from api.routers.feedback_loop import (  # noqa: F401 - re-exported for tests/back-compat
+    _CLOUDRUN_EVENT_CASE_PREFIX,
+    _CLOUDRUN_INPUT_EVENTS_CACHE,
+    _CLOUDRUN_RETURN_DB,
+    _CLOUDRUN_SCORE_CASE_PREFIX,
+    _SCREENING_EXPERIENCE_DEMO_SEEDS,
+    _cloudrun_return_table_exists,
+    _connect_cloudrun_return_db,
+    _ensure_cloudrun_return_review_schema,
+)
 
 from api.routers.misc_endpoints import router as misc_endpoints_router
 app.include_router(misc_endpoints_router)
@@ -624,6 +613,32 @@ from api.routers.judgment_assets import router as judgment_assets_router
 app.include_router(judgment_assets_router)
 from api.game_theory.router import router as game_theory_router
 app.include_router(game_theory_router)
+
+
+_MAIN_COMPAT_EXPORTS = {
+    "ImprovementTriageApproveRequest": ("api.routers.improvement", "ImprovementTriageApproveRequest"),
+    "ImprovementTriageRequest": ("api.routers.improvement", "ImprovementTriageRequest"),
+    "MonitorReportRequest": ("api.routers.improvement", "MonitorReportRequest"),
+    "approve_improvement_triage": ("api.routers.improvement", "approve_improvement_triage"),
+    "get_improvement_triage": ("api.routers.improvement", "get_improvement_triage"),
+    "record_improvement_triage": ("api.routers.improvement", "record_improvement_triage"),
+    "record_monitor_report": ("api.routers.improvement", "record_monitor_report"),
+    "_read_obsidian_files": ("api.routers.vault_hub", "_read_obsidian_files"),
+    "_score_screening_experience_case": ("api.routers.feedback_loop", "_score_screening_experience_case"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Backward-compatible lazy exports for tests and old internal callers."""
+    target = _MAIN_COMPAT_EXPORTS.get(name)
+    if not target:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = target
+    import importlib
+
+    value = getattr(importlib.import_module(module_name), attr_name)
+    globals()[name] = value
+    return value
 
 
 
@@ -4482,74 +4497,15 @@ _GENERAL_CHAT_SYSTEM_PROMPT = """あなたはめぶきちゃん、tuneリース�
 
 
 def _is_lightweight_chat_observation(message: str) -> bool:
-    """Return True for short conversational observations that do not need RAG.
+    from api.chat_routing import is_lightweight_chat_observation
 
-    A sentence like "キーエンスは検査機器の製造業だから...リースも増えそうだね"
-    is useful as a hypothesis to react to, but sending it through category
-    classification and vault RAG makes the chat feel slow.
-    """
-    text = str(message or "").strip()
-    if not text or len(text) > 360 or "\n" in text:
-        return False
-
-    lower = text.lower()
-    if any(mark in text for mark in ("?", "？")):
-        return False
-    request_terms = (
-        "教えて", "調べて", "検索", "要約", "まとめ", "保存", "分析して", "比較して",
-        "詳しく", "根拠", "確認して", "直して", "修正", "追加", "作って", "実装",
-        "どう思う", "なぜ", "理由", "方法", "手順",
-    )
-    if any(term in text or term in lower for term in request_terms):
-        return False
-
-    observation_endings = (
-        "だね", "ですね", "そうだね", "そうですね", "そう", "そうだ", "そうです",
-        "かも", "かもしれない", "気がする", "と思う", "と思います", "っぽい", "っぽいね",
-    )
-    if text.endswith(observation_endings):
-        return True
-
-    # Japanese statements with causal connectors are often user hypotheses, not
-    # requests. Keep this conservative so real screening questions still use RAG.
-    causal_terms = ("だから", "なので", "ということは", "と言う事は", "ってことは")
-    business_terms = ("リース", "審査", "製造業", "設備", "生産", "検査機", "機械")
-    return any(term in text for term in causal_terms) and any(term in text for term in business_terms)
+    return is_lightweight_chat_observation(message)
 
 
 def _classify_question(message: str) -> str:
-    """Gemini で質問カテゴリを判定する。返り値は 'lease_screening'/'lease_knowledge'/'general'/'news_summarize'。"""
-    import json as _json, re as _re
+    from api.chat_routing import classify_question
 
-    _NEWS_KEYWORDS = ("ニュースを要約", "記事を要約", "このニュース", "要約して保存", "ニュース保存", "要約してobsidian", "要約してメモ")
-    low = message.lower()
-    if any(k in message for k in _NEWS_KEYWORDS):
-        return "news_summarize"
-    if ("http://" in low or "https://" in low) and ("要約" in message or "まとめ" in message or "保存" in message):
-        return "news_summarize"
-    if _is_lightweight_chat_observation(message):
-        return "general"
-
-    try:
-        from api.chat_memory import call_gemini_chat as _g
-        classify_prompt = (
-            "以下の質問を1つのカテゴリに分類してください。JSONを1行だけ返してください。\n\n"
-            "カテゴリ定義:\n"
-            "- news_summarize: ニュース記事のURLや本文を渡して要約・保存を依頼している\n"
-            "- lease_screening: リース審査・スコアリング・個別案件の採否に直接関係する質問\n"
-            "- lease_knowledge: リース全般の知識（金利・会計・物件・補助金・業界動向など）\n"
-            "- general: 天気・ニュース・雑談・日常会話など、リースと無関係な質問\n\n"
-            '返答形式（このJSONのみ）: {"category": "カテゴリ名"}'
-        )
-        raw = _g(classify_prompt, [], message).strip()
-        m = _re.search(r'\{[^}]+\}', raw)
-        if m:
-            cat = _json.loads(m.group()).get("category", "lease_knowledge")
-            if cat in ("lease_screening", "lease_knowledge", "general", "news_summarize"):
-                return cat
-    except Exception as _e:
-        print(f"[classify_question] エラー: {_e}")
-    return "lease_knowledge"
+    return classify_question(message)
 
 
 _OBSIDIAN_AUTO_SAVE_JUDGE_PROMPT = """あなたはリース審査AIシステムのナレッジ管理担当です。
@@ -4779,16 +4735,16 @@ class ChatRequest(BaseModel):
     external_research_topic: str = ""
 
 
+from api.chat_external_research import (
+    build_external_research_suggestion,
+    external_research_topic_from_message,
+    external_research_permission_reply,
+    run_external_research_for_chat,
+)
+
+
 def _external_research_topic_from_message(message: str) -> str:
-    text = re.sub(r"\s+", " ", (message or "").strip())
-    text = re.sub(
-        r"(ネットで|Webで|ウェブで|外部調査で|調査器官で|調べて|調べてから|検索して|リサーチして|回答に使って)",
-        "",
-        text,
-    ).strip(" 。、")
-    if not text:
-        text = (message or "").strip()
-    return text[:120]
+    return external_research_topic_from_message(message)
 
 
 def _build_external_research_suggestion(
@@ -4798,102 +4754,20 @@ def _build_external_research_suggestion(
     knowledge_ref_count: int,
     response_mode: str,
 ) -> dict[str, Any]:
-    """Return a consent request when a chat turn should use fresh web research.
-
-    This only asks for permission. It does not call web services, write Obsidian,
-    or promote anything into judgment assets.
-    """
-    if (response_mode or "shion").strip().lower() == "general":
-        return {"needed": False}
-    text = (message or "").strip()
-    if not text or len(text) < 8:
-        return {"needed": False}
-
-    lower = text.lower()
-    explicit_research = any(
-        term in lower
-        for term in (
-            "ネットで調べ",
-            "webで調べ",
-            "ウェブで調べ",
-            "検索して",
-            "リサーチして",
-            "外部調査",
-            "調査器官",
-        )
+    return build_external_research_suggestion(
+        message,
+        question_category=question_category,
+        knowledge_ref_count=knowledge_ref_count,
+        response_mode=response_mode,
     )
-    if not explicit_research:
-        return {"needed": False}
-
-    topic = _external_research_topic_from_message(text)
-    reason_parts: list[str] = []
-    if explicit_research:
-        reason_parts.append("ユーザーが外部調査を求めています")
-    if knowledge_ref_count == 0 and question_category not in {"general", "news_summarize"}:
-        reason_parts.append("Obsidian/RAGの参照が薄い論点です")
-    reason = " / ".join(reason_parts[:2]) or "外部情報で補う価値があります"
-    return {
-        "needed": True,
-        "topic": topic,
-        "reason": reason,
-        "output_dir": "Projects/tune_lease_55/Research/Auto Research/",
-    }
 
 
 def _external_research_permission_reply(suggestion: dict[str, Any]) -> str:
-    topic = str(suggestion.get("topic") or "").strip() or "この論点"
-    reason = str(suggestion.get("reason") or "").strip() or "外部情報で補う価値があります"
-    return (
-        "ここは手元の記憶だけで断定しない方がいいです。\n\n"
-        f"- 足りない情報: {topic}\n"
-        f"- 理由: {reason}\n\n"
-        "ネットで調べて、ObsidianのResearchノートに保存してから回答に使っていいですか？"
-    )
+    return external_research_permission_reply(suggestion)
 
 
 def _run_external_research_for_chat(topic: str) -> dict[str, Any]:
-    topic = (topic or "").strip()[:160]
-    if not topic:
-        return {"used": False, "error": "調査テーマが空です"}
-    vault = _research_organ_vault_path()
-    from scripts.auto_research_lease_judgment import DEFAULT_OUTPUT_DIR, run as run_auto_research
-
-    result = run_auto_research(vault, DEFAULT_OUTPUT_DIR, topic, False)
-    display = _research_run_display(result)
-    note_path = str(result.get("path") or "")
-    rel_path = ""
-    if note_path:
-        try:
-            rel_path = Path(note_path).resolve().relative_to(vault.resolve()).as_posix()
-        except Exception:
-            rel_path = note_path
-    summary = [str(item).strip() for item in display.get("summary", []) if str(item).strip()]
-    use_cases = [str(item).strip() for item in display.get("use_cases", []) if str(item).strip()]
-    questions = [str(item).strip() for item in display.get("review_questions", []) if str(item).strip()]
-    context_lines = [
-        "【外部調査Researchノート】",
-        f"- テーマ: {result.get('title') or topic}",
-        f"- 保存先: {rel_path or note_path}",
-        f"- 出典URL数: {result.get('source_count', 0)}",
-        "- 注意: この調査は needs_human_review の材料。承認/否決/スコアを直接変更せず、確認質問・条件・留保として使う。",
-    ]
-    if summary:
-        context_lines.append("結論:")
-        context_lines.extend(f"- {item}" for item in summary[:3])
-    if use_cases:
-        context_lines.append("リース審査への適用:")
-        context_lines.extend(f"- {item}" for item in use_cases[:4])
-    if questions:
-        context_lines.append("担当者が確認する質問:")
-        context_lines.extend(f"- {item}" for item in questions[:3])
-    return {
-        "used": True,
-        "topic": topic,
-        "result": result,
-        "display": display,
-        "note_path": rel_path or note_path,
-        "prompt_context": "\n".join(context_lines),
-    }
+    return run_external_research_for_chat(topic)
 
 
 def _build_chat_basic_lease_question_context(message: str) -> str:
@@ -7576,80 +7450,6 @@ def _compact_dialogue_history(
     return list(reversed(compacted))
 
 
-_CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {
-    "casual": {
-        "history_limit": 16,
-        "history_messages": 8,
-        "history_chars_per_message": 700,
-        "history_total_budget": 5000,
-        "rag_top_k": 0,
-        "recall_limit": 1,
-        "use_news": False,
-        "use_obsidian_daily": False,
-        "use_db": False,
-        "use_judgment_learning": False,
-        "use_pdca": False,
-        "use_experience_loop": True,
-    },
-    "normal": {
-        "history_limit": 32,
-        "history_messages": 16,
-        "history_chars_per_message": 900,
-        "history_total_budget": 9000,
-        "rag_top_k": 3,
-        "recall_limit": 3,
-        "use_news": True,
-        "use_obsidian_daily": True,
-        "use_db": False,
-        "use_judgment_learning": False,
-        "use_pdca": True,
-        "use_experience_loop": True,
-    },
-    "deep": {
-        "history_limit": 60,
-        "history_messages": 24,
-        "history_chars_per_message": 1000,
-        "history_total_budget": 14000,
-        "rag_top_k": 5,
-        "recall_limit": 5,
-        "use_news": True,
-        "use_obsidian_daily": True,
-        "use_db": True,
-        "use_judgment_learning": True,
-        "use_pdca": True,
-        "use_experience_loop": True,
-    },
-    "screening": {
-        "history_limit": 48,
-        "history_messages": 22,
-        "history_chars_per_message": 1000,
-        "history_total_budget": 13000,
-        "rag_top_k": 5,
-        "recall_limit": 5,
-        "use_news": True,
-        "use_obsidian_daily": True,
-        "use_db": True,
-        "use_judgment_learning": True,
-        "use_pdca": True,
-        "use_experience_loop": True,
-    },
-    "long": {
-        "history_limit": 24,
-        "history_messages": 16,
-        "history_chars_per_message": 700,
-        "history_total_budget": 8000,
-        "rag_top_k": 2,
-        "recall_limit": 2,
-        "use_news": False,
-        "use_obsidian_daily": False,
-        "use_db": False,
-        "use_judgment_learning": False,
-        "use_pdca": True,
-        "use_experience_loop": True,
-    },
-}
-
-
 def _chat_context_mode(
     message: str,
     category: str = "",
@@ -7657,37 +7457,15 @@ def _chat_context_mode(
     long_input: bool = False,
     file_type: str | None = None,
 ) -> str:
-    """Select how much memory/RAG context to attach to a chat turn."""
-    text = str(message or "")
-    lower = text.lower()
-    if long_input or file_type:
-        return "long"
+    from api.chat_routing import chat_context_mode
 
-    screening_terms = (
-        "審査", "案件", "スコア", "承認", "否決", "稟議", "財務", "物件", "金利",
-        "補助金", "過去案件", "成約", "失注", "q_risk", "aurion", "銀行支援",
-        "競合", "新規先", "既存先", "与信", "与信判断",
-    )
-    deep_terms = (
-        "詳しく", "根拠", "深掘り", "詳細", "表で", "全部", "比較", "分析して",
-        "なぜ", "理由", "調べて", "検証", "設計", "実装", "プラン", "計画",
-    )
-    casual_terms = (
-        "そうか", "なるほど", "面白い", "どう思う", "すごい", "ありがとう",
-        "雑談", "ふむ", "かな", "だね", "だよね", "哲学", "意識",
-    )
-
-    if category == "lease_screening" or any(term in lower or term in text for term in screening_terms):
-        return "screening"
-    if any(term in text or term in lower for term in deep_terms):
-        return "deep"
-    if category == "general" or len(text) <= 80 or any(term in text or term in lower for term in casual_terms):
-        return "casual"
-    return "normal"
+    return chat_context_mode(message, category, long_input=long_input, file_type=file_type)
 
 
 def _chat_context_budget(mode: str) -> dict[str, Any]:
-    return dict(_CHAT_CONTEXT_BUDGETS.get(mode) or _CHAT_CONTEXT_BUDGETS["normal"])
+    from api.chat_routing import chat_context_budget
+
+    return chat_context_budget(mode)
 
 
 def _should_apply_chat_pdca(
@@ -8780,14 +8558,14 @@ def post_chat(req: ChatRequest):
                     memory_to_judgment=memory_to_judgment_payload,
                 )
             external_research = {"used": False}
-            research_suggestion = _build_external_research_suggestion(
+            research_suggestion = build_external_research_suggestion(
                 req.message,
                 question_category=question_category,
                 knowledge_ref_count=0,
                 response_mode=req.response_mode,
             )
             if research_suggestion.get("needed") and not req.allow_external_research:
-                reply = _external_research_permission_reply(research_suggestion)
+                reply = external_research_permission_reply(research_suggestion)
                 save_message(req.user_id, "user", req.message)
                 save_message(req.user_id, "assistant", reply)
                 _record_cloudrun_chat_exchange(
@@ -8812,7 +8590,7 @@ def post_chat(req: ChatRequest):
                     "response_mode": req.response_mode,
                 }
             if req.allow_external_research:
-                external_research = _run_external_research_for_chat(
+                external_research = run_external_research_for_chat(
                     req.external_research_topic or str(research_suggestion.get("topic") or "") or req.message
                 )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
@@ -9032,14 +8810,14 @@ def post_chat(req: ChatRequest):
         vertex_answer_api = retrieval.vertex_answer_api
 
         external_research = {"used": False}
-        research_suggestion = _build_external_research_suggestion(
+        research_suggestion = build_external_research_suggestion(
             req.message,
             question_category=question_category,
             knowledge_ref_count=len(rag_refs),
             response_mode=req.response_mode,
         )
         if research_suggestion.get("needed") and not req.allow_external_research:
-            reply = _external_research_permission_reply(research_suggestion)
+            reply = external_research_permission_reply(research_suggestion)
             save_message(req.user_id, "user", req.message)
             save_message(req.user_id, "assistant", reply)
             _record_cloudrun_chat_exchange(
@@ -9069,7 +8847,7 @@ def post_chat(req: ChatRequest):
                 "response_mode": req.response_mode,
             }
         if req.allow_external_research:
-            external_research = _run_external_research_for_chat(
+            external_research = run_external_research_for_chat(
                 req.external_research_topic or str(research_suggestion.get("topic") or "") or req.message
             )
             note_ref = str(external_research.get("note_path") or "").strip()
@@ -9629,7 +9407,6 @@ def post_relationship_feedback(req: RelationshipFeedbackRequest):
     フロントから明示的なフィードバックを受け取り関係性スコアを更新する。
     チャット画面の「良かった／残念」ボタンなどから呼ぶ。
     """
-    from typing import Literal
     valid_fb = {"positive", "negative", "neutral"}
     valid_depth = {"shallow", "normal", "deep"}
     if req.feedback_type not in valid_fb:
@@ -10189,7 +9966,9 @@ def _render_news_summary(result: dict, source: str) -> dict:
 
 
 def _summarize_news_with_gemini(text: str, source: str) -> dict:
-    api_key = _get_gemini_api_key()
+    from api.chat_memory import _get_gemini_api_key as _chat_get_gemini_api_key
+
+    api_key = _chat_get_gemini_api_key()
     if not api_key:
         raise HTTPException(status_code=503, detail="Gemini APIキーが未設定です")
 
@@ -10378,8 +10157,6 @@ importance: {summary.get("importance", "中")}
 @app.post("/api/lease-news/summarize")
 def summarize_lease_news(req: LeaseNewsSummarizeRequest):
     """ニュースURL or 本文テキストをAI要約し、Obsidianに保存する。"""
-    import datetime as _dt
-
     source = req.url or "手動入力"
     if req.url and req.url.strip():
         try:
