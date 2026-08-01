@@ -7,14 +7,21 @@ Obsidian Vault に Dataview 対応ドキュメントを生成
 import sqlite3
 import os
 import json
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
 import calendar
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 # パス設定
 DB_PATH = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db"
-VAULT_PATH = "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+VAULT_PATH = str(resolve_obsidian_vault())
 OUTPUT_DIR = f"{VAULT_PATH}/02-開発中_代替案/leaseDb_データ"
 
 # 出力ディレクトリ作成

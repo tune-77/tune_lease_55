@@ -192,7 +192,10 @@ def test_collect_md_files_uses_chat_knowledge_allowlist(tmp_path):
 
 
 def test_default_local_vault_dir_points_to_icloud_vault():
-    assert "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault" in LOCAL_VAULT_DIR
+    # Vault ディレクトリ名は runtime_paths の解決結果で変わりうる
+    # （obsidian-vault / Obsidian Vault）ため、iCloud 配下であることを検証する。
+    # ここが ~/Documents 等のローカルに落ちると GCS に上がる Vault がずれる。
+    assert "Library/Mobile Documents/iCloud~md~obsidian/Documents" in LOCAL_VAULT_DIR
 
 
 # ------------------------------------------------------------------
