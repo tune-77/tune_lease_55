@@ -645,6 +645,20 @@ def collect_improvement_declaration_gaps() -> dict[str, Any]:
 
 
 def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
+    _KEYWORDS = [
+        "根拠",
+        "Q_risk",
+        "業界動向",
+        "成約率",
+        "金利",
+        "音声入力",
+        "物件ファイナンス",
+        "知識宇宙",
+        "補助金",
+        "ダッシュボード",
+        "OCR",
+    ]
+
     roots = [
         SYNC_ROOT / "Projects/tune_lease_55/AI Chat/Improvement Log",
         SYNC_ROOT / "Projects/tune_lease_55/AI Chat",
@@ -656,23 +670,11 @@ def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
             files.extend([p for p in root.glob("*.md") if p.is_file()])
     files = sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)[:limit_files]
 
-    keywords = Counter()
+    keywords: Counter = Counter()
     accepted: list[str] = []
     for path in files:
         text = _read_text(path, 120_000)
-        for kw in [
-            "根拠",
-            "Q_risk",
-            "業界動向",
-            "成約率",
-            "金利",
-            "音声入力",
-            "物件ファイナンス",
-            "知識宇宙",
-            "補助金",
-            "ダッシュボード",
-            "OCR",
-        ]:
+        for kw in _KEYWORDS:
             if kw in text:
                 keywords[kw] += 1
         for line in text.splitlines():
@@ -680,6 +682,36 @@ def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
                 clean = line.strip()
                 if clean and len(clean) < 140:
                     accepted.append(clean)
+
+    # SYNC_ROOTが空の場合は cloudrun_improvement_log.jsonl から直近7日分を補完する
+    # （midnight実行では sync_notes() が呼ばれず SYNC_ROOT が未populated のため）
+    if not files:
+        import datetime as _dt
+        cutoff = (_dt.datetime.now() - _dt.timedelta(days=7)).isoformat()
+        jsonl_path = DB_PATH.parent / "cloudrun_improvement_log.jsonl"
+        if jsonl_path.exists():
+            for line in jsonl_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("ts", "") < cutoff:
+                    continue
+                text = " ".join(filter(None, [
+                    entry.get("title", ""),
+                    entry.get("body", ""),
+                    entry.get("hypothesis", ""),
+                    entry.get("proposed_change", ""),
+                ]))
+                for kw in _KEYWORDS:
+                    if kw in text:
+                        keywords[kw] += 1
+                title = str(entry.get("title", "")).strip()
+                if title and len(title) < 140:
+                    accepted.append(f"## {title}")
 
     return {
         "files": [str(p) for p in files],
@@ -746,6 +778,112 @@ def _hold_step(name: str, seconds: float) -> dict[str, Any]:
     }
 
 
+def _generate_conclusions_with_llm(
+    db: dict[str, Any],
+    recent: dict[str, Any],
+    web: dict[str, Any],
+    non_monotonic: bool,
+    keyword_hits: dict[str, Any],
+    web_themes: list[str],
+) -> list[str] | None:
+    """Geminiで毎日異なる視点のaurion推論サマリを生成する。失敗時はNone。"""
+    api_key = (
+        os.environ.get("GOOGLE_API_KEY", "").strip()
+        or os.environ.get("GEMINI_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    score_bands = db.get("score_bands") or []
+    # q_risk_all_zero キーは存在しないため avg_q から判定する
+    q_risk_info = db.get("q_risk") or {}
+    q_risk_zero = (q_risk_info.get("avg_q", 1.0) == 0.0 and q_risk_info.get("n", 0) > 0)
+    total_cases = db.get("total_cases", 0)
+
+    band_text = "\n".join(
+        f"  {row.get('band','?')}: win_pct={row.get('win_pct','?')}%, n={row.get('n','?')}"
+        for row in score_bands
+    ) or "  （データなし）"
+
+    # キーは "excerpt"（"summary" ではない）
+    web_findings = "\n".join(
+        f"  - [{item.get('theme','')}] {(item.get('excerpt') or item.get('summary',''))[:120]}"
+        for item in web.get("findings", [])[:5]
+        if (item.get('excerpt') or item.get('summary',''))
+    ) or "  （なし）"
+
+    keyword_text = ", ".join(f"{k}:{v}" for k, v in keyword_hits.items()) or "なし"
+
+    prompt = f"""あなたはリース審査システム「aurion」の自律診断AIです。
+本日 {today} のシステム診断データをもとに、昨日と異なる視点・深度で推論サマリを生成してください。
+
+【DBスコア帯別成約率】
+{band_text}
+
+【異常フラグ】
+- Q_risk全件0.0: {q_risk_zero}（n={q_risk_info.get("n",0)}, avg={q_risk_info.get("avg_q","-")}）
+- スコア帯単調性違反（60-80帯 < 40-60帯）: {non_monotonic}
+- 総案件数: {total_cases}
+
+【直近改善ログキーワード】
+{keyword_text}
+
+【外部Webテーマ・エビデンス】
+{web_findings}
+
+以下の条件で推論サマリを5〜6項目生成してください:
+- 毎回同じ文章を繰り返さず、今日のデータから読み取れる新しい視点・具体的な数値・優先順位を含める
+- 「何をすべきか」ではなく「このデータは何を示しているか」という診断的視点で書く
+- 箇条書きで、各項目は1文（40〜80字）
+- JSON配列のみ返す（他のテキスト不要）: ["結論1", "結論2", ...]"""
+
+    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    try:
+        rest_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{gemini_model}:generateContent"
+        )
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": 512,
+                "temperature": 0.8,
+                # thinkingConfig を削除: gemini-2.5-flash では thinking part が parts[0] に入り
+                # 実際の出力が parts[1] になるため、parts[0]["text"] でテキストが取れず
+                # re.search が None を返して silent に return None していた
+            },
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            f"{rest_url}?key={api_key}",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        # thinking part 対策: text キーを持つ最初の part を探す
+        parts = data["candidates"][0]["content"]["parts"]
+        text = next(
+            (p["text"] for p in parts if "text" in p and not p.get("thought")),
+            None
+        )
+        if not text:
+            print(f"[aurion] Gemini推論: テキストpartなし parts={[list(p.keys()) for p in parts]}")
+            return None
+        text = text.strip()
+        m = re.search(r"\[.*\]", text, re.DOTALL)  # 欲張りマッチで配列全体を取得
+        if not m:
+            print(f"[aurion] Gemini推論: JSON配列が見つからない text[:200]={text[:200]}")
+            return None
+        result = json.loads(m.group())
+        if isinstance(result, list) and len(result) >= 3:
+            return [str(c) for c in result]
+        print(f"[aurion] Gemini推論: 配列が短すぎる len={len(result) if isinstance(result, list) else 'N/A'}")
+    except Exception as exc:
+        print(f"[aurion] Gemini推論生成失敗（フォールバック使用）: {exc}")
+    return None
+
+
 def cross_reasoning_loop(db: dict[str, Any], recent: dict[str, Any], web: dict[str, Any]) -> dict[str, Any]:
     """Run the required cross-domain reasoning loop with non-zero dwell time."""
     hold_seconds = float(os.environ.get("AURION_HOLD_SECONDS", "30"))
@@ -765,18 +903,27 @@ def cross_reasoning_loop(db: dict[str, Any], recent: dict[str, Any], web: dict[s
 
     keyword_hits = recent.get("keyword_hits") or {}
     web_themes = [item.get("theme") for item in web.get("findings", [])]
-    conclusions = [
+    # フォールバック用テンプレート
+    fallback_conclusions = [
         "同期とDB監査はスタート地点であり、判断の中核ではない。外部市場と自社DBのズレを毎日比較する必要がある。",
         "スコア帯別成約率が完全単調ではないため、スコアは信用力の代理であって営業結果の十分条件ではない。",
         "Q_riskは既存数式の補正係数ではなく、スコアリング外で成約・失注を動かす未知因子の発見装置へ移す。",
         "根拠ルート可視化、業界動向ファネル、動的金利条件セットは同一の審査OSに統合するべきである。",
     ]
     if non_monotonic:
-        conclusions.append("DB上、60-80帯の成約系比率が40-60帯を下回るため、価格・競合・条件提示後離脱のログ化を優先する。")
+        fallback_conclusions.append("DB上、60-80帯の成約系比率が40-60帯を下回るため、価格・競合・条件提示後離脱のログ化を優先する。")
     if keyword_hits.get("根拠"):
-        conclusions.append("直近改善ログでは根拠表示要求が強い。RAGの回答品質は、検索精度だけでなく証跡UIで評価する。")
+        fallback_conclusions.append("直近改善ログでは根拠表示要求が強い。RAGの回答品質は、検索精度だけでなく証跡UIで評価する。")
     if "credit-model-monitoring" in web_themes:
-        conclusions.append("外部知識はモデルドリフト監視を支持する。PSI/CSI/較正状態をスコア横に出す設計へ進める。")
+        fallback_conclusions.append("外部知識はモデルドリフト監視を支持する。PSI/CSI/較正状態をスコア横に出す設計へ進める。")
+
+    # Geminiで毎日異なる視点の推論を生成（失敗時はフォールバック）
+    conclusions = _generate_conclusions_with_llm(
+        db=db, recent=recent, web=web,
+        non_monotonic=non_monotonic,
+        keyword_hits=keyword_hits,
+        web_themes=web_themes,
+    ) or fallback_conclusions
 
     return {
         "status": "completed",

@@ -7,12 +7,42 @@ import datetime
 import json
 import os
 import re
+import glob
 
 from api.crystallizer.anomaly_extractor import AnomalyCase
 from runtime_paths import get_obsidian_vault_path
 
 _VAULT_ROOT = get_obsidian_vault_path()
 _GENERATED_DIR = "Generated"
+
+
+def _already_written(out_dir: str, evidence_ids: list[str], lookback_days: int = 7) -> bool:
+    """過去 lookback_days 日以内に同一証拠IDセットのファイルが存在すれば True を返す。"""
+    cutoff = datetime.date.today() - datetime.timedelta(days=lookback_days)
+    target_set = set(evidence_ids)
+    for fpath in glob.glob(os.path.join(out_dir, "*.md")):
+        fname = os.path.basename(fpath)
+        date_part = fname[:10]
+        try:
+            if datetime.date.fromisoformat(date_part) < cutoff:
+                continue
+        except ValueError:
+            continue
+        try:
+            text = open(fpath, encoding="utf-8", errors="ignore").read(4000)
+        except OSError:
+            continue
+        # frontmatterのevidence_recordsを取り出す
+        m = re.search(r"evidence_records:\s*(\[.*?\])", text)
+        if not m:
+            continue
+        try:
+            ids = json.loads(m.group(1))
+            if set(ids) == target_set:
+                return True
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return False
 
 
 def _safe_filename(text: str, max_len: int = 40) -> str:
@@ -49,10 +79,12 @@ def write_pattern_to_obsidian(
 
     # 業種リスト（重複排除）
     industries = list(dict.fromkeys(c.industry for c in cases if c.industry != "不明"))
-    industry_str = industries[0] if industries else "一般"
-
-    # 証拠案件 ID リスト
     evidence_ids = [c.case_id for c in cases]
+
+    # 過去7日以内に同一証拠IDセットのファイルがあればスキップ（同一案件の重複書き出し防止）
+    if _already_written(out_dir, evidence_ids):
+        return None
+    industry_str = industries[0] if industries else "一般"
 
     # パターン名を抽出（"パターン名: ..." が含まれる場合）
     pattern_name = "自動合成パターン"

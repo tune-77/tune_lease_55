@@ -48,6 +48,10 @@ def run_crystallization_batch() -> dict:
         from api.crystallizer.obsidian_writer import write_pattern_to_obsidian
         fpath = write_pattern_to_obsidian(pattern_text, cases)
 
+        if fpath is None:
+            logger.info("[Crystallizer] 過去7日以内に同一案件セット済み。重複スキップ。")
+            return {"status": "skipped_duplicate", "cases_found": len(cases), "file": None}
+
         logger.info(f"[Crystallizer] 書き出し完了: {fpath}")
         return {"status": "ok", "cases_found": len(cases), "file": fpath}
 

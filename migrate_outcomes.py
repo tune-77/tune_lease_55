@@ -113,7 +113,7 @@ def _extract_features(data_json: str) -> dict:
         "total_score":               _safe_float(result.get("score")),
         "asset_score":               _safe_float(result.get("asset_score")),
         "tenant_score":              _safe_float(result.get("score_borrower")),
-        "q_risk_score":              _safe_float(result.get("q_risk_score")),
+        "q_risk_score":              _safe_float(result.get("quantum_risk")),  # 旧: "q_risk_score" (誤キー)
         "competitor_pressure_score": _safe_float(result.get("competitor_pressure_score")),
         "screened_at":               d.get("timestamp", datetime.now().isoformat()),
     }

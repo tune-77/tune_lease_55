@@ -71,7 +71,15 @@ def migrate(dry_run: bool = False) -> dict:
             tenant_score = _safe_float(
                 result.get("tenant_score") or inputs.get("tenant_score", 0.0)
             )
-            q_risk_score = _safe_float(result.get("q_risk_score", 0.0))
+            # "quantum_risk" が正しいキー。旧レコードにない場合は inputs から再計算
+            _qr = result.get("quantum_risk")
+            if _qr is None:
+                try:
+                    from quantum_analysis_module import compute_simple_q_risk as _cqr
+                    _qr = _cqr(inputs).get("quantum_risk", 0.0)
+                except Exception:
+                    _qr = 0.0
+            q_risk_score = _safe_float(_qr)
             competitor_pressure_score = _safe_float(result.get("competitor_pressure_score", 0.0))
         except Exception:
             pass
