@@ -13,6 +13,10 @@
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>OBSIDIAN_VAULT_PATH</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>OBSIDIAN_VAULT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>PYTHONPATH</key>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
     <key>PYTHONUNBUFFERED</key>
@@ -21,13 +25,13 @@
     <string>/Users/kobayashiisaoryou/anaconda3/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
-  <!-- 毎月1日 6:00 に実行 -->
+  <!-- 毎月1日 07:00 に実行（以前は 06:00 で、毎月1日だけ朝の Vault 書き込みが3重になっていた） -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Day</key>
     <integer>1</integer>
     <key>Hour</key>
-    <integer>6</integer>
+    <integer>7</integer>
     <key>Minute</key>
     <integer>0</integer>
   </dict>

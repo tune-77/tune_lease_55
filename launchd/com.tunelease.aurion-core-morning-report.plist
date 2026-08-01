@@ -15,6 +15,10 @@
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>OBSIDIAN_VAULT_PATH</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>OBSIDIAN_VAULT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>PYTHONPATH</key>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
     <key>PYTHONUNBUFFERED</key>
@@ -23,12 +27,14 @@
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/anaconda3/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
+  <!-- 毎朝 06:20 に実行（06:00 の lease-news-collector が Vault へ書き終えた後に読む。
+       以前は 06:00 同時起動で、当日ニュースを取りこぼしうる並走状態だった） -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
     <integer>6</integer>
     <key>Minute</key>
-    <integer>0</integer>
+    <integer>20</integer>
   </dict>
 
   <key>WorkingDirectory</key>

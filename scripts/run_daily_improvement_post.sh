@@ -11,8 +11,10 @@ LOG_DATE="${LOG_DATE:-$(date +%Y%m%d)}"
 # 全ステップが健全性監視の死角だった。主要ステップを pipeline_step_log.jsonl に記録する。
 source "$(dirname "${BASH_SOURCE[0]}")/pipeline_log_step.sh"
 MANA_MAX_REFLECTION_REPAIRS="${MANA_MAX_REFLECTION_REPAIRS:-3}"
-DEFAULT_OBSIDIAN_VAULT="/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
-REFLECTION_VAULT="${OBSIDIAN_VAULT:-${OBSIDIAN_VAULT_PATH:-${DEFAULT_OBSIDIAN_VAULT}}}"
+# Vault の env 優先順は runtime_paths.OBSIDIAN_VAULT_ENV_VARS に合わせる
+# （以前はここだけ OBSIDIAN_VAULT が先で、RAG 側と逆順だった）
+DEFAULT_OBSIDIAN_VAULT="${HOME}/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
+REFLECTION_VAULT="${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-${DEFAULT_OBSIDIAN_VAULT}}}"
 REFLECTION_DIR="${REFLECTION_VAULT}/Projects/tune_lease_55/Lease Intelligence/Private Reflection"
 MANA_REPORT_JSON="${PROJECT_ROOT}/reports/mana_obsidian_curator_latest.json"
 SCREENING_TERMS_REPORT_JSON="${PROJECT_ROOT}/reports/screening_terms_audit_latest.json"
@@ -86,6 +88,14 @@ echo "[監視] Obsidian環境モニターを生成（読み取り専用）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/monitor_obsidian_environment.py" \
   --date "${PIPELINE_DATE}"
 log_step "monitor_obsidian_environment" $?
+
+echo ""
+echo "[監視] Obsidian運用整合性（launchd の Vault env / 発火時刻）を検査（読み取り専用）..."
+# set -e は使っていないため、非ゼロ終了でもパイプラインは止まらない。
+# ここで || true を挟むと log_step が常に成功を記録し、健全性監視の死角になる。
+"${PYTHON}" "${PROJECT_ROOT}/scripts/check_obsidian_ops_consistency.py" \
+  --json "${PROJECT_ROOT}/reports/obsidian_ops_consistency_latest.json"
+log_step "check_obsidian_ops_consistency" $?
 
 echo ""
 echo "[記録] Cloud Run入力ログを取得（GCS → ローカル）..."
