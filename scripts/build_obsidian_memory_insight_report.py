@@ -17,23 +17,22 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "Obsidian Vault"
-)
+DEFAULT_VAULT = resolve_obsidian_vault()
 DEFAULT_OUTPUT_JSONL = REPO_ROOT / "data" / "obsidian_memory_insight_candidates.jsonl"
 DEFAULT_REPORT = REPO_ROOT / "reports" / "obsidian_memory_insight_latest.md"
 
@@ -207,8 +206,9 @@ class SourceNote:
 
 
 def _vault_path(value: str | None = None) -> Path:
-    raw = value or os.environ.get("OBSIDIAN_VAULT") or os.environ.get("OBSIDIAN_VAULT_PATH")
-    return Path(raw).expanduser() if raw else DEFAULT_VAULT
+    # 明示指定（--vault）だけをここで扱い、env の優先順は runtime_paths に任せる。
+    # 以前は OBSIDIAN_VAULT が先で runtime_paths と逆順だった。
+    return Path(value).expanduser() if value else DEFAULT_VAULT
 
 
 def _date_range(end_date: date, days: int) -> set[str]:

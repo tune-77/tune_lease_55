@@ -10,9 +10,13 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
-_ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
-ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault" / "lease-wiki-vault"  # RAG インデックス対象（Vault統合後）
-ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"       # メインVault（reindex_obsidian._DEFAULT_VAULT と同一）
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault  # noqa: E402
+
+ICLOUD_VAULT_PATH = resolve_lease_wiki_vault()   # RAG インデックス対象（Vault統合後）
+ICLOUD_MAIN_VAULT_PATH = resolve_obsidian_vault()
 VAULT_PATH = ICLOUD_MAIN_VAULT_PATH
 LATEST_JSON = PROJECT_ROOT / "reports" / "latest.json"
 MACRO_JSON = PROJECT_ROOT / "static_data" / "macro_context.json"

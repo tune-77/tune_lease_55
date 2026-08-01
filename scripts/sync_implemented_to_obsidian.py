@@ -10,9 +10,10 @@ from datetime import date
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_VAULT_PATHS = [
-    Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault",
-]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
 _INDEX_REL = "Projects/tune_lease_55/改善策インデックス_2026.md"
 _IMPL_SECTION = "## 実装済み改善一覧（パイプライン除外リスト）"
 _EXPORT_FILE = Path("/tmp/obsidian_improvements_export.txt")
@@ -47,10 +48,8 @@ _COMMIT_TO_TITLE_HINTS: dict[str, list[str]] = {
 
 
 def _get_vault() -> Path | None:
-    for p in _VAULT_PATHS:
-        if p.exists():
-            return p
-    return None
+    vault = resolve_obsidian_vault()
+    return vault if vault.exists() else None
 
 
 def _get_recent_commits(days: int = 3) -> list[str]:

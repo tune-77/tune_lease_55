@@ -18,14 +18,9 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-DEFAULT_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "Obsidian Vault"
-)
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
+DEFAULT_VAULT = resolve_obsidian_vault()
 DEFAULT_OUTPUT_DIR = "Projects/tune_lease_55/Research/Auto Research"
 
 

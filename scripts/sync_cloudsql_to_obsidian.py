@@ -48,6 +48,12 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 # ── 接続設定（環境変数から取得） ────────────────────────────────────────────────
 
 def rewrite_cloudsql_socket_dsn(dsn: str, host: str, port: int) -> str:
@@ -198,15 +204,8 @@ def _unreachable_cloudsql_socket(dsn: str) -> str:
     return ""
 
 
-DEFAULT_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "Obsidian Vault"
-)
-VAULT_PATH = Path(os.environ.get("OBSIDIAN_VAULT", os.environ.get("OBSIDIAN_VAULT_PATH", str(DEFAULT_VAULT)))).expanduser()
+# env の優先順はここで決めない。以前は OBSIDIAN_VAULT が先で runtime_paths と逆順だった。
+VAULT_PATH = resolve_obsidian_vault()
 OUTPUT_SUBDIR = "Projects/tune_lease_55/Cloud SQL Summaries"
 STATE_FILE = Path(__file__).parent / ".sync_state_cloudsql.json"
 

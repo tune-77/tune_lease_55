@@ -24,13 +24,17 @@ from urllib.request import urlopen
 from urllib.parse import urlencode
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 STATIC_DIR = REPO_ROOT / "static_data"
 BENCHMARKS_PATH = STATIC_DIR / "industry_benchmarks.json"
 CACHE_PATH = STATIC_DIR / "industry_estat_cache.json"
 
 # iCloud メインVault（write_daily_brief.py / check_aurion_state.py と同一定義）
-_ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
-ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"
+ICLOUD_MAIN_VAULT_PATH = resolve_obsidian_vault()
 
 # e-Stat API エンドポイント
 ESTAT_BASE_URL = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsData"

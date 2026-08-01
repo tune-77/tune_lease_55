@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import datetime as dt
 import hashlib
 import json
@@ -20,6 +19,12 @@ _PIPELINE_SCRIPTS_DIR = (
 if _PIPELINE_SCRIPTS_DIR.exists():
     sys.path.insert(0, str(_PIPELINE_SCRIPTS_DIR))
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import describe_obsidian_vault_resolution  # noqa: E402
+
 try:
     from improvement_identity import canonical_key
 except ImportError:
@@ -35,10 +40,6 @@ def _title_key(title: str) -> str:
     digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:12]
     return f"title_{digest}"
 
-# Vault パス候補（環境変数 OBSIDIAN_VAULT_PATH > iCloud パス）
-_DEFAULT_VAULT_PATHS = [
-    Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault",
-]
 
 OUTPUT_FILE = Path("/tmp/obsidian_improvements_export.txt")
 
@@ -78,17 +79,13 @@ _INDEX_PATTERNS = [
 
 
 def _get_vault_path() -> Path:
-    """有効な Vault パスを返す（環境変数 > デフォルト候補）."""
-    env_vault = os.environ.get("OBSIDIAN_VAULT_PATH")
-    if env_vault:
-        p = Path(env_vault)
-        if p.exists():
-            return p
-        print(f"警告: OBSIDIAN_VAULT_PATH '{env_vault}' が存在しません。デフォルトを使用します。", file=sys.stderr)
+    """有効な Vault パスを返す（解決順は runtime_paths に従う）."""
+    resolution = describe_obsidian_vault_resolution()
+    for warning in resolution.warnings:
+        print(f"警告: {warning}", file=sys.stderr)
 
-    for candidate in _DEFAULT_VAULT_PATHS:
-        if candidate.exists():
-            return candidate
+    if resolution.exists:
+        return resolution.path
 
     print("エラー: iCloud 上の Obsidian Vault が見つかりません。", file=sys.stderr)
     sys.exit(1)

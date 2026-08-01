@@ -24,6 +24,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
@@ -186,9 +188,10 @@ def task_machinery_orders_to_vault() -> dict:
     latest_month = meta["latest_month"]  # e.g. "2026-03"
     signal = core["macro_signal"]
 
-    icloud_docs = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
-    lease_wiki_vault = icloud_docs / "lease-wiki-vault"
-    icloud_main_vault = icloud_docs / "Obsidian Vault"   # reindex_obsidian._DEFAULT_VAULT と同一
+    # lease-wiki-vault は Obsidian Vault の入れ子が正。
+    # 以前は Documents 直下（Vault の兄弟）を見ており、読み出し側とずれていた。
+    icloud_main_vault = resolve_obsidian_vault()
+    lease_wiki_vault = resolve_lease_wiki_vault()
 
     if not lease_wiki_vault.exists() and not icloud_main_vault.exists():
         return {"skipped": True, "reason": "iCloud Vault が見つかりません"}
