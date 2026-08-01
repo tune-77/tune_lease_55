@@ -28,13 +28,17 @@ from pathlib import Path
 from typing import Any
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 PROJECT_ROOT = Path("/Users/kobayashiisaoryou/clawd/tune_lease_55")
-ORIGIN_VAULT = Path(
-    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
-)
-LEASE_VAULT = Path(
-    "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/lease-wiki-vault"
-)
+ORIGIN_VAULT = resolve_obsidian_vault()
+# lease-wiki-vault は origin Vault の入れ子。origin を解決結果から導くことで、
+# 両者が別 Vault を指してしまう事故を防ぐ。
+LEASE_VAULT = ORIGIN_VAULT / "lease-wiki-vault"
 SYNC_ROOT = LEASE_VAULT / "99_Synced_From_Origin"
 DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"
 REPORTS_DIR = PROJECT_ROOT / "reports"
