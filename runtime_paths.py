@@ -22,6 +22,9 @@ LEGACY_OBSIDIAN_VAULT = Path.home() / "Library/Mobile Documents/iCloud~md~obsidi
 # 順序をここ一箇所に固定し、食い違いは警告として表面化させる。
 OBSIDIAN_VAULT_ENV_VARS: tuple[str, ...] = ("OBSIDIAN_VAULT_PATH", "OBSIDIAN_VAULT")
 
+# lease-wiki-vault は Obsidian Vault の入れ子に置く（`resolve_lease_wiki_vault` 参照）。
+LEASE_WIKI_VAULT_DIRNAME = "lease-wiki-vault"
+
 
 def get_data_dir() -> Path:
     raw = os.environ.get("DATA_DIR") or os.environ.get("LEASE_DATA_DIR")
@@ -198,6 +201,18 @@ def describe_obsidian_vault_resolution(
 def resolve_obsidian_vault(env: Mapping[str, str] | None = None) -> Path:
     """Canonical vault path as a ``Path``. Prefer this over ad-hoc constants."""
     return describe_obsidian_vault_resolution(env).path
+
+
+def resolve_lease_wiki_vault(env: Mapping[str, str] | None = None) -> Path:
+    """Canonical ``lease-wiki-vault`` path: nested inside the Obsidian vault.
+
+    Callers historically disagreed about where this vault lives. Some pointed at
+    ``Documents/lease-wiki-vault`` (a sibling of the Obsidian vault) and others at
+    ``Documents/Obsidian Vault/lease-wiki-vault`` (nested). The nested location is
+    canonical, so deriving it here keeps the two from drifting apart again — a
+    split means notes get written to one tree while RAG indexes the other.
+    """
+    return resolve_obsidian_vault(env) / LEASE_WIKI_VAULT_DIRNAME
 
 
 def get_obsidian_vault_path() -> str:

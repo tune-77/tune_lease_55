@@ -105,3 +105,28 @@ def test_every_canonical_env_var_is_honoured(monkeypatch, name):
         monkeypatch.delenv(candidate, raising=False)
     monkeypatch.setenv(name, "/d/vault")
     assert runtime_paths.resolve_obsidian_vault() == Path("/d/vault")
+
+
+def test_lease_wiki_vault_is_nested_in_the_obsidian_vault(monkeypatch):
+    """lease-wiki-vault は Vault の入れ子。Documents 直下（兄弟）ではない。
+
+    以前は参照側ごとに入れ子・兄弟が割れており、書き出しと読み出しが
+    別ツリーを向いていた。ここを固定して再発を防ぐ。
+    """
+    for candidate in runtime_paths.OBSIDIAN_VAULT_ENV_VARS:
+        monkeypatch.delenv(candidate, raising=False)
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", "/e/Obsidian Vault")
+
+    assert runtime_paths.resolve_lease_wiki_vault() == Path("/e/Obsidian Vault/lease-wiki-vault")
+
+
+def test_lease_wiki_vault_follows_the_resolved_vault(monkeypatch):
+    """Vault の解決先が変われば lease-wiki-vault も追随する。"""
+    for candidate in runtime_paths.OBSIDIAN_VAULT_ENV_VARS:
+        monkeypatch.delenv(candidate, raising=False)
+    monkeypatch.setenv("OBSIDIAN_VAULT", "/f/other-vault")
+
+    resolved = runtime_paths.resolve_lease_wiki_vault()
+
+    assert resolved.parent == runtime_paths.resolve_obsidian_vault()
+    assert resolved.name == runtime_paths.LEASE_WIKI_VAULT_DIRNAME

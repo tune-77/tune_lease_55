@@ -13,14 +13,15 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-_WIKI_VAULT = (
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "iCloud~md~obsidian"
-    / "Documents"
-    / "lease-wiki-vault"
-)
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_lease_wiki_vault  # noqa: E402
+
+# lease-wiki-vault は Obsidian Vault の入れ子が正。
+# 以前は Documents 直下（Vault の兄弟）を見ており、書き出し側とずれていた。
+_WIKI_VAULT = resolve_lease_wiki_vault()
 _LAST_PROCESSED_FILE = Path("/tmp/wiki_vault_last_processed.txt")
 
 # 「行動を促す」パターン → タイトルへの変換ルール

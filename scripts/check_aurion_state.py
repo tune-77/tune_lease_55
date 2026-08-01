@@ -17,14 +17,18 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault  # noqa: E402
+
 AURION_DIR = PROJECT_ROOT / "data" / "aurion_daily"
 EXPORT_FILE = Path(os.environ.get("EXPORT_FILE", "/tmp/obsidian_improvements_export.txt"))
 
-# Vault パス（iCloud のメイン Vault を既定にする）
-_VAULT_PATH = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
-_ICLOUD_DOCS = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents"
-_ICLOUD_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault" / "lease-wiki-vault"
-_ICLOUD_MAIN_VAULT_PATH = _ICLOUD_DOCS / "Obsidian Vault"   # reindex_obsidian._DEFAULT_VAULT と同一
+# Vault パス（env → iCloud の解決順は runtime_paths が唯一の正）
+_VAULT_PATH = resolve_obsidian_vault()
+_ICLOUD_VAULT_PATH = resolve_lease_wiki_vault()
+_ICLOUD_MAIN_VAULT_PATH = _VAULT_PATH
 
 
 def find_latest_state() -> Path | None:
