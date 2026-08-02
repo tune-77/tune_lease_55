@@ -9,6 +9,12 @@
     両者が別の値を指すと「書き込み先」と「RAG 索引先」が静かに分裂する。
     このスクリプトはその分裂と、夜間ジョブの発火時刻の衝突を検出する。
 
+    さらに、Vault パス・マシン依存の絶対パス（``/Users/<name>/...``）の直書きを
+    許可リスト方式で検査する。許可リストにない直書きが新規に増えると ERROR
+    となり CI を失敗させる。既知の直書き（理由付きで許可リストに記載）は
+    情報表示のみで CI を落とさない。新しい直書きを許可リストに足すのではなく、
+    まず runtime_paths / ``__file__`` 相対パスへの置換を検討すること。
+
 使い方:
     python3 scripts/check_obsidian_ops_consistency.py
     python3 scripts/check_obsidian_ops_consistency.py --json reports/obsidian_ops_consistency.json
@@ -39,6 +45,51 @@ from runtime_paths import (  # noqa: E402
 )
 
 DEFAULT_LAUNCHD_DIR = REPO_ROOT / "launchd"
+
+# 直書きスキャンから除外するディレクトリ（ベンダコード・アーカイブ・仮想環境）。
+_SCAN_EXCLUDED_DIR_PARTS = frozenset({".git", "node_modules", "_archive", ".venv", "pydeps"})
+
+# Vault パス（iCloud~md~obsidian）を直書きしていることが分かっている箇所。
+# 値は「なぜ runtime_paths に寄せていないか」の理由。ここにない新規の直書きは
+# ERROR になり CI を失敗させる。新規追加は最終手段 — まず runtime_paths を検討する。
+_VAULT_HARDCODE_ALLOWLIST: dict[str, str] = {
+    "runtime_paths.py": "解決ロジックの実装本体。唯一の定義元",
+    "scripts/check_obsidian_ops_consistency.py": "この検査スクリプト自身（正規表現の対象文字列）",
+    "tests/test_icloud_to_gcs_sync.py": "iCloud 配下であることを検証するテスト。リテラルが必要",
+    "tests/test_obsidian_ops_consistency.py": "同上",
+    ".agents/skills/obsidian/scripts/obsidian_note.py": (
+        "リポジトリ非依存の汎用 Obsidian スキルヘルパー。runtime_paths を"
+        "import すると本リポジトリに結合してしまうため意図的に直書き"
+    ),
+    "scripts/package_cloud_run_bundle.sh": (
+        "OBSIDIAN_VAULT_PATH 優先・シェル内で env 優先順は是正済み。"
+        "既定値のリテラルは Python 非依存のフォールバックとして維持"
+    ),
+    "scripts/run_daily_improvement_post.sh": (
+        "${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-<default>}} の"
+        "上書き可能なデフォルト値。env 優先順は runtime_paths と同一"
+    ),
+}
+
+# マシン依存の絶対パス（/Users/<name>/...）を直書きしていることが分かっている箇所。
+_ABSOLUTE_PATH_HARDCODE_ALLOWLIST: dict[str, str] = {
+    "scripts/check_obsidian_ops_consistency.py": "この検査スクリプト自身（正規表現・許可リストの対象文字列）",
+    "tests/test_obsidian_ops_consistency.py": "この検査のテストフィクスチャ（対象文字列を直接検証する）",
+    "analyze_images.py": (
+        "本リポジトリと無関係な別ツール（.cursor/projects/...）の"
+        "アセットディレクトリを指しており、repo-relative な代替がない"
+    ),
+    "lease_logic_sumaho8.py": (
+        "手動配置した画像を Desktop から探す個人環境依存のフォールバック。"
+        "repo-relative な代替がない"
+    ),
+    "scripts/run_daily_improvement_core.sh": (
+        "${PROJECT_ROOT:-<default>} の上書き可能なデフォルト値"
+    ),
+    "scripts/run_daily_improvement_post.sh": (
+        "${PROJECT_ROOT:-<default>} の上書き可能なデフォルト値"
+    ),
+}
 
 # Vault を読む/書くジョブ。ここに載るジョブは Vault の env をすべて宣言していなければならない。
 # 新しく Vault を触る launchd ジョブを足したらここにも追加する。
@@ -251,40 +302,86 @@ def check_vault_resolution() -> list[Finding]:
     return findings
 
 
-def scan_hardcoded_vault_paths(repo_root: Path = REPO_ROOT) -> list[Finding]:
-    """runtime_paths を経由せず Vault パスを直書きしているファイルを数える。
+def _scan_hardcoded_pattern(
+    *,
+    pattern: re.Pattern[str],
+    allowlist: dict[str, str],
+    check_name: str,
+    label: str,
+    repo_root: Path = REPO_ROOT,
+) -> list[Finding]:
+    """許可リスト方式の直書きスキャン共通ロジック。
 
-    既存コードを壊さないため、ここでは報告だけして修正はしない。
+    許可リストにあるファイルの直書きは INFO（可視化のみ）。
+    許可リストにない新規の直書きは ERROR とし、CI を失敗させる。
     """
-    pattern = re.compile(r"iCloud~md~obsidian")
-    allowlist = {
-        repo_root / "runtime_paths.py",
-        Path(__file__).resolve(),
-    }
-    hits: list[str] = []
+    known_hits: list[str] = []
+    new_hits: list[str] = []
     for suffix in ("*.py", "*.sh"):
         for path in repo_root.rglob(suffix):
-            if path.resolve() in allowlist:
-                continue
-            if any(part in {".git", "node_modules", "_archive", ".venv"} for part in path.parts):
+            if any(part in _SCAN_EXCLUDED_DIR_PARTS for part in path.parts):
                 continue
             try:
                 text = path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            if pattern.search(text):
-                hits.append(str(path.relative_to(repo_root)))
+            if not pattern.search(text):
+                continue
+            rel = str(path.relative_to(repo_root))
+            if rel in allowlist:
+                known_hits.append(rel)
+            else:
+                new_hits.append(rel)
 
-    if not hits:
-        return []
-    return [
-        Finding(
-            INFO,
-            "hardcoded_paths",
-            f"Vault パスを直書きしているファイル: {len(hits)} 件"
-            "（runtime_paths への集約は未完。新規コードでは直書きしないこと）",
+    findings: list[Finding] = []
+    if known_hits:
+        findings.append(
+            Finding(
+                INFO,
+                check_name,
+                f"{label}を直書きしている既知のファイル: {len(known_hits)} 件"
+                "（許可リスト記載済み。理由は check_obsidian_ops_consistency.py 参照）",
+            )
         )
-    ]
+    if new_hits:
+        findings.append(
+            Finding(
+                ERROR,
+                check_name,
+                f"{label}を直書きしている新規ファイルが見つかりました: {sorted(new_hits)}。"
+                "runtime_paths（Vault）または __file__ 相対パス（それ以外）に置き換えるか、"
+                "やむを得ない場合のみ理由付きで許可リストに追加してください",
+            )
+        )
+    return findings
+
+
+def scan_hardcoded_vault_paths(repo_root: Path = REPO_ROOT) -> list[Finding]:
+    """runtime_paths を経由せず Vault パスを直書きしているファイルを検査する。"""
+    return _scan_hardcoded_pattern(
+        pattern=re.compile(r"iCloud~md~obsidian"),
+        allowlist=_VAULT_HARDCODE_ALLOWLIST,
+        check_name="hardcoded_vault_paths",
+        label="Vault パス",
+        repo_root=repo_root,
+    )
+
+
+def scan_hardcoded_absolute_paths(repo_root: Path = REPO_ROOT) -> list[Finding]:
+    """マシン依存の絶対パス（開発者の実ホームディレクトリ）の直書きを検査する。
+
+    パターンは実在の開発者ユーザー名（kobayashiisaoryou）に絞る。
+    ``/Users/[名前]/`` のような汎用パターンにすると、テストが使う
+    プレースホルダーのユーザー名（``/Users/x/...`` 等）まで拾ってしまい、
+    偽陽性が消えない検査になる。
+    """
+    return _scan_hardcoded_pattern(
+        pattern=re.compile(r"/Users/kobayashiisaoryou/"),
+        allowlist=_ABSOLUTE_PATH_HARDCODE_ALLOWLIST,
+        check_name="hardcoded_absolute_paths",
+        label="マシン依存の絶対パス",
+        repo_root=repo_root,
+    )
 
 
 def run_checks(launchd_dir: Path = DEFAULT_LAUNCHD_DIR) -> dict[str, Any]:
@@ -295,6 +392,7 @@ def run_checks(launchd_dir: Path = DEFAULT_LAUNCHD_DIR) -> dict[str, Any]:
     findings.extend(check_interpreters(jobs))
     findings.extend(check_vault_resolution())
     findings.extend(scan_hardcoded_vault_paths())
+    findings.extend(scan_hardcoded_absolute_paths())
 
     counts = {
         level: sum(1 for f in findings if f.level == level)
