@@ -136,9 +136,20 @@ def deferred_imports(script: Path) -> set[str]:
 
 
 def _is_local(name: str) -> bool:
-    """リポジトリ内のモジュールか（scripts/ 直下も sys.path に載る運用のため含める）。"""
+    """リポジトリ内のモジュールか（scripts/ 直下も sys.path に載る運用のため含める）。
+
+    `mobile_app` / `api` / `scripts` は `__init__.py` を持たない名前空間パッケージ
+    （PEP 420）なので、`__init__.py` の有無だけで判定するとローカルのはずのものが
+    サードパーティ扱いになり、依存の棚卸しが「pip install mobile_app が必要」という
+    誤った結論になる。.py を含むディレクトリもローカルとみなす。
+    """
     for base in (REPO_ROOT, REPO_ROOT / "scripts"):
-        if (base / f"{name}.py").exists() or (base / name / "__init__.py").exists():
+        if (base / f"{name}.py").exists():
+            return True
+        package = base / name
+        if package.is_dir() and (
+            (package / "__init__.py").exists() or any(package.glob("*.py"))
+        ):
             return True
     return False
 

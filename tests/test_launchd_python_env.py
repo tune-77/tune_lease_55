@@ -64,6 +64,26 @@ def test_stdlib_and_local_modules_are_excluded():
     assert envcheck._external({"requests"}) == {"requests"}
 
 
+def test_namespace_packages_are_local():
+    """__init__.py を持たないディレクトリもローカル扱いにする。
+
+    mobile_app / api / scripts は PEP 420 の名前空間パッケージ。
+    ここを外部依存と誤判定すると「pip install mobile_app が必要」という
+    誤った依存棚卸しになる。
+    """
+    for name in ("mobile_app", "api", "scripts"):
+        assert (REPO_ROOT / name / "__init__.py").exists() is False, f"{name} の前提が変わった"
+        assert envcheck._is_local(name), f"{name} がローカル判定されていない"
+    assert envcheck._external({"mobile_app", "api", "scripts"}) == set()
+
+
+def test_directory_without_python_files_is_not_local(tmp_path, monkeypatch):
+    monkeypatch.setattr(envcheck, "REPO_ROOT", tmp_path)
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "logo.png").write_bytes(b"")
+    assert envcheck._is_local("assets") is False
+
+
 # ---------- エントリスクリプトの解決 ----------
 
 def _job(program):
