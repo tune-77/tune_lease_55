@@ -2,15 +2,19 @@
 from __future__ import annotations
 
 import os
+import json
+import logging
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from api.db_connection import current_backend, get_connection
+from runtime_paths import get_db_path
 
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+_LEASE_DB_PATH = get_db_path()
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["system-misc"])
 
@@ -163,7 +167,6 @@ def read_root():
 @router.get("/api/master/industries")
 def get_industries():
     # static_data またはルートから industry_trends_jsic.json を読み込む
-    import json
     paths = [
         os.path.join(_REPO_ROOT, "static_data", "industry_trends_jsic.json"),
         os.path.join(_REPO_ROOT, "industry_trends_jsic.json")
@@ -176,7 +179,6 @@ def get_industries():
 
 @router.get("/api/master/assets")
 def get_assets():
-    import json
     paths = [
         os.path.join(_REPO_ROOT, "static_data", "lease_assets.json"),
         os.path.join(_REPO_ROOT, "lease_assets.json")
@@ -324,7 +326,6 @@ def suggest_industry(req: IndustrySuggestRequest):
 @router.get("/api/industry/stats")
 def api_industry_stats():
     """業種別成約率・平均スコア集計（REV-055）"""
-    import json
     try:
         with get_connection() as conn:
             cur = conn.cursor()
@@ -372,4 +373,3 @@ def api_industry_stats():
         })
 
     return sorted(result, key=lambda x: x["total"], reverse=True)
-
