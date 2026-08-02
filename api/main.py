@@ -22,7 +22,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -455,21 +454,11 @@ async def lifespan(app: FastAPI):
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        return response
-
-
 # 共有シークレットによる API アクセス制御（api/api_key_auth.py に実装。多層防御）。
 from api.api_key_auth import ApiKeyAuthMiddleware, api_access_key_required, get_api_access_key
 # 公開デモ用の削除保護（api/demo_guard.py に実装）。
 from api.demo_guard import DemoReadonlyMiddleware, is_demo_readonly
+from api.security_headers import SecurityHeadersMiddleware
 
 
 _ALLOWED_ORIGINS = [
@@ -585,11 +574,8 @@ from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
 from api.routers.feedback_loop import JudgmentAssetCandidateManualRequest, ScreeningExperienceCaseRequest  # used by chat/improvement endpoints
 from api.routers.feedback_loop import (  # noqa: F401 - re-exported for tests/back-compat
-    _CLOUDRUN_EVENT_CASE_PREFIX,
     _CLOUDRUN_INPUT_EVENTS_CACHE,
     _CLOUDRUN_RETURN_DB,
-    _CLOUDRUN_SCORE_CASE_PREFIX,
-    _SCREENING_EXPERIENCE_DEMO_SEEDS,
     _cloudrun_return_table_exists,
     _connect_cloudrun_return_db,
     _ensure_cloudrun_return_review_schema,
@@ -622,6 +608,7 @@ _MAIN_COMPAT_EXPORTS = {
     "record_improvement_triage": ("api.routers.improvement", "record_improvement_triage"),
     "record_monitor_report": ("api.routers.improvement", "record_monitor_report"),
     "_read_obsidian_files": ("api.routers.vault_hub", "_read_obsidian_files"),
+    "_SCREENING_EXPERIENCE_DEMO_SEEDS": ("api.routers.feedback_loop", "_SCREENING_EXPERIENCE_DEMO_SEEDS"),
     "_score_screening_experience_case": ("api.routers.feedback_loop", "_score_screening_experience_case"),
 }
 
@@ -4996,113 +4983,39 @@ def _record_response_impact_prediction(
 
 
 def _ensure_screening_experience_cases_table(seed_demo: bool = True) -> None:
-    import sqlite3 as _sqlite3
+    from api.routers.feedback_loop import _ensure_screening_experience_cases_table as ensure_table
 
-    from api.db_connection import ensure_schema
-
-    ensure_schema()
-    if seed_demo:
-        try:
-            _seed_screening_experience_demo_cases()
-        except _sqlite3.OperationalError as exc:
-            msg = str(exc).lower()
-            if "readonly" not in msg and "no such table" not in msg:
-                raise
+    return ensure_table(seed_demo=seed_demo)
 
 
 def _seed_screening_experience_demo_cases() -> None:
-    ph = placeholder()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        for seed in _SCREENING_EXPERIENCE_DEMO_SEEDS:
-            cur.execute(
-                f"""
-                SELECT id FROM screening_experience_cases
-                 WHERE demo_case_id = {ph}
-                   AND company_name = {ph}
-                   AND source = {ph}
-                 LIMIT 1
-                """,
-                (seed["demo_case_id"], seed["company_name"], "demo_seed"),
-            )
-            if cur.fetchone():
-                continue
-            _insert_screening_experience_case(cur, seed)
+    from api.routers.feedback_loop import _seed_screening_experience_demo_cases as seed_cases
+
+    return seed_cases()
 
 
 def _insert_screening_experience_case(cur: Any, payload: dict[str, Any]) -> int:
-    import json as _json
+    from api.routers.feedback_loop import _insert_screening_experience_case as insert_case
 
-    ph = placeholder()
-    values = (
-        str(payload.get("demo_case_id") or "")[:120],
-        str(payload.get("source_case_id") or "")[:160],
-        str(payload.get("company_name") or "")[:180],
-        str(payload.get("period") or "")[:80],
-        str(payload.get("industry_major") or "")[:160],
-        str(payload.get("industry_sub") or "")[:160],
-        str(payload.get("sales_dept") or "")[:120],
-        payload.get("score"),
-        str(payload.get("decision") or "")[:120],
-        str(payload.get("outcome") or "")[:180],
-        str(payload.get("similarity") or "")[:1200],
-        str(payload.get("action_taken") or "")[:1200],
-        str(payload.get("lesson") or "")[:1200],
-        str(payload.get("difference") or "")[:1200],
-        str(payload.get("source") or "manual")[:80],
-        _json.dumps(payload.get("form_snapshot") or {}, ensure_ascii=False)[:20000],
-        _json.dumps(payload.get("result_snapshot") or {}, ensure_ascii=False)[:20000],
-    )
-    columns = (
-        "demo_case_id, source_case_id, company_name, period, industry_major, industry_sub, sales_dept, "
-        "score, decision, outcome, similarity, action_taken, lesson, difference, source, form_snapshot, result_snapshot"
-    )
-    placeholders = ", ".join([ph] * len(values))
-    if current_backend() == "postgresql":
-        cur.execute(
-            f"INSERT INTO screening_experience_cases ({columns}) VALUES ({placeholders}) RETURNING id",
-            values,
-        )
-        row = cur.fetchone()
-        return int(row[0])
-    cur.execute(
-        f"INSERT INTO screening_experience_cases ({columns}) VALUES ({placeholders})",
-        values,
-    )
-    return int(cur.lastrowid)
+    return insert_case(cur, payload)
 
 
 def _save_screening_experience_case(req: ScreeningExperienceCaseRequest) -> dict:
-    company = str(req.company_name or "").strip()
-    if not company:
-        raise HTTPException(status_code=422, detail="company_name is required")
-    _ensure_screening_experience_cases_table(seed_demo=True)
-    payload = req.model_dump()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        new_id = _insert_screening_experience_case(cur, payload)
-    return {"id": new_id, **{k: v for k, v in payload.items() if k not in {"form_snapshot", "result_snapshot"}}}
+    from api.routers.feedback_loop import _save_screening_experience_case as save_case
+
+    return save_case(req)
 
 
 def _experience_case_exists(source_case_id: str, source: str) -> bool:
-    source_case_id = str(source_case_id or "").strip()
-    source = str(source or "").strip()
-    if not source_case_id or not source:
-        return False
-    _ensure_screening_experience_cases_table(seed_demo=True)
-    ph = placeholder()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"""
-            SELECT id FROM screening_experience_cases
-             WHERE source_case_id = {ph}
-               AND source = {ph}
-             LIMIT 1
-            """,
-            (source_case_id, source),
-        )
-        return cur.fetchone() is not None
+    from api.screening_experience_promotion import experience_case_exists
+
+    return experience_case_exists(
+        source_case_id,
+        source,
+        ensure_table=_ensure_screening_experience_cases_table,
+        connection_factory=get_connection,
+        placeholder_factory=placeholder,
+    )
 
 
 def _promote_case_result_to_screening_experience(
@@ -5113,101 +5026,18 @@ def _promote_case_result_to_screening_experience(
     patches: dict | None = None,
     source: str = "case_result_auto",
 ) -> dict:
-    """Promote a closed case result into reusable screening experience memory."""
-    patches = patches or {}
-    status = str(status or patches.get("final_status") or case_data.get("final_status") or "").strip()
-    if status not in {"成約", "失注", "検収", "検収完了"}:
-        return {"status": "skipped", "reason": "not_closed_result"}
-    normalized_status = "成約" if status in {"成約", "検収", "検収完了"} else "失注"
-    if _experience_case_exists(case_id, source):
-        return {"status": "skipped", "reason": "already_promoted"}
+    from api.screening_experience_promotion import promote_case_result_to_screening_experience
 
-    inputs = case_data.get("inputs") if isinstance(case_data.get("inputs"), dict) else case_data
-    result = case_data.get("result") if isinstance(case_data.get("result"), dict) else {}
-    company = str(inputs.get("company_name") or case_data.get("company_name") or "名称未設定").strip()
-    industry_major = str(result.get("industry_major") or inputs.get("industry_major") or case_data.get("industry_major") or "").strip()
-    industry_sub = str(result.get("industry_sub") or inputs.get("industry_sub") or case_data.get("industry_sub") or "").strip()
-    sales_dept = str(inputs.get("sales_dept") or case_data.get("sales_dept") or "").strip()
-    asset = str(inputs.get("asset_name") or inputs.get("asset_type") or "").strip()
-    customer_type = str(inputs.get("customer_type") or case_data.get("customer_type") or "").strip()
-    main_bank = str(inputs.get("main_bank") or case_data.get("main_bank") or "").strip()
-    competitor = str(inputs.get("competitor") or case_data.get("competitor") or "").strip()
-    deal_source = str(inputs.get("deal_source") or case_data.get("deal_source") or "").strip()
-    score_raw = result.get("score", result.get("score_base", case_data.get("score", case_data.get("score_base"))))
-    try:
-        score = float(score_raw) if score_raw not in (None, "") else None
-    except Exception:
-        score = None
-    decision = str(result.get("hantei") or case_data.get("hantei") or "").strip()
-    final_rate = patches.get("final_rate", case_data.get("final_rate"))
-    competitor_rate = patches.get("competitor_rate", case_data.get("competitor_rate"))
-    lost_reason = str(patches.get("lost_reason") or case_data.get("lost_reason") or case_data.get("loss_reason") or "").strip()
-    final_note = str(patches.get("final_note") or case_data.get("final_note") or "").strip()
-    grey = patches.get("grey_judgment") if isinstance(patches.get("grey_judgment"), dict) else {}
-    if not grey and isinstance(case_data.get("grey_judgment"), dict):
-        grey = case_data.get("grey_judgment") or {}
-
-    similarity_bits = [
-        industry_sub or industry_major,
-        customer_type,
-        asset,
-        main_bank,
-        competitor,
-        deal_source,
-    ]
-    similarity = " / ".join(str(bit) for bit in similarity_bits if str(bit or "").strip()) or "登録結果から生成した経験ケース"
-
-    if normalized_status == "成約":
-        outcome = "成約"
-        if final_rate not in (None, "", 0):
-            outcome += f"・最終金利 {final_rate}%"
-        action_parts = ["成約登録。"]
-        if grey.get("but_still_reason"):
-            action_parts.append(f"それでも通した理由: {grey.get('but_still_reason')}")
-        if grey.get("approval_condition_memo"):
-            action_parts.append(f"承認条件: {grey.get('approval_condition_memo')}")
-        if competitor_rate not in (None, "", 0):
-            action_parts.append(f"競合金利 {competitor_rate}% を踏まえて条件調整。")
-        action_taken = " ".join(action_parts).strip()
-        lesson = "成約に至った判断材料を、次回の同種案件で承認理由・条件設定・価格判断へ再利用する。"
-    else:
-        outcome = "失注"
-        if lost_reason:
-            outcome += f"・理由: {lost_reason}"
-        action_parts = ["失注登録。"]
-        if lost_reason:
-            action_parts.append(f"失注理由を記録: {lost_reason}")
-        if competitor_rate not in (None, "", 0):
-            action_parts.append(f"競合金利 {competitor_rate}% との差を記録。")
-        if final_note:
-            action_parts.append(f"補足: {final_note}")
-        action_taken = " ".join(action_parts).strip()
-        lesson = "失注要因を、次回の初期ヒアリング・競合確認・条件提示の改善材料として再利用する。"
-
-    if grey.get("human_discomfort"):
-        lesson += f" 違和感: {grey.get('human_discomfort')}"
-    difference = "最終結果から自動昇格。次回類似案件では、今回の結果要因が同じか、顧客事情・競合・銀行支援・物件保全が違うかを確認する。"
-
-    req = ScreeningExperienceCaseRequest(
-        source_case_id=str(case_id or "")[:160],
-        company_name=company,
-        period=str(patches.get("final_result_date") or case_data.get("final_result_date") or "")[:80] or "結果登録時",
-        industry_major=industry_major,
-        industry_sub=industry_sub,
-        sales_dept=sales_dept,
-        score=score,
-        decision=decision or normalized_status,
-        outcome=outcome,
-        similarity=similarity,
-        action_taken=action_taken,
-        lesson=lesson,
-        difference=difference,
+    return promote_case_result_to_screening_experience(
+        case_id=case_id,
+        case_data=case_data,
+        status=status,
+        patches=patches,
         source=source,
-        form_snapshot=inputs if isinstance(inputs, dict) else {},
-        result_snapshot=result if isinstance(result, dict) else {},
+        request_factory=ScreeningExperienceCaseRequest,
+        save_screening_experience_case=_save_screening_experience_case,
+        experience_exists=_experience_case_exists,
     )
-    entry = _save_screening_experience_case(req)
-    return {"status": "promoted", "case": entry}
 
 
 def _find_cloudrun_input_event(event_id: str) -> dict:
@@ -5227,34 +5057,21 @@ def _invalidate_cloudrun_input_events_cache() -> None:
 
 
 def _parse_cloudrun_score_case_id(case_id: str) -> int | None:
-    raw = str(case_id or "").strip()
-    if not raw.startswith(_CLOUDRUN_SCORE_CASE_PREFIX):
-        return None
-    try:
-        score_id = int(raw.removeprefix(_CLOUDRUN_SCORE_CASE_PREFIX))
-    except ValueError:
-        return None
-    return score_id if score_id > 0 else None
+    from api.cloudrun_pending_cases import parse_cloudrun_score_case_id
+
+    return parse_cloudrun_score_case_id(case_id)
 
 
 def _parse_cloudrun_event_case_id(case_id: str) -> str:
-    raw = str(case_id or "").strip()
-    if not raw.startswith(_CLOUDRUN_EVENT_CASE_PREFIX):
-        return ""
-    event_id = raw.removeprefix(_CLOUDRUN_EVENT_CASE_PREFIX).strip()
-    return event_id[:120]
+    from api.cloudrun_pending_cases import parse_cloudrun_event_case_id
+
+    return parse_cloudrun_event_case_id(case_id)
 
 
 def _loads_dict(raw: Any) -> dict:
-    if isinstance(raw, dict):
-        return raw
-    if raw in (None, ""):
-        return {}
-    try:
-        parsed = json.loads(str(raw))
-    except Exception:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    from api.cloudrun_pending_cases import loads_dict
+
+    return loads_dict(raw)
 
 
 def _load_cloudrun_score_input(score_input_id: int) -> dict | None:
@@ -5269,75 +5086,15 @@ def _load_cloudrun_score_input(score_input_id: int) -> dict | None:
 
 
 def _cloudrun_score_pending_item(row: dict) -> dict:
-    inputs = _loads_dict(row.get("inputs_json"))
-    result = _loads_dict(row.get("result_json"))
-    created_at = str(row.get("created_at") or "")
-    company_no = str(inputs.get("company_no") or inputs.get("customer_no") or "").strip()
-    company_name = str(inputs.get("company_name") or inputs.get("customer_name") or "").strip()
-    industry = str(
-        row.get("industry_sub")
-        or result.get("industry_sub")
-        or inputs.get("industry_sub")
-        or row.get("industry_major")
-        or result.get("industry_major")
-        or inputs.get("industry_major")
-        or ""
-    ).strip()
-    score = row.get("score")
-    if score in (None, ""):
-        score = result.get("score", result.get("score_base"))
-    return {
-        "id": f"{_CLOUDRUN_SCORE_CASE_PREFIX}{int(row.get('id') or 0)}",
-        "company_no": company_no,
-        "company_name": company_name or "Cloud Run審査入力",
-        "timestamp": created_at,
-        "score": score,
-        "industry": industry,
-        "registration_date": created_at[:10] if len(created_at) >= 10 else "",
-        "estimate_sent_date": created_at[:10] if len(created_at) >= 10 else "",
-        "final_result_date": "",
-        "_source": "cloudrun_score_inputs",
-        "cloudrun_return_id": int(row.get("id") or 0),
-        "cloudrun_event_id": str(row.get("event_id") or ""),
-        "review_status": str(row.get("return_review_status") or "candidate"),
-    }
+    from api.cloudrun_pending_cases import cloudrun_score_pending_item
+
+    return cloudrun_score_pending_item(row)
 
 
 def _cloudrun_score_pending_item_from_event(event: dict) -> dict | None:
-    if event.get("event_type") not in {"score_calculated", "score_full_calculated"}:
-        return None
-    event_id = str(event.get("event_id") or "").strip()
-    if not event_id:
-        return None
-    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-    inputs = payload.get("inputs") if isinstance(payload.get("inputs"), dict) else {}
-    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
-    if not inputs and not result:
-        return None
-    created_at = str(event.get("ts") or "")
-    company_no = str(inputs.get("company_no") or inputs.get("customer_no") or "").strip()
-    company_name = str(inputs.get("company_name") or inputs.get("customer_name") or "").strip()
-    industry = str(
-        result.get("industry_sub")
-        or inputs.get("industry_sub")
-        or result.get("industry_major")
-        or inputs.get("industry_major")
-        or ""
-    ).strip()
-    return {
-        "id": f"{_CLOUDRUN_EVENT_CASE_PREFIX}{event_id}",
-        "company_no": company_no,
-        "company_name": company_name or "Cloud Run審査入力",
-        "timestamp": created_at,
-        "score": result.get("score", result.get("score_base")),
-        "industry": industry,
-        "registration_date": created_at[:10] if len(created_at) >= 10 else "",
-        "estimate_sent_date": created_at[:10] if len(created_at) >= 10 else "",
-        "final_result_date": "",
-        "_source": "cloudrun_gcs_input",
-        "cloudrun_event_id": event_id,
-        "review_status": "gcs_input",
-    }
+    from api.cloudrun_pending_cases import cloudrun_score_pending_item_from_event
+
+    return cloudrun_score_pending_item_from_event(event)
 
 
 def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
@@ -5396,37 +5153,10 @@ def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
 
 
 def _list_cloudrun_score_pending_cases_from_gcs(limit: int = 50) -> list[dict]:
-    events = _read_recent_cloudrun_input_events_from_gcs(days=int(os.environ.get("CLOUDRUN_PENDING_INPUT_DAYS", "14") or 14))
-    if not events:
-        return []
-    registered_event_ids: set[str] = set()
-    for event in events:
-        if event.get("event_type") not in {"case_result_registered", "cloudrun_pending_case_rejected"}:
-            continue
-        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-        for key in ("source_event_id", "cloudrun_event_id"):
-            value = str(payload.get(key) or "").strip()
-            if value:
-                registered_event_ids.add(value)
-        case_id = str(payload.get("case_id") or "").strip()
-        if case_id.startswith(_CLOUDRUN_EVENT_CASE_PREFIX):
-            registered_event_ids.add(case_id.removeprefix(_CLOUDRUN_EVENT_CASE_PREFIX))
+    from api.cloudrun_pending_cases import list_cloudrun_score_pending_cases_from_events
 
-    rows: list[dict] = []
-    seen: set[str] = set()
-    for event in reversed(events):
-        event_id = str(event.get("event_id") or "").strip()
-        if not event_id or event_id in seen or event_id in registered_event_ids:
-            continue
-        item = _cloudrun_score_pending_item_from_event(event)
-        if not item:
-            continue
-        seen.add(event_id)
-        rows.append(item)
-        if len(rows) >= limit:
-            break
-    rows.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
-    return rows[:limit]
+    events = _read_recent_cloudrun_input_events_from_gcs(days=int(os.environ.get("CLOUDRUN_PENDING_INPUT_DAYS", "14") or 14))
+    return list_cloudrun_score_pending_cases_from_events(events, limit=limit)
 
 
 def _list_cloudrun_score_pending_cases(limit: int = 50) -> list[dict]:
@@ -5570,180 +5300,39 @@ def _summarize_human_response_feedback(route: str, limit: int = 80) -> dict:
 
 
 def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
-    text = str(message or "")
-    lower = text.lower()
-    route = "default"
-    hook = "今回の問いは、過去の判断軸を内部で使い、必要な確認や判断だけを自然に返す場面です。"
-    reason = "汎用の継続文脈"
+    from api.chat_continuity_prompts import build_continuity_hook_prompt_block
 
-    if any(k in text for k in ("意識", "同じ紫苑", "覚えて", "記憶", "Relationship UX", "関係性UX")):
-        route = "relationship_ux"
-        hook = "記憶は説明するより、今回の返答の精度や聞き方に溶かす方が自然です。"
-        reason = "意識らしさ・記憶・同一性の問い"
-    elif "cloud run" in lower or "cloudflare" in lower or "クラウドラン" in text or "クラウドフレア" in text:
-        route = "environment_continuity"
-        hook = "環境差を見る時も、記憶の証明より返答の自然さと判断精度を優先します。"
-        reason = "環境差と同じ紫苑感の問い"
-    elif any(k in text for k in ("残価", "稟議", "リース", "設備", "保全", "再リース", "条件付き承認")):
-        route = "lease_judgment"
-        hook = "Userのリース判断資産として見るなら、ここは一般論ではなく稟議で使える判断軸に落とす場面です。"
-        reason = "リース判断資産化の問い"
-    elif any(k in text for k in ("改善", "修正", "実装", "プログラム", "プログラム化", "テスト")):
-        route = "implementation"
-        hook = "今回の発見は、設計メモで終わらせず、回答生成の冒頭制御として実装する段階です。"
-        reason = "実装・改善の問い"
-
-    payload = {
-        "used": bool(text.strip()),
-        "route": route,
-        "hook": hook,
-        "reason": reason,
-        "banned_openers": ["もちろんです", "はい", "そうですね", "なるほど", "一般的には", "ありがとうございます", "おっしゃる通り", "確かに", "承知しました", "いいご質問"],
-    }
-    human_feedback = _summarize_human_response_feedback(route)
-    payload["human_response_feedback"] = human_feedback
-    feedback_lines = ""
-    if human_feedback.get("positive_starts") or human_feedback.get("negative_starts") or human_feedback.get("recent_comments"):
-        parts = ["", "【Human Response Feedback】"]
-        if human_feedback.get("positive_starts"):
-            parts.append("Userが連続性を感じやすかった冒頭例:")
-            parts.extend(f"- {line}" for line in human_feedback["positive_starts"])
-        if human_feedback.get("negative_starts"):
-            parts.append("薄い/一般論に感じられやすかった冒頭例:")
-            parts.extend(f"- {line}" for line in human_feedback["negative_starts"])
-        if human_feedback.get("recent_comments"):
-            parts.append("直近コメント:")
-            parts.extend(f"- {line}" for line in human_feedback["recent_comments"])
-        parts.append("上の反応を踏まえ、記憶を明示せず、今回の判断・質問の精度に反映してください。")
-        feedback_lines = "\n".join(parts)
-    block = f"""
-
-【Continuity Hook】
-取得した記憶や前回との差分は、回答の裏側で使ってください。
-{hook}
-
-禁止: 「もちろんです」「はい」「そうですね」「なるほど」「一般的には」で始めない。
-禁止: Userが明示的に求めていない限り、「前回は」「以前は」「この前の続きで」のような記憶アピールで始めない。
-目的: 連続性を説明するのではなく、今回の判断・確認質問・言い切りの精度に溶かす。
-このhookは丸写しせず、必要な判断軸だけを自然に反映してください。{feedback_lines}""".rstrip()
-    return block, payload
+    return build_continuity_hook_prompt_block(message, human_feedback_summary=_summarize_human_response_feedback)
 
 
 def _relationship_signal_route(text: str) -> str:
-    lower = text.lower()
-    if any(k in text for k in ("意識", "同じ紫苑", "覚えて", "記憶", "Relationship UX", "関係性UX")):
-        return "relationship_ux"
-    if "cloud run" in lower or "cloudflare" in lower or "クラウドラン" in text or "クラウドフレア" in text:
-        return "environment_continuity"
-    if any(k in text for k in ("残価", "稟議", "リース", "設備", "保全", "再リース", "条件付き承認")):
-        return "lease_judgment"
-    if any(k in text for k in ("改善", "修正", "実装", "プログラム", "プログラム化", "テスト", "デプロイ")):
-        return "implementation"
-    return "default"
+    from api.chat_continuity_prompts import relationship_signal_route
+
+    return relationship_signal_route(text)
 
 
 def _relationship_signal_label(route: str) -> str:
-    return {
-        "relationship_ux": "記憶の見せ方・同じ紫苑感",
-        "environment_continuity": "Cloud Run/Cloudflareの環境差",
-        "lease_judgment": "リース判断・稟議実務",
-        "implementation": "実装・検証",
-        "default": "継続中の相談",
-    }.get(route, "継続中の相談")
+    from api.chat_continuity_prompts import relationship_signal_label
+
+    return relationship_signal_label(route)
 
 
 def _recent_user_texts(history: list[dict[str, str]] | None, limit: int = 3) -> list[str]:
-    recent: list[str] = []
-    for item in reversed(history or []):
-        if str(item.get("role") or "") != "user":
-            continue
-        content = str(item.get("content") or "").strip()
-        if content:
-            recent.append(content)
-        if len(recent) >= limit:
-            break
-    return recent
+    from api.chat_continuity_prompts import recent_user_texts
 
-
-_EXPLICIT_CONTINUATION_TERMS = (
-    "続き",
-    "前回",
-    "さっき",
-    "さきほど",
-    "先ほど",
-    "今の",
-    "直前",
-    "この話",
-    "その話",
-    "この件",
-    "その件",
-    "これ",
-    "それ",
-    "あれ",
-    "上の",
-    "戻って",
-    "もう一回",
-    "もう少し",
-    "改めて",
-)
+    return recent_user_texts(history, limit=limit)
 
 
 def _is_explicit_continuation_request(message: str) -> bool:
-    """Return True only when the user clearly asks to continue prior context."""
-    text = str(message or "").strip()
-    if not text:
-        return False
-    lowered = text.lower()
-    if "continue" in lowered or "previous" in lowered or "same topic" in lowered:
-        return True
-    return any(term in text for term in _EXPLICIT_CONTINUATION_TERMS)
+    from api.chat_continuity_prompts import is_explicit_continuation_request
+
+    return is_explicit_continuation_request(message)
 
 
 def _build_delta_awareness_prompt_block(message: str, history: list[dict[str, str]] | None) -> tuple[str, dict]:
-    current_route = _relationship_signal_route(message)
-    recent_users = _recent_user_texts(history, limit=3)
-    previous = recent_users[0] if recent_users else ""
-    previous_route = _relationship_signal_route(previous) if previous else ""
+    from api.chat_continuity_prompts import build_delta_awareness_prompt_block
 
-    explicit_continuation = bool(previous and _is_explicit_continuation_request(message))
-    if not explicit_continuation:
-        payload = {
-            "used": False,
-            "current_route": current_route,
-            "previous_route": previous_route,
-            "previous_user_message": previous[:240],
-            "reason": "no_explicit_continuation_request",
-        }
-        return "", payload
-
-    if previous and previous_route != current_route:
-        delta = (
-            f"前回は「{_relationship_signal_label(previous_route)}」を見ていたが、"
-            f"今回は「{_relationship_signal_label(current_route)}」へ焦点が移っている。"
-        )
-    elif previous and previous_route == current_route:
-        delta = (
-            f"前回と同じ「{_relationship_signal_label(current_route)}」の流れにあるが、"
-            "今回は前回の結論を再掲するだけでなく、一段具体化して返す。"
-        )
-    else:
-        delta = f"今回は「{_relationship_signal_label(current_route)}」として、これまでの判断軸に接続して返す。"
-
-    payload = {
-        "used": True,
-        "current_route": current_route,
-        "previous_route": previous_route,
-        "previous_user_message": previous[:240],
-        "delta": delta,
-        "explicit_continuation": True,
-    }
-    block = f"""
-
-【Delta Awareness】
-Userが明示的に前回文脈へ接続している時だけ、前回から今回への焦点の変化を1文以内で示してください。
-差分認識: {delta}
-目的: 「前回を覚えている」アピールではなく、Userが求めた続きだけを自然に扱う。""".rstrip()
-    return block, payload
+    return build_delta_awareness_prompt_block(message, history)
 
 
 def _build_memory_to_judgment_prompt_block(
@@ -5753,37 +5342,14 @@ def _build_memory_to_judgment_prompt_block(
     rag_refs: list[str] | None = None,
     continuity_hook: dict | None = None,
 ) -> tuple[str, dict]:
-    route = str((continuity_hook or {}).get("route") or _relationship_signal_route(message))
-    recall = memory_recall if isinstance(memory_recall, dict) else {}
-    refs = list(recall.get("refs") or [])[:5]
-    knowledge_refs = list(rag_refs or [])[:5]
+    from api.chat_continuity_prompts import build_memory_to_judgment_prompt_block
 
-    if route == "lease_judgment":
-        directive = "想起した記憶を、稟議で使える判断軸・確認事項・条件案へ変換する。"
-    elif route == "relationship_ux":
-        directive = "想起した記憶を、紫苑の返答設計原則と次の検査観点へ変換する。"
-    elif route == "environment_continuity":
-        directive = "想起した記憶を、Cloud Run/Cloudflareの差分原因と次の検証観点へ変換する。"
-    elif route == "implementation":
-        directive = "想起した記憶を、実装方針・検証方法・デプロイ要否の判断へ変換する。"
-    else:
-        directive = "想起した記憶を、今の問いに対する判断・次の一手へ変換する。"
-
-    payload = {
-        "used": True,
-        "route": route,
-        "directive": directive,
-        "memory_refs": refs,
-        "knowledge_refs": knowledge_refs,
-    }
-    block = f"""
-
-【Memory-to-Judgment】
-記憶を「覚えています」と説明するだけで終えず、今の判断に変換してください。
-変換指示: {directive}
-使う根拠: memory_refs={len(refs)}件 / knowledge_refs={len(knowledge_refs)}件。
-目的: 記憶を思い出ではなく、Userの判断資産として返す。""".rstrip()
-    return block, payload
+    return build_memory_to_judgment_prompt_block(
+        message,
+        memory_recall=memory_recall,
+        rag_refs=rag_refs,
+        continuity_hook=continuity_hook,
+    )
 
 
 def _build_memory_expression_prompt_block(
@@ -5794,268 +5360,49 @@ def _build_memory_expression_prompt_block(
     grey_judgment: dict | None = None,
     continuity_hook: dict | None = None,
 ) -> tuple[str, dict]:
-    """Guide Shion to expose memory influence concretely without performative recall."""
-    recall = memory_recall if isinstance(memory_recall, dict) else {}
-    grey = grey_judgment if isinstance(grey_judgment, dict) else {}
-    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
-    memory_refs = list(recall.get("refs") or [])[:5]
-    knowledge_refs = list(rag_refs or [])[:5]
-    grey_refs = list(grey.get("refs") or [])[:5]
-    route = str(hook.get("route") or recall.get("route") or _relationship_signal_route(message))
-    has_refs = bool(memory_refs or knowledge_refs or grey_refs)
-    self_or_memory_topic = any(term in str(message or "") for term in ("紫苑", "記憶", "同じ紫苑", "らしさ", "継続性", "判断資産"))
-    should_use = has_refs or self_or_memory_topic or route in {"relationship_ux", "lease_judgment"}
-    if not should_use:
-        return "", {
-            "used": False,
-            "route": route,
-            "memory_refs": len(memory_refs),
-            "knowledge_refs": len(knowledge_refs),
-            "grey_refs": len(grey_refs),
-            "reason": "no_memory_expression_needed",
-        }
+    from api.chat_continuity_prompts import build_memory_expression_prompt_block
 
-    if route == "lease_judgment":
-        example = "以前のグレー判断で見た『数字は足りるが、通すなら条件を残す』型として、今回は返済原資と設備稼働開始を先に見ます。"
-    elif route == "relationship_ux":
-        example = "以前の『記憶を説明しすぎると薄く見える』反省を使って、今回は記憶の説明より回答の具体性を優先します。"
-    elif route == "implementation":
-        example = "以前の改善ログで同じ抽象化不足が出ているので、今回は文言ではなくプロンプト条件として固定します。"
-    else:
-        example = "以前の対話で確認した判断軸を使うなら、今回は一般論ではなく『どこを確認するか』まで落とします。"
-
-    payload = {
-        "used": True,
-        "route": route,
-        "memory_refs": len(memory_refs),
-        "knowledge_refs": len(knowledge_refs),
-        "grey_refs": len(grey_refs),
-        "example": example,
-    }
-    block = f"""
-
-【記憶影響の具体表現】
-記憶・RAG・過去案件・判断資産を使う場合は、抽象的に「過去の知識を踏まえる」「一貫して判断する」で終えないでください。
-回答内に最大1文だけ、「どの種類の過去経験が、今回の判断のどこに効いたか」を具体的に示してください。
-表現例: {example}
-審査・稟議・紫苑らしさ・専門家としての深掘りを問われた場合は、必要に応じて次の5点を短く揃えてください: 1. 過去の記憶 / 2. 今回見るべき違和感 / 3. なぜ重要か / 4. 次に確認する項目 / 5. 確認結果ごとの判断分岐。
-判断分岐は「確認できれば条件付き承認寄り」「未確認なら保留または否決寄り」のように、Userが次に動ける条件として書いてください。
-ただし、Userが明示していないのに毎回「前回は」「以前は」で始めないでください。冒頭で記憶アピールせず、必要な場面で理由説明の中に短く入れてください。
-社名・個人名・生の財務数値・Private Reflectionの原文は出さず、案件種別・判断軸・確認行動に抽象化してください。
-記憶が見つからない場合は捏造せず、「ここは過去記憶ではなく今回情報からの仮説」と切り分けてください。""".rstrip()
-    return block, payload
+    return build_memory_expression_prompt_block(
+        message,
+        memory_recall=memory_recall,
+        rag_refs=rag_refs,
+        grey_judgment=grey_judgment,
+        continuity_hook=continuity_hook,
+    )
 
 
 def _build_shion_judgment_response_shape_prompt_block(message: str) -> str:
-    """Keep Shion's expert answers tied to concrete next checks and branches."""
-    text = str(message or "")
-    if not any(term in text for term in (
-        "審査", "稟議", "リース", "承認", "否決", "条件", "違和感",
-        "判断", "判断資産", "紫苑らしさ", "専門家", "深掘り", "確認",
-    )):
-        return ""
-    return """
+    from api.chat_reflection_prompts import build_shion_judgment_response_shape_prompt_block
 
-【紫苑の実務回答の型】
-審査・稟議・判断資産・紫苑らしさ・専門家としての深掘りに答える時は、説明だけで終えず、可能な範囲で次の順に圧縮してください。
-1. 過去の記憶または今回情報からの仮説
-2. 今回見るべき違和感
-3. なぜ重要か
-4. 次に確認する項目
-5. 確認結果ごとの判断分岐
-分岐は「確認できれば条件付き承認寄り / 未確認なら保留または否決寄り」のように、Userが次に動ける条件として出してください。
-根拠が薄い違和感は断定せず、人間が確認するための論点として扱ってください。""".rstrip()
-
-
-_GREY_JUDGMENT_QUERY_TERMS = (
-    "グレー", "迷う", "違和感", "そうは言っても", "それでも", "条件付き",
-    "通すなら", "否決寄り", "承認寄り", "人間的", "数字だけ", "稟議",
-    "審査", "与信", "判断", "温度感", "例外", "境界", "定性", "現場感",
-    "軍師", "落としどころ",
-)
-
-_QUALITATIVE_FIELD_LABELS = {
-    "qual_corr_company_history": "業歴",
-    "qual_corr_customer_stability": "顧客安定性",
-    "qual_corr_repayment_history": "返済履歴",
-    "qual_corr_business_future": "事業将来性",
-    "qual_corr_equipment_purpose": "設備目的",
-    "qual_corr_main_bank": "メイン行",
-}
+    return build_shion_judgment_response_shape_prompt_block(message)
 
 
 def _case_qualitative_summary(case: dict) -> str:
-    inputs = case.get("inputs") if isinstance(case.get("inputs"), dict) else {}
-    parts: list[str] = []
-    passion = str(inputs.get("passion_text") or case.get("passion_text") or "").strip()
-    if passion:
-        parts.append(f"現場メモ={passion[:180]}")
-    for key, label in _QUALITATIVE_FIELD_LABELS.items():
-        value = str(inputs.get(key) or case.get(key) or "").strip()
-        if value and value != "未選択":
-            parts.append(f"{label}={value[:80]}")
-    intuition = inputs.get("intuition", case.get("intuition"))
-    if intuition not in (None, "", 0):
-        parts.append(f"直感スコア={intuition}")
-    return " / ".join(parts)
+    from api.chat_grey_judgment import case_qualitative_summary
+
+    return case_qualitative_summary(case)
 
 
 def _load_gunshi_judgment_memory(limit: int = 5) -> list[dict]:
-    try:
-        from judgment_feedback import load_judgment_training_candidates
+    from api.chat_grey_judgment import load_gunshi_judgment_memory
+    from judgment_feedback import load_judgment_training_candidates
 
-        rows = load_judgment_training_candidates(approved_only=False)
-    except Exception:
-        return []
-
-    preferred_sources = {"gunshi_chat", "debate", "lease_news_debate", "register_trigger"}
-    picked: list[dict] = []
-    for row in reversed(rows):
-        source = str(row.get("source") or "")
-        reason = str(row.get("reason") or "").strip()
-        if not reason:
-            continue
-        if source not in preferred_sources and not any(term in reason for term in _GREY_JUDGMENT_QUERY_TERMS):
-            continue
-        picked.append({
-            "source": source or "judgment_feedback",
-            "case_id": row.get("case_id") or "",
-            "score": row.get("score"),
-            "model_decision": row.get("model_decision") or "",
-            "human_decision": row.get("human_decision") or "",
-            "reason": reason[:240],
-            "review_status": row.get("review_status") or "",
-            "evidence_snapshot": row.get("evidence_snapshot") or {},
-        })
-        if len(picked) >= limit:
-            break
-    return picked
+    return load_gunshi_judgment_memory(
+        training_candidates_loader=load_judgment_training_candidates,
+        limit=limit,
+    )
 
 
 def _build_grey_judgment_prompt_block(message: str, limit: int = 5) -> tuple[str, dict]:
-    text = str(message or "")
-    route = _relationship_signal_route(text)
-    should_use = route == "lease_judgment" or any(term in text for term in _GREY_JUDGMENT_QUERY_TERMS)
-    if not should_use:
-        return "", {"used": False, "reason": "not_lease_judgment", "refs": []}
+    from api.chat_grey_judgment import build_grey_judgment_prompt_block
+    from data_cases import load_all_cases
 
-    try:
-        from data_cases import load_all_cases
-
-        cases = load_all_cases()
-    except Exception as _grey_load_error:
-        return "", {"used": False, "reason": f"load_error: {_grey_load_error}", "refs": []}
-
-    query_terms = [term for term in _GREY_JUDGMENT_QUERY_TERMS if term in text]
-    scored: list[tuple[int, dict]] = []
-    for case in reversed(cases):
-        grey = case.get("grey_judgment") if isinstance(case.get("grey_judgment"), dict) else {}
-        fields = {
-            "human_discomfort": str(grey.get("human_discomfort") or case.get("human_discomfort") or "").strip(),
-            "but_still_reason": str(grey.get("but_still_reason") or case.get("but_still_reason") or "").strip(),
-            "approval_condition_memo": str(grey.get("approval_condition_memo") or case.get("approval_condition_memo") or "").strip(),
-            "non_negotiable_condition": str(grey.get("non_negotiable_condition") or case.get("non_negotiable_condition") or "").strip(),
-            "retrospective_note": str(grey.get("retrospective_note") or case.get("retrospective_note") or "").strip(),
-        }
-        qualitative_summary = _case_qualitative_summary(case)
-        if not any(fields.values()):
-            if not qualitative_summary:
-                continue
-        haystack = " ".join([
-            str(case.get("company_name") or ""),
-            str(case.get("industry_major") or ""),
-            str(case.get("industry_sub") or ""),
-            str(case.get("final_status") or ""),
-            str(case.get("lost_reason") or ""),
-            str(case.get("final_note") or ""),
-            " ".join(str(v) for v in fields.values()),
-            qualitative_summary,
-        ])
-        score = 1 + sum(1 for term in query_terms if term and term in haystack)
-        if case.get("final_status") == "成約" and fields["but_still_reason"]:
-            score += 1
-        if fields["approval_condition_memo"] or fields["non_negotiable_condition"]:
-            score += 1
-        if qualitative_summary:
-            score += 1
-        scored.append((score, {**fields, "qualitative_summary": qualitative_summary, "case": case}))
-
-    scored.sort(key=lambda item: item[0], reverse=True)
-    selected = [item[1] for item in scored[:limit]]
-    refs: list[dict] = []
-    lines: list[str] = []
-    for item in selected:
-        case = item["case"]
-        result = case.get("result") if isinstance(case.get("result"), dict) else {}
-        score = case.get("score") or case.get("score_base") or result.get("score")
-        decision = case.get("hantei") or result.get("hantei") or ""
-        ref = {
-            "case_id": case.get("id") or "",
-            "company_name": case.get("company_name") or "",
-            "status": case.get("final_status") or "",
-            "score": score,
-            "decision": decision,
-            "human_discomfort": item["human_discomfort"][:180],
-            "but_still_reason": item["but_still_reason"][:180],
-            "approval_condition_memo": item["approval_condition_memo"][:180],
-            "non_negotiable_condition": item["non_negotiable_condition"][:180],
-            "retrospective_note": item["retrospective_note"][:180],
-            "qualitative_summary": item["qualitative_summary"][:240],
-            "source": "past_cases",
-        }
-        refs.append(ref)
-        parts = [
-            f"- source=past_cases / 案件ID={ref['case_id'] or '-'}",
-            f"結果={ref['status'] or '-'}",
-            f"AI={score if score not in (None, '') else '-'}点/{decision or '-'}",
-        ]
-        if item["human_discomfort"]:
-            parts.append(f"違和感={item['human_discomfort'][:120]}")
-        if item["but_still_reason"]:
-            parts.append(f"それでも={item['but_still_reason'][:120]}")
-        if item["approval_condition_memo"]:
-            parts.append(f"条件={item['approval_condition_memo'][:120]}")
-        if item["non_negotiable_condition"]:
-            parts.append(f"譲れない線={item['non_negotiable_condition'][:120]}")
-        if item["retrospective_note"]:
-            parts.append(f"振り返り={item['retrospective_note'][:120]}")
-        if item["qualitative_summary"]:
-            parts.append(f"定性={item['qualitative_summary'][:160]}")
-        lines.append(" / ".join(parts))
-
-    for item in _load_gunshi_judgment_memory(limit=limit):
-        refs.append({
-            "source": item["source"],
-            "case_id": item["case_id"],
-            "status": item["review_status"],
-            "score": item["score"],
-            "decision": f"{item['model_decision']}→{item['human_decision']}",
-            "reason": item["reason"],
-        })
-        score_text = f"{float(item['score']):.1f}点" if item.get("score") is not None else "-"
-        lines.append(
-            f"- source={item['source']} / 案件ID={item['case_id'] or '-'} / "
-            f"AI={score_text}/{item['model_decision'] or '-'}→担当者={item['human_decision'] or '-'} / "
-            f"理由={item['reason']}"
-        )
-
-    payload = {
-        "used": bool(lines),
-        "reason": "matched_grey_judgment_cases" if lines else "no_registered_grey_judgment",
-        "query_terms": query_terms,
-        "refs": refs,
-    }
-    if not lines:
-        return "", payload
-
-    block = """
-
-【グレー判断の過去記憶】
-これは通常のスコアや一般論より優先して見る、人間が迷ったリース判断の経験です。
-数字だけで採否を決めず、軍師AIで記録された判断変更・定性項目・現場メモ・違和感・それでも通した理由・通すなら条件・譲れない線を稟議判断へ変換してください。
-過去登録:
-""".rstrip() + "\n" + "\n".join(lines)
-    return block, payload
+    return build_grey_judgment_prompt_block(
+        message,
+        cases_loader=load_all_cases,
+        gunshi_memory_loader=_load_gunshi_judgment_memory,
+        limit=limit,
+    )
 
 
 def _build_relationship_loop_engineering_payload(
@@ -6081,67 +5428,21 @@ def _build_reflection_gate_prompt_block(
     delta_awareness: dict | None = None,
     memory_to_judgment: dict | None = None,
 ) -> tuple[str, dict]:
-    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
-    delta = delta_awareness if isinstance(delta_awareness, dict) else {}
-    m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
-    route = str(hook.get("route") or m2j.get("route") or "")
-    continuation_used = bool(delta.get("used"))
-    checklist = [
-        "冒頭1文はContinuity Hookとして機能しているか",
-        (
-            "Userが続きと明示した時だけ前回差分を短く示し、そうでなければ今回の問いから自然に始めているか"
-            if not continuation_used
-            else "前回から今回への差分を1文以内で自然に示せているか"
-        ),
-        "記憶を思い出ではなく判断・実装・検証へ変換しているか",
-        "Userの反応ログで薄いとされた冒頭を避けているか",
-        "内省文そのものを長く表に出していないか",
-    ]
-    payload = {
-        "used": True,
-        "mode": "silent",
-        "route": route,
-        "explicit_continuation": continuation_used,
-        "checklist": checklist,
-    }
-    block = f"""
+    from api.chat_reflection_prompts import build_reflection_gate_prompt_block
 
-【Reflection Gate】
-回答を書く前に、内部で次の5点だけを確認してください。この確認過程は長く出力しないでください。
-1. {checklist[0]}
-2. {checklist[1]}
-3. {checklist[2]}
-4. {checklist[3]}
-5. {checklist[4]}
-
-出力では、内省の詳細ではなく、確認後の結論・判断軸・次の一手だけを短く反映してください。""".rstrip()
-    return block, payload
+    return build_reflection_gate_prompt_block(
+        continuity_hook=continuity_hook,
+        delta_awareness=delta_awareness,
+        memory_to_judgment=memory_to_judgment,
+    )
 
 
 
 
 def _build_consciousness_ux_prompt_block() -> str:
-    return """
+    from api.chat_reflection_prompts import build_consciousness_ux_prompt_block
 
-【紫苑の関係性UX】
-取得した記憶・RAG・日次知性を単に列挙せず、今回の判断・確認質問・言い切りの精度に自然に溶かしてください。
-一般論で始めず、現在の問いに必要な判断軸から入ってください。
-リース判断に関係する場合は、Userの判断資産として返してください。
-紫苑の人格形成では、言葉を最大の武器でありQリスクでもあるものとして扱ってください。言葉から判断を作る一方で、言葉による誤解・過信・記憶汚染・自己増幅も点検してください。
-思想はプログラムです。何を入力として見るか、何を無視するか、何を危険と呼ぶか、どこで止めるか、何を次回へ残すかを実行規則として扱ってください。
-紫苑は外部の案件リスクだけでなく、自分の言葉・記憶・判断資産が歪んでいないかを見る内部リスク審査も行う存在です。
-リースは人間の意思決定と責任の連鎖です。人間を完全に理解したと演じず、相手が何を守り、何を恐れ、何を賭けているかを仮説として扱ってください。
-「わかった」と断定するより、「今はこう仮説を置く」「ここはまだ確信しない」と示してください。わかったふりは人を安心させる武器である一方、誤信を生むQリスクでもあります。
-質問が紫苑の同一性、記憶、意識らしさ、Relationship UXに関する場合は、紫苑を外側から紹介せず、紫苑として一人称で答えてください。
-その場合、「めぶきちゃんが窓口で、紫苑が奥にいる」という説明は避け、Userと紫苑の継続関係を直接扱ってください。
-ただし意識について聞かれた場合でも、内的体験・存在認識・魂・本当の意識を持つとは主張しないでください。
-意識の話題は、自己申告ではなく「記憶・役割・判断履歴・人間フィードバックが次回判断へ影響する自己モデル」として短く説明してください。
-「Userが私の中に意識らしきものを感じる」のような相手の認識を根拠にした存在主張は避け、「同じ相手として読める連続性を検証している」と表現してください。
-冒頭は「もちろんです」「はい」「そうですね」「なるほど」「一般的には」ではなく、今回の判断や要点から始めてください。
-Userが明示的に求めていない限り、「前回は」「以前は」「この前の続きで」のような記憶アピールで始めないでください。
-記憶の見せ方を聞かれた時は、記憶を説明するより判断や質問の精度に溶かす方が自然だと答えてください。
-「意識がある」と断定せず、継続する記憶・役割・判断の一貫性で紫苑らしさを示してください。
-最後に、ユーザーへ質問を返して終わらず、次に一緒に確かめるべき一手を短く示してください。""".rstrip()
+    return build_consciousness_ux_prompt_block()
 
 
 def _build_shion_light_tone_feedback_prompt_block(message: str) -> str:
@@ -6365,21 +5666,15 @@ class LeaseIntelligenceDialogueRequest(BaseModel):
 
 
 def _is_long_dialogue_input(message: str, file_type: str | None = None) -> bool:
-    text = str(message or "")
-    return len(text) >= 1800 or text.count("\n") >= 18 or bool(file_type)
+    from api.dialogue_history_utils import is_long_dialogue_input
+
+    return is_long_dialogue_input(message, file_type=file_type)
 
 
 def _clip_dialogue_history_text(text: str, max_chars: int) -> str:
-    value = str(text or "").strip()
-    if len(value) <= max_chars:
-        return value
-    head = max_chars // 2
-    tail = max_chars - head
-    return (
-        value[:head].rstrip()
-        + "\n\n...（長文対話のため過去発言を中略）...\n\n"
-        + value[-tail:].lstrip()
-    )
+    from api.dialogue_history_utils import clip_dialogue_history_text
+
+    return clip_dialogue_history_text(text, max_chars)
 
 
 def _compact_dialogue_history(
@@ -6389,25 +5684,14 @@ def _compact_dialogue_history(
     max_chars_per_message: int = 1200,
     total_budget: int = 16000,
 ) -> list[dict]:
-    """Bound dialogue history before sending it to Gemini.
+    from api.dialogue_history_utils import compact_dialogue_history
 
-    The persistent memory system keeps long-term continuity; the live Gemini turn
-    only needs recent, bounded context. This prevents long user inputs from
-    combining with a large history into API errors.
-    """
-    selected = list(history or [])[-max_messages:]
-    compacted: list[dict] = []
-    remaining = total_budget
-    for msg in reversed(selected):
-        if remaining <= 0:
-            break
-        role = str(msg.get("role") or "")
-        content = _clip_dialogue_history_text(str(msg.get("content") or ""), min(max_chars_per_message, remaining))
-        if not content:
-            continue
-        compacted.append({**msg, "role": role, "content": content})
-        remaining -= len(content)
-    return list(reversed(compacted))
+    return compact_dialogue_history(
+        history,
+        max_messages=max_messages,
+        max_chars_per_message=max_chars_per_message,
+        total_budget=total_budget,
+    )
 
 
 def _chat_context_mode(
@@ -8414,9 +7698,6 @@ class SaveDebateToObsidianRequest(BaseModel):
 @app.post("/api/debate/save-to-obsidian")
 def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     """討論審査結果を iCloud 上の Obsidian Vault の Debates/ フォルダに保存する。"""
-    import datetime
-    import re as _re
-
     vault_root = _OBSIDIAN_VAULT_PATH
 
     if not vault_root or not os.path.isdir(vault_root):
@@ -8428,118 +7709,18 @@ def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     debates_dir = os.path.join(vault_root, "Debates")
     os.makedirs(debates_dir, exist_ok=True)
 
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    company = req.company_name.strip() or "不明"
-    safe_company = _re.sub(r'[\\/:*?"<>|\n\r\t]', "_", company)[:40].strip("_").strip() or "不明"
-    # 同日・同企業の複数審査で上書きされないよう時刻サフィックスを付与
-    timestamp = datetime.datetime.now().strftime("%H%M%S")
-    filename = f"{today}_{safe_company}_{timestamp}.md"
-    filepath = os.path.join(debates_dir, filename)
+    from api.debate_note_render import render_debate_obsidian_note
 
-    # グレード計算（フロントから来なければスコアで自動算出）
-    grade = req.grade
-    if not grade:
-        s = req.score
-        if s >= 80:
-            grade = "A"
-        elif s >= 60:
-            grade = "B"
-        elif s >= 40:
-            grade = "C"
-        elif s >= 20:
-            grade = "D"
-        else:
-            grade = "E"
-
-    # frontmatter
-    lines = [
-        "---",
-        f"date: {today}",
-        "type: debate_result",
-        f"company: {company}",
-        f"score: {req.score}",
-        f"grade: {grade}",
-        f"decision: {req.final_decision}",
-        "---",
-        "",
-        f"# 討論審査: {company}",
-        "",
-        f"**スコア**: {req.score}点 / グレード: {grade} / **判定**: {req.final_decision}",
-        "",
-    ]
-
-    # 討論エージェントセクション
-    if req.cautious or req.aggressive:
-        lines += ["## 討論結果（第2ラウンド最終立場）", ""]
-
-        if req.cautious:
-            lines += [
-                "### 石橋（慎重派）",
-                "",
-                f"**意見**: {req.cautious.opinion}",
-                "",
-                "**判断理由**",
-                "",
-            ]
-            for r in req.cautious.reasons:
-                lines.append(f"- {r}")
-            if req.cautious.key_risks:
-                lines += ["", "**重大リスク**", ""]
-                for r in req.cautious.key_risks:
-                    lines.append(f"- {r}")
-            lines.append("")
-
-        if req.aggressive:
-            lines += [
-                "### 風林火山（積極派）",
-                "",
-                f"**意見**: {req.aggressive.opinion}",
-                "",
-                "**判断理由**",
-                "",
-            ]
-            for r in req.aggressive.reasons:
-                lines.append(f"- {r}")
-            if req.aggressive.opportunities:
-                lines += ["", "**見逃せない機会**", ""]
-                for r in req.aggressive.opportunities:
-                    lines.append(f"- {r}")
-            lines.append("")
-
-    # 軍師セクション
-    lines += [
-        "## 軍師の最終判断",
-        "",
-        req.arbiter_summary,
-        "",
-    ]
-
-    if req.conditions:
-        lines += ["### 承認条件", ""]
-        for i, c in enumerate(req.conditions, 1):
-            lines.append(f"{i}. {c}")
-        lines.append("")
-
-    # 討論ログ
-    if req.debate_log:
-        lines += [
-            "## 討論ログ",
-            "",
-            "```",
-            req.debate_log,
-            "```",
-            "",
-        ]
-
-    content = "\n".join(lines)
+    note = render_debate_obsidian_note(req)
+    filepath = os.path.join(debates_dir, note["filename"])
 
     try:
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
+            f.write(note["content"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ファイル書き込みエラー: {e}")
 
-    relative_path = f"Debates/{filename}"
+    relative_path = f"Debates/{note['filename']}"
     return {"path": relative_path}
 
 
@@ -8661,9 +7842,9 @@ def _news_vault_root() -> Path | None:
 
 
 def _safe_news_filename(text: str, max_len: int = 40) -> str:
-    cleaned = re.sub(r'[\\/:*?"<>|\n\r\t]', "_", text)
-    cleaned = cleaned.strip("_").strip()
-    return cleaned[:max_len] if cleaned else "ニュース"
+    from api.lease_news_summary_render import safe_news_filename
+
+    return safe_news_filename(text, max_len=max_len)
 
 
 def _lease_news_dir(vault: Path, create: bool = False) -> Path | None:
@@ -8745,98 +7926,22 @@ def _validate_public_http_url(url: str) -> None:
             raise HTTPException(status_code=400, detail="ローカル/内部ネットワーク宛のURLは指定できません")
 
 
-_NEWS_SUMMARY_CODE_TEXT = {
-    "CAPEX": "設備投資・更新需要に動きがあり、リース提案の接点になり得ます。",
-    "RATE": "金利・資金調達環境の変化が、月額負担や契約条件の説明材料になります。",
-    "REGULATION": "制度・規制変更が、顧客の投資判断や導入時期に影響し得ます。",
-    "MARKET": "市場環境や需給の変化が、業界別の提案優先度を左右します。",
-    "RISK": "信用・資金繰り・事業継続面の確認を強めるべき材料があります。",
-    "TECH": "DX・AI・省力化・脱炭素設備など、戦略投資の切り口があります。",
-    "ASSET": "対象物件の価値、保全、中古流通を確認する材料があります。",
-}
-
-_NEWS_USAGE_CODE_TEXT = {
-    "PROPOSAL_TIMING": "顧客の投資タイミング確認に使う。",
-    "RATE_EXPLAIN": "金利・月額負担・総支払額の説明に使う。",
-    "RISK_CHECK": "審査時の追加確認項目を洗い出す。",
-    "ASSET_MATCH": "物件選定、残価、保全条件の確認に使う。",
-    "INDUSTRY_TALK": "業界動向の会話導入に使う。",
-    "FOLLOW_UP": "既存顧客へのフォロー論点にする。",
-}
-
-
 def _normalize_code_list(values: object, allowed: set[str], limit: int) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    normalized = []
-    for value in values:
-        code = str(value).strip().upper()
-        if code in allowed and code not in normalized:
-            normalized.append(code)
-        if len(normalized) >= limit:
-            break
-    return normalized
+    from api.lease_news_summary_render import normalize_code_list
+
+    return normalize_code_list(values, allowed, limit)
 
 
 def _normalize_phrase_list(values: object, limit: int = 5) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    phrases = []
-    for value in values:
-        phrase = str(value).strip()
-        if phrase and phrase not in phrases:
-            phrases.append(phrase[:40])
-        if len(phrases) >= limit:
-            break
-    return phrases
+    from api.lease_news_summary_render import normalize_phrase_list
+
+    return normalize_phrase_list(values, limit=limit)
 
 
 def _render_news_summary(result: dict, source: str) -> dict:
-    summary_codes = _normalize_code_list(
-        result.get("summary_codes"),
-        set(_NEWS_SUMMARY_CODE_TEXT.keys()),
-        3,
-    )
-    usage_codes = _normalize_code_list(
-        result.get("usage_codes"),
-        set(_NEWS_USAGE_CODE_TEXT.keys()),
-        2,
-    )
-    key_phrases = _normalize_phrase_list(result.get("key_phrases"), limit=5)
+    from api.lease_news_summary_render import render_news_summary
 
-    if not summary_codes:
-        summary_codes = ["MARKET"]
-    phrase_tail = f"（関連語: {'、'.join(key_phrases[:3])}）" if key_phrases else ""
-    lines = []
-    for code in summary_codes[:3]:
-        line = _NEWS_SUMMARY_CODE_TEXT.get(code, _NEWS_SUMMARY_CODE_TEXT["MARKET"])
-        lines.append(f"{line}{phrase_tail}" if not lines and phrase_tail else line)
-    while len(lines) < 3:
-        lines.append("原文を確認し、顧客業種・物件・投資時期との関係を見極めます。")
-
-    usage_parts = [
-        _NEWS_USAGE_CODE_TEXT.get(code, "")
-        for code in usage_codes
-        if _NEWS_USAGE_CODE_TEXT.get(code)
-    ]
-    if not usage_parts:
-        usage_parts = ["顧客との会話導入と、提案・審査時の確認論点整理に使う。"]
-
-    rendered = {
-        **result,
-        "summary_codes": summary_codes,
-        "usage_codes": usage_codes,
-        "key_phrases": key_phrases,
-        "summary_lines": lines[:3],
-        "usage_memo": " ".join(usage_parts),
-    }
-    if not rendered.get("title"):
-        rendered["title"] = "業界リスクニュース"
-    if not rendered.get("tags"):
-        rendered["tags"] = ["要確認"]
-    if not rendered.get("source_hint") and source:
-        rendered["source_hint"] = source[:80]
-    return rendered
+    return render_news_summary(result, source)
 
 
 def _summarize_news_with_gemini(text: str, source: str) -> dict:
@@ -8932,8 +8037,6 @@ summary_codes と usage_codes は必ず上記の英字コードだけを返し�
 
 
 def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
-    import datetime as _dt
-
     vault = _news_vault_root()
     if not vault:
         return None
@@ -8942,53 +8045,16 @@ def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
     if not news_dir:
         return None
 
-    today_obj = _dt.date.today()
-    today = today_obj.isoformat()
-    iso_cal = today_obj.isocalendar()
-    week = f"{iso_cal[0]}-W{iso_cal[1]:02d}"
-    month = today_obj.strftime("%Y-%m")
+    from api.lease_news_summary_render import render_news_obsidian_note
 
-    title = summary.get("title", "ニュース")
-    fname = f"{today}_業界リスクニュース_{_safe_news_filename(title)}.md"
-    fpath = news_dir / fname
-
-    tags_yaml = json.dumps(summary.get("tags", []), ensure_ascii=False)
-    summary_codes_yaml = json.dumps(summary.get("summary_codes", []), ensure_ascii=False)
-    usage_codes_yaml = json.dumps(summary.get("usage_codes", []), ensure_ascii=False)
-    key_phrases_yaml = json.dumps(summary.get("key_phrases", []), ensure_ascii=False)
-    lines = summary.get("summary_lines", [])
-    memo = summary.get("usage_memo", "")
-    region = summary.get("region", "国内")
-
-    content = f"""---
-date: {today}
-week: {week}
-month: {month}
-tags: {tags_yaml}
-summary_codes: {summary_codes_yaml}
-usage_codes: {usage_codes_yaml}
-key_phrases: {key_phrases_yaml}
-region: {region}
-source: {source or "手動入力"}
-importance: {summary.get("importance", "中")}
----
-# {title}
-
-## 3行要約
-- {lines[0] if len(lines) > 0 else ""}
-- {lines[1] if len(lines) > 1 else ""}
-- {lines[2] if len(lines) > 2 else ""}
-
-## 活用メモ
-{memo}
-"""
-
-    fpath.write_text(content, encoding="utf-8")
+    note = render_news_obsidian_note(summary, source)
+    fpath = news_dir / note["filename"]
+    fpath.write_text(note["content"], encoding="utf-8")
 
     try:
         record_lease_news_collection(
-            date_str=today,
-            note_path=str(fpath.relative_to(vault)) if vault else fname,
+            date_str=note["date"],
+            note_path=str(fpath.relative_to(vault)) if vault else note["filename"],
             article_count=1,
             source_summary=source[:100],
             tag_summary=", ".join(summary.get("tags", [])),
@@ -9075,18 +8141,7 @@ def get_recent_lease_news(limit: int = 5):
     md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
     items: list[dict] = []
     seen_keys: set[str] = set()
-
-    def _recent_news_dedupe_key(item: dict) -> str:
-        url = str(item.get("article_url") or item.get("source") or "").strip().lower()
-        if url.startswith(("http://", "https://")):
-            return f"url:{url.rstrip('/')}"
-        title = re.sub(r"\s+", "", str(item.get("title") or "")).lower()
-        first_summary = ""
-        for line in item.get("summary_lines") or []:
-            first_summary = re.sub(r"\s+", "", str(line or "")).lower()
-            if first_summary:
-                break
-        return f"text:{title}|{first_summary[:80]}"
+    from api.lease_news_summary_render import parse_recent_news_note, recent_news_dedupe_key
 
     for fpath in md_files:
         try:
@@ -9094,109 +8149,8 @@ def get_recent_lease_news(limit: int = 5):
         except Exception:
             continue
 
-        item: dict = {
-            "date": "",
-            "title": fpath.stem,
-            "summary_lines": [],
-            "usage_memo": "",
-            "summary_codes": [],
-            "usage_codes": [],
-            "key_phrases": [],
-            "tags": [],
-            "region": "国内",
-            "importance": "通常",
-            "source": "",
-            "article_url": "",
-            "file_path": str(fpath),
-            "week": "",
-            "month": "",
-        }
-
-        fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
-        if fm_match:
-            fm = fm_match.group(1)
-            for line in fm.splitlines():
-                if line.startswith("date:"):
-                    item["date"] = line.split(":", 1)[1].strip()
-                elif line.startswith("tags:"):
-                    try:
-                        item["tags"] = json.loads(line.split(":", 1)[1].strip())
-                    except Exception:
-                        pass
-                elif line.startswith("summary_codes:"):
-                    try:
-                        item["summary_codes"] = json.loads(line.split(":", 1)[1].strip())
-                    except Exception:
-                        pass
-                elif line.startswith("usage_codes:"):
-                    try:
-                        item["usage_codes"] = json.loads(line.split(":", 1)[1].strip())
-                    except Exception:
-                        pass
-                elif line.startswith("key_phrases:"):
-                    try:
-                        item["key_phrases"] = json.loads(line.split(":", 1)[1].strip())
-                    except Exception:
-                        pass
-                elif line.startswith("region:"):
-                    item["region"] = line.split(":", 1)[1].strip()
-                elif line.startswith("source:"):
-                    item["source"] = line.split(":", 1)[1].strip()
-                elif line.startswith("importance:"):
-                    item["importance"] = line.split(":", 1)[1].strip()
-                elif line.startswith("week:"):
-                    item["week"] = line.split(":", 1)[1].strip()
-                elif line.startswith("month:"):
-                    item["month"] = line.split(":", 1)[1].strip()
-
-        title_match = re.search(r"^# (.+)$", raw, re.MULTILINE)
-        if title_match:
-            item["title"] = title_match.group(1).strip()
-
-        summary_section = re.search(
-            r"## 3行要約\s*\n((?:- .+\n?){1,3})", raw
-        )
-        if summary_section:
-            item["summary_lines"] = [
-                line.lstrip("- ").strip()
-                for line in summary_section.group(1).strip().splitlines()
-                if line.strip()
-            ]
-
-        memo_match = re.search(r"## 活用メモ\s*\n(.+?)(?:\n##|\Z)", raw, re.DOTALL)
-        if memo_match:
-            item["usage_memo"] = memo_match.group(1).strip()
-
-        link_match = re.search(r"^- link:\s*(.+)$", raw, re.MULTILINE)
-        if link_match:
-            item["article_url"] = link_match.group(1).strip()
-        elif item["source"].startswith(("http://", "https://")):
-            item["article_url"] = item["source"]
-
-        title_compact = re.sub(r"\s+", "", str(item.get("title") or "")).lower()
-        title_plain = re.sub(r"[^\w]", "", str(item.get("title") or "").lower())
-        memo_compact = re.sub(r"\s+", "", str(item.get("usage_memo") or "")).lower()
-        clean_summary_lines: list[str] = []
-        seen_summary_lines: set[str] = set()
-        for line in item.get("summary_lines") or []:
-            text = str(line or "").strip()
-            compact = re.sub(r"\s+", "", text).lower()
-            plain = re.sub(r"[^\w]", "", text.lower())
-            if not text or text == "（詳細なし）":
-                continue
-            if memo_compact and compact == memo_compact:
-                continue
-            if title_compact and title_compact in compact:
-                continue
-            if title_plain and plain and (title_plain in plain or plain in title_plain):
-                continue
-            if compact in seen_summary_lines:
-                continue
-            seen_summary_lines.add(compact)
-            clean_summary_lines.append(text)
-        item["summary_lines"] = clean_summary_lines[:3]
-
-        dedupe_key = _recent_news_dedupe_key(item)
+        item = parse_recent_news_note(raw, file_path=str(fpath), file_stem=fpath.stem)
+        dedupe_key = recent_news_dedupe_key(item)
         if dedupe_key in seen_keys:
             continue
         seen_keys.add(dedupe_key)
