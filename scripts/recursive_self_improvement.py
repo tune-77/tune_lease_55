@@ -55,6 +55,11 @@ def _dump_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _report_list(report: dict[str, Any], key: str) -> list[Any]:
+    value = report.get(key)
+    return value if isinstance(value, list) else []
+
+
 def _candidate_text(item: dict[str, Any]) -> str:
     parts = [
         str(item.get(key, "")).strip()
@@ -140,11 +145,14 @@ def _load_obsidian_notes(paths: list[Path]) -> list[dict[str, Any]]:
 def _collect_raw_items(report: dict[str, Any], obsidian_items: list[dict[str, Any]], workspace_root: Path) -> list[dict[str, Any]]:
     raw: list[dict[str, Any]] = []
 
-    for key, state in (("applied", "applied"), ("needs_review", "validated")):
-        for index, item in enumerate(report.get(key) or [], 1):
+    for key, source_label, state in (
+        ("applied_improvements", "applied", "applied"),
+        ("needs_review", "needs_review", "validated"),
+    ):
+        for index, item in enumerate(_report_list(report, key), 1):
             if not isinstance(item, dict):
                 continue
-            enriched = _candidate_source(item, key, state, index)
+            enriched = _candidate_source(item, source_label, state, index)
             _attach_quick_fix_target(enriched, workspace_root)
             enriched["auto_fix_policy"] = evaluate_auto_fix_policy(enriched, workspace_root)
             raw.append(enriched)
@@ -331,7 +339,7 @@ def build_recursive_self_improvement(
         "measurement_summary": measurement_summary,
         "prompt_feedback_summary": prompt_summary,
         "input_counts": {
-            "report_applied": len(report.get("applied") or []),
+            "report_applied": len(_report_list(report, "applied_improvements")),
             "report_needs_review": len(report.get("needs_review") or []),
             "obsidian_notes": len(obsidian_items),
             "prompt_feedback_rows": len(prompt_rows),
