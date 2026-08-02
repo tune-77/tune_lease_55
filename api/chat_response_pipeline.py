@@ -33,11 +33,15 @@ def vertex_retrieval_response_extra(
     *,
     vertex_ai_search: dict[str, Any],
     vertex_answer_api: dict[str, Any],
+    vertex_distillation_capture: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "vertex_ai_search": vertex_search_public_payload(vertex_ai_search),
         "vertex_answer_api": vertex_answer_public_payload(vertex_answer_api),
     }
+    if vertex_distillation_capture is not None:
+        payload["vertex_distillation_capture"] = vertex_distillation_capture
+    return payload
 
 
 def build_chat_response_payload(

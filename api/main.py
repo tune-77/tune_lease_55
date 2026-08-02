@@ -4952,6 +4952,27 @@ def _capture_language_judgment_material(
     )
 
 
+def _capture_vertex_distillation(message: str, vertex_answer_api: dict[str, Any] | None) -> dict[str, Any]:
+    """Persist a Vertex Answer API summary to Obsidian so it outlives the pilot.
+
+    Best-effort only: any failure (missing vault, disabled feature, write
+    error) must degrade to a skipped capture, never an exception into
+    /api/chat.
+    """
+    try:
+        from api.vertex_distillation import capture_vertex_distillation
+        from runtime_paths import get_data_dir
+
+        return capture_vertex_distillation(
+            message,
+            vertex_answer_api,
+            vault_path=_OBSIDIAN_VAULT_PATH,
+            state_path=get_data_dir() / "vertex_distillation_state.json",
+        )
+    except Exception as exc:  # noqa: BLE001 - must never break /api/chat
+        return {"captured": False, "reason": "unexpected_error", "error": str(exc)[:240]}
+
+
 def _score_response_impact(user_message: str, assistant_reply: str) -> dict[str, Any]:
     from api.chat_language_feedback import score_response_impact
 
@@ -7246,6 +7267,7 @@ def post_chat(req: ChatRequest):
             response_mode=req.response_mode,
             category=question_category,
         )
+        vertex_distillation_capture = _capture_vertex_distillation(req.message, vertex_answer_api)
         response_impact_prediction = _record_response_impact_prediction(
             user_message=req.message,
             assistant_reply=reply,
@@ -7383,6 +7405,7 @@ def post_chat(req: ChatRequest):
             extra=vertex_retrieval_response_extra(
                 vertex_ai_search=vertex_agent_search,
                 vertex_answer_api=vertex_answer_api,
+                vertex_distillation_capture=vertex_distillation_capture,
             ),
         )
         if req.debug_memory:
