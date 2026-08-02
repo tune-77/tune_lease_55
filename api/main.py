@@ -7471,6 +7471,12 @@ class VertexExternalGroundingRequest(BaseModel):
     page_size: int = Field(5, ge=1, le=10)
 
 
+class VertexKnowledgeWorkflowRequest(BaseModel):
+    topic: str
+    mode: Literal["evidence_support", "judgment_candidates", "knowledge_audit"] = "evidence_support"
+    page_size: int = Field(5, ge=1, le=10)
+
+
 @app.post("/api/vertex-search/debug")
 def post_vertex_search_debug(req: VertexSearchDebugRequest):
     """Vertex AI Search/Answer/Google Search grounding を同一質問で比較するデバッグ口。"""
@@ -7522,6 +7528,22 @@ def post_vertex_search_debug(req: VertexSearchDebugRequest):
         if req.include_google_grounding:
             payload["google_grounding"] = google_search_grounding(query)
         return payload
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/vertex-search/workflow")
+def post_vertex_search_workflow(req: VertexKnowledgeWorkflowRequest):
+    """Vertexを用途別に使う実務口。根拠補強・判断資産候補・知識棚卸しに限定する。"""
+    topic = req.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=422, detail="topic is required")
+    try:
+        from api.vertex_knowledge_workflows import run_vertex_knowledge_workflow
+
+        return run_vertex_knowledge_workflow(topic, mode=req.mode, page_size=req.page_size)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
