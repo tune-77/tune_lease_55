@@ -625,3 +625,38 @@ def test_score_detail_and_assess_risk_agree_at_the_boundary(tmp_path, monkeypatc
     from_assess = api_agent.assess_risk_level(float(APPROVAL_LINE), None, [])["hantei"]
 
     assert from_detail == from_assess
+
+
+def test_score_full_case_reads_keys_that_the_engine_actually_returns():
+    """score_full_case が読むキーが scoring_core の返却辞書に実在すること。
+
+    tenant_score / q_risk_score は screening_records の**DBカラム名**であって
+    エンジンの返却キーではない（正しくは score_borrower / quantum_risk）。
+    取り違えても例外にならず黙って None が返るため、静的に実在を検証する。
+    numpy 等が無い環境でも動くよう、import ではなくソースの AST を見る。
+    """
+    import ast
+    from pathlib import Path
+
+    from lease_intelligence_tools import SCORE_FULL_CASE_ENGINE_KEYS
+
+    src = Path(__file__).resolve().parents[1] / "scoring_core.py"
+    tree = ast.parse(src.read_text(encoding="utf-8"))
+
+    returned: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != "run_quick_scoring":
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict):
+                for key in sub.value.keys:
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                        returned.add(key.value)
+
+    assert returned, "run_quick_scoring の返却辞書を解析できなかった"
+    # engine_source は run_full_api_scoring が後付けするため対象外。
+    missing = [k for k in SCORE_FULL_CASE_ENGINE_KEYS if k not in returned]
+    assert missing == [], (
+        f"scoring_core が返さないキーを読もうとしています: {missing}。"
+        f"実際の返却キー: {sorted(returned)}"
+    )

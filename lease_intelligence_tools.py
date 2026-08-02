@@ -232,14 +232,33 @@ def score_full_case(
         "score_base": result.get("score_base", score),
         "hantei": result.get("hantei", ""),
         "asset_score": result.get("asset_score"),
-        "tenant_score": result.get("tenant_score"),
-        "q_risk_score": result.get("q_risk_score"),
-        "pd_pct": result.get("pd_pct"),
-        "approval_line": APPROVAL_LINE,
+        # 借手スコアは score_borrower、Q_risk は quantum_risk。
+        # tenant_score / q_risk_score は screening_records の**DBカラム名**であって
+        # エンジンの返却キーではない（取り違えても例外にならず黙って None になる）。
+        "tenant_score": result.get("score_borrower"),
+        "q_risk_score": result.get("quantum_risk"),
+        "credit_quantum_strong_warning": result.get("credit_quantum_strong_warning"),
+        "asset_warnings": result.get("asset_warnings"),
+        "approval_line": result.get("approval_line", APPROVAL_LINE),
         "conditional_line": CONDITIONAL_LINE,
         "engine_source": result.get("engine_source"),
         "note": "このスコアはDBに保存していない試算値。確定させるには通常の審査導線を通すこと",
     }
+
+
+# score_full_case がスコアリングエンジンから読み出すキー。
+# エンジン側のリネームで黙って None になるのを防ぐため、テストで実在を検証する。
+SCORE_FULL_CASE_ENGINE_KEYS = (
+    "score",
+    "score_base",
+    "hantei",
+    "asset_score",
+    "score_borrower",
+    "quantum_risk",
+    "credit_quantum_strong_warning",
+    "asset_warnings",
+    "approval_line",
+)
 
 
 def get_scoring_coefficients(model: str = "", feature: str = "") -> dict[str, Any]:
