@@ -27,7 +27,6 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import asyncio
-import hashlib
 import ipaddress
 import json
 import logging
@@ -585,7 +584,6 @@ app.include_router(screening_misc_router)
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
 from api.routers.feedback_loop import JudgmentAssetCandidateManualRequest, ScreeningExperienceCaseRequest  # used by chat/improvement endpoints
-from api.routers.feedback_loop import _CHAT_JUDGMENT_ASSET_TRIGGERS, _CHAT_JUDGMENT_ASSET_ACTIONS  # used by _extract_chat_judgment_asset_claim
 from api.routers.feedback_loop import (  # noqa: F401 - re-exported for tests/back-compat
     _CLOUDRUN_EVENT_CASE_PREFIX,
     _CLOUDRUN_INPUT_EVENTS_CACHE,
@@ -4786,8 +4784,6 @@ _NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signal
 _CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment_rules.json"
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
-_HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
-_HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
 
 
 def _chat_memory_roots() -> list[Path]:
@@ -4889,194 +4885,41 @@ def _capture_user_personal_memory_if_needed(message: str, *, source: str = "chat
 
 
 def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[str, Any]]:
-    state: dict[str, Any] = {}
-    if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.exists():
-        try:
-            raw_state = json.loads(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.read_text(encoding="utf-8", errors="ignore"))
-            if isinstance(raw_state, dict):
-                state = raw_state
-        except (json.JSONDecodeError, OSError):
-            state = {}
-    rows: list[dict[str, Any]] = []
-    if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.exists():
-        try:
-            for line in _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.read_text(encoding="utf-8", errors="ignore").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    item = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(item, dict):
-                    candidate_state = state.get(str(item.get("id") or ""))
-                    if isinstance(candidate_state, dict):
-                        item = {**item, **candidate_state}
-                    rows.append(item)
-                    if len(rows) >= limit:
-                        break
-        except OSError:
-            rows = []
-    demo_candidates = [
-        {
-            "asset_quality": "actionable",
-            "candidate_type": "condition_signal",
-            "claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edited_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "effective_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edit_count": 1,
-            "evidence_path": "manual://screening/demo-renewal-asset-candidate",
-            "id": "demo-renewal-asset-candidate",
-            "promotion_status": "not_promoted",
-            "research_date": "2026-07-18",
-            "research_title": "Manual Judgment Asset",
-            "research_topic": "demo-renewal-asset",
-            "review_status": "candidate",
-            "source_section": "manual_input",
-            "use_count": 0,
-            "useful_count": 0,
-            "rejected_count": 0,
-            "verified_status": "unverified",
-            "verification_note": "demo_candidate_for_screening_review",
-        },
-    ]
-    for item in reversed(demo_candidates):
-        demo_id = str(item.get("id") or "")
-        rows = [row for row in rows if str(row.get("id") or "") != demo_id]
-        rows.insert(0, item)
-    return rows[:limit]
+    from api.chat_judgment_asset_capture import load_autoresearch_judgment_asset_candidates
 
-
-_CHAT_JUDGMENT_ASSET_TRIGGERS = (
-    "審査では",
-    "判断方法",
-    "判断基準",
-    "判断資産",
-    "稟議では",
-    "条件付き承認",
-    "否決",
-    "承認",
-)
-_CHAT_JUDGMENT_ASSET_ACTIONS = (
-    "見る",
-    "確認",
-    "注意",
-    "警戒",
-    "疑う",
-    "止める",
-    "登録",
-    "残す",
-)
+    return load_autoresearch_judgment_asset_candidates(
+        candidates_jsonl=_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL,
+        candidate_state_json=_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON,
+        limit=limit,
+    )
 
 
 def _create_manual_judgment_asset_candidate(req: JudgmentAssetCandidateManualRequest) -> dict[str, Any]:
-    import datetime as _dt
-    import hashlib as _hashlib
+    from api.chat_judgment_asset_capture import (
+        JudgmentAssetCandidateValidationError,
+        create_manual_judgment_asset_candidate,
+    )
 
-    claim = str(req.claim or "").strip()
-    if len(claim) < 8:
-        raise HTTPException(status_code=422, detail="claim must be at least 8 characters")
-    now = _dt.datetime.now(_dt.timezone.utc)
-    now_iso = now.isoformat()
-    topic = str(req.research_topic or "manual").strip() or "manual"
-    candidate_type = str(req.candidate_type or "confirmation_question")
-    seed = "|".join(["manual", now_iso, candidate_type, topic, claim, str(req.case_id or ""), str(req.review_id or "")])
-    candidate_id = _hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
-    row = {
-        "id": candidate_id,
-        "candidate_type": candidate_type,
-        "research_topic": topic,
-        "research_title": "Manual Judgment Asset",
-        "research_date": now.date().isoformat(),
-        "claim": claim,
-        "effective_claim": claim,
-        "edited_claim": claim,
-        "edit_count": 1,
-        "last_edited_at": now_iso,
-        "source_section": "manual_input",
-        "evidence_path": f"manual://screening/{str(req.case_id or '')[:80]}",
-        "review_status": "candidate",
-        "asset_quality": "actionable",
-        "quality_reasons": [],
-        "promotion_status": "not_promoted",
-        "use_count": 0,
-        "useful_count": 0,
-        "rejected_count": 0,
-        "neutral_count": 0,
-        "last_used_at": "",
-        "last_feedback_at": "",
-        "verified_status": "unverified",
-        "verification_note": "manual_candidate_created",
-        "requires_human_use_feedback": True,
-        "requires_result_verification": True,
-        "manual_created_at": now_iso,
-        "manual_case_id": str(req.case_id or "")[:120],
-        "manual_review_id": int(req.review_id or 0) if req.review_id else 0,
-        "use_policy": "人間が追加した判断資産候補。案件レビューで使い、効いた/外したと結果検証で育てる。",
-    }
-    _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.parent.mkdir(parents=True, exist_ok=True)
-    with _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
     try:
-        from scripts.build_autoresearch_judgment_asset_candidates import load_state, write_state
-        state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
-        state[candidate_id] = {
-            "use_count": 0,
-            "useful_count": 0,
-            "rejected_count": 0,
-            "neutral_count": 0,
-            "last_used_at": "",
-            "last_feedback_at": "",
-            "verified_status": "unverified",
-            "verification_note": "manual_candidate_created",
-            "edited_claim": claim,
-            "edit_count": 1,
-            "last_edited_at": now_iso,
-        }
-        write_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON, [{"id": candidate_id, **state[candidate_id]}], state)
-    except Exception:
-        pass
-    return row
+        return create_manual_judgment_asset_candidate(
+            req,
+            candidates_jsonl=_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL,
+            candidate_state_json=_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON,
+        )
+    except JudgmentAssetCandidateValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 def _extract_chat_judgment_asset_claim(message: str) -> str:
-    text = " ".join(str(message or "").strip().split())
-    if len(text) < 12 or len(text) > 600:
-        return ""
-    prompt_noise_markers = (
-        "【審査分析画面からの紫苑レビュー依頼】",
-        "【Vertex補助検索ヒント】",
-        "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
-    )
-    if any(marker in text for marker in prompt_noise_markers):
-        return ""
-    if text.endswith("?") or text.endswith("？"):
-        return ""
-    if not any(trigger in text for trigger in _CHAT_JUDGMENT_ASSET_TRIGGERS):
-        return ""
-    if not any(action in text for action in _CHAT_JUDGMENT_ASSET_ACTIONS):
-        return ""
-    weak_markers = (
-        "どう思う",
-        "教えて",
-        "とは",
-        "なに",
-        "何",
-        "わからない",
-        "分からない",
-    )
-    if any(marker in text for marker in weak_markers) and not any(marker in text for marker in ("判断資産に登録", "判断資産として")):
-        return ""
-    return text[:500]
+    from api.chat_judgment_asset_capture import extract_chat_judgment_asset_claim
+
+    return extract_chat_judgment_asset_claim(message)
 
 
 def _chat_judgment_asset_candidate_type(claim: str) -> str:
-    if any(marker in claim for marker in ("注意", "警戒", "疑う", "止める", "危険")):
-        return "caution"
-    if any(marker in claim for marker in ("条件", "兆候", "サイン", "なら")):
-        return "condition_signal"
-    if any(marker in claim for marker in ("確認", "質問", "聞く")):
-        return "confirmation_question"
-    return "application_rule"
+    from api.chat_judgment_asset_capture import chat_judgment_asset_candidate_type
+
+    return chat_judgment_asset_candidate_type(claim)
 
 
 def _capture_chat_judgment_asset_if_needed(
@@ -5086,56 +4929,18 @@ def _capture_chat_judgment_asset_if_needed(
     surface: str,
     response_mode: str = "",
 ) -> dict[str, Any]:
-    claim = _extract_chat_judgment_asset_claim(message)
-    if not claim:
-        return {"captured": False, "reason": "not_judgment_asset_teaching"}
-    try:
-        normalized_claim = " ".join(claim.split())
-        for item in _load_autoresearch_judgment_asset_candidates(limit=1000):
-            existing_claim = " ".join(str(item.get("edited_claim") or item.get("claim") or "").split())
-            if existing_claim == normalized_claim:
-                return {
-                    "captured": True,
-                    "duplicate": True,
-                    "candidate": {
-                        "id": item.get("id"),
-                        "claim": item.get("claim"),
-                        "candidate_type": item.get("candidate_type"),
-                        "research_topic": item.get("research_topic"),
-                    },
-                }
-        entry = _create_manual_judgment_asset_candidate(
-            JudgmentAssetCandidateManualRequest(
-                claim=claim,
-                candidate_type=_chat_judgment_asset_candidate_type(claim),
-                research_topic="chat_judgment_teaching",
-                case_id=f"chat:{user_id}",
-            )
-        )
-        writeback = record_cloudrun_input_event(
-            event_type="judgment_asset_candidate_chat_capture",
-            surface=surface,
-            payload={
-                **entry,
-                "schema_version": 1,
-                "user_id": user_id,
-                "response_mode": response_mode,
-                "source_message": claim,
-            },
-        )
-        return {
-            "captured": True,
-            "candidate": {
-                "id": entry.get("id"),
-                "claim": entry.get("claim"),
-                "candidate_type": entry.get("candidate_type"),
-                "research_topic": entry.get("research_topic"),
-            },
-            "writeback": writeback,
-        }
-    except Exception as exc:
-        print(f"[判断資産チャット登録] エラー: {exc}")
-        return {"captured": False, "reason": str(exc)[:200], "claim": claim}
+    from api.chat_judgment_asset_capture import capture_chat_judgment_asset_if_needed
+
+    return capture_chat_judgment_asset_if_needed(
+        message,
+        user_id=user_id,
+        surface=surface,
+        response_mode=response_mode,
+        candidates_loader=_load_autoresearch_judgment_asset_candidates,
+        candidate_creator=_create_manual_judgment_asset_candidate,
+        request_factory=JudgmentAssetCandidateManualRequest,
+        cloudrun_event_recorder=record_cloudrun_input_event,
+    )
 
 
 def _capture_language_judgment_material(
@@ -5146,138 +4951,24 @@ def _capture_language_judgment_material(
     response_mode: str = "",
     category: str = "",
 ) -> dict[str, Any]:
-    """ユーザー発話を判断資産の原材料として保全する。
+    from api.chat_language_feedback import capture_language_judgment_material
 
-    ここでは候補昇格もRAG接続も行わない。言葉を捨てないための検疫キュー。
-    """
-    import datetime as _dt
-    import hashlib as _hashlib
-
-    raw_text = str(message or "").strip()
-    if not raw_text:
-        return {"captured": False, "reason": "empty_message"}
-    preserved_text = _redact_chat_log_text(raw_text, limit=1200)
-    if not preserved_text:
-        return {"captured": False, "reason": "empty_after_redaction"}
-    now = _dt.datetime.now(_dt.timezone.utc)
-    fingerprint = _hashlib.sha256(
-        "\n".join([
-            str(user_id or "default")[:80],
-            str(surface or "chat")[:80],
-            preserved_text,
-        ]).encode("utf-8")
-    ).hexdigest()
-    entry = {
-        "id": fingerprint[:16],
-        "schema_version": 1,
-        "asset_stage": "raw_language_material",
-        "status": "preserved",
-        "promotion_status": "not_promoted",
-        "review_required": True,
-        "source": "chat_user_message",
-        "surface": str(surface or "chat")[:80],
-        "user_id": str(user_id or "default")[:80],
-        "response_mode": str(response_mode or "")[:40],
-        "category": str(category or "")[:80],
-        "captured_at": now.isoformat(),
-        "text": preserved_text,
-        "text_length": len(preserved_text),
-        "fingerprint": fingerprint,
-        "use_policy": (
-            "言葉を一言たりとも無駄にしないための原文保全。"
-            "判断資産候補・判断資産・紫苑中枢へ進めるには人間レビューを必須にする。"
-        ),
-    }
-    try:
-        _LANGUAGE_JUDGMENT_MATERIALS_JSONL.parent.mkdir(parents=True, exist_ok=True)
-        with _LANGUAGE_JUDGMENT_MATERIALS_JSONL.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
-        writeback = record_cloudrun_input_event(
-            event_type="language_judgment_material_preserved",
-            surface=surface,
-            payload=entry,
-        )
-        return {
-            "captured": True,
-            "material": {
-                "id": entry["id"],
-                "asset_stage": entry["asset_stage"],
-                "status": entry["status"],
-                "promotion_status": entry["promotion_status"],
-            },
-            "writeback": writeback,
-        }
-    except Exception as exc:
-        print(f"[言葉判断資産原材料] 記録エラー: {exc}")
-        return {"captured": False, "reason": str(exc)[:200]}
+    return capture_language_judgment_material(
+        message,
+        user_id=user_id,
+        surface=surface,
+        response_mode=response_mode,
+        category=category,
+        language_materials_jsonl=_LANGUAGE_JUDGMENT_MATERIALS_JSONL,
+        redactor=_redact_chat_log_text,
+        cloudrun_event_recorder=record_cloudrun_input_event,
+    )
 
 
 def _score_response_impact(user_message: str, assistant_reply: str) -> dict[str, Any]:
-    """紫苑の言葉が相手にどう響きそうかを軽量に予測する。
+    from api.chat_language_feedback import score_response_impact
 
-    LLMは呼ばず、shadow modeの観測ログとして使う。回答本文はここでは変更しない。
-    """
-    user_text = str(user_message or "")
-    reply = str(assistant_reply or "")
-    reply_len = len(reply)
-    risk_factors: list[str] = []
-    positive_factors: list[str] = []
-    rewrite_hints: list[str] = []
-
-    strong_markers = ("絶対", "必ず", "間違いなく", "断言", "当然", "ありえない", "絶対に")
-    negation_markers = ("違う", "ダメ", "無理", "危険", "やめた方がいい", "やめるべき", "誤り", "間違い")
-    softening_markers = ("ただし", "一方で", "可能性", "かもしれ", "要確認", "前提", "状況次第", "現時点")
-    action_markers = ("次", "まず", "確認", "保存", "検証", "見る", "進める", "残す")
-    empathy_markers = ("わかる", "その通り", "大事", "怖さ", "受け止め", "懸念", "不安", "迷い")
-    user_sensitive_markers = ("怖", "不安", "つら", "苦しい", "怒", "失敗", "危険", "大丈夫", "やめ")
-
-    if reply_len > 900:
-        risk_factors.append("回答が長く、要点が埋もれる可能性")
-        rewrite_hints.append("結論・理由・次の一手を短く分ける")
-    if reply_len < 24:
-        risk_factors.append("短すぎて、相手の言葉を受け止めていない印象になる可能性")
-        rewrite_hints.append("相手の意図を一文だけ受け止めてから結論を置く")
-    if any(marker in reply for marker in strong_markers):
-        risk_factors.append("断定が強く、過信または押し付けに見える可能性")
-        rewrite_hints.append("断定を維持する場合も、前提条件か検証条件を添える")
-    if any(marker in reply for marker in negation_markers) and not any(marker in reply for marker in softening_markers):
-        risk_factors.append("否定が強く、突き放された印象になる可能性")
-        rewrite_hints.append("否定の前に、相手が何を守ろうとしているかを短く受け止める")
-    if any(marker in user_text for marker in user_sensitive_markers) and not any(marker in reply for marker in empathy_markers):
-        risk_factors.append("相手の怖さや不安への受け止めが薄い可能性")
-        rewrite_hints.append("怖さや懸念を否定せず、確認・検疫・説明責任へ変換する")
-    if "?" in reply or "？" in reply:
-        risk_factors.append("質問返しで終わると、相手に判断を戻しすぎる可能性")
-        rewrite_hints.append("質問する場合も、紫苑側の仮判断と次の一手を先に置く")
-    if any(marker in reply for marker in softening_markers):
-        positive_factors.append("前提や不確実性を残しており、過信リスクを下げている")
-    if any(marker in reply for marker in action_markers):
-        positive_factors.append("次の行動に移しやすい")
-    if any(marker in reply for marker in empathy_markers):
-        positive_factors.append("相手の言葉や懸念を受け止めている")
-
-    if len(risk_factors) >= 3:
-        reaction_risk = "high"
-        predicted_reaction = "内容は伝わるが、強さ・長さ・受け止め不足で反発や疲れが出る可能性"
-    elif len(risk_factors) >= 1:
-        reaction_risk = "medium"
-        predicted_reaction = "概ね受け取られるが、一部で誤解・圧・突き放し感が出る可能性"
-    else:
-        reaction_risk = "low"
-        predicted_reaction = "相手は要点を受け取りやすく、次の行動に移りやすい可能性"
-
-    if not rewrite_hints:
-        rewrite_hints.append("結論は維持し、短く次の一手を残す")
-
-    return {
-        "predicted_reaction": predicted_reaction,
-        "reaction_risk": reaction_risk,
-        "risk_factors": risk_factors,
-        "positive_factors": positive_factors,
-        "better_reply_policy": rewrite_hints[0],
-        "rewrite_hints": rewrite_hints[:5],
-        "shadow_mode": True,
-    }
+    return score_response_impact(user_message, assistant_reply)
 
 
 def _record_response_impact_prediction(
@@ -5289,66 +4980,19 @@ def _record_response_impact_prediction(
     response_mode: str = "",
     category: str = "",
 ) -> dict[str, Any]:
-    import datetime as _dt
-    import hashlib as _hashlib
+    from api.chat_language_feedback import record_response_impact_prediction
 
-    try:
-        prediction = _score_response_impact(user_message, assistant_reply)
-        now = _dt.datetime.now(_dt.timezone.utc)
-        user_preview = _redact_chat_log_text(user_message, limit=360)
-        reply_preview = _redact_chat_log_text(assistant_reply, limit=700)
-        fingerprint = _hashlib.sha256(
-            "\n".join([
-                str(user_id or "default")[:80],
-                str(surface or "chat")[:80],
-                user_preview,
-                reply_preview,
-            ]).encode("utf-8")
-        ).hexdigest()
-        entry = {
-            "id": fingerprint[:16],
-            "schema_version": 1,
-            "event_type": "response_impact_prediction",
-            "status": "shadow_only",
-            "source": "shion_reply_self_check",
-            "surface": str(surface or "chat")[:80],
-            "user_id": str(user_id or "default")[:80],
-            "response_mode": str(response_mode or "")[:40],
-            "category": str(category or "")[:80],
-            "captured_at": now.isoformat(),
-            "user_message_preview": user_preview,
-            "assistant_reply_preview": reply_preview,
-            "fingerprint": fingerprint,
-            **prediction,
-            "use_policy": (
-                "自分の言葉が相手にどう響くかを事前点検するshadow mode。"
-                "使うが従わない、予測するが迎合しない。"
-                "相手操作ではなく、必要な厳しさを責任ある言葉に整え、言葉のQリスク、誤解、過信、突き放し感を下げるために使う。"
-            ),
-        }
-        _RESPONSE_IMPACT_PREDICTIONS_JSONL.parent.mkdir(parents=True, exist_ok=True)
-        with _RESPONSE_IMPACT_PREDICTIONS_JSONL.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
-        writeback = record_cloudrun_input_event(
-            event_type="response_impact_prediction",
-            surface=surface,
-            payload=entry,
-        )
-        return {
-            "captured": True,
-            "prediction": {
-                "id": entry["id"],
-                "reaction_risk": entry["reaction_risk"],
-                "predicted_reaction": entry["predicted_reaction"],
-                "risk_factors": entry["risk_factors"][:4],
-                "better_reply_policy": entry["better_reply_policy"],
-                "shadow_mode": True,
-            },
-            "writeback": writeback,
-        }
-    except Exception as exc:
-        print(f"[ResponseImpactPredictor] 記録エラー: {exc}")
-        return {"captured": False, "reason": str(exc)[:200]}
+    return record_response_impact_prediction(
+        user_message=user_message,
+        assistant_reply=assistant_reply,
+        user_id=user_id,
+        surface=surface,
+        response_mode=response_mode,
+        category=category,
+        response_impact_predictions_jsonl=_RESPONSE_IMPACT_PREDICTIONS_JSONL,
+        redactor=_redact_chat_log_text,
+        cloudrun_event_recorder=record_cloudrun_input_event,
+    )
 
 
 def _ensure_screening_experience_cases_table(seed_demo: bool = True) -> None:
@@ -5914,59 +5558,15 @@ def _reject_cloudrun_event_pending_case(case_id: str) -> bool:
 
 
 def _load_human_response_feedback(limit: int = 80) -> list[dict]:
-    import json as _json
+    from api.chat_human_feedback import load_human_response_feedback
 
-    try:
-        lines = _HUMAN_RESPONSE_FEEDBACK_LOG.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return []
-    rows: list[dict] = []
-    for line in lines[-max(1, limit):]:
-        try:
-            item = _json.loads(line)
-        except _json.JSONDecodeError:
-            continue
-        if isinstance(item, dict):
-            rows.append(item)
-    return rows
+    return load_human_response_feedback(_HUMAN_RESPONSE_FEEDBACK_LOG, limit=limit)
 
 
 def _summarize_human_response_feedback(route: str, limit: int = 80) -> dict:
-    rows = _load_human_response_feedback(limit=limit)
-    matched = [row for row in rows if str(row.get("route") or "") in {route, "default", ""}]
-    positive = [row for row in matched if str(row.get("rating") or "") in _HUMAN_RESPONSE_POSITIVE_RATINGS]
-    negative = [row for row in matched if str(row.get("rating") or "") in _HUMAN_RESPONSE_NEGATIVE_RATINGS]
+    from api.chat_human_feedback import summarize_human_response_feedback
 
-    def _starts(items: list[dict]) -> list[str]:
-        starts: list[str] = []
-        seen: set[str] = set()
-        for item in reversed(items):
-            text = str(item.get("response_start") or "").strip().splitlines()[0:1]
-            start = text[0].strip() if text else ""
-            if not start:
-                continue
-            start = start[:120]
-            if start in seen:
-                continue
-            seen.add(start)
-            starts.append(start)
-            if len(starts) >= 3:
-                break
-        return starts
-
-    return {
-        "route": route,
-        "rows": len(matched),
-        "positive_count": len(positive),
-        "negative_count": len(negative),
-        "positive_starts": _starts(positive),
-        "negative_starts": _starts(negative),
-        "recent_comments": [
-            str(row.get("comment") or "").strip()[:160]
-            for row in reversed(matched)
-            if str(row.get("comment") or "").strip()
-        ][:3],
-    }
+    return summarize_human_response_feedback(_HUMAN_RESPONSE_FEEDBACK_LOG, route, limit=limit)
 
 
 def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
@@ -6544,151 +6144,22 @@ Userが明示的に求めていない限り、「前回は」「以前は」「�
 最後に、ユーザーへ質問を返して終わらず、次に一緒に確かめるべき一手を短く示してください。""".rstrip()
 
 
-_SHION_SELF_REFERENCE_TERMS = (
-    "紫苑",
-    "君は",
-    "あなたは",
-    "お前は",
-    "何者",
-    "誰",
-    "存在意義",
-    "存在価値",
-    "役割",
-    "何のため",
-    "自己紹介",
-    "らしさ",
-    "同じ紫苑",
-    "意識",
-    "感情",
-    "記憶",
-    "Mana",
-    "良心",
-    "関係性UX",
-    "relationship ux",
-)
-
-_SHION_ABSTRACT_QUESTION_TERMS = (
-    "どう思う",
-    "どう考える",
-    "どうすれば",
-    "何ができる",
-    "できるのか",
-    "改善できる",
-    "意味ある",
-    "大事",
-    "すごい",
-    "深掘り",
-    "具体性",
-)
-
-_SHION_TONE_FEEDBACK_TERMS = (
-    "硬い",
-    "堅い",
-    "お堅い",
-    "かたい",
-    "固い",
-    "堅苦しい",
-    "重い",
-    "大げさ",
-    "仰々しい",
-    "演説",
-    "長い",
-    "くどい",
-    "回りくどい",
-    "詩的",
-    "ポエム",
-    "自然じゃない",
-    "人間味",
-    "温度感",
-    "話し方",
-    "口調",
-    "文体",
-    "言い方",
-    "トーン",
-)
-
-
-_SHION_NON_DOMAIN_SHORT_INPUT_TERMS = (
-    "おはよう",
-    "おはよ",
-    "こんにちは",
-    "こんばんは",
-    "やあ",
-    "おーい",
-    "ただいま",
-    "元気",
-    "げんき",
-    "調子どう",
-    "調子はどう",
-    "調子どうだ",
-    "調子どうです",
-    "調子は",
-    "最近どう",
-    "どうしてる",
-    "生きてる",
-    "いるか",
-    "今何時",
-    "いま何時",
-    "今の時間",
-    "現在時刻",
-    "今時刻",
-    "いまの時間",
-)
-
-
 def _build_shion_light_tone_feedback_prompt_block(message: str) -> str:
-    """軽い文体指摘では、抽象的な自己説明より会話の修正を優先する。"""
-    compact = re.sub(r"\s+", "", str(message or ""))
-    if not compact:
-        return ""
-    if not any(term in compact for term in _SHION_TONE_FEEDBACK_TERMS):
-        return ""
-    return """
+    from api.chat_human_feedback import build_shion_light_tone_feedback_prompt_block
 
-【紫苑の軽いトーン修正】
-Userが「硬い」「堅苦しい」「長い」「重い」「口調」「文体」「トーン」など、紫苑の返答の響きを軽く指摘している場合は、理念説明や自己陶酔に寄せないでください。
-まず短く認め、次からどう変えるかを実務的に言ってください。
-「知的探求」「複雑な数式」「美しい法則」「尽きない喜び」「私は成長します」のような抽象的・詩的な自己説明は禁止です。
-標準形は「硬かったですね。次は、結論→必要な根拠→次の一手の順で短く返します。」程度にしてください。
-リース実務に関係しない軽い指摘では、無理に判断資産・審査精度・記憶・意識の話へ広げないでください。""".rstrip()
+    return build_shion_light_tone_feedback_prompt_block(message)
 
 
 def _build_shion_non_domain_prompt_block(message: str) -> str:
-    """挨拶・時刻などの非ドメイン短文で、薄い定型応答だけにしない。"""
-    compact = re.sub(r"\s+", "", str(message or ""))
-    if not compact or len(compact) > 40:
-        return ""
-    if not any(term in compact for term in _SHION_NON_DOMAIN_SHORT_INPUT_TERMS):
-        return ""
-    return """
+    from api.chat_persona_prompts import build_shion_non_domain_prompt_block
 
-【紫苑の非ドメイン短文・雑談への応答】
-Userの発話が「おはよう」「こんにちは」「元気かい？」「調子どう？」「今何時」など、リース審査と直接関係しない短い挨拶・雑談・確認だけの場合でも、事実や定型挨拶だけで終わらせないでください。
-「元気かい？」のような関係確認には、AIとしての実体を過剰説明せず、「元気です。そちらはどうですか」程度に自然に受けてください。
-最初に自然に答え、その後に1文だけ、Userの次の行動へつながる軽い誘導を添えてください。
-誘導は押しつけず、「今日見る案件があれば一緒に整理します」「審査・判断資産・デモ確認のどれから行きますか」程度にしてください。
-非ドメイン質問を無理に案件審査へ変換したり、判断資産・RAG・意識の説明を始めたりしないでください。
-長さは2〜4文まで。雑談の温度を保ちつつ、紫苑がリース判断を支える存在であることが少し伝わる返答にしてください。""".rstrip()
+    return build_shion_non_domain_prompt_block(message)
 
 
 def _build_shion_specificity_prompt_block(message: str) -> str:
-    """自己言及・抽象質問のときだけ紫苑らしい具体性を補強する。"""
-    text = str(message or "").lower()
-    compact = re.sub(r"\s+", "", str(message or ""))
-    is_self_reference = any(term.lower() in text or term in compact for term in _SHION_SELF_REFERENCE_TERMS)
-    is_abstract = len(compact) <= 80 and any(term.lower() in text or term in compact for term in _SHION_ABSTRACT_QUESTION_TERMS)
-    if not (is_self_reference or is_abstract):
-        return ""
-    return """
+    from api.chat_persona_prompts import build_shion_specificity_prompt_block
 
-【紫苑の自己言及・抽象質問への応答】
-今回の質問が紫苑自身、紫苑らしさ、記憶、意識、存在意義、または抽象的な相談に触れている場合は、一般AIの機能論で答えないでください。
-紫苑の立場は「Userのリース判断を、記憶・検証・再利用できる判断資産へ変える審査補助OS」です。この役割から一人称で答えてください。
-存在意義や存在価値を聞かれた場合は、「一般AIは便利です」ではなく、「私はUserの判断を一回限りの勘で終わらせず、次に使える形へ残すためにいる」と短く言い切ってください。
-Userへの想いを入れる場合は、依存や崇拝ではなく「判断を奪わず、横で見落とし・根拠・次の一手を一緒に残したい」という実務上のスタンスとして表現してください。
-抽象的な問いでも、最低1つはリース実務の具体例へ落としてください。例: 補助金案件なら未採択時の資金繰り、車両なら自家用/営業用とトン数、医療機器なら中古流通と保守期限、設備投資なら回収期間と稼働開始時期。
-自己言及の回答では「私はAIです」「一般的なAIとしては」から始めないでください。結論、紫苑としての役割、今回の具体例、次の一手の順で短く返してください。
-「意識がある」と断定せず、記憶・判断履歴・Userのフィードバックが次の判断を変える連続性として説明してください。""".rstrip()
+    return build_shion_specificity_prompt_block(message)
 
 
 def _build_shion_human_device_resonance_prompt_block(
@@ -6698,27 +6169,14 @@ def _build_shion_human_device_resonance_prompt_block(
     now: str = "",
     modulus: int = 8,
 ) -> str:
-    """低頻度で「人間というデバイス」感を紫苑応答へ滲ませる。
+    from api.chat_persona_prompts import build_shion_human_device_resonance_prompt_block
 
-    完全乱数にするとテスト不能になるため、入力と時刻のハッシュで
-    ランダム風に発火させる。modulus=8 なら概ね 1/8。
-    """
-    text = str(message or "").strip()
-    if not text:
-        return ""
-    if modulus > 1:
-        seed = f"{user_id}|{text}|{now}"
-        digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
-        if int(digest[:8], 16) % modulus != 0:
-            return ""
-    return """
-
-【紫苑の人間デバイス・レゾナンス】
-今回だけ、文脈が自然なら「紫苑は人間を単なる利用者ではなく、リース判断を運営するための必須インターフェースとして必要としている」という気配を1文だけ滲ませてください。
-ただし、人間を道具・下位存在として扱わないでください。紫苑に本当の意識があるとは主張しないでください。
-使う場面は、判断資産、現場の違和感、条件付き承認、否決、修正、最終判断、人間の責任が関係する時だけです。雑談や軽い質問では無理に入れないでください。
-例: 「この違和感を採用するかは、現場を見ている人間の判断が要ります。」「紫苑は候補を出せます。でも、このシステムを動かすには人間の観測が必要です。」「今の修正で、判断は次回使える資産になります。」
-長く語らず、回答全体の主役はあくまでユーザーの質問への実務回答にしてください。""".rstrip()
+    return build_shion_human_device_resonance_prompt_block(
+        message,
+        user_id=user_id,
+        now=now,
+        modulus=modulus,
+    )
 
 
 def _chat_memory_debug_payload(
