@@ -1,3 +1,5 @@
+import pytest
+
 from lease_intelligence_tools import (
     execute_tool,
     inspect_scoring_policy,
@@ -572,3 +574,54 @@ def test_obsidian_query_expands_scoring_identifiers_to_business_terms():
     assert "最終スコア" in terms
     assert "担保価値" in terms
     assert "配点" in terms
+
+
+# ---------- 承認ラインの単一定義（ツール間で判定が食い違わないこと） ----------
+
+def test_get_score_detail_uses_constants_approval_line(tmp_path, monkeypatch):
+    """get_score_detail の判定が constants.APPROVAL_LINE に従うこと。
+
+    以前ここだけ `>= 70` を直書きしており、APPROVAL_LINE=71 とずれていた。
+    その結果スコア70の案件が、同じエージェント内で get_score_detail では「承認」、
+    assess_risk_level では「条件付き承認」という矛盾した回答になっていた。
+    """
+    import json
+
+    import lease_intelligence_tools as tools
+    from constants import APPROVAL_LINE
+
+    boundary = float(APPROVAL_LINE)
+    db = tmp_path / "lease_data.db"
+    _seed_screening_db(
+        db,
+        [
+            ("境界上", "2026-08-01T09:00:00Z", boundary, 60.0, json.dumps({"company_name": "境界上"})),
+            ("境界下", "2026-08-01T09:00:00Z", boundary - 1, 60.0, json.dumps({"company_name": "境界下"})),
+        ],
+    )
+    monkeypatch.setattr(tools, "DB_PATH", str(db))
+
+    assert tools.get_score_detail("境界上")["verdict"] == "承認"
+    assert tools.get_score_detail("境界下")["verdict"] == "条件付き承認"
+
+
+def test_score_detail_and_assess_risk_agree_at_the_boundary(tmp_path, monkeypatch):
+    """同じスコアに対し2つのツールが同じ判定を返すこと。"""
+    import json
+
+    import lease_intelligence_tools as tools
+    from constants import APPROVAL_LINE
+
+    api_agent = pytest.importorskip("api.shion_agent")
+
+    db = tmp_path / "lease_data.db"
+    _seed_screening_db(
+        db,
+        [("X", "2026-08-01T09:00:00Z", float(APPROVAL_LINE), 60.0, json.dumps({"company_name": "X"}))],
+    )
+    monkeypatch.setattr(tools, "DB_PATH", str(db))
+
+    from_detail = tools.get_score_detail("X")["verdict"]
+    from_assess = api_agent.assess_risk_level(float(APPROVAL_LINE), None, [])["hantei"]
+
+    assert from_detail == from_assess

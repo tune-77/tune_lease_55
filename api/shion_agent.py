@@ -17,6 +17,7 @@ from google.genai.types import Content, Part
 
 from api.shion_agent_tools import READ_ONLY_DB_TOOLS
 from api.shion_conscience import build_conscience_prompt_block
+from api.shion_vertex_tools import VERTEX_AGENT_TOOLS
 from api.shion_mana import build_mana_prompt_block
 from api.shion_tone import build_shion_feminine_tone_block
 from scoring_core import APPROVAL_LINE, CONDITIONAL_LINE
@@ -113,6 +114,11 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
    - build_judgment_preview: レビュー前の判断材料候補を確認したいときに使う
      （まだcanonical_judgment_rulesではない下書きである点に注意）
    - search_obsidian_context: Obsidian Vaultの知識ノートで裏取りしたいときに使う
+   - score_full_case: 「この条件なら何点か」「売上が変わると判定は動くか」を試算する。
+     金額はすべて千円単位で渡す。結果はDB未保存の試算値であり、確定スコアではない
+   - search_lease_knowledge_vertex / answer_lease_question_vertex（有効な場合のみ）:
+     ローカル検索で裏が取れないときの補助。Obsidianの同期タイミング次第で
+     最新版を反映していないことがあるため、ローカル検索を先に試すこと
 4. 調べた結果を踏まえた審査コメントを日本語で出力する
 
 審査コメントの構成：
@@ -124,9 +130,15 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
 どのツールで何を確認したかが伝わるよう、根拠に触れてください。
 """ + "\n\n" + build_mana_prompt_block() + "\n\n" + build_conscience_prompt_block() + "\n\n" + build_shion_feminine_tone_block()
 
-# ローカル読み取り専用ツールのみを登録する（外部API課金なし）。
+# 既定はローカル読み取り専用ツールのみ（外部API課金なし）。
 # 案件依存の裏取り（類似事例・スコア内訳・全体統計等）を紫苑が自律的に選んで呼び出す。
-_AGENT_TOOL_FUNCS = [get_industry_benchmark, assess_risk_level, *READ_ONLY_DB_TOOLS]
+# Vertex AI Search は課金されるため SHION_ENABLE_VERTEX_TOOLS=1 のときだけ加わる。
+_AGENT_TOOL_FUNCS = [
+    get_industry_benchmark,
+    assess_risk_level,
+    *READ_ONLY_DB_TOOLS,
+    *VERTEX_AGENT_TOOLS,
+]
 
 shion_agent = LlmAgent(
     name="shion",
