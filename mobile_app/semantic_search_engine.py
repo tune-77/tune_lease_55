@@ -11,6 +11,7 @@
 import os
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Any
 from functools import lru_cache
@@ -28,6 +29,12 @@ logger = logging.getLogger(__name__)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 DEFAULT_LOCAL_MODEL_DIR = (
     PROJECT_ROOT
     / "models"
@@ -59,9 +66,8 @@ class SemanticSearchEngine:
         self.model_name = model_name or _default_model_name()
         self.embeddings_cache = {}
         self.embedding_model = None
-        # 直書きせず runtime_paths に解決させる（env も既定も一箇所で決まる）
-        from runtime_paths import resolve_obsidian_vault
-
+        # 索引先は runtime_paths の解決結果に従う（env → iCloud）。
+        # ここを直書きすると RAG の索引先だけ他モジュールとずれる。
         self.vault_path = str(resolve_obsidian_vault())
         self.cache_file = "mobile_app/.embeddings_cache.json"
         

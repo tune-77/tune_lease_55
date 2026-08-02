@@ -14,16 +14,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-# runtime_paths を import するためリポジトリルートを sys.path に載せる
-import sys as _sys
-from pathlib import Path as _Path
-
-_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[4])
-if _RUNTIME_PATHS_ROOT not in _sys.path:
-    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
-
-from runtime_paths import resolve_obsidian_vault  # noqa: E402
-
 # ── Claude Agent パイプライン拡張モジュール（オプション）──────────────────
 _CLASSIFIER_AVAILABLE = False
 _AGENT_RUNNER_AVAILABLE = False
@@ -1218,14 +1208,11 @@ class Step3AutoApplier:
         validation_result: dict[str, Any],
     ) -> dict[str, Any]:
         """改善ログを Obsidian 改善ログフォルダへ保存する（後方互換シム）."""
-        env_vault = os.environ.get("OBSIDIAN_VAULT_PATH")
-        vault_candidates = (
-            [Path(env_vault)]
-            if env_vault
-            else [resolve_obsidian_vault()]
-        )
-        vault = next((v for v in vault_candidates if v.exists()), None)
-        if not vault:
+        # 本モジュールの探索ヘルパーに寄せる。以前はここだけ独自に
+        # OBSIDIAN_VAULT_PATH と直書きパスを見ており、_find_vault_path() が
+        # 返す Vault と別の場所へ改善ログを書きうる状態だった。
+        vault = _find_vault_path()
+        if not vault or not vault.exists():
             return {"success": False, "note_path": None, "error": "Vault not found"}
 
         try:

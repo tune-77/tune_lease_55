@@ -307,10 +307,13 @@ export default function TimesFMPage() {
 }
 """
 
-with open('/Users/kobayashiisaoryou/clawd/tune_lease_55/frontend/src/app/financial/page.tsx', 'w') as f:
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_FRONTEND_APP = os.path.join(_REPO_ROOT, 'frontend', 'src', 'app')
+
+with open(os.path.join(_FRONTEND_APP, 'financial', 'page.tsx'), 'w') as f:
     f.write(FINANCIAL_CODE)
 
-with open('/Users/kobayashiisaoryou/clawd/tune_lease_55/frontend/src/app/timesfm/page.tsx', 'w') as f:
+with open(os.path.join(_FRONTEND_APP, 'timesfm', 'page.tsx'), 'w') as f:
     f.write(TIMESFM_CODE)
 
 print("Rebuilt UI for financial and timesfm!")

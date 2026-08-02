@@ -230,3 +230,78 @@ def test_every_vault_job_label_has_a_plist():
     labels = {job.label for job in checker.load_jobs(checker.DEFAULT_LAUNCHD_DIR)}
     missing = checker.VAULT_JOB_LABELS - labels
     assert missing == set(), f"VAULT_JOB_LABELS に実在しないジョブがあります: {missing}"
+
+
+# ---------- hardcoded path allowlist（ラチェット方式） ----------
+
+def test_allowlisted_hardcode_is_info_not_error(tmp_path):
+    """許可リストにあるファイルの直書きは INFO のみで CI を落とさない。"""
+    (tmp_path / "known.py").write_text(
+        'X = "/Users/kobayashiisaoryou/tmp/x"\n', encoding="utf-8"
+    )
+    findings = checker._scan_hardcoded_pattern(
+        pattern=checker.re.compile(r"/Users/kobayashiisaoryou/"),
+        allowlist={"known.py": "テスト用の許可リスト理由"},
+        check_name="hardcoded_absolute_paths",
+        label="マシン依存の絶対パス",
+        repo_root=tmp_path,
+    )
+    assert [f.level for f in findings] == [checker.INFO]
+
+
+def test_new_unlisted_hardcode_is_an_error(tmp_path):
+    """許可リストにない新規の直書きは ERROR とし CI を失敗させる。"""
+    (tmp_path / "new_offender.py").write_text(
+        'X = "/Users/kobayashiisaoryou/tmp/x"\n', encoding="utf-8"
+    )
+    findings = checker._scan_hardcoded_pattern(
+        pattern=checker.re.compile(r"/Users/kobayashiisaoryou/"),
+        allowlist={},
+        check_name="hardcoded_absolute_paths",
+        label="マシン依存の絶対パス",
+        repo_root=tmp_path,
+    )
+    errors = [f for f in findings if f.level == checker.ERROR]
+    assert len(errors) == 1
+    assert "new_offender.py" in errors[0].message
+
+
+def test_clean_tree_has_no_hardcode_findings(tmp_path):
+    (tmp_path / "clean.py").write_text('X = "no hardcode here"\n', encoding="utf-8")
+    findings = checker._scan_hardcoded_pattern(
+        pattern=checker.re.compile(r"/Users/kobayashiisaoryou/"),
+        allowlist={},
+        check_name="hardcoded_absolute_paths",
+        label="マシン依存の絶対パス",
+        repo_root=tmp_path,
+    )
+    assert findings == []
+
+
+def test_excluded_directories_are_skipped(tmp_path):
+    """_archive・.venv 等の除外ディレクトリは新規直書きがあっても無視する。"""
+    archive_dir = tmp_path / "_archive"
+    archive_dir.mkdir()
+    (archive_dir / "old.py").write_text(
+        'X = "/Users/kobayashiisaoryou/tmp/x"\n', encoding="utf-8"
+    )
+    findings = checker._scan_hardcoded_pattern(
+        pattern=checker.re.compile(r"/Users/kobayashiisaoryou/"),
+        allowlist={},
+        check_name="hardcoded_absolute_paths",
+        label="マシン依存の絶対パス",
+        repo_root=tmp_path,
+    )
+    assert findings == []
+
+
+def test_repo_has_no_unlisted_vault_hardcodes():
+    """回帰テスト: リポジトリ全体で Vault 直書きが許可リストを超えて増えていないか。"""
+    errors = [f for f in checker.scan_hardcoded_vault_paths() if f.level == checker.ERROR]
+    assert errors == [], "\n".join(f.message for f in errors)
+
+
+def test_repo_has_no_unlisted_absolute_path_hardcodes():
+    """回帰テスト: リポジトリ全体でマシン依存の絶対パス直書きが許可リストを超えて増えていないか。"""
+    errors = [f for f in checker.scan_hardcoded_absolute_paths() if f.level == checker.ERROR]
+    assert errors == [], "\n".join(f.message for f in errors)

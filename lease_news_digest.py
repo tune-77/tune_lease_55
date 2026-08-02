@@ -495,10 +495,8 @@ def _action_from_dict(data: dict) -> LeaseNewsAction:
 
 def _vault_candidates() -> list[Path]:
     home = Path.home()
+    # 先頭は runtime_paths の解決結果（env → iCloud）。以降は従来どおりの保険。
     raw_candidates = [
-        os.environ.get("OBSIDIAN_VAULT_PATH"),
-        os.environ.get("OBSIDIAN_VAULT"),
-        # 直書きせず runtime_paths に解決させる（env も既定も一箇所で決まる）
         str(resolve_obsidian_vault()),
         str(home / "Documents" / "Obsidian Vault"),
         str(home / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault"),

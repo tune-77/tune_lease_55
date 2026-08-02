@@ -27,20 +27,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-# runtime_paths を import するためリポジトリルートを sys.path に載せる
-import sys as _sys
-from pathlib import Path as _Path
 
-_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
-if _RUNTIME_PATHS_ROOT not in _sys.path:
-    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault  # noqa: E402
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = _REPO_ROOT
 ORIGIN_VAULT = resolve_obsidian_vault()
-LEASE_VAULT = ORIGIN_VAULT / "lease-wiki-vault"
+LEASE_VAULT = resolve_lease_wiki_vault()
 SYNC_ROOT = LEASE_VAULT / "99_Synced_From_Origin"
 DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"
 REPORTS_DIR = PROJECT_ROOT / "reports"

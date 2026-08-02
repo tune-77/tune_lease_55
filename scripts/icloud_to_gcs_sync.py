@@ -14,23 +14,18 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-# runtime_paths を import するためリポジトリルートを sys.path に載せる
-import sys as _sys
-from pathlib import Path as _Path
-
-_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
-if _RUNTIME_PATHS_ROOT not in _sys.path:
-    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_VAULT_PREFIX = os.environ.get("GCS_VAULT_PREFIX", "vault/")
 GCS_UPLOAD_BACKEND = os.environ.get("GCS_UPLOAD_BACKEND", "gcloud").lower()
-LOCAL_VAULT_DIR = os.environ.get(
-    "LOCAL_VAULT_DIR",
-    str(resolve_obsidian_vault()),
-)
+# LOCAL_VAULT_DIR は明示指定用に残す。未指定なら runtime_paths の解決結果
+# （env → iCloud）を使い、GCS に上がる Vault と RAG の索引先を一致させる。
+LOCAL_VAULT_DIR = os.environ.get("LOCAL_VAULT_DIR") or str(resolve_obsidian_vault())
 INCLUDED_REL_PREFIXES = tuple(
     item.strip().strip("/")
     for item in os.environ.get(

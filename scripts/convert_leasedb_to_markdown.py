@@ -7,23 +7,20 @@ Obsidian Vault に Dataview 対応ドキュメントを生成
 import sqlite3
 import os
 import json
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
 import calendar
 
-# runtime_paths を import するためリポジトリルートを sys.path に載せる
-import sys as _sys
-from pathlib import Path as _Path
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
-if _RUNTIME_PATHS_ROOT not in _sys.path:
-    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
-
-from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from runtime_paths import get_db_path, resolve_obsidian_vault  # noqa: E402
 
 # パス設定
-DB_PATH = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db"
+DB_PATH = get_db_path()
 VAULT_PATH = str(resolve_obsidian_vault())
 OUTPUT_DIR = f"{VAULT_PATH}/02-開発中_代替案/leaseDb_データ"
 
@@ -983,7 +980,7 @@ LIMIT 12
 
 **cron 設定**:
 ```bash
-0 6 * * * /usr/bin/python3 /Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/convert_leasedb_to_markdown.py
+0 6 * * * /usr/bin/python3 <リポジトリルート>/scripts/convert_leasedb_to_markdown.py
 ```
 
 ---

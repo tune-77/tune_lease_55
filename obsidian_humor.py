@@ -15,8 +15,6 @@ from obsidian_query import split_query_terms
 from runtime_paths import resolve_obsidian_vault
 
 
-# Vault パスは runtime_paths が唯一の解決窓口（直書きすると RAG の索引先とずれる）
-DEFAULT_VAULT = resolve_obsidian_vault()
 HUMOR_NOTES = {
     "tone": Path("Humor/口調ルール.md"),
     "ng": Path("Humor/NG表現.md"),
@@ -31,15 +29,11 @@ def _vault_path(vault: str | os.PathLike[str] | None = None) -> Path | None:
         path = Path(vault).expanduser()
         return path if path.exists() and path.is_dir() else None
 
-    candidates: list[Path] = []
-    env = os.environ.get("OBSIDIAN_VAULT")
-    if env:
-        candidates.append(Path(env).expanduser())
-    candidates.append(DEFAULT_VAULT)
-    for path in candidates:
-        if path.exists() and path.is_dir():
-            return path
-    return None
+    # env → iCloud の解決順は runtime_paths が唯一の正。
+    # ここで独自に OBSIDIAN_VAULT だけを見ると OBSIDIAN_VAULT_PATH 優先の
+    # 他モジュールと別 Vault を読み、ユーモア規則だけ古い版を掴むことがある。
+    path = resolve_obsidian_vault()
+    return path if path.is_dir() else None
 
 
 def _read_note(vault: Path, rel_path: Path) -> str:

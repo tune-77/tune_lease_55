@@ -1,3 +1,4 @@
+import os
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -86,7 +87,7 @@ def predict_sp500():
     plt.legend()
     plt.grid(True)
     
-    save_path = "/Users/kobayashiisaoryou/clawd/tune_lease_55/sp500_forecast_jpy.png"
+    save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sp500_forecast_jpy.png")
     plt.savefig(save_path)
     print(f"グラフを保存しました: {save_path}")
     

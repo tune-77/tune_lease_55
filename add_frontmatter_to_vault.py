@@ -16,9 +16,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-# Vault パスは runtime_paths が唯一の解決窓口（直書きすると RAG の索引先とずれる）
 from runtime_paths import resolve_obsidian_vault
 
+# Vault パス（env → iCloud の解決順は runtime_paths が唯一の正）
 VAULT_ROOT = resolve_obsidian_vault()
 LEASE_PROJECT = VAULT_ROOT / "Projects" / "tune_lease_55"
 

@@ -3,7 +3,9 @@ import sqlite3
 import pandas as pd
 import datetime
 
-DB_PATH = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db"
+from runtime_paths import get_db_path
+
+DB_PATH = get_db_path()
 
 def check_concept_drift(recent_days=7, threshold_points=3.0, min_recent_cases=3):
     """

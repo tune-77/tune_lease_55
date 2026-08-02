@@ -32,11 +32,6 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from runtime_paths import (  # noqa: E402
-    resolve_icloud_obsidian_documents,
-    resolve_obsidian_vault,
-)
-
 from lease_news_digest import (
     get_lease_news_metrics,
     record_lease_news_collection,
@@ -45,14 +40,14 @@ from lease_news_digest import (
     write_lease_news_focus_note,
     write_lease_news_reflection_note,
 )
+from runtime_paths import ICLOUD_OBSIDIAN_DOCS, resolve_obsidian_vault
 
 
-# 先頭は runtime_paths の解決結果（env の優先順も既定もそちらが決める）。
-# 以前は OBSIDIAN_VAULT だけを直接読んでおり、OBSIDIAN_VAULT_PATH のみ設定された
-# launchd ジョブとこのスクリプトで別の Vault を指しえた。
+# 先頭は runtime_paths の解決結果（env → iCloud）。以前はここで OBSIDIAN_VAULT
+# だけを見ており、OBSIDIAN_VAULT_PATH しか設定されていない環境ではずれていた。
 DEFAULT_VAULT_CANDIDATES = [
     resolve_obsidian_vault(),
-    resolve_icloud_obsidian_documents(),
+    ICLOUD_OBSIDIAN_DOCS,
     Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault",
 ]
 

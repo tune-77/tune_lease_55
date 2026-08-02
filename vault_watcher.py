@@ -13,8 +13,6 @@ import time
 from pathlib import Path
 from datetime import datetime
 
-from runtime_paths import resolve_obsidian_vault
-
 try:
     from watchdog.observers import Observer
     from watchdog.events import FileSystemEventHandler, FileModifiedEvent
@@ -28,8 +26,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Paths
-# Vault パスは runtime_paths が唯一の解決窓口（直書きすると RAG の索引先とずれる）
+from runtime_paths import resolve_obsidian_vault
+
+# Paths（監視対象は env → iCloud の解決結果。索引先とずれないよう runtime_paths に従う）
 VAULT_ROOT = resolve_obsidian_vault()
 PROJECT_ROOT = Path.home() / "clawd" / "tune_lease_55"
 LOGS_DIR = Path.home() / "Library" / "Logs" / "tunelease"

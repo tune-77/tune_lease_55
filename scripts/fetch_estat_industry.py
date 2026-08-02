@@ -34,6 +34,11 @@ if _RUNTIME_PATHS_ROOT not in _sys.path:
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 STATIC_DIR = REPO_ROOT / "static_data"
 BENCHMARKS_PATH = STATIC_DIR / "industry_benchmarks.json"
 CACHE_PATH = STATIC_DIR / "industry_estat_cache.json"

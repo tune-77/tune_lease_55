@@ -192,8 +192,9 @@ def test_collect_md_files_uses_chat_knowledge_allowlist(tmp_path):
 
 
 def test_default_local_vault_dir_points_to_icloud_vault():
-    # ディレクトリ名を直書きせず runtime_paths の解決結果に追随する
-    # （新旧の Vault 名を切り替えてもここが嘘にならないようにするため）
+    # Vault ディレクトリ名は runtime_paths の解決結果で変わりうる
+    # （obsidian-vault / Obsidian Vault）ため、名前を直書きせず解決結果に追随する。
+    # ここが ~/Documents 等のローカルに落ちると GCS に上がる Vault がずれる。
     from runtime_paths import resolve_obsidian_vault
 
     assert LOCAL_VAULT_DIR == str(resolve_obsidian_vault())

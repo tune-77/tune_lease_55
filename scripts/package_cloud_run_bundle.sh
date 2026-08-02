@@ -11,7 +11,9 @@ if [[ -d "$BUNDLE_DIR" ]]; then
   find "$BUNDLE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 fi
 
-# Vault パスは runtime_paths が唯一の解決窓口（既定パスをここに直書きしない）
+# Vault パスは runtime_paths が唯一の解決窓口。
+# env の優先順（OBSIDIAN_VAULT_PATH → OBSIDIAN_VAULT）も既定パスもそちらが決めるので、
+# ここに候補を直書きしない（直書きすると Python 側の解決結果とずれ、別 Vault をバンドルしうる）。
 source "$ROOT_DIR/scripts/resolve_obsidian_vault.sh"
 SOURCE_VAULT="$(resolve_obsidian_vault)"
 if [[ -n "$SOURCE_VAULT" && ! -d "$SOURCE_VAULT" ]]; then

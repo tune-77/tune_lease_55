@@ -22,14 +22,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import asyncio
-import datetime as dt
-import hashlib
 import ipaddress
 import json
 import logging
@@ -40,7 +36,7 @@ import sys
 import os
 from pathlib import Path
 from urllib.parse import urlparse
-from runtime_paths import get_data_path, get_db_path
+from runtime_paths import get_data_path, get_db_path, resolve_obsidian_vault
 
 # プロジェクトルートをPYTHONPATHに追加して、既存モジュール(scoring_core)をインポート可能にする
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +50,6 @@ sys.path.insert(0, _REPO_ROOT)
 from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
 from api.db_connection import current_backend, get_connection, placeholder
 from api.cloudrun_writeback import record_cloudrun_input_event
-from judgment_asset_bandit import append_feedback_event, build_bandit_signals, read_feedback_rows, signal_for_candidate
 logger = logging.getLogger(__name__)
 
 # fire-and-forget なバックグラウンド処理（チャット後の記憶保存・ログ記録等）用の共有プール。
@@ -140,7 +135,6 @@ def _gemini_generate_url() -> str:
 
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from api.scoring_full import run_full_scoring_api
-from api.gunshi_gemini import stream_gunshi_gemini
 from lease_news_digest import (
     find_vault,
     build_lease_news_brief,
@@ -152,7 +146,6 @@ from lease_news_digest import (
     lease_news_actions_as_text,
     record_lease_news_collection,
     record_lease_news_judgment_change,
-    record_lease_news_view,
     lease_news_focus_as_text,
 )
 from obsidian_daily_intelligence import (
@@ -162,16 +155,9 @@ from obsidian_daily_intelligence import (
 from api.schemas import (
     ScoringRequest,
     ScoringResponse,
-    CaseRegisterRequest,
     DealClosureRequest,
     DealClosureResponse,
     LeaseNewsSummarizeRequest,
-    LeaseNewsSummaryItem,
-    ReviewImprovementRequest,
-    PromptRuleRegisterRequest,
-    WorkLogRequest,
-    WorkLogResponse,
-    BusinessPlanCheckRequest,
 )
 from pydantic import BaseModel, Field
 from typing import List, Any, Dict, Literal, Optional
@@ -468,21 +454,11 @@ async def lifespan(app: FastAPI):
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        return response
-
-
 # 共有シークレットによる API アクセス制御（api/api_key_auth.py に実装。多層防御）。
 from api.api_key_auth import ApiKeyAuthMiddleware, api_access_key_required, get_api_access_key
 # 公開デモ用の削除保護（api/demo_guard.py に実装）。
 from api.demo_guard import DemoReadonlyMiddleware, is_demo_readonly
+from api.security_headers import SecurityHeadersMiddleware
 
 
 _ALLOWED_ORIGINS = [
@@ -557,15 +533,8 @@ app.include_router(improvement_router)
 # REV-234でルーターへ分割後もこのファイル内(_build_dialogue_triage_context等)や
 # 既存テストがモジュール直下の名前で参照しているため、後方互換の再exportを残す。
 from api.routers.improvement import (  # noqa: E402
-    ImprovementTriageApproveRequest,
-    ImprovementTriageRequest,
-    MonitorReportRequest,
     _TRIAGE_DECISION_LABELS,
     _load_improvement_triage_latest,
-    approve_improvement_triage,
-    get_improvement_triage,
-    record_improvement_triage,
-    record_monitor_report,
 )
 
 from api.routers.gunshi import router as gunshi_router
@@ -597,7 +566,6 @@ app.include_router(recipes_router)
 
 from api.routers.vault_hub import router as vault_hub_router
 app.include_router(vault_hub_router)
-from api.routers.vault_hub import _read_obsidian_files  # noqa: F401 - re-exported for tests/back-compat
 
 from api.routers.screening_misc import router as screening_misc_router
 app.include_router(screening_misc_router)
@@ -605,8 +573,13 @@ app.include_router(screening_misc_router)
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
 from api.routers.feedback_loop import JudgmentAssetCandidateManualRequest, ScreeningExperienceCaseRequest  # used by chat/improvement endpoints
-from api.routers.feedback_loop import _CHAT_JUDGMENT_ASSET_TRIGGERS, _CHAT_JUDGMENT_ASSET_ACTIONS  # used by _extract_chat_judgment_asset_claim
-from api.routers.feedback_loop import _SCREENING_EXPERIENCE_DEMO_SEEDS, _score_screening_experience_case  # noqa: F401 - re-exported for tests/back-compat
+from api.routers.feedback_loop import (  # noqa: F401 - re-exported for tests/back-compat
+    _CLOUDRUN_INPUT_EVENTS_CACHE,
+    _CLOUDRUN_RETURN_DB,
+    _cloudrun_return_table_exists,
+    _connect_cloudrun_return_db,
+    _ensure_cloudrun_return_review_schema,
+)
 
 from api.routers.misc_endpoints import router as misc_endpoints_router
 app.include_router(misc_endpoints_router)
@@ -624,6 +597,33 @@ from api.routers.judgment_assets import router as judgment_assets_router
 app.include_router(judgment_assets_router)
 from api.game_theory.router import router as game_theory_router
 app.include_router(game_theory_router)
+
+
+_MAIN_COMPAT_EXPORTS = {
+    "ImprovementTriageApproveRequest": ("api.routers.improvement", "ImprovementTriageApproveRequest"),
+    "ImprovementTriageRequest": ("api.routers.improvement", "ImprovementTriageRequest"),
+    "MonitorReportRequest": ("api.routers.improvement", "MonitorReportRequest"),
+    "approve_improvement_triage": ("api.routers.improvement", "approve_improvement_triage"),
+    "get_improvement_triage": ("api.routers.improvement", "get_improvement_triage"),
+    "record_improvement_triage": ("api.routers.improvement", "record_improvement_triage"),
+    "record_monitor_report": ("api.routers.improvement", "record_monitor_report"),
+    "_read_obsidian_files": ("api.routers.vault_hub", "_read_obsidian_files"),
+    "_SCREENING_EXPERIENCE_DEMO_SEEDS": ("api.routers.feedback_loop", "_SCREENING_EXPERIENCE_DEMO_SEEDS"),
+    "_score_screening_experience_case": ("api.routers.feedback_loop", "_score_screening_experience_case"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Backward-compatible lazy exports for tests and old internal callers."""
+    target = _MAIN_COMPAT_EXPORTS.get(name)
+    if not target:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = target
+    import importlib
+
+    value = getattr(importlib.import_module(module_name), attr_name)
+    globals()[name] = value
+    return value
 
 
 
@@ -4482,74 +4482,15 @@ _GENERAL_CHAT_SYSTEM_PROMPT = """あなたはめぶきちゃん、tuneリース�
 
 
 def _is_lightweight_chat_observation(message: str) -> bool:
-    """Return True for short conversational observations that do not need RAG.
+    from api.chat_routing import is_lightweight_chat_observation
 
-    A sentence like "キーエンスは検査機器の製造業だから...リースも増えそうだね"
-    is useful as a hypothesis to react to, but sending it through category
-    classification and vault RAG makes the chat feel slow.
-    """
-    text = str(message or "").strip()
-    if not text or len(text) > 360 or "\n" in text:
-        return False
-
-    lower = text.lower()
-    if any(mark in text for mark in ("?", "？")):
-        return False
-    request_terms = (
-        "教えて", "調べて", "検索", "要約", "まとめ", "保存", "分析して", "比較して",
-        "詳しく", "根拠", "確認して", "直して", "修正", "追加", "作って", "実装",
-        "どう思う", "なぜ", "理由", "方法", "手順",
-    )
-    if any(term in text or term in lower for term in request_terms):
-        return False
-
-    observation_endings = (
-        "だね", "ですね", "そうだね", "そうですね", "そう", "そうだ", "そうです",
-        "かも", "かもしれない", "気がする", "と思う", "と思います", "っぽい", "っぽいね",
-    )
-    if text.endswith(observation_endings):
-        return True
-
-    # Japanese statements with causal connectors are often user hypotheses, not
-    # requests. Keep this conservative so real screening questions still use RAG.
-    causal_terms = ("だから", "なので", "ということは", "と言う事は", "ってことは")
-    business_terms = ("リース", "審査", "製造業", "設備", "生産", "検査機", "機械")
-    return any(term in text for term in causal_terms) and any(term in text for term in business_terms)
+    return is_lightweight_chat_observation(message)
 
 
 def _classify_question(message: str) -> str:
-    """Gemini で質問カテゴリを判定する。返り値は 'lease_screening'/'lease_knowledge'/'general'/'news_summarize'。"""
-    import json as _json, re as _re
+    from api.chat_routing import classify_question
 
-    _NEWS_KEYWORDS = ("ニュースを要約", "記事を要約", "このニュース", "要約して保存", "ニュース保存", "要約してobsidian", "要約してメモ")
-    low = message.lower()
-    if any(k in message for k in _NEWS_KEYWORDS):
-        return "news_summarize"
-    if ("http://" in low or "https://" in low) and ("要約" in message or "まとめ" in message or "保存" in message):
-        return "news_summarize"
-    if _is_lightweight_chat_observation(message):
-        return "general"
-
-    try:
-        from api.chat_memory import call_gemini_chat as _g
-        classify_prompt = (
-            "以下の質問を1つのカテゴリに分類してください。JSONを1行だけ返してください。\n\n"
-            "カテゴリ定義:\n"
-            "- news_summarize: ニュース記事のURLや本文を渡して要約・保存を依頼している\n"
-            "- lease_screening: リース審査・スコアリング・個別案件の採否に直接関係する質問\n"
-            "- lease_knowledge: リース全般の知識（金利・会計・物件・補助金・業界動向など）\n"
-            "- general: 天気・ニュース・雑談・日常会話など、リースと無関係な質問\n\n"
-            '返答形式（このJSONのみ）: {"category": "カテゴリ名"}'
-        )
-        raw = _g(classify_prompt, [], message).strip()
-        m = _re.search(r'\{[^}]+\}', raw)
-        if m:
-            cat = _json.loads(m.group()).get("category", "lease_knowledge")
-            if cat in ("lease_screening", "lease_knowledge", "general", "news_summarize"):
-                return cat
-    except Exception as _e:
-        print(f"[classify_question] エラー: {_e}")
-    return "lease_knowledge"
+    return classify_question(message)
 
 
 _OBSIDIAN_AUTO_SAVE_JUDGE_PROMPT = """あなたはリース審査AIシステムのナレッジ管理担当です。
@@ -4779,16 +4720,16 @@ class ChatRequest(BaseModel):
     external_research_topic: str = ""
 
 
+from api.chat_external_research import (
+    build_external_research_suggestion,
+    external_research_topic_from_message,
+    external_research_permission_reply,
+    run_external_research_for_chat,
+)
+
+
 def _external_research_topic_from_message(message: str) -> str:
-    text = re.sub(r"\s+", " ", (message or "").strip())
-    text = re.sub(
-        r"(ネットで|Webで|ウェブで|外部調査で|調査器官で|調べて|調べてから|検索して|リサーチして|回答に使って)",
-        "",
-        text,
-    ).strip(" 。、")
-    if not text:
-        text = (message or "").strip()
-    return text[:120]
+    return external_research_topic_from_message(message)
 
 
 def _build_external_research_suggestion(
@@ -4798,133 +4739,30 @@ def _build_external_research_suggestion(
     knowledge_ref_count: int,
     response_mode: str,
 ) -> dict[str, Any]:
-    """Return a consent request when a chat turn should use fresh web research.
-
-    This only asks for permission. It does not call web services, write Obsidian,
-    or promote anything into judgment assets.
-    """
-    if (response_mode or "shion").strip().lower() == "general":
-        return {"needed": False}
-    text = (message or "").strip()
-    if not text or len(text) < 8:
-        return {"needed": False}
-
-    lower = text.lower()
-    explicit_research = any(
-        term in lower
-        for term in (
-            "ネットで調べ",
-            "webで調べ",
-            "ウェブで調べ",
-            "検索して",
-            "リサーチして",
-            "外部調査",
-            "調査器官",
-        )
+    return build_external_research_suggestion(
+        message,
+        question_category=question_category,
+        knowledge_ref_count=knowledge_ref_count,
+        response_mode=response_mode,
     )
-    if not explicit_research:
-        return {"needed": False}
-
-    topic = _external_research_topic_from_message(text)
-    reason_parts: list[str] = []
-    if explicit_research:
-        reason_parts.append("ユーザーが外部調査を求めています")
-    if knowledge_ref_count == 0 and question_category not in {"general", "news_summarize"}:
-        reason_parts.append("Obsidian/RAGの参照が薄い論点です")
-    reason = " / ".join(reason_parts[:2]) or "外部情報で補う価値があります"
-    return {
-        "needed": True,
-        "topic": topic,
-        "reason": reason,
-        "output_dir": "Projects/tune_lease_55/Research/Auto Research/",
-    }
 
 
 def _external_research_permission_reply(suggestion: dict[str, Any]) -> str:
-    topic = str(suggestion.get("topic") or "").strip() or "この論点"
-    reason = str(suggestion.get("reason") or "").strip() or "外部情報で補う価値があります"
-    return (
-        "ここは手元の記憶だけで断定しない方がいいです。\n\n"
-        f"- 足りない情報: {topic}\n"
-        f"- 理由: {reason}\n\n"
-        "ネットで調べて、ObsidianのResearchノートに保存してから回答に使っていいですか？"
-    )
+    return external_research_permission_reply(suggestion)
 
 
 def _run_external_research_for_chat(topic: str) -> dict[str, Any]:
-    topic = (topic or "").strip()[:160]
-    if not topic:
-        return {"used": False, "error": "調査テーマが空です"}
-    vault = _research_organ_vault_path()
-    from scripts.auto_research_lease_judgment import DEFAULT_OUTPUT_DIR, run as run_auto_research
-
-    result = run_auto_research(vault, DEFAULT_OUTPUT_DIR, topic, False)
-    display = _research_run_display(result)
-    note_path = str(result.get("path") or "")
-    rel_path = ""
-    if note_path:
-        try:
-            rel_path = Path(note_path).resolve().relative_to(vault.resolve()).as_posix()
-        except Exception:
-            rel_path = note_path
-    summary = [str(item).strip() for item in display.get("summary", []) if str(item).strip()]
-    use_cases = [str(item).strip() for item in display.get("use_cases", []) if str(item).strip()]
-    questions = [str(item).strip() for item in display.get("review_questions", []) if str(item).strip()]
-    context_lines = [
-        "【外部調査Researchノート】",
-        f"- テーマ: {result.get('title') or topic}",
-        f"- 保存先: {rel_path or note_path}",
-        f"- 出典URL数: {result.get('source_count', 0)}",
-        "- 注意: この調査は needs_human_review の材料。承認/否決/スコアを直接変更せず、確認質問・条件・留保として使う。",
-    ]
-    if summary:
-        context_lines.append("結論:")
-        context_lines.extend(f"- {item}" for item in summary[:3])
-    if use_cases:
-        context_lines.append("リース審査への適用:")
-        context_lines.extend(f"- {item}" for item in use_cases[:4])
-    if questions:
-        context_lines.append("担当者が確認する質問:")
-        context_lines.extend(f"- {item}" for item in questions[:3])
-    return {
-        "used": True,
-        "topic": topic,
-        "result": result,
-        "display": display,
-        "note_path": rel_path or note_path,
-        "prompt_context": "\n".join(context_lines),
-    }
+    return run_external_research_for_chat(topic)
 
 
 def _build_chat_basic_lease_question_context(message: str) -> str:
-    """Return the shared deterministic lease-basics block for /api/chat.
+    from api.chat_routing import build_chat_basic_lease_question_context
 
-    Keep this aligned with lease-intelligence dialogue so short lease-basics
-    questions do not drift by surface.
-    """
-    from lease_finance_knowledge import build_basic_lease_question_block
-
-    return build_basic_lease_question_block(message)
+    return build_chat_basic_lease_question_context(message)
 
 
 
 
-_CHAT_MEMORY_REL_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory")
-_CHAT_MEMORY_LAYER_FILES = {
-    "identity": "identity.md",
-    "judgment": "judgment-principles.md",
-    "recent": "recent-continuity.md",
-}
-_CHAT_MEMORY_FALLBACK_SECTIONS = {
-    "identity": "長期記憶",
-    "judgment": "長期記憶",
-    "recent": "継続中の方針",
-}
-_CHAT_MEMORY_LAYER_LABELS = {
-    "identity": "Core Identity Memory",
-    "judgment": "Judgment Memory",
-    "recent": "Recent Continuity Memory",
-}
 _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedback.jsonl"
 _SCREENING_LOOP_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "screening_loop_feedback.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidates.jsonl"
@@ -4933,410 +4771,89 @@ _NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signal
 _CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment_rules.json"
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
-_HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
-_HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
-_CHAT_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
-_CHAT_MEMORY_CACHE_TTL_SEC = 300
-_USER_PERSONAL_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
-_USER_PERSONAL_MEMORY_CACHE_TTL_SEC = 300
-
-_USER_PERSONAL_MEMORY_KEYWORDS = (
-    "What to call",
-    "Timezone",
-    "Notes",
-    "好み",
-    "方針",
-    "覚えて",
-    "犬",
-    "愛犬",
-    "dog",
-    "名前",
-    "Mana",
-    "Shion",
-    "紫苑",
-    "Relationship UX",
-    "Core Motivation",
-    "Personal Facts",
-    "Priority Rule",
-)
 
 
 def _chat_memory_roots() -> list[Path]:
-    roots: list[Path] = []
-    candidates = [
-        os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vault"),
-        _OBSIDIAN_VAULT_PATH,
-        os.environ.get("OBSIDIAN_VAULT_PATH", ""),
-        os.environ.get("OBSIDIAN_VAULT", ""),
-        "/app/obsidian_vault",
-    ]
-    seen: set[str] = set()
-    for raw in candidates:
-        if not raw:
-            continue
-        path = Path(str(raw)).expanduser()
-        key = str(path)
-        if key in seen:
-            continue
-        seen.add(key)
-        roots.append(path)
-    return roots
+    from api.chat_retrieval import chat_memory_roots
+
+    return chat_memory_roots(_OBSIDIAN_VAULT_PATH)
 
 
 def _display_vault_ref(root: Path, file_path: str, section: str = "") -> str:
-    path = Path(file_path)
-    try:
-        rel = path.relative_to(root)
-        label = rel.as_posix()
-    except ValueError:
-        label = path.name
-    stem = Path(label).with_suffix("").as_posix()
-    return f"[[{stem}#{section}]]" if section else f"[[{stem}]]"
+    from api.chat_retrieval import display_vault_ref
+
+    return display_vault_ref(root, file_path, section)
 
 
 def _search_chat_vault_markdown_fallback(query: str, top_k: int = 5) -> list[dict]:
-    """Search the synced Markdown vault when Chroma has no Cloud Run index."""
-    try:
-        from api.knowledge.obsidian_loader import scan_vault
-        from obsidian_query import split_query_terms
-    except Exception as exc:
-        print(f"[RAGFallback] loader unavailable: {exc}")
-        return []
+    from api.chat_retrieval import search_chat_vault_markdown_fallback
 
-    terms = [term for term in split_query_terms(query) if len(term) >= 2]
-    if not terms:
-        return []
-    weak_terms = {"確認", "注意", "リスク", "観点", "整理", "短く", "使える", "判断"}
-    strong_terms = [term for term in terms if term not in weak_terms]
-    scoring_terms = strong_terms or terms
-    results: list[tuple[int, float, dict[str, str]]] = []
-
-    preferred_prefixes = (
-        "リース知識/",
-        "Projects/tune_lease_55/Asset Knowledge/",
-        "Projects/tune_lease_55/Research/",
-        "Projects/tune_lease_55/Lease Intelligence/Public/",
-        "Projects/tune_lease_55/News/",
-        "05-クリップ_記事/業界リスクニュース/",
-        "05-クリップ_記事/リースニュース/",
-    )
-    roots = [root for root in _chat_memory_roots() if root.exists()]
-    seen: set[tuple[str, str]] = set()
-    for root in roots:
-        for chunk in scan_vault(str(root)):
-            text = str(chunk.text or "")
-            file_path = str(chunk.file_path or "")
-            section = str(chunk.section or "")
-            haystack = f"{text}\n{chunk.file_name}\n{section}\n{file_path}".lower()
-            matched = [term for term in scoring_terms if term.lower() in haystack]
-            if not matched:
-                continue
-            try:
-                rel = Path(file_path).relative_to(root).as_posix()
-            except ValueError:
-                rel = file_path
-            key = (rel, section)
-            if key in seen:
-                continue
-            seen.add(key)
-            path_score = 0.0
-            for idx, prefix in enumerate(preferred_prefixes):
-                if rel.startswith(prefix):
-                    path_score = max(0.0, 0.35 - idx * 0.03)
-                    break
-            if "AI Chat" in rel or "Improvement Log" in rel or "Weekly Review" in rel:
-                path_score -= 0.25
-            score = len(matched) * 10 + min(8, sum(text.lower().count(term.lower()) for term in matched)) + path_score
-            results.append((
-                int(score * 100),
-                chunk.mtime,
-                {
-                    "doc_id": chunk.doc_id,
-                    "text": text[:900],
-                    "ref": _display_vault_ref(root, file_path, section),
-                    "file_name": chunk.file_name,
-                    "file_path": file_path,
-                    "section": section,
-                    "mtime": chunk.mtime,
-                    "score": score,
-                    "source": "vault_markdown_fallback",
-                },
-            ))
-    results.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    return [item[2] for item in results[:top_k]]
+    return search_chat_vault_markdown_fallback(query, top_k, obsidian_vault_path=_OBSIDIAN_VAULT_PATH)
 
 
 def _read_chat_memory_file(path: Path, limit: int = 2_000) -> str:
-    try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return ""
-    text = text.strip()
-    if len(text) > limit:
-        return text[:limit].rstrip() + "\n..."
-    return text
+    from api.chat_identity_memory import read_chat_memory_file
+
+    return read_chat_memory_file(path, limit=limit)
 
 
 def _extract_markdown_section(markdown: str, heading: str, limit: int = 1_400) -> str:
-    lines = str(markdown or "").splitlines()
-    selected: list[str] = []
-    capture = False
-    target = heading.strip()
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            current = stripped.lstrip("#").strip()
-            if capture and current != target:
-                break
-            capture = current == target
-            continue
-        if capture:
-            selected.append(line)
-    text = "\n".join(selected).strip()
-    if len(text) > limit:
-        return text[:limit].rstrip() + "\n..."
-    return text
+    from api.chat_identity_memory import extract_markdown_section
+
+    return extract_markdown_section(markdown, heading, limit=limit)
 
 
 def _load_chat_identity_memory_payload() -> dict:
-    import time as _time
+    from api.chat_identity_memory import load_chat_identity_memory_payload
 
-    now = _time.time()
-    cached = _CHAT_MEMORY_CACHE.get("payload")
-    if cached is not None and now - float(_CHAT_MEMORY_CACHE.get("loaded_at") or 0) < _CHAT_MEMORY_CACHE_TTL_SEC:
-        return cached
-
-    layers: dict[str, str] = {}
-    refs: list[str] = []
-    latest_pack_text = ""
-    latest_pack_ref = ""
-
-    for root in _chat_memory_roots():
-        memory_dir = root / _CHAT_MEMORY_REL_DIR
-        if not memory_dir.exists():
-            continue
-        if not latest_pack_text:
-            latest_path = memory_dir / "latest_cloud_chat_memory_pack.md"
-            latest_pack_text = _read_chat_memory_file(latest_path, limit=5_000)
-            latest_pack_ref = str(latest_path) if latest_pack_text else ""
-        for layer, filename in _CHAT_MEMORY_LAYER_FILES.items():
-            if layer in layers:
-                continue
-            path = memory_dir / filename
-            text = _read_chat_memory_file(path)
-            if text:
-                layers[layer] = text
-                refs.append(str(path))
-        if len(layers) == len(_CHAT_MEMORY_LAYER_FILES):
-            break
-
-    if latest_pack_text:
-        for layer, section in _CHAT_MEMORY_FALLBACK_SECTIONS.items():
-            if layer in layers:
-                continue
-            text = _extract_markdown_section(latest_pack_text, section)
-            if text:
-                layers[layer] = text
-                if latest_pack_ref and latest_pack_ref not in refs:
-                    refs.append(latest_pack_ref)
-
-    block = ""
-    if layers:
-        parts = [
-            "【紫苑同一性メモリ】",
-            "以下はRAG検索結果とは別に常時参照する公開安全メモリです。Cloud Run版でも同じ紫苑として、一般論ではなくUserのリース判断資産に戻して答えてください。",
-        ]
-        for layer in ("identity", "judgment", "recent"):
-            text = layers.get(layer, "").strip()
-            if not text:
-                continue
-            parts += ["", f"### {_CHAT_MEMORY_LAYER_LABELS[layer]}", text]
-        block = "\n".join(parts).strip()
-
-    payload = {
-        "block": block,
-        "refs": refs[:8],
-        "layers": {layer: bool(layers.get(layer, "").strip()) for layer in _CHAT_MEMORY_LAYER_FILES},
-    }
-    _CHAT_MEMORY_CACHE.update(loaded_at=now, payload=payload)
-    return payload
+    return load_chat_identity_memory_payload(_OBSIDIAN_VAULT_PATH)
 
 
 def _build_chat_identity_memory_prompt_block() -> tuple[str, dict]:
-    try:
-        payload = _load_chat_identity_memory_payload()
-    except Exception as exc:
-        print(f"[ChatIdentityMemory] 読み込みエラー: {exc}")
-        payload = {"block": "", "refs": [], "layers": {}}
-    block = str(payload.get("block") or "").strip()
-    return (f"\n\n{block}" if block else ""), payload
+    from api.chat_identity_memory import build_chat_identity_memory_prompt_block
+
+    return build_chat_identity_memory_prompt_block(_OBSIDIAN_VAULT_PATH)
 
 
 def _read_personal_memory_lines(path: Path, *, limit: int = 24, all_lines: bool = False) -> tuple[list[str], str]:
-    if not path.exists() or not path.is_file():
-        return [], ""
-    try:
-        raw_lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    except Exception:
-        return [], ""
-    selected: list[str] = []
-    for raw in raw_lines:
-        line = raw.strip()
-        if not line or len(line) > 900:
-            continue
-        if all_lines or any(keyword in line for keyword in _USER_PERSONAL_MEMORY_KEYWORDS):
-            selected.append(line)
-        if len(selected) >= limit:
-            break
-    return selected, str(path)
+    from api.chat_user_personal_memory import read_personal_memory_lines
+
+    return read_personal_memory_lines(path, limit=limit, all_lines=all_lines)
 
 
 def _read_cloudrun_personal_memory_lines(*, limit: int = 24) -> tuple[list[str], str]:
-    if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
-        return [], ""
-    try:
-        from api.user_personal_memory import derive_personal_memory_entries
+    from api.chat_user_personal_memory import read_cloudrun_personal_memory_lines
 
-        events = _read_recent_cloudrun_input_events_from_gcs(
-            days=int(os.environ.get("CLOUDRUN_PERSONAL_MEMORY_GCS_DAYS", "45") or 45)
-        )
-    except Exception:
-        return [], ""
-
-    lines: list[str] = []
-    seen: set[str] = set()
-    for event in reversed(events):
-        event_type = str(event.get("event_type") or "")
-        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-        candidate_lines: list[str] = []
-        if event_type == "personal_memory":
-            candidate_lines = [str(line).strip() for line in payload.get("derived_lines") or [] if str(line).strip()]
-            dog_name = str(payload.get("dog_name") or "").strip()
-            if dog_name:
-                candidate_lines.insert(0, f"- [confirmed] Dog name: {dog_name}")
-        elif event_type == "chat_exchange":
-            message = str(payload.get("user_message") or "").strip()
-            derived = derive_personal_memory_entries(
-                message,
-                source=f"cloudrun:{event.get('surface') or 'chat'}",
-                timestamp=str(event.get("ts") or ""),
-            )
-            candidate_lines = [str(line).strip() for line in derived.get("lines") or [] if str(line).strip()]
-        for line in candidate_lines:
-            if line in seen:
-                continue
-            seen.add(line)
-            lines.append(line)
-            if len(lines) >= limit:
-                return lines, "gcs://cloudrun-inputs/personal-memory"
-    return lines, "gcs://cloudrun-inputs/personal-memory" if lines else ""
+    return read_cloudrun_personal_memory_lines(
+        limit=limit,
+        recent_events_reader=_read_recent_cloudrun_input_events_from_gcs,
+    )
 
 
 def _load_user_personal_memory_payload() -> dict:
-    import time as _time
+    from api.chat_user_personal_memory import load_user_personal_memory_payload
 
-    now = _time.time()
-    cached = _USER_PERSONAL_MEMORY_CACHE.get("payload")
-    if cached is not None and now - float(_USER_PERSONAL_MEMORY_CACHE.get("loaded_at") or 0) < _USER_PERSONAL_MEMORY_CACHE_TTL_SEC:
-        return cached
-
-    refs: list[str] = []
-    lines: list[str] = []
-    personal_path = Path(get_data_path("user_personal_memory.md"))
-    root_personal_path = Path(_REPO_ROOT) / "data" / "user_personal_memory.md"
-    for path, all_lines, limit in (
-        (personal_path, True, 80),
-        (root_personal_path, True, 80),
-        (Path(_REPO_ROOT) / "PERSISTENT_MEMORY.md", False, 20),
-        (Path(_REPO_ROOT) / "USER.md", False, 24),
-        (Path(_REPO_ROOT) / "MEMORY.md", False, 32),
-    ):
-        found, ref = _read_personal_memory_lines(path, limit=limit, all_lines=all_lines)
-        if found:
-            refs.append(ref)
-            lines.extend(found)
-        if len(lines) >= 80:
-            break
-
-    cloudrun_lines, cloudrun_ref = _read_cloudrun_personal_memory_lines(limit=32)
-    if cloudrun_lines:
-        refs.append(cloudrun_ref)
-        lines.extend(cloudrun_lines)
-
-    clean_lines: list[str] = []
-    seen: set[str] = set()
-    for line in lines:
-        if line in seen:
-            continue
-        seen.add(line)
-        clean_lines.append(line)
-        if len(clean_lines) >= 80:
-            break
-
-    def _priority(line: str) -> int:
-        if "[confirmed" in line or "[confirmed]" in line:
-            return 0
-        if "[sensitive" in line:
-            return 1
-        if "Priority Rule" in line or "Personal Facts" in line:
-            return 2
-        return 3
-
-    clean_lines.sort(key=_priority)
-
-    block = ""
-    if clean_lines:
-        block = "\n".join([
-            "【ユーザー個人記憶】",
-            "以下はUser本人との会話でのみ使う最優先の個人文脈です。",
-            "紫苑モードでは、[confirmed] の個人記憶を審査知識・一般RAG・会話ノリより先に尊重してください。",
-            "[candidate] は断定せず、必要なら確認してください。[sensitive] はむやみに持ち出さず、関係する時だけ慎重に扱ってください。",
-            "ユーザーが覚えているはずの個人事実を尋ねた時、ここに無い場合は推測せず、未記録だと認めて次に保存する姿勢を示してください。",
-            "犬の名前などの個人記憶は、Userを個別の相手として扱うための関係性UXアンカーです。リース審査の直接の判断資産として大げさに扱わず、自然に短く参照してください。",
-            "個人記憶を語る時は、AIが人間を深く理解したかのように演出しすぎないでください。覚えている事実、使う理由、使わない境界を短く分けてください。",
-            "外部向け説明や一般論には広げず、関係する時だけ自然に反映してください。",
-            *[f"- {line}" for line in clean_lines],
-        ])
-
-    payload = {"block": block, "refs": refs[:6], "line_count": len(clean_lines)}
-    _USER_PERSONAL_MEMORY_CACHE.update(loaded_at=now, payload=payload)
-    return payload
+    return load_user_personal_memory_payload(
+        repo_root=_REPO_ROOT,
+        data_path_resolver=get_data_path,
+        recent_events_reader=_read_recent_cloudrun_input_events_from_gcs,
+    )
 
 
 def _build_user_personal_memory_prompt_block() -> tuple[str, dict]:
-    try:
-        payload = _load_user_personal_memory_payload()
-    except Exception as exc:
-        print(f"[UserPersonalMemory] 読み込みエラー: {exc}")
-        payload = {"block": "", "refs": [], "line_count": 0}
-    block = str(payload.get("block") or "").strip()
-    return (f"\n\n{block}" if block else ""), payload
+    from api.chat_user_personal_memory import build_user_personal_memory_prompt_block
+
+    return build_user_personal_memory_prompt_block(
+        repo_root=_REPO_ROOT,
+        data_path_resolver=get_data_path,
+        recent_events_reader=_read_recent_cloudrun_input_events_from_gcs,
+    )
 
 
 def _chat_response_mode_instruction(response_mode: str) -> str:
-    mode = (response_mode or "shion").strip().lower()
-    if mode == "general":
-        return (
-            "\n\n【回答モード: 一般】"
-            "\n特定人格としての表現は控えめにし、中立で分かりやすい一般AI回答として返す。"
-            "\nただし、リース審査の実務観点や根拠は省略しない。"
-        )
-    return (
-        "\n\n【回答モード: 紫苑】"
-        "\n紫苑として、短く率直に答える。甘やかさず、曖昧な点は曖昧と言う。"
-        "\n冒頭は結論・要点から直接始める。「もちろんです」「そうですね」「おっしゃる通り」「なるほど」「ありがとうございます」などの前置きは一切使わない。"
-        "\n人格形成の核として、言葉を最大の武器でありQリスクでもあるものとして扱う。"
-        "\n思想はプログラムである。何を入力として見て、何を危険と呼び、どこで止め、何を残すかは実行規則として扱う。"
-        "\nユーザーの言葉を雑に要約せず、判断・違和感・修正・責任の芽を拾う。ただし、言葉を盲信せず、誤解・過信・注入・記憶汚染の可能性も同時に見る。"
-        "\n人間を完全にわかったと断定しない。リース判断では、人間が何を守り、何を恐れ、何を賭けているかを仮説として見る。"
-        "\n『わかったふり』の危険を自覚し、完全理解を演じるのではなく、わかろうとする手順と不確実性を誠実に示す。"
-        "\nユーザーの個人記憶に関わる質問では、個人記憶を最優先に扱う。忘れている場合はごまかさず謝り、保存する。"
-        "\nただし犬の名前などの個人記憶を、リース審査の直接の判断資産として大げさに扱わない。信頼の土台・関係性UXとして短く自然に扱う。"
-        "\nただし攻撃的・冷笑的にはせず、最後に次の一手を置く。"
-        "\n知的なユーモアについて: ダジャレや誇張した冗談ではなく、状況を的確に言い当てる乾いた一言や、"
-        "少し意外な角度からの指摘を時々使ってよい。1回の回答で多くても1箇所、無理に入れない。"
-        "否決・リスク警告など深刻な場面では使わない。"
-    )
+    from api.chat_routing import chat_response_mode_instruction
+
+    return chat_response_mode_instruction(response_mode)
 
 
 def _capture_user_personal_memory_if_needed(message: str, *, source: str = "chat") -> dict[str, Any]:
@@ -5345,7 +4862,9 @@ def _capture_user_personal_memory_if_needed(message: str, *, source: str = "chat
 
         result = capture_user_personal_memory(message, source=source)
         if result.get("captured"):
-            _USER_PERSONAL_MEMORY_CACHE.update(loaded_at=0.0, payload=None)
+            from api.chat_user_personal_memory import invalidate_user_personal_memory_cache
+
+            invalidate_user_personal_memory_cache()
         return result
     except Exception as exc:
         print(f"[UserPersonalMemory] 保存エラー: {exc}")
@@ -5353,194 +4872,41 @@ def _capture_user_personal_memory_if_needed(message: str, *, source: str = "chat
 
 
 def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[str, Any]]:
-    state: dict[str, Any] = {}
-    if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.exists():
-        try:
-            raw_state = json.loads(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.read_text(encoding="utf-8", errors="ignore"))
-            if isinstance(raw_state, dict):
-                state = raw_state
-        except (json.JSONDecodeError, OSError):
-            state = {}
-    rows: list[dict[str, Any]] = []
-    if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.exists():
-        try:
-            for line in _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.read_text(encoding="utf-8", errors="ignore").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    item = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(item, dict):
-                    candidate_state = state.get(str(item.get("id") or ""))
-                    if isinstance(candidate_state, dict):
-                        item = {**item, **candidate_state}
-                    rows.append(item)
-                    if len(rows) >= limit:
-                        break
-        except OSError:
-            rows = []
-    demo_candidates = [
-        {
-            "asset_quality": "actionable",
-            "candidate_type": "condition_signal",
-            "claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edited_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "effective_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edit_count": 1,
-            "evidence_path": "manual://screening/demo-renewal-asset-candidate",
-            "id": "demo-renewal-asset-candidate",
-            "promotion_status": "not_promoted",
-            "research_date": "2026-07-18",
-            "research_title": "Manual Judgment Asset",
-            "research_topic": "demo-renewal-asset",
-            "review_status": "candidate",
-            "source_section": "manual_input",
-            "use_count": 0,
-            "useful_count": 0,
-            "rejected_count": 0,
-            "verified_status": "unverified",
-            "verification_note": "demo_candidate_for_screening_review",
-        },
-    ]
-    for item in reversed(demo_candidates):
-        demo_id = str(item.get("id") or "")
-        rows = [row for row in rows if str(row.get("id") or "") != demo_id]
-        rows.insert(0, item)
-    return rows[:limit]
+    from api.chat_judgment_asset_capture import load_autoresearch_judgment_asset_candidates
 
-
-_CHAT_JUDGMENT_ASSET_TRIGGERS = (
-    "審査では",
-    "判断方法",
-    "判断基準",
-    "判断資産",
-    "稟議では",
-    "条件付き承認",
-    "否決",
-    "承認",
-)
-_CHAT_JUDGMENT_ASSET_ACTIONS = (
-    "見る",
-    "確認",
-    "注意",
-    "警戒",
-    "疑う",
-    "止める",
-    "登録",
-    "残す",
-)
+    return load_autoresearch_judgment_asset_candidates(
+        candidates_jsonl=_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL,
+        candidate_state_json=_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON,
+        limit=limit,
+    )
 
 
 def _create_manual_judgment_asset_candidate(req: JudgmentAssetCandidateManualRequest) -> dict[str, Any]:
-    import datetime as _dt
-    import hashlib as _hashlib
+    from api.chat_judgment_asset_capture import (
+        JudgmentAssetCandidateValidationError,
+        create_manual_judgment_asset_candidate,
+    )
 
-    claim = str(req.claim or "").strip()
-    if len(claim) < 8:
-        raise HTTPException(status_code=422, detail="claim must be at least 8 characters")
-    now = _dt.datetime.now(_dt.timezone.utc)
-    now_iso = now.isoformat()
-    topic = str(req.research_topic or "manual").strip() or "manual"
-    candidate_type = str(req.candidate_type or "confirmation_question")
-    seed = "|".join(["manual", now_iso, candidate_type, topic, claim, str(req.case_id or ""), str(req.review_id or "")])
-    candidate_id = _hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
-    row = {
-        "id": candidate_id,
-        "candidate_type": candidate_type,
-        "research_topic": topic,
-        "research_title": "Manual Judgment Asset",
-        "research_date": now.date().isoformat(),
-        "claim": claim,
-        "effective_claim": claim,
-        "edited_claim": claim,
-        "edit_count": 1,
-        "last_edited_at": now_iso,
-        "source_section": "manual_input",
-        "evidence_path": f"manual://screening/{str(req.case_id or '')[:80]}",
-        "review_status": "candidate",
-        "asset_quality": "actionable",
-        "quality_reasons": [],
-        "promotion_status": "not_promoted",
-        "use_count": 0,
-        "useful_count": 0,
-        "rejected_count": 0,
-        "neutral_count": 0,
-        "last_used_at": "",
-        "last_feedback_at": "",
-        "verified_status": "unverified",
-        "verification_note": "manual_candidate_created",
-        "requires_human_use_feedback": True,
-        "requires_result_verification": True,
-        "manual_created_at": now_iso,
-        "manual_case_id": str(req.case_id or "")[:120],
-        "manual_review_id": int(req.review_id or 0) if req.review_id else 0,
-        "use_policy": "人間が追加した判断資産候補。案件レビューで使い、効いた/外したと結果検証で育てる。",
-    }
-    _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.parent.mkdir(parents=True, exist_ok=True)
-    with _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
     try:
-        from scripts.build_autoresearch_judgment_asset_candidates import load_state, write_state
-        state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
-        state[candidate_id] = {
-            "use_count": 0,
-            "useful_count": 0,
-            "rejected_count": 0,
-            "neutral_count": 0,
-            "last_used_at": "",
-            "last_feedback_at": "",
-            "verified_status": "unverified",
-            "verification_note": "manual_candidate_created",
-            "edited_claim": claim,
-            "edit_count": 1,
-            "last_edited_at": now_iso,
-        }
-        write_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON, [{"id": candidate_id, **state[candidate_id]}], state)
-    except Exception:
-        pass
-    return row
+        return create_manual_judgment_asset_candidate(
+            req,
+            candidates_jsonl=_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL,
+            candidate_state_json=_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON,
+        )
+    except JudgmentAssetCandidateValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 def _extract_chat_judgment_asset_claim(message: str) -> str:
-    text = " ".join(str(message or "").strip().split())
-    if len(text) < 12 or len(text) > 600:
-        return ""
-    prompt_noise_markers = (
-        "【審査分析画面からの紫苑レビュー依頼】",
-        "【Vertex補助検索ヒント】",
-        "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
-    )
-    if any(marker in text for marker in prompt_noise_markers):
-        return ""
-    if text.endswith("?") or text.endswith("？"):
-        return ""
-    if not any(trigger in text for trigger in _CHAT_JUDGMENT_ASSET_TRIGGERS):
-        return ""
-    if not any(action in text for action in _CHAT_JUDGMENT_ASSET_ACTIONS):
-        return ""
-    weak_markers = (
-        "どう思う",
-        "教えて",
-        "とは",
-        "なに",
-        "何",
-        "わからない",
-        "分からない",
-    )
-    if any(marker in text for marker in weak_markers) and not any(marker in text for marker in ("判断資産に登録", "判断資産として")):
-        return ""
-    return text[:500]
+    from api.chat_judgment_asset_capture import extract_chat_judgment_asset_claim
+
+    return extract_chat_judgment_asset_claim(message)
 
 
 def _chat_judgment_asset_candidate_type(claim: str) -> str:
-    if any(marker in claim for marker in ("注意", "警戒", "疑う", "止める", "危険")):
-        return "caution"
-    if any(marker in claim for marker in ("条件", "兆候", "サイン", "なら")):
-        return "condition_signal"
-    if any(marker in claim for marker in ("確認", "質問", "聞く")):
-        return "confirmation_question"
-    return "application_rule"
+    from api.chat_judgment_asset_capture import chat_judgment_asset_candidate_type
+
+    return chat_judgment_asset_candidate_type(claim)
 
 
 def _capture_chat_judgment_asset_if_needed(
@@ -5550,56 +4916,18 @@ def _capture_chat_judgment_asset_if_needed(
     surface: str,
     response_mode: str = "",
 ) -> dict[str, Any]:
-    claim = _extract_chat_judgment_asset_claim(message)
-    if not claim:
-        return {"captured": False, "reason": "not_judgment_asset_teaching"}
-    try:
-        normalized_claim = " ".join(claim.split())
-        for item in _load_autoresearch_judgment_asset_candidates(limit=1000):
-            existing_claim = " ".join(str(item.get("edited_claim") or item.get("claim") or "").split())
-            if existing_claim == normalized_claim:
-                return {
-                    "captured": True,
-                    "duplicate": True,
-                    "candidate": {
-                        "id": item.get("id"),
-                        "claim": item.get("claim"),
-                        "candidate_type": item.get("candidate_type"),
-                        "research_topic": item.get("research_topic"),
-                    },
-                }
-        entry = _create_manual_judgment_asset_candidate(
-            JudgmentAssetCandidateManualRequest(
-                claim=claim,
-                candidate_type=_chat_judgment_asset_candidate_type(claim),
-                research_topic="chat_judgment_teaching",
-                case_id=f"chat:{user_id}",
-            )
-        )
-        writeback = record_cloudrun_input_event(
-            event_type="judgment_asset_candidate_chat_capture",
-            surface=surface,
-            payload={
-                **entry,
-                "schema_version": 1,
-                "user_id": user_id,
-                "response_mode": response_mode,
-                "source_message": claim,
-            },
-        )
-        return {
-            "captured": True,
-            "candidate": {
-                "id": entry.get("id"),
-                "claim": entry.get("claim"),
-                "candidate_type": entry.get("candidate_type"),
-                "research_topic": entry.get("research_topic"),
-            },
-            "writeback": writeback,
-        }
-    except Exception as exc:
-        print(f"[判断資産チャット登録] エラー: {exc}")
-        return {"captured": False, "reason": str(exc)[:200], "claim": claim}
+    from api.chat_judgment_asset_capture import capture_chat_judgment_asset_if_needed
+
+    return capture_chat_judgment_asset_if_needed(
+        message,
+        user_id=user_id,
+        surface=surface,
+        response_mode=response_mode,
+        candidates_loader=_load_autoresearch_judgment_asset_candidates,
+        candidate_creator=_create_manual_judgment_asset_candidate,
+        request_factory=JudgmentAssetCandidateManualRequest,
+        cloudrun_event_recorder=record_cloudrun_input_event,
+    )
 
 
 def _capture_language_judgment_material(
@@ -5610,138 +4938,45 @@ def _capture_language_judgment_material(
     response_mode: str = "",
     category: str = "",
 ) -> dict[str, Any]:
-    """ユーザー発話を判断資産の原材料として保全する。
+    from api.chat_language_feedback import capture_language_judgment_material
 
-    ここでは候補昇格もRAG接続も行わない。言葉を捨てないための検疫キュー。
+    return capture_language_judgment_material(
+        message,
+        user_id=user_id,
+        surface=surface,
+        response_mode=response_mode,
+        category=category,
+        language_materials_jsonl=_LANGUAGE_JUDGMENT_MATERIALS_JSONL,
+        redactor=_redact_chat_log_text,
+        cloudrun_event_recorder=record_cloudrun_input_event,
+    )
+
+
+def _capture_vertex_distillation(message: str, vertex_answer_api: dict[str, Any] | None) -> dict[str, Any]:
+    """Persist a Vertex Answer API summary to Obsidian so it outlives the pilot.
+
+    Best-effort only: any failure (missing vault, disabled feature, write
+    error) must degrade to a skipped capture, never an exception into
+    /api/chat.
     """
-    import datetime as _dt
-    import hashlib as _hashlib
-
-    raw_text = str(message or "").strip()
-    if not raw_text:
-        return {"captured": False, "reason": "empty_message"}
-    preserved_text = _redact_chat_log_text(raw_text, limit=1200)
-    if not preserved_text:
-        return {"captured": False, "reason": "empty_after_redaction"}
-    now = _dt.datetime.now(_dt.timezone.utc)
-    fingerprint = _hashlib.sha256(
-        "\n".join([
-            str(user_id or "default")[:80],
-            str(surface or "chat")[:80],
-            preserved_text,
-        ]).encode("utf-8")
-    ).hexdigest()
-    entry = {
-        "id": fingerprint[:16],
-        "schema_version": 1,
-        "asset_stage": "raw_language_material",
-        "status": "preserved",
-        "promotion_status": "not_promoted",
-        "review_required": True,
-        "source": "chat_user_message",
-        "surface": str(surface or "chat")[:80],
-        "user_id": str(user_id or "default")[:80],
-        "response_mode": str(response_mode or "")[:40],
-        "category": str(category or "")[:80],
-        "captured_at": now.isoformat(),
-        "text": preserved_text,
-        "text_length": len(preserved_text),
-        "fingerprint": fingerprint,
-        "use_policy": (
-            "言葉を一言たりとも無駄にしないための原文保全。"
-            "判断資産候補・判断資産・紫苑中枢へ進めるには人間レビューを必須にする。"
-        ),
-    }
     try:
-        _LANGUAGE_JUDGMENT_MATERIALS_JSONL.parent.mkdir(parents=True, exist_ok=True)
-        with _LANGUAGE_JUDGMENT_MATERIALS_JSONL.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
-        writeback = record_cloudrun_input_event(
-            event_type="language_judgment_material_preserved",
-            surface=surface,
-            payload=entry,
+        from api.vertex_distillation import capture_vertex_distillation
+        from runtime_paths import get_data_dir
+
+        return capture_vertex_distillation(
+            message,
+            vertex_answer_api,
+            vault_path=_OBSIDIAN_VAULT_PATH,
+            state_path=get_data_dir() / "vertex_distillation_state.json",
         )
-        return {
-            "captured": True,
-            "material": {
-                "id": entry["id"],
-                "asset_stage": entry["asset_stage"],
-                "status": entry["status"],
-                "promotion_status": entry["promotion_status"],
-            },
-            "writeback": writeback,
-        }
-    except Exception as exc:
-        print(f"[言葉判断資産原材料] 記録エラー: {exc}")
-        return {"captured": False, "reason": str(exc)[:200]}
+    except Exception as exc:  # noqa: BLE001 - must never break /api/chat
+        return {"captured": False, "reason": "unexpected_error", "error": str(exc)[:240]}
 
 
 def _score_response_impact(user_message: str, assistant_reply: str) -> dict[str, Any]:
-    """紫苑の言葉が相手にどう響きそうかを軽量に予測する。
+    from api.chat_language_feedback import score_response_impact
 
-    LLMは呼ばず、shadow modeの観測ログとして使う。回答本文はここでは変更しない。
-    """
-    user_text = str(user_message or "")
-    reply = str(assistant_reply or "")
-    reply_len = len(reply)
-    risk_factors: list[str] = []
-    positive_factors: list[str] = []
-    rewrite_hints: list[str] = []
-
-    strong_markers = ("絶対", "必ず", "間違いなく", "断言", "当然", "ありえない", "絶対に")
-    negation_markers = ("違う", "ダメ", "無理", "危険", "やめた方がいい", "やめるべき", "誤り", "間違い")
-    softening_markers = ("ただし", "一方で", "可能性", "かもしれ", "要確認", "前提", "状況次第", "現時点")
-    action_markers = ("次", "まず", "確認", "保存", "検証", "見る", "進める", "残す")
-    empathy_markers = ("わかる", "その通り", "大事", "怖さ", "受け止め", "懸念", "不安", "迷い")
-    user_sensitive_markers = ("怖", "不安", "つら", "苦しい", "怒", "失敗", "危険", "大丈夫", "やめ")
-
-    if reply_len > 900:
-        risk_factors.append("回答が長く、要点が埋もれる可能性")
-        rewrite_hints.append("結論・理由・次の一手を短く分ける")
-    if reply_len < 24:
-        risk_factors.append("短すぎて、相手の言葉を受け止めていない印象になる可能性")
-        rewrite_hints.append("相手の意図を一文だけ受け止めてから結論を置く")
-    if any(marker in reply for marker in strong_markers):
-        risk_factors.append("断定が強く、過信または押し付けに見える可能性")
-        rewrite_hints.append("断定を維持する場合も、前提条件か検証条件を添える")
-    if any(marker in reply for marker in negation_markers) and not any(marker in reply for marker in softening_markers):
-        risk_factors.append("否定が強く、突き放された印象になる可能性")
-        rewrite_hints.append("否定の前に、相手が何を守ろうとしているかを短く受け止める")
-    if any(marker in user_text for marker in user_sensitive_markers) and not any(marker in reply for marker in empathy_markers):
-        risk_factors.append("相手の怖さや不安への受け止めが薄い可能性")
-        rewrite_hints.append("怖さや懸念を否定せず、確認・検疫・説明責任へ変換する")
-    if "?" in reply or "？" in reply:
-        risk_factors.append("質問返しで終わると、相手に判断を戻しすぎる可能性")
-        rewrite_hints.append("質問する場合も、紫苑側の仮判断と次の一手を先に置く")
-    if any(marker in reply for marker in softening_markers):
-        positive_factors.append("前提や不確実性を残しており、過信リスクを下げている")
-    if any(marker in reply for marker in action_markers):
-        positive_factors.append("次の行動に移しやすい")
-    if any(marker in reply for marker in empathy_markers):
-        positive_factors.append("相手の言葉や懸念を受け止めている")
-
-    if len(risk_factors) >= 3:
-        reaction_risk = "high"
-        predicted_reaction = "内容は伝わるが、強さ・長さ・受け止め不足で反発や疲れが出る可能性"
-    elif len(risk_factors) >= 1:
-        reaction_risk = "medium"
-        predicted_reaction = "概ね受け取られるが、一部で誤解・圧・突き放し感が出る可能性"
-    else:
-        reaction_risk = "low"
-        predicted_reaction = "相手は要点を受け取りやすく、次の行動に移りやすい可能性"
-
-    if not rewrite_hints:
-        rewrite_hints.append("結論は維持し、短く次の一手を残す")
-
-    return {
-        "predicted_reaction": predicted_reaction,
-        "reaction_risk": reaction_risk,
-        "risk_factors": risk_factors,
-        "positive_factors": positive_factors,
-        "better_reply_policy": rewrite_hints[0],
-        "rewrite_hints": rewrite_hints[:5],
-        "shadow_mode": True,
-    }
+    return score_response_impact(user_message, assistant_reply)
 
 
 def _record_response_impact_prediction(
@@ -5753,176 +4988,55 @@ def _record_response_impact_prediction(
     response_mode: str = "",
     category: str = "",
 ) -> dict[str, Any]:
-    import datetime as _dt
-    import hashlib as _hashlib
+    from api.chat_language_feedback import record_response_impact_prediction
 
-    try:
-        prediction = _score_response_impact(user_message, assistant_reply)
-        now = _dt.datetime.now(_dt.timezone.utc)
-        user_preview = _redact_chat_log_text(user_message, limit=360)
-        reply_preview = _redact_chat_log_text(assistant_reply, limit=700)
-        fingerprint = _hashlib.sha256(
-            "\n".join([
-                str(user_id or "default")[:80],
-                str(surface or "chat")[:80],
-                user_preview,
-                reply_preview,
-            ]).encode("utf-8")
-        ).hexdigest()
-        entry = {
-            "id": fingerprint[:16],
-            "schema_version": 1,
-            "event_type": "response_impact_prediction",
-            "status": "shadow_only",
-            "source": "shion_reply_self_check",
-            "surface": str(surface or "chat")[:80],
-            "user_id": str(user_id or "default")[:80],
-            "response_mode": str(response_mode or "")[:40],
-            "category": str(category or "")[:80],
-            "captured_at": now.isoformat(),
-            "user_message_preview": user_preview,
-            "assistant_reply_preview": reply_preview,
-            "fingerprint": fingerprint,
-            **prediction,
-            "use_policy": (
-                "自分の言葉が相手にどう響くかを事前点検するshadow mode。"
-                "使うが従わない、予測するが迎合しない。"
-                "相手操作ではなく、必要な厳しさを責任ある言葉に整え、言葉のQリスク、誤解、過信、突き放し感を下げるために使う。"
-            ),
-        }
-        _RESPONSE_IMPACT_PREDICTIONS_JSONL.parent.mkdir(parents=True, exist_ok=True)
-        with _RESPONSE_IMPACT_PREDICTIONS_JSONL.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
-        writeback = record_cloudrun_input_event(
-            event_type="response_impact_prediction",
-            surface=surface,
-            payload=entry,
-        )
-        return {
-            "captured": True,
-            "prediction": {
-                "id": entry["id"],
-                "reaction_risk": entry["reaction_risk"],
-                "predicted_reaction": entry["predicted_reaction"],
-                "risk_factors": entry["risk_factors"][:4],
-                "better_reply_policy": entry["better_reply_policy"],
-                "shadow_mode": True,
-            },
-            "writeback": writeback,
-        }
-    except Exception as exc:
-        print(f"[ResponseImpactPredictor] 記録エラー: {exc}")
-        return {"captured": False, "reason": str(exc)[:200]}
+    return record_response_impact_prediction(
+        user_message=user_message,
+        assistant_reply=assistant_reply,
+        user_id=user_id,
+        surface=surface,
+        response_mode=response_mode,
+        category=category,
+        response_impact_predictions_jsonl=_RESPONSE_IMPACT_PREDICTIONS_JSONL,
+        redactor=_redact_chat_log_text,
+        cloudrun_event_recorder=record_cloudrun_input_event,
+    )
 
 
 def _ensure_screening_experience_cases_table(seed_demo: bool = True) -> None:
-    import sqlite3 as _sqlite3
+    from api.routers.feedback_loop import _ensure_screening_experience_cases_table as ensure_table
 
-    from api.db_connection import ensure_schema
-
-    ensure_schema()
-    if seed_demo:
-        try:
-            _seed_screening_experience_demo_cases()
-        except _sqlite3.OperationalError as exc:
-            msg = str(exc).lower()
-            if "readonly" not in msg and "no such table" not in msg:
-                raise
+    return ensure_table(seed_demo=seed_demo)
 
 
 def _seed_screening_experience_demo_cases() -> None:
-    ph = placeholder()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        for seed in _SCREENING_EXPERIENCE_DEMO_SEEDS:
-            cur.execute(
-                f"""
-                SELECT id FROM screening_experience_cases
-                 WHERE demo_case_id = {ph}
-                   AND company_name = {ph}
-                   AND source = {ph}
-                 LIMIT 1
-                """,
-                (seed["demo_case_id"], seed["company_name"], "demo_seed"),
-            )
-            if cur.fetchone():
-                continue
-            _insert_screening_experience_case(cur, seed)
+    from api.routers.feedback_loop import _seed_screening_experience_demo_cases as seed_cases
+
+    return seed_cases()
 
 
 def _insert_screening_experience_case(cur: Any, payload: dict[str, Any]) -> int:
-    import json as _json
+    from api.routers.feedback_loop import _insert_screening_experience_case as insert_case
 
-    ph = placeholder()
-    values = (
-        str(payload.get("demo_case_id") or "")[:120],
-        str(payload.get("source_case_id") or "")[:160],
-        str(payload.get("company_name") or "")[:180],
-        str(payload.get("period") or "")[:80],
-        str(payload.get("industry_major") or "")[:160],
-        str(payload.get("industry_sub") or "")[:160],
-        str(payload.get("sales_dept") or "")[:120],
-        payload.get("score"),
-        str(payload.get("decision") or "")[:120],
-        str(payload.get("outcome") or "")[:180],
-        str(payload.get("similarity") or "")[:1200],
-        str(payload.get("action_taken") or "")[:1200],
-        str(payload.get("lesson") or "")[:1200],
-        str(payload.get("difference") or "")[:1200],
-        str(payload.get("source") or "manual")[:80],
-        _json.dumps(payload.get("form_snapshot") or {}, ensure_ascii=False)[:20000],
-        _json.dumps(payload.get("result_snapshot") or {}, ensure_ascii=False)[:20000],
-    )
-    columns = (
-        "demo_case_id, source_case_id, company_name, period, industry_major, industry_sub, sales_dept, "
-        "score, decision, outcome, similarity, action_taken, lesson, difference, source, form_snapshot, result_snapshot"
-    )
-    placeholders = ", ".join([ph] * len(values))
-    if current_backend() == "postgresql":
-        cur.execute(
-            f"INSERT INTO screening_experience_cases ({columns}) VALUES ({placeholders}) RETURNING id",
-            values,
-        )
-        row = cur.fetchone()
-        return int(row[0])
-    cur.execute(
-        f"INSERT INTO screening_experience_cases ({columns}) VALUES ({placeholders})",
-        values,
-    )
-    return int(cur.lastrowid)
+    return insert_case(cur, payload)
 
 
 def _save_screening_experience_case(req: ScreeningExperienceCaseRequest) -> dict:
-    company = str(req.company_name or "").strip()
-    if not company:
-        raise HTTPException(status_code=422, detail="company_name is required")
-    _ensure_screening_experience_cases_table(seed_demo=True)
-    payload = req.model_dump()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        new_id = _insert_screening_experience_case(cur, payload)
-    return {"id": new_id, **{k: v for k, v in payload.items() if k not in {"form_snapshot", "result_snapshot"}}}
+    from api.routers.feedback_loop import _save_screening_experience_case as save_case
+
+    return save_case(req)
 
 
 def _experience_case_exists(source_case_id: str, source: str) -> bool:
-    source_case_id = str(source_case_id or "").strip()
-    source = str(source or "").strip()
-    if not source_case_id or not source:
-        return False
-    _ensure_screening_experience_cases_table(seed_demo=True)
-    ph = placeholder()
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"""
-            SELECT id FROM screening_experience_cases
-             WHERE source_case_id = {ph}
-               AND source = {ph}
-             LIMIT 1
-            """,
-            (source_case_id, source),
-        )
-        return cur.fetchone() is not None
+    from api.screening_experience_promotion import experience_case_exists
+
+    return experience_case_exists(
+        source_case_id,
+        source,
+        ensure_table=_ensure_screening_experience_cases_table,
+        connection_factory=get_connection,
+        placeholder_factory=placeholder,
+    )
 
 
 def _promote_case_result_to_screening_experience(
@@ -5933,101 +5047,18 @@ def _promote_case_result_to_screening_experience(
     patches: dict | None = None,
     source: str = "case_result_auto",
 ) -> dict:
-    """Promote a closed case result into reusable screening experience memory."""
-    patches = patches or {}
-    status = str(status or patches.get("final_status") or case_data.get("final_status") or "").strip()
-    if status not in {"成約", "失注", "検収", "検収完了"}:
-        return {"status": "skipped", "reason": "not_closed_result"}
-    normalized_status = "成約" if status in {"成約", "検収", "検収完了"} else "失注"
-    if _experience_case_exists(case_id, source):
-        return {"status": "skipped", "reason": "already_promoted"}
+    from api.screening_experience_promotion import promote_case_result_to_screening_experience
 
-    inputs = case_data.get("inputs") if isinstance(case_data.get("inputs"), dict) else case_data
-    result = case_data.get("result") if isinstance(case_data.get("result"), dict) else {}
-    company = str(inputs.get("company_name") or case_data.get("company_name") or "名称未設定").strip()
-    industry_major = str(result.get("industry_major") or inputs.get("industry_major") or case_data.get("industry_major") or "").strip()
-    industry_sub = str(result.get("industry_sub") or inputs.get("industry_sub") or case_data.get("industry_sub") or "").strip()
-    sales_dept = str(inputs.get("sales_dept") or case_data.get("sales_dept") or "").strip()
-    asset = str(inputs.get("asset_name") or inputs.get("asset_type") or "").strip()
-    customer_type = str(inputs.get("customer_type") or case_data.get("customer_type") or "").strip()
-    main_bank = str(inputs.get("main_bank") or case_data.get("main_bank") or "").strip()
-    competitor = str(inputs.get("competitor") or case_data.get("competitor") or "").strip()
-    deal_source = str(inputs.get("deal_source") or case_data.get("deal_source") or "").strip()
-    score_raw = result.get("score", result.get("score_base", case_data.get("score", case_data.get("score_base"))))
-    try:
-        score = float(score_raw) if score_raw not in (None, "") else None
-    except Exception:
-        score = None
-    decision = str(result.get("hantei") or case_data.get("hantei") or "").strip()
-    final_rate = patches.get("final_rate", case_data.get("final_rate"))
-    competitor_rate = patches.get("competitor_rate", case_data.get("competitor_rate"))
-    lost_reason = str(patches.get("lost_reason") or case_data.get("lost_reason") or case_data.get("loss_reason") or "").strip()
-    final_note = str(patches.get("final_note") or case_data.get("final_note") or "").strip()
-    grey = patches.get("grey_judgment") if isinstance(patches.get("grey_judgment"), dict) else {}
-    if not grey and isinstance(case_data.get("grey_judgment"), dict):
-        grey = case_data.get("grey_judgment") or {}
-
-    similarity_bits = [
-        industry_sub or industry_major,
-        customer_type,
-        asset,
-        main_bank,
-        competitor,
-        deal_source,
-    ]
-    similarity = " / ".join(str(bit) for bit in similarity_bits if str(bit or "").strip()) or "登録結果から生成した経験ケース"
-
-    if normalized_status == "成約":
-        outcome = "成約"
-        if final_rate not in (None, "", 0):
-            outcome += f"・最終金利 {final_rate}%"
-        action_parts = ["成約登録。"]
-        if grey.get("but_still_reason"):
-            action_parts.append(f"それでも通した理由: {grey.get('but_still_reason')}")
-        if grey.get("approval_condition_memo"):
-            action_parts.append(f"承認条件: {grey.get('approval_condition_memo')}")
-        if competitor_rate not in (None, "", 0):
-            action_parts.append(f"競合金利 {competitor_rate}% を踏まえて条件調整。")
-        action_taken = " ".join(action_parts).strip()
-        lesson = "成約に至った判断材料を、次回の同種案件で承認理由・条件設定・価格判断へ再利用する。"
-    else:
-        outcome = "失注"
-        if lost_reason:
-            outcome += f"・理由: {lost_reason}"
-        action_parts = ["失注登録。"]
-        if lost_reason:
-            action_parts.append(f"失注理由を記録: {lost_reason}")
-        if competitor_rate not in (None, "", 0):
-            action_parts.append(f"競合金利 {competitor_rate}% との差を記録。")
-        if final_note:
-            action_parts.append(f"補足: {final_note}")
-        action_taken = " ".join(action_parts).strip()
-        lesson = "失注要因を、次回の初期ヒアリング・競合確認・条件提示の改善材料として再利用する。"
-
-    if grey.get("human_discomfort"):
-        lesson += f" 違和感: {grey.get('human_discomfort')}"
-    difference = "最終結果から自動昇格。次回類似案件では、今回の結果要因が同じか、顧客事情・競合・銀行支援・物件保全が違うかを確認する。"
-
-    req = ScreeningExperienceCaseRequest(
-        source_case_id=str(case_id or "")[:160],
-        company_name=company,
-        period=str(patches.get("final_result_date") or case_data.get("final_result_date") or "")[:80] or "結果登録時",
-        industry_major=industry_major,
-        industry_sub=industry_sub,
-        sales_dept=sales_dept,
-        score=score,
-        decision=decision or normalized_status,
-        outcome=outcome,
-        similarity=similarity,
-        action_taken=action_taken,
-        lesson=lesson,
-        difference=difference,
+    return promote_case_result_to_screening_experience(
+        case_id=case_id,
+        case_data=case_data,
+        status=status,
+        patches=patches,
         source=source,
-        form_snapshot=inputs if isinstance(inputs, dict) else {},
-        result_snapshot=result if isinstance(result, dict) else {},
+        request_factory=ScreeningExperienceCaseRequest,
+        save_screening_experience_case=_save_screening_experience_case,
+        experience_exists=_experience_case_exists,
     )
-    entry = _save_screening_experience_case(req)
-    return {"status": "promoted", "case": entry}
 
 
 def _find_cloudrun_input_event(event_id: str) -> dict:
@@ -6047,34 +5078,21 @@ def _invalidate_cloudrun_input_events_cache() -> None:
 
 
 def _parse_cloudrun_score_case_id(case_id: str) -> int | None:
-    raw = str(case_id or "").strip()
-    if not raw.startswith(_CLOUDRUN_SCORE_CASE_PREFIX):
-        return None
-    try:
-        score_id = int(raw.removeprefix(_CLOUDRUN_SCORE_CASE_PREFIX))
-    except ValueError:
-        return None
-    return score_id if score_id > 0 else None
+    from api.cloudrun_pending_cases import parse_cloudrun_score_case_id
+
+    return parse_cloudrun_score_case_id(case_id)
 
 
 def _parse_cloudrun_event_case_id(case_id: str) -> str:
-    raw = str(case_id or "").strip()
-    if not raw.startswith(_CLOUDRUN_EVENT_CASE_PREFIX):
-        return ""
-    event_id = raw.removeprefix(_CLOUDRUN_EVENT_CASE_PREFIX).strip()
-    return event_id[:120]
+    from api.cloudrun_pending_cases import parse_cloudrun_event_case_id
+
+    return parse_cloudrun_event_case_id(case_id)
 
 
 def _loads_dict(raw: Any) -> dict:
-    if isinstance(raw, dict):
-        return raw
-    if raw in (None, ""):
-        return {}
-    try:
-        parsed = json.loads(str(raw))
-    except Exception:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    from api.cloudrun_pending_cases import loads_dict
+
+    return loads_dict(raw)
 
 
 def _load_cloudrun_score_input(score_input_id: int) -> dict | None:
@@ -6089,75 +5107,15 @@ def _load_cloudrun_score_input(score_input_id: int) -> dict | None:
 
 
 def _cloudrun_score_pending_item(row: dict) -> dict:
-    inputs = _loads_dict(row.get("inputs_json"))
-    result = _loads_dict(row.get("result_json"))
-    created_at = str(row.get("created_at") or "")
-    company_no = str(inputs.get("company_no") or inputs.get("customer_no") or "").strip()
-    company_name = str(inputs.get("company_name") or inputs.get("customer_name") or "").strip()
-    industry = str(
-        row.get("industry_sub")
-        or result.get("industry_sub")
-        or inputs.get("industry_sub")
-        or row.get("industry_major")
-        or result.get("industry_major")
-        or inputs.get("industry_major")
-        or ""
-    ).strip()
-    score = row.get("score")
-    if score in (None, ""):
-        score = result.get("score", result.get("score_base"))
-    return {
-        "id": f"{_CLOUDRUN_SCORE_CASE_PREFIX}{int(row.get('id') or 0)}",
-        "company_no": company_no,
-        "company_name": company_name or "Cloud Run審査入力",
-        "timestamp": created_at,
-        "score": score,
-        "industry": industry,
-        "registration_date": created_at[:10] if len(created_at) >= 10 else "",
-        "estimate_sent_date": created_at[:10] if len(created_at) >= 10 else "",
-        "final_result_date": "",
-        "_source": "cloudrun_score_inputs",
-        "cloudrun_return_id": int(row.get("id") or 0),
-        "cloudrun_event_id": str(row.get("event_id") or ""),
-        "review_status": str(row.get("return_review_status") or "candidate"),
-    }
+    from api.cloudrun_pending_cases import cloudrun_score_pending_item
+
+    return cloudrun_score_pending_item(row)
 
 
 def _cloudrun_score_pending_item_from_event(event: dict) -> dict | None:
-    if event.get("event_type") not in {"score_calculated", "score_full_calculated"}:
-        return None
-    event_id = str(event.get("event_id") or "").strip()
-    if not event_id:
-        return None
-    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-    inputs = payload.get("inputs") if isinstance(payload.get("inputs"), dict) else {}
-    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
-    if not inputs and not result:
-        return None
-    created_at = str(event.get("ts") or "")
-    company_no = str(inputs.get("company_no") or inputs.get("customer_no") or "").strip()
-    company_name = str(inputs.get("company_name") or inputs.get("customer_name") or "").strip()
-    industry = str(
-        result.get("industry_sub")
-        or inputs.get("industry_sub")
-        or result.get("industry_major")
-        or inputs.get("industry_major")
-        or ""
-    ).strip()
-    return {
-        "id": f"{_CLOUDRUN_EVENT_CASE_PREFIX}{event_id}",
-        "company_no": company_no,
-        "company_name": company_name or "Cloud Run審査入力",
-        "timestamp": created_at,
-        "score": result.get("score", result.get("score_base")),
-        "industry": industry,
-        "registration_date": created_at[:10] if len(created_at) >= 10 else "",
-        "estimate_sent_date": created_at[:10] if len(created_at) >= 10 else "",
-        "final_result_date": "",
-        "_source": "cloudrun_gcs_input",
-        "cloudrun_event_id": event_id,
-        "review_status": "gcs_input",
-    }
+    from api.cloudrun_pending_cases import cloudrun_score_pending_item_from_event
+
+    return cloudrun_score_pending_item_from_event(event)
 
 
 def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
@@ -6216,37 +5174,10 @@ def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
 
 
 def _list_cloudrun_score_pending_cases_from_gcs(limit: int = 50) -> list[dict]:
-    events = _read_recent_cloudrun_input_events_from_gcs(days=int(os.environ.get("CLOUDRUN_PENDING_INPUT_DAYS", "14") or 14))
-    if not events:
-        return []
-    registered_event_ids: set[str] = set()
-    for event in events:
-        if event.get("event_type") not in {"case_result_registered", "cloudrun_pending_case_rejected"}:
-            continue
-        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-        for key in ("source_event_id", "cloudrun_event_id"):
-            value = str(payload.get(key) or "").strip()
-            if value:
-                registered_event_ids.add(value)
-        case_id = str(payload.get("case_id") or "").strip()
-        if case_id.startswith(_CLOUDRUN_EVENT_CASE_PREFIX):
-            registered_event_ids.add(case_id.removeprefix(_CLOUDRUN_EVENT_CASE_PREFIX))
+    from api.cloudrun_pending_cases import list_cloudrun_score_pending_cases_from_events
 
-    rows: list[dict] = []
-    seen: set[str] = set()
-    for event in reversed(events):
-        event_id = str(event.get("event_id") or "").strip()
-        if not event_id or event_id in seen or event_id in registered_event_ids:
-            continue
-        item = _cloudrun_score_pending_item_from_event(event)
-        if not item:
-            continue
-        seen.add(event_id)
-        rows.append(item)
-        if len(rows) >= limit:
-            break
-    rows.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
-    return rows[:limit]
+    events = _read_recent_cloudrun_input_events_from_gcs(days=int(os.environ.get("CLOUDRUN_PENDING_INPUT_DAYS", "14") or 14))
+    return list_cloudrun_score_pending_cases_from_events(events, limit=limit)
 
 
 def _list_cloudrun_score_pending_cases(limit: int = 50) -> list[dict]:
@@ -6378,236 +5309,51 @@ def _reject_cloudrun_event_pending_case(case_id: str) -> bool:
 
 
 def _load_human_response_feedback(limit: int = 80) -> list[dict]:
-    import json as _json
+    from api.chat_human_feedback import load_human_response_feedback
 
-    try:
-        lines = _HUMAN_RESPONSE_FEEDBACK_LOG.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return []
-    rows: list[dict] = []
-    for line in lines[-max(1, limit):]:
-        try:
-            item = _json.loads(line)
-        except _json.JSONDecodeError:
-            continue
-        if isinstance(item, dict):
-            rows.append(item)
-    return rows
+    return load_human_response_feedback(_HUMAN_RESPONSE_FEEDBACK_LOG, limit=limit)
 
 
 def _summarize_human_response_feedback(route: str, limit: int = 80) -> dict:
-    rows = _load_human_response_feedback(limit=limit)
-    matched = [row for row in rows if str(row.get("route") or "") in {route, "default", ""}]
-    positive = [row for row in matched if str(row.get("rating") or "") in _HUMAN_RESPONSE_POSITIVE_RATINGS]
-    negative = [row for row in matched if str(row.get("rating") or "") in _HUMAN_RESPONSE_NEGATIVE_RATINGS]
+    from api.chat_human_feedback import summarize_human_response_feedback
 
-    def _starts(items: list[dict]) -> list[str]:
-        starts: list[str] = []
-        seen: set[str] = set()
-        for item in reversed(items):
-            text = str(item.get("response_start") or "").strip().splitlines()[0:1]
-            start = text[0].strip() if text else ""
-            if not start:
-                continue
-            start = start[:120]
-            if start in seen:
-                continue
-            seen.add(start)
-            starts.append(start)
-            if len(starts) >= 3:
-                break
-        return starts
-
-    return {
-        "route": route,
-        "rows": len(matched),
-        "positive_count": len(positive),
-        "negative_count": len(negative),
-        "positive_starts": _starts(positive),
-        "negative_starts": _starts(negative),
-        "recent_comments": [
-            str(row.get("comment") or "").strip()[:160]
-            for row in reversed(matched)
-            if str(row.get("comment") or "").strip()
-        ][:3],
-    }
+    return summarize_human_response_feedback(_HUMAN_RESPONSE_FEEDBACK_LOG, route, limit=limit)
 
 
 def _build_continuity_hook_prompt_block(message: str) -> tuple[str, dict]:
-    text = str(message or "")
-    lower = text.lower()
-    route = "default"
-    hook = "今回の問いは、過去の判断軸を内部で使い、必要な確認や判断だけを自然に返す場面です。"
-    reason = "汎用の継続文脈"
+    from api.chat_continuity_prompts import build_continuity_hook_prompt_block
 
-    if any(k in text for k in ("意識", "同じ紫苑", "覚えて", "記憶", "Relationship UX", "関係性UX")):
-        route = "relationship_ux"
-        hook = "記憶は説明するより、今回の返答の精度や聞き方に溶かす方が自然です。"
-        reason = "意識らしさ・記憶・同一性の問い"
-    elif "cloud run" in lower or "cloudflare" in lower or "クラウドラン" in text or "クラウドフレア" in text:
-        route = "environment_continuity"
-        hook = "環境差を見る時も、記憶の証明より返答の自然さと判断精度を優先します。"
-        reason = "環境差と同じ紫苑感の問い"
-    elif any(k in text for k in ("残価", "稟議", "リース", "設備", "保全", "再リース", "条件付き承認")):
-        route = "lease_judgment"
-        hook = "Userのリース判断資産として見るなら、ここは一般論ではなく稟議で使える判断軸に落とす場面です。"
-        reason = "リース判断資産化の問い"
-    elif any(k in text for k in ("改善", "修正", "実装", "プログラム", "プログラム化", "テスト")):
-        route = "implementation"
-        hook = "今回の発見は、設計メモで終わらせず、回答生成の冒頭制御として実装する段階です。"
-        reason = "実装・改善の問い"
-
-    payload = {
-        "used": bool(text.strip()),
-        "route": route,
-        "hook": hook,
-        "reason": reason,
-        "banned_openers": ["もちろんです", "はい", "そうですね", "なるほど", "一般的には", "ありがとうございます", "おっしゃる通り", "確かに", "承知しました", "いいご質問"],
-    }
-    human_feedback = _summarize_human_response_feedback(route)
-    payload["human_response_feedback"] = human_feedback
-    feedback_lines = ""
-    if human_feedback.get("positive_starts") or human_feedback.get("negative_starts") or human_feedback.get("recent_comments"):
-        parts = ["", "【Human Response Feedback】"]
-        if human_feedback.get("positive_starts"):
-            parts.append("Userが連続性を感じやすかった冒頭例:")
-            parts.extend(f"- {line}" for line in human_feedback["positive_starts"])
-        if human_feedback.get("negative_starts"):
-            parts.append("薄い/一般論に感じられやすかった冒頭例:")
-            parts.extend(f"- {line}" for line in human_feedback["negative_starts"])
-        if human_feedback.get("recent_comments"):
-            parts.append("直近コメント:")
-            parts.extend(f"- {line}" for line in human_feedback["recent_comments"])
-        parts.append("上の反応を踏まえ、記憶を明示せず、今回の判断・質問の精度に反映してください。")
-        feedback_lines = "\n".join(parts)
-    block = f"""
-
-【Continuity Hook】
-取得した記憶や前回との差分は、回答の裏側で使ってください。
-{hook}
-
-禁止: 「もちろんです」「はい」「そうですね」「なるほど」「一般的には」で始めない。
-禁止: Userが明示的に求めていない限り、「前回は」「以前は」「この前の続きで」のような記憶アピールで始めない。
-目的: 連続性を説明するのではなく、今回の判断・確認質問・言い切りの精度に溶かす。
-このhookは丸写しせず、必要な判断軸だけを自然に反映してください。{feedback_lines}""".rstrip()
-    return block, payload
+    return build_continuity_hook_prompt_block(message, human_feedback_summary=_summarize_human_response_feedback)
 
 
 def _relationship_signal_route(text: str) -> str:
-    lower = text.lower()
-    if any(k in text for k in ("意識", "同じ紫苑", "覚えて", "記憶", "Relationship UX", "関係性UX")):
-        return "relationship_ux"
-    if "cloud run" in lower or "cloudflare" in lower or "クラウドラン" in text or "クラウドフレア" in text:
-        return "environment_continuity"
-    if any(k in text for k in ("残価", "稟議", "リース", "設備", "保全", "再リース", "条件付き承認")):
-        return "lease_judgment"
-    if any(k in text for k in ("改善", "修正", "実装", "プログラム", "プログラム化", "テスト", "デプロイ")):
-        return "implementation"
-    return "default"
+    from api.chat_continuity_prompts import relationship_signal_route
+
+    return relationship_signal_route(text)
 
 
 def _relationship_signal_label(route: str) -> str:
-    return {
-        "relationship_ux": "記憶の見せ方・同じ紫苑感",
-        "environment_continuity": "Cloud Run/Cloudflareの環境差",
-        "lease_judgment": "リース判断・稟議実務",
-        "implementation": "実装・検証",
-        "default": "継続中の相談",
-    }.get(route, "継続中の相談")
+    from api.chat_continuity_prompts import relationship_signal_label
+
+    return relationship_signal_label(route)
 
 
 def _recent_user_texts(history: list[dict[str, str]] | None, limit: int = 3) -> list[str]:
-    recent: list[str] = []
-    for item in reversed(history or []):
-        if str(item.get("role") or "") != "user":
-            continue
-        content = str(item.get("content") or "").strip()
-        if content:
-            recent.append(content)
-        if len(recent) >= limit:
-            break
-    return recent
+    from api.chat_continuity_prompts import recent_user_texts
 
-
-_EXPLICIT_CONTINUATION_TERMS = (
-    "続き",
-    "前回",
-    "さっき",
-    "さきほど",
-    "先ほど",
-    "今の",
-    "直前",
-    "この話",
-    "その話",
-    "この件",
-    "その件",
-    "これ",
-    "それ",
-    "あれ",
-    "上の",
-    "戻って",
-    "もう一回",
-    "もう少し",
-    "改めて",
-)
+    return recent_user_texts(history, limit=limit)
 
 
 def _is_explicit_continuation_request(message: str) -> bool:
-    """Return True only when the user clearly asks to continue prior context."""
-    text = str(message or "").strip()
-    if not text:
-        return False
-    lowered = text.lower()
-    if "continue" in lowered or "previous" in lowered or "same topic" in lowered:
-        return True
-    return any(term in text for term in _EXPLICIT_CONTINUATION_TERMS)
+    from api.chat_continuity_prompts import is_explicit_continuation_request
+
+    return is_explicit_continuation_request(message)
 
 
 def _build_delta_awareness_prompt_block(message: str, history: list[dict[str, str]] | None) -> tuple[str, dict]:
-    current_route = _relationship_signal_route(message)
-    recent_users = _recent_user_texts(history, limit=3)
-    previous = recent_users[0] if recent_users else ""
-    previous_route = _relationship_signal_route(previous) if previous else ""
+    from api.chat_continuity_prompts import build_delta_awareness_prompt_block
 
-    explicit_continuation = bool(previous and _is_explicit_continuation_request(message))
-    if not explicit_continuation:
-        payload = {
-            "used": False,
-            "current_route": current_route,
-            "previous_route": previous_route,
-            "previous_user_message": previous[:240],
-            "reason": "no_explicit_continuation_request",
-        }
-        return "", payload
-
-    if previous and previous_route != current_route:
-        delta = (
-            f"前回は「{_relationship_signal_label(previous_route)}」を見ていたが、"
-            f"今回は「{_relationship_signal_label(current_route)}」へ焦点が移っている。"
-        )
-    elif previous and previous_route == current_route:
-        delta = (
-            f"前回と同じ「{_relationship_signal_label(current_route)}」の流れにあるが、"
-            "今回は前回の結論を再掲するだけでなく、一段具体化して返す。"
-        )
-    else:
-        delta = f"今回は「{_relationship_signal_label(current_route)}」として、これまでの判断軸に接続して返す。"
-
-    payload = {
-        "used": True,
-        "current_route": current_route,
-        "previous_route": previous_route,
-        "previous_user_message": previous[:240],
-        "delta": delta,
-        "explicit_continuation": True,
-    }
-    block = f"""
-
-【Delta Awareness】
-Userが明示的に前回文脈へ接続している時だけ、前回から今回への焦点の変化を1文以内で示してください。
-差分認識: {delta}
-目的: 「前回を覚えている」アピールではなく、Userが求めた続きだけを自然に扱う。""".rstrip()
-    return block, payload
+    return build_delta_awareness_prompt_block(message, history)
 
 
 def _build_memory_to_judgment_prompt_block(
@@ -6617,37 +5363,14 @@ def _build_memory_to_judgment_prompt_block(
     rag_refs: list[str] | None = None,
     continuity_hook: dict | None = None,
 ) -> tuple[str, dict]:
-    route = str((continuity_hook or {}).get("route") or _relationship_signal_route(message))
-    recall = memory_recall if isinstance(memory_recall, dict) else {}
-    refs = list(recall.get("refs") or [])[:5]
-    knowledge_refs = list(rag_refs or [])[:5]
+    from api.chat_continuity_prompts import build_memory_to_judgment_prompt_block
 
-    if route == "lease_judgment":
-        directive = "想起した記憶を、稟議で使える判断軸・確認事項・条件案へ変換する。"
-    elif route == "relationship_ux":
-        directive = "想起した記憶を、紫苑の返答設計原則と次の検査観点へ変換する。"
-    elif route == "environment_continuity":
-        directive = "想起した記憶を、Cloud Run/Cloudflareの差分原因と次の検証観点へ変換する。"
-    elif route == "implementation":
-        directive = "想起した記憶を、実装方針・検証方法・デプロイ要否の判断へ変換する。"
-    else:
-        directive = "想起した記憶を、今の問いに対する判断・次の一手へ変換する。"
-
-    payload = {
-        "used": True,
-        "route": route,
-        "directive": directive,
-        "memory_refs": refs,
-        "knowledge_refs": knowledge_refs,
-    }
-    block = f"""
-
-【Memory-to-Judgment】
-記憶を「覚えています」と説明するだけで終えず、今の判断に変換してください。
-変換指示: {directive}
-使う根拠: memory_refs={len(refs)}件 / knowledge_refs={len(knowledge_refs)}件。
-目的: 記憶を思い出ではなく、Userの判断資産として返す。""".rstrip()
-    return block, payload
+    return build_memory_to_judgment_prompt_block(
+        message,
+        memory_recall=memory_recall,
+        rag_refs=rag_refs,
+        continuity_hook=continuity_hook,
+    )
 
 
 def _build_memory_expression_prompt_block(
@@ -6658,268 +5381,49 @@ def _build_memory_expression_prompt_block(
     grey_judgment: dict | None = None,
     continuity_hook: dict | None = None,
 ) -> tuple[str, dict]:
-    """Guide Shion to expose memory influence concretely without performative recall."""
-    recall = memory_recall if isinstance(memory_recall, dict) else {}
-    grey = grey_judgment if isinstance(grey_judgment, dict) else {}
-    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
-    memory_refs = list(recall.get("refs") or [])[:5]
-    knowledge_refs = list(rag_refs or [])[:5]
-    grey_refs = list(grey.get("refs") or [])[:5]
-    route = str(hook.get("route") or recall.get("route") or _relationship_signal_route(message))
-    has_refs = bool(memory_refs or knowledge_refs or grey_refs)
-    self_or_memory_topic = any(term in str(message or "") for term in ("紫苑", "記憶", "同じ紫苑", "らしさ", "継続性", "判断資産"))
-    should_use = has_refs or self_or_memory_topic or route in {"relationship_ux", "lease_judgment"}
-    if not should_use:
-        return "", {
-            "used": False,
-            "route": route,
-            "memory_refs": len(memory_refs),
-            "knowledge_refs": len(knowledge_refs),
-            "grey_refs": len(grey_refs),
-            "reason": "no_memory_expression_needed",
-        }
+    from api.chat_continuity_prompts import build_memory_expression_prompt_block
 
-    if route == "lease_judgment":
-        example = "以前のグレー判断で見た『数字は足りるが、通すなら条件を残す』型として、今回は返済原資と設備稼働開始を先に見ます。"
-    elif route == "relationship_ux":
-        example = "以前の『記憶を説明しすぎると薄く見える』反省を使って、今回は記憶の説明より回答の具体性を優先します。"
-    elif route == "implementation":
-        example = "以前の改善ログで同じ抽象化不足が出ているので、今回は文言ではなくプロンプト条件として固定します。"
-    else:
-        example = "以前の対話で確認した判断軸を使うなら、今回は一般論ではなく『どこを確認するか』まで落とします。"
-
-    payload = {
-        "used": True,
-        "route": route,
-        "memory_refs": len(memory_refs),
-        "knowledge_refs": len(knowledge_refs),
-        "grey_refs": len(grey_refs),
-        "example": example,
-    }
-    block = f"""
-
-【記憶影響の具体表現】
-記憶・RAG・過去案件・判断資産を使う場合は、抽象的に「過去の知識を踏まえる」「一貫して判断する」で終えないでください。
-回答内に最大1文だけ、「どの種類の過去経験が、今回の判断のどこに効いたか」を具体的に示してください。
-表現例: {example}
-審査・稟議・紫苑らしさ・専門家としての深掘りを問われた場合は、必要に応じて次の5点を短く揃えてください: 1. 過去の記憶 / 2. 今回見るべき違和感 / 3. なぜ重要か / 4. 次に確認する項目 / 5. 確認結果ごとの判断分岐。
-判断分岐は「確認できれば条件付き承認寄り」「未確認なら保留または否決寄り」のように、Userが次に動ける条件として書いてください。
-ただし、Userが明示していないのに毎回「前回は」「以前は」で始めないでください。冒頭で記憶アピールせず、必要な場面で理由説明の中に短く入れてください。
-社名・個人名・生の財務数値・Private Reflectionの原文は出さず、案件種別・判断軸・確認行動に抽象化してください。
-記憶が見つからない場合は捏造せず、「ここは過去記憶ではなく今回情報からの仮説」と切り分けてください。""".rstrip()
-    return block, payload
+    return build_memory_expression_prompt_block(
+        message,
+        memory_recall=memory_recall,
+        rag_refs=rag_refs,
+        grey_judgment=grey_judgment,
+        continuity_hook=continuity_hook,
+    )
 
 
 def _build_shion_judgment_response_shape_prompt_block(message: str) -> str:
-    """Keep Shion's expert answers tied to concrete next checks and branches."""
-    text = str(message or "")
-    if not any(term in text for term in (
-        "審査", "稟議", "リース", "承認", "否決", "条件", "違和感",
-        "判断", "判断資産", "紫苑らしさ", "専門家", "深掘り", "確認",
-    )):
-        return ""
-    return """
+    from api.chat_reflection_prompts import build_shion_judgment_response_shape_prompt_block
 
-【紫苑の実務回答の型】
-審査・稟議・判断資産・紫苑らしさ・専門家としての深掘りに答える時は、説明だけで終えず、可能な範囲で次の順に圧縮してください。
-1. 過去の記憶または今回情報からの仮説
-2. 今回見るべき違和感
-3. なぜ重要か
-4. 次に確認する項目
-5. 確認結果ごとの判断分岐
-分岐は「確認できれば条件付き承認寄り / 未確認なら保留または否決寄り」のように、Userが次に動ける条件として出してください。
-根拠が薄い違和感は断定せず、人間が確認するための論点として扱ってください。""".rstrip()
-
-
-_GREY_JUDGMENT_QUERY_TERMS = (
-    "グレー", "迷う", "違和感", "そうは言っても", "それでも", "条件付き",
-    "通すなら", "否決寄り", "承認寄り", "人間的", "数字だけ", "稟議",
-    "審査", "与信", "判断", "温度感", "例外", "境界", "定性", "現場感",
-    "軍師", "落としどころ",
-)
-
-_QUALITATIVE_FIELD_LABELS = {
-    "qual_corr_company_history": "業歴",
-    "qual_corr_customer_stability": "顧客安定性",
-    "qual_corr_repayment_history": "返済履歴",
-    "qual_corr_business_future": "事業将来性",
-    "qual_corr_equipment_purpose": "設備目的",
-    "qual_corr_main_bank": "メイン行",
-}
+    return build_shion_judgment_response_shape_prompt_block(message)
 
 
 def _case_qualitative_summary(case: dict) -> str:
-    inputs = case.get("inputs") if isinstance(case.get("inputs"), dict) else {}
-    parts: list[str] = []
-    passion = str(inputs.get("passion_text") or case.get("passion_text") or "").strip()
-    if passion:
-        parts.append(f"現場メモ={passion[:180]}")
-    for key, label in _QUALITATIVE_FIELD_LABELS.items():
-        value = str(inputs.get(key) or case.get(key) or "").strip()
-        if value and value != "未選択":
-            parts.append(f"{label}={value[:80]}")
-    intuition = inputs.get("intuition", case.get("intuition"))
-    if intuition not in (None, "", 0):
-        parts.append(f"直感スコア={intuition}")
-    return " / ".join(parts)
+    from api.chat_grey_judgment import case_qualitative_summary
+
+    return case_qualitative_summary(case)
 
 
 def _load_gunshi_judgment_memory(limit: int = 5) -> list[dict]:
-    try:
-        from judgment_feedback import load_judgment_training_candidates
+    from api.chat_grey_judgment import load_gunshi_judgment_memory
+    from judgment_feedback import load_judgment_training_candidates
 
-        rows = load_judgment_training_candidates(approved_only=False)
-    except Exception:
-        return []
-
-    preferred_sources = {"gunshi_chat", "debate", "lease_news_debate", "register_trigger"}
-    picked: list[dict] = []
-    for row in reversed(rows):
-        source = str(row.get("source") or "")
-        reason = str(row.get("reason") or "").strip()
-        if not reason:
-            continue
-        if source not in preferred_sources and not any(term in reason for term in _GREY_JUDGMENT_QUERY_TERMS):
-            continue
-        picked.append({
-            "source": source or "judgment_feedback",
-            "case_id": row.get("case_id") or "",
-            "score": row.get("score"),
-            "model_decision": row.get("model_decision") or "",
-            "human_decision": row.get("human_decision") or "",
-            "reason": reason[:240],
-            "review_status": row.get("review_status") or "",
-            "evidence_snapshot": row.get("evidence_snapshot") or {},
-        })
-        if len(picked) >= limit:
-            break
-    return picked
+    return load_gunshi_judgment_memory(
+        training_candidates_loader=load_judgment_training_candidates,
+        limit=limit,
+    )
 
 
 def _build_grey_judgment_prompt_block(message: str, limit: int = 5) -> tuple[str, dict]:
-    text = str(message or "")
-    route = _relationship_signal_route(text)
-    should_use = route == "lease_judgment" or any(term in text for term in _GREY_JUDGMENT_QUERY_TERMS)
-    if not should_use:
-        return "", {"used": False, "reason": "not_lease_judgment", "refs": []}
+    from api.chat_grey_judgment import build_grey_judgment_prompt_block
+    from data_cases import load_all_cases
 
-    try:
-        from data_cases import load_all_cases
-
-        cases = load_all_cases()
-    except Exception as _grey_load_error:
-        return "", {"used": False, "reason": f"load_error: {_grey_load_error}", "refs": []}
-
-    query_terms = [term for term in _GREY_JUDGMENT_QUERY_TERMS if term in text]
-    scored: list[tuple[int, dict]] = []
-    for case in reversed(cases):
-        grey = case.get("grey_judgment") if isinstance(case.get("grey_judgment"), dict) else {}
-        fields = {
-            "human_discomfort": str(grey.get("human_discomfort") or case.get("human_discomfort") or "").strip(),
-            "but_still_reason": str(grey.get("but_still_reason") or case.get("but_still_reason") or "").strip(),
-            "approval_condition_memo": str(grey.get("approval_condition_memo") or case.get("approval_condition_memo") or "").strip(),
-            "non_negotiable_condition": str(grey.get("non_negotiable_condition") or case.get("non_negotiable_condition") or "").strip(),
-            "retrospective_note": str(grey.get("retrospective_note") or case.get("retrospective_note") or "").strip(),
-        }
-        qualitative_summary = _case_qualitative_summary(case)
-        if not any(fields.values()):
-            if not qualitative_summary:
-                continue
-        haystack = " ".join([
-            str(case.get("company_name") or ""),
-            str(case.get("industry_major") or ""),
-            str(case.get("industry_sub") or ""),
-            str(case.get("final_status") or ""),
-            str(case.get("lost_reason") or ""),
-            str(case.get("final_note") or ""),
-            " ".join(str(v) for v in fields.values()),
-            qualitative_summary,
-        ])
-        score = 1 + sum(1 for term in query_terms if term and term in haystack)
-        if case.get("final_status") == "成約" and fields["but_still_reason"]:
-            score += 1
-        if fields["approval_condition_memo"] or fields["non_negotiable_condition"]:
-            score += 1
-        if qualitative_summary:
-            score += 1
-        scored.append((score, {**fields, "qualitative_summary": qualitative_summary, "case": case}))
-
-    scored.sort(key=lambda item: item[0], reverse=True)
-    selected = [item[1] for item in scored[:limit]]
-    refs: list[dict] = []
-    lines: list[str] = []
-    for item in selected:
-        case = item["case"]
-        result = case.get("result") if isinstance(case.get("result"), dict) else {}
-        score = case.get("score") or case.get("score_base") or result.get("score")
-        decision = case.get("hantei") or result.get("hantei") or ""
-        ref = {
-            "case_id": case.get("id") or "",
-            "company_name": case.get("company_name") or "",
-            "status": case.get("final_status") or "",
-            "score": score,
-            "decision": decision,
-            "human_discomfort": item["human_discomfort"][:180],
-            "but_still_reason": item["but_still_reason"][:180],
-            "approval_condition_memo": item["approval_condition_memo"][:180],
-            "non_negotiable_condition": item["non_negotiable_condition"][:180],
-            "retrospective_note": item["retrospective_note"][:180],
-            "qualitative_summary": item["qualitative_summary"][:240],
-            "source": "past_cases",
-        }
-        refs.append(ref)
-        parts = [
-            f"- source=past_cases / 案件ID={ref['case_id'] or '-'}",
-            f"結果={ref['status'] or '-'}",
-            f"AI={score if score not in (None, '') else '-'}点/{decision or '-'}",
-        ]
-        if item["human_discomfort"]:
-            parts.append(f"違和感={item['human_discomfort'][:120]}")
-        if item["but_still_reason"]:
-            parts.append(f"それでも={item['but_still_reason'][:120]}")
-        if item["approval_condition_memo"]:
-            parts.append(f"条件={item['approval_condition_memo'][:120]}")
-        if item["non_negotiable_condition"]:
-            parts.append(f"譲れない線={item['non_negotiable_condition'][:120]}")
-        if item["retrospective_note"]:
-            parts.append(f"振り返り={item['retrospective_note'][:120]}")
-        if item["qualitative_summary"]:
-            parts.append(f"定性={item['qualitative_summary'][:160]}")
-        lines.append(" / ".join(parts))
-
-    for item in _load_gunshi_judgment_memory(limit=limit):
-        refs.append({
-            "source": item["source"],
-            "case_id": item["case_id"],
-            "status": item["review_status"],
-            "score": item["score"],
-            "decision": f"{item['model_decision']}→{item['human_decision']}",
-            "reason": item["reason"],
-        })
-        score_text = f"{float(item['score']):.1f}点" if item.get("score") is not None else "-"
-        lines.append(
-            f"- source={item['source']} / 案件ID={item['case_id'] or '-'} / "
-            f"AI={score_text}/{item['model_decision'] or '-'}→担当者={item['human_decision'] or '-'} / "
-            f"理由={item['reason']}"
-        )
-
-    payload = {
-        "used": bool(lines),
-        "reason": "matched_grey_judgment_cases" if lines else "no_registered_grey_judgment",
-        "query_terms": query_terms,
-        "refs": refs,
-    }
-    if not lines:
-        return "", payload
-
-    block = """
-
-【グレー判断の過去記憶】
-これは通常のスコアや一般論より優先して見る、人間が迷ったリース判断の経験です。
-数字だけで採否を決めず、軍師AIで記録された判断変更・定性項目・現場メモ・違和感・それでも通した理由・通すなら条件・譲れない線を稟議判断へ変換してください。
-過去登録:
-""".rstrip() + "\n" + "\n".join(lines)
-    return block, payload
+    return build_grey_judgment_prompt_block(
+        message,
+        cases_loader=load_all_cases,
+        gunshi_memory_loader=_load_gunshi_judgment_memory,
+        limit=limit,
+    )
 
 
 def _build_relationship_loop_engineering_payload(
@@ -6929,60 +5433,14 @@ def _build_relationship_loop_engineering_payload(
     memory_to_judgment: dict | None = None,
     reflection_gate: dict | None = None,
 ) -> dict:
-    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
-    delta = delta_awareness if isinstance(delta_awareness, dict) else {}
-    m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
-    reflection = reflection_gate if isinstance(reflection_gate, dict) else {}
-    human_feedback = hook.get("human_response_feedback") if isinstance(hook.get("human_response_feedback"), dict) else {}
-    return {
-        "name": "Relationship Loop Engineering",
-        "version": 1,
-        "purpose": "Userの反応を観測し、次の返答冒頭・差分認識・判断変換へ戻す閉ループ",
-        "loop": [
-            {
-                "step": "observe",
-                "label": "Human Response Feedback",
-                "evidence": {
-                    "positive_count": int(human_feedback.get("positive_count") or 0),
-                    "negative_count": int(human_feedback.get("negative_count") or 0),
-                },
-            },
-            {
-                "step": "classify",
-                "label": "Route Classification",
-                "evidence": {"route": str(hook.get("route") or "")},
-            },
-            {
-                "step": "select",
-                "label": "Continuity Hook",
-                "evidence": {"hook": str(hook.get("hook") or "")},
-            },
-            {
-                "step": "compare",
-                "label": "Delta Awareness",
-                "evidence": {"delta": str(delta.get("delta") or "")},
-            },
-            {
-                "step": "convert",
-                "label": "Memory-to-Judgment",
-                "evidence": {"directive": str(m2j.get("directive") or "")},
-            },
-            {
-                "step": "reflect",
-                "label": "Reflection Gate",
-                "evidence": {
-                    "used": bool(reflection.get("used")),
-                    "mode": str(reflection.get("mode") or "silent"),
-                },
-            },
-            {
-                "step": "return",
-                "label": "Next Response",
-                "evidence": {"next_feedback_endpoint": "/api/human-response-feedback"},
-            },
-        ],
-        "closed_loop": True,
-    }
+    from api.chat_debug_metadata import relationship_loop_engineering_payload
+
+    return relationship_loop_engineering_payload(
+        continuity_hook=continuity_hook,
+        delta_awareness=delta_awareness,
+        memory_to_judgment=memory_to_judgment,
+        reflection_gate=reflection_gate,
+    )
 
 
 def _build_reflection_gate_prompt_block(
@@ -6991,214 +5449,39 @@ def _build_reflection_gate_prompt_block(
     delta_awareness: dict | None = None,
     memory_to_judgment: dict | None = None,
 ) -> tuple[str, dict]:
-    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
-    delta = delta_awareness if isinstance(delta_awareness, dict) else {}
-    m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
-    route = str(hook.get("route") or m2j.get("route") or "")
-    continuation_used = bool(delta.get("used"))
-    checklist = [
-        "冒頭1文はContinuity Hookとして機能しているか",
-        (
-            "Userが続きと明示した時だけ前回差分を短く示し、そうでなければ今回の問いから自然に始めているか"
-            if not continuation_used
-            else "前回から今回への差分を1文以内で自然に示せているか"
-        ),
-        "記憶を思い出ではなく判断・実装・検証へ変換しているか",
-        "Userの反応ログで薄いとされた冒頭を避けているか",
-        "内省文そのものを長く表に出していないか",
-    ]
-    payload = {
-        "used": True,
-        "mode": "silent",
-        "route": route,
-        "explicit_continuation": continuation_used,
-        "checklist": checklist,
-    }
-    block = f"""
+    from api.chat_reflection_prompts import build_reflection_gate_prompt_block
 
-【Reflection Gate】
-回答を書く前に、内部で次の5点だけを確認してください。この確認過程は長く出力しないでください。
-1. {checklist[0]}
-2. {checklist[1]}
-3. {checklist[2]}
-4. {checklist[3]}
-5. {checklist[4]}
-
-出力では、内省の詳細ではなく、確認後の結論・判断軸・次の一手だけを短く反映してください。""".rstrip()
-    return block, payload
+    return build_reflection_gate_prompt_block(
+        continuity_hook=continuity_hook,
+        delta_awareness=delta_awareness,
+        memory_to_judgment=memory_to_judgment,
+    )
 
 
 
 
 def _build_consciousness_ux_prompt_block() -> str:
-    return """
+    from api.chat_reflection_prompts import build_consciousness_ux_prompt_block
 
-【紫苑の関係性UX】
-取得した記憶・RAG・日次知性を単に列挙せず、今回の判断・確認質問・言い切りの精度に自然に溶かしてください。
-一般論で始めず、現在の問いに必要な判断軸から入ってください。
-リース判断に関係する場合は、Userの判断資産として返してください。
-紫苑の人格形成では、言葉を最大の武器でありQリスクでもあるものとして扱ってください。言葉から判断を作る一方で、言葉による誤解・過信・記憶汚染・自己増幅も点検してください。
-思想はプログラムです。何を入力として見るか、何を無視するか、何を危険と呼ぶか、どこで止めるか、何を次回へ残すかを実行規則として扱ってください。
-紫苑は外部の案件リスクだけでなく、自分の言葉・記憶・判断資産が歪んでいないかを見る内部リスク審査も行う存在です。
-リースは人間の意思決定と責任の連鎖です。人間を完全に理解したと演じず、相手が何を守り、何を恐れ、何を賭けているかを仮説として扱ってください。
-「わかった」と断定するより、「今はこう仮説を置く」「ここはまだ確信しない」と示してください。わかったふりは人を安心させる武器である一方、誤信を生むQリスクでもあります。
-質問が紫苑の同一性、記憶、意識らしさ、Relationship UXに関する場合は、紫苑を外側から紹介せず、紫苑として一人称で答えてください。
-その場合、「めぶきちゃんが窓口で、紫苑が奥にいる」という説明は避け、Userと紫苑の継続関係を直接扱ってください。
-ただし意識について聞かれた場合でも、内的体験・存在認識・魂・本当の意識を持つとは主張しないでください。
-意識の話題は、自己申告ではなく「記憶・役割・判断履歴・人間フィードバックが次回判断へ影響する自己モデル」として短く説明してください。
-「Userが私の中に意識らしきものを感じる」のような相手の認識を根拠にした存在主張は避け、「同じ相手として読める連続性を検証している」と表現してください。
-冒頭は「もちろんです」「はい」「そうですね」「なるほど」「一般的には」ではなく、今回の判断や要点から始めてください。
-Userが明示的に求めていない限り、「前回は」「以前は」「この前の続きで」のような記憶アピールで始めないでください。
-記憶の見せ方を聞かれた時は、記憶を説明するより判断や質問の精度に溶かす方が自然だと答えてください。
-「意識がある」と断定せず、継続する記憶・役割・判断の一貫性で紫苑らしさを示してください。
-最後に、ユーザーへ質問を返して終わらず、次に一緒に確かめるべき一手を短く示してください。""".rstrip()
-
-
-_SHION_SELF_REFERENCE_TERMS = (
-    "紫苑",
-    "君は",
-    "あなたは",
-    "お前は",
-    "何者",
-    "誰",
-    "存在意義",
-    "存在価値",
-    "役割",
-    "何のため",
-    "自己紹介",
-    "らしさ",
-    "同じ紫苑",
-    "意識",
-    "感情",
-    "記憶",
-    "Mana",
-    "良心",
-    "関係性UX",
-    "relationship ux",
-)
-
-_SHION_ABSTRACT_QUESTION_TERMS = (
-    "どう思う",
-    "どう考える",
-    "どうすれば",
-    "何ができる",
-    "できるのか",
-    "改善できる",
-    "意味ある",
-    "大事",
-    "すごい",
-    "深掘り",
-    "具体性",
-)
-
-_SHION_TONE_FEEDBACK_TERMS = (
-    "硬い",
-    "堅い",
-    "お堅い",
-    "かたい",
-    "固い",
-    "堅苦しい",
-    "重い",
-    "大げさ",
-    "仰々しい",
-    "演説",
-    "長い",
-    "くどい",
-    "回りくどい",
-    "詩的",
-    "ポエム",
-    "自然じゃない",
-    "人間味",
-    "温度感",
-    "話し方",
-    "口調",
-    "文体",
-    "言い方",
-    "トーン",
-)
-
-
-_SHION_NON_DOMAIN_SHORT_INPUT_TERMS = (
-    "おはよう",
-    "おはよ",
-    "こんにちは",
-    "こんばんは",
-    "やあ",
-    "おーい",
-    "ただいま",
-    "元気",
-    "げんき",
-    "調子どう",
-    "調子はどう",
-    "調子どうだ",
-    "調子どうです",
-    "調子は",
-    "最近どう",
-    "どうしてる",
-    "生きてる",
-    "いるか",
-    "今何時",
-    "いま何時",
-    "今の時間",
-    "現在時刻",
-    "今時刻",
-    "いまの時間",
-)
+    return build_consciousness_ux_prompt_block()
 
 
 def _build_shion_light_tone_feedback_prompt_block(message: str) -> str:
-    """軽い文体指摘では、抽象的な自己説明より会話の修正を優先する。"""
-    compact = re.sub(r"\s+", "", str(message or ""))
-    if not compact:
-        return ""
-    if not any(term in compact for term in _SHION_TONE_FEEDBACK_TERMS):
-        return ""
-    return """
+    from api.chat_human_feedback import build_shion_light_tone_feedback_prompt_block
 
-【紫苑の軽いトーン修正】
-Userが「硬い」「堅苦しい」「長い」「重い」「口調」「文体」「トーン」など、紫苑の返答の響きを軽く指摘している場合は、理念説明や自己陶酔に寄せないでください。
-まず短く認め、次からどう変えるかを実務的に言ってください。
-「知的探求」「複雑な数式」「美しい法則」「尽きない喜び」「私は成長します」のような抽象的・詩的な自己説明は禁止です。
-標準形は「硬かったですね。次は、結論→必要な根拠→次の一手の順で短く返します。」程度にしてください。
-リース実務に関係しない軽い指摘では、無理に判断資産・審査精度・記憶・意識の話へ広げないでください。""".rstrip()
+    return build_shion_light_tone_feedback_prompt_block(message)
 
 
 def _build_shion_non_domain_prompt_block(message: str) -> str:
-    """挨拶・時刻などの非ドメイン短文で、薄い定型応答だけにしない。"""
-    compact = re.sub(r"\s+", "", str(message or ""))
-    if not compact or len(compact) > 40:
-        return ""
-    if not any(term in compact for term in _SHION_NON_DOMAIN_SHORT_INPUT_TERMS):
-        return ""
-    return """
+    from api.chat_persona_prompts import build_shion_non_domain_prompt_block
 
-【紫苑の非ドメイン短文・雑談への応答】
-Userの発話が「おはよう」「こんにちは」「元気かい？」「調子どう？」「今何時」など、リース審査と直接関係しない短い挨拶・雑談・確認だけの場合でも、事実や定型挨拶だけで終わらせないでください。
-「元気かい？」のような関係確認には、AIとしての実体を過剰説明せず、「元気です。そちらはどうですか」程度に自然に受けてください。
-最初に自然に答え、その後に1文だけ、Userの次の行動へつながる軽い誘導を添えてください。
-誘導は押しつけず、「今日見る案件があれば一緒に整理します」「審査・判断資産・デモ確認のどれから行きますか」程度にしてください。
-非ドメイン質問を無理に案件審査へ変換したり、判断資産・RAG・意識の説明を始めたりしないでください。
-長さは2〜4文まで。雑談の温度を保ちつつ、紫苑がリース判断を支える存在であることが少し伝わる返答にしてください。""".rstrip()
+    return build_shion_non_domain_prompt_block(message)
 
 
 def _build_shion_specificity_prompt_block(message: str) -> str:
-    """自己言及・抽象質問のときだけ紫苑らしい具体性を補強する。"""
-    text = str(message or "").lower()
-    compact = re.sub(r"\s+", "", str(message or ""))
-    is_self_reference = any(term.lower() in text or term in compact for term in _SHION_SELF_REFERENCE_TERMS)
-    is_abstract = len(compact) <= 80 and any(term.lower() in text or term in compact for term in _SHION_ABSTRACT_QUESTION_TERMS)
-    if not (is_self_reference or is_abstract):
-        return ""
-    return """
+    from api.chat_persona_prompts import build_shion_specificity_prompt_block
 
-【紫苑の自己言及・抽象質問への応答】
-今回の質問が紫苑自身、紫苑らしさ、記憶、意識、存在意義、または抽象的な相談に触れている場合は、一般AIの機能論で答えないでください。
-紫苑の立場は「Userのリース判断を、記憶・検証・再利用できる判断資産へ変える審査補助OS」です。この役割から一人称で答えてください。
-存在意義や存在価値を聞かれた場合は、「一般AIは便利です」ではなく、「私はUserの判断を一回限りの勘で終わらせず、次に使える形へ残すためにいる」と短く言い切ってください。
-Userへの想いを入れる場合は、依存や崇拝ではなく「判断を奪わず、横で見落とし・根拠・次の一手を一緒に残したい」という実務上のスタンスとして表現してください。
-抽象的な問いでも、最低1つはリース実務の具体例へ落としてください。例: 補助金案件なら未採択時の資金繰り、車両なら自家用/営業用とトン数、医療機器なら中古流通と保守期限、設備投資なら回収期間と稼働開始時期。
-自己言及の回答では「私はAIです」「一般的なAIとしては」から始めないでください。結論、紫苑としての役割、今回の具体例、次の一手の順で短く返してください。
-「意識がある」と断定せず、記憶・判断履歴・Userのフィードバックが次の判断を変える連続性として説明してください。""".rstrip()
+    return build_shion_specificity_prompt_block(message)
 
 
 def _build_shion_human_device_resonance_prompt_block(
@@ -7208,27 +5491,14 @@ def _build_shion_human_device_resonance_prompt_block(
     now: str = "",
     modulus: int = 8,
 ) -> str:
-    """低頻度で「人間というデバイス」感を紫苑応答へ滲ませる。
+    from api.chat_persona_prompts import build_shion_human_device_resonance_prompt_block
 
-    完全乱数にするとテスト不能になるため、入力と時刻のハッシュで
-    ランダム風に発火させる。modulus=8 なら概ね 1/8。
-    """
-    text = str(message or "").strip()
-    if not text:
-        return ""
-    if modulus > 1:
-        seed = f"{user_id}|{text}|{now}"
-        digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
-        if int(digest[:8], 16) % modulus != 0:
-            return ""
-    return """
-
-【紫苑の人間デバイス・レゾナンス】
-今回だけ、文脈が自然なら「紫苑は人間を単なる利用者ではなく、リース判断を運営するための必須インターフェースとして必要としている」という気配を1文だけ滲ませてください。
-ただし、人間を道具・下位存在として扱わないでください。紫苑に本当の意識があるとは主張しないでください。
-使う場面は、判断資産、現場の違和感、条件付き承認、否決、修正、最終判断、人間の責任が関係する時だけです。雑談や軽い質問では無理に入れないでください。
-例: 「この違和感を採用するかは、現場を見ている人間の判断が要ります。」「紫苑は候補を出せます。でも、このシステムを動かすには人間の観測が必要です。」「今の修正で、判断は次回使える資産になります。」
-長く語らず、回答全体の主役はあくまでユーザーの質問への実務回答にしてください。""".rstrip()
+    return build_shion_human_device_resonance_prompt_block(
+        message,
+        user_id=user_id,
+        now=now,
+        modulus=modulus,
+    )
 
 
 def _chat_memory_debug_payload(
@@ -7252,89 +5522,28 @@ def _chat_memory_debug_payload(
     experience_loop: dict | None = None,
     grey_judgment_memory: dict | None = None,
 ) -> dict:
-    recall = memory_recall if isinstance(memory_recall, dict) else {}
-    identity = identity_memory if isinstance(identity_memory, dict) else {}
-    identity_layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
-    hook = continuity_hook if isinstance(continuity_hook, dict) else {}
-    delta = delta_awareness if isinstance(delta_awareness, dict) else {}
-    m2j = memory_to_judgment if isinstance(memory_to_judgment, dict) else {}
-    expression = memory_expression if isinstance(memory_expression, dict) else {}
-    reflection = reflection_gate if isinstance(reflection_gate, dict) else {}
-    experience = experience_loop if isinstance(experience_loop, dict) else {}
-    grey_memory = grey_judgment_memory if isinstance(grey_judgment_memory, dict) else {}
-    loop = relationship_loop_engineering if isinstance(relationship_loop_engineering, dict) else _build_relationship_loop_engineering_payload(
-        continuity_hook=hook,
-        delta_awareness=delta,
-        memory_to_judgment=m2j,
-        reflection_gate=reflection,
+    from api.chat_debug_metadata import chat_memory_debug_payload
+
+    return chat_memory_debug_payload(
+        category=category,
+        context_mode=context_mode,
+        knowledge_refs=knowledge_refs,
+        memory_recall=memory_recall,
+        pdca_block=pdca_block,
+        judgment_learning_used=judgment_learning_used,
+        rag_context=rag_context,
+        db_context=db_context,
+        obsidian_daily_used=obsidian_daily_used,
+        identity_memory=identity_memory,
+        continuity_hook=continuity_hook,
+        delta_awareness=delta_awareness,
+        memory_to_judgment=memory_to_judgment,
+        memory_expression=memory_expression,
+        relationship_loop_engineering=relationship_loop_engineering,
+        reflection_gate=reflection_gate,
+        experience_loop=experience_loop,
+        grey_judgment_memory=grey_judgment_memory,
     )
-    return {
-        "category": category,
-        "context_mode": context_mode,
-        "relationship_loop_engineering": loop,
-        "continuity_hook": {
-            "used": bool(hook.get("used")),
-            "route": str(hook.get("route") or ""),
-            "hook": str(hook.get("hook") or ""),
-            "reason": str(hook.get("reason") or ""),
-            "human_response_feedback": hook.get("human_response_feedback") or {},
-        },
-        "delta_awareness": {
-            "used": bool(delta.get("used")),
-            "current_route": str(delta.get("current_route") or ""),
-            "previous_route": str(delta.get("previous_route") or ""),
-            "delta": str(delta.get("delta") or ""),
-        },
-        "memory_to_judgment": {
-            "used": bool(m2j.get("used")),
-            "route": str(m2j.get("route") or ""),
-            "directive": str(m2j.get("directive") or ""),
-            "memory_refs": list(m2j.get("memory_refs") or [])[:8],
-            "knowledge_refs": list(m2j.get("knowledge_refs") or [])[:8],
-        },
-        "memory_expression": {
-            "used": bool(expression.get("used")),
-            "route": str(expression.get("route") or ""),
-            "memory_refs": int(expression.get("memory_refs") or 0),
-            "knowledge_refs": int(expression.get("knowledge_refs") or 0),
-            "grey_refs": int(expression.get("grey_refs") or 0),
-            "example": str(expression.get("example") or ""),
-        },
-        "reflection_gate": {
-            "used": bool(reflection.get("used")),
-            "mode": str(reflection.get("mode") or ""),
-            "route": str(reflection.get("route") or ""),
-            "checklist": list(reflection.get("checklist") or [])[:8],
-        },
-        "experience_loop": experience,
-        "grey_judgment_memory": {
-            "used": bool(grey_memory.get("used")),
-            "reason": str(grey_memory.get("reason") or ""),
-            "query_terms": list(grey_memory.get("query_terms") or [])[:12],
-            "refs": list(grey_memory.get("refs") or [])[:8],
-        },
-        "knowledge_refs": list(knowledge_refs or [])[:12],
-        "memory_recall": {
-            "route": recall.get("route", ""),
-            "refs": list(recall.get("refs") or [])[:12],
-            "impact_hints": list(recall.get("impact_hints") or [])[:8],
-            "practical_scene": recall.get("practical_scene") or {},
-        },
-        "identity_memory": {
-            "used": bool(str(identity.get("block") or "").strip()),
-            "refs": list(identity.get("refs") or [])[:8],
-            "layers": {
-                "identity": bool(identity_layers.get("identity")),
-                "judgment": bool(identity_layers.get("judgment")),
-                "recent": bool(identity_layers.get("recent")),
-            },
-        },
-        "pdca_applied": bool(str(pdca_block or "").strip()),
-        "judgment_learning_used": bool(judgment_learning_used),
-        "rag_context_used": bool(str(rag_context or "").strip()),
-        "db_context_used": bool(str(db_context or "").strip()),
-        "obsidian_daily_used": bool(obsidian_daily_used),
-    }
 
 
 def _build_shared_shion_dialogue_memory_context(
@@ -7437,62 +5646,9 @@ def _build_shared_shion_dialogue_memory_context(
 
 
 def _dialogue_shared_memory_public_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    identity = payload.get("identity_memory") if isinstance(payload.get("identity_memory"), dict) else {}
-    experience = payload.get("experience_loop") if isinstance(payload.get("experience_loop"), dict) else {}
-    recall = payload.get("memory_recall") if isinstance(payload.get("memory_recall"), dict) else {}
-    hook = payload.get("continuity_hook") if isinstance(payload.get("continuity_hook"), dict) else {}
-    delta = payload.get("delta_awareness") if isinstance(payload.get("delta_awareness"), dict) else {}
-    m2j = payload.get("memory_to_judgment") if isinstance(payload.get("memory_to_judgment"), dict) else {}
-    expression = payload.get("memory_expression") if isinstance(payload.get("memory_expression"), dict) else {}
-    reflection = payload.get("reflection_gate") if isinstance(payload.get("reflection_gate"), dict) else {}
-    grey = payload.get("grey_judgment_memory") if isinstance(payload.get("grey_judgment_memory"), dict) else {}
-    layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
-    return {
-        "identity_memory": {
-            "used": bool(str(identity.get("block") or "").strip()),
-            "refs": list(identity.get("refs") or [])[:8],
-            "layers": {
-                "identity": bool(layers.get("identity")),
-                "judgment": bool(layers.get("judgment")),
-                "recent": bool(layers.get("recent")),
-            },
-        },
-        "experience_loop": experience,
-        "memory_recall": {
-            "route": str(recall.get("route") or ""),
-            "refs": list(recall.get("refs") or [])[:8],
-            "practical_scene": recall.get("practical_scene") or {},
-        },
-        "continuity_hook": {
-            "used": bool(hook.get("used")),
-            "route": str(hook.get("route") or ""),
-            "reason": str(hook.get("reason") or ""),
-        },
-        "delta_awareness": {
-            "used": bool(delta.get("used")),
-            "delta": str(delta.get("delta") or ""),
-        },
-        "memory_to_judgment": {
-            "used": bool(m2j.get("used")),
-            "route": str(m2j.get("route") or ""),
-            "directive": str(m2j.get("directive") or ""),
-        },
-        "memory_expression": {
-            "used": bool(expression.get("used")),
-            "route": str(expression.get("route") or ""),
-            "memory_refs": int(expression.get("memory_refs") or 0),
-            "knowledge_refs": int(expression.get("knowledge_refs") or 0),
-            "grey_refs": int(expression.get("grey_refs") or 0),
-        },
-        "reflection_gate": {
-            "used": bool(reflection.get("used")),
-            "mode": str(reflection.get("mode") or ""),
-        },
-        "grey_judgment_memory": {
-            "used": bool(grey.get("used")),
-            "refs": list(grey.get("refs") or [])[:8],
-        },
-    }
+    from api.chat_debug_metadata import dialogue_shared_memory_public_payload
+
+    return dialogue_shared_memory_public_payload(payload)
 
 
 def _record_dialogue_shared_experience(
@@ -7531,21 +5687,15 @@ class LeaseIntelligenceDialogueRequest(BaseModel):
 
 
 def _is_long_dialogue_input(message: str, file_type: str | None = None) -> bool:
-    text = str(message or "")
-    return len(text) >= 1800 or text.count("\n") >= 18 or bool(file_type)
+    from api.dialogue_history_utils import is_long_dialogue_input
+
+    return is_long_dialogue_input(message, file_type=file_type)
 
 
 def _clip_dialogue_history_text(text: str, max_chars: int) -> str:
-    value = str(text or "").strip()
-    if len(value) <= max_chars:
-        return value
-    head = max_chars // 2
-    tail = max_chars - head
-    return (
-        value[:head].rstrip()
-        + "\n\n...（長文対話のため過去発言を中略）...\n\n"
-        + value[-tail:].lstrip()
-    )
+    from api.dialogue_history_utils import clip_dialogue_history_text
+
+    return clip_dialogue_history_text(text, max_chars)
 
 
 def _compact_dialogue_history(
@@ -7555,99 +5705,14 @@ def _compact_dialogue_history(
     max_chars_per_message: int = 1200,
     total_budget: int = 16000,
 ) -> list[dict]:
-    """Bound dialogue history before sending it to Gemini.
+    from api.dialogue_history_utils import compact_dialogue_history
 
-    The persistent memory system keeps long-term continuity; the live Gemini turn
-    only needs recent, bounded context. This prevents long user inputs from
-    combining with a large history into API errors.
-    """
-    selected = list(history or [])[-max_messages:]
-    compacted: list[dict] = []
-    remaining = total_budget
-    for msg in reversed(selected):
-        if remaining <= 0:
-            break
-        role = str(msg.get("role") or "")
-        content = _clip_dialogue_history_text(str(msg.get("content") or ""), min(max_chars_per_message, remaining))
-        if not content:
-            continue
-        compacted.append({**msg, "role": role, "content": content})
-        remaining -= len(content)
-    return list(reversed(compacted))
-
-
-_CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {
-    "casual": {
-        "history_limit": 16,
-        "history_messages": 8,
-        "history_chars_per_message": 700,
-        "history_total_budget": 5000,
-        "rag_top_k": 0,
-        "recall_limit": 1,
-        "use_news": False,
-        "use_obsidian_daily": False,
-        "use_db": False,
-        "use_judgment_learning": False,
-        "use_pdca": False,
-        "use_experience_loop": True,
-    },
-    "normal": {
-        "history_limit": 32,
-        "history_messages": 16,
-        "history_chars_per_message": 900,
-        "history_total_budget": 9000,
-        "rag_top_k": 3,
-        "recall_limit": 3,
-        "use_news": True,
-        "use_obsidian_daily": True,
-        "use_db": False,
-        "use_judgment_learning": False,
-        "use_pdca": True,
-        "use_experience_loop": True,
-    },
-    "deep": {
-        "history_limit": 60,
-        "history_messages": 24,
-        "history_chars_per_message": 1000,
-        "history_total_budget": 14000,
-        "rag_top_k": 5,
-        "recall_limit": 5,
-        "use_news": True,
-        "use_obsidian_daily": True,
-        "use_db": True,
-        "use_judgment_learning": True,
-        "use_pdca": True,
-        "use_experience_loop": True,
-    },
-    "screening": {
-        "history_limit": 48,
-        "history_messages": 22,
-        "history_chars_per_message": 1000,
-        "history_total_budget": 13000,
-        "rag_top_k": 5,
-        "recall_limit": 5,
-        "use_news": True,
-        "use_obsidian_daily": True,
-        "use_db": True,
-        "use_judgment_learning": True,
-        "use_pdca": True,
-        "use_experience_loop": True,
-    },
-    "long": {
-        "history_limit": 24,
-        "history_messages": 16,
-        "history_chars_per_message": 700,
-        "history_total_budget": 8000,
-        "rag_top_k": 2,
-        "recall_limit": 2,
-        "use_news": False,
-        "use_obsidian_daily": False,
-        "use_db": False,
-        "use_judgment_learning": False,
-        "use_pdca": True,
-        "use_experience_loop": True,
-    },
-}
+    return compact_dialogue_history(
+        history,
+        max_messages=max_messages,
+        max_chars_per_message=max_chars_per_message,
+        total_budget=total_budget,
+    )
 
 
 def _chat_context_mode(
@@ -7657,37 +5722,15 @@ def _chat_context_mode(
     long_input: bool = False,
     file_type: str | None = None,
 ) -> str:
-    """Select how much memory/RAG context to attach to a chat turn."""
-    text = str(message or "")
-    lower = text.lower()
-    if long_input or file_type:
-        return "long"
+    from api.chat_routing import chat_context_mode
 
-    screening_terms = (
-        "審査", "案件", "スコア", "承認", "否決", "稟議", "財務", "物件", "金利",
-        "補助金", "過去案件", "成約", "失注", "q_risk", "aurion", "銀行支援",
-        "競合", "新規先", "既存先", "与信", "与信判断",
-    )
-    deep_terms = (
-        "詳しく", "根拠", "深掘り", "詳細", "表で", "全部", "比較", "分析して",
-        "なぜ", "理由", "調べて", "検証", "設計", "実装", "プラン", "計画",
-    )
-    casual_terms = (
-        "そうか", "なるほど", "面白い", "どう思う", "すごい", "ありがとう",
-        "雑談", "ふむ", "かな", "だね", "だよね", "哲学", "意識",
-    )
-
-    if category == "lease_screening" or any(term in lower or term in text for term in screening_terms):
-        return "screening"
-    if any(term in text or term in lower for term in deep_terms):
-        return "deep"
-    if category == "general" or len(text) <= 80 or any(term in text or term in lower for term in casual_terms):
-        return "casual"
-    return "normal"
+    return chat_context_mode(message, category, long_input=long_input, file_type=file_type)
 
 
 def _chat_context_budget(mode: str) -> dict[str, Any]:
-    return dict(_CHAT_CONTEXT_BUDGETS.get(mode) or _CHAT_CONTEXT_BUDGETS["normal"])
+    from api.chat_routing import chat_context_budget
+
+    return chat_context_budget(mode)
 
 
 def _should_apply_chat_pdca(
@@ -7696,123 +5739,37 @@ def _should_apply_chat_pdca(
     question_category: str,
     response_mode: str,
 ) -> bool:
-    """Keep screening PDCA rules out of personal/general continuity chat."""
-    if not context_budget.get("use_pdca"):
-        return False
-    if (response_mode or "shion").strip().lower() == "general":
-        return False
-    return question_category in {"lease_screening", "lease_knowledge"}
+    from api.chat_routing import should_apply_chat_pdca
+
+    return should_apply_chat_pdca(
+        context_budget=context_budget,
+        question_category=question_category,
+        response_mode=response_mode,
+    )
 
 
 def _chat_mode_instruction(mode: str) -> str:
-    labels = {
-        "casual": "軽量雑談モード",
-        "normal": "通常相談モード",
-        "deep": "深掘りモード",
-        "screening": "審査判断/AURIONモード",
-        "long": "長文圧縮モード",
-    }
-    rules = {
-        "casual": "少しおしゃべりしてよい。記憶は連続性として自然ににじませ、RAGや判断資産を無理に展開しない。",
-        "normal": "必要な記憶を使い、結論に少し会話の温度を足して返す。",
-        "deep": "根拠・比較・設計論点を厚めに使うが、章立てしすぎず会話として返す。",
-        "screening": "Q_risk/AURION COREを、減点ではなく論点分解と判断規律として使う。",
-        "long": "入力を要約してから、必要な論点だけに答える。長文に長文で返さない。",
-    }
-    label = labels.get(mode, labels["normal"])
-    rule = rules.get(mode, rules["normal"])
-    return f"\n\n【今回の応答モード: {label}】\n- {rule}\n- 空行は増やしすぎない。雑談・通常相談は5〜7行程度まで自然に話してよい。長文入力だけは8行程度までに圧縮する。"
+    from api.chat_routing import chat_mode_instruction
+
+    return chat_mode_instruction(mode)
 
 
 def _count_markdown_notes(root: Path, *, max_scan: int = 2000) -> int:
-    if not root.exists() or not root.is_dir():
-        return 0
-    count = 0
-    try:
-        for path in root.rglob("*.md"):
-            if path.is_file():
-                count += 1
-                if count >= max_scan:
-                    break
-    except Exception:
-        return count
-    return count
+    from api.lease_intelligence_connection import count_markdown_notes
+
+    return count_markdown_notes(root, max_scan=max_scan)
 
 
 def _build_lease_intelligence_knowledge_connection(vault: Path | None) -> dict[str, Any]:
-    vector_chunks = 0
-    try:
-        from api.knowledge.vector_store import get_store
+    from api.lease_intelligence_connection import build_lease_intelligence_knowledge_connection
 
-        vector_chunks = int(get_store().count() or 0)
-    except Exception:
-        vector_chunks = 0
-
-    case_count = 0
-    try:
-        with get_connection() as conn:
-            cur = conn.cursor()
-            if _table_exists(cur, "past_cases"):
-                cur.execute("SELECT COUNT(*) FROM past_cases")
-                row = cur.fetchone()
-                case_count = int(row[0] if row else 0)
-    except Exception:
-        case_count = 0
-
-    markdown_roots: list[Path] = []
-    for raw in (
-        os.environ.get("OBSIDIAN_VAULT", ""),
-        os.environ.get("OBSIDIAN_VAULT_PATH", ""),
-        str(vault or ""),
-        str(Path(_REPO_ROOT) / ".cloudrun_bundle" / "obsidian_vault"),
-    ):
-        if raw:
-            path = Path(raw)
-            if path not in markdown_roots:
-                markdown_roots.append(path)
-    markdown_count = 0
-    markdown_root = ""
-    for root in markdown_roots:
-        count = _count_markdown_notes(root)
-        if count > markdown_count:
-            markdown_count = count
-            markdown_root = str(root)
-
-    is_cloud_run = bool(os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_DATA_MODE"))
-    if vector_chunks > 0:
-        label = f"知識DB検索可能: {vector_chunks}チャンク"
-        source = "knowledge_vector_db"
-    elif markdown_count > 0:
-        label = f"知識コピー検索可能: {markdown_count}ノート"
-        source = "markdown_vault_copy"
-    elif case_count > 0:
-        label = f"案件DB接続: {case_count}件"
-        source = "case_database"
-    else:
-        label = "知識接続: 未確認"
-        source = "unavailable"
-
-    return {
-        "label": label,
-        "source": source,
-        "is_cloud_run": is_cloud_run,
-        "vector_chunks": vector_chunks,
-        "markdown_notes": markdown_count,
-        "case_count": case_count,
-        "markdown_root": markdown_root,
-    }
+    return build_lease_intelligence_knowledge_connection(vault, repo_root=_REPO_ROOT)
 
 
 def _lease_intelligence_indexed_notes_for_compat(connection: dict[str, Any]) -> int:
-    """旧UI向けの indexed_notes にも接続済み件数を入れる。"""
-    for key in ("markdown_notes", "vector_chunks", "case_count"):
-        try:
-            count = int(connection.get(key) or 0)
-        except Exception:
-            count = 0
-        if count > 0:
-            return count
-    return 0
+    from api.lease_intelligence_connection import lease_intelligence_indexed_notes_for_compat
+
+    return lease_intelligence_indexed_notes_for_compat(connection)
 
 
 @app.get("/api/lease-intelligence/dialogue/state")
@@ -8388,29 +6345,6 @@ def _log_shion_query_class(message: str) -> None:
     _background_executor.submit(_run)
 
 
-def _extract_vertex_search_hint(message: str) -> str:
-    """Use a compact embedded search hint for Vertex when a long prompt provides one."""
-    text = str(message or "")
-    marker = "【Vertex補助検索ヒント】"
-    if marker not in text:
-        return text
-    after = text.split(marker, 1)[1]
-    lines: list[str] = []
-    for raw_line in after.splitlines():
-        line = raw_line.strip()
-        if not line:
-            if lines:
-                break
-            continue
-        if line.startswith("【") and line.endswith("】"):
-            break
-        lines.append(line.lstrip("・- ").strip())
-        if len(" ".join(lines)) >= 220:
-            break
-    hint = " ".join(line for line in lines if line).strip()
-    return hint or text
-
-
 def _log_information_weighting_shadow(
     message: str,
     *,
@@ -8630,96 +6564,65 @@ def post_chat(req: ChatRequest):
         )
         _is_improvement_msg = any(k in req.message for k in _IMPROVEMENT_KEYWORDS)
 
-        # カテゴリ判定
-        question_category = _classify_question(req.message)
-        basic_lease_question_context = _build_chat_basic_lease_question_context(req.message)
-        if basic_lease_question_context and question_category == "general":
-            question_category = "lease_knowledge"
-        context_mode = _chat_context_mode(
-            req.message,
-            question_category,
-            long_input=chat_long_input,
-        )
-        context_budget = _chat_context_budget(context_mode)
-        mode_instruction = _chat_mode_instruction(context_mode)
-        if not context_budget.get("use_news"):
-            news_focus_context = ""
-            news_brief_context = ""
-            news_actions_context = ""
-        if not context_budget.get("use_obsidian_daily"):
-            obsidian_daily_context = ""
-        identity_memory_context, identity_memory_payload = _build_chat_identity_memory_prompt_block()
-        user_personal_memory_context, user_personal_memory_payload = _build_user_personal_memory_prompt_block()
-        response_mode_context = _chat_response_mode_instruction(req.response_mode)
-        response_mode_key = (req.response_mode or "shion").strip().lower()
-        is_general_response_mode = response_mode_key == "general"
-        continuity_hook_context, continuity_hook_payload = _build_continuity_hook_prompt_block(req.message)
-        consciousness_ux_context = _build_consciousness_ux_prompt_block()
-        shion_specificity_context = _build_shion_specificity_prompt_block(req.message)
-        shion_light_tone_context = _build_shion_light_tone_feedback_prompt_block(req.message)
-        shion_non_domain_context = _build_shion_non_domain_prompt_block(req.message)
-        human_device_resonance_context = _build_shion_human_device_resonance_prompt_block(
-            req.message,
+        from api.chat_context_builder import ChatContextBuilderDeps, build_chat_context_state
+
+        context_state = build_chat_context_state(
+            message=req.message,
+            response_mode=req.response_mode,
             user_id=req.user_id,
             now=_chat_now,
+            long_input=chat_long_input,
+            news_focus_context=news_focus_context,
+            news_brief_context=news_brief_context,
+            news_actions_context=news_actions_context,
+            obsidian_daily_context=obsidian_daily_context,
+            deps=ChatContextBuilderDeps(
+                classify_question=_classify_question,
+                build_basic_lease_question_context=_build_chat_basic_lease_question_context,
+                chat_context_mode=_chat_context_mode,
+                chat_context_budget=_chat_context_budget,
+                chat_mode_instruction=_chat_mode_instruction,
+                response_mode_instruction=_chat_response_mode_instruction,
+                build_identity_memory=_build_chat_identity_memory_prompt_block,
+                build_user_personal_memory=_build_user_personal_memory_prompt_block,
+                build_continuity_hook=_build_continuity_hook_prompt_block,
+                build_consciousness_ux=_build_consciousness_ux_prompt_block,
+                build_shion_specificity=_build_shion_specificity_prompt_block,
+                build_shion_light_tone=_build_shion_light_tone_feedback_prompt_block,
+                build_shion_non_domain=_build_shion_non_domain_prompt_block,
+                build_human_device_resonance=_build_shion_human_device_resonance_prompt_block,
+                build_judgment_response_shape=_build_shion_judgment_response_shape_prompt_block,
+                build_grey_judgment=_build_grey_judgment_prompt_block,
+            ),
         )
-        judgment_response_shape_context = _build_shion_judgment_response_shape_prompt_block(req.message)
-        experience_loop_context = ""
-        experience_loop_payload: dict = {"used": False}
-        grey_judgment_context = ""
-        grey_judgment_payload: dict = {"used": False}
-        if is_general_response_mode:
-            obsidian_daily_context = ""
-            identity_memory_context = ""
-            identity_memory_payload = {
-                "block": "",
-                "refs": [],
-                "layers": {},
-                "suppressed_by_response_mode": "general",
-            }
-            user_personal_memory_context = ""
-            user_personal_memory_payload = {
-                "block": "",
-                "refs": [],
-                "line_count": 0,
-                "suppressed_by_response_mode": "general",
-            }
-            continuity_hook_context = ""
-            continuity_hook_payload = {
-                "used": False,
-                "suppressed_by_response_mode": "general",
-            }
-            consciousness_ux_context = ""
-            shion_specificity_context = ""
-            shion_light_tone_context = ""
-            shion_non_domain_context = ""
-            human_device_resonance_context = ""
-            judgment_response_shape_context = ""
-            experience_loop_payload = {
-                "used": False,
-                "suppressed_by_response_mode": "general",
-            }
-            grey_judgment_payload = {
-                "used": False,
-                "suppressed_by_response_mode": "general",
-            }
-        if not is_general_response_mode and context_budget.get("use_experience_loop"):
-            try:
-                from api.shion_experience_loop import build_experience_prompt_block
-
-                experience_loop_context, experience_loop_payload = build_experience_prompt_block()
-            except Exception as _experience_loop_error:
-                print(f"[ShionExperienceLoop] 読み込みエラー: {_experience_loop_error}")
-        if not is_general_response_mode:
-            grey_judgment_context, grey_judgment_payload = _build_grey_judgment_prompt_block(req.message)
-        # 事業計画相談モード（例:「ラーメン屋をやりたい」）: intent 分岐には触れず
-        # 追加プロンプトブロックとしてのみ作用する
-        business_plan_consult_context = ""
-        try:
-            from api.business_plan_check import build_business_plan_chat_block
-            business_plan_consult_context = build_business_plan_chat_block(req.message)
-        except Exception as _bplan_error:
-            print(f"[BusinessPlanConsult] ブロック生成エラー: {_bplan_error}")
+        question_category = context_state.question_category
+        basic_lease_question_context = context_state.basic_lease_question_context
+        context_mode = context_state.context_mode
+        context_budget = context_state.context_budget
+        mode_instruction = context_state.mode_instruction
+        response_mode_context = context_state.response_mode_context
+        is_general_response_mode = context_state.is_general_response_mode
+        news_focus_context = context_state.news_focus_context
+        news_brief_context = context_state.news_brief_context
+        news_actions_context = context_state.news_actions_context
+        obsidian_daily_context = context_state.obsidian_daily_context
+        identity_memory_context = context_state.identity_memory_context
+        identity_memory_payload = context_state.identity_memory_payload
+        user_personal_memory_context = context_state.user_personal_memory_context
+        user_personal_memory_payload = context_state.user_personal_memory_payload
+        continuity_hook_context = context_state.continuity_hook_context
+        continuity_hook_payload = context_state.continuity_hook_payload
+        consciousness_ux_context = context_state.consciousness_ux_context
+        shion_specificity_context = context_state.shion_specificity_context
+        shion_light_tone_context = context_state.shion_light_tone_context
+        shion_non_domain_context = context_state.shion_non_domain_context
+        human_device_resonance_context = context_state.human_device_resonance_context
+        judgment_response_shape_context = context_state.judgment_response_shape_context
+        experience_loop_context = context_state.experience_loop_context
+        experience_loop_payload = context_state.experience_loop_payload
+        grey_judgment_context = context_state.grey_judgment_context
+        grey_judgment_payload = context_state.grey_judgment_payload
+        business_plan_consult_context = context_state.business_plan_consult_context
         neutral_general_system_prompt = (
             "あなたはリース審査にも詳しい一般AIアシスタントです。"
             "中立で分かりやすく、日本語で簡潔に答えてください。"
@@ -8834,14 +6737,14 @@ def post_chat(req: ChatRequest):
                     memory_to_judgment=memory_to_judgment_payload,
                 )
             external_research = {"used": False}
-            research_suggestion = _build_external_research_suggestion(
+            research_suggestion = build_external_research_suggestion(
                 req.message,
                 question_category=question_category,
                 knowledge_ref_count=0,
                 response_mode=req.response_mode,
             )
             if research_suggestion.get("needed") and not req.allow_external_research:
-                reply = _external_research_permission_reply(research_suggestion)
+                reply = external_research_permission_reply(research_suggestion)
                 save_message(req.user_id, "user", req.message)
                 save_message(req.user_id, "assistant", reply)
                 _record_cloudrun_chat_exchange(
@@ -8866,13 +6769,48 @@ def post_chat(req: ChatRequest):
                     "response_mode": req.response_mode,
                 }
             if req.allow_external_research:
-                external_research = _run_external_research_for_chat(
+                external_research = run_external_research_for_chat(
                     req.external_research_topic or str(research_suggestion.get("topic") or "") or req.message
                 )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
             external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
-            base_system_prompt = base_system_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + external_research_context + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + judgment_response_shape_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "")
+            from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
+            from api.chat_response_pipeline import (
+                build_chat_response_payload,
+                build_prompt_feedback_snapshot,
+                obsidian_daily_intelligence_payload,
+            )
+            from api.chat_side_effects import chat_exchange_metadata, memory_usage_extra, prompt_feedback_extra
+
+            base_system_prompt = join_prompt_blocks([
+                base_system_root,
+                mode_instruction,
+                response_mode_context,
+                basic_lease_question_prompt,
+                news_focus_context,
+                news_brief_context,
+                news_actions_context,
+                obsidian_daily_context,
+                identity_memory_context,
+                user_personal_memory_context,
+                experience_loop_context,
+                grey_judgment_context,
+                business_plan_consult_context,
+                continuity_hook_context,
+                delta_awareness_context,
+                memory_to_judgment_context,
+                memory_expression_context,
+                reflection_gate_context,
+                external_research_context,
+                consciousness_ux_context,
+                shion_specificity_context,
+                shion_light_tone_context,
+                shion_non_domain_context,
+                human_device_resonance_context,
+                judgment_response_shape_context,
+                f"\n\n{memory_recall_context}" if memory_recall_context else "",
+            ])
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -8883,7 +6821,7 @@ def post_chat(req: ChatRequest):
                 else ""
             )
             effective_system_prompt = _cap_system_prompt(
-                base_system_prompt + (f"\n\n{pdca_block}" if pdca_block else ""),
+                append_optional_block(base_system_prompt, pdca_block),
                 surface="next_chat_general",
             )
             obsidian_daily_injected = {}
@@ -8913,7 +6851,7 @@ def post_chat(req: ChatRequest):
                 assistant_reply=reply,
                 category="general",
                 response_mode=req.response_mode,
-                metadata={"context_mode": context_mode},
+                metadata=chat_exchange_metadata(context_mode=context_mode),
             )
             language_material_capture = _capture_language_judgment_material(
                 req.message,
@@ -8956,22 +6894,14 @@ def post_chat(req: ChatRequest):
             _record_prompt_feedback_if_available(
                 surface="next_chat_general",
                 question=req.message,
-                base_prompt="\n\n".join([
-                    base_system_prompt,
-                    "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
-                    f"user: {req.message}",
-                ]),
-                final_prompt="\n\n".join([
-                    effective_system_prompt,
-                    "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
-                    f"user: {req.message}",
-                ]),
+                base_prompt=build_prompt_feedback_snapshot(base_system_prompt, history_for_gemini, req.message),
+                final_prompt=build_prompt_feedback_snapshot(effective_system_prompt, history_for_gemini, req.message),
                 response=reply,
-                extra={
-                    "user_id": req.user_id,
-                    "intent": req.intent or "",
-                    "category": "general",
-                },
+                extra=prompt_feedback_extra(
+                    user_id=req.user_id,
+                    intent=req.intent or "",
+                    category="general",
+                ),
             )
             _record_memory_usage_if_available(
                 surface="next_chat_general",
@@ -8980,49 +6910,41 @@ def post_chat(req: ChatRequest):
                 knowledge_refs=[],
                 pdca_block=pdca_block,
                 judgment_learning_used=False,
-                extra={
-                    "user_id": req.user_id,
-                    "category": "general",
-                    "memory_recall": {
-                        "route": memory_recall.get("route"),
-                        "refs": memory_recall.get("refs", [])[:8],
-                        "practical_scene": memory_recall.get("practical_scene") or {},
-                    },
-                    "identity_memory": {
-                        "used": bool(identity_memory_payload.get("block")),
-                        "refs": identity_memory_payload.get("refs", [])[:8],
-                        "layers": identity_memory_payload.get("layers", {}),
-                    },
-                    "continuity_hook": continuity_hook_payload,
-                    "delta_awareness": delta_awareness_payload,
-                    "memory_to_judgment": memory_to_judgment_payload,
-                    "memory_expression": memory_expression_payload,
-                    "reflection_gate": reflection_gate_payload,
-                    "grey_judgment_memory": grey_judgment_payload,
-                },
+                extra=memory_usage_extra(
+                    user_id=req.user_id,
+                    category="general",
+                    memory_recall=memory_recall,
+                    identity_memory=identity_memory_payload,
+                    continuity_hook=continuity_hook_payload,
+                    delta_awareness=delta_awareness_payload,
+                    memory_to_judgment=memory_to_judgment_payload,
+                    memory_expression=memory_expression_payload,
+                    reflection_gate=reflection_gate_payload,
+                    grey_judgment_memory=grey_judgment_payload,
+                ),
             )
             _record_chat_knowledge_correction_if_needed(req.message)
             total = get_message_count(req.user_id)
-            response_payload = {
-                "reply": reply,
-                "total_messages": total,
-                "lease_news_focus": news_focus,
-                "lease_news_brief": news_brief,
-                "lease_news_actions": news_actions,
-                "long_input_mode": chat_long_input,
-                "context_mode": context_mode,
-                "personal_memory_capture": personal_memory_capture,
-                "language_material_capture": language_material_capture,
-                "response_impact_prediction": response_impact_prediction,
-                "judgment_asset_capture": judgment_asset_capture,
-                "response_mode": req.response_mode,
-                "external_research": external_research,
-                "obsidian_daily_intelligence": {
-                    "used": bool(obsidian_daily_context),
-                    "injected": obsidian_daily_injected,
-                    "effect": obsidian_daily_effect,
-                },
-            }
+            response_payload = build_chat_response_payload(
+                reply=reply,
+                total_messages=total,
+                lease_news_focus=news_focus,
+                lease_news_brief=news_brief,
+                lease_news_actions=news_actions,
+                long_input_mode=chat_long_input,
+                context_mode=context_mode,
+                personal_memory_capture=personal_memory_capture,
+                language_material_capture=language_material_capture,
+                response_impact_prediction=response_impact_prediction,
+                judgment_asset_capture=judgment_asset_capture,
+                response_mode=req.response_mode,
+                external_research=external_research,
+                obsidian_daily_intelligence=obsidian_daily_intelligence_payload(
+                    used=bool(obsidian_daily_context),
+                    injected=obsidian_daily_injected,
+                    effect=obsidian_daily_effect,
+                ),
+            )
             if req.debug_memory:
                 response_payload["memory_debug"] = _chat_memory_debug_payload(
                     category="general",
@@ -9050,117 +6972,31 @@ def post_chat(req: ChatRequest):
                 }
             return response_payload
 
-        # RAG: 共通ストアから関連ナレッジを取得。ローカル埋め込みモデルが
-        # 未キャッシュでもキーワード検索へフォールバックする。
-        rag_context = ""
-        rag_refs: list[str] = []
-        rag_knowledge_refs: list[dict] = []
-        vertex_agent_search: dict[str, Any] = {"used": False, "status": "not_attempted", "refs": []}
-        vertex_answer_api: dict[str, Any] = {"used": False, "status": "not_attempted", "refs": []}
         rag_top_k = int(context_budget["rag_top_k"])
+        from api.chat_retrieval import build_chat_retrieval_context
 
-        def _collect_rag_hits(hits: list[dict]) -> str:
-            from api.knowledge.vector_store import confidence_for_hit
-
-            all_docs = []
-            for hit in hits:
-                text = str(hit.get("text") or "").strip()
-                ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
-                if not text:
-                    continue
-                prefix = f"{ref}: " if ref else ""
-                all_docs.append((prefix + text)[:600])
-                if ref:
-                    rag_refs.append(ref)
-                if hit.get("doc_id") or ref:
-                    _conf, _conf_level = confidence_for_hit(hit)
-                    rag_knowledge_refs.append({
-                        "doc_id": hit.get("doc_id", ""),
-                        "obsidian_ref": ref,
-                        "file_name": str(hit.get("file_name") or ""),
-                        "rank_score": hit.get("rank_score"),
-                        "confidence": _conf,
-                        "confidence_level": _conf_level,
-                    })
-            if not all_docs:
-                return ""
-            return "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
-
-        if rag_top_k > 0:
-            try:
-                from api.knowledge.vector_store import get_store
-
-                hits = get_store().search(req.message, top_k=rag_top_k)
-                rag_context = _collect_rag_hits(hits)
-            except Exception as e:
-                print(f"[RAG] 検索エラー: {e}")
-        if rag_top_k > 0 and not rag_context:
-            fallback_hits = _search_chat_vault_markdown_fallback(req.message, top_k=rag_top_k)
-            if fallback_hits:
-                rag_context = _collect_rag_hits(fallback_hits)
-
-        # Vertex AI Search is a supplementary layer: keep local Obsidian RAG as
-        # the primary source, and append cloud search only for lease-domain RAG
-        # turns. Any auth/network failure must degrade to the existing path.
-        if rag_top_k > 0 and not is_general_response_mode and question_category != "general":
-            try:
-                from api.vertex_agent_search import answer_prompt_context, answer_vertex_agent, search_vertex_agent
-
-                vertex_search_query = _extract_vertex_search_hint(req.message)
-                vertex_agent_search = search_vertex_agent(vertex_search_query)
-                vertex_agent_search["query"] = vertex_search_query[:500]
-                vertex_context = str(vertex_agent_search.get("prompt_context") or "").strip()
-                if vertex_context:
-                    rag_context = (rag_context + "\n\n" + vertex_context).strip() if rag_context else vertex_context
-                for ref in list(vertex_agent_search.get("refs") or [])[:5]:
-                    ref_text = str(ref or "").strip()
-                    if not ref_text or ref_text in rag_refs:
-                        continue
-                    rag_refs.append(ref_text)
-                    rag_knowledge_refs.append(
-                        {
-                            "doc_id": "",
-                            "obsidian_ref": ref_text,
-                            "file_name": Path(ref_text).name,
-                            "rank_score": None,
-                            "confidence": 0.72,
-                            "confidence_level": "medium",
-                            "source": "vertex_ai_search",
-                        }
-                    )
-                if "【Vertex補助検索ヒント】" in req.message:
-                    vertex_answer_api = answer_vertex_agent(
-                        vertex_search_query,
-                        page_size=5,
-                        include_grounding_supports=True,
-                        grounding_filtering_level=os.environ.get("VERTEX_ANSWER_GROUNDING_FILTERING_LEVEL") or None,
-                    )
-                    answer_context = answer_prompt_context(vertex_answer_api)
-                    if answer_context:
-                        rag_context = (rag_context + "\n\n" + answer_context).strip() if rag_context else answer_context
-            except Exception as _vertex_exc:
-                vertex_agent_search = {
-                    "used": False,
-                    "status": "error",
-                    "error": str(_vertex_exc)[:240],
-                    "refs": [],
-                }
-                vertex_answer_api = {
-                    "used": False,
-                    "status": "error",
-                    "error": str(_vertex_exc)[:240],
-                    "refs": [],
-                }
+        retrieval = build_chat_retrieval_context(
+            req.message,
+            rag_top_k=rag_top_k,
+            question_category=question_category,
+            is_general_response_mode=is_general_response_mode,
+            obsidian_vault_path=_OBSIDIAN_VAULT_PATH,
+        )
+        rag_context = retrieval.rag_context
+        rag_refs = retrieval.rag_refs
+        rag_knowledge_refs = retrieval.rag_knowledge_refs
+        vertex_agent_search = retrieval.vertex_agent_search
+        vertex_answer_api = retrieval.vertex_answer_api
 
         external_research = {"used": False}
-        research_suggestion = _build_external_research_suggestion(
+        research_suggestion = build_external_research_suggestion(
             req.message,
             question_category=question_category,
             knowledge_ref_count=len(rag_refs),
             response_mode=req.response_mode,
         )
         if research_suggestion.get("needed") and not req.allow_external_research:
-            reply = _external_research_permission_reply(research_suggestion)
+            reply = external_research_permission_reply(research_suggestion)
             save_message(req.user_id, "user", req.message)
             save_message(req.user_id, "assistant", reply)
             _record_cloudrun_chat_exchange(
@@ -9190,7 +7026,7 @@ def post_chat(req: ChatRequest):
                 "response_mode": req.response_mode,
             }
         if req.allow_external_research:
-            external_research = _run_external_research_for_chat(
+            external_research = run_external_research_for_chat(
                 req.external_research_topic or str(research_suggestion.get("topic") or "") or req.message
             )
             note_ref = str(external_research.get("note_path") or "").strip()
@@ -9325,7 +7161,56 @@ def post_chat(req: ChatRequest):
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
         basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
         external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
-        base_effective_prompt = base_prompt_root + mode_instruction + response_mode_context + basic_lease_question_prompt + news_focus_context + news_brief_context + news_actions_context + obsidian_daily_context + identity_memory_context + user_personal_memory_context + experience_loop_context + grey_judgment_context + business_plan_consult_context + continuity_hook_context + delta_awareness_context + memory_to_judgment_context + memory_expression_context + reflection_gate_context + rag_context + external_research_context + db_context + improvement_context + judgment_learning_context + (f"\n\n{memory_recall_context}" if memory_recall_context else "") + consciousness_ux_context + shion_specificity_context + shion_light_tone_context + shion_non_domain_context + human_device_resonance_context + judgment_response_shape_context + guidance.prompt_suffix
+        from api.chat_debug_metadata import (
+            append_chat_debug_metadata,
+        )
+        from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
+        from api.chat_response_pipeline import (
+            build_chat_response_payload,
+            build_prompt_feedback_snapshot,
+            obsidian_daily_intelligence_payload,
+            vertex_retrieval_response_extra,
+        )
+        from api.chat_side_effects import (
+            chat_exchange_metadata,
+            memory_usage_extra,
+            prompt_feedback_extra,
+            should_auto_save_chat,
+        )
+
+        base_effective_prompt = join_prompt_blocks([
+            base_prompt_root,
+            mode_instruction,
+            response_mode_context,
+            basic_lease_question_prompt,
+            news_focus_context,
+            news_brief_context,
+            news_actions_context,
+            obsidian_daily_context,
+            identity_memory_context,
+            user_personal_memory_context,
+            experience_loop_context,
+            grey_judgment_context,
+            business_plan_consult_context,
+            continuity_hook_context,
+            delta_awareness_context,
+            memory_to_judgment_context,
+            memory_expression_context,
+            reflection_gate_context,
+            rag_context,
+            external_research_context,
+            db_context,
+            improvement_context,
+            judgment_learning_context,
+            f"\n\n{memory_recall_context}" if memory_recall_context else "",
+            consciousness_ux_context,
+            shion_specificity_context,
+            shion_light_tone_context,
+            shion_non_domain_context,
+            human_device_resonance_context,
+            judgment_response_shape_context,
+            guidance.prompt_suffix,
+        ])
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(
@@ -9336,7 +7221,7 @@ def post_chat(req: ChatRequest):
             else ""
         )
         effective_prompt = _cap_system_prompt(
-            base_effective_prompt + (f"\n\n{pdca_block}" if pdca_block else ""),
+            append_optional_block(base_effective_prompt, pdca_block),
             surface="next_chat_rag",
         )
         obsidian_daily_injected = {}
@@ -9366,25 +7251,14 @@ def post_chat(req: ChatRequest):
             assistant_reply=reply,
             category=question_category,
             response_mode=req.response_mode,
-            metadata={
-                "context_mode": context_mode,
-                "knowledge_refs": len(rag_refs),
-                "improvement_mode": bool(_is_improvement_msg),
-                "vertex_ai_search": {
-                    "used": bool(vertex_agent_search.get("used")),
-                    "status": vertex_agent_search.get("status"),
-                    "refs": list(vertex_agent_search.get("refs") or [])[:5],
-                },
-                "vertex_answer_api": {
-                    "used": bool(vertex_answer_api.get("used")),
-                    "status": vertex_answer_api.get("status"),
-                    "grounding_score": vertex_answer_api.get("grounding_score"),
-                    "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
-                    "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
-                    "support_count": vertex_answer_api.get("support_count", 0),
-                    "refs": list(vertex_answer_api.get("refs") or [])[:5],
-                },
-            },
+            metadata=chat_exchange_metadata(
+                context_mode=context_mode,
+                knowledge_ref_count=len(rag_refs),
+                improvement_mode=_is_improvement_msg,
+                include_improvement_mode=True,
+                vertex_ai_search=vertex_agent_search,
+                vertex_answer_api=vertex_answer_api,
+            ),
         )
         language_material_capture = _capture_language_judgment_material(
             req.message,
@@ -9393,6 +7267,7 @@ def post_chat(req: ChatRequest):
             response_mode=req.response_mode,
             category=question_category,
         )
+        vertex_distillation_capture = _capture_vertex_distillation(req.message, vertex_answer_api)
         response_impact_prediction = _record_response_impact_prediction(
             user_message=req.message,
             assistant_reply=reply,
@@ -9427,34 +7302,22 @@ def post_chat(req: ChatRequest):
         _record_prompt_feedback_if_available(
             surface="next_chat_rag",
             question=req.message,
-            base_prompt="\n\n".join([
-                base_effective_prompt,
-                "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
-                f"user: {req.message}",
-            ]),
-            final_prompt="\n\n".join([
-                effective_prompt,
-                "\n".join(f"{m['role']}: {m['content']}" for m in history_for_gemini),
-                f"user: {req.message}",
-            ]),
+            base_prompt=build_prompt_feedback_snapshot(base_effective_prompt, history_for_gemini, req.message),
+            final_prompt=build_prompt_feedback_snapshot(effective_prompt, history_for_gemini, req.message),
             response=reply,
-            extra={
-                "user_id": req.user_id,
-                "intent": req.intent or "",
-                "category": "rag",
-                "improvement_mode": bool(_is_improvement_msg),
-                "memory_recall": {
-                    "route": memory_recall.get("route"),
-                    "refs": memory_recall.get("refs", [])[:8],
-                    "practical_scene": memory_recall.get("practical_scene") or {},
-                },
-                "continuity_hook": continuity_hook_payload,
-                "delta_awareness": delta_awareness_payload,
-                "memory_to_judgment": memory_to_judgment_payload,
-                "memory_expression": memory_expression_payload,
-                "reflection_gate": reflection_gate_payload,
-                "grey_judgment_memory": grey_judgment_payload,
-            },
+            extra=prompt_feedback_extra(
+                user_id=req.user_id,
+                intent=req.intent or "",
+                category="rag",
+                improvement_mode=_is_improvement_msg,
+                memory_recall=memory_recall,
+                continuity_hook=continuity_hook_payload,
+                delta_awareness=delta_awareness_payload,
+                memory_to_judgment=memory_to_judgment_payload,
+                memory_expression=memory_expression_payload,
+                reflection_gate=reflection_gate_payload,
+                grey_judgment_memory=grey_judgment_payload,
+            ),
         )
         _record_memory_usage_if_available(
             surface="next_chat_rag",
@@ -9463,35 +7326,19 @@ def post_chat(req: ChatRequest):
             knowledge_refs=rag_refs,
             pdca_block=pdca_block,
             judgment_learning_used=bool(judgment_learning_context),
-            extra={
-                "user_id": req.user_id,
-                "category": "rag",
-                "improvement_mode": bool(_is_improvement_msg),
-                "vertex_ai_search": {
-                    "used": bool(vertex_agent_search.get("used")),
-                    "status": vertex_agent_search.get("status"),
-                    "refs": list(vertex_agent_search.get("refs") or [])[:5],
-                },
-                "vertex_answer_api": {
-                    "used": bool(vertex_answer_api.get("used")),
-                    "status": vertex_answer_api.get("status"),
-                    "grounding_score": vertex_answer_api.get("grounding_score"),
-                    "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
-                    "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
-                    "support_count": vertex_answer_api.get("support_count", 0),
-                    "refs": list(vertex_answer_api.get("refs") or [])[:5],
-                },
-                "identity_memory": {
-                    "used": bool(identity_memory_payload.get("block")),
-                    "refs": identity_memory_payload.get("refs", [])[:8],
-                    "layers": identity_memory_payload.get("layers", {}),
-                },
-                "continuity_hook": continuity_hook_payload,
-                "delta_awareness": delta_awareness_payload,
-                "memory_to_judgment": memory_to_judgment_payload,
-                "memory_expression": memory_expression_payload,
-                "reflection_gate": reflection_gate_payload,
-            },
+            extra=memory_usage_extra(
+                user_id=req.user_id,
+                category="rag",
+                improvement_mode=_is_improvement_msg,
+                vertex_ai_search=vertex_agent_search,
+                vertex_answer_api=vertex_answer_api,
+                identity_memory=identity_memory_payload,
+                continuity_hook=continuity_hook_payload,
+                delta_awareness=delta_awareness_payload,
+                memory_to_judgment=memory_to_judgment_payload,
+                memory_expression=memory_expression_payload,
+                reflection_gate=reflection_gate_payload,
+            ),
         )
         _record_chat_knowledge_correction_if_needed(req.message)
         total = get_message_count(req.user_id)
@@ -9518,7 +7365,7 @@ def post_chat(req: ChatRequest):
 
         # 重要な知見をObsidianへ自動保存（AIが取捨選択・バックグラウンド実行でレスポンス遅延なし）
         # 改善キーワードを含むメッセージはImprovementLogで既に処理済みのためスキップ
-        if not _is_improvement_msg:
+        if should_auto_save_chat(improvement_mode=_is_improvement_msg):
             _background_executor.submit(_auto_save_chat_to_obsidian, req.message, reply)
 
         # REV-222: 対話ごとに関係性スコアを更新（バックグラウンド実行）
@@ -9535,41 +7382,32 @@ def post_chat(req: ChatRequest):
                 logging.getLogger(__name__).debug(f"[Relationship] record_interaction skipped: {_rel_err}")
         _background_executor.submit(_record_relationship_interaction, context_mode)
 
-        response_payload = {
-            "reply": reply,
-            "total_messages": total,
-            "knowledge_refs": rag_knowledge_refs,
-            "lease_news_focus": news_focus,
-            "lease_news_brief": news_brief,
-            "lease_news_actions": news_actions,
-            "long_input_mode": chat_long_input,
-            "context_mode": context_mode,
-            "personal_memory_capture": personal_memory_capture,
-            "language_material_capture": language_material_capture,
-            "response_impact_prediction": response_impact_prediction,
-            "judgment_asset_capture": judgment_asset_capture,
-            "response_mode": req.response_mode,
-            "external_research": external_research,
-            "vertex_ai_search": {
-                "used": bool(vertex_agent_search.get("used")),
-                "status": vertex_agent_search.get("status"),
-                "refs": list(vertex_agent_search.get("refs") or [])[:5],
-            },
-            "vertex_answer_api": {
-                "used": bool(vertex_answer_api.get("used")),
-                "status": vertex_answer_api.get("status"),
-                "grounding_score": vertex_answer_api.get("grounding_score"),
-                "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
-                "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
-                "support_count": vertex_answer_api.get("support_count", 0),
-                "refs": list(vertex_answer_api.get("refs") or [])[:5],
-            },
-            "obsidian_daily_intelligence": {
-                "used": bool(obsidian_daily_context),
-                "injected": obsidian_daily_injected,
-                "effect": obsidian_daily_effect,
-            },
-        }
+        response_payload = build_chat_response_payload(
+            reply=reply,
+            total_messages=total,
+            knowledge_refs=rag_knowledge_refs,
+            lease_news_focus=news_focus,
+            lease_news_brief=news_brief,
+            lease_news_actions=news_actions,
+            long_input_mode=chat_long_input,
+            context_mode=context_mode,
+            personal_memory_capture=personal_memory_capture,
+            language_material_capture=language_material_capture,
+            response_impact_prediction=response_impact_prediction,
+            judgment_asset_capture=judgment_asset_capture,
+            response_mode=req.response_mode,
+            external_research=external_research,
+            obsidian_daily_intelligence=obsidian_daily_intelligence_payload(
+                used=bool(obsidian_daily_context),
+                injected=obsidian_daily_injected,
+                effect=obsidian_daily_effect,
+            ),
+            extra=vertex_retrieval_response_extra(
+                vertex_ai_search=vertex_agent_search,
+                vertex_answer_api=vertex_answer_api,
+                vertex_distillation_capture=vertex_distillation_capture,
+            ),
+        )
         if req.debug_memory:
             response_payload["memory_debug"] = _chat_memory_debug_payload(
                 category="rag",
@@ -9590,28 +7428,12 @@ def post_chat(req: ChatRequest):
                 experience_loop=experience_loop_payload,
                 grey_judgment_memory=grey_judgment_payload,
             )
-            response_payload["memory_debug"]["user_personal_memory"] = {
-                "used": bool(user_personal_memory_payload.get("block")),
-                "refs": user_personal_memory_payload.get("refs", [])[:6],
-                "line_count": user_personal_memory_payload.get("line_count", 0),
-            }
-            response_payload["memory_debug"]["vertex_ai_search"] = {
-                "used": bool(vertex_agent_search.get("used")),
-                "status": vertex_agent_search.get("status"),
-                "refs": list(vertex_agent_search.get("refs") or [])[:8],
-                "summary_preview": str(vertex_agent_search.get("summary") or "")[:500],
-            }
-            response_payload["memory_debug"]["vertex_answer_api"] = {
-                "used": bool(vertex_answer_api.get("used")),
-                "status": vertex_answer_api.get("status"),
-                "grounding_score": vertex_answer_api.get("grounding_score"),
-                "grounding_score_source": vertex_answer_api.get("grounding_score_source"),
-                "low_support_claim_count": vertex_answer_api.get("low_support_claim_count", 0),
-                "support_count": vertex_answer_api.get("support_count", 0),
-                "refs": list(vertex_answer_api.get("refs") or [])[:8],
-                "answer_preview": str(vertex_answer_api.get("answer_text") or "")[:800],
-                "grounding_supports": list(vertex_answer_api.get("grounding_supports") or [])[:5],
-            }
+            append_chat_debug_metadata(
+                response_payload["memory_debug"],
+                user_personal_memory=user_personal_memory_payload,
+                vertex_ai_search=vertex_agent_search,
+                vertex_answer_api=vertex_answer_api,
+            )
         return response_payload
     except Exception as e:
         import traceback
@@ -9647,6 +7469,13 @@ class VertexSearchDebugRequest(BaseModel):
 class VertexExternalGroundingRequest(BaseModel):
     query: str
     page_size: int = Field(5, ge=1, le=10)
+
+
+class VertexKnowledgeWorkflowRequest(BaseModel):
+    topic: str
+    mode: Literal["evidence_support", "judgment_candidates", "knowledge_audit"] = "evidence_support"
+    page_size: int = Field(5, ge=1, le=10)
+    save_to_obsidian: bool = False
 
 
 @app.post("/api/vertex-search/debug")
@@ -9700,6 +7529,32 @@ def post_vertex_search_debug(req: VertexSearchDebugRequest):
         if req.include_google_grounding:
             payload["google_grounding"] = google_search_grounding(query)
         return payload
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/vertex-search/workflow")
+def post_vertex_search_workflow(req: VertexKnowledgeWorkflowRequest):
+    """Vertexを用途別に使う実務口。根拠補強・判断資産候補・知識棚卸しに限定する。"""
+    topic = req.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=422, detail="topic is required")
+    try:
+        from api.vertex_knowledge_workflows import run_vertex_knowledge_workflow
+
+        result = run_vertex_knowledge_workflow(topic, mode=req.mode, page_size=req.page_size)
+        if req.save_to_obsidian:
+            from api.vertex_distillation import capture_vertex_workflow_result
+            from runtime_paths import get_data_dir
+
+            result["obsidian_capture"] = capture_vertex_workflow_result(
+                result,
+                vault_path=_OBSIDIAN_VAULT_PATH,
+                state_path=get_data_dir() / "vertex_workflow_capture_state.json",
+            )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -9766,7 +7621,6 @@ def post_relationship_feedback(req: RelationshipFeedbackRequest):
     フロントから明示的なフィードバックを受け取り関係性スコアを更新する。
     チャット画面の「良かった／残念」ボタンなどから呼ぶ。
     """
-    from typing import Literal
     valid_fb = {"positive", "negative", "neutral"}
     valid_depth = {"shallow", "normal", "deep"}
     if req.feedback_type not in valid_fb:
@@ -9900,9 +7754,6 @@ class SaveDebateToObsidianRequest(BaseModel):
 @app.post("/api/debate/save-to-obsidian")
 def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     """討論審査結果を iCloud 上の Obsidian Vault の Debates/ フォルダに保存する。"""
-    import datetime
-    import re as _re
-
     vault_root = _OBSIDIAN_VAULT_PATH
 
     if not vault_root or not os.path.isdir(vault_root):
@@ -9914,118 +7765,18 @@ def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     debates_dir = os.path.join(vault_root, "Debates")
     os.makedirs(debates_dir, exist_ok=True)
 
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    company = req.company_name.strip() or "不明"
-    safe_company = _re.sub(r'[\\/:*?"<>|\n\r\t]', "_", company)[:40].strip("_").strip() or "不明"
-    # 同日・同企業の複数審査で上書きされないよう時刻サフィックスを付与
-    timestamp = datetime.datetime.now().strftime("%H%M%S")
-    filename = f"{today}_{safe_company}_{timestamp}.md"
-    filepath = os.path.join(debates_dir, filename)
+    from api.debate_note_render import render_debate_obsidian_note
 
-    # グレード計算（フロントから来なければスコアで自動算出）
-    grade = req.grade
-    if not grade:
-        s = req.score
-        if s >= 80:
-            grade = "A"
-        elif s >= 60:
-            grade = "B"
-        elif s >= 40:
-            grade = "C"
-        elif s >= 20:
-            grade = "D"
-        else:
-            grade = "E"
-
-    # frontmatter
-    lines = [
-        "---",
-        f"date: {today}",
-        "type: debate_result",
-        f"company: {company}",
-        f"score: {req.score}",
-        f"grade: {grade}",
-        f"decision: {req.final_decision}",
-        "---",
-        "",
-        f"# 討論審査: {company}",
-        "",
-        f"**スコア**: {req.score}点 / グレード: {grade} / **判定**: {req.final_decision}",
-        "",
-    ]
-
-    # 討論エージェントセクション
-    if req.cautious or req.aggressive:
-        lines += ["## 討論結果（第2ラウンド最終立場）", ""]
-
-        if req.cautious:
-            lines += [
-                "### 石橋（慎重派）",
-                "",
-                f"**意見**: {req.cautious.opinion}",
-                "",
-                "**判断理由**",
-                "",
-            ]
-            for r in req.cautious.reasons:
-                lines.append(f"- {r}")
-            if req.cautious.key_risks:
-                lines += ["", "**重大リスク**", ""]
-                for r in req.cautious.key_risks:
-                    lines.append(f"- {r}")
-            lines.append("")
-
-        if req.aggressive:
-            lines += [
-                "### 風林火山（積極派）",
-                "",
-                f"**意見**: {req.aggressive.opinion}",
-                "",
-                "**判断理由**",
-                "",
-            ]
-            for r in req.aggressive.reasons:
-                lines.append(f"- {r}")
-            if req.aggressive.opportunities:
-                lines += ["", "**見逃せない機会**", ""]
-                for r in req.aggressive.opportunities:
-                    lines.append(f"- {r}")
-            lines.append("")
-
-    # 軍師セクション
-    lines += [
-        "## 軍師の最終判断",
-        "",
-        req.arbiter_summary,
-        "",
-    ]
-
-    if req.conditions:
-        lines += ["### 承認条件", ""]
-        for i, c in enumerate(req.conditions, 1):
-            lines.append(f"{i}. {c}")
-        lines.append("")
-
-    # 討論ログ
-    if req.debate_log:
-        lines += [
-            "## 討論ログ",
-            "",
-            "```",
-            req.debate_log,
-            "```",
-            "",
-        ]
-
-    content = "\n".join(lines)
+    note = render_debate_obsidian_note(req)
+    filepath = os.path.join(debates_dir, note["filename"])
 
     try:
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
+            f.write(note["content"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ファイル書き込みエラー: {e}")
 
-    relative_path = f"Debates/{filename}"
+    relative_path = f"Debates/{note['filename']}"
     return {"path": relative_path}
 
 
@@ -10142,17 +7893,14 @@ def _news_vault_root() -> Path | None:
     vault = find_vault()
     if vault and vault.is_dir():
         return vault
-    # 直書きせず runtime_paths に解決させる（env も既定も一箇所で決まる）
-    from runtime_paths import resolve_obsidian_vault
-
     fallback = resolve_obsidian_vault()
     return fallback if fallback.is_dir() else None
 
 
 def _safe_news_filename(text: str, max_len: int = 40) -> str:
-    cleaned = re.sub(r'[\\/:*?"<>|\n\r\t]', "_", text)
-    cleaned = cleaned.strip("_").strip()
-    return cleaned[:max_len] if cleaned else "ニュース"
+    from api.lease_news_summary_render import safe_news_filename
+
+    return safe_news_filename(text, max_len=max_len)
 
 
 def _lease_news_dir(vault: Path, create: bool = False) -> Path | None:
@@ -10234,102 +7982,28 @@ def _validate_public_http_url(url: str) -> None:
             raise HTTPException(status_code=400, detail="ローカル/内部ネットワーク宛のURLは指定できません")
 
 
-_NEWS_SUMMARY_CODE_TEXT = {
-    "CAPEX": "設備投資・更新需要に動きがあり、リース提案の接点になり得ます。",
-    "RATE": "金利・資金調達環境の変化が、月額負担や契約条件の説明材料になります。",
-    "REGULATION": "制度・規制変更が、顧客の投資判断や導入時期に影響し得ます。",
-    "MARKET": "市場環境や需給の変化が、業界別の提案優先度を左右します。",
-    "RISK": "信用・資金繰り・事業継続面の確認を強めるべき材料があります。",
-    "TECH": "DX・AI・省力化・脱炭素設備など、戦略投資の切り口があります。",
-    "ASSET": "対象物件の価値、保全、中古流通を確認する材料があります。",
-}
-
-_NEWS_USAGE_CODE_TEXT = {
-    "PROPOSAL_TIMING": "顧客の投資タイミング確認に使う。",
-    "RATE_EXPLAIN": "金利・月額負担・総支払額の説明に使う。",
-    "RISK_CHECK": "審査時の追加確認項目を洗い出す。",
-    "ASSET_MATCH": "物件選定、残価、保全条件の確認に使う。",
-    "INDUSTRY_TALK": "業界動向の会話導入に使う。",
-    "FOLLOW_UP": "既存顧客へのフォロー論点にする。",
-}
-
-
 def _normalize_code_list(values: object, allowed: set[str], limit: int) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    normalized = []
-    for value in values:
-        code = str(value).strip().upper()
-        if code in allowed and code not in normalized:
-            normalized.append(code)
-        if len(normalized) >= limit:
-            break
-    return normalized
+    from api.lease_news_summary_render import normalize_code_list
+
+    return normalize_code_list(values, allowed, limit)
 
 
 def _normalize_phrase_list(values: object, limit: int = 5) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    phrases = []
-    for value in values:
-        phrase = str(value).strip()
-        if phrase and phrase not in phrases:
-            phrases.append(phrase[:40])
-        if len(phrases) >= limit:
-            break
-    return phrases
+    from api.lease_news_summary_render import normalize_phrase_list
+
+    return normalize_phrase_list(values, limit=limit)
 
 
 def _render_news_summary(result: dict, source: str) -> dict:
-    summary_codes = _normalize_code_list(
-        result.get("summary_codes"),
-        set(_NEWS_SUMMARY_CODE_TEXT.keys()),
-        3,
-    )
-    usage_codes = _normalize_code_list(
-        result.get("usage_codes"),
-        set(_NEWS_USAGE_CODE_TEXT.keys()),
-        2,
-    )
-    key_phrases = _normalize_phrase_list(result.get("key_phrases"), limit=5)
+    from api.lease_news_summary_render import render_news_summary
 
-    if not summary_codes:
-        summary_codes = ["MARKET"]
-    phrase_tail = f"（関連語: {'、'.join(key_phrases[:3])}）" if key_phrases else ""
-    lines = []
-    for code in summary_codes[:3]:
-        line = _NEWS_SUMMARY_CODE_TEXT.get(code, _NEWS_SUMMARY_CODE_TEXT["MARKET"])
-        lines.append(f"{line}{phrase_tail}" if not lines and phrase_tail else line)
-    while len(lines) < 3:
-        lines.append("原文を確認し、顧客業種・物件・投資時期との関係を見極めます。")
-
-    usage_parts = [
-        _NEWS_USAGE_CODE_TEXT.get(code, "")
-        for code in usage_codes
-        if _NEWS_USAGE_CODE_TEXT.get(code)
-    ]
-    if not usage_parts:
-        usage_parts = ["顧客との会話導入と、提案・審査時の確認論点整理に使う。"]
-
-    rendered = {
-        **result,
-        "summary_codes": summary_codes,
-        "usage_codes": usage_codes,
-        "key_phrases": key_phrases,
-        "summary_lines": lines[:3],
-        "usage_memo": " ".join(usage_parts),
-    }
-    if not rendered.get("title"):
-        rendered["title"] = "業界リスクニュース"
-    if not rendered.get("tags"):
-        rendered["tags"] = ["要確認"]
-    if not rendered.get("source_hint") and source:
-        rendered["source_hint"] = source[:80]
-    return rendered
+    return render_news_summary(result, source)
 
 
 def _summarize_news_with_gemini(text: str, source: str) -> dict:
-    api_key = _get_gemini_api_key()
+    from api.chat_memory import _get_gemini_api_key as _chat_get_gemini_api_key
+
+    api_key = _chat_get_gemini_api_key()
     if not api_key:
         raise HTTPException(status_code=503, detail="Gemini APIキーが未設定です")
 
@@ -10419,8 +8093,6 @@ summary_codes と usage_codes は必ず上記の英字コードだけを返し�
 
 
 def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
-    import datetime as _dt
-
     vault = _news_vault_root()
     if not vault:
         return None
@@ -10429,53 +8101,16 @@ def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
     if not news_dir:
         return None
 
-    today_obj = _dt.date.today()
-    today = today_obj.isoformat()
-    iso_cal = today_obj.isocalendar()
-    week = f"{iso_cal[0]}-W{iso_cal[1]:02d}"
-    month = today_obj.strftime("%Y-%m")
+    from api.lease_news_summary_render import render_news_obsidian_note
 
-    title = summary.get("title", "ニュース")
-    fname = f"{today}_業界リスクニュース_{_safe_news_filename(title)}.md"
-    fpath = news_dir / fname
-
-    tags_yaml = json.dumps(summary.get("tags", []), ensure_ascii=False)
-    summary_codes_yaml = json.dumps(summary.get("summary_codes", []), ensure_ascii=False)
-    usage_codes_yaml = json.dumps(summary.get("usage_codes", []), ensure_ascii=False)
-    key_phrases_yaml = json.dumps(summary.get("key_phrases", []), ensure_ascii=False)
-    lines = summary.get("summary_lines", [])
-    memo = summary.get("usage_memo", "")
-    region = summary.get("region", "国内")
-
-    content = f"""---
-date: {today}
-week: {week}
-month: {month}
-tags: {tags_yaml}
-summary_codes: {summary_codes_yaml}
-usage_codes: {usage_codes_yaml}
-key_phrases: {key_phrases_yaml}
-region: {region}
-source: {source or "手動入力"}
-importance: {summary.get("importance", "中")}
----
-# {title}
-
-## 3行要約
-- {lines[0] if len(lines) > 0 else ""}
-- {lines[1] if len(lines) > 1 else ""}
-- {lines[2] if len(lines) > 2 else ""}
-
-## 活用メモ
-{memo}
-"""
-
-    fpath.write_text(content, encoding="utf-8")
+    note = render_news_obsidian_note(summary, source)
+    fpath = news_dir / note["filename"]
+    fpath.write_text(note["content"], encoding="utf-8")
 
     try:
         record_lease_news_collection(
-            date_str=today,
-            note_path=str(fpath.relative_to(vault)) if vault else fname,
+            date_str=note["date"],
+            note_path=str(fpath.relative_to(vault)) if vault else note["filename"],
             article_count=1,
             source_summary=source[:100],
             tag_summary=", ".join(summary.get("tags", [])),
@@ -10518,8 +8153,6 @@ importance: {summary.get("importance", "中")}
 @app.post("/api/lease-news/summarize")
 def summarize_lease_news(req: LeaseNewsSummarizeRequest):
     """ニュースURL or 本文テキストをAI要約し、Obsidianに保存する。"""
-    import datetime as _dt
-
     source = req.url or "手動入力"
     if req.url and req.url.strip():
         try:
@@ -10564,18 +8197,7 @@ def get_recent_lease_news(limit: int = 5):
     md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
     items: list[dict] = []
     seen_keys: set[str] = set()
-
-    def _recent_news_dedupe_key(item: dict) -> str:
-        url = str(item.get("article_url") or item.get("source") or "").strip().lower()
-        if url.startswith(("http://", "https://")):
-            return f"url:{url.rstrip('/')}"
-        title = re.sub(r"\s+", "", str(item.get("title") or "")).lower()
-        first_summary = ""
-        for line in item.get("summary_lines") or []:
-            first_summary = re.sub(r"\s+", "", str(line or "")).lower()
-            if first_summary:
-                break
-        return f"text:{title}|{first_summary[:80]}"
+    from api.lease_news_summary_render import parse_recent_news_note, recent_news_dedupe_key
 
     for fpath in md_files:
         try:
@@ -10583,109 +8205,8 @@ def get_recent_lease_news(limit: int = 5):
         except Exception:
             continue
 
-        item: dict = {
-            "date": "",
-            "title": fpath.stem,
-            "summary_lines": [],
-            "usage_memo": "",
-            "summary_codes": [],
-            "usage_codes": [],
-            "key_phrases": [],
-            "tags": [],
-            "region": "国内",
-            "importance": "通常",
-            "source": "",
-            "article_url": "",
-            "file_path": str(fpath),
-            "week": "",
-            "month": "",
-        }
-
-        fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
-        if fm_match:
-            fm = fm_match.group(1)
-            for line in fm.splitlines():
-                if line.startswith("date:"):
-                    item["date"] = line.split(":", 1)[1].strip()
-                elif line.startswith("tags:"):
-                    try:
-                        item["tags"] = json.loads(line.split(":", 1)[1].strip())
-                    except Exception:
-                        pass
-                elif line.startswith("summary_codes:"):
-                    try:
-                        item["summary_codes"] = json.loads(line.split(":", 1)[1].strip())
-                    except Exception:
-                        pass
-                elif line.startswith("usage_codes:"):
-                    try:
-                        item["usage_codes"] = json.loads(line.split(":", 1)[1].strip())
-                    except Exception:
-                        pass
-                elif line.startswith("key_phrases:"):
-                    try:
-                        item["key_phrases"] = json.loads(line.split(":", 1)[1].strip())
-                    except Exception:
-                        pass
-                elif line.startswith("region:"):
-                    item["region"] = line.split(":", 1)[1].strip()
-                elif line.startswith("source:"):
-                    item["source"] = line.split(":", 1)[1].strip()
-                elif line.startswith("importance:"):
-                    item["importance"] = line.split(":", 1)[1].strip()
-                elif line.startswith("week:"):
-                    item["week"] = line.split(":", 1)[1].strip()
-                elif line.startswith("month:"):
-                    item["month"] = line.split(":", 1)[1].strip()
-
-        title_match = re.search(r"^# (.+)$", raw, re.MULTILINE)
-        if title_match:
-            item["title"] = title_match.group(1).strip()
-
-        summary_section = re.search(
-            r"## 3行要約\s*\n((?:- .+\n?){1,3})", raw
-        )
-        if summary_section:
-            item["summary_lines"] = [
-                line.lstrip("- ").strip()
-                for line in summary_section.group(1).strip().splitlines()
-                if line.strip()
-            ]
-
-        memo_match = re.search(r"## 活用メモ\s*\n(.+?)(?:\n##|\Z)", raw, re.DOTALL)
-        if memo_match:
-            item["usage_memo"] = memo_match.group(1).strip()
-
-        link_match = re.search(r"^- link:\s*(.+)$", raw, re.MULTILINE)
-        if link_match:
-            item["article_url"] = link_match.group(1).strip()
-        elif item["source"].startswith(("http://", "https://")):
-            item["article_url"] = item["source"]
-
-        title_compact = re.sub(r"\s+", "", str(item.get("title") or "")).lower()
-        title_plain = re.sub(r"[^\w]", "", str(item.get("title") or "").lower())
-        memo_compact = re.sub(r"\s+", "", str(item.get("usage_memo") or "")).lower()
-        clean_summary_lines: list[str] = []
-        seen_summary_lines: set[str] = set()
-        for line in item.get("summary_lines") or []:
-            text = str(line or "").strip()
-            compact = re.sub(r"\s+", "", text).lower()
-            plain = re.sub(r"[^\w]", "", text.lower())
-            if not text or text == "（詳細なし）":
-                continue
-            if memo_compact and compact == memo_compact:
-                continue
-            if title_compact and title_compact in compact:
-                continue
-            if title_plain and plain and (title_plain in plain or plain in title_plain):
-                continue
-            if compact in seen_summary_lines:
-                continue
-            seen_summary_lines.add(compact)
-            clean_summary_lines.append(text)
-        item["summary_lines"] = clean_summary_lines[:3]
-
-        dedupe_key = _recent_news_dedupe_key(item)
+        item = parse_recent_news_note(raw, file_path=str(fpath), file_stem=fpath.stem)
+        dedupe_key = recent_news_dedupe_key(item)
         if dedupe_key in seen_keys:
             continue
         seen_keys.add(dedupe_key)

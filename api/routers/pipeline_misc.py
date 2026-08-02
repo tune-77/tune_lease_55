@@ -241,9 +241,7 @@ def _load_title_to_rev() -> dict[str, str]:
 
 def _load_obsidian_implemented_titles() -> set[str]:
     """Obsidian 実装済み改善一覧のタイトルを返す。"""
-    # 直書きせず runtime_paths に解決させる（env も既定も一箇所で決まる）
-    from runtime_paths import resolve_obsidian_vault
-
+    from runtime_paths import resolve_obsidian_vault  # type: ignore[import]
     vault = resolve_obsidian_vault()
     index_file = vault / "tuneLease55/改善策インデックス_2026.md"
     if not index_file.exists():

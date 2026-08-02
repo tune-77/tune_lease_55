@@ -9,17 +9,19 @@ from __future__ import annotations
 import datetime as dt
 import os
 import re
+import sys
 import time
 import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
 
 from obsidian_query import split_query_terms
-from runtime_paths import (
-    DEFAULT_OBSIDIAN_VAULT,
-    LEGACY_OBSIDIAN_VAULT,
-    OBSIDIAN_VAULT_ENV_VARS,
-)
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import ICLOUD_OBSIDIAN_DOCS, resolve_obsidian_vault  # noqa: E402
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
 
@@ -47,30 +49,21 @@ def _obsidian_app_vaults() -> list[Path]:
 
 def _home_candidates() -> list[Path]:
     home = Path.home()
-    # 知識宇宙では obsidian-vault を優先し、なければ従来の Obsidian Vault にフォールバックする。
+    # 先頭は runtime_paths の解決結果（env → obsidian-vault → Obsidian Vault）。
+    # 以前はここで OBSIDIAN_VAULT だけを見ており、OBSIDIAN_VAULT_PATH しか
+    # 設定されていない環境では索引先が他モジュールとずれていた。
     # lease-wiki-vault はユーザーが明示指定した場合だけ使うため、アプリの最近使用順より後に置く。
     app_vaults = _obsidian_app_vaults()
-    # env は runtime_paths と同じ優先順で読む。以前は OBSIDIAN_VAULT しか見ておらず、
-    # OBSIDIAN_VAULT_PATH だけを設定した launchd ジョブとこのブリッジが別の Vault を
-    # 指しうる状態だった（書き込み先と RAG 索引先の分裂）。
-    env_vault = next(
-        (
-            Path(raw).expanduser()
-            for name in OBSIDIAN_VAULT_ENV_VARS
-            if (raw := (os.getenv(name) or "").strip())
-        ),
-        None,
-    )
-    icloud_docs = DEFAULT_OBSIDIAN_VAULT.parent
+    icloud_docs = ICLOUD_OBSIDIAN_DOCS
     default_vaults = [
-        DEFAULT_OBSIDIAN_VAULT,
-        LEGACY_OBSIDIAN_VAULT,
+        resolve_obsidian_vault(),
+        icloud_docs / "obsidian-vault",
+        icloud_docs / "Obsidian Vault",
         home / "Documents" / "Obsidian Vault",
     ]
     regular_app_vaults = [p for p in app_vaults if p.name != "lease-wiki-vault"]
     lease_wiki_vaults = [p for p in app_vaults if p.name == "lease-wiki-vault"]
     roots = [
-        env_vault,
         *default_vaults,
         *regular_app_vaults,
         home / "Documents",

@@ -13,10 +13,17 @@ import hashlib
 import json
 import logging
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any
 from functools import lru_cache
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
 
 try:
     import yaml
@@ -73,9 +80,8 @@ def extract_metadata(path: Path, text: str) -> dict[str, Any]:
             "has_wikilinks": true,
         }
     """
-    # 直書きせず runtime_paths に解決させる（env も既定も一箇所で決まる）
-    from runtime_paths import resolve_obsidian_vault
-
+    # 相対パス化の基準は索引先と揃える。直書きだと別 Vault の索引で
+    # 絶対パスがそのまま metadata["path"] に入り、参照が壊れる。
     vault_root = resolve_obsidian_vault()
     try:
         rel_path = path.relative_to(vault_root)

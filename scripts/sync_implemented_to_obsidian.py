@@ -9,20 +9,11 @@ import sys
 from datetime import date
 from pathlib import Path
 
-# runtime_paths を import するためリポジトリルートを sys.path に載せる
-import sys as _sys
-from pathlib import Path as _Path
-
-_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
-if _RUNTIME_PATHS_ROOT not in _sys.path:
-    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_VAULT_PATHS = [
-    resolve_obsidian_vault(),
-]
 _INDEX_REL = "Projects/tune_lease_55/改善策インデックス_2026.md"
 _IMPL_SECTION = "## 実装済み改善一覧（パイプライン除外リスト）"
 _EXPORT_FILE = Path("/tmp/obsidian_improvements_export.txt")
@@ -57,10 +48,8 @@ _COMMIT_TO_TITLE_HINTS: dict[str, list[str]] = {
 
 
 def _get_vault() -> Path | None:
-    for p in _VAULT_PATHS:
-        if p.exists():
-            return p
-    return None
+    vault = resolve_obsidian_vault()
+    return vault if vault.exists() else None
 
 
 def _get_recent_commits(days: int = 3) -> list[str]:

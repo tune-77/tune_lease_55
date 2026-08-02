@@ -9,20 +9,14 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# runtime_paths を import するためリポジトリルートを sys.path に載せる
-import sys as _sys
-from pathlib import Path as _Path
-
-_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
-if _RUNTIME_PATHS_ROOT not in _sys.path:
-    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
-
-from runtime_paths import resolve_obsidian_vault  # noqa: E402
-
 PROJECT_ROOT = Path(__file__).parent.parent
-# Vault 名は runtime_paths が決める（"Obsidian Vault" を組み立て直すと新旧の切替に追随できない）
-ICLOUD_MAIN_VAULT_PATH = resolve_obsidian_vault()               # メインVault
-ICLOUD_VAULT_PATH = ICLOUD_MAIN_VAULT_PATH / "lease-wiki-vault"  # RAG インデックス対象（Vault統合後）
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault  # noqa: E402
+
+ICLOUD_VAULT_PATH = resolve_lease_wiki_vault()   # RAG インデックス対象（Vault統合後）
+ICLOUD_MAIN_VAULT_PATH = resolve_obsidian_vault()
 VAULT_PATH = ICLOUD_MAIN_VAULT_PATH
 LATEST_JSON = PROJECT_ROOT / "reports" / "latest.json"
 MACRO_JSON = PROJECT_ROOT / "static_data" / "macro_context.json"

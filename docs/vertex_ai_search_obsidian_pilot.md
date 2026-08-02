@@ -35,6 +35,18 @@ python3 scripts/export_obsidian_for_agent_search.py --max-docs 180
 
 The exporter intentionally excludes chat logs, daily memory, private reflection,
 Cloud Run conversation logs, raw feedback return files, and secret-like files.
+It also applies a pre-Vertex quality gate:
+
+- Adds `canonical_topic`, `source_bucket`, and `quality_score` to each exported
+  document
+- Deduplicates notes by `canonical_topic` before upload
+- Excludes explicit private markers such as `public: false`,
+  `vertex_exclude: true`, `visibility: private`, and confidential notes
+- Excludes operational or identity/value-layer notes such as Mana logs,
+  hackathon plans, Claude/CSS implementation notes, Judgment Asset OS docs, and
+  raw inbox material
+- Rejects thin keyword-only notes that do not contain enough reusable screening
+  judgment, confirmation points, risk conditions, sources, or update triggers
 
 Current pilot corpus:
 
@@ -158,9 +170,60 @@ Implemented the five follow-up options from the pilot:
 
 ```bash
 POST /api/vertex-search/debug
+POST /api/vertex-search/workflow
 POST /api/vertex-search/external-grounding
 GET  /api/vertex-search/widget-config
 ```
+
+`/api/vertex-search/workflow` is the practical usage endpoint. It keeps Vertex
+as a supplementary index and restricts usage to three modes:
+
+```json
+{
+  "topic": "補助金前提の工作機械リース",
+  "mode": "evidence_support",
+  "page_size": 5,
+  "save_to_obsidian": true
+}
+```
+
+Modes:
+
+- `evidence_support`: find source notes and grounded hints for screening
+  comments
+- `judgment_candidates`: find confirmation-question / approval-condition /
+  counterpoint candidates, without auto-promoting them
+- `knowledge_audit`: check topic duplication, weak coverage, stale areas, and
+  next notes to curate
+
+All workflow responses include a guardrail: Vertex is a supplementary index;
+Local RAG, Obsidian source notes, and human review remain the primary judgment
+path.
+
+When `save_to_obsidian` is true, the workflow result is stored in the normal
+iCloud Obsidian Vault under:
+
+```text
+Projects/tune_lease_55/Research/Vertex Distilled/
+```
+
+Saved notes include the workflow mode, query, Answer API summary, high-signal
+search hits, refs, next actions, grounding metadata, and a `needs_human_review`
+frontmatter flag. They are deduplicated by workflow mode + query and are not
+auto-promoted into judgment assets.
+
+Batch material collection while Vertex credits are available:
+
+```bash
+python3 scripts/collect_vertex_workflow_materials.py \
+  --limit 8 \
+  --modes evidence_support judgment_candidates knowledge_audit \
+  --page-size 5
+```
+
+This writes bounded workflow notes to `Vertex Distilled/` and a local run report
+to `reports/vertex_workflow_materials_latest.json`. Use `--dry-run` before a
+larger run, and tune `--limit` / `--modes` to avoid collecting low-value noise.
 
 `/api/vertex-search/debug` can run Search API, Answer API, and Google Search
 grounding on the same query:

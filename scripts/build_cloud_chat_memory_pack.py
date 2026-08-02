@@ -23,20 +23,16 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-# runtime_paths を import するためリポジトリルートを sys.path に載せる
-import sys as _sys
-from pathlib import Path as _Path
-
-_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
-if _RUNTIME_PATHS_ROOT not in _sys.path:
-    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_VAULT = resolve_obsidian_vault()
-VAULT_PATH = Path(os.environ.get("OBSIDIAN_VAULT", os.environ.get("OBSIDIAN_VAULT_PATH", str(DEFAULT_VAULT)))).expanduser()
+# env の優先順はここで決めない。以前は OBSIDIAN_VAULT が先で runtime_paths と逆順だった。
+VAULT_PATH = resolve_obsidian_vault()
 OUTPUT_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory")
 STATE_DIR = PROJECT_ROOT / "memory"
 LONG_TERM_MEMORY = PROJECT_ROOT / "MEMORY.md"

@@ -6,7 +6,8 @@ set -euo pipefail
 
 LOG_DIR="$HOME/Library/Logs/tunelease"
 LOG_FILE="$LOG_DIR/chromadb_gcs_sync.log"
-CHROMA_LOCAL="/Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CHROMA_LOCAL="$PROJECT_ROOT/api/chroma_db"
 GCS_DEST="gs://tune-lease-55-data/chromadb/"
 CLOUD_RUN_SERVICE="tune-lease-55"
 CLOUD_RUN_REGION="asia-northeast1"

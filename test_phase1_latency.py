@@ -157,7 +157,7 @@ def main():
     if passed == total:
         logger.info("\n✅ Phase 1: Latency monitoring implementation verified!")
         logger.info("\nNext steps:")
-        logger.info("1. Monitor /Users/kobayashiisaoryou/Library/Logs/tunelease/ for logs")
+        logger.info("1. Monitor ~/Library/Logs/tunelease/ for logs")
         logger.info("2. Collect latency data from real chats")
         logger.info("3. Identify bottlenecks")
         logger.info("4. Proceed to Step 2: Implement caching")

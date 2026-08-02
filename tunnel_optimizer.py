@@ -18,8 +18,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from data_cases import load_all_cases
+from runtime_paths import get_data_dir
 
-_DATA_DIR = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data"
+_DATA_DIR = str(get_data_dir())
 MODEL_PATH = os.path.join(_DATA_DIR, "tunnel_optimizer.joblib")
 
 MIN_CASES = 1500
