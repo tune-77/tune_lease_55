@@ -182,7 +182,8 @@ as a supplementary index and restricts usage to three modes:
 {
   "topic": "補助金前提の工作機械リース",
   "mode": "evidence_support",
-  "page_size": 5
+  "page_size": 5,
+  "save_to_obsidian": true
 }
 ```
 
@@ -198,6 +199,31 @@ Modes:
 All workflow responses include a guardrail: Vertex is a supplementary index;
 Local RAG, Obsidian source notes, and human review remain the primary judgment
 path.
+
+When `save_to_obsidian` is true, the workflow result is stored in the normal
+iCloud Obsidian Vault under:
+
+```text
+Projects/tune_lease_55/Research/Vertex Distilled/
+```
+
+Saved notes include the workflow mode, query, Answer API summary, high-signal
+search hits, refs, next actions, grounding metadata, and a `needs_human_review`
+frontmatter flag. They are deduplicated by workflow mode + query and are not
+auto-promoted into judgment assets.
+
+Batch material collection while Vertex credits are available:
+
+```bash
+python3 scripts/collect_vertex_workflow_materials.py \
+  --limit 8 \
+  --modes evidence_support judgment_candidates knowledge_audit \
+  --page-size 5
+```
+
+This writes bounded workflow notes to `Vertex Distilled/` and a local run report
+to `reports/vertex_workflow_materials_latest.json`. Use `--dry-run` before a
+larger run, and tune `--limit` / `--modes` to avoid collecting low-value noise.
 
 `/api/vertex-search/debug` can run Search API, Answer API, and Google Search
 grounding on the same query:

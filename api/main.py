@@ -7475,6 +7475,7 @@ class VertexKnowledgeWorkflowRequest(BaseModel):
     topic: str
     mode: Literal["evidence_support", "judgment_candidates", "knowledge_audit"] = "evidence_support"
     page_size: int = Field(5, ge=1, le=10)
+    save_to_obsidian: bool = False
 
 
 @app.post("/api/vertex-search/debug")
@@ -7541,7 +7542,17 @@ def post_vertex_search_workflow(req: VertexKnowledgeWorkflowRequest):
     try:
         from api.vertex_knowledge_workflows import run_vertex_knowledge_workflow
 
-        return run_vertex_knowledge_workflow(topic, mode=req.mode, page_size=req.page_size)
+        result = run_vertex_knowledge_workflow(topic, mode=req.mode, page_size=req.page_size)
+        if req.save_to_obsidian:
+            from api.vertex_distillation import capture_vertex_workflow_result
+            from runtime_paths import get_data_dir
+
+            result["obsidian_capture"] = capture_vertex_workflow_result(
+                result,
+                vault_path=_OBSIDIAN_VAULT_PATH,
+                state_path=get_data_dir() / "vertex_workflow_capture_state.json",
+            )
+        return result
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
