@@ -15,12 +15,14 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_VAULT = Path(
-    os.environ.get(
-        "OBSIDIAN_VAULT",
-        Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
-    )
-)
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
+# env の優先順はここで決めない。以前は OBSIDIAN_VAULT しか見ておらず、
+# OBSIDIAN_VAULT_PATH だけ設定された環境では別 Vault を健全性チェックしていた。
+DEFAULT_VAULT = resolve_obsidian_vault()
 DEFAULT_BACKUP_ROOT = Path(
     os.environ.get(
         "OBSIDIAN_BACKUP_ROOT",

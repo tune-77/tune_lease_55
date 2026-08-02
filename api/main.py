@@ -37,7 +37,7 @@ import sys
 import os
 from pathlib import Path
 from urllib.parse import urlparse
-from runtime_paths import get_data_path, get_db_path
+from runtime_paths import get_data_path, get_db_path, resolve_obsidian_vault
 
 # プロジェクトルートをPYTHONPATHに追加して、既存モジュール(scoring_core)をインポート可能にする
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -8656,7 +8656,7 @@ def _news_vault_root() -> Path | None:
     vault = find_vault()
     if vault and vault.is_dir():
         return vault
-    fallback = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
+    fallback = resolve_obsidian_vault()
     return fallback if fallback.is_dir() else None
 
 

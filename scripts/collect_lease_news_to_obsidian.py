@@ -40,12 +40,14 @@ from lease_news_digest import (
     write_lease_news_focus_note,
     write_lease_news_reflection_note,
 )
+from runtime_paths import ICLOUD_OBSIDIAN_DOCS, resolve_obsidian_vault
 
 
+# 先頭は runtime_paths の解決結果（env → iCloud）。以前はここで OBSIDIAN_VAULT
+# だけを見ており、OBSIDIAN_VAULT_PATH しか設定されていない環境ではずれていた。
 DEFAULT_VAULT_CANDIDATES = [
-    Path(os.environ.get("OBSIDIAN_VAULT", "")).expanduser() if os.environ.get("OBSIDIAN_VAULT") else None,
-    Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
-    Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
+    resolve_obsidian_vault(),
+    ICLOUD_OBSIDIAN_DOCS,
     Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian Vault",
 ]
 

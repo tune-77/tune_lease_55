@@ -22,7 +22,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -32,16 +31,17 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from obsidian_query import iter_vault_md_files  # noqa: E402
+from runtime_paths import ICLOUD_OBSIDIAN_DOCS, resolve_obsidian_vault  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Vault detection
 # ---------------------------------------------------------------------------
 
+# 先頭は runtime_paths の解決結果（env → iCloud）。以前はここで OBSIDIAN_VAULT
+# だけを見ており、OBSIDIAN_VAULT_PATH しか設定されていない環境ではずれていた。
 _DEFAULT_VAULT_CANDIDATES = [
-    Path(os.environ.get("OBSIDIAN_VAULT", "")).expanduser()
-    if os.environ.get("OBSIDIAN_VAULT") else None,
-    Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault",
-    Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
+    resolve_obsidian_vault(),
+    ICLOUD_OBSIDIAN_DOCS,
 ]
 
 TARGET_FOLDERS = (

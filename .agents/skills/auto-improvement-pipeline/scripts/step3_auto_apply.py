@@ -1208,14 +1208,11 @@ class Step3AutoApplier:
         validation_result: dict[str, Any],
     ) -> dict[str, Any]:
         """改善ログを Obsidian 改善ログフォルダへ保存する（後方互換シム）."""
-        env_vault = os.environ.get("OBSIDIAN_VAULT_PATH")
-        vault_candidates = (
-            [Path(env_vault)]
-            if env_vault
-            else [Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"]
-        )
-        vault = next((v for v in vault_candidates if v.exists()), None)
-        if not vault:
+        # 本モジュールの探索ヘルパーに寄せる。以前はここだけ独自に
+        # OBSIDIAN_VAULT_PATH と直書きパスを見ており、_find_vault_path() が
+        # 返す Vault と別の場所へ改善ログを書きうる状態だった。
+        vault = _find_vault_path()
+        if not vault or not vault.exists():
             return {"success": False, "note_path": None, "error": "Vault not found"}
 
         try:

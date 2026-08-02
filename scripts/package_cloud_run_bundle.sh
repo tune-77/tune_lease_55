@@ -11,7 +11,10 @@ if [[ -d "$BUNDLE_DIR" ]]; then
   find "$BUNDLE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 fi
 
-SOURCE_VAULT="${OBSIDIAN_VAULT_PATH:-}"
+# env の優先順は runtime_paths.OBSIDIAN_VAULT_ENV_VARS に合わせる
+# （以前はここだけ OBSIDIAN_VAULT を見ておらず、それだけ設定された環境で
+#  既定パスに落ちて別 Vault をバンドルしうる状態だった）
+SOURCE_VAULT="${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-}}"
 if [[ -z "$SOURCE_VAULT" ]]; then
   for candidate in \
     "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"; do
