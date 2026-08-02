@@ -4,7 +4,7 @@
 
 set -uo pipefail
 
-PROJECT_DIR="/Users/kobayashiisaoryou/clawd/tune_lease_55"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="$PROJECT_DIR/.venv/bin/python"
 SYNC_SCRIPT="$PROJECT_DIR/scripts/sync_chromadb_to_gcs.sh"
 

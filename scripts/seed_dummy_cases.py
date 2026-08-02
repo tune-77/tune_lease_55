@@ -2,8 +2,16 @@ import sqlite3
 import json
 import datetime
 import os
+import sys
+from pathlib import Path
 
-db_path = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db"
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import get_db_path
+
+db_path = get_db_path()
 os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
 conn = sqlite3.connect(db_path)

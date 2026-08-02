@@ -64,6 +64,6 @@ def get_app_logs():
 
 """
 
-with open('/Users/kobayashiisaoryou/clawd/tune_lease_55/api/main.py', 'a') as f:
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'api', 'main.py'), 'a') as f:
     f.write(code_to_append)
 print("Appended Phase 15.4 APIs to main.py")

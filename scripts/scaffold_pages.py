@@ -22,7 +22,8 @@ routes = {
     'corporate-number': '企業番号設定'
 }
 
-base_path = '/Users/kobayashiisaoryou/clawd/tune_lease_55/frontend/src/app'
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+base_path = os.path.join(_REPO_ROOT, 'frontend', 'src', 'app')
 
 template = """
 "use client";

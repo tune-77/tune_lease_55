@@ -34,7 +34,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault  # noqa: E402
 
-PROJECT_ROOT = Path("/Users/kobayashiisaoryou/clawd/tune_lease_55")
+PROJECT_ROOT = _REPO_ROOT
 ORIGIN_VAULT = resolve_obsidian_vault()
 LEASE_VAULT = resolve_lease_wiki_vault()
 SYNC_ROOT = LEASE_VAULT / "99_Synced_From_Origin"

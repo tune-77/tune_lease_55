@@ -2,7 +2,7 @@
 # 日次改善パイプラインの入口
 # core と post を順番に呼ぶラッパー
 
-PROJECT_ROOT="/Users/kobayashiisaoryou/clawd/tune_lease_55"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${PROJECT_ROOT}/.venv/bin/python"
 LOG_DATE="$(date +%Y%m%d)"
 LOG_DIR="${HOME}/Library/Logs/tunelease"

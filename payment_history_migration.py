@@ -11,7 +11,9 @@ lease_logic_sumaho12.py の init_db ブロックからも呼ばれる。
 import os
 import sqlite3
 
-DB_PATH = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db"
+from runtime_paths import get_db_path
+
+DB_PATH = get_db_path()
 
 
 def run_migration() -> None:
