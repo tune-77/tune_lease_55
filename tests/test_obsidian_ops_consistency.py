@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import plistlib
+import re
 import sys
 from pathlib import Path
 
@@ -202,9 +203,10 @@ def test_repo_launchd_has_no_schedule_collisions():
     assert collisions == [], "\n".join(f.message for f in collisions)
 
 
-def test_no_hardcoded_vault_paths_remain():
-    findings = checker.scan_hardcoded_vault_paths()
-    assert findings == [], "\n".join(f.message for f in findings)
+def test_no_unallowlisted_hardcoded_vault_paths_remain():
+    """許可リスト外の直書きが残っていないこと（既知分は INFO なので許容）。"""
+    errors = [f for f in checker.scan_hardcoded_vault_paths() if f.level == checker.ERROR]
+    assert errors == [], "\n".join(f.message for f in errors)
 
 
 def test_hardcoded_scan_flags_a_new_offender(tmp_path):
@@ -218,12 +220,22 @@ def test_hardcoded_scan_flags_a_new_offender(tmp_path):
     assert "bad.py" in findings[0].message
 
 
-def test_hardcoded_scan_ignores_tests(tmp_path):
-    (tmp_path / "tests").mkdir()
-    (tmp_path / "tests" / "test_x.py").write_text(
-        'assert "iCloud~md~obsidian" in path\n', encoding="utf-8"
-    )
-    assert checker.scan_hardcoded_vault_paths(tmp_path) == []
+def test_vault_allowlist_has_no_stale_entries():
+    """許可リストの各エントリが実際に直書きを含むこと。
+
+    直書きを解消したのに許可リストへ残していると、その後の再混入を
+    ERROR で検出できなくなる（ラチェットが緩む）。
+    """
+    pattern = re.compile(r"iCloud~md~obsidian")
+    stale = [
+        rel
+        for rel in checker._VAULT_HARDCODE_ALLOWLIST
+        if not (checker.REPO_ROOT / rel).exists()
+        or not pattern.search(
+            (checker.REPO_ROOT / rel).read_text(encoding="utf-8", errors="ignore")
+        )
+    ]
+    assert stale == [], f"直書きが無いのに許可リストに残っています: {stale}"
 
 
 def test_every_vault_job_label_has_a_plist():

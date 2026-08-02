@@ -61,14 +61,9 @@ _VAULT_HARDCODE_ALLOWLIST: dict[str, str] = {
         "リポジトリ非依存の汎用 Obsidian スキルヘルパー。runtime_paths を"
         "import すると本リポジトリに結合してしまうため意図的に直書き"
     ),
-    "scripts/package_cloud_run_bundle.sh": (
-        "OBSIDIAN_VAULT_PATH 優先・シェル内で env 優先順は是正済み。"
-        "既定値のリテラルは Python 非依存のフォールバックとして維持"
-    ),
-    "scripts/run_daily_improvement_post.sh": (
-        "${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-<default>}} の"
-        "上書き可能なデフォルト値。env 優先順は runtime_paths と同一"
-    ),
+    # package_cloud_run_bundle.sh / run_daily_improvement_post.sh は
+    # scripts/resolve_obsidian_vault.sh 経由で runtime_paths に問い合わせる形にしたため、
+    # リテラルを持たなくなった。許可リストから外し、再び直書きされたら ERROR で気づけるようにする。
 }
 
 # マシン依存の絶対パス（/Users/<name>/...）を直書きしていることが分かっている箇所。

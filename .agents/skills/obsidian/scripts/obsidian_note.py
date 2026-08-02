@@ -8,24 +8,11 @@ import datetime as dt
 import os
 from pathlib import Path
 
-# runtime_paths を import するためリポジトリルートを sys.path に載せる
-import sys as _sys
-from pathlib import Path as _Path
-
-_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[4])
-if _RUNTIME_PATHS_ROOT not in _sys.path:
-    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
-
-from runtime_paths import (  # noqa: E402
-    resolve_icloud_obsidian_documents,
-    resolve_obsidian_vault,
-)
-
 
 def _home_candidates() -> list[Path]:
     home = Path.home()
     roots = [
-        resolve_icloud_obsidian_documents(),
+        home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
         home / "Documents",
         home / "Obsidian",
         home / "Library" / "Mobile Documents" / "com~apple~CloudDocs",
@@ -58,7 +45,7 @@ def require_vault(raw: str | None) -> Path:
         if not (vault / ".obsidian").exists():
             raise SystemExit(f"Not an Obsidian vault: {vault}")
         return vault
-    preferred = resolve_obsidian_vault()
+    preferred = Path.home() / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / "Obsidian Vault"
     if (preferred / ".obsidian").exists():
         return preferred.resolve()
     vaults = find_vaults()
