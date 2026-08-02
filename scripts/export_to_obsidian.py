@@ -27,9 +27,17 @@ from typing import Any
 
 # ── デフォルトパス ────────────────────────────────────────────────────────────
 
-REPO_ROOT = Path(__file__).parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 DEFAULT_DB_PATH = REPO_ROOT / "data" / "lease_data.db"
-DEFAULT_VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
+# Vault パスは runtime_paths が唯一の解決窓口。
+# 以前は ~/Documents/Obsidian Vault 決め打ちで、実 Vault が iCloud 側にある環境では
+# 常に「Vault パスが見つかりません」で失敗していた（--vault-path で上書きは可能）。
+DEFAULT_VAULT_PATH = resolve_obsidian_vault()
 OUTPUT_SUBDIR = "チャット記録"
 
 # user_id の表示名マッピング

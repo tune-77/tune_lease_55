@@ -18,7 +18,16 @@ from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-VAULT_PATH = Path.home() / "Documents" / "Obsidian Vault"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
+# Vault パスは runtime_paths が唯一の解決窓口。
+# 以前は ~/Documents/Obsidian Vault 決め打ちで、実 Vault が iCloud 側にある環境では
+# 存在しないディレクトリを mkdir して書き込み続けていた（Obsidian にも RAG にも現れない）。
+VAULT_PATH = resolve_obsidian_vault()
 OUTPUT_SUBDIR = "Claude会話記録"
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 
@@ -159,14 +168,21 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--days", type=int, default=7, help="何日分を対象にするか（デフォルト7）")
+    parser.add_argument("--vault", type=Path, default=VAULT_PATH, help="Obsidian Vault パス")
     args = parser.parse_args()
+
+    # Vault が実在しないまま mkdir すると、Obsidian からも RAG からも見えない
+    # 偽のディレクトリにログを書き続けることになる。書く前に必ず確かめる。
+    if not args.vault.is_dir():
+        print(f"エラー: Obsidian Vault が見つかりません: {args.vault}", file=sys.stderr)
+        return 1
 
     by_date = load_sessions(args.days)
     if not by_date:
         print("対象セッションなし")
-        return
+        return 0
 
-    out_dir = VAULT_PATH / OUTPUT_SUBDIR
+    out_dir = args.vault / OUTPUT_SUBDIR
     if not args.dry_run:
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -182,7 +198,8 @@ def main():
         print("[dry-run] 書き込みなし")
     else:
         print("完了")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
