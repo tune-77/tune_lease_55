@@ -6,7 +6,7 @@
 現在存在する Dialogue ファイルを読んで内省を生成・追記する。
 
 実行:
-    cd /Users/kobayashiisaoryou/clawd/tune_lease_55
+    cd <リポジトリルート>
     .venv/bin/python scripts/backfill_private_reflection.py [--dry-run] [--dates 2026-06-15,2026-06-16]
 """
 from __future__ import annotations

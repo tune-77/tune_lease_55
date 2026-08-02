@@ -15,10 +15,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from runtime_paths import get_db_path, resolve_obsidian_vault  # noqa: E402
 
 # パス設定
-DB_PATH = "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/lease_data.db"
+DB_PATH = get_db_path()
 VAULT_PATH = str(resolve_obsidian_vault())
 OUTPUT_DIR = f"{VAULT_PATH}/02-開発中_代替案/leaseDb_データ"
 

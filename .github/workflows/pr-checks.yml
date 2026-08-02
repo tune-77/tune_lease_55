@@ -120,3 +120,19 @@ jobs:
       - name: Preflight guard (warn-only)
         run: |
           python scripts/preflight_pr_guard.py | tee -a "$GITHUB_STEP_SUMMARY" || true
+
+  # Obsidian Vault パス解決の整合性 + マシン依存の絶対パス直書きを検査する。
+  # 既知の直書きは許可リスト方式で許容し、リストにない新規の直書きだけを
+  # ERROR として CI を失敗させる（scripts/check_obsidian_ops_consistency.py 参照）。
+  # スクリプトは stdlib のみで動くため追加依存は不要。
+  obsidian-ops-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Obsidian ops consistency check
+        run: python scripts/check_obsidian_ops_consistency.py

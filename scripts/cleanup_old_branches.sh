@@ -2,7 +2,7 @@
 # マージ済み auto-improve/* ブランチを削除（local + remote）
 set -euo pipefail
 
-REPO_DIR="/Users/kobayashiisaoryou/clawd/tune_lease_55"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_FILE="$HOME/Library/Logs/tunelease/branch_cleanup.log"
 
 mkdir -p "$(dirname "$LOG_FILE")"
