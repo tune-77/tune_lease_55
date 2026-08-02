@@ -220,3 +220,17 @@ def resolve_lease_wiki_vault(env: Mapping[str, str] | None = None) -> Path:
 
 def get_obsidian_vault_path() -> str:
     return str(resolve_obsidian_vault())
+
+
+def resolve_icloud_obsidian_documents(env: Mapping[str, str] | None = None) -> Path:
+    """iCloud 上の Obsidian Documents ルート（Vault の親ディレクトリ）。
+
+    Vault そのものではなく、その隣に置かれたノート群を読むスクリプト用。
+    既定では解決済み Vault の親を返すので、Vault を差し替えれば
+    こちらも自動的に追随する（両者がずれない）。
+    """
+    environ = os.environ if env is None else env
+    raw = (environ.get("OBSIDIAN_ICLOUD_DOCUMENTS") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return resolve_obsidian_vault(environ).parent

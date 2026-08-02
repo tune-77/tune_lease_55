@@ -24,7 +24,7 @@
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
     <key>PATH</key>
-    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/anaconda3/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
   </dict>
 
   <!-- 毎朝 06:20 に実行（06:00 の lease-news-collector が Vault へ書き終えた後に読む。

@@ -61,14 +61,9 @@ _VAULT_HARDCODE_ALLOWLIST: dict[str, str] = {
         "リポジトリ非依存の汎用 Obsidian スキルヘルパー。runtime_paths を"
         "import すると本リポジトリに結合してしまうため意図的に直書き"
     ),
-    "scripts/package_cloud_run_bundle.sh": (
-        "OBSIDIAN_VAULT_PATH 優先・シェル内で env 優先順は是正済み。"
-        "既定値のリテラルは Python 非依存のフォールバックとして維持"
-    ),
-    "scripts/run_daily_improvement_post.sh": (
-        "${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-<default>}} の"
-        "上書き可能なデフォルト値。env 優先順は runtime_paths と同一"
-    ),
+    # package_cloud_run_bundle.sh / run_daily_improvement_post.sh は
+    # scripts/resolve_obsidian_vault.sh 経由で runtime_paths に問い合わせる形にしたため、
+    # リテラルを持たなくなった。許可リストから外し、再び直書きされたら ERROR で気づけるようにする。
 }
 
 # マシン依存の絶対パス（/Users/<name>/...）を直書きしていることが分かっている箇所。
@@ -264,26 +259,46 @@ def check_schedule_collisions(
     return findings
 
 
+CANONICAL_INTERPRETER_SUFFIX = "/.venv/bin/python"
+
+
 def check_interpreters(jobs: Iterable[Job]) -> list[Finding]:
-    """Python 実行系がジョブ間でばらついていないか（依存differences の温床）。"""
+    """Python 実行系がジョブ間で統一されているか。
+
+    実行系が割れていると、あるジョブにだけ入っているパッケージに依存したコードが
+    別のジョブでは ImportError になる。全ジョブがプロジェクトの venv を使うのが規約。
+    """
     interpreters: dict[str, list[str]] = {}
     for job in jobs:
         interp = job.interpreter
         if interp:
             interpreters.setdefault(interp, []).append(job.label)
 
-    if len(interpreters) <= 1:
-        return []
+    findings: list[Finding] = []
 
-    detail = json.dumps(interpreters, ensure_ascii=False, indent=2)
-    return [
-        Finding(
-            WARNING,
-            "interpreter",
-            f"Python 実行系が {len(interpreters)} 種類に分かれています。"
-            f"インストール済みパッケージが揃わずジョブごとに失敗しえます:\n{detail}",
+    if len(interpreters) > 1:
+        detail = json.dumps(interpreters, ensure_ascii=False, indent=2)
+        findings.append(
+            Finding(
+                ERROR,
+                "interpreter",
+                f"Python 実行系が {len(interpreters)} 種類に分かれています。"
+                f"インストール済みパッケージが揃わずジョブごとに失敗します:\n{detail}",
+            )
         )
-    ]
+
+    for interp, labels in interpreters.items():
+        if not interp.endswith(CANONICAL_INTERPRETER_SUFFIX):
+            findings.append(
+                Finding(
+                    WARNING,
+                    "interpreter",
+                    f"{sorted(labels)} がプロジェクトの venv 以外の Python を使っています: {interp}"
+                    f"（規約: *{CANONICAL_INTERPRETER_SUFFIX}）",
+                )
+            )
+
+    return findings
 
 
 def check_vault_resolution() -> list[Finding]:

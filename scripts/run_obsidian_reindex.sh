@@ -5,7 +5,9 @@
 set -uo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON="$PROJECT_DIR/.venv/bin/python"
+# launchd 側の PYTHON_BIN と揃える（未設定なら venv）。
+# plist に PYTHON_BIN を出しておくと check_obsidian_ops_consistency.py が実行系を検出できる。
+PYTHON="${PYTHON_BIN:-$PROJECT_DIR/.venv/bin/python}"
 SYNC_SCRIPT="$PROJECT_DIR/scripts/sync_chromadb_to_gcs.sh"
 
 # --- Obsidian reindex ---

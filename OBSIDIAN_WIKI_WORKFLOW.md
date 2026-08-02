@@ -9,14 +9,27 @@ Vault は「審査ナレッジの置き場」であると同時に「RAG の索�
 ## 1. Vault パスの単一解決窓口
 
 **`runtime_paths.py` が唯一の解決窓口。**新しいコードで Vault パスを直書きしない。
+直書きが入ると整合性チェックが error で落ちる。
 
 ```python
-from runtime_paths import describe_obsidian_vault_resolution, resolve_obsidian_vault
+from runtime_paths import (
+    describe_obsidian_vault_resolution,
+    resolve_icloud_obsidian_documents,
+    resolve_obsidian_vault,
+)
 
 vault = resolve_obsidian_vault()               # Path が欲しいだけならこれ
+docs = resolve_icloud_obsidian_documents()     # Vault の親（lease-wiki-vault などの隣接ノート用）
 
 resolution = describe_obsidian_vault_resolution()   # 解決元と警告も欲しいとき
 print(resolution.path, resolution.source, resolution.warnings)
+```
+
+シェルスクリプトからは共有ヘルパー経由で取る:
+
+```bash
+source "$(dirname "${BASH_SOURCE[0]}")/resolve_obsidian_vault.sh"
+VAULT="$(resolve_obsidian_vault)"   # 解決できないときは空文字（呼び出し側でフォールバック）
 ```
 
 ### 解決順序（`runtime_paths.OBSIDIAN_VAULT_ENV_VARS`）
@@ -70,28 +83,48 @@ print(resolution.path, resolution.source, resolution.warnings)
 - `aurion-core-midnight`（02:00）→ `obsidian-reindex`（03:00）の順。逆だと当夜の書き込みが索引に入るのが翌日になる
 - `lease-news-collector`（06:00）→ `aurion-core-morning-report`（06:20）の順。朝報告が当日ニュースを読めるようにするため
 
+### Python 実行系
+
+**全ジョブがプロジェクトの venv (`.venv/bin/python`) を使う。** 以前は
+`.venv/bin/python` / `anaconda3/bin/python` / `anaconda3/bin/python3` の3系統に
+分かれており、あるジョブにだけ入っているパッケージに依存したコードが
+別ジョブでは ImportError になる状態だった。
+
+- plist の `ProgramArguments` と `PYTHON_BIN` は両方とも venv を指す
+- `PATH` は `.venv/bin` を先頭に置く（anaconda はフォールバックとして末尾に残す）
+- launchd は `.zshrc` を読まないため `/opt/homebrew/bin`（gcloud 用）も明示する
+- シェルラッパーの既定も venv。`PYTHON_BIN` で上書きできる
+
+実行系を変えたら、**Mac の実機で**依存が揃っているか確認する:
+
+```bash
+python3 scripts/check_launchd_python_env.py
+```
+
+各ジョブのエントリスクリプトのトップレベル import（欠けると起動時点で落ちる）と
+遅延 import（欠けてもその経路だけ落ちる）を分けて検証する。
+
 ### ジョブを追加・変更するときの規約
 
 1. **Vault を触るジョブは `OBSIDIAN_VAULT_PATH` と `OBSIDIAN_VAULT` を同値で両方設定する**
 2. `scripts/check_obsidian_ops_consistency.py` の `VAULT_JOB_LABELS` にラベルを追加する
 3. 他の Vault ジョブと **10分以上** 間隔を空ける
-4. 変更後に整合性チェックを回す:
+4. Python 実行系は venv に揃える
+5. 変更後に整合性チェックを回す:
 
 ```bash
 python3 scripts/check_obsidian_ops_consistency.py
-python3 -m pytest tests/test_obsidian_ops_consistency.py -q
+python3 scripts/check_launchd_python_env.py      # Mac 実機で
+python3 -m pytest tests/test_obsidian_ops_consistency.py tests/test_launchd_python_env.py -q
 ```
 
-このチェックは日次改善パイプライン（`run_daily_improvement_post.sh`）からも毎朝走り、
-結果は `reports/obsidian_ops_consistency_latest.json` に出る。
+整合性チェックは日次改善パイプライン（`run_daily_improvement_post.sh`）からも毎朝走り、
+結果は `reports/obsidian_ops_consistency_latest.json` に出る。以下は **error** として検出される:
 
-### 既知の未解決事項
-
-- **Python 実行系が3系統に分かれている**（`.venv/bin/python` / `anaconda3/bin/python` /
-  `anaconda3/bin/python3`）。ジョブごとに入っているパッケージが違うと片方だけ落ちる。
-  統一は依存関係の実地確認が要るため未実施。整合性チェックが warning として毎朝報告する
-- **Vault パスを直書きしているファイルが約40件残っている**。`runtime_paths` への集約は未完。
-  整合性チェックが件数を報告する。新規コードでは直書きしないこと
+- Vault の env が片方だけ／値が食い違う
+- Vault ジョブ同士が同時刻に発火する
+- Python 実行系が割れている
+- Vault パスを直書きしたファイルが増えた
 
 ---
 

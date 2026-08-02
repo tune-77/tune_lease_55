@@ -16,14 +16,18 @@
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
     <key>OBSIDIAN_VAULT_PATH</key>
     <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>OBSIDIAN_VAULT</key>
     <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>PYTHON_BIN</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
     <key>PATH</key>
-    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
   </dict>
 
   <!-- 毎晩 03:00 に実行（reindex完了後にChromaDB→GCS sync + Cloud Run再起動） -->

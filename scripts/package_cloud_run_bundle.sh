@@ -11,18 +11,13 @@ if [[ -d "$BUNDLE_DIR" ]]; then
   find "$BUNDLE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 fi
 
-# env の優先順は runtime_paths.OBSIDIAN_VAULT_ENV_VARS に合わせる
-# （以前はここだけ OBSIDIAN_VAULT を見ておらず、それだけ設定された環境で
-#  既定パスに落ちて別 Vault をバンドルしうる状態だった）
-SOURCE_VAULT="${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-}}"
-if [[ -z "$SOURCE_VAULT" ]]; then
-  for candidate in \
-    "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"; do
-    if [[ -d "$candidate" ]]; then
-      SOURCE_VAULT="$candidate"
-      break
-    fi
-  done
+# Vault パスは runtime_paths が唯一の解決窓口。
+# env の優先順（OBSIDIAN_VAULT_PATH → OBSIDIAN_VAULT）も既定パスもそちらが決めるので、
+# ここに候補を直書きしない（直書きすると Python 側の解決結果とずれ、別 Vault をバンドルしうる）。
+source "$ROOT_DIR/scripts/resolve_obsidian_vault.sh"
+SOURCE_VAULT="$(resolve_obsidian_vault)"
+if [[ -n "$SOURCE_VAULT" && ! -d "$SOURCE_VAULT" ]]; then
+  SOURCE_VAULT=""
 fi
 
 mkdir -p "$DATA_OUT" "$VAULT_OUT"

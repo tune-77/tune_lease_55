@@ -23,6 +23,16 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 from urllib.parse import urlencode
 
+# runtime_paths を import するためリポジトリルートを sys.path に載せる
+import sys as _sys
+from pathlib import Path as _Path
+
+_RUNTIME_PATHS_ROOT = str(_Path(__file__).resolve().parents[1])
+if _RUNTIME_PATHS_ROOT not in _sys.path:
+    _sys.path.insert(0, _RUNTIME_PATHS_ROOT)
+
+from runtime_paths import resolve_obsidian_vault  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
