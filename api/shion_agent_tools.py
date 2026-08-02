@@ -18,6 +18,7 @@ from lease_intelligence_tools import (
     get_system_overview,
     get_weekly_trend,
     recall_judgment_memory,
+    score_full_case,
     search_cases,
     search_obsidian_context,
 )
@@ -25,7 +26,8 @@ from lease_intelligence_tools import (
 # ローカル SQLite / JSON / ログファイル読み取りのみ。外部 API を叩かない（追加課金ゼロ）。
 READ_ONLY_DB_TOOLS = [
     search_cases,              # 類似・過去案件の検索
-    get_score_detail,          # 企業名からスコア内訳を取得
+    get_score_detail,          # 企業名からスコア内訳を取得（過去の採点結果）
+    score_full_case,           # 目の前の案件を新規に採点（DB保存なしの試算）
     get_portfolio_stats,       # 審査DB全体の統計（成約率・分布・業種構成）
     get_weekly_trend,          # 週次トレンド
     get_system_overview,       # モデル・閾値・データ規模のスナップショット

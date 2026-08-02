@@ -104,9 +104,14 @@ def get_score_detail(company_name: str) -> dict[str, Any]:
     tenant = float(row["tenant_score"] or 0)
     q_risk = float(row["q_risk_score"] or 0)
 
-    if total >= 70:
+    # 承認ラインは constants を唯一の定義元にする。ここを直書きすると
+    # 同じエージェントが get_score_detail と assess_risk_level で
+    # 矛盾した判定を返す（実際に 70 直書き × APPROVAL_LINE=71 でずれていた）。
+    from constants import APPROVAL_LINE, CONDITIONAL_LINE
+
+    if total >= APPROVAL_LINE:
         verdict = "承認"
-    elif total >= 60:
+    elif total >= CONDITIONAL_LINE:
         verdict = "条件付き承認"
     else:
         verdict = "否決"
@@ -146,6 +151,114 @@ def get_score_detail(company_name: str) -> dict[str, Any]:
         "risk_flags": risk_flags,
         "input_summary": input_summary,
     }
+
+
+def score_full_case(
+    industry_major: str,
+    nenshu: float,
+    op_profit: float,
+    net_assets: float,
+    total_assets: float,
+    acquisition_cost: float,
+    lease_term: int = 60,
+    company_name: str = "",
+    industry_sub: str = "",
+    grade: str = "②4-6 (標準)",
+    customer_type: str = "既存先",
+    asset_name: str = "",
+) -> dict[str, Any]:
+    """案件情報から審査スコアを実際に算出する（DBには保存しない）。
+
+    過去案件を引く get_score_detail と違い、**目の前の案件を新規に採点する**ツール。
+    「この条件だと何点になるか」「売上がこうだったら判定は変わるか」に答えるときに使う。
+
+    金額はすべて **千円** 単位で渡すこと（百万円ではない）。
+    例: 売上高 5億円 → nenshu=500000
+
+    Args:
+        industry_major: 大分類業種（例: 'D 建設業', 'C 製造業'）
+        nenshu: 売上高（千円）
+        op_profit: 営業利益（千円）
+        net_assets: 純資産（千円）
+        total_assets: 総資産（千円）※0不可
+        acquisition_cost: 物件の取得価格（千円）
+        lease_term: リース期間（月）
+        company_name: 企業名（任意）
+        industry_sub: 小分類業種（任意。未指定なら既定値）
+        grade: 社内格付（例: '②4-6 (標準)'）
+        customer_type: '既存先' または '新規先'
+        asset_name: 対象物件名（任意）
+
+    Returns:
+        score / score_base / hantei / 物件・借手・Q_risk の内訳と、
+        判定に使った approval_line・conditional_line を含む辞書。
+        算出に失敗した場合は {"scored": False, "error": ...}。
+    """
+    from constants import APPROVAL_LINE, CONDITIONAL_LINE
+
+    try:
+        # ScoringRequest に通して未指定項目を既定値で埋める（API と同じ入力形にする）
+        from api.schemas import ScoringRequest
+        from scoring_core import run_full_api_scoring
+
+        payload: dict[str, Any] = {
+            "company_name": company_name,
+            "nenshu": float(nenshu),
+            "op_profit": float(op_profit),
+            "net_assets": float(net_assets),
+            "total_assets": float(total_assets) or 1.0,
+            "acquisition_cost": float(acquisition_cost),
+            "lease_term": int(lease_term),
+            "industry_major": industry_major,
+            "grade": grade,
+            "customer_type": customer_type,
+            "asset_name": asset_name,
+        }
+        if industry_sub:
+            payload["industry_sub"] = industry_sub
+
+        inputs = ScoringRequest(**payload).model_dump()
+        # /api/score/full と違い DB 保存や派生ブロック生成は通さない。
+        # エージェントのツールは読み取り専用に保ち、採点だけで案件レコードを作らない。
+        result = run_full_api_scoring(inputs)
+    except Exception as exc:  # noqa: BLE001 - ツールは落とさず理由を返す
+        return {"scored": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    score = float(result.get("score", 0) or 0)
+    return {
+        "scored": True,
+        "company_name": company_name,
+        "score": score,
+        "score_base": result.get("score_base", score),
+        "hantei": result.get("hantei", ""),
+        "asset_score": result.get("asset_score"),
+        # 借手スコアは score_borrower、Q_risk は quantum_risk。
+        # tenant_score / q_risk_score は screening_records の**DBカラム名**であって
+        # エンジンの返却キーではない（取り違えても例外にならず黙って None になる）。
+        "tenant_score": result.get("score_borrower"),
+        "q_risk_score": result.get("quantum_risk"),
+        "credit_quantum_strong_warning": result.get("credit_quantum_strong_warning"),
+        "asset_warnings": result.get("asset_warnings"),
+        "approval_line": result.get("approval_line", APPROVAL_LINE),
+        "conditional_line": CONDITIONAL_LINE,
+        "engine_source": result.get("engine_source"),
+        "note": "このスコアはDBに保存していない試算値。確定させるには通常の審査導線を通すこと",
+    }
+
+
+# score_full_case がスコアリングエンジンから読み出すキー。
+# エンジン側のリネームで黙って None になるのを防ぐため、テストで実在を検証する。
+SCORE_FULL_CASE_ENGINE_KEYS = (
+    "score",
+    "score_base",
+    "hantei",
+    "asset_score",
+    "score_borrower",
+    "quantum_risk",
+    "credit_quantum_strong_warning",
+    "asset_warnings",
+    "approval_line",
+)
 
 
 def get_scoring_coefficients(model: str = "", feature: str = "") -> dict[str, Any]:

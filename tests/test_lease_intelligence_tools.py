@@ -1,3 +1,5 @@
+import pytest
+
 from lease_intelligence_tools import (
     execute_tool,
     inspect_scoring_policy,
@@ -572,3 +574,89 @@ def test_obsidian_query_expands_scoring_identifiers_to_business_terms():
     assert "最終スコア" in terms
     assert "担保価値" in terms
     assert "配点" in terms
+
+
+# ---------- 承認ラインの単一定義（ツール間で判定が食い違わないこと） ----------
+
+def test_get_score_detail_uses_constants_approval_line(tmp_path, monkeypatch):
+    """get_score_detail の判定が constants.APPROVAL_LINE に従うこと。
+
+    以前ここだけ `>= 70` を直書きしており、APPROVAL_LINE=71 とずれていた。
+    その結果スコア70の案件が、同じエージェント内で get_score_detail では「承認」、
+    assess_risk_level では「条件付き承認」という矛盾した回答になっていた。
+    """
+    import json
+
+    import lease_intelligence_tools as tools
+    from constants import APPROVAL_LINE
+
+    boundary = float(APPROVAL_LINE)
+    db = tmp_path / "lease_data.db"
+    _seed_screening_db(
+        db,
+        [
+            ("境界上", "2026-08-01T09:00:00Z", boundary, 60.0, json.dumps({"company_name": "境界上"})),
+            ("境界下", "2026-08-01T09:00:00Z", boundary - 1, 60.0, json.dumps({"company_name": "境界下"})),
+        ],
+    )
+    monkeypatch.setattr(tools, "DB_PATH", str(db))
+
+    assert tools.get_score_detail("境界上")["verdict"] == "承認"
+    assert tools.get_score_detail("境界下")["verdict"] == "条件付き承認"
+
+
+def test_score_detail_and_assess_risk_agree_at_the_boundary(tmp_path, monkeypatch):
+    """同じスコアに対し2つのツールが同じ判定を返すこと。"""
+    import json
+
+    import lease_intelligence_tools as tools
+    from constants import APPROVAL_LINE
+
+    api_agent = pytest.importorskip("api.shion_agent")
+
+    db = tmp_path / "lease_data.db"
+    _seed_screening_db(
+        db,
+        [("X", "2026-08-01T09:00:00Z", float(APPROVAL_LINE), 60.0, json.dumps({"company_name": "X"}))],
+    )
+    monkeypatch.setattr(tools, "DB_PATH", str(db))
+
+    from_detail = tools.get_score_detail("X")["verdict"]
+    from_assess = api_agent.assess_risk_level(float(APPROVAL_LINE), None, [])["hantei"]
+
+    assert from_detail == from_assess
+
+
+def test_score_full_case_reads_keys_that_the_engine_actually_returns():
+    """score_full_case が読むキーが scoring_core の返却辞書に実在すること。
+
+    tenant_score / q_risk_score は screening_records の**DBカラム名**であって
+    エンジンの返却キーではない（正しくは score_borrower / quantum_risk）。
+    取り違えても例外にならず黙って None が返るため、静的に実在を検証する。
+    numpy 等が無い環境でも動くよう、import ではなくソースの AST を見る。
+    """
+    import ast
+    from pathlib import Path
+
+    from lease_intelligence_tools import SCORE_FULL_CASE_ENGINE_KEYS
+
+    src = Path(__file__).resolve().parents[1] / "scoring_core.py"
+    tree = ast.parse(src.read_text(encoding="utf-8"))
+
+    returned: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != "run_quick_scoring":
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict):
+                for key in sub.value.keys:
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                        returned.add(key.value)
+
+    assert returned, "run_quick_scoring の返却辞書を解析できなかった"
+    # engine_source は run_full_api_scoring が後付けするため対象外。
+    missing = [k for k in SCORE_FULL_CASE_ENGINE_KEYS if k not in returned]
+    assert missing == [], (
+        f"scoring_core が返さないキーを読もうとしています: {missing}。"
+        f"実際の返却キー: {sorted(returned)}"
+    )
