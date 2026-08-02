@@ -17,6 +17,11 @@
 
 注意: このモジュールは google.adk / scoring_core を**モジュール先頭で import しない**
 （どの環境でも import 可能にし、フォールバックの劣化経路をテストできるようにするため）。
+
+api/shion_agent.py（本流・ツール呼び出し可能・継続的に機能追加中）とは別系統。
+本モジュールの4エージェント（懐疑派/楽観派/革新派/仲裁役）はいずれも tools= を
+持たず、純粋な指示ベースの討論のみを行う。凍結済みで、機能追加は shion_agent.py
+側で行う方針。
 """
 
 from __future__ import annotations

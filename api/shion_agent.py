@@ -1,6 +1,13 @@
 """
-紫苑 ADK エージェント
-軍師AIのバックエンドとして機能し、ツールを自律呼び出しして審査コメントを生成する。
+紫苑 ADK エージェント（本流）
+
+api/routers/gunshi.py のストリーミング経路から呼ばれる、ツール呼び出し可能な
+本番エージェント。継続的にツールが追加されており（api/shion_agent_tools.py の
+READ_ONLY_DB_TOOLS、api/shion_vertex_tools.py の VERTEX_AGENT_TOOLS 等）、
+google.adk はモジュール先頭で import する方針を採る。
+
+フォールバック専用の別実装として api/shion_debate_adk.py（凍結・ツール無し・
+多エージェント討論形式）が存在する。両者は設計方針が異なるため統合はしない。
 """
 from __future__ import annotations
 
