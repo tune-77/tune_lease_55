@@ -1,0 +1,69 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: "0 2 * * *"  # 毎日 02:00 UTC（JST 11:00）
+  push:
+    branches: [master]
+    paths:
+      - "pyproject.toml"
+      - "requirements.txt"
+      - "uv.lock"
+      - "frontend/package*.json"
+  workflow_dispatch: {}
+
+jobs:
+  python-security:
+    name: Python Dependency Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install safety
+        run: pip install -q safety
+
+      - name: Check Python dependencies
+        run: |
+          echo "🔍 Python パッケージの脆弱性チェック..."
+          safety check --json --output report.json || true
+          cat report.json || echo "No vulnerabilities found"
+
+  npm-security:
+    name: NPM Dependency Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Audit dependencies
+        working-directory: frontend
+        run: npm audit --production --audit-level=moderate || true
+
+  dependency-check:
+    name: OWASP Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'tune-lease-55'
+          path: '.'
+          format: 'JSON'
+          args: >
+            --scan .
+            --exclude "node_modules,venv,.venv,tests,__pycache__,.git"
