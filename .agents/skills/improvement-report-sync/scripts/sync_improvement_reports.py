@@ -44,12 +44,20 @@ def pipeline_skill_dir(root: Path) -> Path:
 def latest_report_path(root: Path) -> Path:
     reports = sorted((root / "reports").glob("improvement_report_*.json"))
     if not reports:
-        raise SystemExit("No reports/improvement_report_*.json files found.")
+        print("エラー: reports/improvement_report_*.json ファイルが見つかりません", file=sys.stderr)
+        raise SystemExit(1)
     return reports[-1]
 
 
 def load_json(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, IOError) as e:
+        print(f"エラー: JSON ファイルの読み込みに失敗（パス: {path}）: {e}", file=sys.stderr)
+        raise
+    except json.JSONDecodeError as e:
+        print(f"エラー: JSON ファイルの構文エラー（パス: {path}）: {e}", file=sys.stderr)
+        raise
 
 
 def dump_json(path: Path, data: dict) -> None:
@@ -79,7 +87,13 @@ def load_ledger_latest(ledger_path: Path) -> dict[str, dict]:
     if not ledger_path.exists():
         return latest
 
-    for line in ledger_path.read_text(encoding="utf-8").splitlines():
+    try:
+        content = ledger_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        print(f"警告: ledger ファイルの読み込みに失敗（パス: {ledger_path}）: {e}", file=sys.stderr)
+        return latest
+
+    for line in content.splitlines():
         line = line.strip()
         if not line:
             continue
@@ -109,7 +123,8 @@ def load_canonical_key_func(root: Path):
         sys.path.insert(0, str(scripts_dir))
     try:
         from improvement_identity import canonical_key  # type: ignore
-    except Exception:
+    except Exception as e:
+        print(f"警告: improvement_identity モジュールのロード失敗（canonical_key は利用不可）: {e}", file=sys.stderr)
         return None
     return canonical_key
 
@@ -424,8 +439,18 @@ def main() -> None:
 
     root = repo_root()
     report_path = args.report or latest_report_path(root)
-    report = load_json(report_path)
-    latest = load_json(args.latest) if args.latest.exists() else {}
+
+    try:
+        report = load_json(report_path)
+    except (SystemExit, OSError, IOError, json.JSONDecodeError) as e:
+        print(f"エラー: レポートファイルの読み込みに失敗しました: {e}", file=sys.stderr)
+        raise SystemExit(1)
+
+    try:
+        latest = load_json(args.latest) if args.latest.exists() else {}
+    except (OSError, IOError, json.JSONDecodeError) as e:
+        print(f"警告: latest ファイルの読み込みに失敗（空のオブジェクトで継続）: {e}", file=sys.stderr)
+        latest = {}
 
     applied_ids = list(args.applied)
     if args.from_report or not applied_ids:
@@ -443,15 +468,22 @@ def main() -> None:
 
     parked_ids = list(args.parked)
     if args.from_ledger:
-        canonical_key_func = load_canonical_key_func(root)
-        ledger_applied_ids, ledger_parked_ids = infer_status_ids_from_ledger(
-            report,
-            latest,
-            args.ledger.expanduser(),
-            canonical_key_func=canonical_key_func,
-        )
-        applied_ids.extend(item_id for item_id in ledger_applied_ids if item_id not in applied_ids)
-        parked_ids.extend(item_id for item_id in ledger_parked_ids if item_id not in parked_ids)
+        ledger_path = args.ledger.expanduser()
+        if not ledger_path.exists():
+            print(f"警告: ledger ファイルが見つかりません（パス: {ledger_path}）、--from-ledger をスキップします", file=sys.stderr)
+        else:
+            try:
+                canonical_key_func = load_canonical_key_func(root)
+                ledger_applied_ids, ledger_parked_ids = infer_status_ids_from_ledger(
+                    report,
+                    latest,
+                    ledger_path,
+                    canonical_key_func=canonical_key_func,
+                )
+                applied_ids.extend(item_id for item_id in ledger_applied_ids if item_id not in applied_ids)
+                parked_ids.extend(item_id for item_id in ledger_parked_ids if item_id not in parked_ids)
+            except Exception as e:
+                print(f"警告: ledger から apply/parked 情報を読み込み中にエラー（スキップ）: {e}", file=sys.stderr)
 
     if not applied_ids and not applied_titles and not parked_ids and not parked_titles:
         print("適用済み改善項目なし（スキップ）")
@@ -485,9 +517,17 @@ def main() -> None:
         }, ensure_ascii=False, indent=2))
         return
 
-    dump_json(report_path, updated_report)
-    if updated_latest:
-        dump_json(args.latest, updated_latest)
+    try:
+        dump_json(report_path, updated_report)
+    except (OSError, IOError) as e:
+        print(f"エラー: レポートファイルの書き込みに失敗（パス: {report_path}）: {e}", file=sys.stderr)
+        raise
+
+    try:
+        if updated_latest:
+            dump_json(args.latest, updated_latest)
+    except (OSError, IOError) as e:
+        print(f"警告: latest ファイルの書き込みに失敗（パス: {args.latest}）: {e}", file=sys.stderr)
 
     print(f"Updated report: {report_path}")
     print(f"Updated latest: {args.latest}")
