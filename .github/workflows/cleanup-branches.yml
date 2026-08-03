@@ -1,0 +1,58 @@
+name: Cleanup Old Branches
+
+on:
+  schedule:
+    - cron: "0 5 * * 0"  # 毎週日曜 05:00 UTC（JST 14:00）
+  workflow_dispatch: {}
+
+jobs:
+  cleanup:
+    name: Delete Merged & Stale Branches
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete merged branches
+        run: |
+          echo "🧹 マージ済みブランチを削除..."
+          git fetch -q --prune
+
+          merged_count=0
+          for branch in $(git branch -r --merged origin/master | grep -v master | sed 's|origin/||'); do
+            if [[ ! "$branch" =~ ^(master|main|develop|dev)$ ]]; then
+              echo "削除: $branch"
+              git push origin --delete "$branch" || true
+              ((merged_count++))
+            fi
+          done
+
+          echo "✅ $merged_count 個のマージ済みブランチを削除しました"
+
+      - name: Delete stale branches (30+ days old)
+        run: |
+          echo "🧹 30日以上更新がないブランチを削除..."
+          git fetch -q --prune
+
+          stale_count=0
+          cutoff_date=$(date -d "30 days ago" +%s)
+
+          for branch in $(git branch -r | grep -v master | sed 's|origin/||'); do
+            last_commit_date=$(git log -1 --format=%at "origin/$branch" 2>/dev/null || echo 0)
+            if [ "$last_commit_date" -lt "$cutoff_date" ]; then
+              echo "削除: $branch (最終更新: $(date -d @$last_commit_date))"
+              git push origin --delete "$branch" || true
+              ((stale_count++))
+            fi
+          done
+
+          echo "✅ $stale_count 個の古いブランチを削除しました"
+
+      - name: Summary
+        run: |
+          echo "📊 ブランチクリーンアップ完了" >> $GITHUB_STEP_SUMMARY
+          git fetch -q
+          echo "現在のブランチ数: $(git branch -r | wc -l)" >> $GITHUB_STEP_SUMMARY
