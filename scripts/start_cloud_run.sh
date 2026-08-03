@@ -53,9 +53,7 @@ python "$(dirname "$0")/restore_prompt_feedback_snapshot.py" || true
 python -m uvicorn api.main:app \
   --host "$FASTAPI_HOST" \
   --port "$FASTAPI_PORT" \
-  --workers 1 \
-  --loop uvloop \
-  --http h11 &
+  --workers 1 &
 api_pid=$!
 
 shutdown_requested=0
