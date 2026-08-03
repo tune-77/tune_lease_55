@@ -60,19 +60,19 @@ RECALL_ROUTES: dict[str, list[MemoryType]] = {
     "user_preference": ["dialogue_memory", "value_memory"],
 }
 
-_VALUE_TERMS = (
-    "Mana",
-    "良心",
-    "上位規範",
-    "守るべき",
-    "迎合",
-    "人を道具",
-    "説明責任",
-)
-_REFLECTION_TERMS = ("内省", "Private Reflection", "迷い", "違和感", "退屈", "ぼやき")
-_TECH_TERMS = ("api/", "frontend/", "script", "テスト", "実装", "Cloud Run", "RAG", "ChromaDB", "LaunchAgent")
-_JUDGMENT_TERMS = ("承認", "否決", "条件付き", "審査", "判断", "リスク", "スコア", "与信")
-_DIALOGUE_TERMS = ("User", "ユーザー", "好み", "方針", "覚えて", "相談")
+# 想起時ルーティング（api/shion_memory_recall.py）と共有する語彙。
+# ここを変更すると保存時分類・想起時ルーティングの双方に影響するため要注意。
+SHARED_VALUE_TERMS = ("Mana", "良心")
+SHARED_REFLECTION_TERMS = ("内省",)
+SHARED_TECH_TERMS = ("実装", "テスト", "Cloud Run", "RAG", "ChromaDB")
+SHARED_JUDGMENT_TERMS = ("審査", "承認", "否決", "スコア", "与信", "リスク")
+SHARED_DIALOGUE_TERMS = ("好み", "方針", "覚えて")
+
+_VALUE_TERMS = SHARED_VALUE_TERMS + ("上位規範", "守るべき", "迎合", "人を道具", "説明責任")
+_REFLECTION_TERMS = SHARED_REFLECTION_TERMS + ("Private Reflection", "迷い", "違和感", "退屈", "ぼやき")
+_TECH_TERMS = SHARED_TECH_TERMS + ("api/", "frontend/", "script", "LaunchAgent")
+_JUDGMENT_TERMS = SHARED_JUDGMENT_TERMS + ("条件付き", "判断")
+_DIALOGUE_TERMS = SHARED_DIALOGUE_TERMS + ("User", "ユーザー", "相談")
 
 
 @dataclass
