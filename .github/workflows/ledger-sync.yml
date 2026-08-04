@@ -10,13 +10,19 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
 
     steps:
+      # master への直pushはブランチ保護で拒否されるため、PAT (LEDGER_SYNC_PAT) で
+      # ブランチ作成 → PR作成 → auto-merge する経路に変更。
+      # GITHUB_TOKEN で作成した PR は再帰防止のため pr-checks.yml を起動できないので、
+      # このステップだけ GITHUB_TOKEN ではなく PAT を使う（PATなら通常のPRと同様に
+      # pull_request イベントが発火し、required status checks が実行される）。
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.LEDGER_SYNC_PAT }}
+          ref: master
 
       - uses: actions/setup-python@v5
         with:
@@ -24,21 +30,34 @@ jobs:
 
       - name: Run cleanup_improvement_reviews --apply
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LEDGER_SYNC_PAT }}
           LEDGER_PATH: ${{ github.workspace }}/scripts/improvement_ledger.jsonl
         run: |
           python3 scripts/cleanup_improvement_reviews.py --apply
 
-      - name: Commit updated ledger
+      - name: Open PR with updated ledger and enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.LEDGER_SYNC_PAT }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add scripts/improvement_ledger.jsonl
           if git diff --cached --quiet; then
             echo "No ledger changes to commit"
-          else
-            PR_TITLE="${{ github.event.pull_request.title }}"
-            PR_NUM="${{ github.event.pull_request.number }}"
-            git commit -m "chore: ledger sync after PR #${PR_NUM} merge"
-            git push origin master
+            exit 0
           fi
+
+          PR_NUM="${{ github.event.pull_request.number }}"
+          BRANCH="chore/ledger-sync-pr-${PR_NUM}"
+
+          git checkout -b "$BRANCH"
+          git commit -m "chore: ledger sync after PR #${PR_NUM} merge"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --base master \
+            --head "$BRANCH" \
+            --title "chore: ledger sync after PR #${PR_NUM} merge" \
+            --body "PR #${PR_NUM} merge後の \`cleanup_improvement_reviews.py --apply\` による自動更新です。"
+
+          gh pr merge "$BRANCH" --auto --squash --delete-branch
