@@ -201,8 +201,8 @@ def reconcile_pending(now: datetime | None = None) -> list[dict[str, Any]]:
     return reconciled
 
 
-def get_pending_tasks() -> list[dict[str, Any]]:
-    return [t for t in reconcile_pending() if t.get("status") == "pending"]
+def get_pending_tasks(now: datetime | None = None) -> list[dict[str, Any]]:
+    return [t for t in reconcile_pending(now) if t.get("status") == "pending"]
 
 
 def attach_finding(task_id: str, finding: str, now: datetime | None = None) -> bool:
