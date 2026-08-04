@@ -111,6 +111,14 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
     """記憶索引の内容をベクトルコレクションへ同期する（全量再構築）。
 
     private / deprecated は想起対象外なので同期しない。
+
+    呼び出し元は2箇所ある:
+      1. scripts/build_shion_memory_vector_index.py（バッチ、通常経路）
+      2. _background_sync_worker（本モジュール下部、Cloud Run 初回起動時の
+         ランタイム自動復元）— 他の記憶系ファイルが「バッチ実行のみ・
+         ランタイムでは書き込まない」方針を採る中で、これが唯一の意図的な例外。
+         Cloud Run はデプロイの度にベクトルコレクションが空になるため、
+         起動時に一度だけ index から再構築する必要がある。
     """
     collection = _get_collection()
     encoder = _get_encoder()

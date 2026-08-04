@@ -58,4 +58,13 @@ if [ -f "${RESULT_FILE}" ]; then
 fi
 echo "ログファイル: ${LOG_FILE}"
 echo "========================================"
+
+# パイプライン失敗を記録（リカバリー監視用）
+if [ ${FINAL_EXIT} -ne 0 ]; then
+    echo ""
+    echo "[監視] パイプライン失敗を検出・記録中..."
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/detect_pipeline_failures.py" \
+        --record-failure "${LOG_FILE}" || true
+fi
+
 exit "${FINAL_EXIT}"

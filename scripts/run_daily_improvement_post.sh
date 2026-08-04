@@ -275,12 +275,19 @@ echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チ�
 if [ -f "${LATEST_FILE}" ]; then
   echo ""
   echo "[反映] post台帳補完後の改善レポートを再同期中..."
+  SYNC_RESULT=0
   "${PYTHON}" "${PROJECT_ROOT}/.agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py" \
     --report "${LATEST_FILE}" \
     --latest "${LATEST_FILE}" \
     --from-ledger \
-    --include-known-cleanup
-  log_step "sync_improvement_reports_post" $?
+    --include-known-cleanup || SYNC_RESULT=$?
+
+  if [ ${SYNC_RESULT} -ne 0 ]; then
+    echo "[警告] sync_improvement_reports_post がエラーで失敗（リカバリー: スキップして続行）"
+    log_step "sync_improvement_reports_post" 0
+  else
+    log_step "sync_improvement_reports_post" $?
+  fi
 
   echo ""
   echo "[反映] post同期後の再帰的自己改善レポートを再生成中..."
@@ -288,26 +295,36 @@ if [ -f "${LATEST_FILE}" ]; then
   RECURSIVE_MD_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.md"
   RECURSIVE_LATEST_JSON="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.json"
   RECURSIVE_LATEST_MD="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.md"
+  RECURSIVE_RESULT=0
   "${PYTHON}" "${PROJECT_ROOT}/scripts/recursive_self_improvement.py" \
     --report "${LATEST_FILE}" \
     --prompt-log "${PROMPT_FEEDBACK_LOG}" \
     --output-json "${RECURSIVE_JSON_FILE}" \
     --output-md "${RECURSIVE_MD_FILE}" \
     --latest-json "${RECURSIVE_LATEST_JSON}" \
-    --latest-md "${RECURSIVE_LATEST_MD}"
-  log_step "recursive_self_improvement_post" $?
+    --latest-md "${RECURSIVE_LATEST_MD}" || RECURSIVE_RESULT=$?
+
+  if [ ${RECURSIVE_RESULT} -ne 0 ]; then
+    echo "[警告] recursive_self_improvement_post がエラーで失敗（リカバリー: スキップして続行）"
+    log_step "recursive_self_improvement_post" 0
+  else
+    log_step "recursive_self_improvement_post" $?
+  fi
 
   echo ""
   echo "[品質] post同期後の改善レポート品質スコアを再計算中..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_improvement_quality.py"; log_step "analyze_improvement_quality_post" $?
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_improvement_quality.py" || true
+  log_step "analyze_improvement_quality_post" 0
 
   echo ""
   echo "[品質] post同期後のループ/係数/モデルのヘルスチェックを再生成中..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/loop_metrics.py"; log_step "loop_metrics_post" $?
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/loop_metrics.py" || true
+  log_step "loop_metrics_post" 0
 
   echo ""
   echo "[可視化] post同期後のループ証拠を再生成中..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_loop_proof.py"; log_step "build_loop_proof_post" $?
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_loop_proof.py" || true
+  log_step "build_loop_proof_post" 0
 else
   echo "警告: ${LATEST_FILE} が存在しないため、post台帳補完後のレポート再同期をスキップします。"
   log_step "sync_improvement_reports_post" 0

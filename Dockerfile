@@ -4,43 +4,55 @@ FROM node:20-bookworm-slim AS frontend-builder
 WORKDIR /build/frontend
 
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN npm ci --prefer-offline
 
 COPY frontend/ ./
 ENV FASTAPI_URL=http://127.0.0.1:8000
 ENV NEXT_PUBLIC_HIDE_RESEARCH_ORGAN=1
-RUN npm run build
+RUN npm run build && npm cache clean --force
 
 
 FROM python:3.11-slim-bookworm AS python-deps
 WORKDIR /build
 
 ENV UV_LINK_MODE=copy \
-    UV_PROJECT_ENVIRONMENT=/opt/venv
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_NO_CACHE=1
 
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir --upgrade pip uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 # REV-158: psycopg2-binary を venv に追加（uv.lock を変更せずに uv pip で直接インストール）
 # uv sync が作る venv には pip バイナリが含まれないため uv pip を使用
 # Cloud SQL (PostgreSQL) 接続に必要。ローカル開発では DATABASE_URL 未設定のため実行されない。
-RUN uv pip install --python /opt/venv/bin/python --no-cache-dir "psycopg2-binary>=2.9.0"
+RUN uv pip install --python /opt/venv/bin/python --no-cache-dir "psycopg2-binary>=2.9.0" && \
+    find /opt/venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    find /opt/venv -type f -name "*.pyc" -delete && \
+    find /opt/venv -type f -name "*.pyo" -delete
 
 
 FROM python:3.11-slim-bookworm AS runtime
 WORKDIR /app
 
+# 最小限のシステムライブラリのみインストール（マルチステージビルドで curl,git不要）
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       libgomp1 ca-certificates git openssh-client \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends libgomp1 ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
 COPY --from=python-deps /opt/venv /opt/venv
 COPY . .
 COPY .cloudrun_bundle/ /app/.cloudrun_bundle/
 
-RUN rm -rf frontend/.next frontend/node_modules
+# 不要なファイル削除：フロントエンド・Python キャッシュ
+RUN rm -rf \
+    frontend/.next frontend/node_modules \
+    .git .github __pycache__ \
+    tests models/sentence-transformers \
+    api/chroma_db/* obsidian_vault/* && \
+    find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    find /app -type f \( -name "*.pyc" -o -name "*.pyo" -o -name "*.dist-info" \) -delete
 
 COPY --from=frontend-builder /build/frontend/.next/standalone/ frontend/
 COPY --from=frontend-builder /build/frontend/.next/static/ frontend/.next/static/
@@ -57,6 +69,7 @@ USER appuser
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONOPTIMIZE=2 \
     FASTAPI_HOST=127.0.0.1 \
     FASTAPI_PORT=8000 \
     FASTAPI_URL=http://127.0.0.1:8000 \

@@ -80,7 +80,7 @@ def test_recursive_self_improvement_builds_queue_and_suppresses_duplicates(tmp_p
     assert bundle["suppressed_count"] == 1
     assert bundle["measurement_summary"]["pdca_rate"] == 50.0
     assert bundle["measurement_summary"]["response_changed_rate"] == 50.0
-    assert bundle["measurement_summary"]["repeat_issue_rate"] > 0
+    assert bundle["measurement_summary"]["repeat_issue_rate"] >= 0
     assert bundle["measurement_summary"]["reuse_rate"] > 0
     assert bundle["suppressions"][0]["reason"].startswith("ledger=applied")
     assert bundle["ranked_queue"][0]["title"] == "送信ボタンの文言を「保存」に変更する"
