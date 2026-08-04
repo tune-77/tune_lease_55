@@ -85,6 +85,14 @@ def get_shion_tasks(status: Literal["open", "done", "cancelled", "all"] = "open"
     }
 
 
+@router.get("/api/shion/proactive-alert")
+def get_shion_proactive_alert() -> dict:
+    """紫苑からの能動的な割り込み発言があるか判定する。エラーログの急増だけを見る軽量版。"""
+    from api.shion_proactive_alert import check_shion_proactive_alerts
+
+    return check_shion_proactive_alerts()
+
+
 @router.get("/api/shion/memory-lanes")
 def get_shion_memory_lanes(
     include_private: bool = False,

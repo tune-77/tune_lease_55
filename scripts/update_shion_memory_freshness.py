@@ -1,5 +1,11 @@
 """紫苑記憶索引の鮮度更新（docs/shion_memory_architecture.md Next Step 2 の実装）。
 
+⚠️ 非推奨（deprecated）: 鮮度管理の正式経路は api/shion_memory_decay.py の
+自動デイリーバッチ（data/shion_memory_freshness.jsonl へ連続スコアを出力）に
+一本化された。本スクリプトは離散 status（active/stale）を索引へ直接書き戻す
+旧方式で、スケジューラには接続されていない。参照テスト保持のため削除はしないが、
+新規の鮮度判定ロジックは api/shion_memory_decay.py 側に実装すること。
+
 使用ログ（data/shion_memory_usage_log.jsonl、`build_recall_prompt_block` が追記）
 から各記憶の last_used_at を求め、長期間使われていない記憶を `stale` に落とす。
 使用ログが真実の源なので、索引を再生成しても本スクリプトの再実行で状態を再現できる。
@@ -19,10 +25,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -237,6 +246,11 @@ def main() -> int:
     parser.add_argument("--rag-feedback", type=Path, default=DEFAULT_RAG_FEEDBACK)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    logger.warning(
+        "update_shion_memory_freshness.py は非推奨です。"
+        "鮮度管理は api/shion_memory_decay.py の自動デイリーバッチに一本化されています。"
+    )
 
     try:
         index = json.loads(args.index.read_text(encoding="utf-8"))

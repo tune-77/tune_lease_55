@@ -3,8 +3,10 @@ Question-time recall for Shion memory index.
 
 Reads data/shion_memory_index.json and selects a small set of memory records
 based on the taxonomy recall routes. No network calls. The only write is an
-optional usage log append (data/shion_memory_usage_log.jsonl) so that
-scripts/update_shion_memory_freshness.py can maintain last_used_at / stale.
+optional usage log append (data/shion_memory_usage_log.jsonl), consumed by
+api/shion_memory_decay.py's automatic daily batch (data/shion_memory_freshness.jsonl)
+which is the authoritative freshness/staleness signal.
+scripts/update_shion_memory_freshness.py is deprecated (see its module docstring).
 """
 from __future__ import annotations
 
@@ -17,7 +19,15 @@ from pathlib import Path
 from typing import Any
 
 from api.shion_practical_knowledge import infer_practical_scene
-from api.shion_memory_taxonomy import MemoryType, RECALL_ROUTES
+from api.shion_memory_taxonomy import (
+    MemoryType,
+    RECALL_ROUTES,
+    SHARED_DIALOGUE_TERMS,
+    SHARED_JUDGMENT_TERMS,
+    SHARED_REFLECTION_TERMS,
+    SHARED_TECH_TERMS,
+    SHARED_VALUE_TERMS,
+)
 from api.shion_memory_impact import build_memory_impact_hints
 from scoring_core import APPROVAL_LINE, REVIEW_LINE
 
@@ -25,11 +35,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
 _USAGE_LOG_PATH = _REPO_ROOT / "data" / "shion_memory_usage_log.jsonl"
 
-_CASE_TERMS = ("審査", "案件", "承認", "否決", "条件", "スコア", "与信", "リスク", "リース", "物件", "担保", "借手", "残価", "耐用年数")
+# api/shion_memory_taxonomy.py の SHARED_* 語彙を正とし、想起ルーティング固有の語を追加する
+_CASE_TERMS = SHARED_JUDGMENT_TERMS + ("案件", "条件", "リース", "物件", "担保", "借手", "残価", "耐用年数")
 # 「価値」は「担保価値」「換金価値」等の案件語と衝突するため「価値観」に限定する
-_IDENTITY_TERMS = ("紫苑", "Mana", "良心", "人格", "価値観", "迷", "中核", "記憶", "内省")
-_IMPLEMENTATION_TERMS = ("実装", "コード", "api", "frontend", "テスト", "エラー", "Cloud Run", "RAG", "ChromaDB")
-_USER_PREF_TERMS = ("好み", "方針", "覚えて", "嫌", "どう思う", "やって", "優先")
+_IDENTITY_TERMS = SHARED_VALUE_TERMS + SHARED_REFLECTION_TERMS + ("紫苑", "人格", "価値観", "迷", "中核", "記憶")
+_IMPLEMENTATION_TERMS = SHARED_TECH_TERMS + ("コード", "api", "frontend", "エラー")
+_USER_PREF_TERMS = SHARED_DIALOGUE_TERMS + ("嫌", "どう思う", "やって", "優先")
 
 # 同点時は先頭のルートを優先する（従来の先勝ち順を維持）
 _ROUTE_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (

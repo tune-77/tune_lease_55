@@ -224,6 +224,7 @@ export default function ChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const briefRequestSeqRef = useRef(0);
+  const lastProactiveAlertRef = useRef<string | null>(null);
 
   const userId = SHION_CHAT_USER_ID;
 
@@ -391,6 +392,35 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    const checkProactiveAlert = () => {
+      apiClient.get("/api/shion/proactive-alert")
+        .then((res) => {
+          const alert = res.data;
+          if (!alert?.has_alert || !alert.message) return;
+          if (lastProactiveAlertRef.current === alert.message) return;
+          lastProactiveAlertRef.current = alert.message;
+          const proactiveMessage: ChatMessage = {
+            id: Date.now(),
+            user_id: userId,
+            role: "assistant",
+            content: alert.message,
+            created_at: new Date().toISOString(),
+          };
+          setMessages((prev) => {
+            const next = [...prev, proactiveMessage];
+            saveLocalChatHistory(userId, next);
+            return next;
+          });
+        })
+        .catch(() => {});
+    };
+    checkProactiveAlert();
+    const proactiveTimer = window.setInterval(checkProactiveAlert, 5 * 60 * 1000);
+    return () => window.clearInterval(proactiveTimer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadHistory = async () => {
     setHistoryLoading(true);
