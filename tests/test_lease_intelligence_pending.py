@@ -48,7 +48,7 @@ def test_reconcile_expires_stale_pending(tmp_path, monkeypatch):
     assert saved["a"]["status"] == "expired"
 
     # get_pending_tasks は陳腐化後の pending のみ返す
-    assert [t["id"] for t in pending.get_pending_tasks()] == ["b"]
+    assert [t["id"] for t in pending.get_pending_tasks(now=now)] == ["b"]
 
 
 def test_reconcile_caps_history(tmp_path, monkeypatch):
