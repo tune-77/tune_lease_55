@@ -583,10 +583,10 @@ export default function LeaseKunWizard() {
                   <input type="text" inputMode="decimal" name="nenshu" value={formData.nenshu} step="0.1" onChange={handleChange} placeholder="売上高 (百万円) ※必須" className={errors.nenshu ? inpErr : inpReq} />
                   {errors.nenshu && <p className={errMsg}>{errors.nenshu}</p>}
                 </div>
-                <input type="text" inputMode="decimal" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円)" className={inp} />
+                <input type="text" inputMode="text" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円) ※赤字は例: -5" className={inp} />
                 <input type="text" inputMode="text" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円) ※赤字は例: -5" className={inp} />
-                <input type="text" inputMode="decimal" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円)" className={inp} />
+                <input type="text" inputMode="text" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円) ※赤字は例: -5" className={inp} />
+                <input type="text" inputMode="text" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円) ※赤字は例: -5" className={inp} />
               </div>
             )}
 
@@ -598,7 +598,7 @@ export default function LeaseKunWizard() {
                   {errors.total_assets && <p className={errMsg}>{errors.total_assets}</p>}
                 </div>
                 <div className="col-span-2">
-                  <input type="text" inputMode="decimal" name="net_assets" value={formData.net_assets} step="0.1" onChange={handleChange} placeholder="純資産 (百万円)" className={inp} />
+                  <input type="text" inputMode="text" name="net_assets" value={formData.net_assets} step="0.1" onChange={handleChange} placeholder="純資産/自己資本 (百万円) ※債務超過は例: -5" className={inp} />
                 </div>
                 <input type="text" inputMode="decimal" name="machines" value={formData.machines} step="0.1" onChange={handleChange} placeholder="機械装置 (百万円)" className={inp} />
                 <input type="text" inputMode="decimal" name="other_assets" value={formData.other_assets} step="0.1" onChange={handleChange} placeholder="その他資産 (百万円)" className={inp} />
