@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { apiClient, API_BASE } from "@/lib/api";
 import {
   Brain, Orbit, Crown, ChevronDown, ChevronUp,
-  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine, Users, Zap, ShieldCheck, Sparkles,
+  Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine, Users, Zap, ShieldCheck, Sparkles, ClipboardList,
 } from "lucide-react";
 import { INDUSTRIES } from "@/constants/industries";
 
@@ -485,6 +486,10 @@ export default function DebatePage() {
   const [obsidianSaving, setObsidianSaving] = useState(false);
   const [obsidianToast, setObsidianToast] = useState<"success" | "error" | null>(null);
   const [obsidianError, setObsidianError] = useState("");
+  const [caseRegistering, setCaseRegistering] = useState(false);
+  const [caseRegisterToast, setCaseRegisterToast] = useState<"success" | "error" | null>(null);
+  const [caseRegisterError, setCaseRegisterError] = useState("");
+  const [registeredCaseId, setRegisteredCaseId] = useState<string | null>(null);
   type CandidateStatus = "idle" | "saving" | "success" | "skipped";
   const [candidateTexts, setCandidateTexts] = useState<Record<number, string>>({});
   const [candidateEditings, setCandidateEditings] = useState<Record<number, boolean>>({});
@@ -735,6 +740,10 @@ export default function DebatePage() {
     setResult(null);
     setLiveStatus("");
     setLiveRound1(null);
+    setRegisteredCaseId(null);
+    setCaseRegisterToast(null);
+    setHumanDecision("");
+    setJudgmentToast(null);
     // 毎回新しい session_id を発行
     sessionIdRef.current = typeof crypto !== "undefined"
       ? crypto.randomUUID()
@@ -801,10 +810,58 @@ export default function DebatePage() {
     }
   };
 
+  const handleRegisterCase = async () => {
+    if (!result) return;
+    setCaseRegistering(true);
+    setCaseRegisterToast(null);
+    setCaseRegisterError("");
+    try {
+      const { data } = await apiClient.post("/api/debate/register-case", {
+        company_name: form.company_name,
+        industry_major: form.industry_major,
+        score: result.score,
+        final_decision: humanDecision || result.arbiter.final,
+        conditions: result.arbiter.conditions,
+        arbiter_summary: result.arbiter.reasoning,
+        inputs: {
+          industry_major: form.industry_major,
+          nenshu: form.nenshu,
+          op_margin_pct: form.op_margin_pct,
+          equity_ratio: form.equity_ratio,
+          bank_credit: form.bank_credit,
+          lease_credit: form.lease_credit,
+          asset_name: form.asset_name,
+          lease_amount: form.lease_amount,
+        },
+      });
+      setRegisteredCaseId(data.case_id);
+      setCaseRegisterToast("success");
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      setCaseRegisterError(Array.isArray(detail) ? JSON.stringify(detail) : detail || err.message || "案件登録に失敗しました");
+      setCaseRegisterToast("error");
+    } finally {
+      setCaseRegistering(false);
+    }
+  };
+
+  const [judgmentError, setJudgmentError] = useState("");
+
+  // バックエンド judgment_feedback.normalize_decision と同じ正規化（承認/条件付/否決の3値化）。
+  // ここがズレると「一致しているのにボタンが押せる→422」という無言の失敗になる。
+  const normalizeDecision = (value: string) => {
+    const text = (value || "").trim().replace("条件付き", "条件付");
+    if (text.includes("否決") || text.includes("否認")) return "否決";
+    if (text.includes("条件付") || text.includes("要審議") || text.includes("ボーダー")) return "条件付";
+    if (text.includes("承認") || text.includes("良決")) return "承認";
+    return "";
+  };
+
   const handleRecordJudgmentChange = async () => {
     if (!result) return;
     setJudgmentSaving(true);
     setJudgmentToast(null);
+    setJudgmentError("");
     try {
       await apiClient.post("/api/judgment-feedback", {
         case_id: sessionIdRef.current,
@@ -832,11 +889,13 @@ export default function DebatePage() {
         },
       });
       setJudgmentToast("success");
-    } catch {
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      setJudgmentError(Array.isArray(detail) ? JSON.stringify(detail) : detail || err.message || "記録に失敗しました");
       setJudgmentToast("error");
     } finally {
       setJudgmentSaving(false);
-      setTimeout(() => setJudgmentToast(null), 2000);
+      setTimeout(() => setJudgmentToast(null), 4000);
     }
   };
 
@@ -1420,7 +1479,7 @@ export default function DebatePage() {
                     judgmentSaving ||
                     !result ||
                     !humanDecision ||
-                    humanDecision === result.arbiter.final ||
+                    normalizeDecision(humanDecision) === normalizeDecision(result.arbiter.final) ||
                     judgmentChangeReason.trim().length < 5
                   }
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:bg-slate-100 disabled:opacity-50 transition-colors"
@@ -1433,13 +1492,46 @@ export default function DebatePage() {
                   {judgmentSaving ? "記録中..." : "判断変更を記録"}
                 </button>
               </div>
+              {humanDecision && result && normalizeDecision(humanDecision) === normalizeDecision(result.arbiter.final) && (
+                <p className="mt-3 text-xs font-bold text-slate-500">AI判断と担当者判断が一致しているため記録対象はありません（変更した場合のみ記録します）。</p>
+              )}
               {judgmentToast === "success" && (
                 <p className="mt-3 text-sm font-bold text-emerald-700">判断変更を記録しました。</p>
               )}
               {judgmentToast === "error" && (
-                <p className="mt-3 text-sm font-bold text-rose-700">記録に失敗しました。</p>
+                <p className="mt-3 text-sm font-bold text-rose-700">{judgmentError || "記録に失敗しました。"}</p>
               )}
             </div>
+
+          {/* 案件登録ボタン: 討論の判断結果を「結果登録」画面で確定できる未登録案件として保存する */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRegisterCase}
+              disabled={caseRegistering || !!registeredCaseId}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 text-indigo-700 font-bold text-sm transition-colors"
+            >
+              {caseRegistering ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ClipboardList className="w-4 h-4" />
+              )}
+              {caseRegistering ? "登録中..." : registeredCaseId ? "案件登録済み" : "この判断結果を案件登録へ進める"}
+            </button>
+
+            {caseRegisterToast === "success" && registeredCaseId && (
+              <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-600 animate-in fade-in duration-200">
+                <CheckCircle2 className="w-4 h-4" />
+                未登録案件として保存しました。
+                <Link href="/register" className="underline hover:text-emerald-700">結果登録画面で成約/失注を確定する</Link>
+              </span>
+            )}
+            {caseRegisterToast === "error" && (
+              <span className="flex items-center gap-1.5 text-sm font-bold text-rose-600 animate-in fade-in duration-200">
+                <XCircle className="w-4 h-4" />
+                {caseRegisterError || "案件登録に失敗しました"}
+              </span>
+            )}
+          </div>
 
           {/* Obsidian 保存ボタン */}
           <div className="flex items-center gap-3">
