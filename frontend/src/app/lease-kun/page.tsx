@@ -584,7 +584,7 @@ export default function LeaseKunWizard() {
                   {errors.nenshu && <p className={errMsg}>{errors.nenshu}</p>}
                 </div>
                 <input type="text" inputMode="decimal" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円)" className={inp} />
+                <input type="text" inputMode="text" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円) ※赤字は例: -5" className={inp} />
                 <input type="text" inputMode="decimal" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円)" className={inp} />
                 <input type="text" inputMode="decimal" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円)" className={inp} />
               </div>
