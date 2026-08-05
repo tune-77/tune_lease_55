@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../../lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
-import { CheckCircle, XCircle, FileText, Activity, Save, Search, User, Percent, Building2, ClipboardList, TrendingDown, Trash2 } from 'lucide-react';
+import { CheckCircle, XCircle, FileText, Activity, Save, Search, User, Percent, Building2, ClipboardList, TrendingDown, Trash2, RefreshCw } from 'lucide-react';
 
 const conditionOptions = ["本件限度", "次回決算まで本件限度", "金融機関と協調", "独立・新設向け条件", "親会社等保証", "担保・保全あり", "その他"];
 
@@ -33,6 +33,7 @@ export default function RegisterPage() {
   const [selectedCase, setSelectedCase] = useState<any | null>(null);
   const [liveClosureProb, setLiveClosureProb] = useState<number | null>(null);
   const [progressStampingCaseId, setProgressStampingCaseId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     // Escaped string check: some environments use double backslash for display
@@ -40,12 +41,29 @@ export default function RegisterPage() {
     fetchPendingCases();
   }, []);
 
+  useEffect(() => {
+    // 審査分析タブで新規に審査した案件が反映されるよう、このページに戻ってきたタイミングで再取得する
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'hidden') return;
+      fetchPendingCases();
+    };
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+    return () => {
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+    };
+  }, []);
+
   const fetchPendingCases = async () => {
+    setRefreshing(true);
     try {
       const res = await apiClient.get(`/api/cases/pending`);
       setPendingCases(res.data);
     } catch (err) {
       console.error("Failed to fetch pending cases", err);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -175,15 +193,25 @@ export default function RegisterPage() {
                    <User className="w-5 h-5 text-indigo-500" />
                    1. 対象案件の特定
                 </h3>
-                {pendingCases.length > 0 && (
-                  <button 
-                    onClick={clearAllCases}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-[10px] font-black transition-all border border-rose-100"
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={fetchPendingCases}
+                    disabled={refreshing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-[10px] font-black transition-all border border-indigo-100 disabled:opacity-50"
                   >
-                    <Trash2 className="w-3 h-3" />
-                    全件削除
+                    <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+                    更新
                   </button>
-                )}
+                  {pendingCases.length > 0 && (
+                    <button
+                      onClick={clearAllCases}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-[10px] font-black transition-all border border-rose-100"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      全件削除
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="relative">
                   <Search className="absolute left-4 top-4 w-5 h-5 text-slate-400" />
