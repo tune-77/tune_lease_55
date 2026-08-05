@@ -225,6 +225,24 @@ This writes bounded workflow notes to `Vertex Distilled/` and a local run report
 to `reports/vertex_workflow_materials_latest.json`. Use `--dry-run` before a
 larger run, and tune `--limit` / `--modes` to avoid collecting low-value noise.
 
+## Research Mode Integration
+
+Chat external Research mode now pairs the normal Auto Research note with Vertex
+material capture for the same topic. When the user explicitly allows external
+research, the app:
+
+- writes the normal web/Auto Research note under
+  `Projects/tune_lease_55/Research/Auto Research/`
+- captures Vertex workflow material for `evidence_support` and
+  `judgment_candidates`
+- saves those Vertex material notes under
+  `Projects/tune_lease_55/Research/Vertex Distilled/`
+- adds the saved Vertex note refs to the research prompt context
+
+This integration is best-effort: Vertex capture failure does not break the
+normal Research answer path. Set `VERTEX_RESEARCH_MATERIAL_CAPTURE_ENABLED=false`
+to disable the paired Vertex capture.
+
 `/api/vertex-search/debug` can run Search API, Answer API, and Google Search
 grounding on the same query:
 

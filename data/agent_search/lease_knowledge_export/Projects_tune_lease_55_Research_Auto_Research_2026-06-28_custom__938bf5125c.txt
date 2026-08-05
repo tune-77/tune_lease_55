@@ -1,0 +1,83 @@
+Title: リース料率 金利 競合条件 - リース判断Auto Research
+Source: Projects/tune_lease_55/Research/Auto Research/2026-06-28_custom.md
+Canonical-Topic: リース料率 金利 競合条件
+Source-Bucket: auto_research
+Quality-Score: 12
+Corpus: tune_lease_55_obsidian_lease_knowledge
+
+---
+date: 2026-06-28
+research_topic: custom
+title: "リース料率 金利 競合条件"
+tags: ["リース審査", "autoresearch", "リース審査", "個別調査"]
+knowledge_type: lease-judgment-research
+source: gemini-google-search
+model: "gemini-2.5-flash"
+valid_until: 2026-12-25
+review_status: needs_human_review
+primary_source_count: 1
+recognized_source_count: 0
+supplementary_source_count: 11
+---
+# リース料率 金利 競合条件 - リース判断Auto Research
+
+> このノートは審査判断の補助知識です。個別案件の事実確認を省略せず、自動否決・自動承認には使用しません。
+
+## 結論
+*   リース審査は、リース料率、金利動向、競合状況を総合的に評価して行われます。顧客の支払い能力、物件の担保力、事業継続性が主要な判断基準です。
+*   金利上昇局面や新リース会計基準の適用は、リース料率や審査基準に影響を与えます。これらを考慮し、顧客に最適な条件を提案することが重要です。
+
+## 根拠品質
+*   **一次情報:** 日本銀行の金融政策（政策金利、マイナス金利解除）は日本銀行のウェブサイトで確認可能です。税務上の適正リース期間は税法に基づきます。
+*   **専門機関情報:** 新リース会計基準（企業会計基準第34号）は企業会計基準委員会が公表する専門情報です。リース業界の主要プレイヤーは広く認知されています。
+*   **補助情報への依存:** リース料率の構成要素や変動要因、審査の判断ポイントは複数の補助情報源で共通して説明されています。これらは一般的な実務知識として信頼できます。
+*   **担当者が再確認すべき点:** 複合機の業界平均料率に関する具体的な数値は民間ブログ情報であり、未確認です。個別の市場調査や社内データで再確認が必要です。
+
+## 判断に使える確認済み事実
+*   リース料率は物件代金、資金コスト、固定資産税、保険料、手数料等で構成されます。これらは物件価格、リース期間、借手の信用リスク、市場金利で変動します。
+*   税務上の適正リース期間は、法定耐用年数10年未満で70%以上、10年以上で60%以上が下限です。これは税法に基づき定められています。
+*   日本銀行は2024年3月にマイナス金利を解除し、2026年6月には政策金利を1.0%に引き上げるなど金利正常化を進めています。これはリース会社の資金調達コストに直結します。
+*   2027年4月1日以降、新リース会計基準により原則すべてのリース取引がオンバランス処理されます。リース負債の現在価値算定には割引率が用いられます。
+*   リース審査では、顧客の支払い能力、リース物件の価値（担保力）、事業の継続性の3点が重視されます。これらは財務状況や事業計画から評価されます。
+
+## リース審査への適用
+*   提示されたリース料率が、物件価格、リース期間、顧客信用、市場金利に対し妥当か確認します。特に長期契約では将来の金利変動リスクを考慮します。
+*   顧客が新リース会計基準の適用対象か確認し、割引率の算定方法についてヒアリングします。借手の追加借入利子率を用いる場合、その妥当性を評価します。
+*   顧客の決算書やキャッシュフローから支払い能力を分析し、リース料を安定的に支払えるか評価します。既存借入や金利上昇の影響も考慮します。
+*   リース物件の汎用性、市場価値、残存価値を評価し、万一の際の債権回収可能性を判断します。法定耐用年数とリース期間のバランスも確認します。
+*   顧客の事業計画、業界動向、経営者の資質から事業の継続性を評価します。中小企業では経営者の個人保証も判断材料とします。
+
+## 担当者が確認する質問
+*   提示されたリース料率は、物件価格、リース期間、顧客の信用状況、現在の市場金利水準に対して妥当な範囲内ですか？
+*   顧客は新リース会計要確認
+
+## 承認条件を変える兆候
+*   金利上昇局面や新リース会計基準の適用は、リース料率や審査基準に影響を与えます。
+*   日本銀行は2024年3月にマイナス金利を解除し、2026年6月には政策金利を1.0%に引き上げるなど金利正常化を進めています。これはリース会社の資金調達コストに直結します。
+*   2027年4月1日以降、新リース会計基準により原則すべてのリース取引がオンバランス処理されます。
+
+## 反証・過信してはいけない点
+*   複合機の業界平均料率に関する具体的な数値は民間ブログ情報であり、未確認です。個別の市場調査や社内データで再確認が必要です。
+
+## 更新が必要になる条件
+要確認
+
+## 情報源
+- `supplementary` [itsutonalives.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG4FY6VjOD_vtu5YPjLuoo6ewpUeanqb1xxfAnwnOiLhpVMrhXOtoH0xCDX_uMM0PqfyFHhXWQXiT6Di6lfLA2cpuT-1pGE2T6SCaXD8AUZXZFPB-8CC-8iPaJHD_ZrlYSiRqEocx07Ib_1dU07TU27elKwtioKR8n7LglyJoaLWtelaZU=)
+- `supplementary` [toholease.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGiZHHFH4hqC0Fy0jq-6kc6FgVI73o4wMhegjR-3FFzpSvY4OCpBdI9SgBj4x-oRGVelofqTDKsOKMOBWl2VmEEkpuRcLHmQjE5wV33QrU-PSG4h6aMXangg-icd9Ze)
+- `supplementary` [world-envision.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGdKvB6cI_sKAZI5bP7I_n-YodZD7W3wJhVkAx6dDw3R3saEe2Y0O235vhGWbXS2GKGjmC3MlkshU7hhBIz-q7yDIUd-jjSt7oZQKehcdy54wIvsDOKj0m7jF4G5GCen7WFY1ezTmrcQiNlKRyE)
+- `supplementary` [copyta.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE5_4ochQm4wF0psV_2bPH4UObnCSlu_yUg9InziBtIvkYzhxbRjlSqc29P-GxdIRiq9TS8mjdLh2QYup6gsTILtyKomjfoHSSbkMd9vSHqPWr4ZMV2xQUQ-JYTLUz0RjWhYWaaLQZkesv_ycxbHRO6UOAB5zkceojvZEOusA==)
+- `supplementary` [jimukiki.net](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE2CfvXNUOjZcaWdtvmSbriNLmXYMU5rkRNPun4wivAm_gPFm9wxdxjl1Ek3PrAxtLE2jNkVZPA5oWRYjcAnYptt0UIpeCgRDJvmDGOtogHb3xqhSnGq7rtSdBl-7G7szjVjA==)
+- `supplementary` [tomari.org](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGhuwnc3IAbsojk_8XdsziIaHIeZVuq34ONXgBZpqgHIH33dkg-mpp59hXItB9YcLEomxX7JYtPV8_9PPXdkbkh2atAQiCgmBsrJy5yGjOpGAH8n98EW3t9BON_UUk9Ej2E2w==)
+- `supplementary` [100-nen.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEHf0bzTrPb7g5L3lM5yT7y-sukkJ6ewOamUcgF5NRpwed_2G_idJyW1DmiIE3A-AMY0wORLOBTJYrlrwzoM9DqVj79j9Rt9k30HIeLIJTL9uDglL5U4ESHIv0ZnlcmFe2EUTHkw8omHsBBnJLfKGrn1LET)
+- `supplementary` [kotora.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGj8wj3hzZPvoU-iSqPI7i3fT1Hhusii0OeGieHf31_GI6UHXwxTTR5v_FKPRgNf19qfn8BvDzPMtkoxqKHIsdWPRpefjCyf7FCkV2hOpt2Put22MSBLzJjNg==)
+- `supplementary` [suguhosyu-copyki.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFI52yLApKDRT3vi_cswace8JrmyDqWS3uU7V-2V4_FBWlNvBziqpLFMvSwPvES-ShAKRrxHITUfdXhofQ10urn6CKg72RAde9nghsWm2xndROkngPgntEDzSDY0iRIJTVH32g=)
+- `supplementary` [biprogy.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGmfPz0CBJRcsrTuAsomGXG1DH5-Dm47BdtipwmOpFvdIaU920Eci6peutDYcU7FCjMfUyV5uwCY9_PRmF9S54FA9Q7cUcCyxWaPb-A2lGUgjRa0-yZB3Dx_aO4c6r95PxQfqXz4wCpgnb9tmf0-SdADapfx8r_jA==)
+- `supplementary` [joycal.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGwgAedxngrMM4zCZyXX0Q3viqd4KxZohazXVT-drQqw1r1ChPaLyQ4BWYJSR5QDZamOUUbrFrmyUFCCUQTmDgHFDik3UXI_Zoo2rwUOvk8thBR_AjhG4a4adKTnTsRl5HJYxKB-xLWnN9aOT0OqBkJ)
+- `primary` [boj.or.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFFnnMsmp4VL6ztiGyoNC2JxzkpZ9UpxFWuuopa4776NhQ5-TcnsCLIPUesAOOv6X5SD2GyMc3R53Pqfml0wDLJOO74JRJdJeHxGLMLWjPZY1cLvQnIbbOXxmxGlqoAfYFpKXVP5-zQfqps-oW6W03ut29c2QeosyE=)
+
+## 検索用分類
+- 調査テーマ: リース料率 金利 競合条件
+- 対象: リース審査、信用判断、条件設計
+- 有効期限: 2026-12-25
+- レビュー状態: needs_human_review

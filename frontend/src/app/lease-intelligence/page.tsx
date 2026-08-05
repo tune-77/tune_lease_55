@@ -94,6 +94,12 @@ type DialogueImprovementItem = {
   recommended_order?: number | null;
 };
 
+const DI_MISSING_ANALYSIS_RESULT: DialogueImprovementItem = {
+  title: "審査分析結果が結果登録に表示されない",
+  detail: "審査分析結果が結果登録に表示されない",
+  reason: "AI Chat 改善ログ (2026-08-05) のチャット改善メモ（raw, priority: high）",
+};
+
 type TriageDecision = "today" | "later" | "discard";
 type TriageQuickAction = "fix" | "hold" | "reject";
 

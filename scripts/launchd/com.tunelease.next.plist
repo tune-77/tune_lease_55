@@ -27,6 +27,8 @@
     <string>127.0.0.1</string>
     <key>API_RELOAD</key>
     <string>0</string>
+    <key>SHION_ENABLE_VERTEX_TOOLS</key>
+    <string>1</string>
   </dict>
 
   <key>RunAtLoad</key>

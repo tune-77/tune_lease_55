@@ -1,0 +1,1036 @@
+{
+  "corpus": "tune_lease_55_obsidian_lease_knowledge",
+  "vault": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault",
+  "project": "Projects/tune_lease_55",
+  "excluded": [
+    ".obsidian",
+    "AI Chat",
+    "Alerts",
+    "Cloud Run Conversation Log",
+    "Cloud Run Return",
+    "Daily",
+    "Dialogue",
+    "Improvement Log",
+    "Lease Intelligence",
+    "Lease Intelligence/Memory",
+    "Memory",
+    "OS",
+    "Private Reflection",
+    "Slack"
+  ],
+  "quality_gate": {
+    "dedupe": "canonical_topic",
+    "min_score": {
+      "root_note": 4,
+      "default": 5
+    },
+    "private_markers": [
+      "vertex_exclude",
+      "agent_search_exclude",
+      "public: false",
+      "visibility: private",
+      "confidential"
+    ]
+  },
+  "candidate_count": 836,
+  "rejected_count": 777,
+  "rejected_summary": {
+    "not_preferred_location": 295,
+    "excluded_path": 435,
+    "duplicate_canonical_topic": 47
+  },
+  "rejected_samples": [
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-12_リース法定耐用年数_autoresearch.md",
+      "reason": "not_preferred_location",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-12_群馬埼玉栃木リース会社_autoresearch.md",
+      "reason": "not_preferred_location",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-13_all_file_ingest_index.md",
+      "reason": "not_preferred_location",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-13_ユーモアまとめ.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-13_期待使用期間_autoresearch.md",
+      "reason": "not_preferred_location",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-13_自動車タイプ別自動車税.md",
+      "reason": "not_preferred_location",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-13_補助金まとめ.md",
+      "reason": "not_preferred_location",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-17_AIChat_Obsidian検索修正.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-20_単位統一と定量分析改善.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-23.md",
+      "reason": "not_preferred_location",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-23_ニュース判断変更記録.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-06-03_失注理由入力ガイドライン.md",
+      "reason": "not_preferred_location",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/2026-06-06_新リース会計基準と審査実務_autoresearch.md",
+      "reason": "not_preferred_location",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/2026-06-27.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/2026-06-28.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-07.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-08.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-09.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-10.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-11.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-12.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-13.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-14.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-15.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-16.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-17.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-18.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-19.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-20.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-21.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-22.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-23.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-24.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-25.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-26.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-27.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-28.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-29.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-30.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-31.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-01.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-12.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-13.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-14.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-15.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-16.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-17.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-18.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-19.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-21.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-22.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-23.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-27.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-28.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-06-29.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-01.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-03.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-04.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-05.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-06.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-08.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-09.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-10.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-11.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-12.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-13.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-14.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-15.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-16.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-17.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-18.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-19.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-20.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-21.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-22.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-23.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-24.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-07-26.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/AI Chat/Improvement Log/2026-08-01.md",
+      "reason": "excluded_path",
+      "title": ""
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Alerts/aurion_alert_2026-06-13.md",
+      "reason": "excluded_path",
+      "title": ""
+    }
+  ],
+  "documents": [
+    {
+      "source_path": "Projects/tune_lease_55/2026-05-13_リース審査AI_知識分解.md",
+      "output_path": "Projects_tune_lease_55_2026-05-13__AI__3e748413c1.txt",
+      "title": "リース審査AI 知識分解",
+      "canonical_topic": "リース審査AI 知識分解",
+      "source_bucket": "root_note",
+      "quality_score": 12,
+      "digest": "2ec5cba53a51cb688ea8e28c507c7b58dfd6087f",
+      "size_chars": 7229
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-06-23_lease-accounting-tax.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-06-23_lease-accounting-tax__8423683a5a.txt",
+      "title": "リース会計・税務・制度変更の審査影響 - リース判断Auto Research",
+      "canonical_topic": "リース会計・税務・制度変更の審査影響",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "5f82e4ecc15fc81316258123e1526360c68df729",
+      "size_chars": 6309
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-06-28_2026.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-06-28_2026__250d641784.txt",
+      "title": "物流業界の2026年問題とリース審査で見るべき指標 - リース判断Auto Research",
+      "canonical_topic": "物流業界の2026年問題とリース審査で見るべき指標",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "15f7025081940ef41274a747e9d2016b96b8dc7a",
+      "size_chars": 2685
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-06-28_ai.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-06-28_ai__98c765f8e8.txt",
+      "title": "AI事業者ガイドラインについて調査 - リース判断Auto Research",
+      "canonical_topic": "AI事業者ガイドラインについて調査",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "54cbde1e761e7f825d4a50db9fa536b23ee6af38",
+      "size_chars": 6364
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-06-28_custom.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-06-28_custom__938bf5125c.txt",
+      "title": "リース料率 金利 競合条件 - リース判断Auto Research",
+      "canonical_topic": "リース料率 金利 競合条件",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "a02f93a848664f22cc805ae9e79aec6dfaf35fb9",
+      "size_chars": 5250
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-07-15_subsidy-timing.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-07-15_subsidy-timing__7aaac9e131.txt",
+      "title": "補助金・税制優遇と支払タイミング - リース判断Auto Research",
+      "canonical_topic": "補助金・税制優遇と支払タイミング",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "7d42736ddbec6dd9585842dcb422b51b05ccc591",
+      "size_chars": 7343
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-07-18_bank-support.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-07-18_bank-support__8cd25a3cc6.txt",
+      "title": "銀行支援・保証・条件変更の実効性 - リース判断Auto Research",
+      "canonical_topic": "銀行支援・保証・条件変更の実効性",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "894539e27ba23d58df986aca41bcc10056c2c4be",
+      "size_chars": 7077
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-07-20_residual-value__7466a39c84.txt",
+      "title": "物件別の残価・中古流動性・陳腐化 - リース判断Auto Research",
+      "canonical_topic": "物件別の残価・中古流動性・陳腐化",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "3a84418b58a2ad94f44caf344c6eef5727f6061b",
+      "size_chars": 6712
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-07-22_contract-ownership.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-07-22_contract-ownership__ad7caf0fe9.txt",
+      "title": "契約・所有権・検収・詐欺リスク - リース判断Auto Research",
+      "canonical_topic": "契約・所有権・検収・詐欺リスク",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "9b780e930a917bc34d964c9942948bf113fe8a61",
+      "size_chars": 7322
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-07-24_asset-operation.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-07-24_asset-operation__f6d318c935.txt",
+      "title": "設備稼働率・保守・更新投資の確認方法 - リース判断Auto Research",
+      "canonical_topic": "設備稼働率・保守・更新投資の確認方法",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "d29518a49306503cc77c0aa97d1ceb8131423352",
+      "size_chars": 7183
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-07-26_cash-flow.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-07-26_cash-flow__fad37a08a1.txt",
+      "title": "返済余力と資金繰りの異常兆候 - リース判断Auto Research",
+      "canonical_topic": "返済余力と資金繰りの異常兆候",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "e6ac0e068b4637122d5d667c0a66be39cbe87014",
+      "size_chars": 7858
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-07-27_pricing-rate.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-07-27_pricing-rate__336a3229ce.txt",
+      "title": "金利・料率・競合条件の組み立て - リース判断Auto Research",
+      "canonical_topic": "金利・料率・競合条件の組み立て",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "5c2e1fe0834e804fda289cd01a6d1e03a37af40d",
+      "size_chars": 5934
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-07-29_collection-default.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-07-29_collection-default__a7b4f21877.txt",
+      "title": "延滞・回収・倒産時の物件保全 - リース判断Auto Research",
+      "canonical_topic": "延滞・回収・倒産時の物件保全",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "350702589c8b83ca89a1652a998252c284d26f3e",
+      "size_chars": 7081
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/Auto Research/2026-08-01_industry-risk.md",
+      "output_path": "Projects_tune_lease_55_Research_Auto_Research_2026-08-01_industry-risk__9d4dca0cf2.txt",
+      "title": "業種別の倒産要因と先行指標 - リース判断Auto Research",
+      "canonical_topic": "業種別の倒産要因と先行指標",
+      "source_bucket": "auto_research",
+      "quality_score": 12,
+      "digest": "d4360f32d2e440a6e86692ce94ae0ac226e5f8cc",
+      "size_chars": 7177
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/インボイス　制度の基礎概要および基本ルールの調査_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__a2662ce38b.txt",
+      "title": "インボイス制度（適格請求書保存方式）の基礎概要および基本ルール調査報告書",
+      "canonical_topic": "インボイス制度（適格請求書保存方式）の基礎概要および基本ルール調査報告書",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "3311a8d8195d830f93c6b8205a333541529e69cf",
+      "size_chars": 6045
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/インボイス　実務における売り手・買い手双方への影響分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__584839ebcb.txt",
+      "title": "【実務分析】インボイス制度が「売り手・買い手」双方に与える影響と実務対応",
+      "canonical_topic": "【実務分析】インボイス制度が「売り手・買い手」双方に与える影響と実務対応",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "c7d575c13c27f8d849d4da10ee1f800d21a4a3b0",
+      "size_chars": 8276
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/インボイス　対応手順と導入ロードマップの体系化_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__63db1e6ffa.txt",
+      "title": "【実践マニュアル】インボイス制度対応手順と導入ロードマップの体系化",
+      "canonical_topic": "【実践マニュアル】インボイス制度対応手順と導入ロードマップの体系化",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "c32d96d2c2c6b8ca1c7efdd98874e35dc1b8167b",
+      "size_chars": 8570
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/インボイス　総合レポート_(executive_report)_report (1).md",
+      "output_path": "Projects_tune_lease_55_Research___executive_report__report_1__261ed6123e.txt",
+      "title": "日本のインボイス制度（適格請求書保存方式）完全網羅マスターレポート",
+      "canonical_topic": "日本のインボイス制度（適格請求書保存方式）完全網羅マスター",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "81ea85deb8010f769e27d6632c501da5f131ed46",
+      "size_chars": 13748
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/ソフトリース　メリット・デメリットの分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__b8654e8811.txt",
+      "title": "ソフトリース導入におけるメリット・デメリットの分析",
+      "canonical_topic": "ソフトリース導入におけるメリット・デメリットの分析",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "14054961d003bbca324d849d9522f258e28b6f1f",
+      "size_chars": 2686
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/ソフトリース　市場・法規制・会計処理の調査_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__e5ae72a20a.txt",
+      "title": "1. 業界動向：デジタルシフトとリース市場の変容",
+      "canonical_topic": "1. 業界動向：デジタルシフトとリース市場の変容",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "c1d27235cd784249aceb81dcc49ddb63c9487c17",
+      "size_chars": 2270
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/ソフトリース　総合レポート_(executive_report)_report (2).md",
+      "output_path": "Projects_tune_lease_55_Research___executive_report__report_2__63338ff63e.txt",
+      "title": "Executive Report: ソフトリースに関する包括的調査・分析",
+      "canonical_topic": "Executive Report: ソフトリースに関する包括的調査・分析",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "666bf50bb9b0189ce37c2b4dae23195b6b2a86df",
+      "size_chars": 2097
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/メリットとデメリットの分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__5a5028c23c.txt",
+      "title": "メリットとデメリットの分析：リース利用における全貌",
+      "canonical_topic": "メリットとデメリットの分析：リース利用における全貌",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "c2fc421b3c64a8a1e8e01b89b8bb3a8fa2d79bfa",
+      "size_chars": 5231
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md",
+      "output_path": "Projects_tune_lease_55_Research_BOT___2026-05-23__c35e8867a6.txt",
+      "title": "リースBOT 追加知識候補 2026-05-23",
+      "canonical_topic": "リースBOT 追加知識候補 2026-05-23",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "aa52f1f6d9109b8043097dcda944421e287d2914",
+      "size_chars": 3483
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/リース　今後の課題.md",
+      "output_path": "Projects_tune_lease_55_Research__7e861576bc.txt",
+      "title": "課題と今後の需要予測：法人リース市場の未来展望",
+      "canonical_topic": "課題と今後の需要予測：法人リース市場の未来展望",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "a6b7f0ffbfa36fe76fc7e9c576013a15bd2011b3",
+      "size_chars": 2229
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/リース　市場セグメンテーションと主要プレイヤーの調査_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__aa7f861544.txt",
+      "title": "1. 法人向けリース市場のセグメンテーション（主要カテゴリー）",
+      "canonical_topic": "1. 法人向けリース市場のセグメンテーション（主要カテゴリー）",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "05536f84839301e6973baa3e0b39611496f1cc3f",
+      "size_chars": 2089
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/リース　最新トレンドと導入事例の分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__5d3e4d99e0.txt",
+      "title": "1. 法人リース市場を揺るがす3大トレンド分析",
+      "canonical_topic": "1. 法人リース市場を揺るがす3大トレンド分析",
+      "source_bucket": "research",
+      "quality_score": 9,
+      "digest": "f2759461565426b02a6b839d87e1ef3ecf290272",
+      "size_chars": 2403
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/リースの基本定義と種類の整理_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__9ee9a766e3.txt",
+      "title": "リースの基本定義と種類の整理",
+      "canonical_topic": "リースの基本定義と種類の整理",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "40cb4dd273402b00438f948bccbdcd78a209acc3",
+      "size_chars": 4804
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/リースバック　セールスプロセスの構築_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__557e755e9c.txt",
+      "title": "セールスプロセスの構築：車両リースバック事業の営業フロー設計",
+      "canonical_topic": "セールスプロセスの構築：車両リースバック事業の営業フロー設計",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "dbba7d5e4ca3c426a8b1e920414c1d8665ab4c32",
+      "size_chars": 2432
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/リースバック　ターゲット市場とニーズの特定_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__3b310665fa.txt",
+      "title": "ターゲット市場とニーズの特定：車両リースバック事業戦略",
+      "canonical_topic": "ターゲット市場とニーズの特定：車両リースバック事業戦略",
+      "source_bucket": "research",
+      "quality_score": 5,
+      "digest": "37ab6e02cec29ea4db19c356099683bc6759e31a",
+      "size_chars": 2162
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/リースバック　競合比較と差別化要因の策定_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__cee9e61f9a.txt",
+      "title": "競合比較と差別化要因の策定：車両リースバック事業の競争戦略",
+      "canonical_topic": "競合比較と差別化要因の策定：車両リースバック事業の競争戦略",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "36f1c9c3bedcd1f16bdab42f63590b991539337c",
+      "size_chars": 2524
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/リースバック　総合レポート_(executive_report)_report (1).md",
+      "output_path": "Projects_tune_lease_55_Research___executive_report__report_1__d1f30e195e.txt",
+      "title": "Executive Report: 車両リースバック事業の戦略的展開",
+      "canonical_topic": "Executive Report: 車両リースバック事業の戦略的展開",
+      "source_bucket": "research",
+      "quality_score": 9,
+      "digest": "d01fb3c8a6635e268781d243b9e6450b2e09aef1",
+      "size_chars": 2004
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/中小企業_業種別倒産率_2026-05-23.md",
+      "output_path": "Projects_tune_lease_55_Research____2026-05-23__86d302a983.txt",
+      "title": "中小企業 業種別倒産率 調査メモ",
+      "canonical_topic": "中小企業 業種別倒産率 調査メモ",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "9b39dfe0919c1e72bd24f8aa343a01999219fabf",
+      "size_chars": 2182
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/埼玉　主要リース会社のシェア調査と分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__c2a9552cd5.txt",
+      "title": "埼玉県におけるリース会社シェア調査と競争環境分析",
+      "canonical_topic": "埼玉県におけるリース会社シェア調査と競争環境分析",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "3c95185435ab8024db6fb9248620f3d997f63d56",
+      "size_chars": 2675
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/埼玉　利用実態の定性・定量分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__5b50b46014.txt",
+      "title": "埼玉県におけるリース利用実態の定性・定量分析",
+      "canonical_topic": "埼玉県におけるリース利用実態の定性・定量分析",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "28adc650a01329ab7c9bfbf0906dd71407844952",
+      "size_chars": 2548
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/埼玉県のリース市場規模の推計_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__c2b171d563.txt",
+      "title": "1. 埼玉県リース市場規模の推計（算出モデル）",
+      "canonical_topic": "1. 埼玉県リース市場規模の推計（算出モデル）",
+      "source_bucket": "research",
+      "quality_score": 9,
+      "digest": "afc5e17fdb9b2278d4abfa6087e627e8a0e5d69b",
+      "size_chars": 2204
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/所有権移転リース　主要リース会社の動向分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__7b10a386fc.txt",
+      "title": "1. リース会社における「所有権移転リース」の現状動向",
+      "canonical_topic": "1. リース会社における「所有権移転リース」の現状動向",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "c52115a31767561f171c9df2c5a374b6f02c7477",
+      "size_chars": 2344
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/所有権移転リース　利用状況と市場ニーズの統合分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__e2468b331e.txt",
+      "title": "所有権移転リースにおける利用状況と市場ニーズの統合分析報告書",
+      "canonical_topic": "所有権移転リースにおける利用状況と市場ニーズの統合分析報告書",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "335b1fb14767aa8a92efb9fa15e585b81203a662",
+      "size_chars": 2426
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/所有権移転リース　基礎調査_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__b2eadb37dd.txt",
+      "title": "所有権移転リースに関する基礎調査報告書",
+      "canonical_topic": "所有権移転リースに関する基礎調査報告書",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "855c2220d2335eef00ac1154716428e8e5bbeacc",
+      "size_chars": 2091
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/所有権移転リース　総合レポート_(executive_report)_report (1).md",
+      "output_path": "Projects_tune_lease_55_Research___executive_report__report_1__a8d626d9f4.txt",
+      "title": "Executive Report: 所有権移転リースに関する市場実態と戦略的活用調査",
+      "canonical_topic": "Executive Report: 所有権移転リースに関する市場実態と戦略的活用調査",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "f8db0b0efdaef0cd9574bbcf812f11f377dca5eb",
+      "size_chars": 2154
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/文章使い.md",
+      "output_path": "Projects_tune_lease_55_Research__be0eff912b.txt",
+      "title": "関東圏 競合リース会社 2026-05-23",
+      "canonical_topic": "関東圏 競合リース会社 2026-05-23",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "8e504ad488cc56c7a25800b4a70dca35e5920398",
+      "size_chars": 3314
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/栃木　主要リース会社のシェアと競合状況の調査_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__95f04bedca.txt",
+      "title": "栃木県における主要リース会社のシェアと競合状況 調査報告書",
+      "canonical_topic": "栃木県における主要リース会社のシェアと競合状況 調査報告書",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "520cc535730bb7e0cd670550c1d5a58ef7addcb9",
+      "size_chars": 5763
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/栃木　県内企業におけるリースの利用実態分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__7c98db90ea.txt",
+      "title": "栃木県における企業向けリース利用実態分析 報告書",
+      "canonical_topic": "栃木県における企業向けリース利用実態分析 報告書",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "795ed19f5f239ad871d771098daee09c2d5676de",
+      "size_chars": 5846
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/栃木　調査結果の統合と分析レポートの作成_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__46db4b1265.txt",
+      "title": "栃木県リース市場 総合分析レポート",
+      "canonical_topic": "栃木県リース市場 総合分析",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "a8e9569cca4cc520d77d9e717b1c3c9b14045487",
+      "size_chars": 7038
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/栃木県のリース市場規模の調査_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__a57f117320.txt",
+      "title": "栃木県のリース市場規模の調査 報告書",
+      "canonical_topic": "栃木県のリース市場規模の調査 報告書",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "9feb8dc93ba1c4a9dfca587dc76d67e7c94bcd02",
+      "size_chars": 3719
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/機械受注統計/機械受注統計分析_2023-03_2026-03.md",
+      "output_path": "Projects_tune_lease_55_Research__2023-03_2026-03__defd9ed55a.txt",
+      "title": "機械受注統計分析（2023年3月〜2026年3月）",
+      "canonical_topic": "機械受注統計分析（2023年3月〜2026年3月）",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "98c60ec36ebd8fd082b9fbacd8f3a779f04a7839",
+      "size_chars": 1439
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/群馬　主要参入リース会社の特定とシェア調査_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__8b5f78be22.txt",
+      "title": "群馬県リース市場における主要参入リース会社の特定とシェア調査 報告書",
+      "canonical_topic": "群馬県リース市場における主要参入リース会社の特定とシェア調査 報告書",
+      "source_bucket": "research",
+      "quality_score": 8,
+      "digest": "7d72b81effc02d80ecbd2c37e57c8c06b57a32a1",
+      "size_chars": 8223
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/群馬　市場動向の分析と総合報告書の作成_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__27974388a6.txt",
+      "title": "【総合調査報告書】群馬県リース市場の構造分析・競争環境および未来展望",
+      "canonical_topic": "【総合調査報告書】群馬県リース市場の構造分析・競争環境および未来展望",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "82885a8e0c3a9c173a3d8a34808f20d9cdea16d6",
+      "size_chars": 7782
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/群馬　総合レポート_(executive_report)_report.md",
+      "output_path": "Projects_tune_lease_55_Research___executive_report__report__e2edfa493c.txt",
+      "title": "【エグゼクティブ・マスターレポート】群馬県リース市場の規模・競争環境・未来展望",
+      "canonical_topic": "【エグゼクティブ・マスターレポート】群馬県リース市場の規模・競争環境・未来展望",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "f92524ddc391d4b4bd0d6ef8cfbdcc2827be81a0",
+      "size_chars": 10538
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/群馬県のリース市場規模の推計とデータ収集_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__fa434dc3a9.txt",
+      "title": "群馬県のリース市場規模の推計とデータ収集 調査報告書",
+      "canonical_topic": "群馬県のリース市場規模の推計とデータ収集 調査報告書",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "0a5e010b9057ca88d18a09fd4ed76f77e6116297",
+      "size_chars": 4814
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/茨城　主要リース会社の競合状況とシェア調査_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__12bab8262c.txt",
+      "title": "主要リース会社の競合状況とシェア調査",
+      "canonical_topic": "主要リース会社の競合状況とシェア調査",
+      "source_bucket": "research",
+      "quality_score": 10,
+      "digest": "984f9f378b1e700aecb01dc716a8c35ea5b57f00",
+      "size_chars": 5952
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/茨城　県内企業のリース利用実態と需要傾向の分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__10605889ba.txt",
+      "title": "県内企業のリース利用実態と需要傾向の分析",
+      "canonical_topic": "県内企業のリース利用実態と需要傾向の分析",
+      "source_bucket": "research",
+      "quality_score": 11,
+      "digest": "35b4b215a083c2c85499c33337c55a6e80de8802",
+      "size_chars": 4927
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/茨城　調査結果の統合と市場アプローチ戦略の策定_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__c49937a98d.txt",
+      "title": "茨城県リース市場 総合調査報告書：市場統合分析とターゲットアプローチ戦略",
+      "canonical_topic": "茨城県リース市場 総合調査報告書：市場統合分析とターゲットアプローチ戦略",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "fe8de43a59a5742024e8efb1d446028c3f430bc0",
+      "size_chars": 6487
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/茨城県のリース市場規模の把握とマクロデータ収集_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__79581b448d.txt",
+      "title": "茨城県のリース市場規模の把握とマクロデータ収集",
+      "canonical_topic": "茨城県のリース市場規模の把握とマクロデータ収集",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "95d448d51e51443f4b1d46ec4060db6c06081118",
+      "size_chars": 4259
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/補助金　メリット・デメリットの比較分析_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__02560f45c4.txt",
+      "title": "1. 財務的影響・メリット・デメリット比較分析",
+      "canonical_topic": "1. 財務的影響・メリット・デメリット比較分析",
+      "source_bucket": "research",
+      "quality_score": 12,
+      "digest": "d81f3d9b5cb7b5a2119e7eb6efe9a2b71820a1a6",
+      "size_chars": 2270
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/補助金　対象要件と活用条件の整理_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__573042be9d.txt",
+      "title": "1. 主要補助金制度の比較・要件一覧",
+      "canonical_topic": "1. 主要補助金制度の比較・要件一覧",
+      "source_bucket": "research",
+      "quality_score": 9,
+      "digest": "b84f867cbfc4c3eb449298f8dc923495419fa710",
+      "size_chars": 2006
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/補助金　総合レポート.md",
+      "output_path": "Projects_tune_lease_55_Research__1694cc88cc.txt",
+      "title": "Executive Report: 設備投資におけるリース活用と公的補助金戦略",
+      "canonical_topic": "Executive Report: 設備投資におけるリース活用と公的補助金戦略",
+      "source_bucket": "research",
+      "quality_score": 8,
+      "digest": "6a19b0f17ebb9bbbe8bf13ceeeb0d8b2952db3b3",
+      "size_chars": 2314
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/補助金制度の全体像調査_report.md",
+      "output_path": "Projects_tune_lease_55_Research__report__78d310e91c.txt",
+      "title": "1. リース契約が活用可能な補助金の全体像",
+      "canonical_topic": "1. リース契約が活用可能な補助金の全体像",
+      "source_bucket": "research",
+      "quality_score": 8,
+      "digest": "3388aef1890e2973b924bd316d6e37361ea5f890",
+      "size_chars": 1774
+    },
+    {
+      "source_path": "Projects/tune_lease_55/Research/車の税金_2026-06-02.md",
+      "output_path": "Projects_tune_lease_55_Research__2026-06-02__38c3c072ac.txt",
+      "title": "車の税金 2026-06-02",
+      "canonical_topic": "車の税金 2026-06-02",
+      "source_bucket": "research",
+      "quality_score": 6,
+      "digest": "c8142f144be3fa91f03f77e21e26da60719174e6",
+      "size_chars": 1298
+    },
+    {
+      "source_path": "Projects/tune_lease_55/リースvs銀行借入_リサーチ.md",
+      "output_path": "Projects_tune_lease_55_vs__20e0b33772.txt",
+      "title": "リースと銀行借入の違い",
+      "canonical_topic": "リースと銀行借入の違い",
+      "source_bucket": "root_note",
+      "quality_score": 12,
+      "digest": "e4751d6a1b0b349526cd206d875faf5630452e9e",
+      "size_chars": 3001
+    }
+  ]
+}

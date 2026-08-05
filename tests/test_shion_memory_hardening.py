@@ -240,25 +240,25 @@ class TestRerank:
         ]
 
     def test_disabled_by_default(self, monkeypatch):
-        from api.shion_memory_rerank import maybe_rerank_scored
+        from api.shion_memory_recall import _maybe_rerank_scored
 
         monkeypatch.delenv("SHION_MEMORY_RERANK", raising=False)
         scored = self._scored()
-        result, used = maybe_rerank_scored("質問", scored)
+        result, used = _maybe_rerank_scored("質問", scored)
         assert result == scored and not used
 
     def test_reorders_by_llm_and_keeps_unmentioned(self, monkeypatch):
-        import api.shion_memory_rerank as rr
+        import api.shion_memory_recall as recall
         import api.loop_engineering_common as common
 
         monkeypatch.setenv("SHION_MEMORY_RERANK", "1")
         monkeypatch.setattr(common, "call_gemini_json", lambda *a, **k: ["m3", "m1"])
-        result, used = rr.maybe_rerank_scored("質問", self._scored())
+        result, used = recall._maybe_rerank_scored("質問", self._scored())
         assert used
         assert [r[1]["id"] for r in result] == ["m3", "m1", "m2"]  # 未言及m2は後ろに残る
 
     def test_fail_open_on_llm_error(self, monkeypatch):
-        import api.shion_memory_rerank as rr
+        import api.shion_memory_recall as recall
         import api.loop_engineering_common as common
 
         monkeypatch.setenv("SHION_MEMORY_RERANK", "1")
@@ -268,7 +268,7 @@ class TestRerank:
 
         monkeypatch.setattr(common, "call_gemini_json", boom)
         scored = self._scored()
-        result, used = rr.maybe_rerank_scored("質問", scored)
+        result, used = recall._maybe_rerank_scored("質問", scored)
         assert result == scored and not used
 
 

@@ -1,6 +1,6 @@
 # Loop Engineering Health
 
-- Generated at: `2026-08-02T04:10:22`
+- Generated at: `2026-08-05T04:10:16`
 - Status: `attention`
 - Source coverage: 100.0%
 
@@ -11,18 +11,18 @@
 - Review pressure: 0.0%
 
 ## Recursive Loop
-- Canonical candidates: 0
+- Canonical candidates: 5
 - Ranked queue: 0
-- Suppressed: 0
+- Suppressed: 5
 - Repeat issue rate: 0.0%
-- Reuse rate: 0.0%
-- Noise rate: 0.0%
-- Churn rate: 0.0% (healthy dedup: 0, churn: 0)
+- Reuse rate: 100.0%
+- Noise rate: 100.0%
+- Churn rate: 80.0% (healthy dedup: 1, churn: 4)
 
 ## Prompt Feedback Loop
-- Total: 342
-- PDCA applied: 342 (100.0%)
-- Previous response diffs: 126 (36.8%)
+- Total: 345
+- PDCA applied: 345 (100.0%)
+- Previous response diffs: 126 (36.5%)
 
 ## Scoring Coefficients
 - Status: `attention`
@@ -41,11 +41,12 @@
 ## Outcome Loops
 - Status: `ok`
 - outcome_drift: 0 proposals (latest n/a)
-- feedback_pattern: 17 proposals (latest 2026-08-02T03:00:28)
+- feedback_pattern: 27 proposals (latest 2026-08-05T03:00:27)
 - judgment_divergence: 3 proposals (latest 2026-08-01T07:42:08)
 - knowledge_gap: 3 proposals (latest 2026-07-03T07:21:31)
-- PDCA effect: measured 113, improved 113, worsened 0, avg delta -0.357
+- PDCA effect: measured 275, improved 275, worsened 0, avg delta -0.273
 
 ## Recommendations
 - スコアリング係数/モデルのヘルスチェックに重大な異常があります
+- 抑制の滞留(churn)が高いため、needs_review/suppressed のクールダウン固着や台帳の suppressed 再記録を確認する（健全な重複排除は含めない）
 - 安全ガードに警告: 日次上限の繰り越しやプリフライトのリトライ枠超過を確認する

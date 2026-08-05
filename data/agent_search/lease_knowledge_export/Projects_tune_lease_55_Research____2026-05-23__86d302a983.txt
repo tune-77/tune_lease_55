@@ -1,0 +1,89 @@
+Title: 中小企業 業種別倒産率 調査メモ
+Source: Projects/tune_lease_55/Research/中小企業_業種別倒産率_2026-05-23.md
+Canonical-Topic: 中小企業 業種別倒産率 調査メモ
+Source-Bucket: research
+Quality-Score: 12
+Corpus: tune_lease_55_obsidian_lease_knowledge
+
+---
+created: 2026-05-23
+source: codex
+---
+
+# 中小企業 業種別倒産率 調査メモ
+
+## Summary
+- 中小企業の業種別倒産率について、最新公表情報を基に概算した。
+- 公的統計で「中小企業 × 業種別の倒産率」がそのまま掲載された表は見当たらないため、実務上は「業種別倒産件数 / 業種別中小企業数」で近似する。
+- 倒産件数はTDB「倒産集計 2025年度報」、分母は中小企業庁「中小企業の企業数・事業者数」2021年時点を使用。
+- 倒産件数は負債1,000万円以上の法的整理ベース。休廃業・解散は含まない。
+
+## 概算倒産率
+| 業種 | 2025年度倒産件数 | 中小企業数 2021年 | 概算倒産率 | 1万者あたり |
+|---|---:|---:|---:|---:|
+| 卸売業 | 1,138 | 202,432 | 0.56% | 56.2件 |
+| 建設業 | 2,041 | 424,976 | 0.48% | 48.0件 |
+| 小売業 | 2,233 | 527,138 | 0.42% | 42.4件 |
+| 運輸・通信業 | 457 | 120,060 | 0.38% | 38.1件 |
+| 製造業 | 1,159 | 335,552 | 0.35% | 34.5件 |
+| サービス業系 | 2,677 | 1,396,616 | 0.19% | 19.2件 |
+| 不動産・物品賃貸業 | 309 | 324,197 | 0.10% | 9.5件 |
+
+## Interpretation
+- 件数ではサービス業、小売業、建設業が多い。
+- 分母で割った率では、卸売業、建設業、小売業、運輸・通信業が高めに見える。
+- サービス業系は分母が大きく、件数は最多でも率では低めに出る。
+- ただしTDBの業種分類と中小企業庁の産業分類は完全一致しない。特に飲食店の扱いなどで、小売業・サービス業の比較は厳密値ではなく目安。
+
+## Risk Signals
+- TDBの2025年倒産リスク分析では、高リスク企業は12万8,220社、全体の8.7%。
+- 業種大分類では、製造業 31,035社、建設業 30,154社、小売業 27,136社が多い。
+- 細分類の高リスク出現率では、飲食店 43.0%、出版・印刷 41.7%、飲食料品小売 39.8% が特に高い。
+
+## Sources
+- 中小企業庁「倒産の状況」: https://www.chusho.meti.go.jp/koukai/chousa/tousan/index.html
+- TDB「倒産集計 2025年度報」: https://www.tdb.co.jp/report/bankruptcy/aggregation/20260408-bankruptfy2025/
+- 中小企業庁「中小企業の企業数・事業者数」: https://www.chusho.meti.go.jp/koukai/chousa/chu_kigyocnt/index.html
+- TDB「全国企業 倒産リスク分析調査 2025年」: https://www.tdb.co.jp/report/economic/20260317_highrisk/
+
+## Note
+- リース審査AIの業種別リスク補正・業種モニターの外部ベンチマーク候補として利用できる。
+
+## Search Aliases
+- 中小企業 倒産率
+- 業種別倒産率
+- 業種別倒産件数
+- 倒産リスク
+- bankruptcy rate
+- default risk benchmark
+- TDB倒産集計
+- 東京商工リサーチ 倒産の状況
+- 中小企業庁 企業数
+- 与信ベンチマーク
+- 業種別リスク補正
+
+## Related
+- tune_lease_55 Wiki
+- 検索語インデックス
+- 業種別傾向
+- 審査ナレッジ
+- 業種別調査まとめ
+
+## DATA Linkage
+- DATA連携マップ 倒産率と業種リスク
+- 信用リスク群DATA
+- 高スコア業種
+
+### Repository DATA
+- `data/industry_bankruptcy_bench.py`: この調査結果をアプリ側で使うための業種別倒産率ベンチ。
+- `static_data/bankruptcy_cases.json`: 倒産兆候のチェック項目。
+- `static_data/industry_benchmarks.json`: 業種別財務ベンチ。
+- `data/web_industry_benchmarks.json`: Web取得ベースの財務ベンチ。
+- `static_data/industry_hints.json`: 業種別リスク・必須確認質問。
+
+## 日付別DATA連携
+- 日付別DATA連携インデックス
+- DATA連携マップ 倒産率と業種リスク
+- 2026-05-23 スコア乖離
+
+2026-05-23の外部ベンチDATA。Generated系のスコア乖離と併読し、内部スコア偏りと外部母集団リスクを分けて扱う。

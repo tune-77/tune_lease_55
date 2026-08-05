@@ -1,0 +1,148 @@
+Title: 業種別の倒産要因と先行指標 - リース判断Auto Research
+Source: Projects/tune_lease_55/Research/Auto Research/2026-08-01_industry-risk.md
+Canonical-Topic: 業種別の倒産要因と先行指標
+Source-Bucket: auto_research
+Quality-Score: 12
+Corpus: tune_lease_55_obsidian_lease_knowledge
+
+---
+date: 2026-08-01
+research_topic: industry-risk
+title: "業種別の倒産要因と先行指標"
+tags: ["リース審査", "autoresearch", "業種分析", "倒産", "先行指標"]
+knowledge_type: lease-judgment-research
+source: gemini-google-search
+model: "gemini-2.5-flash"
+valid_until: 2026-10-30
+review_status: needs_human_review
+primary_source_count: 2
+recognized_source_count: 0
+supplementary_source_count: 10
+---
+# 業種別の倒産要因と先行指標 - リース判断Auto Research
+
+> このノートは審査判断の補助知識です。個別案件の事実確認を省略せず、自動否決・自動承認には使用しません。
+
+## 結論
+- Geminiの整形出力が必須見出しを満たさなかったため、このノートは自動フォールバックで保存しています。
+- テーマ「業種別の倒産要因と先行指標」はリース審査の補助知識として扱い、個別案件へ使う前に担当者確認を必須にします。
+
+## 根拠品質
+- 参照URLは取得済みですが、本文の再構成品質は要確認です。
+- 参照元の一次情報・専門機関・補助情報の区別は、下部の情報源とあわせて担当者が確認してください。
+- uretama.com (supplementary)
+- inging.jp (supplementary)
+- fmclub.jp (supplementary)
+- wel-knowledge.com (supplementary)
+- tdb.co.jp (supplementary)
+- tdb.co.jp (supplementary)
+
+## 判断に使える確認済み事実
+- 以下はGemini検索の調査原文からの抜粋です。事実として採用する前に参照元で再確認してください。
+
+```text
+## 日本の中小企業における業種別倒産要因とリース審査への実務知識
+
+日本のリース会社の審査企画担当として、中小企業の倒産要因と先行指標に関するWeb検索結果を基に、個別案件の審査判断に再利用できる実務知識として整理します。
+
+### 1. 中小企業倒産の主要因と先行指標
+
+中小企業の倒産は、大企業と比較して経済基盤が脆弱であるため多岐にわたる要因が絡み合いますが、特に以下の点が挙げられます。
+
+*   **販売不振:** 中小企業の倒産原因の約7割を占める最大の要因です。売上高の低下は倒産の最も早い兆候の一つとされます。
+*   **原材料価格の高騰・供給不足:** 近年のエネルギー価格上昇や国際物流の混乱により、原材料調達コストが増加し、収益を圧迫しています。価格転嫁が難しい中小企業ほど影響を受けやすい傾向があります。
+*   **人手不足:** 採用難、人件費高騰、従業員の退職が倒産に直結するケースが増加しています。特にサービス業、建設業、運輸・通信業で顕著であり、従業員10人未満の小規模企業で全体の7割を占めます。
+*   **物価高:** 人件費上昇と並び、物価高が中小企業の経営を圧迫し、倒産件数を押し上げています。
+*   **後継者難・経営者の高齢化:** 経営実態のない「みなし解散」を含め、休廃業・解散が増加傾向にあり、その背景には経営者の高齢化と後継者不足の問題があります。
+*   **過剰債務（特にコロナ融資後倒産）:** コロナ禍におけるゼロゼロ融資後の返済開始がピークを迎え、業績回復が遅れた中小企業は新たな資金調達も難しく、資金繰りに行き詰まる可能性があります。
+*   **黒字倒産:** 利益が出ていても、キャッシュフローの悪化や資金繰りの失敗により支払い能力を喪失するケースです。特に中小企業で発生しやすく、貸借対照表の自己資本比率の確認が重要です。
+
+**先行指標としての注目点:**
+
+*   **倒産件数全体:** 企業倒産は景気の先行指標として知られ、倒産件数増は今後の経済悪化の予兆と見なされます。2021年を底に増加傾向に転じ、2024年には1万件を超え、2025年度も高水準で推移しています。
+*   **負債額の小規模化:** 負債5,000万円未満の倒産が全体の6割以上を占め、小規模企業の倒産が増加しています。
+*   **特定の業種での倒産増加:** 建設業、製造業、卸売業、小売業、サービス業などで倒産件数が増加傾向にあります。
+*   **信用調査機関の「倒産予測値」:** 東京商工リサーチの「リスクスコア」のように、過去の倒産事例に基づき12ヶ月以内の倒産確率を予測する指標も存在します。
+
+### 2. リース審査における実務知識への変換
+
+上記の倒産要因と先行指標を踏まえ、個別リース案件の審査判断において、以下の観点から確認と条件設定を行います。
+
+#### 2.1. 共通の確認事項と審査判断
+
+**確認事項:**
+
+*   **決算書・試算表:**
+    *   直近2期以上の連続黒字決算であるか。赤字が続いている場合や債務超過の状態ではないか。
+    *   売上高、経常利益の推移。特に売上高の急激な低下がないか。
+    *   自己資本比率。黒字倒産リスクを避けるため、財務面での健全性を確認する。
+    *   キャッシュフロー計算書（入手可能であれば）を確認し、営業キャッシュフローが安定しているか。
+*   **資金繰り状況:**
+    *   資金繰り表の有無と内容。入出金のサイクルを正確に把握しているか。
+    *   手元現預金の状況。中小企業は手元現金を多めに準備しておく必要がある。
+    *   税金の滞納がないか。
+*   **会社設立からの経過年数:**
+    *   設立3年以上が目安。創業間もない企業や設立から日が浅い法人は、実績が少ないため審査が厳しくなる傾向がある。
+*   **代表者個人の信用情報:**
+    *   法人契約であっても、中小企業や新設法人の場合、代表者個人の信用情報が極めて重視される。過去の支払い延滞や債務整理歴がないか確認する。
+    *   代表者の年齢（若すぎないか、高齢すぎないか）、居住状況（持ち家か賃貸か、固定電話の有無）も判断材料となる。
+*   **大口取引先の状況:**
+    *   大口取引先への売上依存度が高い場合、その取引先の経営状況や契約継続性を確認する。大口取引先との契約終了は倒産の予兆となり得る。
+*   **リース希望額と企業規模のバランス:**
+    *   会社の年間売上や利益に対して、リース料の総額や月額が過大ではないか。
+
+**審査判断と承認条件の変更:**
+
+*   **赤字決算や債務超過の場合:**
+    *   **確認:** 赤字の原因と改善計画の具体性、実行可能性を詳細にヒアリングする。特に、一時的な要因か構造的な問題かを見極める。
+    *   **条件変更:**
+        *   リース料率の引き上げ。
+        *   連帯保証人の追加（代表者個人に加え、十分な収入や資産を持つ第三者）。
+        *   契約期間の短縮、リース物件の価格帯見直しによるリース料の減額。
+        *   担保提供の検討。
+        *   短期的な資金繰り改善策（例：売掛債権の早期回収、在庫圧縮）の進捗状況を確認。
+*   **設立年数が短い（3年未満）場合:**
+    *   **確認:** 事業計画の具体性、市場での競争優位性、経営者の経験・実績、自己資金比率を重視して確認する。
+    *   **条件変更:**...
+```
+
+## リース審査への適用
+- 審査では、自動否決・自動承認ではなく、確認質問、承認条件、保全条件の検討材料として使います。
+- 財務数値、契約条件、物件稼働、保全可能性に影響する点だけを案件判断へ変換します。
+
+## 担当者が確認する質問
+- この情報は対象業種・対象設備・対象時期に本当に該当するか。
+- 顧客の資金繰り、物件稼働、契約条件、銀行支援のどれに影響するか。
+- 参照元が一次情報か、専門機関か、補助情報か。
+
+## 承認条件を変える兆候
+- 返済原資、物件価値、稼働率、制度変更、補助金入金時期に直接影響する事実が確認できた場合。
+- 補助情報だけでなく、一次情報または専門機関の根拠で裏取りできた場合。
+
+## 反証・過信してはいけない点
+- Geminiの要約は誤読や過剰一般化を含む可能性があります。
+- ニュースや民間記事だけを根拠に、スコアや承認可否を直接変更しないでください。
+
+## 更新が必要になる条件
+- 制度改正、金利環境、業界統計、倒産動向、補助金要件が更新された場合。
+- 参照元URLが古くなった、またはより一次情報に近い資料が見つかった場合。
+
+## 情報源
+- `supplementary` [uretama.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQF4mnjJPljyqPgAuqaKlb7Bowu5lxmfn1z2XVDbQww4JOIVv7WvC7E30eDGX5VvXRmZXlasv1A5hp2kv6Xsx4iMlNWk2Pk1f0tchRWVjWFHePmNWgBPbnjtW5H80_klSYK6eITmFQ==)
+- `supplementary` [inging.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFW39T9FkOzgPTVQF76rqBAseIRONAkK6w6KbBDdicWh7W87i7_mDZPRo4XjkN9y1v5jq2Z7dZKUl5Rxjs-SxLVAJTroqK6TUZv0DTUjRL0HwVTB5WDBYOnzIuMjGseqbhOTLDS3DFBk3Wvfy6cgt3yEhgrt25F_9_IQDPL88peCXurWVWUPGrcEGn4No1Ap_79w3QKzWPNxUWFtyujQGj64jGi1_FfaN9duQcJq4ILWl3oeYXbMndWQRJhDyZ4RWcwUAGQFBguvRYAOC1x5GbNtflrHMnmE4aqOGegE7tqaJCnoqr52SFbQXfutQUv1hvxnA==)
+- `supplementary` [fmclub.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE2na97inKyKOyJWL2XTjvQGGKGsflQOl_Qwdz9_yiBr-xoVj8V8uUwjZaZ67r1vTRfQ3kismiruEnOvXBe8oesDz6qRBG7V91cF7Qop7MjJmBGfnEfDmo3tg==)
+- `supplementary` [wel-knowledge.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEGbqgqGkOL1zpH2BO2ySkRnrRV0Esoh2zd2PLWfRg-b4qUWCe119t9RqgbQCtQJeDyoyJ3sXgYv1uAN3ud6mDVpACMWM1CEifmXxs1uX0cqs93-svYnhOTVPBfHVwiqAUP3Gg-9sBxRaceNfFq)
+- `supplementary` [tdb.co.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHHUSmvNz0FdUcIiWgcY-O1DsVlIsOpqqguw1XERsh3nWTGRRV0Al0703u6DmaWH8EjFRNMRoX7AMmFfb1_UVchzA4TbUZzrdNXzeQ1slDZHKpB2F-CFxnsLwAl8ijkITsTL8vm-AUmah8F4KT59w-LMMAMLv91hUaOhyeh-gFOuY5WEdEOt08=)
+- `supplementary` [tdb.co.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEeTfbvDrUlC5muCxrcvwR4CdnO8jD62NReAkOthunq6ABngv7inI5XOxZXSQHgnX43xEnNqdFn1qjycQ1Bw2vw2TUoXWyoGX8tkEfGPCNhWq_3hYPPHGn7t1M0csZqWCxaiqpyxWDM6IXxmtzijmaHga55gtzNAf7YJ0xB1Okac6vD73lgrN4URByK)
+- `primary` [meti.go.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQF7rpkNzavYrtUhnORh7VyZpIii4Ba3kJm0Cvyld0dwJDQ3AHLrFlsDhs07avqCNr5FcJniZLHcigoYC0bAi4ibeMdBoPz7zGGCPwspefmM6Q2NPS6KdIxp15GZSKg7DDULlpVs5ePJxQAzbswkS7S8HA812BELIj6VuaFHEY5ttw==)
+- `supplementary` [tsr-net.co.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQF0c37FmKbS6GEGNo1h3gcPHXyvcUAUHiaszqNbLRq0gYI9jtuRqCBe5Xeq3okm3t1dq_t21uvAQP1lg4JDxngNympcXD6ebNfv7U3k2mwpNkptYEP9azBAn39yD3xkbPqZR9FNE0RsCNwniXBVRGxb_1JRE187Mvm2)
+- `primary` [cao.go.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEanWhjy9mQP3Aga5eItRRZyqU3mMZLOEeiC-2L8PG1A36ZXf1rJ4OZYtEJgkmKd0zlAJcNxTpvPToPDyBB7uOu0CPdMZMhwIL7GM4A21-YHjGm78wcun_rIXDQoUf1s7FQL0Aazjg-y_rL_ZY0En2piao=)
+- `supplementary` [tsr-net.co.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH9hyhm6Mi2XHPu-cPW4bDlRYDuaQAPTQ500w9XmVKyy9tT8kA71iITxy8dsCjXs6ttwlGaBq-XaBM7zmzr81E4S37ydeK2kHkkYQ9-3NOVX1QYIGUWIehSWkmi69tm3Xve63aQaUIfXRDWL31EYCB05B6wJxUocA36)
+- `supplementary` [vs-group.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFKJEhV55l-P08RqIQdM-Hf42n7OVCRaeGnqK9maigq9qircst1tVi4ucbTobbqcXQF39t6f6mdzmYBLV6OIhEYOofn5YHpqLq334MfvuyrVs5ZYUdmdwliz2T2wX5TR3Qa)
+- `supplementary` [pay-tech.co.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQF2xHtQRRpG-qTj_QtT673fOTNk0Ov1pdRVQQj7CcfRinB7bmpVxShzHCocg-xumTkyXGivMek4m0mFaRW_tQ10XGE_hgnIPheJwwtvkkSg5vbvR4QrwV_BtR_F2LG1wQ==)
+
+## 検索用分類
+- 調査テーマ: 業種別の倒産要因と先行指標
+- 対象: リース審査、信用判断、条件設計
+- 有効期限: 2026-10-30
+- レビュー状態: needs_human_review

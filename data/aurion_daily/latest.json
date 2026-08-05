@@ -1,6 +1,6 @@
 {
   "mode": "midnight",
-  "started_at": "2026-07-27T03:30:00",
+  "started_at": "2026-08-06T03:30:00",
   "errors": [],
   "sync": {
     "status": "completed"
@@ -8,12 +8,12 @@
   "vault_b_rag": {
     "status": "completed",
     "returncode": 0,
-    "vault": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault",
-    "started_at": "2026-07-27T03:30:00",
-    "finished_at": "2026-07-27T03:30:18",
-    "duration_seconds": 17.69,
-    "stdout_tail": "2026-07-27T03:30:00 [INFO] ============================================================\n2026-07-27T03:30:00 [INFO] [reindex] 開始  vault=/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault  full=False\n2026-07-27T03:30:00 [INFO] [reindex] 差分更新モード\n2026-07-27T03:30:00 [INFO] [Indexer] start scanning: /Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/lease-wiki-vault\n2026-07-27T03:30:02 [INFO] [KnowledgeVectorStore] collection initialized: /Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db\n2026-07-27T03:30:08 [INFO] Load pretrained SentenceTransformer: /Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\n2026-07-27T03:30:10 [INFO] [KnowledgeVectorStore] encoder initialized in offline mode: /Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2\n2026-07-27T03:30:17 [INFO] [Indexer] done: added=130, skipped=1064, pruned=0, total=1194\n2026-07-27T03:30:17 [INFO] [reindex] 完了  added=130  skipped=1064  total_in_db=8863  elapsed=16.6s\n2026-07-27T03:30:17 [INFO] ============================================================\n",
-    "stderr_tail": "The tokenizer you are loading from '/Users/kobayashiisaoryou/clawd/tune_lease_55/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:01<00:01,  1.35s/it]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.04it/s]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.02s/it]\n\nBatches:   0%|          | 0/2 [00:00<?, ?it/s]\nBatches:  50%|█████     | 1/2 [00:01<00:01,  1.37s/it]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.05it/s]\nBatches: 100%|██████████| 2/2 [00:02<00:00,  1.01s/it]\n\nBatches:   0%|          | 0/1 [00:00<?, ?it/s]\nBatches: 100%|██████████| 1/1 [00:01<00:00,  1.16s/it]\nBatches: 100%|██████████| 1/1 [00:01<00:00,  1.16s/it]\n"
+    "vault": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/lease-wiki-vault",
+    "started_at": "2026-08-06T03:30:00",
+    "finished_at": "2026-08-06T03:30:03",
+    "duration_seconds": 3.5,
+    "stdout_tail": "2026-08-06T03:30:00 [INFO] ============================================================\n2026-08-06T03:30:00 [INFO] [reindex] 開始  vault=/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/lease-wiki-vault  full=False\n2026-08-06T03:30:00 [INFO] [reindex] 差分更新モード\n2026-08-06T03:30:00 [INFO] [Indexer] start scanning: /Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/lease-wiki-vault\n2026-08-06T03:30:01 [INFO] [KnowledgeVectorStore] collection initialized: /Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db\n2026-08-06T03:30:03 [INFO] [Indexer] done: added=0, skipped=1344, pruned=0, total=1344\n2026-08-06T03:30:03 [INFO] [reindex] 完了  added=0  skipped=1344  total_in_db=11859  elapsed=3.3s\n2026-08-06T03:30:03 [INFO] ============================================================\n",
+    "stderr_tail": ""
   },
   "db": {
     "status": "completed",
@@ -120,18 +120,18 @@
       },
       {
         "final_status": "失注",
-        "n": 753,
-        "avg_score": 57.4
-      },
-      {
-        "final_status": "未登録",
-        "n": 245,
-        "avg_score": 45.6
+        "n": 984,
+        "avg_score": 54.4
       },
       {
         "final_status": "検収完了",
         "n": 19,
         "avg_score": 69.1
+      },
+      {
+        "final_status": "未登録",
+        "n": 14,
+        "avg_score": 66.1
       },
       {
         "final_status": "稟議中",
@@ -173,15 +173,24 @@
     ],
     "q_risk": {
       "n": 99,
-      "avg_q": 0.0,
+      "avg_q": 35.99,
       "min_q": 0.0,
-      "max_q": 0.0
+      "max_q": 100.0
     }
   },
   "recent": {
     "files": [],
-    "keyword_hits": {},
-    "recent_items": []
+    "keyword_hits": {
+      "根拠": 46,
+      "ダッシュボード": 5,
+      "成約率": 1,
+      "Q_risk": 1
+    },
+    "recent_items": [
+      "## 紫苑としての個性と記憶の明示",
+      "## 専門家としての深掘りと違和感の言語化",
+      "## ガイド情報の利用促進と統合"
+    ]
   },
   "web": {
     "status": "completed",
@@ -213,23 +222,23 @@
         "error": "HTTP Error 403: Forbidden"
       }
     ],
-    "completed_at": "2026-07-27T03:30:19"
+    "completed_at": "2026-08-06T03:30:04"
   },
   "reasoning": {
     "status": "completed",
-    "started_at": "2026-07-27T03:30:19",
-    "finished_at": "2026-07-27T03:31:20",
+    "started_at": "2026-08-06T03:30:04",
+    "finished_at": "2026-08-06T03:31:05",
     "steps": [
       {
         "step": "triad_fusion_chat_web_db",
-        "started_at": "2026-07-27T03:30:19",
-        "finished_at": "2026-07-27T03:30:50",
+        "started_at": "2026-08-06T03:30:04",
+        "finished_at": "2026-08-06T03:30:34",
         "hold_seconds": 30.14
       },
       {
         "step": "contradiction_and_edge_case_detection",
-        "started_at": "2026-07-27T03:30:50",
-        "finished_at": "2026-07-27T03:31:20",
+        "started_at": "2026-08-06T03:30:34",
+        "finished_at": "2026-08-06T03:31:05",
         "hold_seconds": 30.15
       }
     ],
@@ -240,8 +249,9 @@
       "Q_riskは既存数式の補正係数ではなく、スコアリング外で成約・失注を動かす未知因子の発見装置へ移す。",
       "根拠ルート可視化、業界動向ファネル、動的金利条件セットは同一の審査OSに統合するべきである。",
       "DB上、60-80帯の成約系比率が40-60帯を下回るため、価格・競合・条件提示後離脱のログ化を優先する。",
+      "直近改善ログでは根拠表示要求が強い。RAGの回答品質は、検索精度だけでなく証跡UIで評価する。",
       "外部知識はモデルドリフト監視を支持する。PSI/CSI/較正状態をスコア横に出す設計へ進める。"
     ]
   },
-  "finished_at": "2026-07-27T03:31:20"
+  "finished_at": "2026-08-06T03:31:08"
 }
