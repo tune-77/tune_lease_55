@@ -28,7 +28,7 @@ Default schedule:
 - launchd default profile: `industry-watch`
 
 Default Obsidian targets:
-- `05-クリップ_記事/リースニュース/YYYY-MM-DD_リースニュース_*.md`
+- `05-クリップ_記事/業界リスクニュース/YYYY-MM-DD_業界リスクニュース_*.md`
 - `Daily/YYYY-MM-DD.md`
 
 Built-in profiles:

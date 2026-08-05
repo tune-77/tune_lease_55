@@ -109,6 +109,7 @@ fi
 
 for rel in \
   "Projects/tune_lease_55" \
+  "05-クリップ_記事/業界リスクニュース" \
   "05-クリップ_記事/リースニュース" \
   "リース知識" \
   "lease-wiki-vault"; do
