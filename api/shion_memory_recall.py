@@ -576,6 +576,12 @@ def _extract_case_profile(question: str) -> dict[str, Any]:
 
 
 def _extract_score_band(text: str) -> str:
+    # 注意: 下限に REVIEW_LINE（40、即否決圏）を使っており、CLAUDE.md/workflow.md の
+    # 公式閾値（条件付き承認の下限は CONDITIONAL_LINE=60）とは範囲が異なる。
+    # 41〜59点も "boundary" に含まれる点は、記憶想起を広めに取る意図的な設計か、
+    # CONDITIONAL_LINE の取り違えかを判別できず保留（2026-08-06 セッションで確認済み・未修正）。
+    # tests/test_shion_memory_recall.py::test_case_recall_uses_industry_asset_score_band が
+    # スコア52点→"boundary" を現状仕様として固定しているため、変更前にテストの意図も要確認。
     scores = []
     for match in re.finditer(r"(?<!\d)(\d{1,3})(?:\.\d+)?\s*(?:点|スコア|%)?", text):
         try:
