@@ -25,8 +25,8 @@ def extract_improvements_from_chat_log(chat_log: str) -> list[dict[str, Any]]:
     """
     
     improvements: list[dict[str, Any]] = []
-    improvement_id = 1
-    
+    improvement_id = _max_ledger_rev_number() + 1
+
     # トリガーパターン：[改善], [TODO] など
     trigger_pattern = r'\[(?:改善|TODO|FIX|REFACTOR|バグ|問題)\]\s*(.+?)(?=\n\n|\Z)'
     
@@ -131,6 +131,37 @@ def _find_repo_root() -> Path | None:
             return root
         root = root.parent
     return None
+
+
+_REV_ID_RE = re.compile(r"REV-(\d+)")
+
+
+def _max_ledger_rev_number() -> int:
+    """scripts/improvement_ledger.jsonl に記録済みの最大REV番号を返す（無ければ0）。
+
+    抽出時のIDをここから採番することで、実行のたびに 1 から振り直して
+    既存REVと衝突する事故（REV番号の使い回し）を防ぐ。
+    """
+    repo_root = _find_repo_root()
+    if repo_root is None:
+        return 0
+    ledger_path = repo_root / "scripts" / "improvement_ledger.jsonl"
+    if not ledger_path.exists():
+        return 0
+    max_num = 0
+    for line in ledger_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        for field in (entry.get("rev_id", ""), entry.get("key", "")):
+            m = _REV_ID_RE.search(str(field))
+            if m:
+                max_num = max(max_num, int(m.group(1)))
+    return max_num
 
 
 def _extract_search_keywords(text: str) -> list[str]:
