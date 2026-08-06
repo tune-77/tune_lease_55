@@ -301,6 +301,40 @@ def _get_ledger_latest() -> dict[str, dict]:
     }
 
 
+def _get_rev_id_first_seen_key() -> dict[str, str]:
+    """rev_id → 台帳にその REV 番号が最初に記録されたときの key を返す。
+
+    canonical_key は本来 (title, description) から決定的に計算されるが、
+    起票時（実タイトル・description あり）と本スクリプトの reconciliation時
+    （REV_TITLES に無い REV 番号は rev_id 文字列自体をタイトル代わりに使う
+    フォールバック、description なし）とで異なる入力から独立に計算されるため、
+    同じ REV 番号でも別の canonical_key が生成されうる。結果、reconciliation の
+    "applied" 書き込みが別キーの孤立エントリになり、本来のエントリが
+    needs_review のまま取り残される事故が起きていた（例: REV-230, REV-237 —
+    孤立キー misc_dfe021de8b2b / misc_665e5e075fed に "applied" が書かれ、
+    元の misc_6be43f8b3dce / misc_64ce70442596 は needs_review のまま放置）。
+    再発防止のため、その REV 番号が台帳に最初に出現したときの key を
+    「本当の」canonical_key として扱い、以後の reconciliation 書き込みは
+    必ずこのキーを再利用する。
+    """
+    if not LEDGER_PATH.exists():
+        return {}
+    result: dict[str, str] = {}
+    for line in LEDGER_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        rev_id = e.get("rev_id", "")
+        key = e.get("key", "")
+        if rev_id.startswith("REV-") and key:
+            result.setdefault(rev_id, key)
+    return result
+
+
 _OPEN_STATUSES = {"needs_review", "parked", "suppressed"}
 
 
@@ -385,6 +419,7 @@ def main() -> None:
     print("GitHub PR から REV マッピングを取得中...")
     pr_map = _fetch_pr_rev_map()
     ledger_latest = _get_ledger_latest()
+    rev_id_first_key = _get_rev_id_first_seen_key()
 
     now = datetime.now().isoformat()
 
@@ -409,7 +444,11 @@ def main() -> None:
         if current_status == new_status and not already_migrated:
             reason += "（旧形式→canonical_key 移行）"
         title = REV_TITLES.get(rev_id, rev_id)
-        ck = _canonical_key(title)
+        # REV_TITLES に無い REV 番号は、rev_id 文字列そのものから canonical_key を
+        # 計算すると起票時の実キーと食い違い孤立エントリを生む（詳細は
+        # _get_rev_id_first_seen_key のdocstring）。台帳に記録済みの実キーが
+        # あれば必ずそれを再利用する。
+        ck = rev_id_first_key.get(rev_id) or _canonical_key(title)
         updates.append({
             "key": ck,          # pipeline が is_processed() で照合するキー
             "rev_id": rev_id,   # 人間可読の REV ID（参照用）
