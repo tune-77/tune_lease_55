@@ -254,7 +254,28 @@ def record_improvement_triage(req: ImprovementTriageRequest):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    _log_triage_action(record)
     return {"ok": True, "record": record}
+
+
+def _log_triage_action(record: dict) -> None:
+    """Agent Action Ledger（backlog §9.2）への記録。失敗しても本処理は止めない。"""
+    try:
+        from api.shion_action_ledger import log_action
+
+        decision = str(record.get("decision") or "")
+        title = str(record.get("title") or record.get("canonical_key") or "")
+        log_action(
+            "improvement_classified",
+            summary=f"改善候補「{title}」を「{decision}」に分類",
+            observed_sources=["data/shion_improvement_triage.jsonl"],
+            risk_level="low",
+            requires_user_approval=False,
+            target=str(record.get("canonical_key") or ""),
+            result=decision,
+        )
+    except Exception:
+        pass
 
 
 @router.get("/api/improvement/triage")
@@ -323,6 +344,21 @@ def approve_improvement_triage(req: ImprovementTriageApproveRequest):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    try:
+        from api.shion_action_ledger import log_action
+
+        log_action(
+            "user_decision_recorded",
+            summary=f"「{record.get('title') or record.get('canonical_key')}」の実装承認をUserが記録",
+            observed_sources=["data/shion_improvement_triage.jsonl"],
+            risk_level="low",
+            requires_user_approval=True,
+            user_approved=True,
+            target=str(record.get("canonical_key") or ""),
+            result="approved",
+        )
+    except Exception:
+        pass
     return {"ok": True, "record": record}
 
 

@@ -49,6 +49,24 @@ RECIPES_ROOT = REPO_ROOT / "data" / "recipes"
 AUDIT_LOG = RECIPES_ROOT / "auto_approved_log.jsonl"
 
 
+def _log_auto_approval(rev: str, reason: str) -> None:
+    """Agent Action Ledger（backlog §9.2）への記録。失敗しても処理は止めない。"""
+    try:
+        from api.shion_action_ledger import log_action
+
+        log_action(
+            "improvement_classified",
+            summary=f"改善候補 {rev} を自動承認（{reason}）",
+            observed_sources=["data/recipes/pending"],
+            risk_level="low",
+            requires_user_approval=False,
+            target=rev,
+            result="auto_approved",
+        )
+    except Exception:
+        pass
+
+
 def is_auto_approvable(recipe: dict, triage: dict[str, dict] | None = None) -> tuple[bool, str]:
     """自動承認できるか判定し、(可否, 理由) を返す。"""
     # Phase 2 (P2-2): User がトリアージで「捨てる」と確定した候補は自動承認しない。
@@ -122,6 +140,7 @@ def main() -> int:
                     "title": recipe.get("title", ""),
                     "reason": reason,
                 }, ensure_ascii=False) + "\n")
+            _log_auto_approval(str(rev), reason)
 
     print(f"   自動承認 {approved_count} 件 / 人間レビュー待ち {skipped_count} 件")
     return 0
