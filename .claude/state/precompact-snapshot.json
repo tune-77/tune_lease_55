@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 2265 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 3521 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "2265 session age (minutes) exceed threshold 120"
+      "3521 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 2265,
+        "actual": 3521,
         "threshold": 120,
         "triggered": true
       }
@@ -60,7 +60,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 2265
+      "sessionAgeMinutes": 3521
     }
   },
   "continuity": {
@@ -72,29 +72,29 @@
   "legacy_version": "1.0.0",
   "metrics": null,
   "recentEdits": [
-    ".agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py",
+    ".claude/memory/session-log.md",
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
+    ".claude/state/session.events.jsonl",
     ".claude/state/worktree-info.json",
-    "MEMORY.md",
-    "README.md",
-    "api/main.py",
-    "api/shion_memory_vector.py",
-    "components/graph_view.py",
+    "CLAUDE.md",
+    "api/chat_external_research.py",
+    "api/rule_engine/ledger_rules.json",
+    "api/shion_memory_impact.py",
+    "api/shion_memory_recall.py",
+    "api/shion_memory_rerank.py",
+    "config/rag_ranking.json",
     "data/aurion_daily/latest.json",
-    "data/cases_for_colab.json",
-    "data/user_personal_memory.md",
-    "frontend/.claude/state/instructions-loaded.jsonl",
-    "frontend/package.json",
-    "frontend/src/app/screening/page.tsx",
-    "frontend/src/components/analysis/ReportGenerator.tsx",
-    "lease_intelligence_reflection.py",
-    "reports/agent_sidecar_brief.md",
-    "reports/recursive_self_improvement_latest.md",
-    "reports/shion_memory_contradictions_latest.md"
+    "data/canonical_judgment_rules.json",
+    "data/coeff_auto.json",
+    "data/industry_benchmarks.json",
+    "data/industry_capex_lease.json",
+    "data/shion_monitor_report_state.json",
+    "data/shion_pending_tasks.json",
+    "data/training_meta.json"
   ],
   "sessionId": "",
-  "timestamp": "2026-07-11T03:27:03Z",
+  "timestamp": "2026-08-04T20:31:05Z",
   "version": "1.0.0",
   "wipTasks": null
 }

@@ -1,0 +1,68 @@
+{
+  "date": "2026-08-05",
+  "count": 1,
+  "policy": "news_signals_are_screening_context_not_promoted_judgment_assets",
+  "dedupe_policy": "same_signal_signature_is_suppressed_while_existing_signal_is_valid",
+  "repeated_suppressed": 3,
+  "signals": [
+    {
+      "id": "ns-47d320ff35f618fd",
+      "source": "news_judgment_signals",
+      "candidate_type": "confirmation_question",
+      "research_topic": "製造・設備投資 / 建設・不動産 / 金利負担・返済余力",
+      "research_title": "富山県内への設備投資額が北陸3県でトップ 2年連続の増加で前年度より37.9%増加 人手不足で工場の自動化など後押し【日本政策投資銀行】(チューリップテレビ) - Yahoo!ニュース",
+      "research_date": "2026-08-05",
+      "claim": "月額負担増に対する返済余力と競合提示金利を確認する。 条件影響: 金利説明、保証、前受金、期間短縮の必要性を確認する。",
+      "effective_claim": "金利の話は派手ではないが、月額負担と競合条件を静かに削っていく感じがある。 月額負担増に対する返済余力と競合提示金利を確認する。 条件影響: 金利説明、保証、前受金、期間短縮の必要性を確認する。",
+      "edited_claim": "",
+      "edit_count": 0,
+      "evidence_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/05-クリップ_記事/業界リスクニュース/2026-08-05_業界リスクニュース_富山県内への設備投資額が北陸3県でトップ 2年連続の増加で前.md",
+      "promotion_status": "news_signal",
+      "review_status": "candidate",
+      "verified_status": "news_signal_unverified",
+      "asset_quality": "actionable",
+      "actionability": "actionable",
+      "use_when": "製造・設備投資 / 建設・不動産 / 金利負担・返済余力",
+      "do_not_use_when": "ニュースの話題性だけで、対象企業の資金繰り・稼働・物件価値・契約条件へ接続できない場合",
+      "valid_until": "2026-11-03",
+      "confidence": 0.85,
+      "noise_score": 0.0,
+      "risk_axis": [
+        "金利負担・返済余力",
+        "製造・設備投資",
+        "建設・不動産"
+      ],
+      "affected_industries": [
+        "製造・設備投資",
+        "建設・不動産"
+      ],
+      "affected_assets": [],
+      "recommended_checks": [
+        "月額負担増に対する返済余力と競合提示金利を確認する。",
+        "投資目的、補助金要件、回収期間、生産性改善効果を確認する。",
+        "工期、稼働開始時期、移設可能性、現場稼働への影響を確認する。"
+      ],
+      "condition_impacts": [
+        "金利説明、保証、前受金、期間短縮の必要性を確認する。",
+        "補助金前提なら採択前提条件と未採択時の資金繰りを確認する。",
+        "稼働開始が遅れる場合は支払開始時期や猶予条件を確認する。"
+      ],
+      "felt_signal": "金利の話は派手ではないが、月額負担と競合条件を静かに削っていく感じがある。",
+      "judgment_tension": "金利上昇を一般論で済ませず、返済余力と提示条件の両方に落とす必要がある。",
+      "source_title": "富山県内への設備投資額が北陸3県でトップ 2年連続の増加で前年度より37.9%増加 人手不足で工場の自動化など後押し【日本政策投資銀行】(チューリップテレビ) - Yahoo!ニュース",
+      "source_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/05-クリップ_記事/業界リスクニュース/2026-08-05_業界リスクニュース_富山県内への設備投資額が北陸3県でトップ 2年連続の増加で前.md",
+      "use_count": 0,
+      "useful_count": 0,
+      "rejected_count": 0,
+      "neutral_count": 0,
+      "signal_signature": "f2c5719707b6f4aa",
+      "duplicates_collapsed": [],
+      "dedupe_summary": {
+        "input": 5,
+        "output": 4,
+        "suppressed": 1
+      }
+    }
+  ],
+  "updated_at": "2026-08-05T06:00:14"
+}

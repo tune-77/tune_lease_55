@@ -1,0 +1,9 @@
+{
+  "updated_at": "2026-08-02T06:32:00",
+  "export_signature": "0f0249eaf113a2cfa1ff8eb3f54e6e95e01043634ea286098928ec1e7e86f6cd",
+  "exported_count": 119,
+  "manifest_uri": "gs://tune-lease-55-data/agent-search/lease-knowledge/documents.jsonl",
+  "gcs_prefix": "gs://tune-lease-55-data/agent-search/lease-knowledge",
+  "operation_name": "projects/1020894094172/locations/global/collections/default_collection/dataStores/tune-lease-55-obsidian-lease/branches/0/operations/import-documents-18200604050144976794",
+  "dry_run": false
+}

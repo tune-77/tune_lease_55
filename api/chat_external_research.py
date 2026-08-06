@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from api.routers.vault_hub import _research_organ_vault_path, _research_run_display
+from runtime_paths import get_data_dir
 
 
 def external_research_topic_from_message(message: str) -> str:
@@ -81,6 +83,74 @@ def external_research_permission_reply(suggestion: dict[str, Any]) -> str:
     )
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def capture_vertex_materials_for_research(
+    topic: str,
+    *,
+    vault_path: Path,
+    modes: tuple[str, ...] = ("evidence_support", "judgment_candidates"),
+    page_size: int = 5,
+    workflow_runner: Callable[..., dict[str, Any]] | None = None,
+    capture_runner: Callable[..., dict[str, Any]] | None = None,
+    state_path: Path | None = None,
+) -> dict[str, Any]:
+    """Best-effort Vertex material capture paired with external Research.
+
+    The saved Vertex notes are research material only. They are not promoted
+    into judgment assets and must not break the normal Research path.
+    """
+    clean_topic = (topic or "").strip()[:160]
+    if not clean_topic:
+        return {"used": False, "reason": "empty_topic", "captures": []}
+    if not _env_bool("VERTEX_RESEARCH_MATERIAL_CAPTURE_ENABLED", True):
+        return {"used": False, "reason": "disabled", "captures": []}
+
+    if workflow_runner is None or capture_runner is None:
+        from api.vertex_distillation import capture_vertex_workflow_result
+        from api.vertex_knowledge_workflows import run_vertex_knowledge_workflow
+
+        workflow_runner = workflow_runner or run_vertex_knowledge_workflow
+        capture_runner = capture_runner or capture_vertex_workflow_result
+
+    state = state_path or (get_data_dir() / "vertex_research_material_capture_state.json")
+    captures: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+    for mode in modes:
+        try:
+            workflow = workflow_runner(clean_topic, mode=mode, page_size=page_size)
+            capture = capture_runner(workflow, vault_path=vault_path, state_path=state)
+            captures.append(
+                {
+                    "mode": mode,
+                    "query": workflow.get("query"),
+                    "refs": workflow.get("refs") or [],
+                    "capture": capture,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - never break Research mode
+            errors.append({"mode": mode, "error": str(exc)[:240]})
+    saved_paths = [
+        str((item.get("capture") or {}).get("note_path") or "").strip()
+        for item in captures
+        if (item.get("capture") or {}).get("captured")
+    ]
+    saved_paths = [path for path in saved_paths if path]
+    return {
+        "used": bool(captures or errors),
+        "topic": clean_topic,
+        "modes": list(modes),
+        "captures": captures,
+        "saved_paths": saved_paths,
+        "errors": errors,
+    }
+
+
 def run_external_research_for_chat(topic: str) -> dict[str, Any]:
     topic = (topic or "").strip()[:160]
     if not topic:
@@ -89,6 +159,7 @@ def run_external_research_for_chat(topic: str) -> dict[str, Any]:
     from scripts.auto_research_lease_judgment import DEFAULT_OUTPUT_DIR, run as run_auto_research
 
     result = run_auto_research(vault, DEFAULT_OUTPUT_DIR, topic, False)
+    vertex_materials = capture_vertex_materials_for_research(topic, vault_path=vault)
     display = _research_run_display(result)
     note_path = str(result.get("path") or "")
     rel_path = ""
@@ -116,11 +187,20 @@ def run_external_research_for_chat(topic: str) -> dict[str, Any]:
     if questions:
         context_lines.append("担当者が確認する質問:")
         context_lines.extend(f"- {item}" for item in questions[:3])
+    saved_vertex_paths = [
+        str(path).strip()
+        for path in (vertex_materials.get("saved_paths") or [])
+        if str(path).strip()
+    ]
+    if saved_vertex_paths:
+        context_lines.append("Vertex採掘材料:")
+        context_lines.extend(f"- {path}" for path in saved_vertex_paths[:4])
     return {
         "used": True,
         "topic": topic,
         "result": result,
         "display": display,
         "note_path": rel_path or note_path,
+        "vertex_materials": vertex_materials,
         "prompt_context": "\n".join(context_lines),
     }

@@ -87,6 +87,38 @@ _INDUSTRY_SPECIFIC_HINTS = (
     "ガス",
 )
 
+_ASSET_GENERIC_HINTS = (
+    "物件",
+    "リース物件",
+    "設備",
+    "機器",
+    "機械類",
+    "資産",
+)
+
+_ASSET_SPECIFIC_HINTS = (
+    "トラック",
+    "車両",
+    "重機",
+    "建機",
+    "建設機械",
+    "医療機器",
+    "医療機械",
+    "OA機器",
+    "印刷機",
+    "農機",
+    "農業機械",
+    "工作機械",
+    "半導体製造装置",
+    "厨房機器",
+    "太陽光発電設備",
+    "産業用ロボット",
+    "フォークリフト",
+    "サーバー",
+    "パソコン",
+    "PC",
+)
+
 _TODAY_SCOPE_HINTS = (
     "案件",
     "ニュース",
@@ -196,6 +228,17 @@ def is_industry_clarification_needed(message: str) -> bool:
     return True
 
 
+def is_asset_clarification_needed(message: str) -> bool:
+    text = str(message or "")
+    if not any(hint in text for hint in _ASSET_GENERIC_HINTS):
+        return False
+    if any(hint in text for hint in _ASSET_SPECIFIC_HINTS):
+        return False
+    if any(token in text for token in ("物件名", "品目", "型番", "年式", "メーカー")):
+        return False
+    return True
+
+
 def is_today_scope_clarification_needed(message: str) -> bool:
     text = str(message or "").strip()
     if "今日の" not in text and "today's" not in text.lower():
@@ -224,6 +267,7 @@ class ChatGuidance:
     detail_request: bool = False
     ambiguous_question_clarification_needed: bool = False
     industry_clarification_needed: bool = False
+    asset_clarification_needed: bool = False
     today_scope_clarification_needed: bool = False
     out_of_scope: bool = False
 
@@ -241,6 +285,10 @@ class ChatGuidance:
         if self.industry_clarification_needed:
             lines.append(
                 "業界情報の質問は、業種大分類/小分類、比較対象、見たい観点（成約率・金利・財務・ニュース）を先に確認する。"
+            )
+        if self.asset_clarification_needed:
+            lines.append(
+                "対象物件（品目・用途）が不明瞭なら、勝手に物件種別を推測せず、リース対象物件が何かを1文で確認してから答える。"
             )
         if self.repeated_query:
             lines.append(
@@ -271,6 +319,7 @@ def build_chat_guidance(message: str, history: list[dict[str, str]] | None = Non
         detail_request=is_detail_request(message),
         ambiguous_question_clarification_needed=is_ambiguous_question(message),
         industry_clarification_needed=is_industry_clarification_needed(message),
+        asset_clarification_needed=is_asset_clarification_needed(message),
         today_scope_clarification_needed=is_today_scope_clarification_needed(message),
         out_of_scope=is_out_of_scope(message),
     )

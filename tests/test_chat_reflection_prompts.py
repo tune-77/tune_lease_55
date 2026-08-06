@@ -10,6 +10,7 @@ def test_build_shion_judgment_response_shape_prompt_block_triggers_for_review():
 
     assert "紫苑の実務回答の型" in block
     assert "確認結果ごとの判断分岐" in block
+    assert "関連する判断資産・過去の類似事例を最低1つ引き出し" in block
     assert build_shion_judgment_response_shape_prompt_block("おはよう") == ""
 
 
