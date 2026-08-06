@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-08-02T04:10:13`
+- generated_at: `2026-08-05T04:09:54`
 - status: `ok`
-- scanned_files: `445`
+- scanned_files: `484`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
 - review: `64`
-- ok: `2106`
+- ok: `2138`
 
 ## Glossary
 
@@ -24,9 +24,9 @@
   - `default_prob = max(0.0, 1 - (credit_score / 100) * 0.8 - collateral_ratio * 0.2)`
 - `review` `actual_pd` `api/game_theory/negotiation.py:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `safety_utility = 1.0 - default_prob`
-- `review` `actual_pd` `api/main.py:6256` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:5256` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:6280` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:5280` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
@@ -126,15 +126,15 @@
   - `conn.executemany("UPDATE past_cases SET data = ? WHERE id = ?", updates)`
 - `review` `actual_pd` `scripts/normalize_lost_reasons.py:167` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `mode = "DRY RUN" if args.dry_run else "UPDATED"`
-- `review` `actual_pd` `scripts/promote_cloudrun_return_data.py:319` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/promote_cloudrun_return_data.py:322` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table}`
-- `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:43` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:44` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `log "Cloud Run 新リビジョン起動: $CLOUD_RUN_SERVICE (CHROMADB_UPDATED_AT=$TIMESTAMP)"`
-- `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:46` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `--update-env-vars "CHROMADB_UPDATED_AT=$TIMESTAMP" 2>&1 | tee -a "$LOG_FILE"; then`
 - `review` `actual_pd` `scripts/sync_cloudrun_inputs_from_gcs.py:537` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"UPDATE shion_screening_reviews SET user_feedback = ? WHERE id = ?",`
-- `review` `actual_pd` `scripts/sync_implemented_to_obsidian.py:31` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/sync_implemented_to_obsidian.py:32` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-041":             ["PD表示箇所の明確化"],`
 - `review` `actual_pd` `shinsa_gunshi_logic.py:393` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `# BN-CPD 自動学習: 実績件数の閾値`

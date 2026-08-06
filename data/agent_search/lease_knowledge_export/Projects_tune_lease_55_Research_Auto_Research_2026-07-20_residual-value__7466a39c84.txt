@@ -1,0 +1,86 @@
+Title: 物件別の残価・中古流動性・陳腐化 - リース判断Auto Research
+Source: Projects/tune_lease_55/Research/Auto Research/2026-07-20_residual-value.md
+Canonical-Topic: 物件別の残価・中古流動性・陳腐化
+Source-Bucket: auto_research
+Quality-Score: 12
+Corpus: tune_lease_55_obsidian_lease_knowledge
+
+---
+date: 2026-07-20
+research_topic: residual-value
+title: "物件別の残価・中古流動性・陳腐化"
+tags: ["リース審査", "autoresearch", "残価", "物件", "中古市場"]
+knowledge_type: lease-judgment-research
+source: gemini-google-search
+model: "gemini-2.5-flash"
+valid_until: 2027-01-16
+review_status: needs_human_review
+primary_source_count: 1
+recognized_source_count: 0
+supplementary_source_count: 11
+---
+# 物件別の残価・中古流動性・陳腐化 - リース判断Auto Research
+
+> このノートは審査判断の補助知識です。個別案件の事実確認を省略せず、自動否決・自動承認には使用しません。
+
+## 結論
+リース審査において、物件の残価、中古流動性、陳腐化リスクの評価は極めて重要である。これらはリース会社の残価回収リスクと借手の財務状況に直接影響を与える。特に2027年4月1日以降の新リース会計基準適用は、残価保証の取り扱いに大きな変更をもたらすため、その影響を十分に考慮する必要がある。
+
+## 根拠品質
+- **一次情報**: 日本リース業協会 (leasing.or.jp) からの情報を一次情報として活用している。
+- **補助情報への依存**: 会計事務所、税理士法人、コンサルティング
+
+## 判断に使える確認済み事実
+*   リース審査において、物件の残価、中古流動性、陳腐化リスクの評価が極めて重要である。
+*   これらの評価は、リース会社の残価回収リスクと借手の財務状況に直接影響を与える。
+*   2027年4月1日以降に新リース会計基準が適用される予定である。
+*   新リース会計基準は、残価保証の取り扱いに大きな変更をもたらす。
+*   調査の一次情報源は日本リース業協会 (leasing.or.jp) である。
+*   補助情報源として、会計事務所、税理士法人、コンサルティングからの情報も利用されている。
+
+## リース審査への適用
+リース審査では、物件の残価、中古流動性、陳腐化リスクを評価することが不可欠である。これらの評価は、リース会社が将来の残価回収リスクを適切に見積もり、借手の財務状況を正確に把握するために直接的に利用される。特に、2027年4月1日以降に適用される新リース会計基準は、残価保証の取り扱いに大きな変更をもたらすため、この変更がリース契約の条件設定やリスク評価に与える影響を十分に考慮し、審査プロセスに組み込む必要がある。
+
+## 担当者が確認する質問
+この文章からは具体的な質問は判断できません。なぜなら、提供された情報は現状の重要性と将来の基準変更の概要に留まっており、具体的な審査プロセスにおける疑問点や確認事項までは記述されていないためです。
+*   **調査原文から確認できた事実**: 2027年4月1日以降に新リース会計基準が適用され、残価保証の取り扱いに大きな変更があること。
+*   **審査への使い方**: 新基準がリース会社の残価回収リスクと借手の財務状況にどう影響するかを評価し、審査基準を調整するために、具体的な変更点を把握する必要がある。
+*   **担当者が再確認する点**: 新リース会計基準における残価保証の具体的な変更点、特にリース会社の残価回収リスク評価や借手の財務諸表への影響について、日本リース業協会 (leasing.or.jp) の最新情報や、企業会計基準委員会 (ASBJ) の公式発表で詳細を確認する。
+
+## 承認条件を変える兆候
+この文章からは直接的な承認条件の変更兆候は判断できません。なぜなら、提供された情報は将来の会計基準変更の事実を述べているものの、それが具体的にどのような承認条件の変更に繋がるかまでは記述されていないためです。
+*   **調査原文から確認できた事実**: 2027年4月1日以降の新リース会計基準適用により、残価保証の取り扱いが大きく変更されること。
+*   **審査への使い方**: この会計基準の変更は、リース会社の残価回収リスク評価や借手の財務状況評価に影響を与えるため、現在の承認条件が新基準下でも適切であるかを見直す必要がある。
+*   **担当者が再確認する点**: 新リース会計基準の詳細な内容、特に残価保証に関する具体的な変更点が、現在のリース契約の承認条件（例：残価率、保証金、保証人要件など）にどのような影響を与えるかについて、日本リース業協会 (leasing.or.jp) のガイドラインや、会計基準設定主体の公式文書で確認し、業界内の先行事例や解釈も調査する。
+
+## 反証・過信してはいけない点
+この文章からは直接的な反証や過信してはいけない点は判断できません。なぜなら、提供された情報は事実の提示と情報源の開示に留まっており、その内容に対する批判的視点や限界については記述されていないためです。
+*   **調査原文から確認できた事実**: 補助情報として会計事務所、税理士法人、コンサルティングからの情報に依存していること。
+*   **審査への使い方**: 補助情報は特定の解釈や視点に基づく可能性があるため、その内容を過信せず、必ず一次情報源である日本リース業協会 (leasing.or.jp) の情報と照合し、多角的な視点から判断する必要がある。
+*   **担当者が再確認する点**: 補助情報源が提供する情報の最新性、正確性、そして特定の利害関係に偏っていないかを確認する。また、一次情報源である日本リース業協会の最新の公式見解と、補助情報源の解釈との間に齟齬がないかを精査する。
+
+## 更新が必要になる条件
+この文章からは直接的な情報更新が必要になる条件は判断できません。なぜなら、提供された情報は将来の会計基準変更の事実を述べているものの、それが具体的にどのようなタイミングで情報更新を必要とするかまでは記述されていないためです。
+*   **調査原文から確認できた事実**: 2027年4月1日以降に新リース会計基準が適用されること。
+*   **審査への使い方**: 新リース会計基準の適用に伴い、リース審査の評価基準、残価保証の取り扱いに関する社内ガイドライン、および関連するリスク評価モデルを更新する必要がある。
+*   **担当者が再確認する点**: 新リース会計基準の最終的な詳細が確定し、日本リース
+
+## 情報源
+- `supplementary` [trust-1988.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHyyqf7oaDUTtIHN4TCrEBAeLki5nsr8QJMd4seAHvqfms5-fNQA2Uj1Kgm0maeS-DRqrm50mgVNhrKUqaygLNET50kYjfM9fO7xjdt1NFAgvLrnYRAR45cWZS0jz5NdTmYD3ZMOodfD_E=)
+- `supplementary` [ht-tax.or.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEHUOCfvl5xbJW-kqjOowQCvkjy8e1ItXl14a3mhtM5EBTkJs5VSeunHspi8GSEI7D2uqaIXf9X5JtcNQKPw3z7V1NLSN3v7OXCiD4RK1tK6KbEGyICv1NZex78UlvpjQqEo0IsKyOLhQ==)
+- `supplementary` [tkc.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG_zPJsRsYq4-BjF2Ay5qTSzXQz0qde2sKYOsl8SS33zkl4N8vJ0MFQx_zjuS1dNK94_dbsfm9N7l63CsTuRbRqqpqlOsb3jYBycBtC5CU_ysUkCtsThBKhQedvQi8OakOHH7QUXiqR5MkjDkdPlzdGdRGPYXw8T9Q=)
+- `supplementary` [tonbe-kaikei.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE_R7WWKWs1eu7yf-1vfvh8_T2usYhL02Fj4pz27_tnKpMJQEXOrF_dHRVovNj4wmhBd2MsZPVjSfM1SbftUHLxz0MAh3CwhoLw-KhtWNDxNkRC19l0oZHPHuq_ZsCvDZPzDcQA9yg72WtktDrgYWzPryDBX1YT21eXt9eCk6iu_VEP5zjE2ZmqKOZEZmZnJpzGF7lJGbb9dNQbdEstwhnkh6PEL3UqijztaQlkCd-Pj9vbaphbB7ffR_6kGFa0BnfTI4Msr-HbJH_U8hzzYvsofuu0PL-9bSR7d2KOW5y7r7xq1WcS-tYjU6qezxbxX23rJeTVj3-IJFjG7jvj9_P3qmuw2mCghd0Gr7puSv7F24VcB1TrcYWREU7qpLDEsLg2Q0PSnyFK9HUANjP0zJjejRXcx4W9v-ruJdsVcQBFTI6W-TQYOWV-iDRA68fMxdGsgk5rdq-OTfZ_x53JWQ22jucfzB7ziC2Ps2uVxQ2z4u8csOREsu_2F_ce-yWCanCFO3s4sOsbun3plCDD)
+- `supplementary` [persol-bd.co.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE4crME11ZMusDSskFufar_AZHpjrTRc1u_krWuRlyFgvVoKGqiC2Ou1FOmZD_nksyrZbSYmTobwt9fS9qljVVPYTlBOr7XE5PHhSRmuMIhvPyvEkYrgnAnUgF9yKz6SZHTNucgBLeHgvKQDDSSbibUiS9cGcdL_pRang==)
+- `supplementary` [layers.co.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGASF9Hrwom6xkROEHNdJZsCY4I-8Ma7kZ-AWoPTRwuvGix0mfjqVfjA2bzhOPVgZaO9kfqK16CGODzfrA5igOQMlwsuFwSDFENS3VUcvJe_5wiUmtLMUUBPAqBch-ljJBOaCgp5MLV_UzE77YYSECo)
+- `supplementary` [koyano-cpa.gr.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHXE6VEBaPZrT2vRBbVIn6HoZzICZ83K01iuE3YweQLQylGLPYhyeOzwZVH8iXMuu0ikHbspgXW6oTlXqwMw652HjDg7-OnCpYpyD3ey_cd6hluMpSG6k4mEXrQpnjQPp5Hwb4oY7-sIKxSY0dBlQ==)
+- `primary` [leasing.or.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG2kfA8sI9-bueiP9bJQ6deRjIWktOi3f5TChEf1CXwfxgR7yj-GKnIxyYuAKEI1Wp4N3zsiKuujdm9hpowkKcV6wYW6P1xLjMaiioKYicZwajWC6gIi7y6p46OTolyGYVU6u5_J4NoKfsHdRuVszZVAgR4N0CKDnBmXjg=)
+- `supplementary` [kikaikaitori-center.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHVwRgxte-Z5vsqwyHkBSmxNojAawG5R_yaEn6Y9A_d2Il0BLH88cdfdaM53NkJnW3aiPuYeLn7N3BOxsVJMKOovjVNqaZZeNM81K8LfsgfAFCON0Kd7c3kt_OMK9jDWVRzYfnzPsWeSWODzOK7WEWMfEXc550UphkRfW1ZhdwVv4-YodttKLeXc2rAvnBYQPahJ3TKRQnKxgXgXvK0tZROXODZc63IgyFEJYwQKneYBDgL8WBAg1zB6Q9XBKvHBgaSb97VKY6Fe-uNntbDy_zTt-plG8C9QnqhaZi5amqeLxzyuePFRoiHn395l-jRHXI1c9zFRqoiYg9uQO5iJS-DBNa741SPd8WQxhxWNPoQhdbNGm9CfHS5q1rClwAYaJnEkkHb_0ZhlKQ=)
+- `supplementary` [gminsights.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFpKKajeOh1e7KLJZ1E2UghV8VD6TKkWlIB2glFJtKFG7s3kRqDS_xGHnc6oHRsd3llT7mlsadrXaVEUS6a8yd7yC6986xAxZ2PRIKPs_UChUXLvbWKcIyIaAXTjk04vc6kDkFi4MuRszaqrLd4l3pxouAqlpukxPFNLX3DpDoHdyq8a40zC12jxvWlluc=)
+- `supplementary` [gii.co.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE_3Vq-LP-P2Quiu2DEBJ37sdoXYVKwz-awqUPMzr6yqi9-3B-GELNXcmsySAGzUdEqoMtybb6PK4fRmLkwXZExOq6WPitMNA0zC4lz7huyRLcWOXjeeFA9MzMW1kQC6BTszGEmW5qTdCF1-Wn6e6Kua1pg5IDhixPzRjfBxF3xqUGO7vPF6Kg2aarkVsSCsV7L1sIfCw==)
+- `supplementary` [kenkiichiba.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEZDsq8hA6OWh3VSe_D98fhdQMaCgP0BoH3z8K5N0J_Bpz1qogc9DIXZ5CanIRnN9rtzq-4aN6c2UBuwGb2SAb6lcPf0TSHhpuXJCmZGY03izC58A==)
+
+## 検索用分類
+- 調査テーマ: 物件別の残価・中古流動性・陳腐化
+- 対象: リース審査、信用判断、条件設計
+- 有効期限: 2027-01-16
+- レビュー状態: needs_human_review

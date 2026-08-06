@@ -1,0 +1,92 @@
+Title: 延滞・回収・倒産時の物件保全 - リース判断Auto Research
+Source: Projects/tune_lease_55/Research/Auto Research/2026-07-29_collection-default.md
+Canonical-Topic: 延滞・回収・倒産時の物件保全
+Source-Bucket: auto_research
+Quality-Score: 12
+Corpus: tune_lease_55_obsidian_lease_knowledge
+
+---
+date: 2026-07-29
+research_topic: collection-default
+title: "延滞・回収・倒産時の物件保全"
+tags: ["リース審査", "autoresearch", "延滞", "回収", "物件保全"]
+knowledge_type: lease-judgment-research
+source: gemini-google-search
+model: "gemini-2.5-flash"
+valid_until: 2027-07-29
+review_status: needs_human_review
+primary_source_count: 2
+recognized_source_count: 0
+supplementary_source_count: 10
+---
+# 延滞・回収・倒産時の物件保全 - リース判断Auto Research
+
+> このノートは審査判断の補助知識です。個別案件の事実確認を省略せず、自動否決・自動承認には使用しません。
+
+## 結論
+リース物件の所有権はリース会社にあり、倒産時も別除権として保全可能です。しかし、精算義務や倒産手続きの特性を理解し、契約時・延滞時に適切な対策が必要です。審査では物件特性、顧客信用力に応じた条件設定が重要となります。
+
+## 根拠品質
+一次情報として、リース事業協会（leasing.or.jp）の情報を活用しています。その他の参照元は法律事務所等の専門家による補助情報であり、法務省や裁判所の公式見解ではありません。特に「実務上の見解」や「実務上は処理されています」といった内容は、担当者が最新の判例や法解釈を再確認すべきです。
+
+## 判断に使える確認済み事実
+1.  リース物件の所有権はリース会社に帰属し、利用企業は使用権のみを持ちます。これは倒産手続きにおいて、リース物件がリース会社の所有物として扱われる根拠です。
+2.  倒産手続き（破産、民事再生、会社更生）において、リース会社はリース物件について別除権を行使できます。これにより、倒産手続きによらず物件を引き揚げて処分し、債権に充当可能です。
+3.  リース会社がリース物件の返還を受けた場合、ユーザーの債務不履行が原因であっても精算義務が課されます。リース物件の返還時の価値は、リース料残額から控除されるべきとされています。
+4.  ファイナンス・リース契約は、破産法53条の「双方未履行の双務契約」には該当しないと実務上処理されています。したがって、破産管財人は同条に基づく契約解除はできません。
+5.  経営者個人がリース契約の連帯保証人である場合、法人が破産しても保証債務は消滅せず、個人に対して残債が一括請求されます。これにより回収可能性を高めることができます。
+
+## リース審査への適用
+1.  高額、汎用性の低い物件、または転売市場が限定的な物件のリース案件では、特に物件保全を重視します。顧客の信用力が相対的に低いと判断される案件も同様です。
+2.  リース契約書において、所有権留保、物件の保守・修繕義務、損害賠償、中途解約時の違約金条項が明確であることを確認します。リース会社名や契約番号の標識貼付義務も規定されているか確認します。
+3.  リース物件が容易に特定できるか（シリアル番号、型番、設置場所など）を確認し、集合動産の場合はその特定方法が明確であるか確認します。延滞・倒産時に物件を回収した場合の再販可能性や市場価値を事前に評価します。
+4.  リース物件の設置場所が明確で容易にアクセス可能か確認し、賃貸物件に設置される場合は賃貸借契約における動産の取り扱いを確認します。
+5.  リース物件がユーザーの事業に不可欠な場合、倒産時に再生手続きにおいて担保権消滅請求の対象となるリスクを考慮します。信用状況悪化時は、支払い条件見直し、早期返還交渉、追加担保要求を検討します。
+
+## 担当者が確認する質問
+1.  リース契約書に所有権留保、保守・修繕義務、損害賠償、中途解約時の違約金条項は明確に規定されていますか。リース会社名や契約番号の標識貼付義務はありますか。
+2.  リース物件はシリアル番号や型番等で容易に特定可能ですか。集合動産の場合、その特定方法（種類、保管場所など）は明確ですか。
+3.  リース物件の再販可能性や市場価値は事前に評価されていますか。汎用性が低い物件ではないですか。
+4.  リース物件の設置場所は明確で容易にアクセス可能ですか。賃貸物件に設置される場合、賃貸借契約における動産の取り扱いを確認しましたか。
+5.  リース物件はユーザーの事業継続に不可欠なものですか。担保権消滅請求の対象となるリスクを考慮した上で審査していますか。
+
+## 承認条件を変える兆候
+1.  リース契約書に所有権留保の旨をより強調し、ユーザーによる第三者への譲渡・担保設定を厳しく制限する条項を追加します。
+2.  経営者個人だけでなく、主要株主や関連会社からの連帯保証を求めることで、保証を強化します。
+3.  延滞発生時の回収費用や物件価値減少リスクに備え、保証金や敷金の増額を承認条件とします。または、物件の陳腐化リスクを考慮し、リース期間を短縮します。
+4.  ユーザーに物件の適切なメンテナンスと十分な保険加入を義務付け、その証拠提出を求めます。これにより、物件価値の維持と損害発生時の補填を確保します。
+5.  高価な動産リースの場合、契約で合意の上、物件の遠隔監視や位置情報取得が可能なシステム導入を条件とすることで、延滞・倒産時の物件特定・回収を容易にします。
+
+## 反証・過信してはいけない点
+1.  リース物件の所有権はリース会社にありますが、契約解除後に物件を返還された場合、リース会社には精算義務が常に発生します。リース料残額と物件価値の二重取りはできません。
+2.  動産譲渡登記は、リース物件自体には直接適用されません（未確認・推論）。ユーザーの他の動産に対する登記情報から間接的に信用状況を推測するに留まります。
+3.  倒産手続きに入った場合、偏頗弁済を避けるため、個別のリース料支払いを継続せず、破産管財人との連携を通じて法的な返還フローに乗せるべきです。
+4.  経済産業省の通達による支払い猶予や条件変更は、安易な適用が回収を困難にするリスクがあるため、顧客の事業継続性や資金繰り改善計画を慎重に評価する必要があります。
+5.  民事再生・会社更生手続きにおいて、ユーザーの事業継続に不可欠なリース物件は、担保権消滅請求の対象となり、引き揚げが困難になる場合があります。
+
+## 更新が必要になる条件
+1.  破産法、民事再生法、会社更生法など、倒産関連法規の改正があった場合。
+2.  最高裁判例など、リース契約の法的性質や倒産時の取り扱いに影響を与える新たな判例が出た場合。
+3.  リース事業協会など、業界団体のガイドラインや通達が変更された場合。
+4.  リース物件の市場価値や再販市場に大きな変動があった場合。
+5.  社内での延滞・回収・倒産事例の分析結果から、現行の審査判断基準に課題が見つかった場合。
+
+## 情報源
+- `supplementary` [hasan-osaka.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE1JW5JuXhM8OUPwZY9dUZj-L4VCMHAR_1jf0qdW75KJoJD5DXoqU3igZLMEhgy90EXiYc1BY801NiAHlc_xbnpRYuqEdc5wKq0ij6z2GmR42oIxTiJ1QgWxJmpU4XfACgtpJyn8JQTG83QNEe5XFGwqccNOYdHfqM5St3mdTUAj-PJhUgkUD8UhfpAsJkcNsDTCoB7ujZ35IAkf76Oa3oGrT_JCahJW1j4xUFvRr-ePpiLhcmw6L7ewSFdU5dE5X7RLhO4S9bnGOd8pLyGxx31rRtaUkiYap6OU2drzTVE2Mes3ubCXeVOAujSSAtipNx-ykPv7-IXiMxVp6J0a3eKistYuE281j4OMFTXWWf7G-s7kd5ZJRvZuukh9Gc0)
+- `supplementary` [vs-group.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHMBev8cwliOYKn8oUeQ5aNdz2OZzhboMb78phTSm5NPbazQK7uLHslGS7Q7cDqrAZ0Gb2Y6_UOEjwdMwTHLiZtq5tI9fJBZwMiNWKItSDAMYzh-cM-gWH9Hx1HPOZ79A==)
+- `supplementary` [ik-law-office.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHI50Y1boasbdRNqmO32cLPF8hoYtGGe2aRYl6JYRKxLgQzT-VjkkfNbxLR_MwqIC5VWkZKT_TZynH79urATnKPi-PaxVTOI6zjIUaPL1jYRPC9HfQaiE1eMZdCYIOUC-xkREAWDGeyZFB-6JQVFkJBkOBhQDILZAxr9NkJIXUaWXwmHHvG5aTA_DDMCg2sfKHYLUmQ7pFO5rTzTl7sWSfaZwJtbwzT7pEerVRhicMPNEe9o1nTafFxeQb5DtUxth65wLsdjhyPfuqxQpdWbO4Gmh4aoLCGpNcglEqTgKvIQqwCYuGvpuJmtPQsEs7-SrS-JyIipjzAH760XYYV-mrnnFbs7mxqrif_muHtT_Q33D_1xSNNjfaouMuDPU_4EJ0zRiHY_6Vwp8sqWE8=)
+- `supplementary` [recones-law.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEjUTNrCR-S7UGJYYkXi6OqEYYt78CaCozQsqGWCJA7akB9YR5Fa3KQf9wE5enFmaypXPyNgSGfYPBEDxFP8Wai-wlfJIQnBAqmmNNZlxK_83R4UZqJHC4w_jjnlNSLIA9wEYMvMe7oEcO3E2UkTMkqHGZ4Lt0XwJZPjQGi_3E9FBlKwaT9dvPH6kNqJ7gLOaxB5KiWKoLLGFu81FdS8dJbZ81SpOnSA9TEM0JIwUwPZtntbTbqVTWFEWz5d6gDA-xhwK3rJNJ5B2WANEd_Smq5EKPUyiuD3L9uh0gV9MLrP9wRDjLNiLrUWkJhZfdlvaKJbD0Msk4H-gnauJsQpTBEUN6V-qsiw1MJPemLCV0NEncs7wBTp2ktoarT5fkXVK0hBgaP)
+- `supplementary` [kobecity-lawoffice.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQETYTmj09jRpJINoSCNMiTZ5iaE6EkIo9C1qIQFFLFW8YHA0cuqm7c5Z-ZtGYM6cnfCpjWxfDtZxlMO19GZZmW8Vrm4-S2Qr7sdC6oo8qk44kJ9dA62uPLCUKuTL8EQvjS1DQ==)
+- `supplementary` [shinobi.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFDqFHUNkUgzg6UGn3y07wDoCacasiOjlEkFm1Om3nTJP-q8C1AwQF2IFnW9Uy8vRuoKtCyt_DDsvmeGuSVXCHDqB8jq985U68uFao-lHBAxGMj54GzRzLQZ35JLrrEBksJqOjnS05c0kXuSbF0AqzQmKzOEIZ8uBAakO0t7dvW2G6xyCNpvxW1Jm4P4CnR_BOzM7uyrMpLnJ4HYNEvq7zbaP_Kuzy53CLhbNbyCWOKjTxeAkbxecZFZinwGjCntrMbgUp6pJrn_H-pseGqnUBtEFkpInNt1CTKxm3rCoyRu-o8u9oKlQWBy64F1ysvf6y9sRuv6OB9ZP3avA==)
+- `supplementary` [nichibenren.or.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHKu7gs5bBOk8KlxJeSX2l12IpGbmD-_xCxOh67zbNinHG4HgSNar15Z8H6F30RkPGB1N9yZCZ0muKgte52JxNl9v8G_OWsHWQmKLuheplU-ciSmQfHWy9Y7gfZaC2L3XCspTP0bcjGUepdBFBrkzq_uC0W)
+- `primary` [leasing.or.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEeFrzubAJl1cs_8_1XYiFVUNKaGRyxBd6jQwbyQ7fxCaIBH7JSCYJ-xboeMzCVa-4_ZAHj8hG45Zjl87Vr8PpS_T_kTHJXxXhhmK8RVSMjblLSgb9OYcda10jdisV9rhhytLDXoRofcSCFwnywkOLaVt8=)
+- `supplementary` [tohorc.or.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGNkYuOWvO9WuuPhKTFXRxu5mgCPbIknuEVcROSuiNVLnSIEd_ATz92Jg1UpJbj92RVVI9FtmsXCQgIL6zX-lXDpE3EZh91aoxAi2LsiS_4SyFJMZ_Tq_EwohdM9vbOQpGXl50kPINds5SRS7w8fY-S3i4J9tU=)
+- `supplementary` [sakura-hokuso.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFXtnD0-v3fLJEP-8lr78z0BeeDyLo-q9h_Sk8nr8zqHwfBIWNKDaCT6WibkKZbzzGSsmGQmfZmExTgcnds3sILW8ZUVWcIiuDRn2XRA24i2bBa7tkS1onw9_SpeovkwCQUtlpAsG7dIjoAyh6julr23JE3VTK07Pgl7XRa)
+- `supplementary` [shizuoka-hasan.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFh0XUkVPJyPHGj6_JXdkehjVgpZfRN09lUHFgmpEcaGeShzgmt2AzXfFjJOPPCwPRIUCM3D9caVbPz5tzP8k2gEjBfUQK8MkQDnhpl25KSyYacNLiBZ20zZMe41S2H2guU_1UmbJk=)
+- `primary` [leasing.or.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEyOJCakEaXnHp5FxEkIrcmem2iqtn1T1n8kMG5khBh8p1aJ_yrwXH_ilCEOWhvCIvcIXLBHutrICOKmT2Lj0zq1MdBiTYyCn02jG0ufgradRIo6BkLXG7ugHjggJAj-WoaFfZz9ptbtxtmrkU=)
+
+## 検索用分類
+- 調査テーマ: 延滞・回収・倒産時の物件保全
+- 対象: リース審査、信用判断、条件設計
+- 有効期限: 2027-07-29
+- レビュー状態: needs_human_review

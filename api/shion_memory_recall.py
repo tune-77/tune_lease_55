@@ -28,12 +28,15 @@ from api.shion_memory_taxonomy import (
     SHARED_TECH_TERMS,
     SHARED_VALUE_TERMS,
 )
-from api.shion_memory_impact import build_memory_impact_hints
 from scoring_core import APPROVAL_LINE, REVIEW_LINE
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
 _USAGE_LOG_PATH = _REPO_ROOT / "data" / "shion_memory_usage_log.jsonl"
+
+# --- リランカー設定（旧 shion_memory_rerank.py、唯一の呼び出し元だったここへ統合） ---
+_RERANK_POOL_SIZE = 12
+_RERANK_CONTENT_CHARS = 160
 
 # api/shion_memory_taxonomy.py の SHARED_* 語彙を正とし、想起ルーティング固有の語を追加する
 _CASE_TERMS = SHARED_JUDGMENT_TERMS + ("案件", "条件", "リース", "物件", "担保", "借手", "残価", "耐用年数")
@@ -65,6 +68,123 @@ _ASSET_TERMS = (
     "医療機器", "CT", "MRI", "設備", "太陽光", "コンテナ", "厨房", "印刷機",
 )
 _DECISION_TERMS = ("承認", "否決", "条件付き", "条件付", "警戒", "保留", "稟議")
+
+
+def _rerank_enabled() -> bool:
+    return os.environ.get("SHION_MEMORY_RERANK", "").strip().lower() in {"1", "true", "on"}
+
+
+def _build_rerank_prompt(question: str, pool: list[tuple[float, dict[str, Any]]]) -> str:
+    lines = [
+        "あなたはリース審査AIの記憶検索の再ランク付け器です。",
+        "以下の質問に回答するために本当に役立つ記憶だけを、関連が強い順に並べてください。",
+        "",
+        f"質問: {question}",
+        "",
+        "記憶候補:",
+    ]
+    for _, record in pool:
+        rid = str(record.get("id") or "")
+        content = " ".join(str(record.get("content") or "").split())[:_RERANK_CONTENT_CHARS]
+        lines.append(f"- {rid}: {content}")
+    lines += [
+        "",
+        '出力は JSON 配列のみ: ["関連が強い順のid", ...]',
+        "無関係な候補は配列から除外してよい。説明文は書かない。",
+    ]
+    return "\n".join(lines)
+
+
+def _maybe_rerank_scored(
+    question: str,
+    scored: list[tuple[float, dict[str, Any]]],
+    *,
+    pool_size: int = _RERANK_POOL_SIZE,
+) -> tuple[list[tuple[float, dict[str, Any]]], bool]:
+    """スコア降順の候補リストを（可能なら）LLMで並べ直す。SHION_MEMORY_RERANK=1でopt-in、失敗時は元の順序へfail-open。
+
+    戻り値: (並べ直し後のリスト, リランクを実際に適用したか)
+    """
+    if not _rerank_enabled() or len(scored) <= 1:
+        return scored, False
+    pool = scored[:pool_size]
+    rest = scored[pool_size:]
+    try:
+        from api.loop_engineering_common import call_gemini_json
+
+        result = call_gemini_json(
+            _build_rerank_prompt(question, pool), temperature=0.0, max_output_tokens=512
+        )
+    except Exception:
+        return scored, False
+    if not isinstance(result, list):
+        return scored, False
+    ordered_ids = [str(item) for item in result if isinstance(item, (str, int))]
+    if not ordered_ids:
+        return scored, False
+
+    by_id = {str(record.get("id") or ""): (score, record) for score, record in pool}
+    reranked: list[tuple[float, dict[str, Any]]] = []
+    seen: set[str] = set()
+    for rid in ordered_ids:
+        if rid in by_id and rid not in seen:
+            reranked.append(by_id[rid])
+            seen.add(rid)
+    # LLMが言及しなかった候補は元の相対順序で後ろへ（記憶を落とさない）
+    for score, record in pool:
+        rid = str(record.get("id") or "")
+        if rid not in seen:
+            reranked.append((score, record))
+    return reranked + rest, True
+
+
+def _impact_hint_for_record(record: dict[str, Any]) -> str:
+    layer = str(record.get("memory_layer") or "retrieval")
+    mtype = str(record.get("memory_type") or "")
+    status = str(record.get("status") or "active")
+    source = str(record.get("source_path") or record.get("source") or "")
+
+    if status == "revised":
+        return "旧記憶として扱い、現在の結論を確認してから使う"
+    if status == "stale":
+        return "鮮度確認が必要な前提として弱く使う"
+    if layer == "persistent":
+        return "紫苑の運用原則として回答の境界条件に使う"
+    if layer == "long_term":
+        return "繰り返し確認された判断軸として結論の理由に使う"
+    if layer == "mid_term":
+        return "最近の流れとして、現在の依頼との接続に使う"
+    if mtype == "judgment_memory":
+        return "審査・改善判断の観点として確認項目へ落とす"
+    if mtype == "technical_memory":
+        return "実装・運用の制約として手順に反映する"
+    if source:
+        return "検索で見つけた根拠として、必要な範囲だけ参照する"
+    return "関連記憶として自然に反映する"
+
+
+def _build_memory_impact_hints(recalled: dict[str, Any], *, limit: int = 5) -> list[dict[str, str]]:
+    hints: list[dict[str, str]] = []
+    for record in recalled.get("memories") or []:
+        if not isinstance(record, dict):
+            continue
+        rid = str(record.get("id") or "")
+        if not rid:
+            continue
+        hints.append(
+            {
+                "id": rid,
+                "memory_layer": str(record.get("memory_layer") or "retrieval"),
+                "memory_type": str(record.get("memory_type") or ""),
+                "status": str(record.get("status") or "active"),
+                "source_path": str(record.get("source_path") or ""),
+                "hint": _impact_hint_for_record(record),
+            }
+        )
+        if len(hints) >= limit:
+            break
+    return hints
+
 
 def resolve_index_path() -> Path:
     """記憶索引の実行時パスを解決する。
@@ -162,14 +282,12 @@ def recall_memories(
     scored.sort(key=lambda item: item[0], reverse=True)
     rerank_used = False
     try:
-        from api.shion_memory_rerank import maybe_rerank_scored
-
-        scored, rerank_used = maybe_rerank_scored(question, scored)
+        scored, rerank_used = _maybe_rerank_scored(question, scored)
     except Exception:
         pass  # リランカーは補助段。失敗しても従来順序で続行する
     selected = _select_records(scored, route=route, limit=max(0, limit))
     practical_scene = infer_practical_scene(question)
-    impact_hints = build_memory_impact_hints({"memories": selected})
+    impact_hints = _build_memory_impact_hints({"memories": selected})
     # なぜその記憶が選ばれたかの内訳（debug_memory=true で確認できる説明可能性用）
     match_reasons = []
     for r in selected:
@@ -524,8 +642,3 @@ def _query_terms(text: str) -> set[str]:
         terms.update(re.findall(r"[一-龥]{2,}|[ァ-ヶー]{2,}", token))
     stop = {"これ", "それ", "どう", "して", "です", "ます", "ある", "いる", "やって", "かな", "関係", "場合"}
     return {t for t in terms if t not in stop}
-
-
-def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
-    hay = (text or "").lower()
-    return any(term.lower() in hay for term in terms)
