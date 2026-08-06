@@ -18,7 +18,7 @@ import json
 import logging
 import math
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,11 +41,16 @@ _RECENT_USAGE_BOOST = 0.25
 
 
 def _load_recent_used_ids(within_days: int = _RECENT_USAGE_DAYS) -> set[str]:
-    """usage_log から直近 N 日以内に参照された memory id を返す。"""
+    """usage_log から直近 N 日以内に参照された memory id を返す。
+
+    api/shion_memory_recall.py の _append_usage_log が書く実際のスキーマは
+    {"ts": ..., "refs": [id, ...]} であり、以前この関数が読んでいた
+    "used_at"/"memory_id" というキーは存在しない。そのためブーストが
+    本番で一度も適用されないリグレッションになっていた。
+    """
     if not _USAGE_LOG_PATH.exists():
         return set()
 
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None)
     from datetime import timedelta
     cutoff = datetime.utcnow() - timedelta(days=within_days)
 
@@ -56,14 +61,12 @@ def _load_recent_used_ids(within_days: int = _RECENT_USAGE_DAYS) -> set[str]:
             continue
         try:
             entry = json.loads(line)
-            used_at_str = entry.get("used_at", "")
-            if not used_at_str:
+            ts_str = entry.get("ts", "")
+            if not ts_str:
                 continue
-            used_at = datetime.fromisoformat(used_at_str.replace("Z", "+00:00")).replace(tzinfo=None)
+            used_at = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
             if used_at >= cutoff:
-                mem_id = entry.get("memory_id") or entry.get("id")
-                if mem_id:
-                    used_ids.add(mem_id)
+                used_ids.update(str(ref) for ref in entry.get("refs") or [] if ref)
         except Exception:
             pass
     return used_ids
