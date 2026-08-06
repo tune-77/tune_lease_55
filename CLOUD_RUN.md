@@ -163,8 +163,8 @@ UI 側の削除ボタンは押下時に 403 となりエラー表示されます
 - Web サービスも `--no-allow-unauthenticated` にし、`gcloud run services proxy` や
   IAP 経由でアクセスする
 
-この対応は本 PR のスコープ外です（`WHY_USER_COUNT_MATTERS.md` /
-`IMPLEMENTATION_DECISION_FOR_1USER.md` の方針と併せて別途計画）。
+この対応は本 PR のスコープ外です（`docs/archive/WHY_USER_COUNT_MATTERS.md` /
+`docs/archive/IMPLEMENTATION_DECISION_FOR_1USER.md` の方針と併せて別途計画）。
 
 Update rule:
 

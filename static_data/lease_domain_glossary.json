@@ -7,49 +7,49 @@
       "canonical": "赤字企業",
       "synonyms": ["赤字", "営業赤字", "当期赤字", "経常赤字", "繰越赤字", "損失", "欠損"],
       "weight": 1.0,
-      "source": "代替案実装計画_精度改善Ver2.md"
+      "source": "docs/archive/代替案実装計画_精度改善Ver2.md"
     },
     {
       "canonical": "自己資本比率",
       "synonyms": ["自己資本", "純資産", "株主資本", "資本構成", "財務体質"],
       "weight": 1.0,
-      "source": "代替案実装計画_精度改善Ver2.md / static_data/industry_averages.json"
+      "source": "docs/archive/代替案実装計画_精度改善Ver2.md / static_data/industry_averages.json"
     },
     {
       "canonical": "リース物件",
       "synonyms": ["リース対象", "物件", "設備", "機械", "機器"],
       "weight": 0.9,
-      "source": "代替案実装計画_精度改善Ver2.md / static_data/lease_assets.json"
+      "source": "docs/archive/代替案実装計画_精度改善Ver2.md / static_data/lease_assets.json"
     },
     {
       "canonical": "審査基準",
       "synonyms": ["審査項目", "判定基準", "リスク基準", "与信基準", "融資基準"],
       "weight": 1.0,
-      "source": "代替案実装計画_精度改善Ver2.md"
+      "source": "docs/archive/代替案実装計画_精度改善Ver2.md"
     },
     {
       "canonical": "飲食業",
       "synonyms": ["飲食店", "レストラン", "カフェ", "居酒屋", "食堂", "飲食サービス"],
       "weight": 0.95,
-      "source": "代替案実装計画_精度改善Ver2.md / static_data/industry_hints.json"
+      "source": "docs/archive/代替案実装計画_精度改善Ver2.md / static_data/industry_hints.json"
     },
     {
       "canonical": "建設機械",
       "synonyms": ["建機", "重機", "工事機械", "油圧ショベル", "ユンボ", "パワーショベル"],
       "weight": 0.95,
-      "source": "代替案実装計画_精度改善Ver2.md / static_data/lease_assets.json"
+      "source": "docs/archive/代替案実装計画_精度改善Ver2.md / static_data/lease_assets.json"
     },
     {
       "canonical": "残価",
       "synonyms": ["残価率", "残存価値", "スクラップ価値", "終了時価値", "回収価値"],
       "weight": 1.0,
-      "source": "代替案実装計画_精度改善Ver2.md / static_data/lease_classification.json"
+      "source": "docs/archive/代替案実装計画_精度改善Ver2.md / static_data/lease_classification.json"
     },
     {
       "canonical": "デフォルト",
       "synonyms": ["債務不履行", "滞納", "不払い", "延滞"],
       "weight": 1.0,
-      "source": "代替案実装計画_精度改善Ver2.md"
+      "source": "docs/archive/代替案実装計画_精度改善Ver2.md"
     },
     {
       "canonical": "法定耐用年数",
