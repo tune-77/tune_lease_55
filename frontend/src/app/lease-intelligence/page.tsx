@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowDown, Brain, Check, ClipboardList, Clock, Copy, Database, Loader2, Mic, MicOff,
+  ArrowDown, Brain, Check, ClipboardList, Clock, Copy, Database, History, Loader2, Mic, MicOff,
   HelpCircle, Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
@@ -151,6 +151,26 @@ type DialoguePipelineSummary = {
   commit_result: { success: boolean; message?: string; pr_url?: string | null } | null;
 };
 
+type ShionActionLedgerEntry = {
+  timestamp?: string;
+  action?: string;
+  summary?: string;
+  target?: string | null;
+  risk_level?: string;
+  requires_user_approval?: boolean;
+  user_approved?: boolean | null;
+  result?: string;
+};
+
+type ShionActionLedgerSummary = {
+  days?: number;
+  total?: number;
+  by_action?: Record<string, number>;
+  pending_approval_count?: number;
+  pending_approval?: ShionActionLedgerEntry[];
+  recent?: ShionActionLedgerEntry[];
+};
+
 type DialogueGapItem = {
   id?: string;
   title?: string;
@@ -211,6 +231,24 @@ const DEMO_GREETING = `はじめまして。リース知性体、紫苑です。
 人間の判断と一緒に育つ姿を見てください。`;
 
 const DEMO_GREETING_SPEECH = DEMO_GREETING.replace("リース知性体", "リースちせいたい");
+
+const SHION_ACTION_LABELS: Record<string, string> = {
+  daily_report: "日次報告",
+  system_watch: "システム監視",
+  improvement_classified: "改善候補の分類",
+  codex_request_drafted: "Codex依頼文の生成",
+  user_approval_requested: "承認依頼",
+  user_decision_recorded: "User判断の記録",
+  implementation_observed: "実装結果の観測",
+  followup_reported: "翌日報告への反映",
+};
+
+const formatShionActionTimestamp = (value?: string) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+};
 
 const DIALOGUE_RETRY_DELAYS_MS = [1200, 2500, 4000];
 const DIALOGUE_LOCAL_HISTORY_KEY = "lease-intelligence-dialogue-local-history";
@@ -1104,6 +1142,10 @@ export default function LeaseIntelligencePage() {
   const [triageReasonByKey, setTriageReasonByKey] = useState<Record<string, string>>({});
   const [copiedTriageKey, setCopiedTriageKey] = useState("");
 
+  // 紫苑 Agent Action Ledger（backlog §9.2）。監査用の可視化のみで、実行権限は与えない。
+  const [actionLedgerSummary, setActionLedgerSummary] = useState<ShionActionLedgerSummary | null>(null);
+  const [actionLedgerOpen, setActionLedgerOpen] = useState(false);
+
   // Emotion trend state
   const [showTrend, setShowTrend] = useState(false);
   const [trendHistory, setTrendHistory] = useState<EmotionHistoryEntry[]>([]);
@@ -1435,8 +1477,9 @@ export default function LeaseIntelligencePage() {
       apiClient.get<{ records?: TriageRecord[] }>("/api/improvement/triage"),
       apiClient.get<DailyNewsDigest>("/api/lease-news/daily-digest"),
       apiClient.get<RelationshipState>("/api/relationship/state"),
+      apiClient.get<ShionActionLedgerSummary>("/api/shion/action-ledger/summary"),
     ])
-      .then(([stateResult, improvementResult, pipelineResult, gapsResult, triageResult, newsDigestResult, relationshipResult]) => {
+      .then(([stateResult, improvementResult, pipelineResult, gapsResult, triageResult, newsDigestResult, relationshipResult, actionLedgerResult]) => {
         if (stateResult.status !== "fulfilled") {
           setError("リース知性体の状態を読み込めませんでした。");
           return;
@@ -1454,6 +1497,9 @@ export default function LeaseIntelligencePage() {
         }
         if (relationshipResult.status === "fulfilled") {
           setRelationshipState(relationshipResult.value.data || null);
+        }
+        if (actionLedgerResult.status === "fulfilled") {
+          setActionLedgerSummary(actionLedgerResult.value.data || null);
         }
         const serverMessages = stateResult.value.data?.messages || [];
         const localMessages = loadLocalDialogueMessages();
@@ -1981,6 +2027,52 @@ export default function LeaseIntelligencePage() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {actionLedgerSummary && (actionLedgerSummary.total ?? 0) > 0 && (
+            <div className="border-b border-violet-100 bg-white px-5 py-2">
+              <button
+                type="button"
+                onClick={() => setActionLedgerOpen((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-bold text-violet-700 transition hover:bg-violet-50"
+              >
+                <History className="h-4 w-4" />
+                紫苑の行動ログ（直近{actionLedgerSummary.days ?? 7}日 {actionLedgerSummary.total ?? 0}件
+                {(actionLedgerSummary.pending_approval_count ?? 0) > 0
+                  ? ` / 承認待ち ${actionLedgerSummary.pending_approval_count}件`
+                  : ""}
+                ）
+                <span className="text-slate-400">{actionLedgerOpen ? "▲" : "▼"}</span>
+              </button>
+              {actionLedgerOpen && (
+                <div className="mt-2 space-y-1.5 pb-1">
+                  <p className="text-[11px] text-slate-400">
+                    監査用の記録です。ここに実行権限はありません。実装の実行は従来どおり人間のPRレビューが前提です。
+                  </p>
+                  {(actionLedgerSummary.recent || []).slice().reverse().slice(0, 10).map((entry, index) => (
+                    <div
+                      key={`${entry.timestamp || index}-${index}`}
+                      className="flex items-start justify-between gap-2 rounded-xl border border-slate-100 px-2.5 py-1.5"
+                    >
+                      <div className="min-w-0">
+                        <span className="mr-1.5 text-[10px] font-bold text-violet-700">
+                          {SHION_ACTION_LABELS[entry.action || ""] || entry.action}
+                        </span>
+                        <span className="text-[12px] text-slate-700">{entry.summary}</span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {entry.requires_user_approval && entry.user_approved !== true && (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                            承認待ち
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-400">{formatShionActionTimestamp(entry.timestamp)}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

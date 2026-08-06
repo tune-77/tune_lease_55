@@ -8,7 +8,7 @@ risk_level 分布・承認待ち件数を reports/agent_action_ledger_latest.md 
 from __future__ import annotations
 
 import argparse
-import datetime as dt
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -17,50 +17,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from api.shion_action_ledger import VALID_ACTIONS, read_actions  # noqa: E402
+from api.shion_action_ledger import read_actions, summarize  # noqa: E402
 
 REPORTS_DIR = _REPO_ROOT / "reports"
 DEFAULT_MD = REPORTS_DIR / "agent_action_ledger_latest.md"
-
-
-def _within_days(entry: dict[str, Any], since: dt.datetime) -> bool:
-    ts = str(entry.get("timestamp") or "")
-    try:
-        parsed = dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except ValueError:
-        return False
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed >= since
+DEFAULT_JSON = REPORTS_DIR / "agent_action_ledger_latest.json"
 
 
 def build_summary(entries: list[dict[str, Any]], days: int) -> dict[str, Any]:
-    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=max(1, days))
-    recent = [e for e in entries if _within_days(e, since)]
-
-    by_action = {action: 0 for action in sorted(VALID_ACTIONS)}
-    by_risk = {"low": 0, "medium": 0, "high": 0}
-    pending_approval = []
-    for entry in recent:
-        action = str(entry.get("action") or "")
-        if action in by_action:
-            by_action[action] += 1
-        risk = str(entry.get("risk_level") or "")
-        if risk in by_risk:
-            by_risk[risk] += 1
-        if entry.get("requires_user_approval") and entry.get("user_approved") is not True:
-            pending_approval.append(entry)
-
-    return {
-        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-        "days": days,
-        "total": len(recent),
-        "by_action": by_action,
-        "by_risk": by_risk,
-        "pending_approval_count": len(pending_approval),
-        "pending_approval": pending_approval[-20:],
-        "recent": recent[-50:],
-    }
+    """api.shion_action_ledger.summarize の薄いエイリアス（API側と集計ロジックを共有）。"""
+    return summarize(entries, days)
 
 
 def write_report(summary: dict[str, Any], md_path: Path) -> None:
@@ -98,13 +64,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--md", type=Path, default=DEFAULT_MD)
+    parser.add_argument("--json", type=Path, default=DEFAULT_JSON)
     args = parser.parse_args()
 
     entries = read_actions()
     summary = build_summary(entries, args.days)
     write_report(summary, args.md)
+    args.json.parent.mkdir(parents=True, exist_ok=True)
+    args.json.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"agent_action_ledger total={summary['total']} pending_approval={summary['pending_approval_count']}")
     print(args.md)
+    print(args.json)
     return 0
 
 

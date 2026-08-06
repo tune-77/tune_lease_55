@@ -25,6 +25,7 @@ DEFAULT_MANA_REPORT = REPO_ROOT / "reports" / "mana_obsidian_curator_latest.json
 DEFAULT_SCREENING_TERMS_REPORT = REPO_ROOT / "reports" / "screening_terms_audit_latest.json"
 DEFAULT_JUDGMENT_ASSET_GROWTH_REPORT = REPO_ROOT / "reports" / "judgment_asset_growth_latest.json"
 DEFAULT_JUDGMENT_ASSET_FIELD_REVIEW = REPO_ROOT / "reports" / "judgment_asset_field_review_latest.json"
+DEFAULT_ACTION_LEDGER_REPORT = REPO_ROOT / "reports" / "agent_action_ledger_latest.json"
 DEFAULT_STATE = REPO_ROOT / "data" / "slack_daily_improvement_state.json"
 DEFAULT_TIMEOUT = 15
 
@@ -225,6 +226,38 @@ def _judgment_asset_field_review_lines(field_review: dict[str, Any] | None) -> l
     ]
 
 
+_SHION_ACTION_LABELS = {
+    "daily_report": "日次報告",
+    "system_watch": "システム監視",
+    "improvement_classified": "改善候補の分類",
+    "codex_request_drafted": "Codex依頼文の生成",
+    "user_approval_requested": "承認依頼",
+    "user_decision_recorded": "User判断の記録",
+    "implementation_observed": "実装結果の観測",
+    "followup_reported": "翌日報告への反映",
+}
+
+
+def _action_ledger_lines(action_ledger_report: dict[str, Any] | None) -> list[str]:
+    """紫苑 Agent Action Ledger（backlog §9.2）の日次サマリを1〜数行にする。監査用の可視化のみ。"""
+    if not action_ledger_report:
+        return ["• status: `missing` / Agent Action Ledgerレポート未生成"]
+
+    total = int(action_ledger_report.get("total") or 0)
+    days = int(action_ledger_report.get("days") or 7)
+    pending = int(action_ledger_report.get("pending_approval_count") or 0)
+    lines = [f"• 直近{days}日: `{total}` 件 / 承認待ち `{pending}` 件"]
+
+    by_action = action_ledger_report.get("by_action") if isinstance(action_ledger_report.get("by_action"), dict) else {}
+    top_actions = sorted(
+        ((k, v) for k, v in by_action.items() if v), key=lambda kv: kv[1], reverse=True
+    )[:3]
+    if top_actions:
+        parts = [f"{_SHION_ACTION_LABELS.get(k, k)} {v}" for k, v in top_actions]
+        lines.append("• 内訳: " + " / ".join(parts))
+    return lines
+
+
 # 会話外でも問題が届くよう、日次レポートに「システム監視」節を載せる。
 # 閾値はチャットの自発報告（api/main.py）と揃える。
 _STALE_REPORT_DAYS = 3
@@ -312,6 +345,7 @@ def build_message(
     screening_terms_report: dict[str, Any] | None = None,
     judgment_asset_growth_report: dict[str, Any] | None = None,
     judgment_asset_field_review: dict[str, Any] | None = None,
+    action_ledger_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     applied = _items(report, "applied_improvements")
     needs_review = _items(report, "needs_review")
@@ -363,6 +397,9 @@ def build_message(
             "*システム監視*",
             *_system_monitor_lines(),
             "",
+            "*紫苑の行動ログ*",
+            *_action_ledger_lines(action_ledger_report),
+            "",
             "_自動投稿: run_daily_improvement_pipeline / Slack通知のみ。改善状態は変更していません。_",
         ]
     )
@@ -401,6 +438,7 @@ def main() -> int:
     parser.add_argument("--screening-terms-report", type=Path, default=DEFAULT_SCREENING_TERMS_REPORT)
     parser.add_argument("--judgment-asset-growth-report", type=Path, default=DEFAULT_JUDGMENT_ASSET_GROWTH_REPORT)
     parser.add_argument("--judgment-asset-field-review", type=Path, default=DEFAULT_JUDGMENT_ASSET_FIELD_REVIEW)
+    parser.add_argument("--action-ledger-report", type=Path, default=DEFAULT_ACTION_LEDGER_REPORT)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--webhook", default=None)
@@ -413,12 +451,14 @@ def main() -> int:
     screening_terms_report = _read_optional_json(args.screening_terms_report)
     judgment_asset_growth_report = _read_optional_json(args.judgment_asset_growth_report)
     judgment_asset_field_review = _read_optional_json(args.judgment_asset_field_review)
+    action_ledger_report = _read_optional_json(args.action_ledger_report)
     digest = _combined_hash(
         report,
         mana_report or {},
         screening_terms_report or {},
         judgment_asset_growth_report or {},
         judgment_asset_field_review or {},
+        action_ledger_report or {},
     )
     payload = build_message(
         report,
@@ -427,6 +467,7 @@ def main() -> int:
         screening_terms_report=screening_terms_report,
         judgment_asset_growth_report=judgment_asset_growth_report,
         judgment_asset_field_review=judgment_asset_field_review,
+        action_ledger_report=action_ledger_report,
     )
 
     if args.dry_run:

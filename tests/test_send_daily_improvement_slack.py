@@ -15,6 +15,29 @@ def test_system_monitor_section_present_in_message():
     assert "*システム監視*" in payload["text"]
 
 
+def test_action_ledger_section_missing_report():
+    payload = build_message({"applied_count": 0}, report_date="2026-07-14")
+    assert "*紫苑の行動ログ*" in payload["text"]
+    assert "Agent Action Ledgerレポート未生成" in payload["text"]
+
+
+def test_action_ledger_section_summarizes_report():
+    action_ledger_report = {
+        "days": 7,
+        "total": 5,
+        "pending_approval_count": 2,
+        "by_action": {"improvement_classified": 3, "codex_request_drafted": 2},
+    }
+    payload = build_message(
+        {"applied_count": 0},
+        report_date="2026-07-14",
+        action_ledger_report=action_ledger_report,
+    )
+    assert "直近7日: `5` 件 / 承認待ち `2` 件" in payload["text"]
+    assert "改善候補の分類 3" in payload["text"]
+    assert "Codex依頼文の生成 2" in payload["text"]
+
+
 def test_script_dry_run_works_when_executed_by_path(tmp_path):
     # 実運用の reports/latest.json（.gitignore対象で本番実行でのみ生成される）に
     # 依存させず、--report で自己完結した最小レポートを渡す。

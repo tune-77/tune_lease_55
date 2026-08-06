@@ -359,7 +359,8 @@ echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・We
   --date "${PIPELINE_DATE}" \
   --mana-report "${MANA_REPORT_JSON}" \
   --screening-terms-report "${SCREENING_TERMS_REPORT_JSON}" \
-  --judgment-asset-field-review "${PROJECT_ROOT}/reports/judgment_asset_field_review_latest.json"
+  --judgment-asset-field-review "${PROJECT_ROOT}/reports/judgment_asset_field_review_latest.json" \
+  --action-ledger-report "${PROJECT_ROOT}/reports/agent_action_ledger_latest.json"
 log_step "send_daily_improvement_slack" $?
 
 if [ "${MANA_STATUS}" != "allow" ]; then
