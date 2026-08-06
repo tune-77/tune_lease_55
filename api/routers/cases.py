@@ -3,11 +3,12 @@ api/routers/cases.py  – REV-234 Phase 5
 Cases エンドポイント（一覧・業種別・営業部別成約率・詳細・進捗スタンプ）
 
 Extracted from api/main.py.  以下のエンドポイントを含む:
-  GET  /api/cases                    – list_cases
-  GET  /api/cases/industry-winrate   – get_industry_winrate
-  GET  /api/cases/sales-dept-winrate – get_sales_dept_winrate
-  GET  /api/cases/{case_id}          – get_case_detail
-  POST /api/cases/progress-stamp     – stamp_case_progress
+  GET  /api/cases                       – list_cases
+  GET  /api/cases/industry-winrate      – get_industry_winrate
+  GET  /api/cases/sales-dept-winrate    – get_sales_dept_winrate
+  GET  /api/cases/{case_id}             – get_case_detail
+  POST /api/cases/progress-stamp        – stamp_case_progress
+  POST /api/deal/closure-probability    – calc_deal_closure_probability
 
 注: patch / delete / register / pending の各エンドポイントは
     main.py 内部ヘルパー (_git_push_db 等) への依存が深いため main.py に残す。
@@ -21,6 +22,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from api.db_connection import current_backend, get_connection
+from api.schemas import DealClosureRequest, DealClosureResponse
+from scoring.deal_closure_engine import build_features, build_features_from_deltas, compute_closure_likelihood
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +53,6 @@ def _normalize_industry_for_stats(industry: str) -> str:
 
 
 def _compute_case_closure_probability(case_data: dict) -> float | None:
-    from scoring.deal_closure_engine import build_features, compute_closure_likelihood  # type: ignore[import]
     reg = case_data.get("registration_date")
     est = case_data.get("estimate_sent_date")
     resp = case_data.get("customer_response_date")
@@ -250,3 +252,30 @@ def stamp_case_progress(req: CaseProgressStampRequest):
         "closure_probability": prob,
         "closure_probability_percent": round(prob * 100.0, 2) if prob is not None else None,
     }
+
+
+@router.post("/api/deal/closure-probability", response_model=DealClosureResponse)
+def calc_deal_closure_probability(req: DealClosureRequest):
+    try:
+        if req.delta_send is not None and req.delta_response is not None:
+            features = build_features_from_deltas(req.delta_send, req.delta_response)
+        elif req.registration_date and req.estimate_sent_date and req.customer_response_date:
+            features = build_features(
+                registration_date=req.registration_date,
+                estimate_sent_date=req.estimate_sent_date,
+                customer_response_date=req.customer_response_date,
+            )
+        else:
+            raise ValueError("Either (delta_send & delta_response) or all 3 dates are required")
+        prob = compute_closure_likelihood(features, has_cash_data=req.has_cash_data)
+        return DealClosureResponse(
+            closure_probability=prob,
+            closure_probability_percent=round(prob * 100.0, 2),
+            delta_send=features.delta_send,
+            delta_response=features.delta_response,
+            model_note="Trajectory-likelihood prototype (residue-inspired), preserving existing score pipeline.",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
