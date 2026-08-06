@@ -362,6 +362,34 @@ def approve_improvement_triage(req: ImprovementTriageApproveRequest):
     return {"ok": True, "record": record}
 
 
+def _action_ledger_report_path() -> Path:
+    for reports_dir in _candidate_report_dirs():
+        path = reports_dir / "agent_action_ledger_latest.json"
+        if path.exists():
+            return path
+    return Path(_REPO_ROOT) / "reports" / "agent_action_ledger_latest.json"
+
+
+@router.get("/api/shion/action-ledger/summary")
+def get_shion_action_ledger_summary(days: int = 7):
+    """紫苑 Agent Action Ledger（backlog §9.2）の要約を返す（対話室UI・監査用、read-only）。
+
+    直近レポート（run_daily_improvement_post.sh 生成）があればそれを使い、
+    無ければ生ログから即時集計する。実行権限や承認とは無関係の可視化のみ。
+    """
+    from api.shion_action_ledger import read_actions, summarize
+
+    report_path = _action_ledger_report_path()
+    if report_path.exists():
+        try:
+            cached = json.loads(report_path.read_text(encoding="utf-8"))
+            if isinstance(cached, dict) and int(cached.get("days") or 0) == days:
+                return cached
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass
+    return summarize(read_actions(), days)
+
+
 class MonitorReportRequest(BaseModel):
     failed_count: int = 0
     source: str = "dialogue_daily_report"

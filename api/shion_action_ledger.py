@@ -10,6 +10,7 @@ planning/post_hackathon_shion_backlog.md §9.2 の仕様に基づく最小実装
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import threading
 from datetime import datetime, timezone
@@ -119,3 +120,44 @@ def read_actions(*, path: Path | None = None, limit: int | None = None) -> list[
     if limit is not None and limit >= 0:
         entries = entries[-limit:]
     return entries
+
+
+def _within_days(entry: dict[str, Any], since: dt.datetime) -> bool:
+    ts = str(entry.get("timestamp") or "")
+    try:
+        parsed = dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed >= since
+
+
+def summarize(entries: list[dict[str, Any]], days: int = 7) -> dict[str, Any]:
+    """直近 days 日分の行動を集計する（レポート生成・APIレスポンス共通）。"""
+    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=max(1, days))
+    recent = [e for e in entries if _within_days(e, since)]
+
+    by_action = {action: 0 for action in sorted(VALID_ACTIONS)}
+    by_risk = {"low": 0, "medium": 0, "high": 0}
+    pending_approval = []
+    for entry in recent:
+        action = str(entry.get("action") or "")
+        if action in by_action:
+            by_action[action] += 1
+        risk = str(entry.get("risk_level") or "")
+        if risk in by_risk:
+            by_risk[risk] += 1
+        if entry.get("requires_user_approval") and entry.get("user_approved") is not True:
+            pending_approval.append(entry)
+
+    return {
+        "generated_at": _now_iso(),
+        "days": days,
+        "total": len(recent),
+        "by_action": by_action,
+        "by_risk": by_risk,
+        "pending_approval_count": len(pending_approval),
+        "pending_approval": pending_approval[-20:],
+        "recent": recent[-50:],
+    }
