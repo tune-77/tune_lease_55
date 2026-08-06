@@ -260,6 +260,34 @@ def check_packaging_script(checks: CheckRun) -> None:
     checks.info("package_cloud_run_bundle.sh contains demo-mode bundle safeguards")
 
 
+def check_recent_pipeline_health(checks: CheckRun) -> None:
+    """自律改善パイプライン（backlog §9）が連続失敗で停止していないかを確認する。
+
+    execute_codex_queue.py の連続失敗ガードが発動したまま未対応だと、
+    自律実行が壊れた状態のコードがデプロイされる恐れがある。デプロイ前の
+    最後の一線としてここで検知し、deploy_cloud_run.sh の set -e で止める。
+    """
+    candidates = sorted((ROOT / "reports").glob("codex_queue_result_*.json"))
+    if not candidates:
+        checks.info("codex_queue_result_*.json が無いため自律パイプライン健全性チェックはスキップ")
+        return
+    latest = candidates[-1]
+    try:
+        result = json.loads(latest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        checks.warn(f"{latest.relative_to(ROOT)} を読み込めません: {exc}")
+        return
+    guards = result.get("guards") if isinstance(result.get("guards"), dict) else {}
+    if guards.get("aborted_by_consecutive_failures"):
+        carried_over = guards.get("carried_over") or []
+        checks.fail(
+            f"{latest.relative_to(ROOT)}: Codex自動実行キューが連続失敗のため停止中"
+            f"（持ち越し {len(carried_over)} 件）。原因調査・再実行確認までデプロイを止めます"
+        )
+    else:
+        checks.info(f"{latest.relative_to(ROOT)}: 自律パイプラインは連続失敗停止なし")
+
+
 def check_deploy_scripts(checks: CheckRun) -> None:
     for rel in ("scripts/deploy_cloud_run.sh", "scripts/deploy_cloud_run_api.sh"):
         path = ROOT / rel
@@ -364,6 +392,7 @@ def main() -> int:
     check_ignore_files(checks)
     check_packaging_script(checks)
     check_deploy_scripts(checks)
+    check_recent_pipeline_health(checks)
     check_personal_memory_pack(checks)
     check_shion_memory_index(checks)
     check_db(LOCAL_DEMO_DB, "local data/demo.db", checks)

@@ -98,6 +98,36 @@ def test_system_monitor_flags_stale_report_and_backlog(tmp_path, monkeypatch):
     assert "異常なし" not in text
 
 
+def test_system_monitor_flags_consecutive_failure_abort(tmp_path, monkeypatch):
+    import scripts.send_daily_improvement_slack as mod
+
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "codex_queue_result_20260805.json").write_text(
+        json.dumps({"guards": {"aborted_by_consecutive_failures": True, "carried_over": ["REV-001", "REV-002"]}}),
+        encoding="utf-8",
+    )
+
+    lines = mod._system_monitor_lines(now=datetime(2026, 8, 6, 9, 0, 0))
+    text = "\n".join(lines)
+    assert "連続失敗のため停止しました" in text
+    assert "持ち越し 2 件" in text
+
+
+def test_system_monitor_ignores_non_aborted_queue_result(tmp_path, monkeypatch):
+    import scripts.send_daily_improvement_slack as mod
+
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "codex_queue_result_20260805.json").write_text(
+        json.dumps({"guards": {"aborted_by_consecutive_failures": False}}),
+        encoding="utf-8",
+    )
+
+    lines = mod._system_monitor_lines(now=datetime(2026, 8, 6, 9, 0, 0))
+    assert lines == ["• 異常なし"]
+
+
 def test_system_monitor_healthy(tmp_path, monkeypatch):
     import scripts.send_daily_improvement_slack as mod
 
