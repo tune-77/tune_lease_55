@@ -1945,6 +1945,7 @@ def get_pending_cases():
                     "company_name": d.get("company_name") or inputs.get("company_name") or "名称未設定",
                     "timestamp": r["timestamp"],
                     "score": r["score"] if r["score"] not in (None, "") else result.get("score", result.get("score_base")),
+                    "hantei": result.get("hantei") or d.get("hantei") or "",
                     "industry": r["industry_sub"] or d.get("industry_sub") or inputs.get("industry_sub") or d.get("industry_major") or inputs.get("industry_major") or "",
                     "registration_date": d.get("registration_date") or (r["timestamp"] or "")[:10],
                     "estimate_sent_date": d.get("estimate_sent_date") or (r["timestamp"] or "")[:10],
@@ -7779,6 +7780,42 @@ def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     relative_path = f"Debates/{note['filename']}"
     return {"path": relative_path}
 
+
+class RegisterDebateCaseRequest(BaseModel):
+    company_name: str = ""
+    industry_major: str = ""
+    score: float = 0.0
+    final_decision: str = ""
+    conditions: List[str] = []
+    arbiter_summary: str = ""
+    inputs: dict = Field(default_factory=dict)
+
+
+@app.post("/api/debate/register-case")
+def register_debate_case(req: RegisterDebateCaseRequest):
+    """マルチエージェント討論の判断結果を、結果登録画面（/register）で確定できる未登録案件として保存する。"""
+    from data_cases import save_case_log
+
+    hantei = req.final_decision or "要審議"
+    case_data = {
+        "company_no": "",
+        "company_name": req.company_name or "名称未設定",
+        "industry_major": req.industry_major,
+        "industry_sub": req.industry_major,
+        "inputs": req.inputs,
+        "result": {
+            "score": req.score,
+            "score_base": req.score,
+            "hantei": hantei,
+            "arbiter_reasoning": req.arbiter_summary,
+            "arbiter_conditions": req.conditions,
+            "engine_source": "multi_agent_debate",
+        },
+    }
+    case_id = save_case_log(case_data)
+    if not case_id:
+        raise HTTPException(status_code=500, detail="案件登録に失敗しました。")
+    return {"case_id": case_id, "hantei": hantei}
 
 
 class LeaseNewsJudgmentChangeRequest(BaseModel):
