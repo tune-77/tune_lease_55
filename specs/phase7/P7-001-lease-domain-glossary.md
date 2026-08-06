@@ -20,7 +20,7 @@ superseded_by: ""
 
 リース審査ドメイン固有の同義語・専門用語を1つのJSON辞書に集約し、RAG検索（P7-002 クエリ拡張）が「飲食業の赤字企業」と「飲食店の営業赤字」を同じ意図として扱えるようにする。辞書は検索精度改善の基盤データであり、それ自体はスコアリング・審査判定に一切影響しない。
 
-> 出典: `代替案実装計画_精度改善Ver2.md` 代替案A「ドメイン辞書改善」の詳細設計。
+> 出典: `docs/archive/代替案実装計画_精度改善Ver2.md` 代替案A「ドメイン辞書改善」の詳細設計。
 
 ---
 
@@ -82,12 +82,12 @@ class IndustryTerm(TypedDict):
 
 | 区分 | シード内容 | 出典 |
 |------|----------|------|
-| 財務用語 | 赤字企業 / 自己資本比率 / 残価 / デフォルト（延滞・債務不履行） | `代替案実装計画_精度改善Ver2.md` の例示 + `static_data/industry_averages.json`（財務指標名） |
+| 財務用語 | 赤字企業 / 自己資本比率 / 残価 / デフォルト（延滞・債務不履行） | `docs/archive/代替案実装計画_精度改善Ver2.md` の例示 + `static_data/industry_averages.json`（財務指標名） |
 | 物件用語 | リース物件 / 建設機械（建機・重機・ユンボ）/ IT・OA機器 / 車両 | `static_data/lease_assets.json` の items（建設機械・IT・OA機器 等の取扱物件名） |
 | 機種分類 | 電子計算機（サーバ・パソコン）等の機種名と例示語 | `期待使用期間.json` の usage_period_data（category / item_name / examples） |
 | 業種用語 | 飲食業 / 総合工事業・職別工事業（大工・とび等） | `static_data/industry_hints.json` のキー（JSIC業種名） |
 | 契約・会計用語 | ファイナンスリース / オペレーティングリース / 再リース / 所有権移転 | `static_data/lease_classification.json` の classification_flow |
-| 審査用語 | 審査基準 / 与信基準、Q-Risk / LTV / EBITDA | `代替案実装計画_精度改善Ver2.md` の例示 + `.claude/rules/workflow.md`（Q_risk 閾値定義） |
+| 審査用語 | 審査基準 / 与信基準、Q-Risk / LTV / EBITDA | `docs/archive/代替案実装計画_精度改善Ver2.md` の例示 + `.claude/rules/workflow.md`（Q_risk 閾値定義） |
 | 耐用年数用語 | 法定耐用年数 / 耐用年数 / 償却年数 | `static_data/useful_life_equipment.json`（国税庁耐用年数表参照） |
 
 ※ 上記出典にない語をシードに加える場合は「これは推測です」と明示した上でレビューに委ねる（Freshman Rules / Cite the Source）。

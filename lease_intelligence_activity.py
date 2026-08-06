@@ -60,7 +60,7 @@ def record_user_activity(
 
 # [REV-237] 利用パターンから「関連するが使っていない機能」を1件だけ提案する。
 # ルールは vault (static_data/・notes/) に出典のない設計上の推測であり、統計的検証はしていない
-# （このシステムはユーザー1人・拡大予定なしのためA/Bテストは行わない。IMPLEMENTATION_DECISION_FOR_1USER.md参照）。
+# （このシステムはユーザー1人・拡大予定なしのためA/Bテストは行わない。docs/archive/IMPLEMENTATION_DECISION_FOR_1USER.md参照）。
 SUGGESTION_RULES: tuple[dict[str, Any], ...] = (
     {
         "trigger_surface": "improvement_log",
