@@ -1,0 +1,95 @@
+Title: リース会計・税務・制度変更の審査影響 - リース判断Auto Research
+Source: Projects/tune_lease_55/Research/Auto Research/2026-06-23_lease-accounting-tax.md
+Canonical-Topic: リース会計・税務・制度変更の審査影響
+Source-Bucket: auto_research
+Quality-Score: 12
+Corpus: tune_lease_55_obsidian_lease_knowledge
+
+---
+date: 2026-06-23
+research_topic: lease-accounting-tax
+title: "リース会計・税務・制度変更の審査影響"
+tags: ["リース審査", "autoresearch", "会計基準", "税務", "制度"]
+knowledge_type: lease-judgment-research
+source: gemini-google-search
+model: "gemini-2.5-flash"
+valid_until: 2026-12-20
+review_status: needs_human_review
+primary_source_count: 0
+recognized_source_count: 2
+supplementary_source_count: 10
+---
+# リース会計・税務・制度変更の審査影響 - リース判断Auto Research
+
+> このノートは審査判断の補助知識です。個別案件の事実確認を省略せず、自動否決・自動承認には使用しません。
+
+## 結論
+2027年4月1日からの新リース会計基準強制適用により、借手の財務諸表は大きく変化します。特に上場企業や大会社では、オペレーティング・リースがオンバランス化され、財務指標の悪化や財務制限条項抵触リスクが高まります。リース審査では、借手の新基準への対応状況、財務影響、税務処理の複雑化を詳細に確認し、与信判断に反映させる必要があります。
+
+## 根拠品質
+本調査は、PwCなどの認知度の高い専門機関の情報を中心に構成されており、信頼性は高いです。moneyforward.comやinfomart.co.jpなどの補助情報も参照していますが、主要な会計・税務の変更点は専門機関の情報で裏付けられています。数値基準（例：少額リース300万円以下）も専門機関の公表資料で確認可能です。
+
+## 判断に使える確認済み事実
+*   **新リース会計基準の強制適用:** 2027年4月1日以後に開始する連結会計年度および事業年度の期首から強制適用されます。
+*   **オンバランス処理の原則:** 借手は原則としてすべてのリース取引を「使用権資産」と「リース負債」として貸借対照表に計上します。
+*   **適用対象:** 主に上場企業および大会社とその子会社・関連会社が対象で、中小企業は原則対象外です。
+*   **簡便処理の例外:** リース期間12ヶ月以内の短期リースや、300万円以下の少額リースには簡便処理が認められます。
+*   **税務上の賃貸借処理継続:** 会計上オンバランスでも、税務上は引き続き賃貸借取引として処理され、税会不一致が生じます。
+*   **消費税の延払基準特例廃止:** リース譲渡に係る消費税の延払基準の特例は廃止されましたが、経過措置があります。
+*   **中小企業新事業進出補助金:** 2026年度から「ものづくり補助金」が再編され、リース会社との共同申請も可能です。
+*   **設備投資減税の延長提言:** リース事業協会は、設備投資減税の延長やリース適用を2026年度税制改正で提言しています。
+
+## リース審査への適用
+*   **財務指標の再評価:** 借手の自己資本比率や負債比率、ROAなどの財務指標が新基準適用後に悪化することを考慮し、評価基準を見直します。
+*   **財務制限条項リスクの確認:** 既存の借入契約における財務制限条項への抵触リスクを把握し、借手の対応策を確認します。
+*   **税会不一致への対応評価:** 借手の税会不一致に対する認識、法人税申告時の調整計画、税効果会計の検討状況を評価します。
+*   **補助金活用案件の審査:** 補助金活用を前提とする案件では、補助金採択の確実性や、補助金がない場合の事業計画の堅牢性を確認します。
+*   **情報開示の強化:** 新基準適用後の財務諸表の透明性を確保するため、リース負債の内訳など詳細な情報開示を求めることを検討します。
+
+## 担当者が確認する質問
+*   新リース会計基準適用に向けたリース契約の棚卸し状況と、財務影響のシミュレーションは実施済みですか。
+*   短期リースや少額リースの簡便処理の適用方針、リース期間の判定方針、割引率の設定方法を決定していますか。
+*   新基準適用後の税会不一致について、法人税申告時の調整計画や税効果会計の検討状況を教えてください。
+*   既存の借入契約に財務制限条項はありますか。新基準適用による抵触リスクと、金融機関との協議状況を教えてください。
+*   中小企業新事業進出補助金などの補助金申請状況と、採択されなかった場合の事業計画の代替案はありますか。
+
+## 承認条件を変える兆候
+*   **財務指標の著しい悪化:** 新基準適用後の財務指標（特に負債比率や自己資本比率）が、当社の与信基準を大幅に下回る場合。
+*   **財務制限条項抵触リスク:** 既存の借入契約の財務制限条項に抵触する可能性が高く、かつ具体的な対応策が不明確な場合。
+*   **新会計基準への準備不足:** リース契約の棚卸しや財務影響のシミュレーションが不十分で、新基準への対応体制が整っていない場合。
+*   **税務処理体制の不備:** 複雑化する税務処理（税会不一致、税効果会計）に対応できる経理・税務部門の体制が不十分な場合。
+*   **補助金前提の事業計画の脆弱性:** 補助金が採択されない場合に、リース料の支払いが困難になる可能性が高い事業計画の場合。
+
+## 反証・過信してはいけない点
+*   **中小企業への適用:** 中小企業は原則として新基準の強制適用対象外ですが、今後の動向や取引先の要請により適用が必要になる可能性もあります。
+*   **簡便処理の適用範囲:** 短期リースや少額リースの簡便処理は、適用要件を厳密に確認する必要があり、すべてのリースに適用できるわけではありません。
+*   **税制改正の確定:** 設備投資減税の延長やリース適用は提言段階であり、今後の税制改正で内容が変更される可能性があります。
+*   **補助金の確実性:** 補助金は申請すれば必ず採択されるものではなく、採択状況や交付決定通知書の内容を確実に確認する必要があります。
+*   **財務指標悪化の実質的意味:** 財務指標の悪化は会計上の変化であり、必ずしも借手の実質的な信用力低下を意味するものではないため、実態を総合的に評価する必要があります。
+
+## 更新が必要になる条件
+*   **新リース会計基準の追加公表:** 企業会計基準委員会（ASBJ）から、新基準に関するQ&Aや適用指針の追加公表があった場合。
+*   **税制改正の確定:** 2025年度（令和7年度）以降の税制改正で、リース税制に関する具体的な変更内容が確定した場合。
+*   **中小企業への適用拡大:** 中小企業への新リース会計基準の適用が、何らかの形で拡大される動きがあった場合。
+*   **リース業界の新たな動向:** リース業界における新たな規制、サービス、または競争環境の変化があった場合。
+*   **金融機関の与信判断基準変更:** 他の金融機関が新リース会計基準を考慮した与信判断基準を公表・変更した場合。
+
+## 情報源
+- `supplementary` [moneyforward.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHt7GK_kugfC2QNI2BY8hVoqPQjP5Ui86Tj4UwY3S68b7cwWIRwygHurA9t1Htz1iZXleDHHa13fpvyaj64-Yr0L47DIf3PE87iv_vhdI6a7QTpAOi1ofxde086E3NzhoVu87HvraSEcW7TzM3KOQ==)
+- `recognized` [pwc.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFKzNJ29hMirNC-E3hn2ZvuLVQHSHwVVkKFiKMhxa4qXCR1Tc24u5sR4EYrWGsVyuFCaClpHkJDsysipb6M8hSYu6g26Ti8gY0dD93nY7dumFee6Tr7Nu0QQ3mW-ZkQkmy0reOVovLlj6abbBLwJndhsx3-gen8urr4oDlwr2ezG7M8rbbf3eqwpdPim23yVxY4ij0uzQfenVtMn5wJlg==)
+- `supplementary` [infomart.co.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHRoecg3dUtQeaSlb-9aqqAOBhW3Geznk9RMSBNYaioqrrJ9TChh6QMxjtVTGEsi6ltHsj5-WpvmSA-cdvIyPVMo3NUR803tuhSV0rGmQ-kIdxKDRDc81JTaUNjXQiV1k9EzLW4WRlebflM7_WKNOCcry1k4lQkoSlCOAyN)
+- `supplementary` [fastaccounting.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGK_gyNuhlj_BXbzmUJf3c69mzxVP1TKD6Q_6EYVmb_3xdfvjxBYfm9h7mNoumSblC1Hub1i8Z88aB6zwjx_-r0PpCUxFECR86TKRG0x64s1Tb6SUxW0tlFJYJge_774BeCkGlzxo947G3pJaT7DArB456VWzEOR2Gt5cktCa3Y9eDL)
+- `supplementary` [bizcrew.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGcawDz1IaJzsvi1B3L6cVBL6RalzA9bkU_j2DX_C9AQK3_1O7PZaEug_Das_r3becsQ8BSQ5AIfOxU8Jk2d8glpN_HnLWc-QXKOh2gVTzex0cKdJneNPEx2442Eui-PqL-)
+- `supplementary` [kaikeijin-course.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFWVp_J5ExLRl1n2MRnkV40keLqf3vDD8OIt2g4q7mIyjam-KRmxgrWfthgyexPtZjEW44Ld1uVahfuY87FeOfJERPbizh-e_X1tJMpEv3z-SsTVFSbB1-Thot_Nkpud7AOYYt9mRwr)
+- `supplementary` [moneyforward.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEXwRscrbmdwC-ErXj4BqdGMgVNRaPvLoD1eEzSDTwpDTG5NOxsC-_c-X2ZNZ8eRoFe2cKNLtV50hhRRfVyBZ30CDAB1JXe1iEQbYfxOAODRrFMXmLCH7Nn-OrgvvDjhEYYQlfjSBheajTrSn5kEQ==)
+- `supplementary` [nii.ac.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEAgNT10LTEH10067Hzg6RHCTCELna8GZME5VpR8M6iwY3C9BJ03l7z3lCzcY5Up5k4ITq-F7SDu1ckvEmFS4GAGIe4PUATjK2vMEQ5aN68eVWNa9uaYR9FZ1CooIVZbRyplbQLFDk0rBiEhpCKkKMUG3s0POg=)
+- `supplementary` [multibook.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHofjFoqdU9DdQQ2NFFuG0uVsa0UDIZAkNFA1UUWk9KKMpdWcCadnDNCbkduXPvxjKd82a4x-usRW9iBrWy2fFX3QGEcpGkvEwc8bjcJgB4DGM1IOOA868SSaepXXPs)
+- `recognized` [pwc.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHHEID8VmJifQ-0CKVN1PW4wVJkrr9PVRPQf_tg2hGF0wMINLIUkNV1JvnesrV7ZByeMdpDPuCq_ECb12DTEZpSzmbUQduIYTciEKjv2EssIAccxnsnwQHoGT3q1cjtb7eMZEAkryPS-aAysFrMzjB7HKoJ0lWu--d5attQe6kD4bym9Aik)
+- `supplementary` [keihi.com](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHXxs2Bo61Z01QGaUSG8ztCA5-aRtUls0FI_xhnbSozKxSfV10YMhp5ldLi1EYkquxzbb15irqmSEI3yzI6cZzIjAT-OMuzgL0OPjjrtF-rjxKqwavh7AZgldguAvw=)
+- `supplementary` [koyano-cpa.gr.jp](https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFKicBZy_rialonp2m6Zglsl0rfO7l4hj86hf6h079GTF0Ah3Va-A8FK7l5PC9cw38x1gisO7Du6zKX77Sm-wAsPej8ySiig9BCNcIA__zV9P5ysdAEGOA_4nCmkFdFjfA4g3TC_bJcLFET69EM)
+
+## 検索用分類
+- 調査テーマ: リース会計・税務・制度変更の審査影響
+- 対象: リース審査、信用判断、条件設計
+- 有効期限: 2026-12-20
+- レビュー状態: needs_human_review
