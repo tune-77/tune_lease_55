@@ -97,7 +97,7 @@ def confidence_for_hit(hit: dict, *, now: float | None = None) -> tuple[float, s
 
     rank_score は関連度・語句カバレッジ・ソース優先度を含むため「関連度+ソース信頼度」、
     mtime からの経過日数を「新鮮度」として 70:30 で合成する
-    （AI_CHAT_RAG_IMPROVEMENTS_PLAN.md 4️⃣ の配分に対応）。
+    （docs/archive/AI_CHAT_RAG_IMPROVEMENTS_PLAN.md 4️⃣ の配分に対応）。
     """
     rank_raw = hit.get("rank_score")
     if rank_raw is not None:

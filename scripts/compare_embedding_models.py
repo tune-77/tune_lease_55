@@ -18,7 +18,7 @@
 - 埋め込みは data/embedding_eval_cache/ にキャッシュし、再実行時のAPI課金を防ぐ
 - レポートは reports/embedding_model_comparison_<日付>.md に出力する
 
-出典: 代替案実装計画_精度改善Ver2.md「代替案B: 埋め込みモデル更新」ステップ1。
+出典: docs/archive/代替案実装計画_精度改善Ver2.md「代替案B: 埋め込みモデル更新」ステップ1。
 計画書は OpenAI text-embedding-3-large を想定していたが、OpenAI APIキーを
 保有していないため、比較対象を Gemini とローカル大型モデルに変更した。
 また計画書は ada-002 を「現状」としているが、実際の現行モデルはローカル
