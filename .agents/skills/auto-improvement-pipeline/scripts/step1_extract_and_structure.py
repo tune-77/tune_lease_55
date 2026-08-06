@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -133,7 +134,18 @@ def _find_repo_root() -> Path | None:
     return None
 
 
-_REV_ID_RE = re.compile(r"REV-(\d+)")
+def _load_improvement_ledger_entries(ledger_path: Path) -> list[dict[str, Any]]:
+    """scripts/improvement_ledger.jsonl（追記式JSONL）を list[dict] として読む。"""
+    entries: list[dict[str, Any]] = []
+    for line in ledger_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return entries
 
 
 def _max_ledger_rev_number() -> int:
@@ -141,27 +153,22 @@ def _max_ledger_rev_number() -> int:
 
     抽出時のIDをここから採番することで、実行のたびに 1 から振り直して
     既存REVと衝突する事故（REV番号の使い回し）を防ぐ。
+    max_rev_number() 自体は analyze_error_logs.py 等5スクリプトと共有の
+    scripts/rev_ledger_utils.py に一本化済み（コピペ実装による事故の再発防止）。
     """
     repo_root = _find_repo_root()
     if repo_root is None:
         return 0
-    ledger_path = repo_root / "scripts" / "improvement_ledger.jsonl"
+    scripts_dir = repo_root / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    from rev_ledger_utils import max_rev_number
+
+    ledger_path = scripts_dir / "improvement_ledger.jsonl"
     if not ledger_path.exists():
         return 0
-    max_num = 0
-    for line in ledger_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        for field in (entry.get("rev_id", ""), entry.get("key", "")):
-            m = _REV_ID_RE.search(str(field))
-            if m:
-                max_num = max(max_num, int(m.group(1)))
-    return max_num
+    entries = _load_improvement_ledger_entries(ledger_path)
+    return max_rev_number(entries, fields=("rev_id", "key"))
 
 
 def _extract_search_keywords(text: str) -> list[str]:
