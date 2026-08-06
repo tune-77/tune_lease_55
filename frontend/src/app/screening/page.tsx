@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
-import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles } from "lucide-react";
+import { Activity, ArrowRight, Bot, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, FileOutput, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Brain } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
@@ -1132,6 +1132,81 @@ const buildShionReviewFallback = (
   ].join("\n");
 };
 
+type ShionThoughtStep = {
+  title: string;
+  items: string[];
+};
+
+const buildShionThoughtProcessSteps = (
+  result: Record<string, any>,
+  judgmentAssetCandidates: JudgmentAssetCandidate[],
+  pastCompanies: PastCompanyHighlight[],
+  review: ShionScreeningReview | null,
+): ShionThoughtStep[] => {
+  const steps: ShionThoughtStep[] = [];
+  if (!result) return steps;
+
+  const numericItems: string[] = [];
+  if (result.quantum_risk != null) {
+    numericItems.push(`Q_risk ${Number(result.quantum_risk).toFixed(1)}（35以上で要注意・60以上で強警戒）`);
+  }
+  if (result.umap_anomaly_score != null) {
+    numericItems.push(`UMAP異常度 ${Number(result.umap_anomaly_score).toFixed(1)}`);
+  }
+  if (result.mahalanobis_score != null) {
+    numericItems.push(`マハラノビス距離 ${Number(result.mahalanobis_score).toFixed(1)}`);
+  }
+  if (numericItems.length) {
+    steps.push({ title: "数値シグナルを確認", items: numericItems });
+  }
+
+  const flagItems: string[] = Array.isArray(result.aurion_core?.discipline_flags)
+    ? result.aurion_core.discipline_flags
+        .slice(0, 5)
+        .map((f: any) => (typeof f === "string" ? f : f?.title ?? ""))
+        .filter(Boolean)
+    : [];
+  if (flagItems.length) {
+    steps.push({ title: "AURION警戒フラグを照合", items: flagItems });
+  }
+
+  const diagItems: string[] = Array.isArray(result.diagnostic_recommendations)
+    ? result.diagnostic_recommendations.slice(0, 3).map((rec: any) => {
+        const label = String(rec?.label || rec?.diagnostic || "補助診断");
+        const status = rec?.status === "calculated" ? "算出済み" : "推奨";
+        const reason = rec?.reason ? `（理由: ${rec.reason}）` : "";
+        return `${label}: ${status}${reason}`;
+      })
+    : [];
+  if (diagItems.length) {
+    steps.push({ title: "補助診断を検討", items: diagItems });
+  }
+
+  const assetItems = judgmentAssetCandidates.slice(0, 3).map((item) => (
+    `${isCanonicalJudgmentAsset(item) ? "正規判断資産" : "昇格候補"} JA-${item.id.slice(0, 8)} / ${item.research_topic || item.candidate_type || "screening"}`
+  ));
+  if (assetItems.length) {
+    steps.push({ title: "参照した判断資産", items: assetItems });
+  }
+
+  const companyItems = pastCompanies.slice(0, 5).map((c) => `${c.name}（${c.label}）`);
+  if (companyItems.length) {
+    steps.push({ title: "参照した過去事例", items: companyItems });
+  }
+
+  if (review) {
+    steps.push({
+      title: "レビュー生成に使った参照数",
+      items: [
+        `記憶 ${review.memoryRefs}件 / 知識 ${review.knowledgeRefs}件`,
+        `Vertex ${review.vertexUsed ? "使用" : review.vertexStatus || "未使用"}`,
+      ],
+    });
+  }
+
+  return steps;
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function AiHeroCard({
   result,
@@ -1268,6 +1343,7 @@ function ShionScreeningReviewCard({
   feedbackSaving,
   pastCompanies,
   judgmentAssetCandidates,
+  result,
 }: {
   review: ShionScreeningReview | null;
   loading: boolean;
@@ -1277,6 +1353,7 @@ function ShionScreeningReviewCard({
   feedbackSaving: boolean;
   pastCompanies: PastCompanyHighlight[];
   judgmentAssetCandidates: JudgmentAssetCandidate[];
+  result: Record<string, any> | null;
 }) {
   const feedbackOptions: { key: ShionReviewFeedback; label: string }[] = [
     { key: "specific", label: "具体的" },
@@ -1287,6 +1364,10 @@ function ShionScreeningReviewCard({
     { key: "needs_fix", label: "修正" },
     { key: "wrong", label: "違った" },
   ];
+  const [showThoughtProcess, setShowThoughtProcess] = useState(false);
+  const thoughtProcessSteps = result
+    ? buildShionThoughtProcessSteps(result, judgmentAssetCandidates, pastCompanies, review)
+    : [];
 
   return (
     <section className="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
@@ -1383,6 +1464,38 @@ function ShionScreeningReviewCard({
                     <span className="text-[11px] font-bold text-slate-400">経験保存後に評価できます</span>
                   )}
                 </div>
+                {thoughtProcessSteps.length > 0 && (
+                  <div className="mt-3 border-t border-violet-100 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowThoughtProcess((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 text-[11px] font-black text-violet-600 hover:text-violet-800"
+                    >
+                      <Brain className="h-3.5 w-3.5" />
+                      紫苑の思考プロセスを見る
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showThoughtProcess ? "rotate-180" : ""}`} />
+                    </button>
+                    {showThoughtProcess && (
+                      <ol className="mt-3 space-y-2">
+                        {thoughtProcessSteps.map((step, index) => (
+                          <li key={step.title} className="rounded-lg border border-violet-100 bg-white p-2.5">
+                            <div className="flex items-center gap-2 text-[11px] font-black text-violet-700">
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-violet-100 text-[10px] text-violet-700">
+                                {index + 1}
+                              </span>
+                              {step.title}
+                            </div>
+                            <ul className="mt-1.5 space-y-1 pl-6 text-[11px] font-medium leading-relaxed text-slate-600">
+                              {step.items.map((item, itemIndex) => (
+                                <li key={itemIndex} className="list-disc">{item}</li>
+                              ))}
+                            </ul>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <p className="min-h-20 text-sm font-bold leading-7 text-violet-700">
@@ -3478,6 +3591,7 @@ export default function Dashboard() {
                       feedbackSaving={shionFeedbackSaving}
                       pastCompanies={shionPastCompanies}
                       judgmentAssetCandidates={judgmentAssetCandidates}
+                      result={result}
                     />
                     <JudgmentAssetCandidateCard
                       candidates={judgmentAssetCandidates}
