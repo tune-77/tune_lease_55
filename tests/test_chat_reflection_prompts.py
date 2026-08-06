@@ -14,6 +14,13 @@ def test_build_shion_judgment_response_shape_prompt_block_triggers_for_review():
     assert build_shion_judgment_response_shape_prompt_block("おはよう") == ""
 
 
+def test_build_shion_judgment_response_shape_prompt_block_triggers_for_ambiguous_question():
+    block = build_shion_judgment_response_shape_prompt_block("これって大丈夫かな？")
+
+    assert "紫苑の実務回答の型" in block
+    assert "情報が不足していて曖昧なまま" in block
+
+
 def test_build_reflection_gate_prompt_block_respects_delta_used():
     block, payload = build_reflection_gate_prompt_block(
         continuity_hook={"route": "lease_judgment"},
