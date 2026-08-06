@@ -349,6 +349,11 @@ echo "[検証] 紫苑トリアージの事後検証（outcome同期＋的中率�
 log_step "analyze_shion_pm_quality" $?
 
 echo ""
+echo "[監査] 紫苑 Agent Action Ledger の日次サマリを生成（backlog §9.2）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_agent_action_ledger_report.py" || true
+log_step "build_agent_action_ledger_report" $?
+
+echo ""
 echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・Webhook未設定ならスキップ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/send_daily_improvement_slack.py" \
   --date "${PIPELINE_DATE}" \

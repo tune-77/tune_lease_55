@@ -26,6 +26,29 @@ def dump_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _log_implementation_observed(root: Path, report: dict[str, Any], output_path: Path) -> None:
+    """Agent Action Ledger（backlog §9.2）への記録。失敗しても処理は止めない。"""
+    try:
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from api.shion_action_ledger import log_action
+
+        log_action(
+            "implementation_observed",
+            summary=(
+                f"Codexキュー実行結果: succeeded={report.get('succeeded', 0)} "
+                f"failed={report.get('failed', 0)} / total={report.get('total', 0)}"
+            ),
+            observed_sources=[str(output_path)],
+            risk_level="low",
+            requires_user_approval=True,
+            target=str(output_path),
+            result="failed" if report.get("failed") else "succeeded",
+        )
+    except Exception:
+        pass
+
+
 def record_status(root: Path, rev_id: str, status: str, detail: str = "") -> None:
     recorder = root / "scripts" / "record_codex_auto_status.py"
     if not recorder.exists():
@@ -271,6 +294,8 @@ def main() -> None:
 
     dump_json(output_path, report)
     print(f"Result written: {output_path}")
+    if not args.dry_run:
+        _log_implementation_observed(root, report, output_path)
 
     if any_failure:
         sys.exit(1)

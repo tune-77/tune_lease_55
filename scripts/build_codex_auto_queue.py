@@ -473,6 +473,29 @@ def build_queue(
     }
 
 
+def _log_codex_request_drafted(root: Path, queue: dict[str, Any], output_path: Path) -> None:
+    """Agent Action Ledger（backlog §9.2）への記録。失敗しても処理は止めない。"""
+    try:
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from api.shion_action_ledger import log_action
+
+        log_action(
+            "codex_request_drafted",
+            summary=(
+                f"Codex自動実行キューを生成: {queue.get('queued_count', 0)}件 "
+                f"(safe={queue.get('codex_auto_safe_count', 0)})"
+            ),
+            observed_sources=["reports/latest.json"],
+            risk_level="low",
+            requires_user_approval=True,
+            target=str(output_path),
+            result="drafted",
+        )
+    except Exception:
+        pass
+
+
 def update_latest(latest_path: Path, queue_path: Path, queue: dict[str, Any]) -> None:
     if latest_path.exists():
         latest = load_json(latest_path)
@@ -564,6 +587,7 @@ def main() -> None:
 
     dump_json(output_path, queue)
     update_latest(args.latest, output_path, queue)
+    _log_codex_request_drafted(root, queue, output_path)
     print(
         "Codex auto queue: "
         f"{queue['queued_count']} queued / {queue['codex_auto_safe_count']} safe "
