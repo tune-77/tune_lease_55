@@ -2266,6 +2266,54 @@ function AurionCoreCard({ core }: { core?: any }) {
   );
 }
 
+function IndustryBankruptcyBenchCard({ bench }: { bench?: any }) {
+  if (!bench) return null;
+  const levelStyles: Record<string, string> = {
+    "高": "border-rose-200 bg-rose-50 text-rose-900",
+    "中高": "border-orange-200 bg-orange-50 text-orange-900",
+    "中": "border-amber-200 bg-amber-50 text-amber-900",
+    "低": "border-emerald-200 bg-emerald-50 text-emerald-900",
+  };
+  const style = levelStyles[bench.risk_level] || "border-slate-200 bg-slate-50 text-slate-900";
+  const stars = "●".repeat(bench.risk_stars || 0) + "○".repeat(4 - (bench.risk_stars || 0));
+  return (
+    <section className={`rounded-2xl border p-4 shadow-sm ${style}`}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-black">業種マクロリスク（参考情報）</h3>
+              <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-black">
+                {bench.matched_category}
+              </span>
+            </div>
+            <p className="mt-1 text-xs font-bold leading-relaxed">
+              リスクレベル: {bench.risk_level} {stars} ／ 全業種平均比: {bench.relative_risk}
+            </p>
+            <p className="mt-1 text-[10px] font-bold opacity-70">
+              出典: TDB「倒産集計2025年度報」×中小企業庁データ。業種全体の母集団倒産率であり、個社の倒産確率（PD）ではありません。スコアには反映していません。
+            </p>
+            {bench.note && (
+              <p className="mt-1 text-[10px] font-bold text-orange-600">⚠️ {bench.note}</p>
+            )}
+          </div>
+        </div>
+        <div className="grid min-w-[220px] grid-cols-2 gap-2">
+          <div className="rounded-xl bg-white/70 px-3 py-2 text-center">
+            <div className="text-[10px] font-black opacity-60">年間倒産率</div>
+            <div className="text-lg font-black">{Number(bench.rate).toFixed(2)}%</div>
+          </div>
+          <div className="rounded-xl bg-white/70 px-3 py-2 text-center">
+            <div className="text-[10px] font-black opacity-60">1万者あたり</div>
+            <div className="text-lg font-black">{Number(bench.per_10k).toFixed(0)}件</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function BayesReverseStrategyCard({ strategy }: { strategy?: any }) {
   if (!strategy?.available) return null;
   const prior = Number(strategy.prior_percent ?? 0);
@@ -3463,6 +3511,7 @@ export default function Dashboard() {
                       description="審査結果を見ながら、期間・金利・税率を動かして承認条件や稟議補足の材料にします。"
                     />
                     <IndicatorCards data={result} />
+                    <IndustryBankruptcyBenchCard bench={result?.industry_bankruptcy_bench} />
 
                     {/* REV-224: 審査ゲーム理論パネル */}
                     {gameTheoryResult && (

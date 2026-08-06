@@ -1486,6 +1486,17 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
         from api.aurion_core_guard import build_aurion_core_guard
         aurion_core = build_aurion_core_guard(inputs, result)
         bayes_reverse_strategy = _build_bayes_reverse_strategy(inputs, result)
+        try:
+            from data.industry_bankruptcy_bench import get_bankruptcy_bench, get_relative_risk, OVERALL_AVG_RATE
+            industry_bankruptcy_bench = get_bankruptcy_bench(
+                result.get("industry_major", inputs.get("industry_major", ""))
+            )
+            if industry_bankruptcy_bench:
+                industry_bankruptcy_bench["overall_avg_rate"] = OVERALL_AVG_RATE
+                industry_bankruptcy_bench["relative_risk"] = get_relative_risk(industry_bankruptcy_bench["rate"])
+        except Exception as _bench_err:
+            print(f"[WARNING] industry_bankruptcy_bench skipped: {_bench_err}")
+            industry_bankruptcy_bench = None
 
         # ── DB保存 ──────────────────────────────────────────────
         case_id = None
@@ -1607,6 +1618,7 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             estat_context=result.get("estat_context"),
             aurion_core=aurion_core,
             bayes_reverse_strategy=bayes_reverse_strategy,
+            industry_bankruptcy_bench=industry_bankruptcy_bench,
         )
     except Exception as e:
         import traceback
