@@ -295,7 +295,34 @@ def _system_monitor_lines(now: datetime | None = None) -> list[str]:
         except (ValueError, OSError):
             pass
 
+    aborted_line = _codex_queue_abort_line()
+    if aborted_line:
+        problems.append(aborted_line)
+
     return problems if problems else ["• 異常なし"]
+
+
+def _codex_queue_abort_line() -> str:
+    """execute_codex_queue.py の連続失敗ガード（backlog §9 前提ガード）が発動していれば警告行を返す。
+
+    guards.aborted_by_consecutive_failures は次に人が結果JSONを開くまで気づけないため、
+    日次Slackレポートの「システム監視」節で能動的に知らせる。
+    """
+    candidates = sorted((REPO_ROOT / "reports").glob("codex_queue_result_*.json"))
+    if not candidates:
+        return ""
+    try:
+        result = json.loads(candidates[-1].read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    guards = result.get("guards") if isinstance(result.get("guards"), dict) else {}
+    if not guards.get("aborted_by_consecutive_failures"):
+        return ""
+    carried_over = guards.get("carried_over") or []
+    return (
+        f"• ⚠️ Codex自動実行キューが連続失敗のため停止しました"
+        f"（{candidates[-1].name} / 持ち越し {len(carried_over)} 件。原因調査が必要です）"
+    )
 
 
 def _shion_self_proposal_lines(report: dict[str, Any]) -> list[str]:
