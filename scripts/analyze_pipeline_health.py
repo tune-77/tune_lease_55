@@ -10,13 +10,16 @@
 """
 
 import json
-import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+from rev_ledger_utils import max_rev_number  # noqa: E402
+
 LOG_FILE = PROJECT_ROOT / "data" / "pipeline_step_log.jsonl"
 LEDGER_FILE = PROJECT_ROOT / "api" / "rule_engine" / "ledger_rules.json"
 
@@ -81,15 +84,6 @@ def load_ledger():
         return []
     with LEDGER_FILE.open() as f:
         return json.load(f)
-
-
-def max_rev_number(ledger):
-    max_num = 0
-    for entry in ledger:
-        m = re.match(r"REV-(\d+)", entry.get("rev_id", ""))
-        if m:
-            max_num = max(max_num, int(m.group(1)))
-    return max_num
 
 
 def already_exists(ledger, step):

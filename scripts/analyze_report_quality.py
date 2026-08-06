@@ -11,12 +11,15 @@ ledger_rules.json へ type="manual", pending_review=true で追記する。
 from __future__ import annotations
 
 import json
-import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+from rev_ledger_utils import max_rev_number  # noqa: E402
+
 REPORT_QUALITY_LOG = PROJECT_ROOT / "data" / "report_quality_log.jsonl"
 LEDGER_FILE = PROJECT_ROOT / "api" / "rule_engine" / "ledger_rules.json"
 
@@ -80,15 +83,6 @@ def already_exists(ledger: list[dict]) -> bool:
         ):
             return True
     return False
-
-
-def max_rev_number(ledger: list[dict]) -> int:
-    max_num = 0
-    for entry in ledger:
-        m = re.match(r"REV-(\d+)", str(entry.get("rev_id") or ""))
-        if m:
-            max_num = max(max_num, int(m.group(1)))
-    return max_num
 
 
 def main() -> None:
