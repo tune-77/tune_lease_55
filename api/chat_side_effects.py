@@ -99,6 +99,7 @@ def memory_usage_extra(
     grey_judgment_memory: dict[str, Any] | None = None,
     vertex_ai_search: dict[str, Any] | None = None,
     vertex_answer_api: dict[str, Any] | None = None,
+    estimated_user_emotion: str = "",
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "user_id": user_id,
@@ -106,6 +107,8 @@ def memory_usage_extra(
     }
     if improvement_mode is not None:
         payload["improvement_mode"] = bool(improvement_mode)
+    if estimated_user_emotion:
+        payload["estimated_user_emotion"] = estimated_user_emotion
     if vertex_ai_search is not None:
         payload["vertex_ai_search"] = vertex_search_public_payload(vertex_ai_search)
     if vertex_answer_api is not None:
