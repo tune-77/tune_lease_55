@@ -2,7 +2,34 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+
+_USER_EMOTION_GUIDANCE = (
+    "ユーザーの直近メッセージ（特に短い一言）から、通常/前向き/急いでいる/疲れている/不安 のいずれかに近い"
+    "感情状態を心の中で推定する。推定結果は事実・審査基準・スコア判定には一切反映せず、丁寧さや共感の言葉づかいの"
+    "温度感だけに軽く反映する。回答本文の直前に、ユーザーには見えない1行として "
+    "`<!--user_emotion:ラベル-->` の形式で推定結果のみを出力してから、通常の回答を続ける"
+    "（ラベルは 通常/前向き/急いでいる/疲れている/不安 のいずれか一語）。"
+)
+
+_USER_EMOTION_MARKER_RE = re.compile(
+    r"^\s*<!--\s*user_emotion\s*:\s*(.+?)\s*-->\s*\n?",
+    re.IGNORECASE,
+)
+
+
+def extract_estimated_user_emotion(reply: str) -> tuple[str, str]:
+    """紫苑チャット応答の先頭に埋め込まれた推定ユーザー感情マーカーを取り出し、本文から除去する。
+
+    マーカーが見つからない場合は本文をそのまま返す（推定失敗時に表示を壊さないため）。
+    """
+    text = str(reply or "")
+    match = _USER_EMOTION_MARKER_RE.match(text)
+    if not match:
+        return "", text
+    return match.group(1).strip(), text[match.end():]
 
 
 _DETAIL_HINTS = (
@@ -302,6 +329,7 @@ class ChatGuidance:
             lines.append(
                 "審査外の質問は、答えられる範囲を短く返し、必要ならリース審査の文脈に戻す。"
             )
+        lines.append(_USER_EMOTION_GUIDANCE)
         return tuple(lines)
 
     @property

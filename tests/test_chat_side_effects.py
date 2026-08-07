@@ -127,6 +127,18 @@ def test_memory_usage_extra_keeps_general_memory_and_rag_vertex_shapes():
     assert "memory_recall" not in rag
 
 
+def test_memory_usage_extra_includes_estimated_user_emotion_when_present():
+    without_emotion = memory_usage_extra(user_id="u1", category="rag")
+    assert "estimated_user_emotion" not in without_emotion
+
+    with_emotion = memory_usage_extra(
+        user_id="u1",
+        category="rag",
+        estimated_user_emotion="疲れている",
+    )
+    assert with_emotion["estimated_user_emotion"] == "疲れている"
+
+
 def test_should_auto_save_chat_skips_improvement_messages():
     assert should_auto_save_chat(improvement_mode=False) is True
     assert should_auto_save_chat(improvement_mode=True) is False

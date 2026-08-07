@@ -6385,7 +6385,7 @@ def post_chat(req: ChatRequest):
             call_gemini_chat,
             get_message_count,
         )
-        from chat_intent import build_chat_guidance
+        from chat_intent import build_chat_guidance, extract_estimated_user_emotion
         news_focus = _lease_news_focus_to_dict(get_latest_lease_news_focus())
         news_focus_text = lease_news_focus_as_text() if news_focus.get("available") else ""
         news_focus_context = f"\n\n【最新ニュースの注目論点】\n{news_focus_text}" if news_focus_text else ""
@@ -7227,6 +7227,7 @@ def post_chat(req: ChatRequest):
                 question=req.message,
             )
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
+        estimated_user_emotion, reply = extract_estimated_user_emotion(reply)
         obsidian_daily_effect = {}
         if obsidian_daily_context:
             obsidian_daily_effect = record_obsidian_daily_intelligence_event(
@@ -7332,6 +7333,7 @@ def post_chat(req: ChatRequest):
                 memory_to_judgment=memory_to_judgment_payload,
                 memory_expression=memory_expression_payload,
                 reflection_gate=reflection_gate_payload,
+                estimated_user_emotion=estimated_user_emotion,
             ),
         )
         _record_chat_knowledge_correction_if_needed(req.message)
