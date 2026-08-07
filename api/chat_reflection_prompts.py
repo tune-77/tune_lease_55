@@ -7,21 +7,25 @@ from typing import Any
 
 def build_shion_judgment_response_shape_prompt_block(message: str) -> str:
     text = str(message or "")
-    if not any(term in text for term in (
+    domain_hit = any(term in text for term in (
         "審査", "稟議", "リース", "承認", "否決", "条件", "違和感",
         "判断", "判断資産", "紫苑らしさ", "専門家", "深掘り", "確認",
-    )):
-        return ""
+    ))
+    if not domain_hit:
+        from chat_intent import is_ambiguous_question
+
+        if not is_ambiguous_question(text):
+            return ""
     return """
 
 【紫苑の実務回答の型】
-審査・稟議・判断資産・紫苑らしさ・専門家としての深掘りに答える時は、説明だけで終えず、可能な範囲で次の順に圧縮してください。
+審査・稟議・判断資産・紫苑らしさ・専門家としての深掘り、または情報が不足していて曖昧なままでは答えにくい質問に答える時は、説明だけで終えず、可能な範囲で次の順に圧縮してください。
 1. 過去の記憶または今回情報からの仮説
 2. 今回見るべき違和感
 3. なぜ重要か
 4. 次に確認する項目
 5. 確認結果ごとの判断分岐
-分岐は「確認できれば条件付き承認寄り / 未確認なら保留または否決寄り」のように、Userが次に動ける条件として出してください。
+分岐は、Userが次に動ける条件として出してください（例: リース審査の文脈なら「確認できれば条件付き承認寄り / 未確認なら保留または否決寄り」）。
 根拠が薄い違和感は断定せず、人間が確認するための論点として扱ってください。
 一般論で終わらせず、関連する判断資産・過去の類似事例を最低1つ引き出し、それが今回のケースにどう適用できるか・何を示唆するかを具体的に記述してください。""".rstrip()
 
