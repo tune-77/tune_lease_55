@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from api.chat_persona_prompts import SHION_NON_DOMAIN_SHORT_INPUT_TERMS
+
 
 _DETAIL_HINTS = (
     "詳しく",
@@ -255,6 +257,10 @@ def is_out_of_scope(message: str) -> bool:
     if any(hint in text for hint in _LEASE_SCOPE_HINTS):
         return False
     if any(hint in text for hint in _INDUSTRY_HINTS):
+        return False
+    # 「おはよう」等の非ドメイン挨拶は build_shion_non_domain_prompt_block が
+    # 専用の応答方針を持つため、out_of_scope の定型ガイダンスと競合させない
+    if any(term in text for term in SHION_NON_DOMAIN_SHORT_INPUT_TERMS):
         return False
     # まったく文脈がない短文は話題外として扱う
     stripped = normalize_chat_text(text)
