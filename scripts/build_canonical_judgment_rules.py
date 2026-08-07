@@ -144,6 +144,7 @@ def build_canonical_rules(materials: list[dict[str, Any]]) -> list[dict[str, Any
                 "evidence_paths": [],
                 "risk_axis": [],
                 "source_roles": [],
+                "sources": [],
                 "confidences": [],
                 "preview": True,
                 "private": False,
@@ -157,6 +158,7 @@ def build_canonical_rules(materials: list[dict[str, Any]]) -> list[dict[str, Any
             if axis not in group["risk_axis"]:
                 group["risk_axis"].append(axis)
         group["source_roles"].append(item.get("source_role") or "unknown")
+        group["sources"].append(item.get("source") or "")
         group["confidences"].append(float(item.get("confidence") or 0))
 
     canonical: list[dict[str, Any]] = []
@@ -166,13 +168,15 @@ def build_canonical_rules(materials: list[dict[str, Any]]) -> list[dict[str, Any
         evidence_count = len(group["claims"])
         avg_confidence = sum(group["confidences"]) / max(1, len(group["confidences"]))
         confidence = min(0.98, avg_confidence + min(0.12, evidence_count * 0.015) + (0.04 if user_evidence_count else 0))
+        vertex_only = bool(group["sources"]) and all(source == "vertex_distilled_review" for source in group["sources"])
+        status = "candidate" if vertex_only else _status(evidence_count, user_evidence_count)
         canonical.append(
             {
                 "id": group["id"],
                 "material_type": group["material_type"],
                 "domain": group["domain"],
                 "concept": group["concept"],
-                "status": _status(evidence_count, user_evidence_count),
+                "status": status,
                 "canonical_statement": group["canonical_statement"],
                 "evidence_count": evidence_count,
                 "user_evidence_count": user_evidence_count,
@@ -279,11 +283,20 @@ def write_report(rules: list[dict[str, Any]], *, date: dt.date) -> dict[str, str
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build canonical judgment-rule preview from material preview JSONL")
     parser.add_argument("--input", default=str(DEFAULT_INPUT_JSONL))
+    parser.add_argument(
+        "--extra-input",
+        action="append",
+        default=[],
+        help="Additional JSONL file(s) to merge in (e.g. Vertex Distilled review bridge output). May be repeated.",
+    )
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT_JSON))
     parser.add_argument("--date", default=dt.date.today().isoformat())
     args = parser.parse_args()
 
-    rules = build_canonical_rules(read_jsonl(Path(args.input)))
+    materials = read_jsonl(Path(args.input))
+    for extra_path in args.extra_input:
+        materials.extend(read_jsonl(Path(extra_path)))
+    rules = build_canonical_rules(materials)
     output_path = Path(args.output)
     write_json(output_path, rules)
     paths = write_report(rules, date=dt.date.fromisoformat(args.date))

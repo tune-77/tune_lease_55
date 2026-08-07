@@ -93,9 +93,19 @@ if [ ${JUDGMENT_MATERIALS_EXIT} -ne 0 ]; then
 fi
 
 echo ""
+echo "[判断記憶] Vertex Distilled（要人間レビュー）を判断材料 preview に橋渡し中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_materials_from_vertex_review.py"
+VERTEX_REVIEW_BRIDGE_EXIT=$?
+log_step "build_judgment_materials_from_vertex_review" ${VERTEX_REVIEW_BRIDGE_EXIT}
+if [ ${VERTEX_REVIEW_BRIDGE_EXIT} -ne 0 ]; then
+    echo "警告: Vertex Distilled 判断材料 橋渡しに失敗しました（終了コード ${VERTEX_REVIEW_BRIDGE_EXIT}）"
+fi
+
+echo ""
 echo "[判断記憶] canonical rules preview を生成中（active判断基準へは未昇格）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_canonical_judgment_rules.py" \
-    --date "${JUDGMENT_PREVIEW_DATE}"
+    --date "${JUDGMENT_PREVIEW_DATE}" \
+    --extra-input "${PROJECT_ROOT}/data/judgment_materials_preview_vertex_review.jsonl"
 CANONICAL_PREVIEW_EXIT=$?
 log_step "build_canonical_judgment_rules_preview" ${CANONICAL_PREVIEW_EXIT}
 if [ ${CANONICAL_PREVIEW_EXIT} -ne 0 ]; then
