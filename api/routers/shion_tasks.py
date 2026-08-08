@@ -1,12 +1,20 @@
 """紫苑タスク・挨拶ルーター (REV-234 Phase3)"""
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+import json
+import os
+import re
+import subprocess
+from pathlib import Path
+from typing import Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
+from api.cloudrun_writeback import record_cloudrun_input_event
+
 router = APIRouter(tags=["shion"])
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 class ShionTaskCreateRequest(BaseModel):
     title: str
@@ -28,6 +36,124 @@ class ShionTaskUpdateRequest(BaseModel):
 
 class ShionTaskStatusRequest(BaseModel):
     status: Literal["open", "done", "cancelled"]
+
+
+def _daily_greeting_read_json(path: Path) -> dict:
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _daily_greeting_git_summary() -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "log", "--since=yesterday", "--pretty=format:%s", "-4"],
+            cwd=_REPO_ROOT,
+            text=True,
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+        lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+        if lines:
+            return " / ".join(lines[:2])
+    except Exception:
+        pass
+    return ""
+
+
+def _daily_greeting_yesterday_note() -> str:
+    try:
+        import datetime as _dt
+
+        vault_raw = os.environ.get("OBSIDIAN_VAULT_PATH") or os.environ.get("OBSIDIAN_VAULT") or ""
+        if not vault_raw:
+            try:
+                from lease_news_digest import find_vault
+
+                found = find_vault()
+                vault_raw = str(found) if found else ""
+            except Exception:
+                vault_raw = ""
+        if not vault_raw:
+            return ""
+        yesterday = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+        path = Path(vault_raw) / "Daily" / f"{yesterday}.md"
+        if not path.exists():
+            return ""
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        lines = [
+            re.sub(r"^[#>*\-\s]+", "", line).strip()
+            for line in text.splitlines()
+            if line.strip() and not line.strip().startswith("```")
+        ]
+        return next((line for line in lines if len(line) >= 18), "")[:120]
+    except Exception:
+        return ""
+
+
+def _daily_greeting_anniversary() -> dict:
+    try:
+        import datetime as _dt
+
+        key = _dt.date.today().strftime("%m-%d")
+        data = _daily_greeting_read_json(_REPO_ROOT / "data" / "shion_anniversaries.json")
+        item = data.get(key) or {}
+        if item:
+            return {"date_key": key, **item}
+    except Exception:
+        pass
+    return {
+        "date_key": "",
+        "name": "小さな兆候を見る日",
+        "note": "今日は、数字やニュースの端に出る小さな違和感を拾ってから判断します。",
+    }
+
+
+def _daily_greeting_news_thought() -> str:
+    try:
+        actions = _daily_greeting_read_json(_REPO_ROOT / "data" / "lease_news_actions_latest.json")
+        summary = str(actions.get("summary") or "").strip()
+        action_items = actions.get("action_items") or []
+        if action_items:
+            checks = action_items[0].get("recommended_checks") or []
+            if checks:
+                return str(checks[0]).strip()[:160]
+        if summary:
+            return f"ニュースからは「{summary[:80]}」が見えています。今日はこれを審査条件に直結させすぎず、確認観点として扱います。"
+    except Exception:
+        pass
+    return "ニュースはまだ薄めです。今日は外部情報より、前回の作業と手元の案件条件を優先して見ます。"
+
+
+def _daily_greeting_opening(now) -> dict:
+    hour = int(getattr(now, "hour", 12))
+    if 5 <= hour < 10:
+        return {
+            "text": "おはようございます。",
+            "mood": "朝なので、昨日の続きと今日の最初の一手を短く整理します。",
+            "time_band": "morning",
+        }
+    if 10 <= hour < 17:
+        return {
+            "text": "こんにちは。",
+            "mood": "日中なので、今すぐ進める作業順に並べます。",
+            "time_band": "daytime",
+        }
+    if 17 <= hour < 22:
+        return {
+            "text": "こんばんは。",
+            "mood": "夕方以降なので、今日の判断材料を回収しながら進めます。",
+            "time_band": "evening",
+        }
+    return {
+        "text": "夜更かしですね。",
+        "mood": "深い時間なので、無理に広げず、次に残す判断だけ整えます。",
+        "time_band": "late_night",
+    }
 
 
 @router.get("/api/shion/daily-greeting")
@@ -212,4 +338,3 @@ def _lease_news_brief_to_dict(brief):
         "note_date": getattr(brief, "note_date", ""),
         "note_path": getattr(brief, "note_path", ""),
     }
-

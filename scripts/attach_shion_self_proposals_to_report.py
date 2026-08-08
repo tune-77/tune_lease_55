@@ -24,10 +24,12 @@ LAYER_LABELS = {
     "feedback_based": "人間反応・判断ログ由来",
     "system_audit_based": "システム監査由来",
     "domestic_mode_based": "内政モード由来",
+    "reflection_based": "内省アクション由来",
 }
 
 DEFAULT_REVIEW_LIMIT = 3
 DEFAULT_LEAP_LIMIT = 1
+DEFAULT_REFLECTION_LIMIT = 1
 FITNESS_WEIGHT = 0.35
 REQUIRED_HYPOTHESIS_FIELDS = (
     "hypothesis",
@@ -115,6 +117,13 @@ SOURCES = [
         "kind": "内政モード",
         "evidence_layer": "domestic_mode_based",
         "summary_keys": ("hypothesis", "decision_layer", "proposed_change", "success_metric"),
+    },
+    {
+        "path": DATA_DIR / "reflection_action_candidates.jsonl",
+        "source": "reflection_action_candidates",
+        "kind": "内省アクション",
+        "evidence_layer": "reflection_based",
+        "summary_keys": ("hypothesis", "proposed_change", "success_metric", "risk"),
     },
     {
         "path": REPORTS_DIR / "lease_system_gap_analysis.json",
@@ -540,11 +549,19 @@ def collect_shion_self_proposals(limit: int = 10) -> dict[str, Any]:
     review_limit = min(max(0, limit), DEFAULT_REVIEW_LIMIT)
     regular_items = [item for item in items if not item.get("is_leap_proposal")]
     leap_items = [item for item in items if item.get("is_leap_proposal")]
+    reflection_items = [item for item in items if item.get("evidence_layer") == "reflection_based"]
     review_items = regular_items[:review_limit]
     if leap_items and len(review_items) >= review_limit and DEFAULT_LEAP_LIMIT > 0:
         review_items = review_items[: review_limit - DEFAULT_LEAP_LIMIT] + leap_items[:DEFAULT_LEAP_LIMIT]
     elif leap_items and len(review_items) < review_limit:
         review_items.extend(leap_items[: review_limit - len(review_items)])
+    if (
+        reflection_items
+        and review_limit > 0
+        and DEFAULT_REFLECTION_LIMIT > 0
+        and not any(item.get("evidence_layer") == "reflection_based" for item in review_items)
+    ):
+        review_items = review_items[: review_limit - DEFAULT_REFLECTION_LIMIT] + reflection_items[:DEFAULT_REFLECTION_LIMIT]
     return {
         "label": "紫苑の自己提案",
         "note": "通常のneeds_reviewではなく、紫苑がログから出した改善仮説。採用判断は人間が行う。表示は上位3件に絞り、根拠層・検証可能性・効果追跡を優先する。",
@@ -555,6 +572,7 @@ def collect_shion_self_proposals(limit: int = 10) -> dict[str, Any]:
             "sort": "quality_score desc, fitness_score bonus, generated_at desc",
             "top_limit": DEFAULT_REVIEW_LIMIT,
             "leap_limit": DEFAULT_LEAP_LIMIT,
+            "reflection_limit": DEFAULT_REFLECTION_LIMIT,
             "fitness_weight": FITNESS_WEIGHT,
             "required_fields": list(REQUIRED_HYPOTHESIS_FIELDS),
             "domestic_mode_input_fields": list(DOMESTIC_MODE_INPUT_FIELDS),
