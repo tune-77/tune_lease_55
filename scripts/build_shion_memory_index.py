@@ -17,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from api.shion_memory_taxonomy import MEMORY_TYPES, RECALL_ROUTES, make_memory_record
+from obsidian_query import list_vault_md_files
 
 DEFAULT_OUTPUT = REPO_ROOT / "data" / "shion_memory_index.json"
 
@@ -138,7 +139,7 @@ def _knowledge_markdown_records() -> list[dict[str, Any]]:
     for root in source_dirs:
         if not root.exists():
             continue
-        for path in sorted(root.rglob("*.md")):
+        for path in sorted(list_vault_md_files(root)):
             rel = str(path.relative_to(REPO_ROOT))
             text = _read_text(path)
             snippets = _markdown_snippets(text)

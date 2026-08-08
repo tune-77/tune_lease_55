@@ -188,7 +188,12 @@ class Step3AutoApplier:
         self.patches_dir.mkdir(parents=True, exist_ok=True)
 
         # 適用結果リスト
+        # _applied は「git commit・push・PR作成まで確認できた」項目のみを保持する。
+        # commit確認前に applied 扱いにすると、commit/push失敗時に「コードは変わって
+        # いないのに適用済みとして台帳に永続記録される」不具合が起きるため、
+        # commit確認前の候補は必ず _pending_applied に置き、確認後に昇格させる。
         self._applied: list[dict[str, Any]] = []
+        self._pending_applied: list[dict[str, Any]] = []
         self._needs_review: list[dict[str, Any]] = []
         self._rejected: list[dict[str, Any]] = []
         self._pr_url: str | None = None
@@ -407,29 +412,83 @@ class Step3AutoApplier:
                 )
             return _result("needs_review", "テスト失敗", patch_file=str(patch_file))
 
-        # テスト通過 → 保留リストへ追加（ブランチ切り替え後に実適用）
+        # テスト通過 → 保留リストへ追加（ブランチ切り替え後に実適用）。
+        # ここではまだ commit/push/PR作成が成功したか分からないため、_applied では
+        # なく _pending_applied に置く。台帳への "applied" 記録も commit 確認後に
+        # 行う（git_commit_and_push の結果を見て apply_improvements_pipeline 側で
+        # 昇格 or needs_review へ差し戻しを行う）。
         self._pending_patches.append((target_file, new_code))
-        self._applied.append({
+        self._pending_applied.append({
             "id": imp_id,
             "file": str(target_file.relative_to(self.workspace_root)),
             "title": title,
             "canonical_key": str(improvement.get("canonical_key", "")),
+            "_ledger_key": _ledger_key or "",
             "pr_url": None,  # git_commit_and_push 後に更新
         })
-        if _LEDGER_AVAILABLE and _ledger_key:
-            _ledger.record(
-                _ledger_key,
-                "applied",
-                title,
-                canonical_key=str(improvement.get("canonical_key", "")),
-            )
-        return _result("applied", "テスト通過・適用予定")
+        return _result("pending_commit", "テスト通過・commit確認待ち")
+
+    def _pending_ledger_key(self, entry: dict[str, Any]) -> str:
+        return (
+            str(entry.get("_ledger_key") or "")
+            or str(entry.get("canonical_key") or "")
+            or _canonical_key(entry.get("title", ""), entry.get("file", ""))
+            or (_ledger.compute_key(entry.get("title", ""), entry.get("file", "")) if _LEDGER_AVAILABLE else "")
+        )
+
+    def _demote_pending_to_needs_review(self, reason: str, ledger_status: str = "apply_failed") -> None:
+        """commit/push/PR作成が確認できなかった _pending_applied を needs_review へ
+        差し戻し、台帳の記録も再評価可能な状態へ訂正する。
+
+        ここを通さずに _pending_applied をそのまま捨てると、コードは変わって
+        いないのに「テスト通過済み」の見た目だけが残り、次回以降の再評価対象からも
+        漏れてしまうため、必ず needs_review + 台帳訂正の両方を行う。
+        """
+        for entry in self._pending_applied:
+            self._needs_review.append({
+                "id": entry.get("id"),
+                "title": entry.get("title"),
+                "reason": f"コミット未確認のため needs_review へ差し戻し: {reason}",
+                "detail": entry.get("file", ""),
+            })
+            if _LEDGER_AVAILABLE:
+                ledger_key = self._pending_ledger_key(entry)
+                if ledger_key:
+                    _ledger.record(
+                        ledger_key,
+                        ledger_status,
+                        entry.get("title", ""),
+                        reason=f"commit/push/PR未確認: {reason}",
+                        canonical_key=str(entry.get("canonical_key", "")),
+                    )
+        self._pending_applied = []
+
+    def _promote_pending_to_applied(self, pr_url: str) -> None:
+        """commit・push・PR作成まで確認できた _pending_applied を _applied へ昇格し、
+        台帳へ "applied" を記録する（ここで初めて確定させる）。
+        """
+        for entry in self._pending_applied:
+            entry["pr_url"] = pr_url
+            entry.pop("_ledger_key", None)
+            self._applied.append(entry)
+            if _LEDGER_AVAILABLE:
+                ledger_key = self._pending_ledger_key(entry)
+                if ledger_key:
+                    _ledger.record(
+                        ledger_key,
+                        "applied",
+                        entry.get("title", ""),
+                        pr_url=pr_url or "",
+                        canonical_key=str(entry.get("canonical_key", "")),
+                    )
+        self._pending_applied = []
 
     def git_commit_and_push(self) -> dict[str, Any]:
         """
         保留中のパッチを auto-improve/YYYYMMDD ブランチへ適用・コミット・Push・PR 作成。
         """
         if not self._pending_patches:
+            self._demote_pending_to_needs_review("pending_patches が空")
             return {"success": False, "commit_hash": None, "pr_url": None,
                     "message": "コミット対象なし（pending_patches が空）"}
 
@@ -480,7 +539,7 @@ class Step3AutoApplier:
                 file_path.write_text(new_content, encoding="utf-8")
 
             # ステージング
-            for entry in self._applied:
+            for entry in self._pending_applied:
                 subprocess.run(
                     ["git", "add", entry["file"]],
                     cwd=self.workspace_root, capture_output=True, check=True,
@@ -488,10 +547,10 @@ class Step3AutoApplier:
 
             # コミット
             titles_str = "\n".join(
-                f"  - {e['id']}: {e['title']}" for e in self._applied
+                f"  - {e['id']}: {e['title']}" for e in self._pending_applied
             )
             commit_msg = (
-                f"auto-improve: {len(self._applied)}件の改善を自動適用 ({self.date_str})\n\n"
+                f"auto-improve: {len(self._pending_applied)}件の改善を自動適用 ({self.date_str})\n\n"
                 f"{titles_str}\n\n"
                 "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
             )
@@ -509,20 +568,9 @@ class Step3AutoApplier:
                 )
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as push_err:
                 logger.warning("push保留: リモートへの push 失敗: %s", push_err)
-                if _LEDGER_AVAILABLE:
-                    for entry in self._applied:
-                        _ledger_key_push = (
-                            str(entry.get("canonical_key") or "")
-                            or _canonical_key(entry["title"], entry.get("file", ""))
-                            or _ledger.compute_key(entry["title"], entry.get("file", ""))
-                        )
-                        _ledger.record(
-                            _ledger_key_push,
-                            "push_pending",
-                            entry["title"],
-                            reason="push失敗: ネットワーク不達",
-                            canonical_key=str(entry.get("canonical_key", "")),
-                        )
+                self._demote_pending_to_needs_review(
+                    f"push失敗: {push_err}", ledger_status="push_pending"
+                )
                 # PR 作成はスキップして commit_hash のみ返す
                 if original_branch:
                     subprocess.run(
@@ -538,7 +586,6 @@ class Step3AutoApplier:
 
             # PR 作成
             pr_url = self._create_pull_request()
-            self._pr_url = pr_url
 
             # 元のブランチに戻る
             if original_branch:
@@ -546,6 +593,24 @@ class Step3AutoApplier:
                     ["git", "checkout", original_branch],
                     cwd=self.workspace_root, capture_output=True, check=False,
                 )
+
+            if not pr_url:
+                # commit・push は完了したが PR 作成に失敗。コードは auto-improve
+                # ブランチには乗っているが master には未反映のため、applied 確定
+                # にはしない（needs_review で人間の確認に回す）。
+                self._demote_pending_to_needs_review(
+                    "commit・pushは成功したがPR作成に失敗（手動でPR作成を確認してください）",
+                    ledger_status="pr_creation_failed",
+                )
+                return {
+                    "success": False,
+                    "commit_hash": commit_hash,
+                    "pr_url": None,
+                    "message": "PR作成失敗（commit/pushは完了、要手動確認）",
+                }
+
+            self._pr_url = pr_url
+            self._promote_pending_to_applied(pr_url)
 
             return {
                 "success": True,
@@ -561,6 +626,7 @@ class Step3AutoApplier:
                     ["git", "checkout", original_branch],
                     cwd=self.workspace_root, capture_output=True, check=False,
                 )
+            self._demote_pending_to_needs_review(f"Git エラー: {e.stderr or str(e)}")
             return {
                 "success": False,
                 "commit_hash": None,
@@ -930,9 +996,14 @@ class Step3AutoApplier:
     # ── Git / PR ──────────────────────────────────────────────────────────
 
     def _create_pull_request(self) -> str | None:
-        """gh コマンドで PR を作成する."""
+        """gh コマンドで PR を作成する.
+
+        呼び出し時点ではまだ _pending_applied → _applied への昇格前なので、
+        本文・タイトルの件数は _pending_applied を参照する（この時点で
+        commit・push 済みの内容と一致する）。
+        """
         applied_lines = "\n".join(
-            f"- {e['id']}: {e['title']} (`{e['file']}`)" for e in self._applied
+            f"- {e['id']}: {e['title']} (`{e['file']}`)" for e in self._pending_applied
         )
         review_lines = "\n".join(
             f"- {e['id']}: {e['title']} → _{e['reason']}_" for e in self._needs_review
@@ -940,7 +1011,7 @@ class Step3AutoApplier:
 
         body = (
             f"## 自動改善パイプライン実行結果（{self.date_str}）\n\n"
-            f"### ✅ 自動適用された改善（{len(self._applied)}件）\n"
+            f"### ✅ 自動適用された改善（{len(self._pending_applied)}件）\n"
             + (applied_lines or "なし")
             + f"\n\n### 👀 要確認の改善（{len(self._needs_review)}件）\n"
             + (review_lines or "なし")
@@ -952,7 +1023,7 @@ class Step3AutoApplier:
             result = subprocess.run(
                 [
                     "gh", "pr", "create",
-                    "--title", f"auto-improve: {len(self._applied)}件の改善を自動適用 ({self.date_str})",
+                    "--title", f"auto-improve: {len(self._pending_applied)}件の改善を自動適用 ({self.date_str})",
                     "--body", body,
                     "--base", "master",
                     "--head", self.auto_branch,
@@ -1335,6 +1406,27 @@ def _run_claude_agent_flow(
             or _canonical_key(title, improvement.get("description", ""))
             or (_ledger.compute_key(title, improvement.get("description", "")) if _LEDGER_AVAILABLE else "")
         )
+        if not pr_url:
+            # agent が success=True を返してもPR URLが取れていない場合、実際に
+            # コードが取り込まれた確証がないため applied 確定にはしない
+            # （traditional flow と同じ「commit確認前は applied にしない」原則）。
+            applier._needs_review.append({
+                "id": imp_id,
+                "title": title,
+                "reason": "claude-agent は成功と報告したがPR URLが確認できないため要確認",
+                "detail": improvement.get("target_module", ""),
+            })
+            if _LEDGER_AVAILABLE and ledger_key:
+                _ledger.record(
+                    ledger_key,
+                    "apply_failed",
+                    title,
+                    reason="agent success だがPR URL未確認",
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
+            print(f"  [{imp_id}] ⚠️  AGENT-AUTO: PR URL未確認のため needs_review へ")
+            return {"action": "needs_review", "reason": "PR URL未確認", "size": size}
+
         applier._applied.append({
             "id": imp_id,
             "file": improvement.get("target_module", ""),
@@ -1411,17 +1503,21 @@ def apply_improvements_pipeline(
         # 従来の自動適用ロジック
         result = applier.apply_improvement(improvement, validation)
         action_label = {
-            "applied":      "✅ APPLIED",
-            "needs_review": "👀 NEEDS_REVIEW",
-            "skipped":      "⏭  SKIPPED",
+            "applied":        "✅ APPLIED",
+            "pending_commit": "⏳ PENDING_COMMIT",
+            "needs_review":   "👀 NEEDS_REVIEW",
+            "skipped":        "⏭  SKIPPED",
         }.get(result["action"], result["action"])
         print(f"  [{improvement.get('id')}] {action_label}: {result['reason'][:70]}")
 
-    # Git コミット・Push・PR 作成（従来ロジック経由の applied 分）
+    # Git コミット・Push・PR 作成（従来ロジック経由の applied 分）。
+    # commit/push/PR作成が確認できた項目だけが git_commit_and_push() 内部で
+    # _pending_applied → _applied へ昇格される。失敗時は同じ関数内で
+    # needs_review へ差し戻され台帳も訂正されるため、ここでの後処理は不要。
     commit_result = applier.git_commit_and_push()
     if commit_result["success"]:
         print(f"✅ Git コミット・PR 作成: {commit_result.get('pr_url', 'PR URL 不明')}")
-    elif applier._applied:
+    else:
         print(f"⚠️  Git 操作失敗: {commit_result.get('message')}", file=sys.stderr)
 
     # 適用済みに対して元ノートへのフラグ書き戻し + Obsidian 同期
@@ -1460,7 +1556,7 @@ def apply_improvements_pipeline(
 
     return {
         "applied_count": len(applier._applied),
-        "failed_count": 0,  # ロールバック済みは needs_review に振り分け済み
+        "failed_count": 0,  # ロールバック済み（テスト失敗・commit/push/PR失敗いずれも）は needs_review に振り分け済み
         "needs_review_count": len(applier._needs_review),
         "commit_result": commit_result,
         "applied_improvements": applier._applied,

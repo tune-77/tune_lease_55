@@ -336,14 +336,23 @@ Discovery Engine API experiments.
 
 Search API and Answer API are verified with the current gcloud token.
 
-Google Search grounding code is present via Vertex AI REST and SDK fallback, but
-the local verification currently returns:
+Google Search grounding (REST path) is verified working as of 2026-08-08. The
+previous failure (`REST: read timeout`) was caused by the grounding REST call
+not passing `timeout_seconds`, so it fell back to the short
+`VERTEX_AI_SEARCH_TIMEOUT_SECONDS` default (8s) instead of the documented
+`VERTEX_GOOGLE_SEARCH_GROUNDING_TIMEOUT_SECONDS` (30s). This is now wired in
+`api/vertex_agent_search.py`'s `google_search_grounding()`.
 
-- REST: read timeout
-- SDK: `invalid_grant`
+The SDK fallback path was also hardened to pass explicit `vertexai=True`,
+`project`, `location`, and a `credentials` object built from the same
+`_access_token()` helper used elsewhere in this module (previously it let the
+`google-genai` SDK resolve `google.auth.default()` on its own with no gcloud
+CLI fallback, which raised `invalid_grant` when local ADC was stale). This
+fallback path has not been independently re-verified since the REST path now
+succeeds first, but it should no longer fail for the same reason.
 
-Use only after local/Cloud Run Vertex authentication is corrected and after
-confirming the incremental grounding cost is acceptable.
+Confirm the incremental grounding cost is acceptable before enabling this in
+production chat flows.
 
 Useful environment variables:
 

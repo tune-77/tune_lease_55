@@ -24,6 +24,7 @@ def _deps(*, category: str = "general", basic_context: str = "") -> ChatContextB
         build_continuity_hook=lambda _message: ("hook", {"used": True, "route": "lease"}),
         build_consciousness_ux=lambda: "consciousness",
         build_shion_specificity=lambda _message: "specificity",
+        build_vague_information_request=lambda _message: "vague-info",
         build_shion_light_tone=lambda _message: "light-tone",
         build_shion_non_domain=lambda _message: "non-domain",
         build_human_device_resonance=lambda _message, user_id="", now="": f"human-device:{user_id}:{now}",
@@ -72,6 +73,7 @@ def test_context_builder_general_response_mode_suppresses_shion_memory_blocks():
     assert state.user_personal_memory_context == ""
     assert state.continuity_hook_context == ""
     assert state.consciousness_ux_context == ""
+    assert state.vague_information_request_context == ""
     assert state.experience_loop_payload["suppressed_by_response_mode"] == "general"
     assert state.grey_judgment_payload["suppressed_by_response_mode"] == "general"
 

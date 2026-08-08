@@ -72,4 +72,36 @@ def iter_vault_md_files(
             yield path
 
 
-__all__ = ["split_query_terms", "iter_vault_md_files"]
+def list_vault_md_files(root: Path, *, max_scan: int | None = None) -> list[Path]:
+    """root配下（サブフォルダ含む）の.mdファイル一覧を返す共通ヘルパー。
+
+    Obsidian Vault全体やGCS同期先ディレクトリなど、AI検索用途に限らない
+    「.mdの列挙・件数集計」はここを通す。api/main.py, system_misc.py,
+    lease_intelligence_connection.py などに散らばっていた直接rglob実装を
+    統一するために追加。
+    """
+    if not root.exists() or not root.is_dir():
+        return []
+    files: list[Path] = []
+    try:
+        for path in root.rglob("*.md"):
+            if path.is_file():
+                files.append(path)
+                if max_scan is not None and len(files) >= max_scan:
+                    break
+    except Exception:
+        pass
+    return files
+
+
+def count_vault_notes(root: Path, *, max_scan: int = 2000) -> int:
+    """root配下の.md件数を返す（診断・ステータス表示用の共通ヘルパー）。"""
+    return len(list_vault_md_files(root, max_scan=max_scan))
+
+
+__all__ = [
+    "split_query_terms",
+    "iter_vault_md_files",
+    "list_vault_md_files",
+    "count_vault_notes",
+]

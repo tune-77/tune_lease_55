@@ -7,21 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from api.db_connection import current_backend, get_connection
+from obsidian_query import count_vault_notes
 
 
 def count_markdown_notes(root: Path, *, max_scan: int = 2000) -> int:
-    if not root.exists() or not root.is_dir():
-        return 0
-    count = 0
-    try:
-        for path in root.rglob("*.md"):
-            if path.is_file():
-                count += 1
-                if count >= max_scan:
-                    break
-    except Exception:
-        return count
-    return count
+    """root配下の.md件数を返す（obsidian_query.count_vault_notesへ委譲）。"""
+    return count_vault_notes(root, max_scan=max_scan)
 
 
 def _table_exists(cur: Any, table_name: str) -> bool:

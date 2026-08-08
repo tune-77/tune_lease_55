@@ -25,6 +25,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from obsidian_query import list_vault_md_files  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -294,7 +295,7 @@ def import_knowledge_candidates(
         root = vault / rel_dir
         if not root.exists():
             continue
-        for path in sorted(root.rglob("*.md")):
+        for path in sorted(list_vault_md_files(root)):
             scanned_notes += 1
             rows = extract_candidates_from_note(path, vault)
             extracted += len(rows)

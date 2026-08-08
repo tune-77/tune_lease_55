@@ -21,6 +21,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from obsidian_query import list_vault_md_files
+
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 
 DEFAULT_VAULT = resolve_obsidian_vault()
@@ -317,7 +319,7 @@ def export_notes(vault: Path, output: Path, max_docs: int, gcs_prefix: str) -> l
 
     rejected: list[RejectedNote] = []
     best_by_topic: dict[str, CandidateNote] = {}
-    candidates = sorted(project_root.rglob("*.md"), key=lambda p: str(p.relative_to(project_root)))
+    candidates = sorted(list_vault_md_files(project_root), key=lambda p: str(p.relative_to(project_root)))
 
     for path in candidates:
         source_rel = path.relative_to(vault).as_posix()
