@@ -53,8 +53,10 @@ def _cloud_db_status() -> dict:
 
 
 def _cloud_gcs_vault_status() -> dict:
+    from obsidian_query import list_vault_md_files
+
     vault_dir = Path(os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vault"))
-    md_files = sorted(vault_dir.rglob("*.md")) if vault_dir.exists() else []
+    md_files = sorted(list_vault_md_files(vault_dir))
     latest_mtime = max((p.stat().st_mtime for p in md_files), default=None)
     return {
         "enabled": os.environ.get("USE_GCS_VAULT", "").lower() in ("1", "true"),

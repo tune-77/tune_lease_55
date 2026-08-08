@@ -22,6 +22,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from obsidian_query import list_vault_md_files  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -97,7 +98,7 @@ def scan_graph(vault: Path) -> dict[str, Any]:
     if not vault.exists():
         return {"nodes": {}, "edges": [], "vault_exists": False}
 
-    for path in sorted(vault.rglob("*.md")):
+    for path in sorted(list_vault_md_files(vault)):
         if any(part in EXCLUDED_PARTS for part in path.parts):
             continue
         try:

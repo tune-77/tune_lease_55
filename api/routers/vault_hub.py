@@ -29,7 +29,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from obsidian_query import iter_vault_md_files
+
 router = APIRouter(tags=["vault-hub"])
+
+# Research Organ ノートが置かれる Vault 内フォルダ（vault からの相対パス）
+_RESEARCH_ORGAN_FOLDER = "Projects/tune_lease_55/Research"
 
 # _OBSIDIAN_VAULT_PATH: main.py と同じ環境変数から取得
 _OBSIDIAN_VAULT_PATH: str = os.environ.get("OBSIDIAN_VAULT_PATH", "")
@@ -185,15 +190,13 @@ def list_research_organ_topics():
 def list_research_organ_notes(limit: int = 20):
     """通常VaultのResearch配下に保存された外部調査ノートを新しい順に返す。"""
     vault = _research_organ_vault_path()
-    research_root = vault / "Projects" / "tune_lease_55" / "Research"
+    research_root = vault / _RESEARCH_ORGAN_FOLDER
     if not research_root.exists():
         return {"notes": [], "vault": str(vault), "research_root": str(research_root)}
 
     notes = []
     try:
-        for path in research_root.rglob("*.md"):
-            if ".obsidian" in path.parts:
-                continue
+        for path in iter_vault_md_files(vault, (_RESEARCH_ORGAN_FOLDER,), (".obsidian",)):
             try:
                 rel = path.relative_to(vault).as_posix()
                 stat = path.stat()
