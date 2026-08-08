@@ -93,6 +93,14 @@ def get_shion_proactive_alert() -> dict:
     return check_shion_proactive_alerts()
 
 
+@router.get("/api/shion/latent-need-alert")
+def get_shion_latent_need_alert(prefecture: str = "", industry: str = "") -> dict:
+    """案件の業種・地域に基づき、紫苑から能動的に伝えられる気づき（業界動向・審査上の注意点）があるか判定する。"""
+    from api.shion_proactive_alert import check_shion_latent_need_alert
+
+    return check_shion_latent_need_alert(prefecture=prefecture, industry=industry)
+
+
 @router.get("/api/shion/memory-lanes")
 def get_shion_memory_lanes(
     include_private: bool = False,
