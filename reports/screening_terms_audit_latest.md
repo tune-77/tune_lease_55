@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-08-05T04:09:54`
+- generated_at: `2026-08-09T04:14:55`
 - status: `ok`
-- scanned_files: `484`
+- scanned_files: `493`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
-- review: `64`
-- ok: `2138`
+- review: `67`
+- ok: `2157`
 
 ## Glossary
 
@@ -24,9 +24,9 @@
   - `default_prob = max(0.0, 1 - (credit_score / 100) * 0.8 - collateral_ratio * 0.2)`
 - `review` `actual_pd` `api/game_theory/negotiation.py:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `safety_utility = 1.0 - default_prob`
-- `review` `actual_pd` `api/main.py:5256` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:5252` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:5280` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:5276` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
@@ -66,6 +66,10 @@
   - `if (labels.includes('デフォルト確率（PD）')) {`
 - `review` `actual_pd` `frontend/src/app/report/page.tsx:181` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `actions.push({ label: '信用保険（リース信用保険）の付保を検討', detail: 'PD高水準のリスクヘッジとして有効', priority: 'must' });`
+- `review` `actual_pd` `frontend/src/app/screening/page.tsx:2408` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+  - `出典: TDB「倒産集計2025年度報」×中小企業庁データ。業種全体の母集団倒産率であり、個社の倒産確率（PD）ではありません。スコアには反映していません。`
+- `review` `score` `frontend/src/app/screening/page.tsx:2408` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+  - `出典: TDB「倒産集計2025年度報」×中小企業庁データ。業種全体の母集団倒産率であり、個社の倒産確率（PD）ではありません。スコアには反映していません。`
 - `review` `actual_pd` `frontend/src/components/analysis/AdvancedAnalysis.tsx:180` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `PD（デフォルト確率）: {bankruptcyPct}%`
 - `review` `actual_pd` `report_generator.py:17` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
@@ -104,6 +108,8 @@
   - `default_prob=default_prob,`
 - `review` `actual_pd` `report_generator.py:392` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `time_series_default_prob=None,`
+- `review` `actual_pd` `scripts/.sync_state_icloud_gcs.json:470` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+  - `"05-クリップ_記事/業界リスクニュース/2026-07-26_業界リスクニュース_DPF DPD DPR 三菱ふそう - 2026年最新Yah.md": "1785013239.1220667",`
 - `review` `actual_pd` `scripts/backfill_demo_qrisk.py:307` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE past_cases`
 - `review` `actual_pd` `scripts/backfill_demo_qrisk.py:386` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい

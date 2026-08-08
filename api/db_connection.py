@@ -346,6 +346,8 @@ def ensure_schema() -> None:
         )""",
     ]
     _IDX = [
+        "CREATE INDEX IF NOT EXISTS idx_past_cases_timestamp ON past_cases(timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_past_cases_final_status_timestamp ON past_cases(final_status, timestamp)",
         "CREATE INDEX IF NOT EXISTS idx_conv_company ON conversation_history(company_name)",
         "CREATE INDEX IF NOT EXISTS idx_conv_session ON conversation_history(session_id)",
         "CREATE INDEX IF NOT EXISTS idx_emofb_resolved ON emotion_feedback(resolved)",

@@ -123,3 +123,4 @@ data/memory/
 data/judgment_asset_rules_v2.json
 data/shion_memory_freshness.jsonl
 data/shion_relationship_state.json
+.gstack/

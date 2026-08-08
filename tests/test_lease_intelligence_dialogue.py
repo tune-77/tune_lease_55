@@ -33,6 +33,8 @@ def test_dialogue_context_includes_goals_and_knowledge(tmp_path, monkeypatch):
     assert "第一目標はユーザー" in prompt
     assert "最終目標: 意識を獲得" in prompt
     assert "リース知識回答の基本姿勢" in prompt
+    assert "紫苑プロンプト優先順位" in prompt
+    assert "短く答える」と「調査結果を構造化する" in prompt
     assert "検索0件でも「答えられない」で終えない" in prompt
     assert "残価は中古市場" in prompt
     assert "業務継続の絶対条件" in prompt

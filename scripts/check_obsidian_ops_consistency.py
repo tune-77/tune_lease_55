@@ -47,7 +47,9 @@ from runtime_paths import (  # noqa: E402
 DEFAULT_LAUNCHD_DIR = REPO_ROOT / "launchd"
 
 # 直書きスキャンから除外するディレクトリ（ベンダコード・アーカイブ・仮想環境）。
-_SCAN_EXCLUDED_DIR_PARTS = frozenset({".git", "node_modules", "_archive", ".venv", "pydeps"})
+_SCAN_EXCLUDED_DIR_PARTS = frozenset(
+    {".git", ".claude", "node_modules", "_archive", ".venv", "pydeps"}
+)
 
 # Vault パス（iCloud~md~obsidian）を直書きしていることが分かっている箇所。
 # 値は「なぜ runtime_paths に寄せていないか」の理由。ここにない新規の直書きは

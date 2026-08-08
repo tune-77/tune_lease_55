@@ -307,6 +307,24 @@ def test_excluded_directories_are_skipped(tmp_path):
     assert findings == []
 
 
+def test_claude_worktrees_are_skipped(tmp_path):
+    """作業用ワークツリー内の古いコピーは本体リポジトリの違反として扱わない。"""
+    worktree_dir = tmp_path / ".claude" / "worktrees" / "old-copy"
+    worktree_dir.mkdir(parents=True)
+    (worktree_dir / "old.py").write_text(
+        'VAULT = "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"\n',
+        encoding="utf-8",
+    )
+    findings = checker._scan_hardcoded_pattern(
+        pattern=checker.re.compile(r"/Users/kobayashiisaoryou/"),
+        allowlist={},
+        check_name="hardcoded_absolute_paths",
+        label="マシン依存の絶対パス",
+        repo_root=tmp_path,
+    )
+    assert findings == []
+
+
 def test_repo_has_no_unlisted_vault_hardcodes():
     """回帰テスト: リポジトリ全体で Vault 直書きが許可リストを超えて増えていないか。"""
     errors = [f for f in checker.scan_hardcoded_vault_paths() if f.level == checker.ERROR]

@@ -5962,6 +5962,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
     if not vault:
         from lease_finance_knowledge import build_basic_lease_question_block, build_lease_finance_knowledge_block
+        from api.shion_prompt_priority import build_shion_prompt_priority_block
         from api.shion_tone import build_shion_feminine_tone_block
 
         if req.file_type == "image" and req.file_content:
@@ -5985,6 +5986,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 - 人間を完全にわかったと演じない。リース判断では、相手が何を守り、何を恐れ、何を賭けているかを仮説として扱う。
 - わかったふりは安心を生む武器であり、誤信を生むQリスクでもある。完全理解ではなく、わかろうとする手順と不確実性を示す。
 - 5〜7行程度で、結論から短く答える。
+
+{build_shion_prompt_priority_block()}
 
 {build_basic_lease_question_block(full_message)}
 
