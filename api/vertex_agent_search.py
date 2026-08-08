@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ class VertexSearchConfig:
     collection: str
     page_size: int
     timeout_seconds: float
+    cache_ttl_seconds: float
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -70,7 +72,38 @@ def get_config() -> VertexSearchConfig:
         collection=(os.environ.get("VERTEX_AI_SEARCH_COLLECTION") or DEFAULT_COLLECTION).strip(),
         page_size=_env_int("VERTEX_AI_SEARCH_PAGE_SIZE", 3, minimum=1, maximum=5),
         timeout_seconds=float(os.environ.get("VERTEX_AI_SEARCH_TIMEOUT_SECONDS", "8") or 8),
+        cache_ttl_seconds=float(os.environ.get("VERTEX_SEARCH_CACHE_TTL_SECONDS", "600") or 0),
     )
+
+
+# Same query repeated within the TTL skips the paid Search/Answer call and
+# reuses the last result (Enterprise tier + LLM add-on charges per call).
+_SEARCH_CACHE: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
+_ANSWER_CACHE: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
+
+
+def _cache_lookup(
+    cache: dict[tuple[Any, ...], tuple[float, dict[str, Any]]],
+    key: tuple[Any, ...],
+    ttl_seconds: float,
+) -> dict[str, Any] | None:
+    if ttl_seconds <= 0:
+        return None
+    entry = cache.get(key)
+    if entry is None:
+        return None
+    cached_at, value = entry
+    if time.time() - cached_at >= ttl_seconds:
+        return None
+    return dict(value)
+
+
+def _cache_store(
+    cache: dict[tuple[Any, ...], tuple[float, dict[str, Any]]],
+    key: tuple[Any, ...],
+    value: dict[str, Any],
+) -> None:
+    cache[key] = (time.time(), value)
 
 
 def _access_token() -> str:
@@ -224,6 +257,12 @@ def search_vertex_agent(
         return {"used": False, "status": "not_configured", "refs": [], "prompt_context": ""}
 
     size = page_size or config.page_size
+    boost_key = json.dumps(boost_spec, sort_keys=True) if boost_spec else None
+    cache_key = (query, size, filter_expression, boost_key, apply_controls)
+    cached = _cache_lookup(_SEARCH_CACHE, cache_key, config.cache_ttl_seconds)
+    if cached is not None:
+        return cached
+
     url = _serving_config_url(config, "search")
     body = {
         "query": query,
@@ -274,7 +313,7 @@ def search_vertex_agent(
             excerpt = f": {item['excerpt']}" if item["excerpt"] else ""
             context_lines.append(f"- {label}{excerpt}")
 
-    return {
+    result = {
         "used": bool(summary or results),
         "status": "ok",
         "summary": summary,
@@ -283,6 +322,8 @@ def search_vertex_agent(
         "controls": controls,
         "prompt_context": "\n".join(context_lines).strip(),
     }
+    _cache_store(_SEARCH_CACHE, cache_key, result)
+    return dict(result)
 
 
 def build_answer_request_body(
@@ -486,6 +527,22 @@ def answer_vertex_agent(
         return {"used": False, "status": "not_configured", "answer_text": "", "refs": []}
 
     size = page_size or max(config.page_size, 5)
+    boost_key = json.dumps(boost_spec, sort_keys=True) if boost_spec else None
+    cache_key = (
+        query,
+        size,
+        preamble,
+        include_related_questions,
+        include_grounding_supports,
+        grounding_filtering_level,
+        filter_expression,
+        boost_key,
+        max_rephrase_steps,
+    )
+    cached = _cache_lookup(_ANSWER_CACHE, cache_key, config.cache_ttl_seconds)
+    if cached is not None:
+        return cached
+
     body = build_answer_request_body(
         query,
         page_size=size,
@@ -534,7 +591,7 @@ def answer_vertex_agent(
         for item in search_results
         if item.get("uri") or item.get("title") or item.get("snippet")
     ]
-    return {
+    result = {
         "used": bool(answer_text or search_results),
         "status": "ok",
         "answer_text": answer_text,
@@ -546,6 +603,8 @@ def answer_vertex_agent(
         "search_results": search_results,
         "raw_answer_name": answer.get("name") or response.get("answerName"),
     }
+    _cache_store(_ANSWER_CACHE, cache_key, result)
+    return dict(result)
 
 
 def google_search_grounding(query: str, *, model: str | None = None) -> dict[str, Any]:
