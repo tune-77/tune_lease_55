@@ -24,7 +24,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from obsidian_query import iter_vault_md_files
 
 router = APIRouter(tags=["vault-hub"])
+_REPO_ROOT = str(Path(__file__).resolve().parents[2])
 
 # Research Organ ノートが置かれる Vault 内フォルダ（vault からの相対パス）
 _RESEARCH_ORGAN_FOLDER = "Projects/tune_lease_55/Research"
