@@ -38,6 +38,26 @@ def test_shion_specificity_prompt_skips_regular_specific_case_question():
     assert block == ""
 
 
+def test_shion_vague_information_request_prompt_triggers_for_under_specified_summary():
+    import api.main as main
+
+    block = main._build_shion_vague_information_request_prompt_block("調べて")
+
+    assert "漠然とした情報要求への応答" in block
+    assert "質問を返すだけで終わらず" in block
+    assert "推論" in block
+
+
+def test_shion_vague_information_request_prompt_skips_case_detail_question():
+    import api.main as main
+
+    block = main._build_shion_vague_information_request_prompt_block(
+        "製造業の工作機械リースで取得額5000万円、期間5年の場合の確認点を教えて"
+    )
+
+    assert block == ""
+
+
 def test_shion_memory_expression_prompt_uses_concrete_memory_influence():
     import api.main as main
 

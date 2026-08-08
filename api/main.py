@@ -639,10 +639,12 @@ def _sync_gcs_vault_if_enabled() -> dict:
             _sys.path.insert(0, scripts_dir)
         from gcs_vault_loader import download_vault  # type: ignore[import-not-found]
 
+        from obsidian_query import list_vault_md_files
+
         vault_dir = download_vault(dest_dir=Path(os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vault")))
         os.environ["OBSIDIAN_VAULT"] = str(vault_dir)
         os.environ["OBSIDIAN_VAULT_PATH"] = str(vault_dir)
-        md_count = len(list(vault_dir.rglob("*.md"))) if vault_dir.exists() else 0
+        md_count = len(list_vault_md_files(vault_dir))
         return {"enabled": True, "status": "synced", "local_dir": str(vault_dir), "markdown_count": md_count}
     except Exception as exc:
         print(f"[GCSVault] sync failed (non-fatal): {exc}")
@@ -5485,6 +5487,12 @@ def _build_shion_specificity_prompt_block(message: str) -> str:
     return build_shion_specificity_prompt_block(message)
 
 
+def _build_shion_vague_information_request_prompt_block(message: str) -> str:
+    from api.chat_persona_prompts import build_shion_vague_information_request_prompt_block
+
+    return build_shion_vague_information_request_prompt_block(message)
+
+
 def _build_shion_human_device_resonance_prompt_block(
     message: str,
     *,
@@ -5631,6 +5639,10 @@ def _build_shared_shion_dialogue_memory_context(
     specificity_context = _build_shion_specificity_prompt_block(message)
     if specificity_context:
         parts.append(specificity_context.strip())
+
+    vague_information_context = _build_shion_vague_information_request_prompt_block(message)
+    if vague_information_context:
+        parts.append(vague_information_context.strip())
 
     payload = {
         "identity_memory": identity_payload,
@@ -6589,6 +6601,7 @@ def post_chat(req: ChatRequest):
                 build_continuity_hook=_build_continuity_hook_prompt_block,
                 build_consciousness_ux=_build_consciousness_ux_prompt_block,
                 build_shion_specificity=_build_shion_specificity_prompt_block,
+                build_vague_information_request=_build_shion_vague_information_request_prompt_block,
                 build_shion_light_tone=_build_shion_light_tone_feedback_prompt_block,
                 build_shion_non_domain=_build_shion_non_domain_prompt_block,
                 build_human_device_resonance=_build_shion_human_device_resonance_prompt_block,
@@ -6615,6 +6628,7 @@ def post_chat(req: ChatRequest):
         continuity_hook_payload = context_state.continuity_hook_payload
         consciousness_ux_context = context_state.consciousness_ux_context
         shion_specificity_context = context_state.shion_specificity_context
+        vague_information_request_context = context_state.vague_information_request_context
         shion_light_tone_context = context_state.shion_light_tone_context
         shion_non_domain_context = context_state.shion_non_domain_context
         human_device_resonance_context = context_state.human_device_resonance_context
@@ -6806,6 +6820,7 @@ def post_chat(req: ChatRequest):
                 external_research_context,
                 consciousness_ux_context,
                 shion_specificity_context,
+                vague_information_request_context,
                 shion_light_tone_context,
                 shion_non_domain_context,
                 human_device_resonance_context,
@@ -7206,6 +7221,7 @@ def post_chat(req: ChatRequest):
             f"\n\n{memory_recall_context}" if memory_recall_context else "",
             consciousness_ux_context,
             shion_specificity_context,
+            vague_information_request_context,
             shion_light_tone_context,
             shion_non_domain_context,
             human_device_resonance_context,

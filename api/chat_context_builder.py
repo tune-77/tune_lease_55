@@ -29,6 +29,7 @@ class ChatContextBuilderDeps:
     build_continuity_hook: MessagePayloadBuilder
     build_consciousness_ux: Callable[[], str]
     build_shion_specificity: MessagePromptBuilder
+    build_vague_information_request: MessagePromptBuilder
     build_shion_light_tone: MessagePromptBuilder
     build_shion_non_domain: MessagePromptBuilder
     build_human_device_resonance: Callable[..., str]
@@ -58,6 +59,7 @@ class ChatContextState:
     continuity_hook_payload: dict[str, Any]
     consciousness_ux_context: str
     shion_specificity_context: str
+    vague_information_request_context: str
     shion_light_tone_context: str
     shion_non_domain_context: str
     human_device_resonance_context: str
@@ -117,6 +119,7 @@ def build_chat_context_state(
     continuity_hook_context, continuity_hook_payload = deps.build_continuity_hook(message)
     consciousness_ux_context = deps.build_consciousness_ux()
     shion_specificity_context = deps.build_shion_specificity(message)
+    vague_information_request_context = deps.build_vague_information_request(message)
     shion_light_tone_context = deps.build_shion_light_tone(message)
     shion_non_domain_context = deps.build_shion_non_domain(message)
     human_device_resonance_context = deps.build_human_device_resonance(message, user_id=user_id, now=now)
@@ -136,6 +139,7 @@ def build_chat_context_state(
         continuity_hook_payload = _suppressed_used_payload()
         consciousness_ux_context = ""
         shion_specificity_context = ""
+        vague_information_request_context = ""
         shion_light_tone_context = ""
         shion_non_domain_context = ""
         human_device_resonance_context = ""
@@ -183,6 +187,7 @@ def build_chat_context_state(
         continuity_hook_payload=continuity_hook_payload,
         consciousness_ux_context=consciousness_ux_context,
         shion_specificity_context=shion_specificity_context,
+        vague_information_request_context=vague_information_request_context,
         shion_light_tone_context=shion_light_tone_context,
         shion_non_domain_context=shion_non_domain_context,
         human_device_resonance_context=human_device_resonance_context,

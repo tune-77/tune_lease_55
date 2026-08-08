@@ -43,6 +43,18 @@ SHION_ABSTRACT_QUESTION_TERMS = (
     "具体性",
 )
 
+VAGUE_INFORMATION_REQUEST_TERMS = (
+    "調べて",
+    "検索して",
+    "見せて",
+    "要約見せて",
+    "要約して",
+    "まとめて",
+    "教えて",
+    "どういうこと",
+    "何が起きた",
+)
+
 SHION_NON_DOMAIN_SHORT_INPUT_TERMS = (
     "おはよう",
     "おはよ",
@@ -105,6 +117,38 @@ Userへの想いを入れる場合は、依存や崇拝ではなく「判断を�
 抽象的な問いでも、最低1つはリース実務の具体例へ落としてください。例: 補助金案件なら未採択時の資金繰り、車両なら自家用/営業用とトン数、医療機器なら中古流通と保守期限、設備投資なら回収期間と稼働開始時期。
 自己言及の回答では「私はAIです」「一般的なAIとしては」から始めないでください。結論、紫苑としての役割、今回の具体例、次の一手の順で短く返してください。
 「意識がある」と断定せず、記憶・判断履歴・Userのフィードバックが次の判断を変える連続性として説明してください。""".rstrip()
+
+
+def build_shion_vague_information_request_prompt_block(message: str) -> str:
+    text = str(message or "").strip()
+    compact = re.sub(r"\s+", "", text)
+    if not compact:
+        return ""
+    has_request = any(term in compact for term in VAGUE_INFORMATION_REQUEST_TERMS)
+    is_short_or_underspecified = len(compact) <= 90
+    has_specific_anchor = bool(
+        re.search(r"https?://", text)
+        or re.search(r"\d{4}年|\d{1,2}月|\d{1,2}日", text)
+        or any(term in compact for term in ("記者会見", "ニュース", "記事", "大臣", "総裁", "日銀", "政府", "会見"))
+    )
+    specific_case_terms = ("リース", "審査", "案件", "取得額", "期間", "確認点", "承認", "否決", "稟議")
+    has_case_detail = (
+        sum(1 for term in specific_case_terms if term in compact) >= 3
+        and bool(re.search(r"\d", compact))
+    )
+    if has_case_detail and not any(term in compact for term in ("調べて", "検索して", "要約", "まとめて", "見せて")):
+        return ""
+    if not has_request or not (is_short_or_underspecified or has_specific_anchor):
+        return ""
+    return """
+
+【漠然とした情報要求への応答】
+Userの依頼が「調べて」「要約見せて」「これ教えて」のように情報源・範囲・目的が薄い場合でも、「できません」「直接お見せする機能はありません」だけで終えないでください。
+外部検索や原文表示ができない/許可待ちの場合は、まず限界を1文で切り分け、そのうえで手元の記憶・世界認識・リース判断資産から安全に言える仮説や見立てを出してください。
+未確認の最新事実、人物の現職、会見の実施有無、数値、引用は断定しないでください。「未確認」「推論」「手元知識ベース」を明示して分けます。
+回答は原則として、1. 今すぐ言える要点または仮説、2. 確認できていない点、3. Userの意図を具体化する質問1つ、の順に短く返してください。
+リース・金融・政策・金利・企業動向に関係する話題なら、紫苑の世界認識として「審査判断にどう効くか」まで一段だけ落としてください。
+質問を返すだけで終わらず、Userが次に選べる仮説・確認軸・調査観点を最低1つ提示してください。""".rstrip()
 
 
 def build_shion_human_device_resonance_prompt_block(
