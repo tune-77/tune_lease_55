@@ -38,6 +38,16 @@ WORKFLOW_DEFINITIONS: dict[str, dict[str, str]] = {
         ),
         "output_hint": "監査結果は知識整理の候補であり、審査判断やスコアリングへ直結しない。",
     },
+    "market_outlook": {
+        "label": "金利推移見通し",
+        "query_suffix": "金利 推移 予測 日銀 政策金利 市場動向 資金調達",
+        "preamble": (
+            "今後の金利推移について、Obsidian由来の整理済み知識だけを根拠に、"
+            "断定的な予測ではなく傾向・留意点・出典を短く整理する。"
+            "リアルタイムの市場データではないため、確定的な将来予測として使わない。"
+        ),
+        "output_hint": "定量予測（TimesFM/線形外挿）と併用し、結論ではなく参考所見として扱う。",
+    },
 }
 
 
@@ -111,6 +121,12 @@ def _workflow_actions(mode: str, search_result: dict[str, Any], answer_result: d
             "同じ論点のヒットが多い場合はcanonical topicを統合する。",
             "重要テーマなのにヒットが薄い場合はResearchノートを作る。",
             "古くなりやすい制度・補助金・業界動向は更新日と確認先を追記する。",
+        ]
+    if mode == "market_outlook":
+        return [
+            "定量予測（TimesFM/線形外挿）とあわせて参考所見として扱う。",
+            "確定的な将来予測ではないため、金利改定の意思決定には人間の確認を挟む。",
+            f"参考出典: {refs[0] if refs else 'Vertex refs'}",
         ]
     return [
         "審査コメントに使う前に、上位refの原文を確認する。",

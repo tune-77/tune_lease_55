@@ -30,7 +30,7 @@ class VertexExternalGroundingRequest(BaseModel):
 
 class VertexKnowledgeWorkflowRequest(BaseModel):
     topic: str
-    mode: Literal["evidence_support", "judgment_candidates", "knowledge_audit"] = "evidence_support"
+    mode: Literal["evidence_support", "judgment_candidates", "knowledge_audit", "market_outlook"] = "evidence_support"
     page_size: int = Field(5, ge=1, le=10)
     save_to_obsidian: bool = False
 
