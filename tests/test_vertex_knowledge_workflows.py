@@ -85,6 +85,31 @@ def test_judgment_candidate_workflow_never_auto_promotes():
     assert any("自動昇格せず" in action for action in result["next_actions"])
 
 
+def test_market_outlook_workflow_flags_reference_use_over_conclusion():
+    def fake_search(query, **kwargs):
+        return {
+            "used": True,
+            "status": "ok",
+            "refs": ["knowledge_base/lease_review_knowledge/04_残価リスク評価と市場動向.md"],
+            "results": [],
+        }
+
+    def fake_answer(query, **kwargs):
+        return {"used": True, "status": "ok", "answer_text": "金利は緩やかな上昇傾向。", "refs": []}
+
+    result = run_vertex_knowledge_workflow(
+        "基準金利 今後の推移",
+        mode="market_outlook",
+        search_fn=fake_search,
+        answer_fn=fake_answer,
+    )
+
+    assert result["mode"] == "market_outlook"
+    assert result["label"] == "金利推移見通し"
+    assert "金利 推移 予測" in result["query"]
+    assert any("参考所見" in action for action in result["next_actions"])
+
+
 def test_empty_workflow_result_suggests_adding_curated_notes():
     def fake_search(query, **kwargs):
         return {"used": False, "status": "ok", "refs": [], "results": []}
