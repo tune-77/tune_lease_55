@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
-import { Calendar, Percent, Activity, Save, Download, AlertTriangle, CheckCircle, ChevronRight, Database, TrendingUp } from 'lucide-react';
+import { Calendar, Percent, Activity, Save, Download, AlertTriangle, CheckCircle, ChevronRight, Database, TrendingUp, RefreshCw, Sparkles } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
@@ -23,6 +23,36 @@ type RateRow = {
 
 type FormState = { month: string; note: string } & Record<string, string>;
 
+type BaseRateForecast = {
+  term_col: string;
+  term_label: string;
+  months_history: string[];
+  rate_history: number[];
+  months_forecast: string[];
+  rate_forecast: number;
+  band_low: number;
+  band_high: number;
+  horizon_forecast: number[];
+  method: string;
+};
+
+type BaseRateForecastAll = {
+  term_cols: string[];
+  term_labels: Record<string, string>;
+  forecasts: Record<string, BaseRateForecast>;
+  horizon_months: number;
+};
+
+type VertexOutlook = {
+  mode: string;
+  label: string;
+  guardrail: string;
+  search: { used: boolean; summary?: string };
+  answer: { used: boolean; answer_text?: string };
+  refs: string[];
+  next_actions: string[];
+};
+
 function makeDefaultForm(latest: RateRow | null, defaultMonth: string): FormState {
   const form: FormState = { month: defaultMonth, note: '' };
   for (const col of TERM_COLS) {
@@ -39,10 +69,18 @@ export default function InterestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editRows, setEditRows] = useState<Record<string, Partial<RateRow>>>({});
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'list' | 'seed' | 'chart'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'seed' | 'chart' | 'forecast'>('list');
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<string | null>(null);
   const [toast, setToast] = useState<{msg: string; type: 'ok'|'err'} | null>(null);
+  const [forecastTerm, setForecastTerm] = useState<string>('r_5y');
+  const [forecastHorizon, setForecastHorizon] = useState(6);
+  const [forecastData, setForecastData] = useState<BaseRateForecastAll | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [forecastError, setForecastError] = useState<string | null>(null);
+  const [outlook, setOutlook] = useState<VertexOutlook | null>(null);
+  const [outlookLoading, setOutlookLoading] = useState(false);
+  const [outlookError, setOutlookError] = useState<string | null>(null);
 
   useEffect(() => {
     triggerMebuki('guide', '基準金利マスタ管理ですね！\n期間別9区分の金利を月次で管理します。');
@@ -135,6 +173,36 @@ export default function InterestPage() {
       setSeedResult('❌ 投入に失敗しました');
     } finally {
       setSeeding(false);
+    }
+  };
+
+  const loadForecast = async () => {
+    setForecastLoading(true);
+    setForecastError(null);
+    try {
+      const res = await apiClient.post<BaseRateForecastAll>('/api/timesfm/base_rate_all', { horizon_months: forecastHorizon });
+      setForecastData(res.data);
+    } catch {
+      setForecastError('定量予測の取得に失敗しました。');
+    } finally {
+      setForecastLoading(false);
+    }
+  };
+
+  const loadOutlook = async () => {
+    setOutlookLoading(true);
+    setOutlookError(null);
+    try {
+      const res = await apiClient.post<VertexOutlook>('/api/vertex-search/workflow', {
+        topic: '基準金利 今後の金利推移',
+        mode: 'market_outlook',
+        page_size: 5,
+      });
+      setOutlook(res.data);
+    } catch {
+      setOutlookError('Vertex AI Search 経由の見通し取得に失敗しました。');
+    } finally {
+      setOutlookLoading(false);
     }
   };
 
@@ -262,10 +330,14 @@ export default function InterestPage() {
           { id: 'list', label: '登録一覧・編集' },
           { id: 'seed', label: '初期データ一括投入' },
           { id: 'chart', label: '📈 金利推移グラフ' },
+          { id: 'forecast', label: '🔮 今後の金利予測' },
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as typeof activeTab)}
+            onClick={() => {
+              setActiveTab(tab.id as typeof activeTab);
+              if (tab.id === 'forecast' && !forecastData && !forecastLoading) loadForecast();
+            }}
             className={`px-5 py-2.5 rounded-xl font-black text-sm transition-all ${activeTab === tab.id ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-700'}`}
           >
             {tab.label}
@@ -397,6 +469,168 @@ export default function InterestPage() {
                   </LineChart>
                 </ResponsiveContainer>
               )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Tab: Forecast */}
+      {activeTab === 'forecast' && (() => {
+        const selected = forecastData?.forecasts[forecastTerm];
+        const combinedChartData: { month: string; actual: number | null; forecast: number | null }[] = [];
+        if (selected) {
+          selected.months_history.forEach((m, i) => combinedChartData.push({ month: m, actual: selected.rate_history[i], forecast: null }));
+          if (combinedChartData.length > 0) {
+            combinedChartData[combinedChartData.length - 1].forecast = combinedChartData[combinedChartData.length - 1].actual;
+          }
+          selected.months_forecast.forEach((m, i) => combinedChartData.push({ month: m, actual: null, forecast: selected.horizon_forecast[i] }));
+        }
+        return (
+          <div className="space-y-6">
+            {/* Quantitative forecast */}
+            <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+              <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center gap-3">
+                <TrendingUp className="w-5 h-5 text-emerald-500" />
+                <span className="font-black text-slate-700 text-sm uppercase tracking-widest">定量予測（TimesFM / 線形外挿）</span>
+                <div className="ml-auto flex items-center gap-2">
+                  <select
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-600 outline-none"
+                    value={forecastTerm}
+                    onChange={e => setForecastTerm(e.target.value)}
+                  >
+                    {TERM_COLS.map(col => <option key={col} value={col}>{TERM_LABELS[col]}</option>)}
+                  </select>
+                  <select
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-600 outline-none"
+                    value={forecastHorizon}
+                    onChange={e => setForecastHorizon(Number(e.target.value))}
+                  >
+                    {[3, 6, 12, 24].map(h => <option key={h} value={h}>{h}ヶ月先まで</option>)}
+                  </select>
+                  <button
+                    onClick={loadForecast}
+                    disabled={forecastLoading}
+                    className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black px-4 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors"
+                  >
+                    {forecastLoading ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    再計算
+                  </button>
+                </div>
+              </div>
+
+              {forecastError && <div className="p-5 text-sm font-bold text-rose-600">{forecastError}</div>}
+              {forecastLoading && (
+                <div className="p-12 flex justify-center"><Activity className="w-8 h-8 text-emerald-500 animate-spin" /></div>
+              )}
+              {!forecastLoading && forecastData && !selected && (
+                <div className="p-8 text-center text-slate-400 font-bold">この期間の予測データがありません。先に基準金利データを登録してください。</div>
+              )}
+              {!forecastLoading && selected && (
+                <div className="p-6">
+                  <div className="grid grid-cols-3 gap-4 mb-5">
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{forecastData?.horizon_months}ヶ月後 予測</div>
+                      <div className="text-xl font-black text-emerald-700">{selected.rate_forecast.toFixed(2)}%</div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">予測レンジ（下限）</div>
+                      <div className="text-xl font-black text-slate-600">{selected.band_low.toFixed(2)}%</div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">予測レンジ（上限）</div>
+                      <div className="text-xl font-black text-slate-600">{selected.band_high.toFixed(2)}%</div>
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-slate-400 font-bold mb-3">手法: {selected.method}</div>
+                  <ResponsiveContainer width="100%" height={320}>
+                    <LineChart data={combinedChartData} margin={{ top: 10, right: 20, left: 0, bottom: 30 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis
+                        dataKey="month"
+                        tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 700 }}
+                        angle={-45}
+                        textAnchor="end"
+                        interval={Math.floor(combinedChartData.length / 10)}
+                      />
+                      <YAxis
+                        tickFormatter={v => `${v.toFixed(2)}%`}
+                        tick={{ fontSize: 11, fill: '#64748b', fontWeight: 700 }}
+                        width={60}
+                        domain={['auto', 'auto']}
+                      />
+                      <Tooltip
+                        formatter={(val: unknown, name: unknown) => [`${(val as number)?.toFixed(3)}%`, name === 'actual' ? '実績' : '予測']}
+                        labelStyle={{ fontWeight: 700, color: '#1e293b' }}
+                        contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
+                      />
+                      <Legend
+                        formatter={(val: string) => val === 'actual' ? '実績' : '予測'}
+                        wrapperStyle={{ fontSize: 11, fontWeight: 700, paddingTop: 8 }}
+                      />
+                      <Line type="monotone" dataKey="actual" stroke="#10b981" strokeWidth={2} dot={false} connectNulls />
+                      <Line type="monotone" dataKey="forecast" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            {/* Qualitative outlook via Vertex AI Search */}
+            <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+              <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-emerald-500" />
+                <span className="font-black text-slate-700 text-sm uppercase tracking-widest">Vertex AI Search 定性見通し</span>
+                <button
+                  onClick={loadOutlook}
+                  disabled={outlookLoading}
+                  className="ml-auto bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black px-4 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors"
+                >
+                  {outlookLoading ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  調査する
+                </button>
+              </div>
+              <div className="p-6">
+                {outlookError && <div className="text-sm font-bold text-rose-600 mb-3">{outlookError}</div>}
+                {!outlook && !outlookLoading && !outlookError && (
+                  <div className="text-center text-slate-400 font-bold py-6">
+                    「調査する」を押すとVertex AI Search経由でObsidian知識ベースから金利見通しを調べます。
+                  </div>
+                )}
+                {outlookLoading && (
+                  <div className="flex justify-center py-10"><Activity className="w-7 h-7 text-emerald-500 animate-spin" /></div>
+                )}
+                {!outlookLoading && outlook && (
+                  <div className="space-y-4">
+                    {!outlook.answer?.used && !outlook.search?.used ? (
+                      <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm font-bold text-amber-700 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        Vertex側で十分な知識が拾えませんでした（未設定、または該当知識がまだ薄い可能性があります）。定量予測を参考にしてください。
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                        {outlook.answer?.answer_text || outlook.search?.summary || '要約はありませんでした。'}
+                      </div>
+                    )}
+                    {outlook.refs?.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">出典</div>
+                        <ul className="text-xs text-slate-500 space-y-1">
+                          {outlook.refs.map((ref, i) => <li key={i} className="truncate">・{ref}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {outlook.next_actions?.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">留意点</div>
+                        <ul className="text-xs text-slate-600 space-y-1">
+                          {outlook.next_actions.map((action, i) => <li key={i}>・{action}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    <div className="text-[10px] text-slate-400 font-bold pt-1 border-t border-slate-100">{outlook.guardrail}</div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         );
