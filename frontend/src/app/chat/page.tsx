@@ -225,6 +225,7 @@ export default function ChatPage() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const briefRequestSeqRef = useRef(0);
   const lastProactiveAlertRef = useRef<string | null>(null);
+  const lastLatentNeedRef = useRef<string | null>(null);
 
   const userId = SHION_CHAT_USER_ID;
 
@@ -421,6 +422,43 @@ export default function ChatPage() {
     return () => window.clearInterval(proactiveTimer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const prefectureHint = normalizePrefecture(newsPrefecture);
+    const industryHint = chatContext.industry_sub || chatContext.industry_major || "";
+    const checkLatentNeedAlert = () => {
+      apiClient.get("/api/shion/latent-need-alert", {
+        params: { prefecture: prefectureHint, industry: industryHint },
+      })
+        .then((res) => {
+          const alert = res.data;
+          if (!alert?.has_alert || !alert.message) return;
+          if (lastLatentNeedRef.current === alert.message) return;
+          // パネル（今日の業界動向ブリーフ）と同じ「1日1回」ゲートを共用し、二重表示を避ける
+          const todayKey = `lease-news-brief-seen-${formatLocalDateKey()}`;
+          if (window.localStorage.getItem(todayKey)) return;
+          lastLatentNeedRef.current = alert.message;
+          window.localStorage.setItem(todayKey, "1");
+          const latentNeedMessage: ChatMessage = {
+            id: Date.now(),
+            user_id: userId,
+            role: "assistant",
+            content: alert.message,
+            created_at: new Date().toISOString(),
+          };
+          setMessages((prev) => {
+            const next = [...prev, latentNeedMessage];
+            saveLocalChatHistory(userId, next);
+            return next;
+          });
+        })
+        .catch(() => {});
+    };
+    checkLatentNeedAlert();
+    const latentNeedTimer = window.setInterval(checkLatentNeedAlert, 5 * 60 * 1000);
+    return () => window.clearInterval(latentNeedTimer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newsPrefecture, chatContext.industry_sub, chatContext.industry_major]);
 
   const loadHistory = async () => {
     setHistoryLoading(true);
