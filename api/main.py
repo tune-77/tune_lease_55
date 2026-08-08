@@ -6401,8 +6401,10 @@ def post_chat(req: ChatRequest):
             get_message_count,
         )
         from chat_intent import build_chat_guidance, extract_estimated_user_emotion
+        from api.prompt_injection_guard import wrap_untrusted_context
         news_focus = _lease_news_focus_to_dict(get_latest_lease_news_focus())
         news_focus_text = lease_news_focus_as_text() if news_focus.get("available") else ""
+        news_focus_text = wrap_untrusted_context(news_focus_text, label="ニュース注目論点", logger=logger)
         news_focus_context = f"\n\n【最新ニュースの注目論点】\n{news_focus_text}" if news_focus_text else ""
         news_brief = _lease_news_brief_to_dict(
             build_lease_news_brief(prefecture=req.prefecture or "", industry=req.industry or "")
@@ -6413,6 +6415,7 @@ def post_chat(req: ChatRequest):
             asset_name="",
             surface="chat",
         )
+        news_actions_text = wrap_untrusted_context(news_actions_text, label="ニュースアクション", logger=logger)
         chat_long_input = _is_long_dialogue_input(req.message)
         news_actions_context = f"\n\n{news_actions_text}" if news_actions_text else ""
         try:
@@ -6420,6 +6423,7 @@ def post_chat(req: ChatRequest):
         except Exception as _obsidian_daily_error:
             print(f"[ObsidianDailyIntelligence] 読み込みエラー: {_obsidian_daily_error}")
             obsidian_daily_text = ""
+        obsidian_daily_text = wrap_untrusted_context(obsidian_daily_text, label="Obsidian日次インテリジェンス", logger=logger)
         obsidian_daily_context = f"\n\n{obsidian_daily_text}" if obsidian_daily_text else ""
         news_brief_context = ""
         if news_brief.get("available"):
@@ -6445,6 +6449,7 @@ def post_chat(req: ChatRequest):
                     brief_lines.append(f"活用メモ: {regional_memo}")
             brief_lines.append(str(news_brief.get("question_line") or "").strip())
             news_brief_context = "\n\n【今日のニュースブリーフ】\n" + "\n".join(line for line in brief_lines if line)
+            news_brief_context = wrap_untrusted_context(news_brief_context, label="ニュースブリーフ", logger=logger)
 
         # REV-102: mind.json から感情状態を読み込んでシステムプロンプトを動的生成する
         import datetime as _pg_dt
@@ -6994,7 +6999,7 @@ def post_chat(req: ChatRequest):
             is_general_response_mode=is_general_response_mode,
             obsidian_vault_path=_OBSIDIAN_VAULT_PATH,
         )
-        rag_context = retrieval.rag_context
+        rag_context = wrap_untrusted_context(retrieval.rag_context, label="RAG検索結果", logger=logger)
         rag_refs = retrieval.rag_refs
         rag_knowledge_refs = retrieval.rag_knowledge_refs
         vertex_agent_search = retrieval.vertex_agent_search
