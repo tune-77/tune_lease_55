@@ -21,6 +21,17 @@ def test_build_shion_non_domain_prompt_block_short_small_talk_only():
     assert build_shion_non_domain_prompt_block("工作機械リースの確認点を教えて") == ""
 
 
+def test_build_shion_non_domain_prompt_block_triggers_for_generic_casual_statement():
+    block = build_shion_non_domain_prompt_block("タムと散歩している")
+
+    assert "紫苑の非ドメイン短文・雑談への応答" in block
+    assert "身近なリース事例や豆知識" in block
+
+
+def test_build_shion_non_domain_prompt_block_skips_business_question_without_fixed_terms():
+    assert build_shion_non_domain_prompt_block("この案件は承認できそう？") == ""
+
+
 def test_build_shion_human_device_resonance_prompt_block_can_be_forced():
     block = build_shion_human_device_resonance_prompt_block(
         "この案件の条件付き承認をどう見る？",
