@@ -40,3 +40,32 @@ def check_shion_proactive_alerts() -> dict:
         "top_patterns": patterns[:3],
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
     }
+
+
+def check_shion_latent_need_alert(prefecture: str = "", industry: str = "") -> dict:
+    """案件の業種・地域から、まだ提示していない業界動向・審査上の気づきがあるか判定する。
+
+    エラー急増検知（check_shion_proactive_alerts）とは別系統。既存の日次業界ブリーフ
+    （lease_news_digest.build_lease_news_brief、/api/lease-news/brief と同じデータ源）を
+    再利用し、能動的な一言として出せる内容があるかだけを軽量に判定する。
+    「once per day」の重複抑制はフロント側（既存の lease-news-brief-seen-<date> キー）が担う。
+    """
+    from lease_news_digest import build_lease_news_brief
+
+    brief = build_lease_news_brief(prefecture=prefecture or "", industry=industry or "")
+    available = bool(getattr(brief, "available", False))
+
+    message = None
+    if available:
+        opening = (getattr(brief, "opening_line", "") or "").strip()
+        question = (getattr(brief, "question_line", "") or "").strip()
+        message = "\n".join(line for line in (opening, question) if line) or None
+
+    return {
+        "has_alert": bool(message),
+        "message": message,
+        "topic": industry or "",
+        "prefecture": prefecture or "",
+        "note_date": getattr(brief, "note_date", "") if available else "",
+        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
