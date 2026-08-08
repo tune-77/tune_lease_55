@@ -253,6 +253,18 @@ if [ -f "${RESULT_FILE}" ]; then
     fi
 
     echo ""
+    echo "[反映] 紫苑の内省を実務アクション候補へ変換中..."
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/build_reflection_action_candidates.py"
+    REFLECTION_ACTION_CANDIDATES_EXIT=$?
+    log_step "build_reflection_action_candidates" ${REFLECTION_ACTION_CANDIDATES_EXIT}
+    if [ ${REFLECTION_ACTION_CANDIDATES_EXIT} -ne 0 ]; then
+        echo "警告: 内省アクション候補の生成に失敗しました（終了コード ${REFLECTION_ACTION_CANDIDATES_EXIT}）"
+        if [ ${FINAL_EXIT} -eq 0 ]; then
+            FINAL_EXIT=${REFLECTION_ACTION_CANDIDATES_EXIT}
+        fi
+    fi
+
+    echo ""
     echo "[反映] 紫苑の自己提案を改善レポートへ別枠追記中..."
     "${PYTHON}" "${PROJECT_ROOT}/scripts/attach_shion_self_proposals_to_report.py" \
         --report "${RESULT_FILE}" \

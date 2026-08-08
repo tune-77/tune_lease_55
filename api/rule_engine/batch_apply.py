@@ -38,6 +38,12 @@ _PROTECTED_PATTERNS = [
     "mind.json",
 ]
 
+# 別ステップが整理する通知・監査系ルール型。汎用 batch_apply の対象外だが、
+# 台帳に残っているだけで毎朝の apply を失敗扱いにしない。
+_SKIPPED_EXTERNAL_TYPES = {
+    "rag_boost_adjust": "cleanup_rag_unrated_rules.py が整理する RAG 通知",
+}
+
 
 def _is_protected(target: str) -> bool:
     """ターゲットパスが保護対象に該当するか判定する。"""
@@ -158,6 +164,7 @@ class _Results:
         self.skipped_pending_review: list[tuple[str, str]] = []
         self.skipped_applied: list[tuple[str, str]] = []
         self.skipped_protected: list[tuple[str, str]] = []
+        self.skipped_external: list[tuple[str, str]] = []
         self.dry_run_pending: list[tuple[str, str, str]] = []  # (rev_id, type, desc)
 
 
@@ -187,6 +194,12 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
             reason = rule.get("manual_reason", description)
             res.skipped_manual.append((rev_id, reason))
             print(f"  ⚠️  {rev_id} [manual] {description[:70]}")
+            continue
+
+        if rule_type in _SKIPPED_EXTERNAL_TYPES:
+            reason = _SKIPPED_EXTERNAL_TYPES[rule_type]
+            res.skipped_external.append((rev_id, reason))
+            print(f"  ⏭️  {rev_id} [{rule_type}] batch_apply対象外: {reason}")
             continue
 
         # llm_diff で pending_llm フラグが立っている場合はスキップ
@@ -266,6 +279,8 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
     print(f"  ⚠️  LLM確認待ち [pending_llm]   : {len(res.skipped_llm):>3} 件")
     print(f"  ⚠️  承認待ち [pending_review]    : {len(res.skipped_pending_review):>3} 件")
     print(f"  ⏭️  適用済みスキップ             : {len(res.skipped_applied):>3} 件")
+    if res.skipped_external:
+        print(f"  ⏭️  外部処理型スキップ           : {len(res.skipped_external):>3} 件")
     if res.skipped_protected:
         print(f"  🔒 保護ファイルスキップ       : {len(res.skipped_protected):>3} 件")
     print()
@@ -289,6 +304,13 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
         print("   改善ログ画面の「台帳ルール」タブから承認するか、pending_review を false にしてください。")
         for rev_id, desc in res.skipped_pending_review:
             print(f"   {rev_id}: {desc[:90]}")
+        print()
+
+    if res.skipped_external:
+        print("⏭️  外部処理型ルール:")
+        print("   これらは別の専用ステップが処理するため、batch_apply では適用しません。")
+        for rev_id, reason in res.skipped_external:
+            print(f"   {rev_id}: {reason[:90]}")
         print()
 
     if not dry_run and res.failed:

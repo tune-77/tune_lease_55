@@ -153,6 +153,56 @@ def test_report_attachment_preserves_hypothesis_fields(tmp_path, monkeypatch):
     assert section["items"][0]["effect_tracking"].startswith("採用/保留/却下")
 
 
+def test_report_attachment_accepts_reflection_action_candidates(tmp_path, monkeypatch):
+    import scripts.attach_shion_self_proposals_to_report as attach
+
+    source_path = tmp_path / "reflection_action_candidates.jsonl"
+    source_path.write_text(
+        json.dumps(
+            {
+                "title": "内省アクション: 補助金案件の確認項目へ戻す",
+                "target": "紫苑の内省運用",
+                "hypothesis": "内省を実務アクション候補にすると次の審査へ戻せる",
+                "evidence": "Private Reflection delta由来",
+                "proposed_change": "補助金案件では未採択時の返済原資を先に確認する",
+                "success_metric": "採用/保留/却下の判断率",
+                "verification_plan": "30日後にsuccess_metricの変化を見る",
+                "risk": "内省が的外れなら回答が冗長化する",
+                "priority": "medium",
+                "proposal_schema": "shion_self_hypothesis_v1",
+                "action_schema": "shion_reflection_action_candidate_v1",
+                "human_decision_status": "needs_human_review",
+                "canonical_key": "reflection_action:test",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        attach,
+        "SOURCES",
+        [
+            {
+                "path": source_path,
+                "source": "reflection_action_candidates",
+                "kind": "内省アクション",
+                "evidence_layer": "reflection_based",
+                "summary_keys": ("hypothesis", "proposed_change", "success_metric", "risk"),
+            }
+        ],
+    )
+
+    section = attach.collect_shion_self_proposals(limit=5)
+
+    assert section["count"] == 1
+    assert section["counts_by_layer"]["reflection_based"] == 1
+    assert section["items"][0]["source"] == "reflection_action_candidates"
+    assert section["items"][0]["evidence_layer_label"] == "内省アクション由来"
+    assert section["items"][0]["canonical_key"] == "reflection_action:test"
+    assert section["items"][0]["effect_tracking"].startswith("採用/保留/却下")
+
+
 def test_report_attachment_limits_review_items_to_top_three(tmp_path, monkeypatch):
     import scripts.attach_shion_self_proposals_to_report as attach
 
@@ -246,10 +296,83 @@ def test_report_attachment_keeps_one_leap_slot(tmp_path, monkeypatch):
 
     assert section["review_limit"] == 3
     assert section["quality_policy"]["leap_limit"] == 1
+    assert section["quality_policy"]["reflection_limit"] == 1
     assert section["quality_policy"]["genetic_loop"]["leap"]
     assert len(section["items"]) == 3
     assert sum(1 for item in section["items"] if item["is_leap_proposal"]) == 1
     assert any(item["title"] == "違和感の名前を付ける" for item in section["items"])
+
+
+def test_report_attachment_keeps_one_reflection_action_slot(tmp_path, monkeypatch):
+    import scripts.attach_shion_self_proposals_to_report as attach
+
+    strong_path = tmp_path / "domestic.jsonl"
+    reflection_path = tmp_path / "reflection.jsonl"
+    strong_rows = []
+    for idx in range(4):
+        strong_rows.append(
+            {
+                "title": f"強い内政提案{idx}",
+                "target": f"/solid{idx}",
+                "hypothesis": f"仮説{idx}",
+                "evidence": f"/solid{idx} が {idx + 20}回利用",
+                "proposed_change": f"変更{idx}",
+                "success_metric": f"利用率 {idx}",
+                "verification_plan": "変更前後7日で比較",
+                "risk": "画面が少し複雑になる",
+                "priority": "high",
+                "generated_at": f"2026-08-09T04:0{idx}:00",
+                "proposal_schema": "shion_self_hypothesis_v1",
+            }
+        )
+    strong_path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in strong_rows) + "\n", encoding="utf-8")
+    reflection_path.write_text(
+        json.dumps(
+            {
+                "title": "内省アクション: 次回確認を審査へ戻す",
+                "target": "紫苑の内省運用",
+                "hypothesis": "内省を次回確認へ戻す",
+                "evidence": "Private Reflection delta由来",
+                "proposed_change": "条件付き承認時の追加確認を先に出す",
+                "success_metric": "採用/保留/却下の判断率",
+                "verification_plan": "30日後に確認",
+                "risk": "冗長化",
+                "priority": "low",
+                "proposal_schema": "shion_self_hypothesis_v1",
+                "human_decision_status": "needs_human_review",
+                "canonical_key": "reflection_action:slot",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        attach,
+        "SOURCES",
+        [
+            {
+                "path": strong_path,
+                "source": "domestic_mode",
+                "kind": "内政モード",
+                "evidence_layer": "domestic_mode_based",
+                "summary_keys": ("hypothesis", "evidence"),
+            },
+            {
+                "path": reflection_path,
+                "source": "reflection_action_candidates",
+                "kind": "内省アクション",
+                "evidence_layer": "reflection_based",
+                "summary_keys": ("hypothesis", "proposed_change"),
+            },
+        ],
+    )
+
+    section = attach.collect_shion_self_proposals(limit=10)
+
+    assert len(section["items"]) == 3
+    assert any(item["canonical_key"] == "reflection_action:slot" for item in section["items"])
+    assert sum(1 for item in section["items"] if item["evidence_layer"] == "reflection_based") == 1
 
 
 def test_report_attachment_classifies_system_audit_layer(tmp_path, monkeypatch):

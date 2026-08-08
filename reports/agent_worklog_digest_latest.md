@@ -1,7 +1,7 @@
 # Codex/Claude 作業録ダイジェスト
 
-- generated_at: 2026-08-05T04:02:20
-- source_count: 44
+- generated_at: 2026-08-09T04:06:36
+- source_count: 43
 - displayed: 12
 
 ## Shion Use Policy
@@ -9,6 +9,46 @@
 - 禁止: 顧客情報の推測、Private Reflection原文の引用、人間承認なしの判断資産昇格
 
 ## Items
+
+### 2026-08-08 23:21 Codex
+- Summary: 判断資産グラフにGraph Engineeringサマリを追加し、未検証・有効・見直し・接続薄い判断資産と次に検証すべき高ポテンシャル判断を可視化した。
+- Chat Summary: Userからグラフエンジニアリングをやれるか相談があり、既存の判断資産グラフに実戦検証状況を足す方針で実装。gitship指示によりPR経由でmasterへ反映した。
+- Decisions: Neo4j等の新規基盤は入れず、既存のローカルHTML/JSON生成パイプラインを拡張した。実案件フィードバックは自動昇格せず、検証不足と候補順位だけを表示する。
+- Changes: scripts/build_judgment_asset_graph.py / tests/test_build_judgment_asset_graph.py / reports/judgment_asset_graph_latest.html
+- Verification: python -m pytest tests/test_build_judgment_asset_graph.py: 7 passed / python -m py_compile scripts/build_judgment_asset_graph.py: OK
+- Open Items: -
+
+### 2026-08-08 22:01 Codex
+- Summary: REV-048a sync_improvement_reports_post 障害を復旧し、PR #721 で master へマージした。
+- Chat Summary: ユーザーから gitship 指示。master は保護ブランチだったため、PR を作成してチェック通過後にマージした。
+- Decisions: reports/latest.json の applied が整数カウンタでも applied_improvements を読むようにし、post 後処理ログは実コマンド結果を記録する。
+- Changes: .agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py / scripts/run_daily_improvement_post.sh / tests/test_sync_improvement_reports_from_ledger.py
+- Verification: pytest tests/test_sync_improvement_reports_from_ledger.py -q: 4 passed / sync_improvement_reports.py dry-run: exit 0
+- Open Items: -
+
+### 2026-08-08 21:35 Codex
+- Summary: git ship完了: PR #720をCI成功後にmergeし、featureブランチをローカル/リモートとも削除。
+- Chat Summary: Userから再度git ship依頼。PR Checks successを確認してからPR #720をmerge。master直接pushではなく保護ブランチのPR経由で反映した。
+- Decisions: CI/CL checkを省かず、PR Checks success後にmergeした。対象feature branchは削除済み。
+- Changes: PR #720 merged: https://github.com/tune-77/tune_lease_55/pull/720
+- Verification: GitHub PR Checks run #448 success。PR merged=true確認。git branch -aで対象feature branchなし。
+- Open Items: -
+
+### 2026-08-08 19:59 Codex
+- Summary: git ship: 改善台帳のapplied確定修正、Obsidian Markdown列挙共通化、Vertex/GCS同期修正をfeatureブランチへpushし、PR #720を作成。masterは保護ブランチのため直接mergeは未実行。
+- Chat Summary: Userから作業ツリー整理後にgit ship依頼。未コミット生成物はstashへ退避し、実装差分はコミット済み。master保護によりPR経由へ切替。
+- Decisions: master直接pushは保護ルールで拒否されたため、PR #720を作成し、mergeは明示承認待ちにした。
+- Changes: コミット: b88b674, f5e6139, e3a5721, 32deac8。PR: https://github.com/tune-77/tune_lease_55/pull/720
+- Verification: pytest 18 passed。preflight_pr_guard warningなし。py_compile OK。
+- Open Items: -
+
+### 2026-08-08 19:40 Codex
+- Summary: 紫苑チャットの曖昧な情報要求で、手元データがない場合に外部調査許可を確認する制御を追加
+- Chat Summary: ユーザーから、情報がない場合に紫苑が『ネットで調査してもいいですか？』と聞くようにしたい、続けてgitshipの依頼。今回差分だけをコミットしてブランチへpush。
+- Decisions: 手元RAGが0件かつ補助金・金利・政策・ニュース等の外部確認が自然な質問では、捏造せず許可確認を返す。基本的な安定知識では確認を出さない。
+- Changes: api/chat_external_research.py, api/chat_persona_prompts.py, api/chat_context_builder.py, api/main.py, related tests
+- Verification: pytest tests/test_chat_external_research.py tests/test_chat_persona_prompts.py tests/test_shion_specificity_prompt.py tests/test_chat_context_builder.py: 35 passed; py_compile OK; git diff --check OK; preflight_pr_guard warnings only in pre-existing api/routers/vault_hub.py
+- Open Items: -
 
 ### 2026-08-02 10:39 Codex
 - Summary: Vertex AI Searchの検索・Answer API結果をObsidian材料ノートとして保存する導線と、無料期間中に材料を貯めるバッチ収集スクリプトを追加した。
@@ -64,44 +104,4 @@
 - Decisions: post_chat本体の副作用順序は触らず、payload/検索補助/接続状態の実体だけをhelperへ移し、旧api.main関数名は薄いwrapperとして維持。data/配下はコミット対象から除外。
 - Changes: api/chat_debug_metadata.py / api/chat_retrieval.py / api/chat_routing.py
 - Verification: py_compile OK; preflight no warnings; targeted pytest 74 passed; frontend npm run typecheck OK
-- Open Items: -
-
-### 2026-08-02 07:56 Codex
-- Summary: チャット外部調査とrouting helperを分離しmasterへpush
-- Chat Summary: ユーザーがアーキテクチャ整理の続きを依頼。preflight警告の整理後、外部調査同意フローとチャット分類/context budgetをmain.pyから分離し、gitshipを依頼された。
-- Decisions: 既存挙動と旧api.main参照を保つため、実体は新helperへ移し、main.pyには薄い互換wrapperを残す。data/配下はコミット対象から除外。
-- Changes: api/chat_external_research.py / api/chat_routing.py / api/main.py
-- Verification: py_compile OK; preflight no warnings; targeted pytest 56 passed; frontend npm run typecheck OK
-- Open Items: -
-
-### 2026-08-02 07:41 Codex
-- Summary: Vertex連携後の/api/chatアーキテクチャ整理を実施し、helper分離をmasterへpush
-- Chat Summary: ユーザーが複雑化したチャット/RAG/Vertex構成の整理を依頼。段階的に retrieval/context/prompt/response/debug/side-effect payload を分離し、最後に gitship を依頼された。
-- Decisions: 既存RAGとVertex補助検索の挙動は維持し、副作用実行順を変えずにpayload組み立てだけをhelper化する方針で整理。data/配下の実行生成物はコミット対象から除外。
-- Changes: api/main.py / api/chat_retrieval.py / api/chat_context_builder.py
-- Verification: py_compile OK; targeted pytest 27 passed; frontend npm run typecheck OK; preflight guard warnings only
-- Open Items: -
-
-### 2026-08-02 07:08 Codex
-- Summary: Vertex AI Search / Answer API を Obsidian RAG 補助として統合し、審査分析の紫苑レビューに grounding score 表示を追加。夜間パイプラインの差分アップロードも追加。
-- Chat Summary: User は Genaiappbuilder credits を使い、Obsidian RAG と Vertex AI Search/Answer API を比較・ハイブリッド化したいと依頼。最後に gitship を依頼し、feat/system-map を master へマージした。
-- Decisions: 既存Obsidian RAGを主軸にし、Vertex Search/Answer API は補助検索として利用。公式 grounding score が返らない場合は citation coverage fallback と明示する。
-- Changes: api/vertex_agent_search.py, api/main.py, frontend/src/app/screening/page.tsx, frontend/src/app/vertex-search-debug/page.tsx, scripts/sync_obsidian_to_vertex_agent_search.py, docs/vertex_ai_search_obsidian_pilot.md, tests/test_vertex_agent_search.py
-- Verification: py_compile, pytest tests/test_vertex_agent_search.py tests/test_chat_judgment_asset_capture.py -q, npm run typecheck, /api/chat debug_memory=true 実検証
-- Open Items: -
-
-### 2026-07-31 14:14 Codex
-- Summary: Obsidianグラフの複雑さが判断に効いているかを測定するレポートを追加してgit ship
-- Chat Summary: ユーザー要望: Obsidianグラフの複雑さが判断に効いているかを見る。wikilink構造とRAG/記憶使用ログを突き合わせる観測レポートを追加した。
-- Decisions: Obsidian本文、RAG順位、プロンプト、スコアリング、判断資産active storeは変更しない。観測レポートと育成ブリーフ反映までに限定。
-- Changes: scripts/build_obsidian_graph_judgment_effect.py、tests/test_obsidian_graph_judgment_effect.py、reports/obsidian_graph_judgment_effect_latest.md を追加。scripts/build_shion_growth_brief.py と run_daily_improvement_post.sh に接続。
-- Verification: pytest tests/test_obsidian_graph_judgment_effect.py tests/test_shion_growth_brief.py: 4 passed。py_compile OK。bash -n scripts/run_daily_improvement_post.sh OK。preflight_pr_guard 警告なし。
-- Open Items: -
-
-### 2026-07-31 12:20 Codex
-- Summary: 紫苑の記憶育成ループを日次化して git ship
-- Chat Summary: 4層記憶、昇格、判断資産候補、効果測定、A/B、永続監査、手放し育成ブリーフを日次運用へ接続し、将来のGemini/Claude/Codex会議は保留する判断を保存した。
-- Decisions: data/配下はコミット対象から除外。判断資産active化やスコアリング変更は自動化せず、観測・候補・ブリーフ生成までに限定。
-- Changes: PERSISTENT_MEMORY.md、memory_layers、memory_promotion_policy、shion_memory_impact、記憶効果/A-B/永続監査/育成ブリーフ scripts、run_daily_improvement_post.sh、関連テスト、latest report md を追加/更新。
-- Verification: pytest関連36件 passed、py_compile OK、bash -n scripts/run_daily_improvement_post.sh OK、preflight_pr_guardは既存api/main.py警告のみ。
 - Open Items: -

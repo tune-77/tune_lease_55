@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import json
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -99,6 +100,84 @@ def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
         logger.error("list_cases DB error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     return rows
+
+
+@router.get("/api/cases/pending")
+def get_pending_cases():
+    """未登録案件一覧。
+
+    main.py 側にも互換エンドポイントがあるが、この router の
+    `/api/cases/{case_id}` より後に登録されるため、静的パスをここで先に受ける。
+    """
+    rows = []
+
+    try:
+        with get_connection() as conn:
+            res = conn.execute(
+                "SELECT id, timestamp, industry_sub, score, data "
+                "FROM past_cases "
+                "WHERE COALESCE(NULLIF(final_status, ''), '未登録') IN ('未登録', '稟議中', 'スコアリングのみ') "
+                "ORDER BY timestamp DESC LIMIT 50"
+            ).fetchall()
+            for r in res:
+                try:
+                    data = json.loads(r["data"] or "{}")
+                except Exception:
+                    data = {}
+                inputs = data.get("inputs") if isinstance(data.get("inputs"), dict) else {}
+                result = data.get("result") if isinstance(data.get("result"), dict) else {}
+                rows.append({
+                    "id": str(r["id"]),
+                    "company_no": data.get("company_no") or inputs.get("company_no") or "",
+                    "company_name": data.get("company_name") or inputs.get("company_name") or "名称未設定",
+                    "timestamp": r["timestamp"],
+                    "score": r["score"] if r["score"] not in (None, "") else result.get("score", result.get("score_base")),
+                    "hantei": result.get("hantei") or data.get("hantei") or "",
+                    "industry": r["industry_sub"] or data.get("industry_sub") or inputs.get("industry_sub") or data.get("industry_major") or inputs.get("industry_major") or "",
+                    "registration_date": data.get("registration_date") or (r["timestamp"] or "")[:10],
+                    "estimate_sent_date": data.get("estimate_sent_date") or (r["timestamp"] or "")[:10],
+                    "final_result_date": data.get("final_result_date"),
+                    "_source": "past_cases",
+                })
+    except Exception as e:
+        logger.error("get_pending_cases DB error: %s", e)
+
+    rows.extend(_list_cloudrun_score_pending_cases(limit=50))
+    rows.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
+    return rows[:80]
+
+
+def _list_cloudrun_score_pending_cases(limit: int = 50) -> list[dict]:
+    try:
+        from api.cloudrun_pending_cases import cloudrun_score_pending_item
+        from api.routers.feedback_loop import (
+            _CLOUDRUN_RETURN_DB,
+            _cloudrun_return_table_exists,
+            _connect_cloudrun_return_db,
+            _ensure_cloudrun_return_review_schema,
+        )
+
+        if not _CLOUDRUN_RETURN_DB.exists():
+            return []
+        with _connect_cloudrun_return_db() as conn:
+            _ensure_cloudrun_return_review_schema(conn)
+            if not _cloudrun_return_table_exists(conn, "cloudrun_score_inputs"):
+                return []
+            rows = conn.execute(
+                """
+                SELECT *
+                  FROM cloudrun_score_inputs
+                 WHERE COALESCE(NULLIF(return_review_status, ''), 'candidate') != 'rejected'
+                   AND COALESCE(return_registered_case_id, '') = ''
+                 ORDER BY COALESCE(NULLIF(created_at, ''), '1970-01-01') DESC, id DESC
+                 LIMIT ?
+                """,
+                (max(1, min(int(limit or 50), 200)),),
+            ).fetchall()
+        return [cloudrun_score_pending_item(dict(row)) for row in rows]
+    except Exception as exc:
+        logger.warning("cloudrun score pending list skipped: %s", exc)
+        return []
 
 
 @router.get("/api/cases/industry-winrate")

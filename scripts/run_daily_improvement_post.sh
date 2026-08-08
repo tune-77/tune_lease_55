@@ -178,6 +178,18 @@ done
 if [ "${MANA_STATUS}" = "missing" ]; then log_step "mana_obsidian_curator" 1; else log_step "mana_obsidian_curator" 0; fi
 
 echo ""
+echo "[内省] 内省を実務アクション候補へ変換（承認待ち・自動反映なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_reflection_action_candidates.py"
+log_step "build_reflection_action_candidates_post" $?
+
+echo ""
+echo "[内省] 内省アクション候補を改善レポートの自己提案欄へ接続..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/attach_shion_self_proposals_to_report.py" \
+  --latest "${LATEST_FILE}" \
+  --limit 10
+log_step "attach_shion_self_proposals_post" $?
+
+echo ""
 echo "[司書] Obsidian Curator レポートを生成（Slack日次レポート / Mana番人 / 成長レポートが参照）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_curator_report.py"; log_step "obsidian_curator_report" $?
 

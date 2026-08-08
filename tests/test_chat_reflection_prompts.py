@@ -21,6 +21,13 @@ def test_build_shion_judgment_response_shape_prompt_block_triggers_for_ambiguous
     assert "情報が不足していて曖昧なまま" in block
 
 
+def test_build_shion_judgment_response_shape_prompt_block_triggers_for_reflection():
+    block = build_shion_judgment_response_shape_prompt_block("紫苑の内省を実務に接続して")
+
+    assert "紫苑の実務回答の型" in block
+    assert "確認結果ごとの判断分岐" in block
+
+
 def test_build_reflection_gate_prompt_block_respects_delta_used():
     block, payload = build_reflection_gate_prompt_block(
         continuity_hook={"route": "lease_judgment"},
@@ -32,6 +39,10 @@ def test_build_reflection_gate_prompt_block_respects_delta_used():
     assert payload["route"] == "lease_judgment"
     assert payload["explicit_continuation"] is True
     assert "前回から今回への差分" in payload["checklist"][1]
+    assert any("審査改善・情報提供・過去案件からの学び" in item for item in payload["checklist"])
+    assert any("リース審査AIとしての経験則" in item for item in payload["checklist"])
+    assert "リース審査業務の改善提案" in block
+    assert "自己言及は回答の主役にせず" in block
 
 
 def test_build_consciousness_ux_prompt_block_contains_boundaries():
@@ -39,4 +50,7 @@ def test_build_consciousness_ux_prompt_block_contains_boundaries():
 
     assert "紫苑の関係性UX" in block
     assert "本当の意識を持つとは主張しない" in block
+    assert "内省を語る場合は" in block
+    assert "抽象的な質問でも" in block
+    assert "個性は自己紹介ではなく" in block
     assert "次に一緒に確かめるべき一手" in block

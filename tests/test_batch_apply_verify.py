@@ -71,3 +71,19 @@ def test_candidate_paths_covers_target_and_type_specific_files():
     rule_ui = {"rev_id": "R3", "type": "ui_text"}
     paths_ui = batch_apply._candidate_paths(rule_ui)
     assert any(str(p).endswith("ui_labels.json") for p in paths_ui)
+
+
+def test_external_rule_types_are_skipped_without_failure(capsys):
+    rules = [
+        {
+            "rev_id": "RAG-UNRATED-X",
+            "type": "rag_boost_adjust",
+            "description": "RAG 未評価通知",
+        }
+    ]
+
+    batch_apply.run_batch(rules, dry_run=False, rev_filter=None)
+
+    out = capsys.readouterr().out
+    assert "外部処理型スキップ" in out
+    assert "適用失敗                  :   0 件" in out
