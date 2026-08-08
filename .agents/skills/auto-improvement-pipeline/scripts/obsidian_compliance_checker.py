@@ -15,6 +15,10 @@ _FORBIDDEN_PATTERNS = [
 _ALLOWED_FILES = {
     "mobile_app/obsidian_bridge.py",
     "scripts/extract_obsidian_improvements.py",
+    # gcs_vault_loader.py はGCS→ローカルへVaultを同期する「入力層」であり、
+    # obsidian_query.py/obsidian_ai_context.py/obsidian_bridge.py が読む対象を
+    # 用意する側。検索・AIコンテキスト取得の共通経路の対象外として明示的に許可する。
+    "scripts/gcs_vault_loader.py",
 }
 
 _SCAN_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx"}

@@ -10,10 +10,17 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from obsidian_query import list_vault_md_files  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -216,7 +223,7 @@ def build_report(
 ) -> dict[str, Any]:
     notes: list[dict[str, Any]] = []
     terms_by_path: dict[str, set[str]] = {}
-    for path in sorted(knowledge_dir.rglob("*.md")):
+    for path in sorted(list_vault_md_files(knowledge_dir)):
         rel = path.relative_to(PROJECT_ROOT).as_posix() if path.is_absolute() else path.as_posix()
         meta, body = _load_frontmatter(path)
         title = _note_title(meta, body, path)

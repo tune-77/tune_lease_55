@@ -631,7 +631,12 @@ def google_search_grounding(query: str, *, model: str | None = None) -> dict[str
             else f"https://{location}-aiplatform.googleapis.com/v1/projects/{config.project_id}/locations/{location}/"
             f"publishers/google/models/{model_id}:generateContent"
         )
-        response = _post_json(url, body, config)
+        response = _post_json(
+            url,
+            body,
+            config,
+            timeout_seconds=float(os.environ.get("VERTEX_GOOGLE_SEARCH_GROUNDING_TIMEOUT_SECONDS", "30") or 30),
+        )
         text_parts = []
         candidate = (response.get("candidates") or [{}])[0]
         for part in candidate.get("content", {}).get("parts", []) or []:
@@ -657,13 +662,19 @@ def google_search_grounding(query: str, *, model: str | None = None) -> dict[str
         rest_error = _compact_text(rest_exc, 180)
 
     try:
-        os.environ.setdefault("GOOGLE_GENAI_USE_ENTERPRISE", "True")
-        os.environ.setdefault("GOOGLE_CLOUD_PROJECT", config.project_id)
-        os.environ.setdefault("GOOGLE_CLOUD_LOCATION", location)
         from google import genai  # type: ignore[import-not-found]
         from google.genai.types import GenerateContentConfig, GoogleSearch, HttpOptions, Tool  # type: ignore[import-not-found]
+        from google.oauth2.credentials import Credentials as _OAuthCredentials  # type: ignore[import-not-found]
 
-        client = genai.Client(http_options=HttpOptions(api_version="v1"))
+        sdk_token = _access_token()
+        sdk_credentials = _OAuthCredentials(token=sdk_token) if sdk_token else None
+        client = genai.Client(
+            vertexai=True,
+            project=config.project_id,
+            location=location,
+            credentials=sdk_credentials,
+            http_options=HttpOptions(api_version="v1"),
+        )
         response = client.models.generate_content(
             model=model_id,
             contents=prompt,

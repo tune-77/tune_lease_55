@@ -97,6 +97,28 @@ def applied_rev_ids(entries: list[dict]) -> set[str]:
     return set(applied_entries_by_rev(entries))
 
 
+def _canonical_key_of(row: dict) -> str:
+    return str(row.get("canonical_key") or "").strip()
+
+
+def applied_canonical_keys(entries: list[dict]) -> set[str]:
+    """status=applied のエントリの canonical_key 集合を返す。
+
+    rev_id_from_entry() は title/reason に "REV-NNN" という文字列パターンが
+    含まれる場合しかマッチしない。週次レポート由来の改善案（今日のREV-019の
+    ような、週ごとに1から振り直される番号）は大半がこのパターンを含まない
+    ため、rev_id ベースの突合だけでは大部分の項目が比較対象から漏れる。
+    canonical_key は内容ハッシュなのでより広くカバーできる（description の
+    ブレで完全一致しないケースはあるが、rev_idより検知範囲は広い）ため、
+    補助シグナルとして併用する。
+    """
+    return {
+        _canonical_key_of(row)
+        for row in entries
+        if _status(row) == "applied" and _canonical_key_of(row)
+    }
+
+
 def status_counts(entries: list[dict]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for row in entries:
@@ -187,6 +209,33 @@ def main() -> int:
             print(f"[ledger_consistency] ⚠️ applied がランタイム台帳のみに存在: {', '.join(only_runtime[:10])}")
         else:
             print(f"[ledger_consistency] 情報: applied がランタイム台帳のみに存在（手動トリアージ等）: {', '.join(only_runtime[:10])}")
+    # 補助シグナル: canonical_key ベースの突合。rev_id ベースの比較は
+    # "REV-NNN" 文字列を含む項目しか対象にできず検知範囲が狭いため、より
+    # 広くカバーできる canonical_key でも突合する。exit code や
+    # --sync-repo-applied-to-runtime の動作には影響させない（情報提供のみ）。
+    repo_applied_ck = applied_canonical_keys(repo_entries)
+    runtime_applied_ck_recent = applied_canonical_keys(runtime_entries)
+    runtime_applied_ck_all = applied_canonical_keys(runtime_entries_all)
+    only_repo_ck = sorted(repo_applied_ck - runtime_applied_ck_all)
+    only_runtime_ck = sorted(runtime_applied_ck_recent - repo_applied_ck)
+    print(
+        f"[ledger_consistency] 補助チェック(canonical_key): "
+        f"リポジトリ側applied {len(repo_applied_ck)} 件 / "
+        f"ランタイム側applied(直近) {len(runtime_applied_ck_recent)} 件"
+    )
+    if only_repo_ck:
+        print(
+            f"[ledger_consistency] 情報: canonical_keyがリポジトリ台帳のみに存在 "
+            f"（rev_id未付与の可能性、要確認）: {len(only_repo_ck)} 件 "
+            f"{', '.join(only_repo_ck[:10])}"
+        )
+    if only_runtime_ck:
+        print(
+            f"[ledger_consistency] 情報: canonical_keyがランタイム台帳のみに存在 "
+            f"（直近{args.days}日、CIへの反映待ちの可能性）: {len(only_runtime_ck)} 件 "
+            f"{', '.join(only_runtime_ck[:10])}"
+        )
+
     if repo_entries and not runtime_entries and RUNTIME_LEDGER.exists():
         warnings += 1
         print("[ledger_consistency] ⚠️ ランタイム台帳に直近エントリがありません（時刻フィールドの読み違い or 書き込み停止の可能性）")

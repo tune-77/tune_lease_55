@@ -11,6 +11,30 @@ from api.routers.vault_hub import _research_organ_vault_path, _research_run_disp
 from runtime_paths import get_data_dir
 
 
+NO_DATA_RESEARCH_TERMS = (
+    "最新",
+    "ニュース",
+    "記事",
+    "要約",
+    "期限",
+    "制度",
+    "補助金",
+    "金利",
+    "政策",
+    "動向",
+    "市場",
+    "統計",
+    "大臣",
+    "総裁",
+    "日銀",
+    "政府",
+    "会見",
+    "調べて",
+    "検索",
+    "リサーチ",
+)
+
+
 def external_research_topic_from_message(message: str) -> str:
     text = re.sub(r"\s+", " ", (message or "").strip())
     text = re.sub(
@@ -21,6 +45,17 @@ def external_research_topic_from_message(message: str) -> str:
     if not text:
         text = (message or "").strip()
     return text[:120]
+
+
+def _should_offer_research_for_no_data(message: str, *, question_category: str, knowledge_ref_count: int) -> bool:
+    if knowledge_ref_count > 0:
+        return False
+    if question_category not in {"lease_screening", "lease_knowledge"}:
+        return False
+    text = re.sub(r"\s+", "", str(message or ""))
+    if len(text) < 4:
+        return False
+    return any(term in text for term in NO_DATA_RESEARCH_TERMS)
 
 
 def build_external_research_suggestion(
@@ -54,13 +89,20 @@ def build_external_research_suggestion(
             "調査器官",
         )
     )
-    if not explicit_research:
+    no_data_research = _should_offer_research_for_no_data(
+        text,
+        question_category=question_category,
+        knowledge_ref_count=knowledge_ref_count,
+    )
+    if not explicit_research and not no_data_research:
         return {"needed": False}
 
     topic = external_research_topic_from_message(text)
     reason_parts: list[str] = []
     if explicit_research:
         reason_parts.append("ユーザーが外部調査を求めています")
+    if no_data_research:
+        reason_parts.append("手元のObsidian/RAGに該当データがありません")
     if knowledge_ref_count == 0 and question_category not in {"general", "news_summarize"}:
         reason_parts.append("Obsidian/RAGの参照が薄い論点です")
     reason = " / ".join(reason_parts[:2]) or "外部情報で補う価値があります"
@@ -76,10 +118,10 @@ def external_research_permission_reply(suggestion: dict[str, Any]) -> str:
     topic = str(suggestion.get("topic") or "").strip() or "この論点"
     reason = str(suggestion.get("reason") or "").strip() or "外部情報で補う価値があります"
     return (
-        "ここは手元の記憶だけで断定しない方がいいです。\n\n"
+        "この件は手元のデータがありません。ネットで調査してもいいですか？\n\n"
         f"- 足りない情報: {topic}\n"
         f"- 理由: {reason}\n\n"
-        "ネットで調べて、ObsidianのResearchノートに保存してから回答に使っていいですか？"
+        "許可をもらえれば、調査結果をObsidianのResearchノートに保存してから回答に使います。"
     )
 
 

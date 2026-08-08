@@ -94,7 +94,9 @@ def test_from_ledger_moves_applied_and_parked_items(tmp_path):
     updated_report, moved, parked_moved, skipped = mod.sync_report(
         report, applied_ids, [], parked_ids, []
     )
-    updated_latest = mod.sync_latest(latest, applied_ids, [], parked_ids, [])
+    final_applied_ids = [str(item.get("id") or "") for item in updated_report.get("applied", [])]
+    final_parked_ids = [str(item.get("id") or "") for item in updated_report.get("parked", [])]
+    updated_latest = mod.sync_latest(latest, final_applied_ids, final_parked_ids)
 
     assert moved == ["REV-001"]
     assert parked_moved == ["REV-002"]
@@ -105,3 +107,46 @@ def test_from_ledger_moves_applied_and_parked_items(tmp_path):
     assert updated_latest["needs_review_count"] == 0
     assert [item["id"] for item in updated_latest["applied_improvements"]] == ["REV-001"]
     assert [item["id"] for item in updated_latest["parked_improvements"]] == ["REV-002"]
+
+
+def test_report_to_latest_pipeline_does_not_double_bucket_item_matching_both_applied_and_parked(tmp_path):
+    """Regression test for the REV-019 (2026-08-08) anomaly: an item whose
+    title matches both an applied pattern and a parked_titles pattern (e.g.
+    "キャリブレーション") used to be appended to both applied_improvements and
+    parked_improvements. sync_latest() no longer resolves title patterns on
+    its own — it only projects sync_report()'s already-resolved, mutually
+    exclusive applied/parked id sets — so this is now structurally
+    impossible rather than merely guarded against.
+    """
+    mod = load_sync_module()
+    report = {
+        "needs_review": [
+            {
+                "id": "REV-019",
+                "title": "スコア80-100帯の成約率逆転：モデルキャリブレーション見直し",
+                "file": None,
+                "pr_url": None,
+            }
+        ],
+        "applied": [],
+        "summary": {},
+    }
+    latest = {
+        "needs_review": list(report["needs_review"]),
+        "applied_improvements": [],
+        "parked_improvements": [],
+    }
+
+    updated_report, _moved, _parked_moved, _skipped = mod.sync_report(
+        report, ["REV-019"], [], [], ["キャリブレーション"]
+    )
+    final_applied_ids = [str(item.get("id") or "") for item in updated_report.get("applied", [])]
+    final_parked_ids = [str(item.get("id") or "") for item in updated_report.get("parked", [])]
+    updated_latest = mod.sync_latest(latest, final_applied_ids, final_parked_ids)
+
+    applied_hit_ids = [item["id"] for item in updated_latest.get("applied_improvements", [])]
+    parked_hit_ids = [item["id"] for item in updated_latest.get("parked_improvements", [])]
+
+    assert applied_hit_ids == ["REV-019"]
+    assert "REV-019" not in parked_hit_ids
+    assert updated_latest["needs_review_count"] == 0

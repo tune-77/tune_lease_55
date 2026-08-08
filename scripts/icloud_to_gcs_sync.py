@@ -22,6 +22,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from obsidian_query import list_vault_md_files  # noqa: E402
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_VAULT_PREFIX = os.environ.get("GCS_VAULT_PREFIX", "vault/")
@@ -210,7 +211,7 @@ def _matches_prefix(rel: str, prefixes: tuple[str, ...]) -> bool:
 def collect_md_files(vault_dir: Path) -> list[Path]:
     """Cloud Run AIチャットに渡してよい Obsidian *.md だけを列挙する。"""
     result = []
-    for p in vault_dir.rglob("*.md"):
+    for p in list_vault_md_files(vault_dir):
         if ".obsidian" in p.parts:
             continue
         rel = p.relative_to(vault_dir).as_posix()

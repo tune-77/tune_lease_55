@@ -10,6 +10,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from obsidian_query import list_vault_md_files
+
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 ALLOWED_TYPES = {
@@ -45,7 +51,7 @@ def _iter_markdown_paths(targets: list[Path]) -> list[Path]:
     for target in targets:
         target = target.expanduser()
         if target.is_dir():
-            paths.extend(sorted(target.rglob("*.md")))
+            paths.extend(sorted(list_vault_md_files(target)))
         elif target.is_file() and target.suffix.lower() == ".md":
             paths.append(target)
     return paths

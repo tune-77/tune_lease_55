@@ -2,6 +2,7 @@ from api.chat_persona_prompts import (
     build_shion_human_device_resonance_prompt_block,
     build_shion_non_domain_prompt_block,
     build_shion_specificity_prompt_block,
+    build_shion_vague_information_request_prompt_block,
 )
 
 
@@ -43,3 +44,20 @@ def test_build_shion_human_device_resonance_prompt_block_can_be_forced():
     assert "人間デバイス" in block
     assert "本当の意識があるとは主張しない" in block
     assert build_shion_human_device_resonance_prompt_block("", modulus=1) == ""
+
+
+def test_build_shion_vague_information_request_prompt_block_handles_thin_requests():
+    block = build_shion_vague_information_request_prompt_block("片山大臣と植田日銀総裁の共同記者会見の要約見せて")
+
+    assert "できません" in block
+    assert "世界認識" in block
+    assert "未確認" in block
+    assert "Userの意図を具体化する質問1つ" in block
+
+
+def test_build_shion_vague_information_request_prompt_block_skips_specific_case_question():
+    block = build_shion_vague_information_request_prompt_block(
+        "製造業の工作機械リースで取得額5000万円、期間5年の場合の確認点を教えて"
+    )
+
+    assert block == ""

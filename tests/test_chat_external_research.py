@@ -12,13 +12,32 @@ def test_external_research_topic_strips_command_words():
     assert topic == "から、補助金付き工作機械リースの注意点"
 
 
-def test_external_research_suggestion_requires_explicit_research_request():
-    assert build_external_research_suggestion(
+def test_external_research_suggestion_triggers_when_no_data_for_researchable_topic():
+    suggestion = build_external_research_suggestion(
         "補助金付き工作機械リースの注意点を教えて",
         question_category="lease_knowledge",
         knowledge_ref_count=0,
         response_mode="shion",
+    )
+
+    assert suggestion == {
+        "needed": True,
+        "topic": "補助金付き工作機械リースの注意点を教えて",
+        "reason": "手元のObsidian/RAGに該当データがありません / Obsidian/RAGの参照が薄い論点です",
+        "output_dir": "Projects/tune_lease_55/Research/Auto Research/",
+    }
+
+
+def test_external_research_suggestion_skips_basic_stable_question_without_refs():
+    assert build_external_research_suggestion(
+        "ファイナンスリースとは？",
+        question_category="lease_knowledge",
+        knowledge_ref_count=0,
+        response_mode="shion",
     ) == {"needed": False}
+
+
+def test_external_research_suggestion_triggers_for_explicit_research_request():
 
     suggestion = build_external_research_suggestion(
         "ネットで調べて補助金付き工作機械リースの注意点を教えて",
@@ -30,7 +49,7 @@ def test_external_research_suggestion_requires_explicit_research_request():
     assert suggestion == {
         "needed": True,
         "topic": "補助金付き工作機械リースの注意点を教えて",
-        "reason": "ユーザーが外部調査を求めています / Obsidian/RAGの参照が薄い論点です",
+        "reason": "ユーザーが外部調査を求めています / 手元のObsidian/RAGに該当データがありません",
         "output_dir": "Projects/tune_lease_55/Research/Auto Research/",
     }
 
@@ -51,10 +70,10 @@ def test_external_research_permission_reply_keeps_consent_wording():
         {"topic": "補助金期限", "reason": "ユーザーが外部調査を求めています"}
     )
 
-    assert "ここは手元の記憶だけで断定しない方がいいです" in reply
+    assert "この件は手元のデータがありません。ネットで調査してもいいですか？" in reply
     assert "- 足りない情報: 補助金期限" in reply
     assert "- 理由: ユーザーが外部調査を求めています" in reply
-    assert "ObsidianのResearchノートに保存してから回答に使っていいですか？" in reply
+    assert "ObsidianのResearchノートに保存してから回答に使います" in reply
 
 
 def test_capture_vertex_materials_for_research_saves_two_modes(tmp_path, monkeypatch):

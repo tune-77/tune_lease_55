@@ -24,6 +24,7 @@ from runtime_paths import (  # noqa: E402
     LEGACY_OBSIDIAN_VAULT,
     describe_obsidian_vault_resolution,
 )
+from obsidian_query import list_vault_md_files  # noqa: E402
 
 DEFAULT_VAULT = LEGACY_OBSIDIAN_VAULT
 DEFAULT_JSON = REPO_ROOT / "reports" / "obsidian_environment_monitor_latest.json"
@@ -138,7 +139,7 @@ def check_vault(vault: Path) -> MonitorCheck:
         return MonitorCheck("vault", "fail", f"Vault not found: {vault}")
     if not (vault / ".obsidian").exists():
         return MonitorCheck("vault", "warn", f"Vault exists but .obsidian is missing: {vault}")
-    md_count = sum(1 for _ in vault.rglob("*.md"))
+    md_count = len(list_vault_md_files(vault))
     return MonitorCheck("vault", "ok", f"Vault reachable, markdown files={md_count}", {"md_count": md_count})
 
 
@@ -422,7 +423,7 @@ def check_self_reference_loop() -> MonitorCheck:
 def recent_notes(vault: Path, max_age_hours: int, limit: int = 120) -> list[Path]:
     cutoff = _now() - timedelta(hours=max_age_hours)
     notes: list[Path] = []
-    for path in vault.rglob("*.md"):
+    for path in list_vault_md_files(vault):
         try:
             modified = datetime.fromtimestamp(path.stat().st_mtime, tz=_now().tzinfo)
         except OSError:

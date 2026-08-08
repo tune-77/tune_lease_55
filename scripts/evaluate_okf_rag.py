@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from api.knowledge.obsidian_loader import _chunk_by_h2, _parse_frontmatter
 from api.knowledge.vector_store import KnowledgeVectorStore
+from obsidian_query import list_vault_md_files
 from scripts.evaluate_obsidian_rag import evaluate_cases
 
 DEFAULT_KNOWLEDGE_DIR = REPO_ROOT / "knowledge_base" / "okf_lease_concepts"
@@ -24,7 +25,7 @@ DEFAULT_REPORT = REPO_ROOT / "reports" / "okf_rag_eval_latest.json"
 
 def _load_okf_chunks(knowledge_dir: Path):
     chunks = []
-    for path in sorted(knowledge_dir.rglob("*.md")):
+    for path in sorted(list_vault_md_files(knowledge_dir)):
         raw = path.read_text(encoding="utf-8")
         meta, body = _parse_frontmatter(raw)
         rel = path.relative_to(REPO_ROOT).as_posix()
