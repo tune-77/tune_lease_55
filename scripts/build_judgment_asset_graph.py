@@ -46,6 +46,105 @@ EDGE_COLORS = {
 }
 
 
+def _rule_insight_item(rule: dict[str, Any], node: dict[str, Any], reason: str) -> dict[str, Any]:
+    return {
+        "id": str(rule.get("id") or ""),
+        "label": str(node.get("label") or _rule_label(rule)),
+        "concept": str(rule.get("concept") or ""),
+        "reason": reason,
+        "evidence_count": int(node.get("evidence_count") or 0),
+        "user_evidence_count": int(node.get("user_evidence_count") or 0),
+        "feedback_used": int(node.get("feedback_used") or 0),
+        "feedback_helped": int(node.get("feedback_helped") or 0),
+        "feedback_challenged": int(node.get("feedback_challenged") or 0),
+        "lineage_depth": int(node.get("lineage_depth") or 0),
+    }
+
+
+def _build_graph_engineering_summary(
+    *,
+    rules: list[dict[str, Any]],
+    nodes: dict[str, dict[str, Any]],
+    edges: list[dict[str, Any]],
+    feedback_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    real_feedback = [row for row in feedback_rows if not _is_simulation_feedback(row) and _feedback_rule_id(row)]
+    simulated_feedback = [row for row in feedback_rows if _is_simulation_feedback(row) and _feedback_rule_id(row)]
+    real_cases = {_case_id(row, index) for index, row in enumerate(real_feedback)}
+    rule_items: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for rule in rules:
+        rule_id = str(rule.get("id") or "").strip()
+        node = nodes.get(f"rule:{rule_id}")
+        if node:
+            rule_items.append((rule, node))
+
+    untested = [
+        _rule_insight_item(rule, node, "実案件フィードバックがまだ付いていない")
+        for rule, node in rule_items
+        if int(node.get("feedback_used") or 0) == 0
+    ]
+    effective = [
+        _rule_insight_item(rule, node, "人間フィードバックで効いた記録がある")
+        for rule, node in rule_items
+        if int(node.get("feedback_helped") or 0) > 0
+    ]
+    contested = [
+        _rule_insight_item(rule, node, "見直し・却下の記録がある")
+        for rule, node in rule_items
+        if int(node.get("feedback_challenged") or 0) > 0
+    ]
+    high_potential = [
+        _rule_insight_item(rule, node, "根拠は厚いが実案件検証が未了")
+        for rule, node in rule_items
+        if int(node.get("feedback_used") or 0) == 0
+        and int(node.get("evidence_count") or 0) + int(node.get("user_evidence_count") or 0) * 2 >= 8
+    ]
+    isolated = [
+        _rule_insight_item(rule, node, "リスク軸・ドメイン・根拠・親子関係の接続が薄い")
+        for rule, node in rule_items
+        if int(node.get("degree") or 0) <= 1
+    ]
+
+    def score_potential(item: dict[str, Any]) -> tuple[int, int, str]:
+        return (
+            int(item.get("evidence_count") or 0) + int(item.get("user_evidence_count") or 0) * 2,
+            int(item.get("lineage_depth") or 0),
+            str(item.get("id") or ""),
+        )
+
+    def score_effective(item: dict[str, Any]) -> tuple[int, int, str]:
+        return (
+            int(item.get("feedback_helped") or 0),
+            int(item.get("feedback_used") or 0),
+            str(item.get("id") or ""),
+        )
+
+    bottlenecks: list[str] = []
+    if not real_cases:
+        bottlenecks.append("実案件フィードバックが未接続。現状は判断資産の在庫と系統の観測が中心。")
+    if len(untested) > len(effective):
+        bottlenecks.append("未検証の判断資産が有効確認済みより多い。次は案件レビューでの使用結果を集める。")
+    if isolated:
+        bottlenecks.append("接続の薄い判断資産がある。リスク軸・業種・根拠ログへの紐づけを補う。")
+
+    return {
+        "real_feedback_rows": len(real_feedback),
+        "simulation_feedback_rows": len(simulated_feedback),
+        "real_cases": len(real_cases),
+        "tested_rules": len(rule_items) - len(untested),
+        "untested_rules": len(untested),
+        "effective_rules": len(effective),
+        "contested_rules": len(contested),
+        "isolated_rules": len(isolated),
+        "edge_mix": dict(sorted(Counter(str(edge.get("type") or "") for edge in edges).items())),
+        "top_effective_rules": sorted(effective, key=score_effective, reverse=True)[:5],
+        "high_potential_rules": sorted(high_potential, key=score_potential, reverse=True)[:5],
+        "contested_rules_list": sorted(contested, key=score_effective, reverse=True)[:5],
+        "isolated_rules_list": sorted(isolated, key=score_potential, reverse=True)[:5],
+        "bottlenecks": bottlenecks,
+    }
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -276,6 +375,14 @@ def build_graph_data(
         helped = int(feedback_counts.get("helped") or 0)
         challenged = int(feedback_counts.get("challenged") or 0) + int(feedback_counts.get("rejected") or 0)
         used = sum(int(v or 0) for v in feedback_counts.values())
+        if helped > 0 and challenged == 0:
+            validation_status = "effective"
+        elif challenged > 0:
+            validation_status = "contested"
+        elif used > 0:
+            validation_status = "tested"
+        else:
+            validation_status = "untested"
         confidence = float(rule.get("confidence") or 0)
         evidence_count = int(rule.get("evidence_count") or 0)
         user_evidence_count = int(rule.get("user_evidence_count") or 0)
@@ -293,6 +400,7 @@ def build_graph_data(
                 "feedback_used": used,
                 "feedback_helped": helped,
                 "feedback_challenged": challenged,
+                "validation_status": validation_status,
                 "parent_ids": lineage_meta.get("parent_ids") or [],
                 "derivation_reason": lineage_meta.get("derivation_reason") or "",
                 "lineage_depth": int(lineage_meta.get("lineage_depth") or 0),
@@ -387,9 +495,15 @@ def build_graph_data(
     lineage_edges = sum(1 for edge in edges if edge.get("type") == "lineage")
     lineage_derived = sum(1 for item in lineage.values() if item.get("parent_ids"))
     lineage_roots = max(0, type_counts.get("rule", 0) - lineage_derived)
+    engineering = _build_graph_engineering_summary(
+        rules=rules,
+        nodes=nodes,
+        edges=edges,
+        feedback_rows=feedback_rows,
+    )
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "schema_version": 1,
+        "schema_version": 2,
         "mode": "local_visualization_only",
         "guardrail": "no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write",
         "summary": {
@@ -411,6 +525,7 @@ def build_graph_data(
                 "end_date": latest_period.get("end_date", ""),
             },
         },
+        "engineering": engineering,
         "nodes": sorted(nodes.values(), key=lambda node: (str(node.get("type")), str(node.get("label")))),
         "edges": edges,
     }
@@ -419,9 +534,39 @@ def build_graph_data(
 def build_html(graph: dict[str, Any]) -> str:
     payload_json = json.dumps(graph, ensure_ascii=False)
     summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}
+    engineering = graph.get("engineering") if isinstance(graph.get("engineering"), dict) else {}
     generated = html.escape(str(graph.get("generated_at") or ""))
     growth_label = html.escape(str(summary.get("growth_label") or "未判定"))
     growth_score = html.escape(str(summary.get("growth_score") or "-"))
+
+    def render_items(items: Any, empty_label: str) -> str:
+        if not isinstance(items, list) or not items:
+            return f'<li class="muted-item">{html.escape(empty_label)}</li>'
+        rendered = []
+        for item in items[:5]:
+            if not isinstance(item, dict):
+                continue
+            label = html.escape(str(item.get("label") or item.get("id") or ""))
+            reason = html.escape(str(item.get("reason") or ""))
+            meta = (
+                f'根拠 {int(item.get("evidence_count") or 0)} / '
+                f'ユーザー根拠 {int(item.get("user_evidence_count") or 0)} / '
+                f'使用 {int(item.get("feedback_used") or 0)}'
+            )
+            rendered.append(
+                '<li>'
+                f'<button class="jump" data-node-id="rule:{html.escape(str(item.get("id") or ""), quote=True)}">{label}</button>'
+                f'<span>{reason}</span>'
+                f'<small>{html.escape(meta)}</small>'
+                '</li>'
+            )
+        return "".join(rendered) or f'<li class="muted-item">{html.escape(empty_label)}</li>'
+
+    def render_bottlenecks(items: Any) -> str:
+        if not isinstance(items, list) or not items:
+            return '<li class="muted-item">大きな詰まりは検出されていません。</li>'
+        return "".join(f"<li>{html.escape(str(item))}</li>" for item in items[:4])
+
     return f"""<!doctype html>
 <html lang="ja">
 <head>
@@ -514,6 +659,49 @@ button:hover {{ background: #f1f5f9; }}
 .legend {{ display: grid; gap: 7px; }}
 .legend-row {{ display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; }}
 .dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; }}
+.insight-grid {{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}}
+.mini-stat {{
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+}}
+.mini-stat b {{ display: block; font-size: 16px; }}
+.mini-stat span {{ color: var(--muted); font-size: 11px; }}
+.insight-list {{
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 7px;
+}}
+.insight-list li {{
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  color: #334155;
+}}
+.insight-list .jump {{
+  width: 100%;
+  text-align: left;
+  border: 0;
+  padding: 0;
+  color: #0f172a;
+  font-weight: 800;
+  background: transparent;
+}}
+.insight-list .jump:hover {{ color: #0f766e; background: transparent; }}
+.insight-list small {{ color: var(--muted); }}
+.muted-item {{ color: var(--muted); }}
 .note {{ color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 16px; }}
 @media (max-width: 860px) {{
   .app {{ grid-template-columns: 1fr; }}
@@ -539,6 +727,21 @@ button:hover {{ background: #f1f5f9; }}
       <div class="stat"><b>{summary.get("lineage_roots", 0)}</b><span>起点の判断</span></div>
       <div class="stat"><b>{summary.get("lineage_derived", 0)}</b><span>派生した判断</span></div>
     </div>
+    <h2>Graph Engineering</h2>
+    <div class="insight-grid">
+      <div class="mini-stat"><b>{engineering.get("tested_rules", 0)}</b><span>検証済み判断</span></div>
+      <div class="mini-stat"><b>{engineering.get("untested_rules", 0)}</b><span>未検証判断</span></div>
+      <div class="mini-stat"><b>{engineering.get("effective_rules", 0)}</b><span>効いた記録</span></div>
+      <div class="mini-stat"><b>{engineering.get("isolated_rules", 0)}</b><span>接続薄い判断</span></div>
+    </div>
+    <h2>次に検証</h2>
+    <ul class="insight-list">
+      {render_items(engineering.get("high_potential_rules"), "未検証の高ポテンシャル判断はありません。")}
+    </ul>
+    <h2>詰まり</h2>
+    <ul class="insight-list">
+      {render_bottlenecks(engineering.get("bottlenecks"))}
+    </ul>
     <h2>検索</h2>
     <input id="search" type="search" placeholder="判断テーマ、リスク軸、根拠ログ...">
     <h2>表示</h2>
@@ -709,12 +912,22 @@ function showTooltip(event, node) {{
   if (node.derivation_reason) parts.push(`派生理由: ${{node.derivation_reason}}`);
   if (node.lineage_depth) parts.push(`世代: ${{node.lineage_depth}}`);
   if (node.evidence_count !== undefined) parts.push(`根拠数: ${{node.evidence_count}} / ユーザー根拠: ${{node.user_evidence_count || 0}}`);
+  if (node.validation_status) parts.push(`検証状態: ${{validationLabel(node.validation_status)}}`);
   if (node.feedback_used) parts.push(`実案件反応: 使用 ${{node.feedback_used}}, 効いた ${{node.feedback_helped || 0}}, 見直し ${{node.feedback_challenged || 0}}`);
   if (node.title && !node.statement) parts.push(node.title);
   tooltip.innerHTML = parts.join("<br>");
   tooltip.style.opacity = "1";
   tooltip.style.left = `${{event.clientX}}px`;
   tooltip.style.top = `${{event.clientY}}px`;
+}}
+
+function validationLabel(status) {{
+  return {{
+    effective: "効いた記録あり",
+    contested: "見直しあり",
+    tested: "使用記録あり",
+    untested: "未検証",
+  }}[status] || status;
 }}
 
 function typeLabel(type) {{
@@ -756,6 +969,15 @@ window.addEventListener("resize", rebuild);
 search.addEventListener("input", rebuild);
 filters.forEach(input => input.addEventListener("change", rebuild));
 document.getElementById("reset").addEventListener("click", rebuild);
+document.querySelectorAll(".jump[data-node-id]").forEach(button => {{
+  button.addEventListener("click", () => {{
+    const id = button.dataset.nodeId;
+    const node = graph.nodes.find(item => item.id === id);
+    if (!node) return;
+    search.value = String(node.label || node.concept || "");
+    rebuild();
+  }});
+}});
 rebuild();
 </script>
 </body>
