@@ -307,10 +307,19 @@ def sync_report(
 def sync_latest(
     latest: dict,
     applied_ids: list[str],
-    applied_titles: list[str],
     parked_ids: list[str],
-    parked_titles: list[str],
 ) -> dict:
+    """`report`（sync_report の出力）が確定させた applied_ids / parked_ids を
+    latest.json のスキーマへそのまま投影する。
+
+    以前はここでも独自に title パターンマッチを再実行しており、sync_report
+    との判定が食い違う不具合（REV-019 が applied と parked の両方に計上され
+    る）が起きた。判定ロジックは sync_report 側のみに一本化し、ここは
+    「report で決まったことを latest.json の形に書き写すだけ」にする。
+    渡される applied_ids / parked_ids は sync_report の出力 (report["applied"],
+    report["parked"]) 由来のため、呼び出し時点で互いに排他であることが
+    構造的に保証されている。
+    """
     applied_ids_set = set(applied_ids)
     parked_ids_set = set(parked_ids)
     needs_review = list(latest.get("needs_review") or [])
@@ -320,36 +329,30 @@ def sync_latest(
 
     needs_map = id_map(needs_review)
     applied_map = id_map(applied_improvements)
+    parked_map = id_map(parked_improvements)
     item_map = id_map(items)
 
     for item_id in applied_ids:
-        item = item_map.get(item_id)
-        if item is None:
-            item = needs_map.get(item_id)
+        if item_id in applied_map:
+            continue
+        item = item_map.get(item_id) or needs_map.get(item_id)
         if item is None:
             continue
 
-        if item_id not in applied_map:
-            applied_improvements.append(applied_entry(item))
+        applied_improvements.append(applied_entry(item))
 
         for existing in items:
             if str(existing.get("id") or "") == item_id:
                 existing["status"] = "APPLIED"
                 existing["reason"] = "改善済み登録済み"
 
-    for item in needs_review:
-        item_id = str(item.get("id") or "")
-        if item_id in applied_ids_set or item_id in applied_map:
+    for item_id in parked_ids:
+        if item_id in applied_ids_set or item_id in parked_map:
             continue
-        if title_matches(item, applied_titles):
-            applied_improvements.append(applied_entry(item))
-            applied_ids_set.add(item_id)
-
-    for item in needs_review:
-        item_id = str(item.get("id") or "")
-        if item_id in parked_ids_set or title_matches(item, parked_titles):
-            parked_improvements.append(status_entry(item, "実装タスクではなく継続監視・研究テーマとして保留"))
-            parked_ids_set.add(item_id)
+        item = item_map.get(item_id) or needs_map.get(item_id)
+        if item is None:
+            continue
+        parked_improvements.append(status_entry(item, "実装タスクではなく継続監視・研究テーマとして保留"))
 
     removed_ids = applied_ids_set | parked_ids_set
     latest["needs_review"] = [item for item in needs_review if str(item.get("id") or "") not in removed_ids]
@@ -496,12 +499,20 @@ def main() -> None:
         parked_ids,
         parked_titles,
     )
+
+    # latest.json は report（上で確定した分類）を単に投影するだけにする。
+    # applied_ids/parked_ids/*_titles を latest 側でも独立に再解決すると、
+    # 判定ロジックが2箇所に分岐して食い違う（REV-019 の二重計上事故の原因）。
+    final_applied_ids = [
+        str(item.get("id") or "") for item in updated_report.get("applied", []) if item.get("id")
+    ]
+    final_parked_ids = [
+        str(item.get("id") or "") for item in updated_report.get("parked", []) if item.get("id")
+    ]
     updated_latest = sync_latest(
         latest,
-        applied_ids,
-        applied_titles,
-        parked_ids,
-        parked_titles,
+        final_applied_ids,
+        final_parked_ids,
     ) if latest else {}
 
     if args.dry_run:
