@@ -11,8 +11,11 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from typing import Optional
+
+import requests
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
@@ -40,6 +43,8 @@ INCLUDED_REL_PREFIXES = tuple(
                 "Projects/tune_lease_55/Lease Intelligence/Public",
                 "Projects/tune_lease_55/Industry",
                 "Projects/tune_lease_55/Judgment Assets",
+                "05-クリップ_記事/業界リスクニュース",
+                "05-クリップ_記事/リースニュース",
             ]
         ),
     ).split(",")
@@ -127,27 +132,75 @@ def upload_file(
     return f"[UP]    {rel} → gs://{bucket.name}/{gcs_path}"
 
 
-def _upload_with_gcloud(local_path: Path, bucket_name: str, gcs_path: str, local_mtime: str) -> bool:
-    """ADCが壊れている環境では、ログイン済み gcloud CLI でアップロードする。"""
-    try:
-        subprocess.run(
-            [
-                "gcloud",
-                "storage",
-                "cp",
-                f"--custom-metadata=local_mtime={local_mtime}",
-                str(local_path),
-                f"gs://{bucket_name}/{gcs_path}",
-            ],
+_access_token_cache: dict[str, str] = {}
+
+
+def _get_access_token(force_refresh: bool = False) -> str:
+    """ログイン済み gcloud CLI からアクセストークンを取得する（プロセス内キャッシュ）。"""
+    if force_refresh or "token" not in _access_token_cache:
+        token = subprocess.run(
+            ["gcloud", "auth", "print-access-token"],
             check=True,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=30,
+        ).stdout.strip()
+        _access_token_cache["token"] = token
+    return _access_token_cache["token"]
+
+
+def _upload_with_gcloud(local_path: Path, bucket_name: str, gcs_path: str, local_mtime: str) -> bool:
+    """ADCが壊れている環境では、ログイン済み gcloud CLI のトークンで GCS JSON API に直接アップロードする。
+
+    `gcloud storage cp` / `gsutil cp` はどちらも、ソース・宛先のいずれかに
+    `[5440]` のような角括弧を含むパスがあるとワイルドカードパターンとして
+    誤解釈し、バックスラッシュエスケープを試みても「該当URLなし」エラーで
+    失敗する（例: 業界リスクニュースの銘柄コード表記のファイル名で実際に発生）。
+    JSON API の multipart アップロードはオブジェクト名を単なる文字列として
+    扱いパターン解釈しないため、この問題を回避できる。
+    """
+    boundary = uuid.uuid4().hex
+    metadata_json = json.dumps(
+        {"name": gcs_path, "metadata": {"local_mtime": local_mtime}}, ensure_ascii=False
+    )
+    body = (
+        f"--{boundary}\r\n"
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        f"{metadata_json}\r\n"
+        f"--{boundary}\r\n"
+        "Content-Type: text/markdown; charset=UTF-8\r\n\r\n"
+    ).encode("utf-8") + local_path.read_bytes() + f"\r\n--{boundary}--".encode("utf-8")
+
+    for attempt, force_refresh in enumerate([False, True]):
+        try:
+            token = _get_access_token(force_refresh=force_refresh)
+            resp = requests.post(
+                f"https://storage.googleapis.com/upload/storage/v1/b/{bucket_name}/o",
+                params={"uploadType": "multipart"},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": f"multipart/related; boundary={boundary}",
+                },
+                data=body,
+                timeout=60,
+            )
+        except Exception as fallback_exc:
+            print(
+                f"警告: GCS REST アップロードも失敗しました: {type(fallback_exc).__name__} {fallback_exc}",
+                file=sys.stderr,
+            )
+            return False
+
+        if resp.status_code == 200:
+            return True
+        if resp.status_code == 401 and attempt == 0:
+            continue
+        print(
+            f"警告: GCS REST アップロードも失敗しました: HTTP {resp.status_code} {resp.text[:300]}",
+            file=sys.stderr,
         )
-        return True
-    except Exception as fallback_exc:
-        print(f"警告: gcloud storage cp フォールバックも失敗しました: {type(fallback_exc).__name__}", file=sys.stderr)
         return False
+    return False
 
 
 def _matches_prefix(rel: str, prefixes: tuple[str, ...]) -> bool:
