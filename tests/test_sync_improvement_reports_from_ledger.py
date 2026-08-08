@@ -150,3 +150,31 @@ def test_report_to_latest_pipeline_does_not_double_bucket_item_matching_both_app
     assert applied_hit_ids == ["REV-019"]
     assert "REV-019" not in parked_hit_ids
     assert updated_latest["needs_review_count"] == 0
+
+
+def test_from_report_uses_applied_improvements_when_applied_is_count():
+    """reports/latest.json stores applied as a numeric counter after sync_latest().
+    The post-sync command still passes --from-report, so the reader must ignore
+    that counter and fall back to applied_improvements.
+    """
+    mod = load_sync_module()
+    report = {
+        "applied": 1,
+        "applied_improvements": [{"id": "REV-019", "title": "実装済み"}],
+        "needs_review": [],
+    }
+
+    applied_ids = [
+        str(item.get("id") or "")
+        for item in mod.first_list_value(report, "applied", "applied_improvements")
+        if str(item.get("id") or "")
+    ]
+    updated_report, moved, parked_moved, skipped = mod.sync_report(
+        report, applied_ids, [], [], []
+    )
+
+    assert applied_ids == ["REV-019"]
+    assert updated_report["applied"][0]["id"] == "REV-019"
+    assert moved == []
+    assert parked_moved == []
+    assert skipped == []

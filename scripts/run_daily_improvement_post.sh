@@ -284,9 +284,9 @@ if [ -f "${LATEST_FILE}" ]; then
 
   if [ ${SYNC_RESULT} -ne 0 ]; then
     echo "[警告] sync_improvement_reports_post がエラーで失敗（リカバリー: スキップして続行）"
-    log_step "sync_improvement_reports_post" 0
+    log_step "sync_improvement_reports_post" ${SYNC_RESULT}
   else
-    log_step "sync_improvement_reports_post" $?
+    log_step "sync_improvement_reports_post" ${SYNC_RESULT}
   fi
 
   echo ""
@@ -306,9 +306,9 @@ if [ -f "${LATEST_FILE}" ]; then
 
   if [ ${RECURSIVE_RESULT} -ne 0 ]; then
     echo "[警告] recursive_self_improvement_post がエラーで失敗（リカバリー: スキップして続行）"
-    log_step "recursive_self_improvement_post" 0
+    log_step "recursive_self_improvement_post" ${RECURSIVE_RESULT}
   else
-    log_step "recursive_self_improvement_post" $?
+    log_step "recursive_self_improvement_post" ${RECURSIVE_RESULT}
   fi
 
   echo ""
