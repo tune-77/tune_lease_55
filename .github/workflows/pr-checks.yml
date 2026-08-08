@@ -107,6 +107,7 @@ jobs:
           tests/test_sync_improvement_reports_from_ledger.py
           tests/test_audit_ledger_applied_claims.py
           tests/test_step3_auto_apply_applied_gate.py
+          tests/test_check_pr_change_risk.py
 
   # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）。
   # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。
@@ -134,6 +135,29 @@ jobs:
         if: github.event_name == 'push'
         run: |
           python scripts/preflight_pr_guard.py | tee -a "$GITHUB_STEP_SUMMARY" || true
+
+  # 生成物混入と過大PRを検知する。pull_request では strict、master push では
+  # post-merge 観測として warn-only にする。
+  pr-change-risk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: PR change risk guard (strict on PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          python scripts/check_pr_change_risk.py --base origin/master...HEAD --max-files 80 --max-text-changes 2500 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: PR change risk guard (warn-only on master push)
+        if: github.event_name == 'push'
+        run: |
+          python scripts/check_pr_change_risk.py --base HEAD~1..HEAD --max-files 80 --max-text-changes 2500 | tee -a "$GITHUB_STEP_SUMMARY" || true
 
   # Obsidian Vault パス解決の整合性 + マシン依存の絶対パス直書きを検査する。
   # 既知の直書きは許可リスト方式で許容し、リストにない新規の直書きだけを
