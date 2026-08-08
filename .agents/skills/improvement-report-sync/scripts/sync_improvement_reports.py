@@ -67,10 +67,27 @@ def dump_json(path: Path, data: dict) -> None:
 def id_map(items: Iterable[dict]) -> dict[str, dict]:
     mapped: dict[str, dict] = {}
     for item in items:
+        if not isinstance(item, dict):
+            continue
         item_id = str(item.get("id") or "")
         if item_id and item_id not in mapped:
             mapped[item_id] = item
     return mapped
+
+
+def list_value(data: dict, key: str) -> list[dict]:
+    value = data.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def first_list_value(data: dict, *keys: str) -> list[dict]:
+    for key in keys:
+        value = list_value(data, key)
+        if value:
+            return value
+    return []
 
 
 def normalize_text(value: str) -> str:
@@ -246,9 +263,9 @@ def sync_report(
 ) -> tuple[dict, list[str], list[str], list[str]]:
     applied_ids_set = set(applied_ids)
     parked_ids_set = set(parked_ids)
-    needs_review = list(report.get("needs_review") or [])
-    applied = list(report.get("applied") or [])
-    parked = list(report.get("parked") or [])
+    needs_review = list_value(report, "needs_review")
+    applied = first_list_value(report, "applied", "applied_improvements")
+    parked = first_list_value(report, "parked", "parked_improvements")
 
     needs_map = id_map(needs_review)
     applied_map = id_map(applied)
@@ -459,7 +476,7 @@ def main() -> None:
     if args.from_report or not applied_ids:
         applied_ids = [
             str(item.get("id") or "")
-            for item in (report.get("applied") or report.get("applied_improvements") or [])
+            for item in first_list_value(report, "applied", "applied_improvements")
             if str(item.get("id") or "")
         ]
 
