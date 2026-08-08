@@ -45,6 +45,9 @@ def test_build_graph_data_links_rules_to_axes_domains_evidence_and_cases():
     assert payload["summary"]["rules"] == 1
     assert payload["summary"]["cases"] == 1
     assert payload["summary"]["growth_label"] == "育った"
+    assert payload["engineering"]["tested_rules"] == 1
+    assert payload["engineering"]["effective_rules"] == 1
+    assert payload["engineering"]["untested_rules"] == 0
 
 
 def test_inactive_rules_are_not_rendered():
@@ -61,6 +64,49 @@ def test_inactive_rules_are_not_rendered():
 
     assert "rule:active" in node_ids
     assert "rule:draft" not in node_ids
+    assert payload["engineering"]["untested_rules"] == 1
+
+
+def test_build_graph_data_surfaces_high_potential_untested_rules_and_bottlenecks():
+    payload = graph.build_graph_data(
+        canonical={
+            "rules": [
+                {
+                    "id": "rule-rich",
+                    "status": "active",
+                    "concept": "subsidy_backup_funding",
+                    "canonical_statement": "補助金未採択時の代替資金を確認する。",
+                    "evidence_count": 9,
+                    "user_evidence_count": 2,
+                    "risk_axis": ["cash_flow"],
+                },
+                {
+                    "id": "rule-thin",
+                    "status": "active",
+                    "concept": "thin",
+                    "canonical_statement": "接続が薄い判断。",
+                },
+            ]
+        },
+        feedback_rows=[
+            {
+                "rule_id": "rule-rich",
+                "outcome": "helped",
+                "case_id": "sim-demo",
+                "source": "simulation",
+            }
+        ],
+    )
+
+    engineering = payload["engineering"]
+
+    assert payload["schema_version"] == 2
+    assert engineering["simulation_feedback_rows"] == 1
+    assert engineering["real_feedback_rows"] == 0
+    assert engineering["untested_rules"] == 2
+    assert engineering["high_potential_rules"][0]["id"] == "rule-rich"
+    assert engineering["isolated_rules"] == 2
+    assert any("実案件フィードバックが未接続" in item for item in engineering["bottlenecks"])
 
 
 def test_build_graph_data_renders_explicit_lineage_edges_and_metadata():
@@ -172,6 +218,8 @@ def test_build_html_is_offline_and_embeds_graph_payload():
     assert "<!doctype html>" in html
     assert "判断資産系統樹" in html
     assert "親子関係" in html
+    assert "Graph Engineering" in html
+    assert "次に検証" in html
     assert "const graph =" in html
     assert "https://" not in html
     assert "rule:rule-1" in html
