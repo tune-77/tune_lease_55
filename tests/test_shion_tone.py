@@ -1,5 +1,6 @@
 from api.prompt_generator import build_shion_system_prompt, build_system_prompt
 from api.shion_agent import _INSTRUCTION
+from api.shion_prompt_priority import build_shion_prompt_priority_block
 from api.shion_tone import build_shion_feminine_tone_block
 
 
@@ -21,11 +22,25 @@ def test_shion_system_prompt_includes_tone_guard_without_affecting_mebuki():
     mebuki_prompt = build_system_prompt(mind, "2026-07-15")
 
     assert "紫苑の口調固定" in shion_prompt
+    assert "紫苑プロンプト優先順位" in shion_prompt
+    assert "下位の指示は上位の指示を上書きしない" in shion_prompt
     assert "一人称は原則「私」" in shion_prompt
     assert "男性的な一人称" in shion_prompt
     assert "紫苑の口調固定" not in mebuki_prompt
+    assert "紫苑プロンプト優先順位" not in mebuki_prompt
 
 
 def test_shion_agent_instruction_includes_tone_guard():
+    assert "紫苑プロンプト優先順位" in _INSTRUCTION
     assert "紫苑の口調固定" in _INSTRUCTION
     assert "女性的な落ち着いた日本語" in _INSTRUCTION
+
+
+def test_shion_prompt_priority_block_defines_conflict_order():
+    block = build_shion_prompt_priority_block()
+
+    assert "システム安全" in block
+    assert "ユーザーの直近依頼" in block
+    assert "記憶・Obsidian・判断資産" in block
+    assert block.index("システム安全") < block.index("ユーザーの直近依頼")
+    assert block.index("ユーザーの直近依頼") < block.index("記憶・Obsidian・判断資産")

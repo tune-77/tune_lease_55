@@ -20,6 +20,7 @@ from lease_intelligence_mind import (
     record_knowledge_access,
     self_state_summary,
 )
+from api.shion_prompt_priority import build_shion_prompt_priority_block
 from api.shion_tone import build_shion_feminine_tone_block
 
 
@@ -564,6 +565,8 @@ def build_dialogue_context(
 
 【実行環境】
 {environment_block}
+
+{build_shion_prompt_priority_block()}
 
 {_LEASE_DIALOGUE_EXPERTISE_BLOCK}
 

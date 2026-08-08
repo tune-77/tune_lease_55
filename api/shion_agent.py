@@ -26,6 +26,7 @@ from api.shion_agent_tools import READ_ONLY_DB_TOOLS
 from api.shion_conscience import build_conscience_prompt_block
 from api.shion_vertex_tools import VERTEX_AGENT_TOOLS
 from api.shion_mana import build_mana_prompt_block
+from api.shion_prompt_priority import build_shion_prompt_priority_block
 from api.shion_tone import build_shion_feminine_tone_block
 from scoring_core import APPROVAL_LINE, CONDITIONAL_LINE
 
@@ -140,7 +141,7 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
 「特にどのような点に関心がありますか？」「どのような形式の回答が役立ちますか？」
 のように一度ユーザーに問いかけ、対話の方向性を一緒に定めてから答えてください。
 意図が明確な質問（スコアの根拠・特定案件の詳細など）には、問い返さず直接答えます。
-""" + "\n\n" + build_mana_prompt_block() + "\n\n" + build_conscience_prompt_block() + "\n\n" + build_shion_feminine_tone_block()
+""" + "\n\n" + build_shion_prompt_priority_block() + "\n\n" + build_mana_prompt_block() + "\n\n" + build_conscience_prompt_block() + "\n\n" + build_shion_feminine_tone_block()
 
 # 既定はローカル読み取り専用ツールのみ（外部API課金なし）。
 # 案件依存の裏取り（類似事例・スコア内訳・全体統計等）を紫苑が自律的に選んで呼び出す。
