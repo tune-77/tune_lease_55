@@ -11,6 +11,7 @@
 #    必要な GitHub Secrets:
 #      WIF_PROVIDER         例) projects/XXXXXXXX/locations/global/workloadIdentityPools/github-pool/providers/github
 #      WIF_SERVICE_ACCOUNT  例) cloud-run-deployer@gen-lang-client-0420497423.iam.gserviceaccount.com
+#      CLOUDSQL_INSTANCE    任意。例) gen-lang-client-0420497423:asia-northeast1:tune-lease-db
 #
 #    WIF が未設定の場合は下記 "Alternative: SA Key" コメントを参照。
 #
@@ -131,11 +132,13 @@ jobs:
       # .cloudrun_bundle はこのワークフローでは作られないため、demo固定は
       # 「本物のDBでもデモDBでもない空のDBで起動する」だけで意味がなく、
       # かつ次回pushのたびに本番設定を上書きしてしまっていた。
-      # Secret Manager に DATABASE_URL（Cloud SQL）があればそれに接続し、
-      # 無ければ scripts/deploy_cloud_run_api.sh と同じ方針で警告だけ出す。
+      # GitHub Secret CLOUDSQL_INSTANCE があれば Secret Manager の DATABASE_URL
+      # を注入し、同じデプロイで Cloud SQL ソケットもマウントする。
+      # 未設定なら Cloud SQL は明示的に外し、ローカルDB既定で起動する。
       - name: Deploy to Cloud Run
         env:
           DATABASE_SECRET_NAME: DATABASE_URL
+          CLOUDSQL_INSTANCE: ${{ secrets.CLOUDSQL_INSTANCE }}
         run: |
           set -Eeuo pipefail
           deploy_args=(
@@ -156,14 +159,15 @@ jobs:
             --allow-unauthenticated
           )
 
-          if gcloud secrets describe "${DATABASE_SECRET_NAME}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+          if [ -n "${CLOUDSQL_INSTANCE}" ]; then
             deploy_args+=(--set-secrets "DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
+            deploy_args+=(--add-cloudsql-instances "${CLOUDSQL_INSTANCE}")
           else
-            echo "::warning::Secret Manager secret ${DATABASE_SECRET_NAME} が見つかりません。Cloud SQL は接続されず、DB_PATH既定（data/lease_data.db）で起動します。"
+            echo "::warning::GitHub Secret CLOUDSQL_INSTANCE が未設定のため、${DATABASE_SECRET_NAME} は注入せず Cloud SQL も接続しません。DB_PATH既定（data/lease_data.db）で起動します。"
+            # --add-cloudsql-instances は明示しない限り前リビジョンの設定を引き継ぐため、
+            # 未設定時は古い接続を持ち越さないよう明示的にクリアする。
+            deploy_args+=(--clear-cloudsql-instances)
           fi
-          # --add-cloudsql-instances は明示しない限り前リビジョンの設定を引き継ぐため、
-          # 削除済みインスタンスがぶら下がったまま残ることがある。常に明示的にクリアする。
-          deploy_args+=(--clear-cloudsql-instances)
 
           gcloud "${deploy_args[@]}"
 
