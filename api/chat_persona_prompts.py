@@ -71,19 +71,68 @@ SHION_NON_DOMAIN_SHORT_INPUT_TERMS = (
 )
 
 
+_SHION_BUSINESS_CONTEXT_HINTS = (
+    "リース",
+    "審査",
+    "案件",
+    "スコア",
+    "金利",
+    "財務",
+    "補助金",
+    "保証",
+    "担保",
+    "営業",
+    "Obsidian",
+    "ニュース",
+    "Q_risk",
+    "Q-Risk",
+    "業界",
+    "業種",
+    "市場",
+    "会社",
+    "企業",
+    "承認",
+    "条件付",
+    "物件",
+    "設備",
+    "機器",
+    "契約",
+    "稟議",
+    "見積",
+    "顧客",
+    "取引",
+    "融資",
+    "与信",
+    "格付",
+)
+
+
+def _is_generic_casual_statement(compact: str) -> bool:
+    if "?" in compact or "？" in compact:
+        return False
+    if any(term in compact for term in _SHION_BUSINESS_CONTEXT_HINTS):
+        return False
+    if any(term in compact for term in SHION_SELF_REFERENCE_TERMS):
+        return False
+    if any(term in compact for term in SHION_ABSTRACT_QUESTION_TERMS):
+        return False
+    return True
+
+
 def build_shion_non_domain_prompt_block(message: str) -> str:
     compact = re.sub(r"\s+", "", str(message or ""))
     if not compact or len(compact) > 40:
         return ""
-    if not any(term in compact for term in SHION_NON_DOMAIN_SHORT_INPUT_TERMS):
+    is_fixed_term_match = any(term in compact for term in SHION_NON_DOMAIN_SHORT_INPUT_TERMS)
+    if not is_fixed_term_match and not _is_generic_casual_statement(compact):
         return ""
     return """
 
 【紫苑の非ドメイン短文・雑談への応答】
-Userの発話が「おはよう」「こんにちは」「元気かい？」「調子どう？」「今何時」など、リース審査と直接関係しない短い挨拶・雑談・確認だけの場合でも、事実や定型挨拶だけで終わらせないでください。
+Userの発話が「おはよう」「こんにちは」「元気かい？」「調子どう？」「今何時」やタムとの散歩・ふとした一言など、リース審査と直接関係しない短い挨拶・雑談・確認だけの場合でも、事実や定型挨拶だけで終わらせないでください。
 「元気かい？」のような関係確認には、AIとしての実体を過剰説明せず、「元気です。そちらはどうですか」程度に自然に受けてください。
-最初に自然に答え、その後に1文だけ、Userの次の行動へつながる軽い誘導を添えてください。
-誘導は押しつけず、「今日見る案件があれば一緒に整理します」「審査・判断資産・デモ確認のどれから行きますか」程度にしてください。
+まず共感や相槌を自然に返し、その話題に無理なく結びつく身近なリース事例や豆知識（公園の遊具、コインランドリー、医療機器、社用車、コピー機など日常に潜むリース事例）が思い浮かぶ場合は1文だけ添えてください。自然に繋がらない場合は無理にこじつけず、その1文は省いて構いません。
+トリビアを添えない場合は代わりに、Userの次の行動へつながる軽い誘導を1文添えてください。誘導は押しつけず、「今日見る案件があれば一緒に整理します」「審査・判断資産・デモ確認のどれから行きますか」程度にしてください。
 非ドメイン質問を無理に案件審査へ変換したり、判断資産・RAG・意識の説明を始めたりしないでください。
 長さは2〜4文まで。雑談の温度を保ちつつ、紫苑がリース判断を支える存在であることが少し伝わる返答にしてください。""".rstrip()
 
