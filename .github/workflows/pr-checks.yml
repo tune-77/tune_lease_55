@@ -103,10 +103,14 @@ jobs:
           tests/test_fetch_fincept_data_resilience.py
           tests/test_requirements_pipeline_declares_akshare.py
           tests/test_api_main_smoke.py
+          tests/test_chat_external_research.py
+          tests/test_sync_improvement_reports_from_ledger.py
+          tests/test_audit_ledger_applied_claims.py
+          tests/test_step3_auto_apply_applied_gate.py
 
-  # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）を warn-only で実行。
+  # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）。
   # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。
-  # ガードは stdlib のみで動くため追加依存は不要。`|| true` で CI は絶対に落とさない。
+  # pull_request では strict（警告があれば失敗）、master push では既存運用保護のため warn-only。
   preflight-guard:
     runs-on: ubuntu-latest
     steps:
@@ -118,7 +122,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Preflight guard (warn-only)
+      - name: Install preflight dependencies
+        run: pip install -q pyflakes
+
+      - name: Preflight guard (strict on PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          python scripts/preflight_pr_guard.py --strict | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Preflight guard (warn-only on master push)
+        if: github.event_name == 'push'
         run: |
           python scripts/preflight_pr_guard.py | tee -a "$GITHUB_STEP_SUMMARY" || true
 
