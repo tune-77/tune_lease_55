@@ -51,15 +51,52 @@ _LOW_PRIORITY_PATH_PENALTIES = (
     ("05-クリップ_記事/リースニュース/", 0.25),
     ("リースニュース/", 0.25),
     ("07-アーカイブ/", 0.16),
-    ("Projects/tune_lease_55/AI Chat/", 0.15),
-    ("Projects/tune_lease_55/Improvement Log/", 0.15),
-    ("Projects/tune_lease_55/Weekly Review/", 0.15),
+    ("Projects/tune_lease_55/AI Chat/", 0.28),
+    ("Projects/tune_lease_55/Improvement Log/", 0.22),
+    ("Projects/tune_lease_55/Weekly Review/", 0.22),
     ("Daily/", 0.12),
     ("Clippings/", 0.08),
     ("Humor/", 0.05),
 )
 _CONTEXTUAL_NOISE_TERMS = ("つん子", "キャラクター", "ユーモア", "口調", "Humor")
 _NOISE_ALLOWED_TERMS = ("つん子", "キャラ", "ユーモア", "口調", "冗談", "笑", "yanami", "humor")
+_SUPPLEMENTAL_QUERY_TERMS = (
+    "資金繰り",
+    "返済余力",
+    "キャッシュフロー",
+    "残価",
+    "残存価値",
+    "中古",
+    "再販",
+    "売却",
+    "処分",
+    "換金",
+    "料率",
+    "金利",
+    "競合",
+    "見積",
+    "条件",
+    "建設業",
+    "建機",
+    "重機",
+    "飲食業",
+    "飲食店",
+    "厨房",
+    "フォークリフト",
+    "バッテリー",
+    "工作機械",
+    "主軸",
+    "稼働時間",
+    "制御装置",
+    "搬出費",
+    "補助金",
+    "交付決定",
+    "不採択",
+    "判断資産",
+)
+_SHORT_DOMAIN_TERMS = frozenset(
+    term.lower() for term in _SUPPLEMENTAL_QUERY_TERMS if len(term) == 2
+)
 
 _DEFAULT_RANKING_CONFIG = {
     "preferred_path_boosts": dict(_PREFERRED_PATH_BOOSTS),
@@ -411,6 +448,12 @@ class KnowledgeVectorStore:
             if len(t) >= 2 and t not in seen:
                 result.append(t)
                 seen.add(t)
+        low_query = (query or "").lower()
+        for term in _SUPPLEMENTAL_QUERY_TERMS:
+            t = term.lower()
+            if t in low_query and t not in seen:
+                result.append(t)
+                seen.add(t)
         return result
 
     def _keyword_search(self, query: str, top_k: int) -> list[dict]:
@@ -429,7 +472,7 @@ class KnowledgeVectorStore:
         docs = result.get("documents") or []
         metas = result.get("metadatas") or []
         ranked: list[tuple[int, int, str, dict, str]] = []
-        strong_terms = [term for term in terms if len(term) >= 3]
+        strong_terms = [term for term in terms if len(term) >= 3 or term in _SHORT_DOMAIN_TERMS]
         for idx, (doc_id, doc, meta) in enumerate(zip(ids, docs, metas)):
             text = str(doc or "")
             metadata = meta or {}
@@ -576,12 +619,12 @@ class KnowledgeVectorStore:
         path = self._display_path(hit)
         if "/lease-wiki-vault/" in path:
             return 0.15
-        for prefix, boost in self._preferred_path_boosts():
-            if path.startswith(prefix):
-                return min(1.0, 0.72 + boost * 2.2)
         for prefix, penalty in self._low_priority_path_penalties():
             if path.startswith(prefix):
                 return max(0.1, 0.50 - penalty)
+        for prefix, boost in self._preferred_path_boosts():
+            if path.startswith(prefix):
+                return min(1.0, 0.72 + boost * 2.2)
         return 0.55
 
     def _noise_penalty(self, query: str, hit: dict) -> float:
@@ -642,6 +685,8 @@ class KnowledgeVectorStore:
                 rank_score += 0.08
             elif total_terms and coverage < 0.5:
                 rank_score -= 0.08
+            if noise_penalty >= 0.18 and rank_score < 0.1:
+                continue
             item = dict(hit)
             item["rank_score"] = round(rank_score, 4)
             item["priority_score"] = round(priority, 4)
@@ -657,9 +702,11 @@ class KnowledgeVectorStore:
             }
             ranked.append((rank_score, -idx, item))
         ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        clean_ranked = [entry for entry in ranked if entry[2]["score_breakdown"]["noise_penalty"] < 0.18]
+        noisy_ranked = [entry for entry in ranked if entry[2]["score_breakdown"]["noise_penalty"] >= 0.18]
         selected: list[dict] = []
         seen_paths: set[str] = set()
-        for _score, _idx, item in ranked:
+        for _score, _idx, item in [*clean_ranked, *noisy_ranked]:
             path = self._display_path(item)
             if path in seen_paths:
                 continue
