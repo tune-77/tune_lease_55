@@ -9,7 +9,6 @@ GET  /api/judgment-assets/stats            — 全体サマリー
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +16,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from api.db_connection import get_connection
+from api.prediction_error_loop import (
+    load_update_candidates,
+    record_update_candidate_review,
+    record_prediction_error_event,
+    summarize_prediction_errors,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _RULES_PATH = _REPO_ROOT / "data" / "judgment_asset_rules_v2.json"
@@ -88,6 +93,19 @@ class EffectivenessRequest(BaseModel):
     result: str          # worked | marginal | missed | revised
     case_id: str = ""
     note: str = ""
+
+
+class PredictionErrorRequest(BaseModel):
+    case_id: str
+    prediction: dict
+    outcome: dict
+    source: str = "judgment_assets_api"
+
+
+class PredictionErrorReviewRequest(BaseModel):
+    decision: str
+    note: str = ""
+    edited_update: str = ""
 
 
 # ── エンドポイント ─────────────────────────────────────────────────────────────
@@ -263,3 +281,40 @@ def get_stats():
         "total_uses": sum(s["total_uses"] for s in stats),
         "rules": stats,
     }
+
+
+@router.post("/api/judgment-assets/prediction-errors")
+def record_prediction_error(req: PredictionErrorRequest):
+    """予測・結果・人間評価のズレを、判断資産の更新候補として記録する。"""
+    try:
+        return record_prediction_error_event(
+            case_id=req.case_id,
+            prediction=req.prediction,
+            outcome=req.outcome,
+            source=req.source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/judgment-assets/prediction-errors/candidates")
+def list_prediction_error_candidates(limit: int = 50, status: str | None = None):
+    """予測誤差から作られた信念更新候補を返す。"""
+    return {
+        "summary": summarize_prediction_errors(),
+        "candidates": load_update_candidates(limit=limit, status=status),
+    }
+
+
+@router.post("/api/judgment-assets/prediction-errors/candidates/{candidate_id}/review")
+def review_prediction_error_candidate(candidate_id: str, req: PredictionErrorReviewRequest):
+    """予測誤差から作られた信念更新候補を人間レビューする。"""
+    try:
+        return record_update_candidate_review(
+            candidate_id=candidate_id,
+            decision=req.decision,
+            note=req.note,
+            edited_update=req.edited_update,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
