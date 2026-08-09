@@ -77,8 +77,6 @@ class CaseProgressStampRequest(BaseModel):
 @router.get("/api/cases")
 def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
     """過去案件一覧 (limit/offset/sort 対応)"""
-    import json  # noqa: F401
-
     limit = min(max(limit, 1), 200)
     offset = max(offset, 0)
     order = "DESC" if sort.lower() != "asc" else "ASC"

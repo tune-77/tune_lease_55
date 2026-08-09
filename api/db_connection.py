@@ -26,11 +26,11 @@ from __future__ import annotations
 import os
 import sqlite3
 from contextlib import contextmanager
-from typing import Generator, Union
+from typing import Any, Generator, Union
 
 # ── 型エイリアス ───────────────────────────────────────────────────────────────
 # sqlite3.Connection と psycopg2.extensions.connection の共通型
-AnyConnection = Union[sqlite3.Connection, "psycopg2.extensions.connection"]  # type: ignore[name-defined]
+AnyConnection = Union[sqlite3.Connection, Any]
 
 
 def _is_postgres() -> bool:
@@ -107,7 +107,7 @@ def _sqlite_connection() -> Generator[sqlite3.Connection, None, None]:
 
 
 @contextmanager
-def _postgres_connection() -> Generator["psycopg2.extensions.connection", None, None]:  # type: ignore[name-defined]
+def _postgres_connection() -> Generator[Any, None, None]:
     """PostgreSQL 接続（Cloud Run / Cloud SQL 用）。
 
     ``DATABASE_URL`` 形式:
