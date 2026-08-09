@@ -49,6 +49,7 @@ data/shion_anniversaries.json
 data/shion_experience_state.json
 data/shion_memory_index.json
 data/shion_practical_knowledge_map.json
+data/obsidian_retrieval_graph.json
 data/tunnel_optimizer.joblib
 data/*.backup_*
 data/excluded_grade_cases_*.csv
@@ -91,6 +92,7 @@ models/sentence-transformers/
 .claude/worktrees/
 # パイプライン生成レポート（コミット不要）
 reports/*.json
+reports/obsidian_retrieval_graph_latest.md
 
 # Claude / Codex runtime state (local only)
 .claude/state/

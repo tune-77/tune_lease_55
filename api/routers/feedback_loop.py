@@ -28,6 +28,7 @@ _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "aut
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidate_state.json"
 _NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signals.jsonl"
 _CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment_rules.json"
+_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_usage_feedback.jsonl"
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
 _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
@@ -398,9 +399,8 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
     """
     import json as _json
     from datetime import datetime as _dt
-    from pathlib import Path as _Path
 
-    _FEEDBACK_JSONL = _Path(__file__).resolve().parent.parent / "data" / "judgment_asset_usage_feedback.jsonl"
+    _FEEDBACK_JSONL = _JUDGMENT_ASSET_USAGE_FEEDBACK_LOG
     _OUTCOME_MAP = {
         "useful": "helped",
         "specific": "helped",

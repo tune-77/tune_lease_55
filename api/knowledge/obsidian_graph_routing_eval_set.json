@@ -1,0 +1,154 @@
+[
+  {
+    "id": "residual_value",
+    "category": "asset_value",
+    "query": "残価リスクと中古売却について教えて",
+    "expected_top_path_any": [
+      "Projects/tune_lease_55/Asset Knowledge/射出成形機/射出成形機 トン数・制御装置・残価リスク.md",
+      "lease-wiki-vault/04_リスク分析/リース契約：残価リスク評価.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/", "Improvement Log"]
+  },
+  {
+    "id": "cashflow_weak",
+    "category": "credit_cashflow",
+    "query": "資金繰りが厳しい会社にリースを出す時の確認事項は？",
+    "expected_top_path_any": [
+      "返済余力と資金繰りの異常兆候",
+      "cash-flow.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/", "Improvement Log"]
+  },
+  {
+    "id": "conditional_approval",
+    "category": "approval_process",
+    "query": "条件付き承認の具体的な方法を教えて",
+    "expected_top_path_any": [
+      "lease-wiki-vault/01_業務フロー/承認プロセス.md",
+      "conditional_approval_playbook.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "Improvement Log"]
+  },
+  {
+    "id": "usage_period",
+    "category": "contract_period",
+    "query": "期待使用期間とリース期間の関係を教えて",
+    "expected_top_path_any": [
+      "Projects/tune_lease_55/2026-05-13_期待使用期間_autoresearch.md",
+      "expected_usage_period_and_lease_term.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "statutory_life",
+    "category": "asset_life",
+    "query": "法定耐用年数とリース期間の違いは？",
+    "expected_top_path_any": [
+      "法定耐用年数×最短リース期間マスタ表.md",
+      "statutory_useful_life.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "subsidy",
+    "category": "subsidy_tax",
+    "query": "補助金を使う案件で注意することは？",
+    "expected_top_path_any": [
+      "補助金",
+      "補助金×ESGリース2026.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "q_risk",
+    "category": "q_risk",
+    "query": "Q-Riskはどう解釈すべき？",
+    "expected_top_path_any": [
+      "Projects/tune_lease_55/Q-Risk.md",
+      "Q_risk_成約外因子探索.md",
+      "q_risk_interpretation.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "lease_vs_bank",
+    "category": "sales_explanation",
+    "query": "リースと銀行借入の違いを説明して",
+    "expected_top_path_any": [
+      "Projects/tune_lease_55/リースvs銀行借入_リサーチ.md",
+      "リースと銀行借入の違い"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "insurance",
+    "category": "insurance",
+    "query": "動産保険で確認することは？",
+    "expected_top_path_any": [
+      "リース動産保険"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "construction",
+    "category": "industry_risk",
+    "query": "建設業の審査で見るべきリスクは？",
+    "expected_top_path_any": [
+      "03_業種別審査と金利相場.md",
+      "業種別リースリスク.md",
+      "リース審査：必要書類と基本流れ.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "medical_asset",
+    "category": "asset_value",
+    "query": "医療機器の残価と保守期限の注意点は？",
+    "expected_top_path_any": [
+      "医療機器 残価・保守期限・薬機法.md",
+      "medical_equipment_resale_risk.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "forklift",
+    "category": "asset_value",
+    "query": "フォークリフトの再販リスクは？",
+    "expected_top_path_any": [
+      "フォークリフト 残価・バッテリー劣化・再販リスク.md",
+      "forklift_resale_risk.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "machine_tool",
+    "category": "asset_value",
+    "query": "工作機械の中古相場と残価リスクは？",
+    "expected_top_path_any": [
+      "工作機械 中古相場・残価・再販リスク.md",
+      "machine_tool_resale_risk.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  },
+  {
+    "id": "sales_explain",
+    "category": "sales_explanation",
+    "query": "営業向けに条件付き承認をどう説明する？",
+    "expected_top_path_any": [
+      "審査結果の営業向け説明ガイドライン.md",
+      "承認プロセス.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/"]
+  },
+  {
+    "id": "score_band",
+    "category": "model_monitoring",
+    "query": "スコアが60点台の案件をどう見る？",
+    "expected_top_path_any": [
+      "スコア乖離.md",
+      "score_60_80_inversion.md",
+      "Bayesian Framework.md"
+    ],
+    "forbidden_top_path_any": ["05-クリップ_記事/", "AI Chat/"]
+  }
+]

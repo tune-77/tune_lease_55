@@ -4,6 +4,7 @@
 ソース:
   data/rag_feedback_log.jsonl  — ユーザー評価ログ（フィードバックがあった文書）
   data/rag_hit_log.jsonl       — 検索ヒットログ（REV-114 で生成、任意）
+  data/rag_search_log.jsonl    — Chroma検索ログ（vector_store.py が生成、任意）
   api/chroma_db/               — ChromaDB（全既知 obsidian_ref とメタデータを取得）
 
 30日以上アクセスがない obsidian_ref を分類する:
@@ -18,7 +19,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -30,6 +30,7 @@ from rev_ledger_utils import max_rev_number  # noqa: E402
 
 FEEDBACK_LOG = PROJECT_ROOT / "data" / "rag_feedback_log.jsonl"
 HIT_LOG = PROJECT_ROOT / "data" / "rag_hit_log.jsonl"
+SEARCH_LOG = PROJECT_ROOT / "data" / "rag_search_log.jsonl"
 LEDGER_FILE = PROJECT_ROOT / "api" / "rule_engine" / "ledger_rules.json"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 
@@ -102,16 +103,24 @@ def collect_last_access_from_jsonl(log_path: Path) -> dict[str, datetime]:
             continue
         ref = str(entry.get("obsidian_ref") or entry.get("ref") or "").strip()
         ts_str = str(entry.get("ts") or "").strip()
-        if not ref or not ts_str:
+        if not ts_str:
             continue
         ts = _parse_ts(ts_str)
         if ts is None:
             continue
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        existing = last_access.get(ref)
-        if existing is None or ts > existing:
-            last_access[ref] = ts
+        refs = [ref] if ref else []
+        for result in entry.get("results") or []:
+            if not isinstance(result, dict):
+                continue
+            nested_ref = str(result.get("obsidian_ref") or result.get("ref") or "").strip()
+            if nested_ref:
+                refs.append(nested_ref)
+        for found_ref in refs:
+            existing = last_access.get(found_ref)
+            if existing is None or ts > existing:
+                last_access[found_ref] = ts
     return last_access
 
 
@@ -122,8 +131,13 @@ def collect_refs_and_meta_from_chroma() -> dict[str, dict]:
         if str(PROJECT_ROOT) not in sys.path:
             sys.path.insert(0, str(PROJECT_ROOT))
         from api.knowledge.vector_store import KnowledgeVectorStore
+
         store = KnowledgeVectorStore()
-        result = store._col.get(include=["metadatas"])
+        store._ensure_collection()
+        collection = getattr(store, "_collection", None) or getattr(store, "_col", None)
+        if collection is None:
+            return {}
+        result = collection.get(include=["metadatas"])
         for meta in result.get("metadatas") or []:
             if not isinstance(meta, dict):
                 continue
@@ -166,7 +180,7 @@ def main() -> None:
 
     # ログからアクセス記録を収集
     last_access: dict[str, datetime] = {}
-    for src in (FEEDBACK_LOG, HIT_LOG):
+    for src in (FEEDBACK_LOG, HIT_LOG, SEARCH_LOG):
         for ref, ts in collect_last_access_from_jsonl(src).items():
             existing = last_access.get(ref)
             if existing is None or ts > existing:

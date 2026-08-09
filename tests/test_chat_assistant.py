@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from pathlib import Path
 
 from obsidian_query import split_query_terms
@@ -298,6 +299,50 @@ def test_search_notes_returns_rerank_breakdown_and_asset_priority(tmp_path, monk
     assert hits[0]["score_breakdown"]["source_priority"] == 0.95
     assert hits[0]["score_breakdown"]["term_coverage"] == 1.0
     assert hits[1]["score_breakdown"]["noise_penalty"] > 0
+
+
+def test_search_notes_uses_retrieval_graph_as_keyword_prerouter(tmp_path, monkeypatch):
+    vault = _make_vault(tmp_path)
+    target = vault / "Projects" / "tune_lease_55" / "Asset Knowledge" / "残価リスク.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# 残価リスク\n中古売却と換金性を確認する。", encoding="utf-8")
+    unrelated = vault / "Daily" / "2026-08-09.md"
+    unrelated.parent.mkdir(parents=True, exist_ok=True)
+    unrelated.write_text("残価リスクという単語だけがある日記。", encoding="utf-8")
+    miss = vault / "Projects" / "tune_lease_55" / "Work Logs" / "2026-08-09.md"
+    miss.parent.mkdir(parents=True, exist_ok=True)
+    miss.write_text("API起動とテストの作業ログ。", encoding="utf-8")
+
+    from scripts import build_obsidian_retrieval_graph
+
+    graph_path = tmp_path / "obsidian_retrieval_graph.json"
+    graph_path.write_text(
+        json.dumps(
+            build_obsidian_retrieval_graph.build_index(vault),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+    monkeypatch.setenv("OBSIDIAN_RETRIEVAL_GRAPH_PATH", str(graph_path))
+
+    from mobile_app import obsidian_bridge
+    importlib.reload(obsidian_bridge)
+
+    seen_path_batches = []
+    original = obsidian_bridge._search_in_paths
+
+    def capture_paths(paths, *args, **kwargs):
+        seen_path_batches.append([p.relative_to(vault).as_posix() for p in paths])
+        return original(paths, *args, **kwargs)
+
+    monkeypatch.setattr(obsidian_bridge, "_search_in_paths", capture_paths)
+    hits = obsidian_bridge.search_notes("残価リスク", limit=1)
+
+    assert hits[0]["path"] == "Projects/tune_lease_55/Asset Knowledge/残価リスク.md"
+    assert seen_path_batches
+    assert "Projects/tune_lease_55/Asset Knowledge/残価リスク.md" in seen_path_batches[0]
+    assert "Projects/tune_lease_55/Work Logs/2026-08-09.md" not in seen_path_batches[0]
 
 
 def test_append_wiki_note_writes_hub(tmp_path, monkeypatch):

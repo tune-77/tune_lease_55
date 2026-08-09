@@ -5,7 +5,9 @@
     "query": "ものづくり補助金はリースでも使える？注意点は？",
     "expected_path_any": [
       "リース知識/補助金・税制優遇とリース.md",
-      "Projects/tune_lease_55/2026-05-13_補助金まとめ.md"
+      "Projects/tune_lease_55/2026-05-13_補助金まとめ.md",
+      "03-知識_業界/補助金・融資/補助金×ESGリース2026.md",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-08_knowledge_audit_ものづくり補助金と設備投資リースの確認論点"
     ],
     "forbidden_path_any": [
       "つん子",
@@ -35,7 +37,9 @@
       "リース知識/審査実務チェックポイント.md",
       "リース知識/業種別リースリスク.md",
       "Projects/tune_lease_55/Research/リースBOT_追加知識候補_2026-05-23.md",
-      "Projects/tune_lease_55/Research/Auto Research/2026-06-06_cash-flow.md"
+      "Projects/tune_lease_55/Research/Auto Research/2026-06-06_cash-flow.md",
+      "Projects/tune_lease_55/Research/Auto Research/2026-08-04_cash-flow.md",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-02_evidence_support_返済余力と資金繰りの異常兆候"
     ],
     "forbidden_path_any": [
       "つん子",
@@ -90,7 +94,9 @@
       "リース知識/業種別リースリスク.md",
       "リース知識/リース審査：業種別ポイント.md",
       "リース知識/審査実務チェックポイント.md",
-      "Projects/tune_lease_55/2026-05-13_業種別調査まとめ.md"
+      "Projects/tune_lease_55/2026-05-13_業種別調査まとめ.md",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-08_judgment_candidates_業種特化型の需要変動リスク",
+      "Projects/tune_lease_55/ESGリース_リサーチ.md"
     ],
     "forbidden_path_any": [
       "つん子"
@@ -101,7 +107,9 @@
     "category": "pricing",
     "query": "リース料率と期間の関係、金利相場を確認したい",
     "expected_path_any": [
-      "リース知識/リース料率・金利相場.md"
+      "リース知識/リース料率・金利相場.md",
+      "lease-wiki-vault/00_Core Definitions/リース契約：金利と料率相場.md",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-02_evidence_support_高金利環境下のリース料率説明と競合対策"
     ],
     "forbidden_path_any": [
       "つん子",
@@ -178,7 +186,9 @@
     "query": "売掛金や棚卸資産の増加から粉飾決算を見抜く確認方法は？",
     "expected_path_any": [
       "リース知識/審査実務チェックポイント.md",
-      "07-アーカイブ/Asset Knowledge/リース審査基礎知識/02_決算書分析と財務指標.md"
+      "07-アーカイブ/Asset Knowledge/リース審査基礎知識/02_決算書分析と財務指標.md",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-08_knowledge_audit_売上急増先の運転資金不足とリース審査",
+      "03-知識_業界/リース審査実務/業種別審査チェックリスト_追補.md"
     ],
     "forbidden_path_any": [
       "AI Chat/",
@@ -193,7 +203,9 @@
     "expected_path_any": [
       "リース知識/業種別リースリスク.md",
       "リース知識/リース審査：業種別ポイント.md",
-      "03-知識_業界/業種分析/業種別傾向.md"
+      "03-知識_業界/業種分析/業種別傾向.md",
+      "03-知識_業界/リース審査実務/業種別審査チェックリスト_追補.md",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-02_knowledge_audit_返済余力と資金繰りの異常兆候"
     ],
     "forbidden_path_any": [
       "AI Chat/",
@@ -275,7 +287,9 @@
     "query": "物件価格と月額リース料からリース料率を計算する式は？",
     "expected_path_any": [
       "リース知識/リース料率計算.md",
-      "リース知識/リース料率・金利相場.md"
+      "リース知識/リース料率・金利相場.md",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-02_evidence_support_高金利環境下のリース料率説明と競合対策",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-02_judgment_candidates_金利・料率・競合条件の組み立て"
     ],
     "forbidden_path_any": [
       "AI Chat/",
@@ -329,6 +343,78 @@
     "expected_path_any": [
       "03-知識_業界/リース基礎知識/ファイナンスリース.md",
       "Projects/tune_lease_55/Research/Auto Research/2026-06-11_contract-ownership.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "subsidy_not_adopted_cashflow",
+    "category": "subsidy_tax",
+    "query": "補助金が不採択になった場合でも返済余力があるか確認したい",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-08_knowledge_audit_補助金不採択時の返済余力確認",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-02_judgment_candidates_補助金不採択時の返済余力確認",
+      "リース知識/補助金・税制優遇とリース.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "competition_rate_explanation",
+    "category": "sales_explanation",
+    "query": "競合の低い料率に対して営業が説明すべき条件差と見積比較の観点は？",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-08_knowledge_audit_金利・料率・競合条件の組み立て",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-02_judgment_candidates_金利・料率・競合条件の組み立て",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-02_evidence_support_高金利環境下のリース料率説明と競合対策"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "judgment_asset_inbox",
+    "category": "judgment_asset",
+    "query": "人間が選んだ判断を判断資産として残すとき、どこに候補を集める？",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Judgment Assets/判断資産 Inbox.md",
+      "Projects/tune_lease_55/Lease Intelligence/Knowledge/言葉の判断資産としての価値_2026-07-16.md"
+    ],
+    "forbidden_path_any": [
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "pre_order_subsidy",
+    "category": "subsidy_tax",
+    "query": "補助金の交付決定前に発注済みの設備をリース対象にしてよいか確認したい",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-08_knowledge_audit_補助金交付前発注とリース対象可否",
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-02_judgment_candidates_補助金交付前発注とリース対象可否",
+      "03-知識_業界/補助金・融資/補助金_対象要件.md"
+    ],
+    "forbidden_path_any": [
+      "AI Chat/",
+      "Humor/",
+      "05-クリップ_記事/リースニュース/"
+    ]
+  },
+  {
+    "id": "agri_machine_seasonality",
+    "category": "asset_agriculture",
+    "query": "農業機械リースで季節性と補助金依存が強い案件の確認点は？",
+    "expected_path_any": [
+      "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-08_knowledge_audit_農業機械リースの季節性と補助金依存リスク",
+      "リース知識/業種別リースリスク.md"
     ],
     "forbidden_path_any": [
       "AI Chat/",
