@@ -89,13 +89,7 @@ def find_vault() -> Path | None:
                     break
         except OSError:
             continue
-    seen: set[str] = set()
-    for vault in vaults:
-        key = str(vault)
-        if key not in seen:
-            return vault
-        seen.add(key)
-    return None
+    return vaults[0] if vaults else None
 
 
 def _safe_note_path(vault: Path, rel: str) -> Path:
