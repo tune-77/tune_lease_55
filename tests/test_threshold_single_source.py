@@ -145,7 +145,7 @@ def test_no_numeric_literal_decides_a_verdict():
 
     閾値は constants.APPROVAL_LINE / CONDITIONAL_LINE を import して使う。
     """
-    skip_parts = {".git", "node_modules", "_archive", ".venv", "__pycache__", "tests"}
+    skip_parts = {".git", ".claude", "node_modules", "_archive", ".venv", "__pycache__", "tests"}
     hits: list[str] = []
     for path in sorted(_REPO_ROOT.rglob("*.py")):
         if any(part in skip_parts for part in path.parts):

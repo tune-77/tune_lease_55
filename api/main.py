@@ -1868,6 +1868,7 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
 
     obsidian_result = {"status": "skipped", "reason": "not_attempted"}
     experience_result = {"status": "skipped", "reason": "not_attempted"}
+    prediction_error_result = {"status": "skipped", "reason": "not_attempted"}
     try:
         updated_case = _get_case_payload(case_id)
         obsidian_result = _append_case_result_reflection_to_obsidian(case_id, updated_case, patches)
@@ -1879,9 +1880,22 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
                 patches=patches,
                 source="case_result_auto",
             )
+            try:
+                from api.prediction_error_loop import record_case_result_prediction_error
+
+                prediction_error_result = record_case_result_prediction_error(
+                    case_id=case_id,
+                    case_data=updated_case,
+                    status=req.final_status or "",
+                    patches=patches,
+                    source="case_result_patch",
+                )
+            except Exception as pe_err:
+                prediction_error_result = {"status": "error", "reason": str(pe_err)}
     except Exception as e:
         obsidian_result = {"status": "error", "reason": str(e)}
         experience_result = {"status": "error", "reason": str(e)}
+        prediction_error_result = {"status": "skipped", "reason": "case_payload_unavailable"}
 
     # 紫苑フィードバックループ（REV-080）
     outcome = req.final_status or ""
@@ -1909,6 +1923,7 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
         "case_id": case_id,
         "obsidian_reflection": obsidian_result,
         "experience_promotion": experience_result,
+        "prediction_error": prediction_error_result,
     }
 
 
@@ -3338,8 +3353,21 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                         patches=case_data,
                         source="case_result_auto",
                     )
+                    try:
+                        from api.prediction_error_loop import record_case_result_prediction_error
+
+                        prediction_error_result = record_case_result_prediction_error(
+                            case_id=req.case_id,
+                            case_data=case_data,
+                            status=req.status,
+                            patches=case_data,
+                            source="cloudrun_case_result_registration",
+                        )
+                    except Exception as pe_err:
+                        prediction_error_result = {"status": "error", "reason": str(pe_err)}
                 except Exception as exp_err:
                     experience_result = {"status": "error", "reason": str(exp_err)}
+                    prediction_error_result = {"status": "skipped", "reason": "case_payload_unavailable"}
                 _invalidate_cloudrun_input_events_cache()
                 return {
                     "status": "success",
@@ -3347,6 +3375,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                     "case_id": req.case_id,
                     "cloudrun_writeback": final_result,
                     "experience_promotion": experience_result,
+                    "prediction_error": prediction_error_result,
                 }
             raise HTTPException(status_code=500, detail=f"Cloud Run result writeback failed: {final_result.get('reason')}")
 
@@ -3410,6 +3439,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
     if not update_case(target_case_id, patches):
         raise HTTPException(status_code=500, detail="Failed to update DB")
     experience_result = {"status": "skipped", "reason": "not_attempted"}
+    prediction_error_result = {"status": "skipped", "reason": "not_attempted"}
     if req.status in ("成約", "失注", "検収", "検収完了"):
         try:
             updated_case = _get_case_payload(target_case_id) or {**target_case, **patches}
@@ -3420,8 +3450,21 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                 patches=patches,
                 source="case_result_auto",
             )
+            try:
+                from api.prediction_error_loop import record_case_result_prediction_error
+
+                prediction_error_result = record_case_result_prediction_error(
+                    case_id=target_case_id,
+                    case_data=updated_case,
+                    status=req.status,
+                    patches=patches,
+                    source="case_result_registration",
+                )
+            except Exception as pe_err:
+                prediction_error_result = {"status": "error", "reason": str(pe_err)}
         except Exception as exp_err:
             experience_result = {"status": "error", "reason": str(exp_err)}
+            prediction_error_result = {"status": "skipped", "reason": "case_payload_unavailable"}
     background_tasks.add_task(
         record_cloudrun_input_event,
         event_type="case_result_registered",
@@ -3509,6 +3552,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
         "status": "success",
         "message": f"Results updated for {target_case_id}",
         "experience_promotion": experience_result,
+        "prediction_error": prediction_error_result,
     }
 
 # ── アプリログ
