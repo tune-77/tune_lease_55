@@ -11,10 +11,10 @@ import {
   Clock,
   Loader2,
   MessageCircle,
-  Orbit,
   Search,
   Send,
   ShieldCheck,
+  Settings2,
 } from "lucide-react";
 
 type ConciergeMessage = {
@@ -188,13 +188,13 @@ const ROUTES: RouteSuggestion[] = [
     nextSteps: ["調査テーマを選ぶ", "保存なしで接続確認する", "Researchノートへ保存して紫苑RAGに戻す"],
   },
   {
-    label: "System Overview",
-    href: "/system-overview",
-    description: "構成・OCR・PII除去・記憶設計を確認する",
-    icon: Orbit,
+    label: "運用情報",
+    href: "/operations",
+    description: "システム概要・DevOps・記憶運用を一画面で確認する",
+    icon: Settings2,
     tone: "from-indigo-500 to-violet-600",
-    keywords: ["概要", "system", "構成", "設計"],
-    nextSteps: ["システム構成を見る", "OCR/PII除去/外部調査の流れを確認する", "必要なら実画面へ戻る"],
+    keywords: ["概要", "system", "構成", "設計", "運用", "devops", "管理"],
+    nextSteps: ["統合された運用情報を見る", "構成・DevOps・記憶運用のどれを見るか決める", "必要なら詳細画面へ進む"],
   },
 ];
 
@@ -214,7 +214,7 @@ function pickSuggestions(input: string): RouteSuggestion[] {
 function shionReply(input: string, suggestions: RouteSuggestion[]) {
   const first = suggestions[0];
   if (!input.trim()) {
-    return "今日は入口から整理します。審査入力、外部調査、紫苑チャット、システム概要のどこへ進むか、ここで私が案内します。";
+    return "今日は入口から整理します。審査入力、外部調査、紫苑チャット、運用情報のどこへ進むか、ここで私が案内します。";
   }
   return `了解。今の文脈なら、まず「${first.label}」に進むのが自然です。必要なら、その後に判断材料を紫苑チャットやResearchへ戻して、単発作業ではなく次の判断資産にします。`;
 }
@@ -231,9 +231,9 @@ function buildGuidance(input: string, suggestions: RouteSuggestion[]): Concierge
   } else if (input.includes("調査") || lower.includes("research") || input.includes("市況")) {
     reason = "外部情報を先に固める文脈なので、Researchノート化してから判断へ戻すのが安全です。";
     handoff = "保存後は紫苑RAGの判断資産として、次のチャットや審査で参照できます。";
-  } else if (lower.includes("system") || input.includes("概要") || input.includes("構成")) {
-    reason = "構成確認の文脈なので、まずSystem Overviewで全体像を見るのが自然です。";
-    handoff = "全体像を見たあと、必要な作業を審査入力、紫苑チャット、Researchへ戻します。";
+  } else if (lower.includes("system") || input.includes("概要") || input.includes("構成") || input.includes("運用")) {
+    reason = "構成・運用確認の文脈なので、まず運用情報で全体像と詳細導線をまとめて見るのが自然です。";
+    handoff = "統合画面を見たあと、必要ならシステム概要、DevOps、記憶システムへ深掘りします。";
   }
   return { primary, alternatives: suggestions.slice(1, 3), reason, handoff, persona };
 }
@@ -276,11 +276,11 @@ function predictFromActivity(activity: ActivityItem[]): PredictedAction {
       icon: ShieldCheck,
     };
   }
-  if (last.path === "/system-overview") {
+  if (last.path === "/operations" || last.path === "/system-overview" || last.path === "/devops") {
     return {
       label: "審査へ進む",
       href: "/screening",
-      reason: "前回はシステム概要を見ています。次は審査入力で実案件の判断に戻します。",
+      reason: "前回は運用情報を見ています。次は審査入力で実案件の判断に戻します。",
       icon: ShieldCheck,
     };
   }
@@ -329,7 +329,7 @@ function formatActivityTime(ts: number) {
 }
 
 function etaForHref(href: string) {
-  if (href === "/chat" || href === "/system-overview") return "2分";
+  if (href === "/chat" || href === "/operations" || href === "/system-overview") return "2分";
   if (href === "/screening") return "5分";
   return "3分";
 }
@@ -500,7 +500,7 @@ export default function ShionConciergeHome() {
                 紫苑システム
               </h1>
               <p className="mt-3 max-w-2xl text-sm font-bold leading-7 text-slate-600">
-                おかえりなさい。紫苑が今日の入口を整理して、審査、調査、記憶、システム確認のどこへ進むかを案内します。
+                おかえりなさい。紫苑が今日の入口を整理して、審査、調査、記憶、運用確認のどこへ進むかを案内します。
               </p>
               <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50/70 p-4">
                 <p className="text-sm font-black leading-7 text-violet-950">
@@ -602,7 +602,7 @@ export default function ShionConciergeHome() {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") submit();
                 }}
-                placeholder="例: 決算書を読んで審査したい / 調査してから判断したい / システム構成を確認したい"
+                placeholder="例: 決算書を読んで審査したい / 調査してから判断したい / システム運用を確認したい"
                 className="min-h-12 flex-1 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
               />
               <button
