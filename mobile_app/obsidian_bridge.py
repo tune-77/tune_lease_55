@@ -1150,7 +1150,7 @@ def _source_metadata_lines(
 
 
 def append_chat_note(title: str, body: str) -> dict[str, str]:
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     day = dt.date.today().isoformat()
@@ -1174,7 +1174,7 @@ def append_chat_note(title: str, body: str) -> dict[str, str]:
 
 
 def append_improvement_note(title: str, body: str) -> dict[str, str]:
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         if os.environ.get("K_SERVICE", "").strip():
             try:
@@ -1217,7 +1217,7 @@ def append_improvement_note(title: str, body: str) -> dict[str, str]:
 
 
 def append_web_note(title: str, body: str) -> dict[str, str]:
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     day = dt.date.today().isoformat()
@@ -1246,7 +1246,7 @@ def append_wiki_note(
     related_paths: Iterable[str] | None = None,
     source_query: str | None = None,
 ) -> dict[str, str]:
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     rel = "Projects/tune_lease_55/tune_lease_55 Wiki.md"
@@ -1286,7 +1286,7 @@ def append_wiki_note(
 
 def append_case_log(score_result: dict, case: dict) -> dict[str, str]:
     """スコアリング結果を Cases/ 以下の日次ログに追記する。"""
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
 
@@ -1353,7 +1353,7 @@ def append_asset_finance_note(
     related_paths: Iterable[str] | None = None,
 ) -> dict[str, str]:
     """物件ファイナンス審査結果を Asset Finance/ 以下の日次ログに追記する。"""
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
 
@@ -1428,7 +1428,7 @@ def append_asset_knowledge_backlinks(
     finance_note_rel: str | None = None,
 ) -> dict[str, Any]:
     """Asset Knowledgeノート側へ、この知識を使った審査結果リンクを追記する。"""
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません", "updated": []}
 
@@ -1475,7 +1475,7 @@ def append_work_log(
     tags: list[str] | None = None,
 ) -> dict[str, str]:
     """Codexスタイルの作業ログをObsidianに追記する。"""
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     day = dt.date.today().isoformat()
@@ -1509,7 +1509,7 @@ def append_work_log(
 
 
 def append_weekly_review_note(title: str, body: str) -> dict[str, str]:
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     iso_year, iso_week, _ = dt.date.today().isocalendar()
@@ -1533,7 +1533,7 @@ def append_weekly_review_note(title: str, body: str) -> dict[str, str]:
 
 
 def append_monthly_review_note(title: str, body: str) -> dict[str, str]:
-    vault = find_vault()
+    vault, _, _ = _get_indexed_paths()
     if not vault:
         return {"status": "skipped", "reason": "iCloud 上の Obsidian Vault が見つかりません"}
     year_month = dt.date.today().strftime("%Y-%m")
