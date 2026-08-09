@@ -7,6 +7,7 @@ not expose raw vault contents wholesale.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import re
 import sys
@@ -130,6 +131,9 @@ _REFERENCE_PATH_PREFIXES = ("リース知識/", "projects/tune_lease_55/", "proj
 _LOWER_PRIORITY_PATH_PARTS = ("05-クリップ_記事/", "06-日記_作業ログ/", "/news/")
 _SOURCE_PRIORITY_RULES = (
     ("リース知識/", 1.00),
+    ("lease-wiki-vault/01_業務フロー/", 0.96),
+    ("lease-wiki-vault/04_リスク分析/", 0.94),
+    ("lease-wiki-vault/", 0.86),
     ("projects/tune_lease_55/asset knowledge/", 0.95),
     ("projects/tune_lease_55/asset finance/", 0.92),
     ("projects/tune_lease_55/cases/", 0.90),
@@ -147,6 +151,7 @@ _NOISE_PATH_PARTS = (
     "検索語インデックス",
     "05-クリップ_記事/",
 )
+_RETRIEVAL_GRAPH_CACHE: dict[str, Any] = {"path": "", "mtime": 0.0, "index": None}
 
 
 def _normalize_search_text(text: str) -> str:
@@ -437,6 +442,127 @@ def _search_in_paths(
     return selected
 
 
+def _retrieval_graph_path() -> Path:
+    override = os.environ.get("OBSIDIAN_RETRIEVAL_GRAPH_PATH", "").strip()
+    if override:
+        return Path(override).expanduser()
+    try:
+        from runtime_paths import get_data_path
+
+        return Path(get_data_path("obsidian_retrieval_graph.json"))
+    except Exception:
+        return _REPO_ROOT / "data" / "obsidian_retrieval_graph.json"
+
+
+def _load_retrieval_graph() -> dict[str, Any]:
+    path = _retrieval_graph_path()
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return {}
+    cached_path = str(_RETRIEVAL_GRAPH_CACHE.get("path") or "")
+    cached_mtime = float(_RETRIEVAL_GRAPH_CACHE.get("mtime") or 0.0)
+    if cached_path == str(path) and cached_mtime == mtime:
+        cached = _RETRIEVAL_GRAPH_CACHE.get("index")
+        return cached if isinstance(cached, dict) else {}
+    try:
+        index = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(index, dict):
+        return {}
+    _RETRIEVAL_GRAPH_CACHE.update(path=str(path), mtime=mtime, index=index)
+    return index
+
+
+def _safe_graph_note_path(vault: Path, rel_path: str) -> Path | None:
+    if not rel_path or "\x00" in rel_path:
+        return None
+    try:
+        candidate = (vault / rel_path).resolve()
+        root = vault.resolve()
+    except OSError:
+        return None
+    if candidate != root and root not in candidate.parents:
+        return None
+    if not candidate.is_file() or _is_private_note(candidate):
+        return None
+    return candidate
+
+
+def _graph_route_candidates(
+    query: str,
+    vault: Path | None,
+    *,
+    limit: int,
+    max_chars: int,
+    primary_terms: list[str],
+    expanded_terms: list[str],
+) -> tuple[list[dict[str, Any]], list[Path]]:
+    """Return retrieval-graph candidates plus their concrete paths.
+
+    The graph index is a cheap pre-router: it scores one-line metadata first,
+    then this function opens only those candidate files to build snippets.
+    """
+    if not vault:
+        return [], []
+    index = _load_retrieval_graph()
+    if not index.get("nodes"):
+        return [], []
+    try:
+        from scripts.build_obsidian_retrieval_graph import route_query
+
+        # Use the original question for graph routing. Expanded terms are useful
+        # for lexical scoring, but routing on broad expansions such as q_risk can
+        # pull in adjacent notes before the user's actual topic is represented.
+        routed = route_query(query, index, limit=limit)
+    except Exception:
+        return [], []
+
+    hits: list[dict[str, Any]] = []
+    paths: list[Path] = []
+    seen: set[str] = set()
+    normalized_terms = [_normalize_search_text(t) for t in expanded_terms]
+    for rank, node in enumerate(routed):
+        rel = str(node.get("path") or "").strip()
+        if not rel or rel in seen:
+            continue
+        path = _safe_graph_note_path(vault, rel)
+        if path is None:
+            continue
+        seen.add(rel)
+        paths.append(path)
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            text = str(node.get("summary") or "")
+        low = _normalize_search_text(text)
+        first = min((low.find(t) for t in normalized_terms if t and t in low), default=0)
+        start = max(0, first - 160)
+        snippet = text[start:start + max_chars].strip() or str(node.get("summary") or "")
+        hits.append(
+            {
+                "path": rel,
+                "snippet": snippet[:max_chars],
+                "wikilinks": list(node.get("links") or [])[:20],
+                "source": "retrieval_graph",
+                "semantic_score": 0.0,
+                "graph_rank": rank + 1,
+                "graph_route_score": float(node.get("route_score") or 0.0),
+                "graph_route": str(node.get("route") or ""),
+                "score": _candidate_score(
+                    path=rel,
+                    text=snippet,
+                    primary_terms=primary_terms,
+                    expanded_terms=expanded_terms,
+                    query=query,
+                    source_bonus=max(3.0, 8.0 - rank * 0.35),
+                ),
+            }
+        )
+    return hits, paths
+
+
 _CHAT_LOG_DIRS = ("AI Chat", "Improvement Log", "Weekly Review", "Daily")
 _PRIVATE_NOTE_DIRS = ("Private Reflection",)
 
@@ -550,6 +676,16 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
         return []
 
     candidates: dict[str, dict[str, Any]] = {}
+    graph_hits, graph_paths = _graph_route_candidates(
+        query,
+        vault,
+        limit=max(limit * 10, 30),
+        max_chars=max_chars,
+        primary_terms=primary_terms,
+        expanded_terms=terms,
+    )
+    for hit in graph_hits:
+        candidates[str(hit["path"])] = dict(hit)
 
     # Vector search supplies semantic candidates; lexical/path scoring decides final order.
     try:
@@ -579,7 +715,7 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
                 continue
             text = str(item.get("text") or "").strip()
             semantic_score = _semantic_score_from_item(item, rank)
-            candidates[path] = {
+            vector_candidate = {
                 "path": path,
                 "snippet": text[:max_chars],
                 "wikilinks": [
@@ -601,6 +737,19 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
                     source_bonus=max(2.0, 10.0 - rank * 0.5),
                 ),
             }
+            if path in candidates:
+                existing = candidates[path]
+                existing["semantic_score"] = round(semantic_score, 4)
+                existing["vector_rank"] = rank + 1
+                existing["vector_distance"] = item.get("distance")
+                existing["vector_rank_score"] = item.get("rank_score")
+                existing["source"] = f"{existing.get('source', 'retrieval_graph')}+rag"
+                existing["score"] = max(
+                    float(existing.get("score") or 0.0),
+                    float(vector_candidate["score"]),
+                )
+            else:
+                candidates[path] = vector_candidate
     except Exception as e:
         import logging
         logging.debug(f"Vector store search failed: {e}, falling back to keyword search")
@@ -613,8 +762,12 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
             limit=limit,
         )
 
+    # The retrieval graph is a cheap pre-router. If it found enough note paths,
+    # keyword search reads only those files; otherwise the old full-path scan
+    # remains the fallback.
+    keyword_paths = graph_paths if len(graph_paths) >= limit else knowledge + chat_logs
     keyword_hits = _search_in_paths(
-        knowledge + chat_logs,
+        keyword_paths,
         vault,
         terms,
         max(limit * 8, 30),
@@ -664,6 +817,9 @@ def _expand_query_terms(query: str) -> list[str]:
             "承認条件",
             "条件付き承認",
             "条件付承認",
+            "承認プロセス",
+            "必要書類",
+            "再提出条件",
             "再提出",
             "保証",
             "担保",
