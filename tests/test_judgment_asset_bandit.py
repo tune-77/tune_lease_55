@@ -1,5 +1,7 @@
 import json
+from pathlib import Path
 
+from api.routers import feedback_loop
 from judgment_asset_bandit import (
     append_feedback_event,
     build_bandit_signals,
@@ -59,3 +61,10 @@ def test_append_feedback_event_writes_jsonl(tmp_path):
     assert rows[0]["rule_id"] == "candidate-b"
     assert rows[0]["outcome"] == "helped"
     assert json.loads(path.read_text(encoding="utf-8"))["source"] == "test"
+
+
+def test_screening_review_feedback_uses_repo_data_ledger():
+    expected = Path(feedback_loop._REPO_ROOT) / "data" / "judgment_asset_usage_feedback.jsonl"
+
+    assert feedback_loop._JUDGMENT_ASSET_USAGE_FEEDBACK_LOG == expected
+    assert "/api/data/" not in str(expected)
