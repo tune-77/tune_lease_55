@@ -10,7 +10,7 @@ import {
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   ClipboardList, Brain, Database,
-  Orbit, ShieldCheck, Search, GitBranch, FileCheck2, Mic, Stethoscope
+  Orbit, ShieldCheck, Search, GitBranch, FileCheck2, Stethoscope, Settings2
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -55,8 +55,7 @@ export default function Sidebar() {
         { name: '改善PMレポート', href: '/improvement-log', icon: ClipboardList, color: 'text-orange-300' },
         { name: 'ループが閉じた証拠', href: '/loop-proof', icon: GitBranch, color: 'text-violet-300' },
         { name: '判断資産系統樹', href: '/judgment-asset-graph', icon: Network, color: 'text-emerald-400' },
-        { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
-        { name: 'DevOpsサイクル', href: '/devops', icon: GitBranch, color: 'text-emerald-300' },
+        { name: '運用情報', href: '/operations', icon: Settings2, color: 'text-fuchsia-300' },
         { name: '紫苑の記憶システム', href: '/shion-memory-system', icon: Database, color: 'text-sky-300' },
         ...(!isCloudRunHost
           ? [{ name: '帰還データ検疫', href: '/cloudrun-return-review', icon: ShieldCheck, color: 'text-teal-300' }]
@@ -87,6 +86,8 @@ export default function Sidebar() {
         { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
         { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
         { name: '知性体コア', href: '/shion-core', icon: Brain, color: 'text-violet-300' },
+        { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
+        { name: 'DevOpsサイクル', href: '/devops', icon: GitBranch, color: 'text-emerald-300' },
       ]
     },
     {
