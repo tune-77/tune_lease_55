@@ -25,6 +25,8 @@ from runtime_paths import (  # noqa: E402
     describe_obsidian_vault_resolution,
 )
 from obsidian_query import list_vault_md_files  # noqa: E402
+from scripts._obsidian_common import now_local as _now  # noqa: E402
+from scripts._obsidian_common import parse_date as _parse_date  # noqa: E402
 
 DEFAULT_VAULT = LEGACY_OBSIDIAN_VAULT
 DEFAULT_JSON = REPO_ROOT / "reports" / "obsidian_environment_monitor_latest.json"
@@ -101,10 +103,6 @@ class MonitorCheck:
     status: str
     message: str
     details: dict[str, Any] | None = None
-
-
-def _now() -> datetime:
-    return datetime.now().astimezone()
 
 
 def _vault_path(value: str | None = None) -> Path:
@@ -638,10 +636,6 @@ def write_reports(report: dict[str, Any], json_path: Path, md_path: Path) -> Non
     json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     md_path.parent.mkdir(parents=True, exist_ok=True)
     md_path.write_text(render_markdown(report), encoding="utf-8")
-
-
-def _parse_date(value: str | None) -> date:
-    return date.fromisoformat(value) if value else date.today()
 
 
 def main() -> int:

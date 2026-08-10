@@ -29,6 +29,9 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from scripts._obsidian_common import list_lines as _list_lines  # noqa: E402
+from scripts._obsidian_common import read_json_or_none as _read_json  # noqa: E402
+from scripts._obsidian_common import read_jsonl as _read_jsonl  # noqa: E402
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -92,32 +95,6 @@ def _read_text(path: Path, max_chars: int = 200_000) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")[:max_chars]
     except OSError:
         return ""
-
-
-def _read_json(path: Path) -> dict[str, Any] | None:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return value if isinstance(value, dict) else None
-
-
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    try:
-        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    except OSError:
-        return rows
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            value = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict):
-            rows.append(value)
-    return rows
 
 
 def _clean(value: Any, limit: int = 180) -> str:
@@ -348,12 +325,6 @@ def _dict_lines(values: dict[str, Any]) -> list[str]:
     if not values:
         return ["- なし"]
     return [f"- {key}: `{value}`" for key, value in sorted(values.items())]
-
-
-def _list_lines(items: list[Any]) -> list[str]:
-    if not items:
-        return ["- なし"]
-    return [f"- {item}" for item in items]
 
 
 def _candidate_lines(items: list[dict[str, Any]]) -> list[str]:

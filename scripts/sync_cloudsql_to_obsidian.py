@@ -53,6 +53,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from scripts._obsidian_common import emotion_bar  # noqa: E402
 
 # ── 接続設定（環境変数から取得） ────────────────────────────────────────────────
 
@@ -348,11 +349,6 @@ def group_by_date(records: list[dict], ts_key: str) -> dict[str, list[dict]]:
 
 
 # ── Markdown 生成 ─────────────────────────────────────────────────────────────
-
-def emotion_bar(value: float, max_val: float = 100.0) -> str:
-    filled = int(round(value / max_val * 10))
-    return "█" * filled + "░" * (10 - filled)
-
 
 def render_emotion_section(emotions: list[dict]) -> str:
     if not emotions:

@@ -14,13 +14,23 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts._obsidian_common import list_lines as _list_lines  # noqa: E402
+from scripts._obsidian_common import now_local as _now  # noqa: E402
+from scripts._obsidian_common import parse_date as _parse_date  # noqa: E402
+from scripts._obsidian_common import read_json_or_none as _read_json  # noqa: E402
+from scripts._obsidian_common import read_jsonl as _read_jsonl  # noqa: E402
+
 DEFAULT_MONITOR_JSON = REPO_ROOT / "reports" / "obsidian_environment_monitor_latest.json"
 DEFAULT_REFLECTION_DELTA_JSON = REPO_ROOT / "data" / "shion_reflection_delta.json"
 DEFAULT_CANDIDATES_JSONL = REPO_ROOT / "data" / "obsidian_memory_insight_candidates.jsonl"
@@ -92,36 +102,6 @@ class Finding:
     code: str
     message: str
     evidence: dict[str, Any]
-
-
-def _now() -> datetime:
-    return datetime.now().astimezone()
-
-
-def _read_json(path: Path) -> dict[str, Any] | None:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return value if isinstance(value, dict) else None
-
-
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    try:
-        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    except OSError:
-        return rows
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(item, dict):
-            rows.append(item)
-    return rows
 
 
 def _check_by_name(monitor_report: dict[str, Any], name: str) -> dict[str, Any] | None:
@@ -645,19 +625,11 @@ def render_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _list_lines(items: list[str]) -> list[str]:
-    return [f"- {item}" for item in items] if items else ["- なし"]
-
-
 def write_report(report: dict[str, Any], json_path: Path, md_path: Path) -> None:
     json_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     md_path.parent.mkdir(parents=True, exist_ok=True)
     md_path.write_text(render_markdown(report), encoding="utf-8")
-
-
-def _parse_date(value: str | None) -> date:
-    return date.fromisoformat(value) if value else date.today()
 
 
 def main() -> int:
