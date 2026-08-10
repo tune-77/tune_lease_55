@@ -24,6 +24,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from obsidian_query import list_vault_md_files, split_query_terms  # noqa: E402
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from scripts._obsidian_common import safe_rel as _safe_rel  # noqa: E402
 
 DEFAULT_VAULT = resolve_obsidian_vault()
 DEFAULT_OUTPUT_JSON = REPO_ROOT / "data" / "obsidian_retrieval_graph.json"
@@ -104,13 +105,6 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return ""
-
-
-def _safe_rel(path: Path, root: Path) -> str:
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
 
 
 def _strip_frontmatter(text: str) -> tuple[dict[str, str], str]:
