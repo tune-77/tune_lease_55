@@ -277,6 +277,8 @@ export default function LeaseKunWizard() {
       const res = await apiClient.post(`/api/score/full`, payload);
       setSubmitted(true);
 
+      const caseId = res.data.case_id as string | null | undefined;
+
       setHistory(prev => [...prev, {
         role: 'humor',
         text: (
@@ -285,7 +287,22 @@ export default function LeaseKunWizard() {
             総合スコア: {(res.data.score_base ?? res.data.score)?.toFixed(1)}点<br/>
             判定: {res.data.hantei}<br/>
             借手スコア: {res.data.score_borrower?.toFixed(1)}点<br/><br/>
-            詳細は「📋 審査・分析」タブから確認してね！<br/><br/>
+            {caseId ? (
+              <>
+                詳細は「📋 審査・分析」タブから確認してね！<br/><br/>
+                <button
+                  onClick={() => router.push(`/screening?case_id=${encodeURIComponent(caseId)}`)}
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition-colors w-full justify-center"
+                >
+                  📋 審査・分析画面で開く
+                </button>
+              </>
+            ) : (
+              <span className="text-rose-600 font-bold">
+                ⚠️ 結果登録への保存に失敗した可能性があります。お手数ですが「📋 審査・分析」タブから内容を入力し直してください。
+              </span>
+            )}
+            <br/><br/>
             <button
               onClick={() => handleGunshiConsult(res.data)}
               className="mt-2 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition-colors w-full justify-center"

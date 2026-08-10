@@ -11,7 +11,7 @@ import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
 import FormFinancial from "../../components/form/FormFinancial";
 import FormQualitative from "../../components/form/FormQualitative";
-import { toThousandYenPayload } from "../../lib/scoringUnits";
+import { toThousandYenPayload, fromThousandYenPayload } from "../../lib/scoringUnits";
 
 import IndicatorCards from "../../components/analysis/IndicatorCards";
 import RealGraphs from "../../components/analysis/RealGraphs";
@@ -2628,7 +2628,33 @@ export default function Dashboard() {
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // リースくん（スマホUI）から case_id 付きで遷移してきた場合、保存済み入力を読み込んでこの画面で審査を実行する
   useEffect(() => {
+    const caseIdParam = new URLSearchParams(window.location.search).get("case_id");
+    if (!caseIdParam) return;
+    setDraftRestored(true);
+    (async () => {
+      try {
+        const res = await apiClient.get(`/api/cases/${caseIdParam}`);
+        const inputs = (res.data?.inputs ?? {}) as Record<string, unknown>;
+        const nextFormData = {
+          ...defaultFormData,
+          ...fromThousandYenPayload(inputs),
+          strength_tags: Array.isArray(inputs.strength_tags) ? inputs.strength_tags : [],
+        } as ScoringFormData;
+        setFormData(nextFormData);
+        setActiveTab("input");
+        router.replace("/screening");
+        void handleSubmit(nextFormData);
+      } catch (error) {
+        console.error("Failed to load case from case_id", error);
+        alert("案件の読み込みに失敗しました。");
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("case_id")) return;
     const raw = window.localStorage.getItem(SCREENING_RETURN_STATE_KEY);
     if (!raw) {
       setDraftRestored(true);
