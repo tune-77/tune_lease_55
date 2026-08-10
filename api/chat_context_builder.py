@@ -34,6 +34,7 @@ class ChatContextBuilderDeps:
     build_shion_non_domain: MessagePromptBuilder
     build_human_device_resonance: Callable[..., str]
     build_judgment_response_shape: MessagePromptBuilder
+    build_case_screening_pattern: MessagePromptBuilder
     build_grey_judgment: MessagePayloadBuilder
 
 
@@ -64,6 +65,7 @@ class ChatContextState:
     shion_non_domain_context: str
     human_device_resonance_context: str
     judgment_response_shape_context: str
+    case_screening_pattern_context: str
     experience_loop_context: str
     experience_loop_payload: dict[str, Any]
     grey_judgment_context: str
@@ -124,6 +126,7 @@ def build_chat_context_state(
     shion_non_domain_context = deps.build_shion_non_domain(message)
     human_device_resonance_context = deps.build_human_device_resonance(message, user_id=user_id, now=now)
     judgment_response_shape_context = deps.build_judgment_response_shape(message)
+    case_screening_pattern_context = deps.build_case_screening_pattern(message)
     experience_loop_context = ""
     experience_loop_payload: dict[str, Any] = {"used": False}
     grey_judgment_context = ""
@@ -144,6 +147,7 @@ def build_chat_context_state(
         shion_non_domain_context = ""
         human_device_resonance_context = ""
         judgment_response_shape_context = ""
+        case_screening_pattern_context = ""
         experience_loop_payload = _suppressed_used_payload()
         grey_judgment_payload = _suppressed_used_payload()
 
@@ -192,6 +196,7 @@ def build_chat_context_state(
         shion_non_domain_context=shion_non_domain_context,
         human_device_resonance_context=human_device_resonance_context,
         judgment_response_shape_context=judgment_response_shape_context,
+        case_screening_pattern_context=case_screening_pattern_context,
         experience_loop_context=experience_loop_context,
         experience_loop_payload=experience_loop_payload,
         grey_judgment_context=grey_judgment_context,
