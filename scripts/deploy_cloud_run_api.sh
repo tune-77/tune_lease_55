@@ -56,6 +56,7 @@ gcloud builds submit \
   --project "$PROJECT_ID" \
   --config "$ROOT_DIR/cloudbuild.api.yaml" \
   --substitutions _IMAGE_URI="$IMAGE_URI" \
+  --suppress-logs \
   "$ROOT_DIR"
 
 deploy_args=(
