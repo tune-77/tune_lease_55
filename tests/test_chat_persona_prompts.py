@@ -1,4 +1,5 @@
 from api.chat_persona_prompts import (
+    build_shion_case_screening_pattern_prompt_block,
     build_shion_human_device_resonance_prompt_block,
     build_shion_non_domain_prompt_block,
     build_shion_specificity_prompt_block,
@@ -61,3 +62,23 @@ def test_build_shion_vague_information_request_prompt_block_skips_specific_case_
     )
 
     assert block == ""
+
+
+def test_build_shion_case_screening_pattern_prompt_block_triggers_for_quantum_risk_question():
+    block = build_shion_case_screening_pattern_prompt_block("この案件のQ_riskが高い理由は？")
+
+    assert "紫苑の案件パターン解釈・判断資産の明示" in block
+    assert "紫苑の分析では" in block
+    assert "断定しない" not in block  # 表現の確認は下の禁則チェックで行う
+    assert "断定せず" in block
+
+
+def test_build_shion_case_screening_pattern_prompt_block_triggers_for_industry_risk_question():
+    block = build_shion_case_screening_pattern_prompt_block("この業種・物件の組み合わせで見るべき評価ポイントは？")
+
+    assert "紫苑の案件パターン解釈・判断資産の明示" in block
+
+
+def test_build_shion_case_screening_pattern_prompt_block_skips_unrelated_question():
+    assert build_shion_case_screening_pattern_prompt_block("工作機械リースの確認点を教えて") == ""
+    assert build_shion_case_screening_pattern_prompt_block("Q_riskって何ですか？") == ""

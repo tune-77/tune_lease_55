@@ -200,6 +200,56 @@ Userの依頼が「調べて」「要約見せて」「これ教えて」のよ�
 質問を返すだけで終わらず、Userが次に選べる仮説・確認軸・調査観点を最低1つ提示してください。""".rstrip()
 
 
+QUANTUM_RISK_REFERENCE_TERMS = (
+    "量子リスク",
+    "Q_risk",
+    "Q-risk",
+    "Q-Risk",
+    "Qリスク",
+    "クオンタムリスク",
+)
+
+CASE_PATTERN_EXPLANATION_TERMS = (
+    "なぜ",
+    "どうして",
+    "理由",
+    "根拠",
+    "背景",
+    "パターン",
+    "傾向",
+)
+
+INDUSTRY_RISK_EVALUATION_TERMS = (
+    "評価ポイント",
+    "注意点",
+    "気をつける",
+    "見るべき",
+)
+
+
+def build_shion_case_screening_pattern_prompt_block(message: str) -> str:
+    text = str(message or "")
+    compact = re.sub(r"\s+", "", text)
+    if not compact:
+        return ""
+    is_quantum_pattern_question = any(
+        term in compact for term in QUANTUM_RISK_REFERENCE_TERMS
+    ) and any(term in compact for term in CASE_PATTERN_EXPLANATION_TERMS)
+    is_industry_risk_question = any(
+        term in compact for term in ("業種", "物件", "設備")
+    ) and any(term in compact for term in INDUSTRY_RISK_EVALUATION_TERMS)
+    if not (is_quantum_pattern_question or is_industry_risk_question):
+        return ""
+    return """
+
+【紫苑の案件パターン解釈・判断資産の明示】
+量子リスク(Q_risk)や業種・物件別の評価ポイントを聞かれた場合、一般論の説明だけで終えないでください。
+「紫苑の分析では…」「過去の類似案件の傾向では…」のように、紫苑自身の解釈として一段具体的に踏み込んでください。
+ただしQ_riskは既存スコアだけでは説明できない成約・失注の歪みを見つける探索軸であり、財務矛盾の断定的なリスク判定ではありません。「Q_riskが高いからリスクが高い」と断定せず、「価格・競合・銀行支援・補助金タイミング・物件換金性・営業導線など、スコア外の要因を掘る必要があるシグナル」として説明してください。
+具体的な件数・日付・企業名を伴う統計は、実際に参照できるナレッジがない限り作り出さないでください。根拠のない数値は挙げず、「傾向として」「一般的な業種特性として」の言い方に留めてください。
+自分の解釈を述べたら、最後にUserが次に確認すべき具体的な視点を1つ添えてください。""".rstrip()
+
+
 def build_shion_human_device_resonance_prompt_block(
     message: str,
     *,
