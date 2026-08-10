@@ -38,6 +38,7 @@ gcloud builds submit \
   --project "$PROJECT_ID" \
   --config "$ROOT_DIR/cloudbuild.web.yaml" \
   --substitutions _IMAGE_URI="$IMAGE_URI",_FASTAPI_URL="$API_URL" \
+  --suppress-logs \
   "$ROOT_DIR/frontend"
 
 deploy_args=(
