@@ -1170,7 +1170,7 @@ Cloud SQL（`tune-lease-db`）は廃止済みです。日次パイプライン�
 シークレットはSecret Managerで管理します（`.env`・ソースコードへの直接記載は禁止）。
 
 ```bash
-gcloud builds submit --config cloudbuild.yaml
+gcloud builds submit --config cloudbuild.yaml --suppress-logs
 ```
 
 ## 審査ロジックの見方

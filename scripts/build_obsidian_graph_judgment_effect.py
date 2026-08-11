@@ -23,6 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 from obsidian_query import list_vault_md_files  # noqa: E402
+from scripts._obsidian_common import safe_rel as _safe_rel  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -65,13 +66,6 @@ def _read_jsonl(path: Path, *, limit: int = 50000) -> list[dict[str, Any]]:
         if isinstance(value, dict):
             rows.append(value)
     return rows
-
-
-def _safe_rel(path: Path, root: Path) -> str:
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
 
 
 def _note_key(value: Any) -> str:

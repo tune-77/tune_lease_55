@@ -30,3 +30,16 @@ export function toThousandYenPayload<T extends object>(data: T): T {
 
   return payload as T;
 }
+
+// toThousandYenPayload の逆変換。保存済みの千円単位 inputs をフォーム表示用の百万円単位に戻す。
+export function fromThousandYenPayload<T extends object>(data: T): T {
+  const payload: Record<string, unknown> = { ...data } as Record<string, unknown>;
+
+  for (const field of monetaryScoringFields) {
+    if (!(field in payload)) continue;
+    const numericValue = Number(payload[field as MonetaryScoringField] || 0);
+    payload[field] = numericValue / 1000;
+  }
+
+  return payload as T;
+}

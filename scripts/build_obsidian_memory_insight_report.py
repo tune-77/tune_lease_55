@@ -30,6 +30,8 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from scripts._obsidian_common import parse_date as _parse_date  # noqa: E402
+from scripts._obsidian_common import strip_frontmatter as _strip_frontmatter  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VAULT = resolve_obsidian_vault()
@@ -213,10 +215,6 @@ def _vault_path(value: str | None = None) -> Path:
 
 def _date_range(end_date: date, days: int) -> set[str]:
     return {(end_date - timedelta(days=offset)).isoformat() for offset in range(days)}
-
-
-def _strip_frontmatter(text: str) -> str:
-    return re.sub(r"^---\n.*?\n---\n", "", text, flags=re.DOTALL)
 
 
 def _read_text(path: Path, max_chars: int = 50000) -> str:
@@ -663,10 +661,6 @@ def _candidate_lines(items: list[dict[str, Any]], limit: int = 12) -> list[str]:
             f"(source: `{item.get('source_path')}`)"
         )
     return lines
-
-
-def _parse_date(value: str | None) -> date:
-    return date.fromisoformat(value) if value else date.today()
 
 
 def main() -> int:

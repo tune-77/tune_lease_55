@@ -52,7 +52,19 @@ class ResearchOrganRunRequest(BaseModel):
 
 
 def _get_vault_path() -> str:
-    """OBSIDIAN_VAULT_PATH 環境変数からvaultパスを取得する。"""
+    """Vaultパスを取得する。
+
+    api.main の解決結果（環境変数 → 未設定時は find_vault() による自動検索）を
+    優先する。ここで環境変数の生値だけを見ると、OBSIDIAN_VAULT_PATH が明示設定
+    されていない起動経路（例: .zshrc を読まない uvicorn 起動）でノート一覧が
+    常に空になるため、debate.py 等と同じく api.main の解決済み値に揃える。
+    """
+    try:
+        from api.main import _OBSIDIAN_VAULT_PATH as _resolved_vault_path
+        if _resolved_vault_path:
+            return _resolved_vault_path
+    except Exception:
+        pass
     return os.environ.get("OBSIDIAN_VAULT_PATH", "")
 
 

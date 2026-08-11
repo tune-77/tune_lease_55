@@ -5558,6 +5558,12 @@ def _build_shion_vague_information_request_prompt_block(message: str) -> str:
     return build_shion_vague_information_request_prompt_block(message)
 
 
+def _build_shion_case_screening_pattern_prompt_block(message: str) -> str:
+    from api.chat_persona_prompts import build_shion_case_screening_pattern_prompt_block
+
+    return build_shion_case_screening_pattern_prompt_block(message)
+
+
 def _build_shion_human_device_resonance_prompt_block(
     message: str,
     *,
@@ -6679,6 +6685,7 @@ def post_chat(req: ChatRequest):
                 build_shion_non_domain=_build_shion_non_domain_prompt_block,
                 build_human_device_resonance=_build_shion_human_device_resonance_prompt_block,
                 build_judgment_response_shape=_build_shion_judgment_response_shape_prompt_block,
+                build_case_screening_pattern=_build_shion_case_screening_pattern_prompt_block,
                 build_grey_judgment=_build_grey_judgment_prompt_block,
             ),
         )
@@ -6706,6 +6713,7 @@ def post_chat(req: ChatRequest):
         shion_non_domain_context = context_state.shion_non_domain_context
         human_device_resonance_context = context_state.human_device_resonance_context
         judgment_response_shape_context = context_state.judgment_response_shape_context
+        case_screening_pattern_context = context_state.case_screening_pattern_context
         experience_loop_context = context_state.experience_loop_context
         experience_loop_payload = context_state.experience_loop_payload
         grey_judgment_context = context_state.grey_judgment_context
@@ -6898,6 +6906,7 @@ def post_chat(req: ChatRequest):
                 shion_non_domain_context,
                 human_device_resonance_context,
                 judgment_response_shape_context,
+                case_screening_pattern_context,
                 f"\n\n{memory_recall_context}" if memory_recall_context else "",
             ])
             pdca_block = (
@@ -7299,6 +7308,7 @@ def post_chat(req: ChatRequest):
             shion_non_domain_context,
             human_device_resonance_context,
             judgment_response_shape_context,
+            case_screening_pattern_context,
             guidance.prompt_suffix,
         ])
         pdca_block = (

@@ -26,6 +26,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 from obsidian_query import list_vault_md_files  # noqa: E402
+from scripts._obsidian_common import strip_frontmatter as _strip_frontmatter  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -103,10 +104,6 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return ""
-
-
-def _strip_frontmatter(text: str) -> str:
-    return re.sub(r"^---\n.*?\n---\n", "", text, flags=re.DOTALL)
 
 
 def _clean_item(value: str, limit: int = 280) -> str:
