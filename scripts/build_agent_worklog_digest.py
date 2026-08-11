@@ -144,7 +144,7 @@ def _summarize_log(log: dict[str, Any]) -> dict[str, Any]:
         "changes": changes,
         "verification": verification,
         "open_items": open_items,
-        "shion_use": "Userの意図・判断変更・採用/保留理由を内政モードの補正情報として使う",
+        "shion_use": "Userの意図・判断変更・採用/保留理由を自己提案・運用相談の補正情報として使う",
     }
 
 
@@ -166,7 +166,7 @@ def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]
         "policy": {
             "raw_chat_logs_excluded": True,
             "private_detail_excluded": True,
-            "use_for": "紫苑の内政モードで、Userの意図・判断・制約・実装後の検証結果を理解する補助情報",
+            "use_for": "紫苑の自己提案・運用相談で、Userの意図・判断・制約・実装後の検証結果を理解する補助情報",
             "do_not_use_for": "顧客情報の推測、Private Reflection原文の引用、人間承認なしの判断資産昇格",
         },
     }

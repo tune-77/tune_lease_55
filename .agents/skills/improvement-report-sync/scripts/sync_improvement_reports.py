@@ -99,6 +99,39 @@ def normalize_status(value: str) -> str:
     return parts[0].strip().lower() if parts else ""
 
 
+TERMINAL_LEDGER_STATUSES = {
+    "applied",
+    "approved",
+    "deleted",
+    "rejected",
+    "deferred",
+    "parked",
+    "suppressed",
+    "rule_registered",
+    "apply_failed",
+}
+
+
+PARKED_LEDGER_STATUSES = {"parked", "deferred", "deleted", "rejected", "suppressed"}
+
+
+def is_terminal_status(status: str) -> bool:
+    return normalize_status(status) in TERMINAL_LEDGER_STATUSES
+
+
+def prefer_ledger_entry(current: dict | None, candidate: dict) -> dict:
+    """Keep human/resolution decisions ahead of later automatic needs_review rows."""
+    if current is None:
+        return candidate
+    current_terminal = is_terminal_status(str(current.get("status") or ""))
+    candidate_terminal = is_terminal_status(str(candidate.get("status") or ""))
+    if candidate_terminal and not current_terminal:
+        return candidate
+    if current_terminal and not candidate_terminal:
+        return current
+    return candidate
+
+
 def load_ledger_latest(ledger_path: Path) -> dict[str, dict]:
     latest: dict[str, dict] = {}
     if not ledger_path.exists():
@@ -130,7 +163,7 @@ def load_ledger_latest(ledger_path: Path) -> dict[str, dict]:
         for alias in aliases:
             alias_text = str(alias or "").strip()
             if alias_text:
-                latest[alias_text] = entry
+                latest[alias_text] = prefer_ledger_entry(latest.get(alias_text), entry)
     return latest
 
 
@@ -223,7 +256,7 @@ def infer_status_ids_from_ledger(
         }
         if "applied" in statuses:
             applied_ids.append(item_id)
-        elif "parked" in statuses:
+        elif statuses & PARKED_LEDGER_STATUSES:
             parked_ids.append(item_id)
 
     return applied_ids, parked_ids
@@ -473,7 +506,7 @@ def main() -> None:
         latest = {}
 
     applied_ids = list(args.applied)
-    if args.from_report or not applied_ids:
+    if args.from_report:
         applied_ids = [
             str(item.get("id") or "")
             for item in first_list_value(report, "applied", "applied_improvements")

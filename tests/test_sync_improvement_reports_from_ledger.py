@@ -109,6 +109,82 @@ def test_from_ledger_moves_applied_and_parked_items(tmp_path):
     assert [item["id"] for item in updated_latest["parked_improvements"]] == ["REV-002"]
 
 
+def test_from_ledger_keeps_deleted_decision_over_later_needs_review(tmp_path):
+    mod = load_sync_module()
+    ledger_path = tmp_path / "ledger.jsonl"
+    write_ledger(
+        ledger_path,
+        [
+            {
+                "key": "same-key",
+                "canonical_key": "same-key",
+                "status": "deleted",
+                "title": "昨日削除した改善候補",
+                "recorded_at": "2026-08-09T17:38:15",
+            },
+            {
+                "key": "same-key",
+                "canonical_key": "same-key",
+                "status": "needs_review",
+                "title": "昨日削除した改善候補",
+                "recorded_at": "2026-08-10T04:05:00",
+            },
+        ],
+    )
+    report = {
+        "needs_review": [
+            {"id": "REV-291", "title": "昨日削除した改善候補", "canonical_key": "same-key"},
+        ],
+        "summary": {},
+    }
+
+    applied_ids, parked_ids = mod.infer_status_ids_from_ledger(report, {}, ledger_path)
+    updated_report, moved, parked_moved, skipped = mod.sync_report(
+        report, applied_ids, [], parked_ids, []
+    )
+
+    assert applied_ids == []
+    assert parked_ids == ["REV-291"]
+    assert moved == []
+    assert parked_moved == ["REV-291"]
+    assert skipped == []
+    assert updated_report["needs_review"] == []
+
+
+def test_from_ledger_apply_failed_overrides_older_applied(tmp_path):
+    mod = load_sync_module()
+    ledger_path = tmp_path / "ledger.jsonl"
+    write_ledger(
+        ledger_path,
+        [
+            {
+                "key": "old-key",
+                "canonical_key": "old-key",
+                "status": "applied",
+                "title": "監査で未反映に戻された候補",
+                "recorded_at": "2026-08-07T04:03:38",
+            },
+            {
+                "key": "old-key",
+                "canonical_key": "old-key",
+                "status": "apply_failed",
+                "title": "監査で未反映に戻された候補",
+                "recorded_at": "2026-08-08T10:49:08",
+            },
+        ],
+    )
+    report = {
+        "needs_review": [
+            {"id": "REV-292", "title": "監査で未反映に戻された候補", "canonical_key": "old-key"},
+        ],
+    }
+
+    applied_ids, parked_ids = mod.infer_status_ids_from_ledger(report, {}, ledger_path)
+
+    assert applied_ids == []
+    assert parked_ids == []
+
+
 def test_report_to_latest_pipeline_does_not_double_bucket_item_matching_both_applied_and_parked(tmp_path):
     """Regression test for the REV-019 (2026-08-08) anomaly: an item whose
     title matches both an applied pattern and a parked_titles pattern (e.g.

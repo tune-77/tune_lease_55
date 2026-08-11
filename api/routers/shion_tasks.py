@@ -38,6 +38,12 @@ class ShionTaskStatusRequest(BaseModel):
     status: Literal["open", "done", "cancelled"]
 
 
+class MemoryReviewRequest(BaseModel):
+    decision: Literal["adopted", "revised", "held", "rejected"]
+    note: str = ""
+    edited_claim: str = ""
+
+
 def _daily_greeting_read_json(path: Path) -> dict:
     try:
         if path.exists():
@@ -244,6 +250,98 @@ def get_shion_memory_lanes(
         include_sensitive_personal=include_sensitive_personal,
         sample_limit=max(1, min(int(sample_limit or 5), 20)),
     )
+
+
+@router.get("/api/shion/memory-engineering-report")
+def get_shion_memory_engineering_report() -> dict:
+    """最新のMemory Engineeringレポートを返す（読み取り専用）。"""
+    from runtime_paths import get_data_dir
+
+    bundle_root = Path(os.environ.get("CLOUDRUN_BUNDLE_DIR") or (_REPO_ROOT / ".cloudrun_bundle"))
+    report_paths = [
+        get_data_dir() / "memory_engineering_latest.json",
+        bundle_root / "data" / "memory_engineering_latest.json",
+        bundle_root / "reports" / "memory_engineering_latest.json",
+        _REPO_ROOT / "reports" / "memory_engineering_latest.json",
+    ]
+    report_path = next((path for path in report_paths if path.exists()), report_paths[-1])
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "generated": False,
+            "mode": "read_only_memory_engineering_observation",
+            "guardrail": "no_memory_delete_no_promotion_no_prompt_or_scoring_change",
+            "summary": {},
+            "write_path": {"sources": []},
+            "promotion_path": {},
+            "read_path": {},
+            "maintenance_path": {"forgetting_review_sample": []},
+            "hardware_pressure_proxy": {},
+            "recommendations": [],
+        }
+    if isinstance(payload, dict):
+        return {"generated": True, **payload}
+    return {
+        "generated": False,
+        "mode": "read_only_memory_engineering_observation",
+        "guardrail": "report_payload_invalid",
+        "summary": {},
+        "write_path": {"sources": []},
+        "promotion_path": {},
+        "read_path": {},
+        "maintenance_path": {"forgetting_review_sample": []},
+        "hardware_pressure_proxy": {},
+        "recommendations": [],
+    }
+
+
+@router.get("/api/shion/memory-review-inbox")
+def get_shion_memory_review_inbox(
+    status: str = "candidate",
+    source: str = "all",
+    q: str = "",
+    limit: int = 30,
+    offset: int = 0,
+) -> dict:
+    """記憶候補のレビュー受け箱を返す。判断結果は別stateで重ねる。"""
+    from api.memory_review_inbox import list_inbox
+
+    allowed_statuses = {"all", "candidate", "adopted", "revised", "held", "rejected"}
+    if status not in allowed_statuses:
+        raise HTTPException(status_code=422, detail="invalid status")
+    return list_inbox(status=status, source=source, q=q, limit=limit, offset=offset)
+
+
+@router.post("/api/shion/memory-review-inbox/{inbox_id}/review")
+def post_shion_memory_review(inbox_id: str, req: MemoryReviewRequest, background_tasks: BackgroundTasks) -> dict:
+    """記憶候補の人間判断を保存する。元候補ファイルは変更しない。"""
+    from api.memory_review_inbox import review_candidate
+
+    try:
+        item = review_candidate(
+            inbox_id,
+            decision=req.decision,
+            note=req.note,
+            edited_claim=req.edited_claim,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="memory review candidate not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="memory_review_inbox_reviewed",
+        surface="shion_memory_system",
+        payload={
+            "schema_version": 1,
+            "inbox_id": inbox_id,
+            "decision": req.decision,
+            "source": item.get("source"),
+            "source_item_id": item.get("source_item_id"),
+        },
+    )
+    return {"status": "ok", "item": item}
 
 
 @router.post("/api/shion/tasks")

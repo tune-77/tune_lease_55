@@ -166,6 +166,15 @@ echo "[記憶] 記憶の矛盾候補を検出中（レポートのみ・自動�
 "${PYTHON}" "${PROJECT_ROOT}/scripts/detect_shion_memory_contradictions.py"; log_step "detect_shion_memory_contradictions" $?
 
 echo ""
+echo "[記憶] Memory Engineering レポートを生成中（書き込み費用・昇格率・忘却候補）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_memory_engineering_report.py"
+MEMORY_ENGINEERING_EXIT=$?
+log_step "build_memory_engineering_report" ${MEMORY_ENGINEERING_EXIT}
+if [ ${MEMORY_ENGINEERING_EXIT} -ne 0 ]; then
+    echo "警告: Memory Engineering レポート生成に失敗しました（終了コード ${MEMORY_ENGINEERING_EXIT}）"
+fi
+
+echo ""
 echo "[診断] マクロデータ更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_fincept_data.py"; log_step "fetch_fincept_data" $?
 

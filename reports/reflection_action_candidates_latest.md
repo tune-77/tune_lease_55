@@ -1,6 +1,6 @@
 # Reflection Action Candidates
 
-- generated_at: 2026-08-09T07:04:33
+- generated_at: 2026-08-11T04:13:20
 - count: 3
 - policy: human_decision_required; no prompt/RAG/scoring promotion
 

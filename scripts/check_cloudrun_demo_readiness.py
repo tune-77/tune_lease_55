@@ -27,6 +27,15 @@ LOCAL_PERSONAL_MEMORY = ROOT / "data" / "user_personal_memory.md"
 BUNDLE_PERSONAL_MEMORY = BUNDLE_DATA_DIR / "user_personal_memory.md"
 LOCAL_SHION_MEMORY_INDEX = ROOT / "data" / "shion_memory_index.json"
 BUNDLE_SHION_MEMORY_INDEX = BUNDLE_DATA_DIR / "shion_memory_index.json"
+BUNDLE_OBSIDIAN_RETRIEVAL_GRAPH = BUNDLE_DATA_DIR / "obsidian_retrieval_graph.json"
+BUNDLE_MEMORY_ENGINEERING_REPORT = BUNDLE_DATA_DIR / "memory_engineering_latest.json"
+BUNDLE_MEMORY_REVIEW_SOURCES = [
+    BUNDLE_DATA_DIR / "judgment_materials_preview.jsonl",
+    BUNDLE_DATA_DIR / "autoresearch_judgment_asset_candidates.jsonl",
+    BUNDLE_DATA_DIR / "reflection_action_candidates.jsonl",
+    BUNDLE_DATA_DIR / "prediction_error_update_candidates.jsonl",
+    BUNDLE_DATA_DIR / "obsidian_memory_insight_candidates.jsonl",
+]
 
 
 class CheckRun:
@@ -232,6 +241,83 @@ def check_shion_memory_index(checks: CheckRun) -> None:
         checks.warn("local data/shion_memory_index.json missing; run scripts/build_shion_memory_index.py")
 
 
+def _obsidian_graph_node_count(path: Path) -> int:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    nodes = data.get("nodes") if isinstance(data, dict) else None
+    return len(nodes) if isinstance(nodes, list) else 0
+
+
+def check_obsidian_retrieval_graph(checks: CheckRun) -> None:
+    """Obsidian 検索の前段ルータが Cloud Run バンドルに入っているか確認する。"""
+    if not BUNDLE_OBSIDIAN_RETRIEVAL_GRAPH.exists():
+        checks.fail(
+            "bundle data/obsidian_retrieval_graph.json is missing; "
+            "Obsidian graph pre-routing will be disabled on Cloud Run. Rerun package_cloud_run_bundle.sh"
+        )
+        return
+    try:
+        count = _obsidian_graph_node_count(BUNDLE_OBSIDIAN_RETRIEVAL_GRAPH)
+    except (OSError, json.JSONDecodeError) as exc:
+        checks.fail(f"bundle obsidian_retrieval_graph.json is unreadable: {exc}")
+        return
+    if count == 0:
+        checks.fail("bundle obsidian_retrieval_graph.json has 0 nodes; graph pre-routing would be empty")
+    elif count < 100:
+        checks.warn(f"bundle obsidian_retrieval_graph.json has only {count} nodes (expected 100+)")
+    else:
+        checks.info(f"bundle obsidian_retrieval_graph.json is present ({count} nodes)")
+
+
+def _jsonl_row_count(path: Path) -> int:
+    count = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            count += 1
+    return count
+
+
+def check_memory_review_bundle(checks: CheckRun) -> None:
+    """Memory Review / Engineering UI の本番表示に必要なbundle材料を確認する。"""
+    if not BUNDLE_MEMORY_ENGINEERING_REPORT.exists():
+        checks.fail(
+            "bundle data/memory_engineering_latest.json is missing; "
+            "Memory Engineering panel will be empty on Cloud Run"
+        )
+    else:
+        try:
+            payload = json.loads(BUNDLE_MEMORY_ENGINEERING_REPORT.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            checks.fail(f"bundle memory_engineering_latest.json is unreadable: {exc}")
+        else:
+            summary = payload.get("summary") if isinstance(payload, dict) else {}
+            if not isinstance(summary, dict) or not summary:
+                checks.fail("bundle memory_engineering_latest.json has no summary")
+            else:
+                checks.info("bundle memory_engineering_latest.json is present")
+
+    present_sources = [path for path in BUNDLE_MEMORY_REVIEW_SOURCES if path.exists()]
+    if not present_sources:
+        checks.fail("bundle has no Memory Review JSONL sources; inbox will be empty on Cloud Run")
+        return
+    total_rows = 0
+    for path in present_sources:
+        try:
+            total_rows += _jsonl_row_count(path)
+        except OSError as exc:
+            checks.fail(f"bundle memory review source unreadable: {path.name}: {exc}")
+    if total_rows == 0:
+        checks.fail("bundle Memory Review JSONL sources contain 0 rows; inbox will be empty on Cloud Run")
+    else:
+        checks.info(f"bundle Memory Review JSONL sources are present ({total_rows} rows)")
+
+
 def check_ignore_files(checks: CheckRun) -> None:
     for rel in (".dockerignore", ".gcloudignore"):
         path = ROOT / rel
@@ -254,7 +340,14 @@ def check_packaging_script(checks: CheckRun) -> None:
         checks.fail("scripts/package_cloud_run_bundle.sh missing")
         return
     text = path.read_text(encoding="utf-8", errors="replace")
-    for needle in ("CLOUDRUN_DATA_MODE", "data/demo.db", "DATA_OUT/lease_data.db"):
+    for needle in (
+        "CLOUDRUN_DATA_MODE",
+        "data/demo.db",
+        "DATA_OUT/lease_data.db",
+        "obsidian_retrieval_graph.json",
+        "memory_engineering_latest.json",
+        "judgment_materials_preview.jsonl",
+    ):
         if needle not in text:
             checks.fail(f"package_cloud_run_bundle.sh does not mention {needle}")
     checks.info("package_cloud_run_bundle.sh contains demo-mode bundle safeguards")
@@ -395,6 +488,8 @@ def main() -> int:
     check_recent_pipeline_health(checks)
     check_personal_memory_pack(checks)
     check_shion_memory_index(checks)
+    check_obsidian_retrieval_graph(checks)
+    check_memory_review_bundle(checks)
     check_db(LOCAL_DEMO_DB, "local data/demo.db", checks)
     check_db(BUNDLE_DEMO_DB, "bundle data/demo.db", checks)
     check_db(BUNDLE_LEASE_DB, "bundle data/lease_data.db", checks)

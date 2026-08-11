@@ -57,8 +57,6 @@ def _with_self_proposal_review_meta(
     evidence_layer: str,
 ) -> list[dict[str, Any]]:
     """Add lightweight review metadata for older persisted self proposals."""
-    from api.domestic_mode import build_genetic_profile
-
     enriched: list[dict[str, Any]] = []
     for proposal in proposals:
         if not isinstance(proposal, dict):
@@ -69,7 +67,14 @@ def _with_self_proposal_review_meta(
         item.setdefault("review_policy", "human_decision_required")
         item.setdefault("effect_tracking", "採用/保留/却下と、success_metric の事後変化で確認する")
         if not isinstance(item.get("genetic_profile"), dict) or not item.get("genetic_profile"):
-            item["genetic_profile"] = build_genetic_profile(item)
+            item["genetic_profile"] = {
+                "variant_type": "self_proposal",
+                "selection_pressure": item.get("evidence_layer_label") or evidence_layer,
+                "validation_status": item.get("human_decision_status") or item.get("status") or "needs_human_review",
+                "success_metric": item.get("success_metric") or "",
+                "risk": item.get("risk") or "",
+                "proposal_style": item.get("proposal_style") or "standard",
+            }
         if not item.get("review_status_label"):
             item["review_status_label"] = "レビュー候補" if item.get("success_metric") else "観測継続"
         enriched.append(item)
@@ -179,11 +184,6 @@ class CloudRunReturnReviewRequest(BaseModel):
 
 class CloudRunReturnPromotionRequest(BaseModel):
     kind: Literal["judgment_asset"] = "judgment_asset"
-
-
-class DomesticModeEvaluateRequest(BaseModel):
-    memo: str = ""
-    heuristic: dict[str, Any] = Field(default_factory=dict)
 
 
 def _append_human_response_feedback(req: HumanResponseFeedbackRequest) -> dict:
@@ -2834,34 +2834,6 @@ def get_usage_loop_proposals(limit: int = 3) -> dict:
     from api.usage_loop_engineering import load_proposals
 
     return {"proposals": _with_self_proposal_review_meta(load_proposals(limit=limit), evidence_layer="usage_based")}
-
-
-@router.post("/api/domestic-mode/evaluate")
-def post_domestic_mode_evaluate(req: DomesticModeEvaluateRequest) -> dict:
-    """紫苑 内政モード: 人間の内政メモをGeminiで採用/保留/却下/観測継続に再判定する。"""
-    from api.domestic_mode import evaluate_domestic_mode_memo, save_domestic_mode_proposal
-
-    try:
-        result = evaluate_domestic_mode_memo(req.memo, req.heuristic)
-        if str(req.memo or "").strip() and result.get("generated"):
-            result["persistence"] = save_domestic_mode_proposal(req.memo, req.heuristic, result)
-        else:
-            result["persistence"] = {"saved": False, "reason": "未入力またはGemini未生成のため保存しませんでした"}
-        return result
-    except Exception as exc:
-        return {
-            "generated": False,
-            "status": "hold",
-            "label": "保留",
-            "reason": f"Gemini再判定に失敗しました: {exc}",
-            "next_action": "画面内の初期判定を使い、必要なら後で再判定してください。",
-            "decision_layer": "文脈不足",
-            "missing_inputs": [],
-            "success_metric": "",
-            "review_timing": "",
-            "model": "fallback",
-            "persistence": {"saved": False, "reason": "Gemini再判定に失敗したため保存しませんでした"},
-        }
 
 
 @router.post("/api/judgment-divergence/analyze")

@@ -2496,7 +2496,7 @@ def _build_agent_worklog_digest_context(limit: int = 4) -> str:
         return ""
     lines = [
         "【Codex/Claude 作業録ダイジェスト】",
-        "これは全文ログではなく、紫苑の内政モード向けに圧縮した作業要約です。",
+        "これは全文ログではなく、紫苑の自己提案・運用相談向けに圧縮した作業要約です。",
         "Userが何を意図し、どの判断を採用/保留し、どの制約を重視したかを、自己提案の補正情報として使ってください。",
         "顧客情報の推測、Private Reflection原文引用、人間承認なしの判断資産昇格には使わないでください。",
     ]
@@ -2551,8 +2551,7 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
         "紫苑の自己提案は根拠層を明示する: usage_based=画面利用ログ由来、feedback_based=人間反応・判断ログ由来、system_audit_based=コード/レポート/運用監査由来。",
         "利用回数だけの提案は断定せず、導線不足・価値不足・作業文脈不足を切り分ける。system_audit_based は影響範囲と確認方法を先に述べる。",
         "自己提案は件数を増やしすぎない。Userへ出す時は上位3件までに絞り、採用/保留/却下と success_metric の事後変化で効いたかを見る。",
-        "自己提案の内政判断では、Userが与える意図・使用文脈・残す理由・削ってよい条件・触らない線・成功指標・再判定時期をログより強い補正情報として扱う。",
-        "内政判断のラベルは、価値不足 / 発見性不足 / 文脈不足 / 削除候補 / 再配置候補 / 観測継続 に分ける。",
+        "自己提案は、価値、利用文脈、影響範囲、成功指標、後で見直す条件を短く分けて扱う。",
     ]
     date = str(highlights.get("date") or highlights.get("generated_at") or "").strip()
     if date:
@@ -3590,6 +3589,7 @@ def _latest_improvement_statuses() -> dict[str, str]:
     if not ledger_path.exists():
         return {}
     latest_by_key: dict[str, str] = {}
+    terminal_by_key: dict[str, str] = {}
     try:
         for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
             if not line.strip():
@@ -3603,9 +3603,32 @@ def _latest_improvement_statuses() -> dict[str, str]:
             status = str(entry.get("status") or "")
             if key:
                 latest_by_key[key] = status
+                if _is_terminal_improvement_ledger_status(status):
+                    terminal_by_key[key] = status
     except OSError:
         return {}
+    latest_by_key.update(terminal_by_key)
     return latest_by_key
+
+
+def _is_terminal_improvement_ledger_status(status: str) -> bool:
+    """Human/resolution decisions should survive later automatic re-detection.
+
+    The daily pipeline appends fresh needs_review rows for the same canonical_key.
+    If we let those rows blindly win by "last line", deleted/applied/parked items
+    come back in the PM report the next morning.
+    """
+    return str(status or "").lower() in {
+        "applied",
+        "approved",
+        "deleted",
+        "rejected",
+        "deferred",
+        "parked",
+        "suppressed",
+        "rule_registered",
+        "apply_failed",
+    }
 
 
 def _norm_improvement_title(title: str) -> str:
@@ -3624,6 +3647,7 @@ def _latest_improvement_statuses_by_title() -> dict[str, str]:
     if not ledger_path.exists():
         return {}
     latest_by_title: dict[str, str] = {}
+    terminal_by_title: dict[str, str] = {}
     try:
         for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
             if not line.strip():
@@ -3636,8 +3660,11 @@ def _latest_improvement_statuses_by_title() -> dict[str, str]:
             status = str(entry.get("status") or "")
             if title and status:
                 latest_by_title[title] = status
+                if _is_terminal_improvement_ledger_status(status):
+                    terminal_by_title[title] = status
     except OSError:
         return {}
+    latest_by_title.update(terminal_by_title)
     return latest_by_title
 
 
@@ -4186,6 +4213,7 @@ def _normalize_improvement_report(report: dict) -> dict:
     mark(report.get("policy_needs_review") or [], "NEEDS_REVIEW")
     mark(report.get("needs_review") or [], "NEEDS_REVIEW")
     mark(report.get("applied_improvements") or report.get("applied") or [], "APPLIED")
+    mark(report.get("parked_improvements") or report.get("parked") or [], "PARKED")
     mark(report.get("rejected") or [], "REJECTED")
 
     validations = report.get("validations") or []
