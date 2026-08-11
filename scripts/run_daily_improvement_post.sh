@@ -375,6 +375,11 @@ echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・We
   --action-ledger-report "${PROJECT_ROOT}/reports/agent_action_ledger_latest.json"
 log_step "send_daily_improvement_slack" $?
 
+echo ""
+echo "[通知] 紫苑からの能動アラートをSlackへ送信（エラー急増・業界動向。アラート無しなら何もしない）..."
+"${PYTHON}" "${PROJECT_ROOT}/slack_bot.py" --shion-proactive || true
+log_step "send_shion_proactive_slack" 0
+
 if [ "${MANA_STATUS}" != "allow" ]; then
   echo "[番人] Mana が allow ではないため、評価候補生成と GCS Vault 配布を停止します。"
   echo "[番人] レポート確認: ${MANA_REPORT_JSON}"
