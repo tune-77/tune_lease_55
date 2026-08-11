@@ -1186,51 +1186,63 @@ def iter_debate_screening(params: dict) -> Iterator[tuple[str, dict]]:
     # 乖離度チェック: 同意見ならスチールマン指示
     # （無理な逆張りで偽の対立を作らせず、相手の結論への最強の反対論拠を挙げさせる）
     same_opinion = r1c.get("opinion") == r1a.get("opinion")
-    extra_c = (
-        "【注意】第1ラウンドで楽観派と同じ結論だった。結論を無理に変える必要はないが、"
-        "懐疑派として楽観派の結論に対する最強の反対論拠を1つ挙げ、notes に含めよ。"
-    ) if same_opinion else ""
-    extra_a = (
-        "【注意】第1ラウンドで懐疑派と同じ結論だった。結論を無理に変える必要はないが、"
-        "楽観派として懐疑派の結論に対する最強の反対論拠を1つ挙げ、notes に含めよ。"
-    ) if same_opinion else ""
+    innovator_agrees = (
+        not innovator_key or (bool(r1i) and r1i.get("opinion") == r1c.get("opinion"))
+    )
+    # 第1ラウンドで参加者全員の意見が完全一致した場合のみ、高コストな第2ラウンド
+    # （強制反論、Gemini呼び出し2〜3回）を省略する（Fugu的な動的な討論深度の調整）
+    round2_skip = same_opinion and innovator_agrees
 
     r1c_json = json.dumps(_norm_cautious(r1c), ensure_ascii=False)
     r1a_json = json.dumps(_norm_aggressive(r1a), ensure_ascii=False)
     r1i_json = json.dumps(_norm_innovator(r1i), ensure_ascii=False) if innovator_key and r1i else ""
 
-    # Round 2: 強制反論ラウンド（自分のR1意見＋相手の意見を受けて必ず反論）
-    _r2_workers = 3 if innovator_key else 2
-    pool = ThreadPoolExecutor(max_workers=_r2_workers)
-    try:
-        fc2 = pool.submit(
-            _persona_call, cautious_sys,
-            _cautious_prompt(ctx_debater, r1a_json, extra_c, own_json=r1c_json),
-            0.3, kb, "refute", deadline
-        )
-        fa2 = pool.submit(
-            _persona_call, aggressive_sys,
-            _aggressive_prompt(ctx_debater, r1c_json, extra_a, own_json=r1a_json),
-            0.9, kb, "support", deadline
-        )
-        fi2 = pool.submit(
-            _persona_call, innovator_sys,
-            _innovator_prompt(
-                ctx_debater,
-                [r1c_json, r1a_json] if r1c_json and r1a_json else None,
-                own_json=r1i_json,
-            ),
-            0.7, kb, "both", deadline
-        ) if innovator_key else None
-        r2c = _safe_future(fc2, r1c, deadline)
-        r2a = _safe_future(fa2, r1a, deadline)
-        r2i = _safe_future(fi2, r1i, deadline) if fi2 else {}
-    finally:
-        pool.shutdown(wait=False, cancel_futures=True)
+    if round2_skip:
+        r2c, r2a, r2i = r1c, r1a, r1i
+        r2c_norm, r2a_norm = r1c_norm, r1a_norm
+        r2i_norm = r1i_norm if innovator_key else {}
+    else:
+        extra_c = (
+            "【注意】第1ラウンドで楽観派と同じ結論だった。結論を無理に変える必要はないが、"
+            "懐疑派として楽観派の結論に対する最強の反対論拠を1つ挙げ、notes に含めよ。"
+        ) if same_opinion else ""
+        extra_a = (
+            "【注意】第1ラウンドで懐疑派と同じ結論だった。結論を無理に変える必要はないが、"
+            "楽観派として懐疑派の結論に対する最強の反対論拠を1つ挙げ、notes に含めよ。"
+        ) if same_opinion else ""
 
-    r2c_norm = _with_refs(_norm_cautious(r2c), r2c)
-    r2a_norm = _with_refs(_norm_aggressive(r2a), r2a)
-    r2i_norm = _with_refs(_norm_innovator(r2i), r2i) if innovator_key and r2i else {}
+        # Round 2: 強制反論ラウンド（自分のR1意見＋相手の意見を受けて必ず反論）
+        _r2_workers = 3 if innovator_key else 2
+        pool = ThreadPoolExecutor(max_workers=_r2_workers)
+        try:
+            fc2 = pool.submit(
+                _persona_call, cautious_sys,
+                _cautious_prompt(ctx_debater, r1a_json, extra_c, own_json=r1c_json),
+                0.3, kb, "refute", deadline
+            )
+            fa2 = pool.submit(
+                _persona_call, aggressive_sys,
+                _aggressive_prompt(ctx_debater, r1c_json, extra_a, own_json=r1a_json),
+                0.9, kb, "support", deadline
+            )
+            fi2 = pool.submit(
+                _persona_call, innovator_sys,
+                _innovator_prompt(
+                    ctx_debater,
+                    [r1c_json, r1a_json] if r1c_json and r1a_json else None,
+                    own_json=r1i_json,
+                ),
+                0.7, kb, "both", deadline
+            ) if innovator_key else None
+            r2c = _safe_future(fc2, r1c, deadline)
+            r2a = _safe_future(fa2, r1a, deadline)
+            r2i = _safe_future(fi2, r1i, deadline) if fi2 else {}
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+        r2c_norm = _with_refs(_norm_cautious(r2c), r2c)
+        r2a_norm = _with_refs(_norm_aggressive(r2a), r2a)
+        r2i_norm = _with_refs(_norm_innovator(r2i), r2i) if innovator_key and r2i else {}
 
     round2_payload: dict = {"cautious": r2c_norm, "aggressive": r2a_norm}
     if innovator_key and r2i_norm:
@@ -1257,28 +1269,35 @@ def iter_debate_screening(params: dict) -> Iterator[tuple[str, dict]]:
     )
     if innovator_key and r1i_norm:
         _r1_lines += "\n" + _fmt_line("革新", r1i_norm, "innovations", "新視点")
-    _r2_lines = (
-        "\n\n【第2ラウンド：強制反論】\n"
-        + _fmt_line("懐疑", r2c_norm, "key_risks", "リスク") + "\n"
-        + _fmt_line("楽観", r2a_norm, "opportunities", "機会")
-    )
-    if innovator_key and r2i_norm:
-        _r2_lines += "\n" + _fmt_line("革新", r2i_norm, "innovations", "新視点")
-    debate_log = _r1_lines + _r2_lines
-    if same_opinion:
-        debate_log = (
-            "[注: 第1ラウンドで両者の意見が一致したため、スチールマン再討論"
-            "（相手の結論への最強の反対論拠の提示）を実施]\n\n"
-        ) + debate_log
 
-    # 強制反論後も懐疑派・楽観派の結論が一致したままなら、裁定役に明示する
-    # （見かけの「討論バランス」を根拠にした裁定を防ぐ）
-    same_opinion_r2 = r2c_norm.get("opinion") == r2a_norm.get("opinion")
-    if same_opinion_r2:
-        debate_log += (
-            f"\n\n[注: 強制反論後も懐疑派・楽観派の結論が「{r2c_norm.get('opinion', '？')}」で一致。"
-            "討論による対立は限定的のため、裁定は討論バランスではなく案件事実と条件設定を根拠にすること]"
+    if round2_skip:
+        debate_log = (
+            "[注: 第1ラウンドで全員の意見が一致したため、第2ラウンド（強制反論）を省略しました]\n\n"
+        ) + _r1_lines
+        same_opinion_r2 = None
+    else:
+        _r2_lines = (
+            "\n\n【第2ラウンド：強制反論】\n"
+            + _fmt_line("懐疑", r2c_norm, "key_risks", "リスク") + "\n"
+            + _fmt_line("楽観", r2a_norm, "opportunities", "機会")
         )
+        if innovator_key and r2i_norm:
+            _r2_lines += "\n" + _fmt_line("革新", r2i_norm, "innovations", "新視点")
+        debate_log = _r1_lines + _r2_lines
+        if same_opinion:
+            debate_log = (
+                "[注: 第1ラウンドで両者の意見が一致したため、スチールマン再討論"
+                "（相手の結論への最強の反対論拠の提示）を実施]\n\n"
+            ) + debate_log
+
+        # 強制反論後も懐疑派・楽観派の結論が一致したままなら、裁定役に明示する
+        # （見かけの「討論バランス」を根拠にした裁定を防ぐ）
+        same_opinion_r2 = r2c_norm.get("opinion") == r2a_norm.get("opinion")
+        if same_opinion_r2:
+            debate_log += (
+                f"\n\n[注: 強制反論後も懐疑派・楽観派の結論が「{r2c_norm.get('opinion', '？')}」で一致。"
+                "討論による対立は限定的のため、裁定は討論バランスではなく案件事実と条件設定を根拠にすること]"
+            )
 
     # 統合派裁定（temperature=0.3 で中立・冷静、両方向のナレッジを参照）
     try:
@@ -1310,6 +1329,7 @@ def iter_debate_screening(params: dict) -> Iterator[tuple[str, dict]]:
         "debate_log": debate_log,
         "same_opinion_r1": same_opinion,
         "same_opinion_r2": same_opinion_r2,
+        "round2_skipped": round2_skip,
     }
     if innovator_key and r2i_norm:
         result["innovator"] = r2i_norm
@@ -1383,6 +1403,7 @@ def _log_debate_metrics(result: dict, t0: float) -> None:
             "opinions": opinions,
             "same_opinion_r1": result.get("same_opinion_r1"),
             "same_opinion_r2": result.get("same_opinion_r2"),
+            "round2_skipped": result.get("round2_skipped"),
             "duration_sec": round(time.monotonic() - t0, 1),
         }
         _METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
