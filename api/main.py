@@ -6714,6 +6714,7 @@ def post_chat(req: ChatRequest):
         human_device_resonance_context = context_state.human_device_resonance_context
         judgment_response_shape_context = context_state.judgment_response_shape_context
         case_screening_pattern_context = context_state.case_screening_pattern_context
+        case_screening_mentor_dialogue_context = context_state.case_screening_mentor_dialogue_context
         experience_loop_context = context_state.experience_loop_context
         experience_loop_payload = context_state.experience_loop_payload
         grey_judgment_context = context_state.grey_judgment_context
@@ -6907,6 +6908,7 @@ def post_chat(req: ChatRequest):
                 human_device_resonance_context,
                 judgment_response_shape_context,
                 case_screening_pattern_context,
+                case_screening_mentor_dialogue_context,
                 f"\n\n{memory_recall_context}" if memory_recall_context else "",
             ])
             pdca_block = (
@@ -7309,6 +7311,7 @@ def post_chat(req: ChatRequest):
             human_device_resonance_context,
             judgment_response_shape_context,
             case_screening_pattern_context,
+            case_screening_mentor_dialogue_context,
             guidance.prompt_suffix,
         ])
         pdca_block = (
