@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -18,6 +19,51 @@ def _private_reflection_path(vault: Path, date_str: str) -> Path:
         / "Private Reflection"
         / f"{date_str}.md"
     )
+
+
+def test_introspection_is_stale_uses_generated_at_timestamp(tmp_path):
+    fresh = tmp_path / "fresh.json"
+    fresh.write_text(
+        json.dumps({"generated_at": dt.datetime.now().isoformat(timespec="seconds")}),
+        encoding="utf-8",
+    )
+    assert reflection._introspection_is_stale(fresh) is False
+
+    stale = tmp_path / "stale.json"
+    old = (dt.datetime.now() - dt.timedelta(days=60)).isoformat(timespec="seconds")
+    stale.write_text(json.dumps({"generated_at": old}), encoding="utf-8")
+    assert reflection._introspection_is_stale(stale) is True
+
+    assert reflection._introspection_is_stale(tmp_path / "missing.json") is True
+
+
+def test_fallback_reflection_ignores_stale_introspection_report(tmp_path, monkeypatch):
+    """scripts/introspection.py ran once on 2026-06-19 and was never wired into
+    the daily pipeline, so its findings kept being re-injected as if they were
+    today's signal for two months. A stale report should be treated as absent."""
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-08-11"
+    old_generated = (
+        dt.datetime.fromisoformat(f"{date_str}T00:00:00") - dt.timedelta(days=53)
+    ).isoformat(timespec="seconds")
+    _write(
+        tmp_path / "reports" / "introspection_latest.json",
+        json.dumps(
+            {
+                "generated_at": old_generated,
+                "status": "attention",
+                "findings": [{"title": "退屈・停滞シグナルが出ている"}],
+                "next_actions": ["観測レポートだけで終わらせず、退屈の原因を1つ選んで小さく変える"],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    text = reflection._build_fallback_reflection(date_str=date_str, dialogue_text="", recent_reflections="")
+
+    assert "退屈・停滞シグナルが出ている" not in text
+    assert "観測レポートだけで終わらせず、退屈の原因を1つ選んで小さく変える" not in text
+    assert "Private Reflection が毎日生成されているか確認する" in text
 
 
 def test_fallback_creates_private_reflection_without_dialogue(tmp_path, monkeypatch):

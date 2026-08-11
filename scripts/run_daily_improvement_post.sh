@@ -135,6 +135,11 @@ echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/weekly_self_management.py"; log_step "weekly_self_management" $?
 
 echo ""
+echo "[内省] 内省不足/退屈化検知レポートを再生成（観測のみ・lease_intelligence_reflectionが参照）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/introspection.py" || true
+log_step "introspection" $?
+
+echo ""
 echo "[内省] 紫苑の日次私的内省を生成（当日対話/内省材料 → Private Reflection）..."
 "${PYTHON}" "${PROJECT_ROOT}/lease_intelligence_reflection.py"; log_step "lease_intelligence_reflection" $?
 

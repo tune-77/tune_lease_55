@@ -347,9 +347,11 @@ def _build_local_context(date_str: str) -> str:
     daily_text = _read_file_safe(REPO_ROOT / "memory" / f"{date_str}.md", max_chars=3500)
     if daily_text:
         parts.extend(["【今日の作業メモ】", daily_text])
-    introspection_text = _read_file_safe(REPO_ROOT / "reports" / "introspection_latest.md", max_chars=2500)
-    if introspection_text:
-        parts.extend(["", "【内省レポート】", introspection_text])
+    introspection_path = REPO_ROOT / "reports" / "introspection_latest.md"
+    if not _introspection_is_stale(introspection_path):
+        introspection_text = _read_file_safe(introspection_path, max_chars=2500)
+        if introspection_text:
+            parts.extend(["", "【内省レポート】", introspection_text])
     loop_summary = _loop_health_summary_line(_load_json_safe(REPO_ROOT / "reports" / "loop_engineering_latest.json"))
     loop_text = _read_file_safe(REPO_ROOT / "reports" / "loop_engineering_latest.md", max_chars=1500)
     if loop_summary or loop_text:
@@ -369,6 +371,44 @@ def _load_json_safe(path: Path) -> dict:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+_INTROSPECTION_MAX_AGE_DAYS = 14
+
+
+def _introspection_generated_at(path: Path) -> dt.datetime | None:
+    """Best-effort generation timestamp for reports/introspection_latest.{json,md}."""
+    try:
+        if path.suffix == ".json":
+            raw = str(_load_json_safe(path).get("generated_at") or "")
+        else:
+            text = _read_file_safe(path, max_chars=500)
+            match = re.search(r"Generated at:\s*`?([0-9T:\-]+)`?", text)
+            raw = match.group(1) if match else ""
+        if raw:
+            return dt.datetime.fromisoformat(raw)
+    except Exception:
+        pass
+    try:
+        return dt.datetime.fromtimestamp(path.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def _introspection_is_stale(path: Path, max_age_days: int = _INTROSPECTION_MAX_AGE_DAYS) -> bool:
+    """True if introspection_latest.{json,md} is missing or hasn't been regenerated recently.
+
+    scripts/introspection.py was run once (2026-06-19) and never wired into the
+    daily pipeline, so its findings kept getting re-injected into every day's
+    reflection unchanged for two months. This stops a stale one-time snapshot
+    from being treated as fresh daily signal indefinitely.
+    """
+    if not path.exists():
+        return True
+    generated_at = _introspection_generated_at(path)
+    if generated_at is None:
+        return False
+    return (dt.datetime.now() - generated_at).days > max_age_days
 
 
 def _loop_health_signals(loop_report: dict) -> dict[str, Any]:
@@ -1563,7 +1603,8 @@ def _build_fallback_reflection(
     """
     daily_text = _read_file_safe(REPO_ROOT / "memory" / f"{date_str}.md", max_chars=5000)
     memory_text = _read_file_safe(REPO_ROOT / "MEMORY.md", max_chars=5000)
-    introspection = _load_json_safe(REPO_ROOT / "reports" / "introspection_latest.json")
+    introspection_json_path = REPO_ROOT / "reports" / "introspection_latest.json"
+    introspection = {} if _introspection_is_stale(introspection_json_path) else _load_json_safe(introspection_json_path)
     loop_report = _load_json_safe(REPO_ROOT / "reports" / "loop_engineering_latest.json")
     report_signals = _load_report_signal_items(date_str)
     cloudrun_signals = _load_cloudrun_input_signal_items(date_str)
