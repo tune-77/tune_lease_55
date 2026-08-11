@@ -220,6 +220,23 @@ def run_shion_inactivity_decay() -> dict:
         logger.error(f"[Relationship] エラー: {e}", exc_info=True)
         return {"status": "error", "detail": str(e)}
 
+def run_chat_summary_refresh() -> dict:
+    """チャット会話要約キャッシュの再構築バッチ（毎日 04:10）。
+
+    call_gemini_chat系のcontext構築が使う「直近ウィンドウ外の古い会話」の
+    要約（chat_memory.get_summary）を、メッセージ数が一定以上増えたユーザー
+    だけ日次バッチでのみ再構築する。同期経路（/api/chat）はキャッシュを
+    読むだけにして、構築コストをレイテンシに乗せない。
+    """
+    logger.info("[ChatSummaryRefresh] バッチ開始")
+    try:
+        from api.chat_memory import refresh_stale_chat_summaries
+        return refresh_stale_chat_summaries()
+    except Exception as e:
+        logger.error(f"[ChatSummaryRefresh] エラー: {e}", exc_info=True)
+        return {"status": "error", "detail": str(e)}
+
+
 def start_scheduler() -> BackgroundScheduler:
     """
     APScheduler を起動して定期バッチを登録する。
@@ -282,6 +299,16 @@ def start_scheduler() -> BackgroundScheduler:
         misfire_grace_time=300,
     )
 
+    # チャット会話要約キャッシュ再構築（毎日 04:10）
+    _scheduler.add_job(
+        run_chat_summary_refresh,
+        trigger=CronTrigger(hour=4, minute=10, timezone="Asia/Tokyo"),
+        id="chat_summary_refresh_daily",
+        name="チャット会話要約キャッシュ再構築（毎日04:10）",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+
     _scheduler.start()
     logger.info(
         "[Scheduler] 起動完了。"
@@ -289,7 +316,8 @@ def start_scheduler() -> BackgroundScheduler:
         "03:00 に紫苑フィードバックループ、"
         "03:30 に紫苑利用ループ、"
         "04:00 に記憶減衰バッチ、"
-        "04:05 に無交流ペナルティを実行します。"
+        "04:05 に無交流ペナルティ、"
+        "04:10 にチャット会話要約キャッシュ再構築を実行します。"
     )
     return _scheduler
 
