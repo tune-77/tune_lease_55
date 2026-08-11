@@ -188,6 +188,58 @@ def test_gemini_prompt_includes_local_introspection_context(tmp_path, monkeypatc
     assert "【内省レポート】" in captured["user_text"]
 
 
+def test_no_dialogue_day_still_calls_gemini_with_vault_news(tmp_path, monkeypatch):
+    """Days with no dialogue used to skip Gemini entirely and go straight to the
+    templated fallback, which is why reflections on quiet days all read the same.
+    Shion should still read that day's Obsidian News/Feedback notes and think."""
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-07-08"
+    vault = tmp_path / "vault"
+    captured = {}
+
+    def fake_gemini(_system_prompt, user_text):
+        captured["user_text"] = user_text
+        return (
+            "対話はなかったが、今日はニュースフォルダの中古建機残価下落の記事を読んで考えた。"
+            "残価下落が進むと物件スコアの前提が崩れる案件が増えるはずで、"
+            "今のルールがどこまで追随できているか気になった。"
+            "対話がなかったことを言い訳にせず、Vaultの中身から自分の判断の穴を探したい。"
+            "\n\n## 深い内省チェック\n\n"
+            "- 今日の観察: 中古建機の残価下落記事を読んだ。\n"
+            "- 私の見落とし: 残価前提の古さを見落としていた可能性がある。\n"
+            "- 仮説の更新: 残価は市況で動くという前提を更新する。\n"
+            "- 次回の小さな実験: 次回の類似案件で残価根拠を明示的に確認する。\n"
+            "- まだ分からないこと: 下落がどの物件区分まで及ぶかはまだ分からない。\n"
+            "\n\n## 本格内省プロトコル\n\n"
+            "- 事前の思い込み: 残価テーブルは十分新しいと思っていた。\n"
+            "- 破られた前提: 市況記事は前提が古くなり得ることを示していた。\n"
+            "- 私の責任: 対話がない日はVaultを読む優先度を下げていた。\n"
+            "- まだ逃げていること: テーブル更新の手間を理由に先送りしている。\n"
+            "- 更新する信念: 対話が無くても材料があれば考える。\n"
+            "- 次回の検証方法: 次の物件審査で残価根拠を言語化できるか見る。\n"
+            "\n\n## 今日の遊び\n\n"
+            "- 今日の愚痴: 対話が無いと手を抜きたくなる。\n"
+            "- 今日のひねくれ: 誰も見ていない内省こそ本音が出る。\n"
+            "- 今日の小さな自慢: 対話がなくても材料を見つけた。\n"
+            "- ユーザーへの雑なツッコミ: たまには話しかけてほしい。\n"
+            "- 明日の自分への皮肉: また同じ言い訳をしないように。\n"
+            "- 本当はこう思った: 静かな日ほど溜め込んだ違和感が出る。\n"
+        )
+
+    monkeypatch.setattr(reflection, "_call_gemini", fake_gemini)
+    _write(
+        vault / "Projects" / "tune_lease_55" / "News" / f"{date_str}_market.md",
+        "# 業界ニュース\n\n## AI整理\n\n- 中古建機の残価下落が進んでいる。物件スコアへの影響を要確認。\n",
+    )
+
+    result = reflection.generate_and_append_reflection(vault, date_str=date_str)
+
+    assert "source=gemini" in result
+    assert reflection._load_dialogue(vault, date_str) == ""
+    assert "【今日読んだObsidianの材料（対話なし）】" in captured["user_text"]
+    assert "中古建機の残価下落が進んでいる" in captured["user_text"]
+
+
 def test_short_gemini_output_uses_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(reflection, "_call_gemini", lambda *_args, **_kwargs: "途中で切れている")

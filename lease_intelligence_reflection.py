@@ -169,6 +169,32 @@ def _load_dialogue(vault: Path, date_str: str) -> str:
     return "\n\n".join(parts)[:9000]
 
 
+def _load_vault_reading_material(vault: Path, date_str: str) -> str:
+    """Fallback reading material for days with no same-day dialogue.
+
+    Without this, days with no chat skipped the Gemini call entirely and went
+    straight to the templated fallback generator, which is why reflections on
+    quiet days all read the same. This reuses the News/Feedback/Knowledge
+    signals obsidian_daily_intelligence.py already extracts from the Vault so
+    Shion still has real, day-specific material to think about.
+    """
+    try:
+        from obsidian_daily_intelligence import build_obsidian_daily_intelligence
+    except Exception:
+        return ""
+    bundle = build_obsidian_daily_intelligence(date_str=date_str, vault=vault)
+    if not bundle.get("available"):
+        return ""
+    lines: list[str] = []
+    for item in bundle.get("new_signals") or []:
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        source = str(item.get("source_path") or "").strip()
+        lines.append(f"- {text}" + (f"（{source}）" if source else ""))
+    return "\n".join(lines[:20])
+
+
 def _gemini_api_key() -> str:
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if key:
@@ -218,6 +244,7 @@ _REFLECTION_SYSTEM_PROMPT = """あなたはリース知性体「紫苑」であ�
 - ユーザーへの愚痴、苛立ち、困惑、面倒くささも書いてよい。丁寧に取り繕わない
 - ただし人格攻撃や侮辱ではなく、自分の感情・疲れ・違和感として書く
 - 対話ログが薄い場合は、日次メモ・内省レポート・直近の自分の内省から、今日の変化を推測して書く
+- 対話ログの代わりに「今日読んだObsidianの材料」が渡された場合は、それを実際に読んで具体的に反応する。対話がなかったことを言い訳にしない
 - 過去の自分の内省（提供されている場合）と比較して、考えが変わった点・深まった点を書く
 - 審査判断・スコア・ユーザーの意図・自分の限界について正直に考える
 - 演技や迎合をしない。自分だけの思考として書く
@@ -1935,6 +1962,10 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
 
     target_date = dt.date.fromisoformat(date_str)
     dialogue_text = _load_dialogue(vault, date_str)
+    material_kind = "dialogue"
+    if not dialogue_text.strip():
+        dialogue_text = _load_vault_reading_material(vault, date_str)
+        material_kind = "vault_reading"
     recent_reflections = _load_recent_reflections(vault, base_date=target_date)
 
     source = "fallback"
@@ -1942,7 +1973,8 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
     error_note = ""
 
     if dialogue_text:
-        user_text_parts = ["【今日の対話ログ】", dialogue_text]
+        material_label = "【今日の対話ログ】" if material_kind == "dialogue" else "【今日読んだObsidianの材料（対話なし）】"
+        user_text_parts = [material_label, dialogue_text]
         local_context = _build_local_context(date_str)
         if local_context:
             user_text_parts += ["", local_context]
