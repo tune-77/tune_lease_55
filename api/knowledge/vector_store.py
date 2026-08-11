@@ -412,6 +412,7 @@ class KnowledgeVectorStore:
         if not chunks:
             return 0
         self._ensure_collection()
+        started = time.monotonic()
 
         ids = [c.doc_id for c in chunks]
         texts = [c.text for c in chunks]
@@ -430,6 +431,15 @@ class KnowledgeVectorStore:
             documents=texts,
             metadatas=metadatas,
             embeddings=embeddings,
+        )
+
+        from api.memory_cost_log import log_memory_cost
+
+        log_memory_cost(
+            phase="construction",
+            func="knowledge.vector_store.upsert_chunks",
+            elapsed_ms=(time.monotonic() - started) * 1000,
+            item_count=len(ids),
         )
         return len(ids)
 

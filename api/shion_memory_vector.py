@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +157,7 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
         return {"synced": 0, "skipped": skipped, "available": len(targets)}
 
     synced = 0
+    started = time.monotonic()
     for start in range(0, len(targets), batch_size):
         batch = targets[start : start + batch_size]
         # topic（ノートタイトル）があれば前置して埋め込む。分割スニペットは
@@ -182,6 +184,15 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
             synced += len(batch)
         except Exception as exc:
             logger.warning("[ShionMemoryVector] batch add failed: %s", exc)
+
+    from api.memory_cost_log import log_memory_cost
+
+    log_memory_cost(
+        phase="construction",
+        func="shion_memory_vector.sync_from_index",
+        elapsed_ms=(time.monotonic() - started) * 1000,
+        item_count=synced,
+    )
     return {"synced": synced, "skipped": skipped, "available": len(targets)}
 
 
