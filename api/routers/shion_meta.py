@@ -30,6 +30,8 @@ def get_shion_inner_state():
         merged_scenes = _iter_scenes(learned_map)
         public_scenes = [_public_scene(s) for s in merged_scenes]
 
+        from api.routers.feedback_loop import _summarize_human_response_feedback
+
         learned_sources = []
         for s in public_scenes:
             for src in s.get("learned_sources") or []:

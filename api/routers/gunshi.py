@@ -1,7 +1,9 @@
 """軍師 AI チャット・アドバイスルーター (REV-234 Phase3)"""
 from __future__ import annotations
 
+import json
 import os
+import sys
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -282,6 +284,7 @@ def _normalize_yukikaze_datalink_reply(reply_text: str, user_message: str) -> st
 @router.post("/api/gunshi/chat")
 def generate_gunshi_chat(req: GunshiChatRequest):
     from shinsa_gunshi import PHRASES_100, build_gunshi_prompt
+    from api.main import _log_information_weighting_shadow, _classify_question
     try:
         _mode = (req.mode or "gunshi").lower()
         if (req.message or "").strip():

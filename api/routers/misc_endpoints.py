@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, List, Literal, Optional
@@ -9,9 +10,12 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from api.cloudrun_writeback import record_cloudrun_input_event
+from api.db_connection import get_connection
 from api.schemas import WorkLogRequest, WorkLogResponse
 
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["misc"])
 
