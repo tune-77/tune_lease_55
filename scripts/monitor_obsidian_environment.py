@@ -318,6 +318,11 @@ def check_memory_insight_reports(max_age_hours: int) -> MonitorCheck:
         "reflection_delta": REPO_ROOT / "reports" / "shion_reflection_delta_latest.md",
         "memory_insight": REPO_ROOT / "reports" / "obsidian_memory_insight_latest.md",
         "promotion_queue": REPO_ROOT / "reports" / "shion_memory_promotion_queue_latest.md",
+        # introspection.py fed lease_intelligence_reflection.py's daily prompt for two
+        # months from a single 2026-06-19 run before anyone noticed it had stopped
+        # regenerating. Watch it here so a similarly orphaned sidecar surfaces as stale
+        # instead of silently going quiet.
+        "introspection": REPO_ROOT / "reports" / "introspection_latest.md",
     }
     stale: list[str] = []
     details: dict[str, Any] = {}

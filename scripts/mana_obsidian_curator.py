@@ -504,9 +504,10 @@ def _allowed_actions(status: str) -> list[str]:
 def _action_for_finding(finding: Finding) -> str:
     if finding.code == "memory_insight_reports_warning":
         return (
-            "memory insight sidecarを更新する: "
-            "scripts/build_obsidian_memory_insight_report.py と "
-            "scripts/build_shion_memory_promotion_queue.py を日次内で再実行し、"
+            "memory insight sidecarを更新する: どれが古いかは監視レポートのdetailsで確認し、"
+            "scripts/build_obsidian_memory_insight_report.py、"
+            "scripts/build_shion_memory_promotion_queue.py、"
+            "scripts/introspection.py のうち該当するものを日次内で再実行し、"
             "reports/obsidian_memory_insight_latest.md 等を36h以内に戻す。"
         )
     if finding.code == "monitor_report_missing":

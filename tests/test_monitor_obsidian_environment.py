@@ -1,11 +1,42 @@
+import os
 from datetime import date, datetime, timedelta
 
+from scripts import monitor_obsidian_environment as monitor
 from scripts.monitor_obsidian_environment import render_markdown, run_monitor
 
 
 def _write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def test_check_memory_insight_reports_flags_stale_introspection(tmp_path, monkeypatch):
+    """introspection.py ran once on 2026-06-19 and was never wired into the daily
+    pipeline, so introspection_latest.md silently went stale for two months with
+    nothing flagging it. It must be part of this watchlist so that regresses."""
+    monkeypatch.setattr(monitor, "REPO_ROOT", tmp_path)
+    path = tmp_path / "reports" / "introspection_latest.md"
+    _write(path, "# Introspection Report\n")
+    old_time = (datetime.now() - timedelta(hours=100)).timestamp()
+    os.utime(path, (old_time, old_time))
+
+    check = monitor.check_memory_insight_reports(max_age_hours=36)
+
+    assert check.status == "warn"
+    assert "introspection" in check.message
+    assert check.details["introspection"]["age_hours"] > 36
+
+
+def test_check_memory_insight_reports_passes_when_introspection_is_fresh(tmp_path, monkeypatch):
+    monkeypatch.setattr(monitor, "REPO_ROOT", tmp_path)
+    _write(tmp_path / "reports" / "shion_reflection_delta_latest.md", "fresh\n")
+    _write(tmp_path / "reports" / "obsidian_memory_insight_latest.md", "fresh\n")
+    _write(tmp_path / "reports" / "shion_memory_promotion_queue_latest.md", "fresh\n")
+    _write(tmp_path / "reports" / "introspection_latest.md", "fresh\n")
+
+    check = monitor.check_memory_insight_reports(max_age_hours=36)
+
+    assert check.status == "ok"
 
 
 def test_monitor_obsidian_environment_reports_core_viewpoints(tmp_path):

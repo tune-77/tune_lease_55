@@ -126,9 +126,10 @@ def _mana_action_fallback(findings: list[dict[str, Any]]) -> str:
     codes = {str(item.get("code") or "") for item in findings}
     if "memory_insight_reports_warning" in codes:
         return (
-            "memory insight sidecar更新: "
+            "memory insight sidecar更新: どれが古いかは監視レポートのdetailsを確認し、"
             "scripts/build_obsidian_memory_insight_report.py / "
-            "scripts/build_shion_memory_promotion_queue.py を再実行して36h以内に戻す"
+            "scripts/build_shion_memory_promotion_queue.py / "
+            "scripts/introspection.py のうち該当するものを再実行して36h以内に戻す"
         )
     if "private_reflection_not_meaningful" in codes or "reflection_handoff_incomplete" in codes:
         return "Private ReflectionをUser要求・誤読・次回行動が分かる形で再生成する"
