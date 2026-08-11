@@ -8,6 +8,7 @@ VAULT_OUT="$BUNDLE_DIR/obsidian_vault"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
 
 if [[ -d "$BUNDLE_DIR" ]]; then
+  chmod -R u+w "$BUNDLE_DIR" 2>/dev/null || true
   find "$BUNDLE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 fi
 
@@ -60,6 +61,19 @@ if [[ -n "$latest_recursive" ]]; then
   cp "$latest_recursive" "$REPORTS_OUT/"
 fi
 
+# Memory Review Inbox / Memory Engineering は Cloud Run では reports/ と
+# data/*.jsonl が送信対象外になるため、レビューに必要な読み取り専用材料だけ
+# bundle data に明示同梱する。start_api_cloud_run.sh が /app/data へseedする。
+for review_source in \
+  judgment_materials_preview.jsonl \
+  autoresearch_judgment_asset_candidates.jsonl \
+  reflection_action_candidates.jsonl \
+  prediction_error_update_candidates.jsonl \
+  obsidian_memory_insight_candidates.jsonl \
+  memory_review_inbox_state.json; do
+  copy_if_exists "$ROOT_DIR/data/$review_source" "$DATA_OUT/"
+done
+
 # 紫苑の記憶索引を毎回ビルドして同梱する（無いと Cloud Run で想起メモが空になる）。
 # 改訂宣言（data/shion_memory_revisions.jsonl）はビルド内で再適用される。
 # 鮮度（last_used_at / stale）は使用ログがあれば反映する（無くても致命ではないので || true）。
@@ -75,6 +89,27 @@ if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
 else
   cp "$ROOT_DIR/data/shion_memory_index.json" "$DATA_OUT/"
 fi
+
+# Obsidian 検索の前段ルータを Cloud Run に同梱する。
+# start_api_cloud_run.sh が .cloudrun_bundle/data を DATA_DIR へ seed し、
+# mobile_app/obsidian_bridge.py は DATA_DIR/obsidian_retrieval_graph.json を読む。
+# reports/ は Docker イメージ外なので、レポートは bundle 内だけに出す。
+echo "Building Obsidian retrieval graph for bundle..."
+python3 "$ROOT_DIR/scripts/build_obsidian_retrieval_graph.py" \
+  --output-json "$DATA_OUT/obsidian_retrieval_graph.json" \
+  --output-md "$REPORTS_OUT/obsidian_retrieval_graph_latest.md"
+
+echo "Building Memory Engineering report for bundle..."
+python3 "$ROOT_DIR/scripts/build_memory_engineering_report.py" \
+  --canonical-preview "$ROOT_DIR/data/canonical_judgment_rules_preview.json" \
+  --canonical-active "$ROOT_DIR/data/canonical_judgment_rules.json" \
+  --memory-index "$DATA_OUT/shion_memory_index.json" \
+  --memory-usage "$ROOT_DIR/data/shion_memory_usage_log.jsonl" \
+  --contradictions "$ROOT_DIR/reports/shion_memory_contradictions_latest.json" \
+  --retrieval-graph "$DATA_OUT/obsidian_retrieval_graph.json" \
+  --memory-review-state "$DATA_OUT/memory_review_inbox_state.json" \
+  --output-json "$DATA_OUT/memory_engineering_latest.json" \
+  --output-md "$REPORTS_OUT/memory_engineering_latest.md"
 
 validate_past_cases() {
   local db_path="$1"

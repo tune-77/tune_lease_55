@@ -6,7 +6,7 @@
 ## 注意点・このマップの限界
 
 - 静的な `import`/`from import` のみを追跡している。`api/main.py` 内の `importlib.util.spec_from_file_location`（`data_cases.py` / `base_rate_master.py` / `timesfm_engine.py` の動的ロード）は個別に確認済みで、いずれも既存のコア判定に含まれている。ただし他ファイルの `subprocess` 呼び出しや文字列ベースのモジュール参照（例: シェルスクリプトから叩かれる `scripts/*.py`）は本マップでは検出できない。
-- Tier 1 / Tier 2 の境界は「ルーター名から見た用途」による分類で、一部（`api.routers.screening_misc`, `api.domestic_mode` など）は実装を読まないと確信が持てないため「要確認」と明記した。**これは推測であり、Vault上の出典はない。**
+- Tier 1 / Tier 2 の境界は「ルーター名から見た用途」による分類で、一部（`api.routers.screening_misc` など）は実装を読まないと確信が持てないため「要確認」と明記した。**これは推測であり、Vault上の出典はない。**
 - `tests/`, `frontend/`, `_archive/`, `data/`, `mobile_app/` は集計対象外。
 
 ---
@@ -44,7 +44,7 @@ api.database, api.db_query, api.api_key_auth, api.demo_guard, api.cloudrun_write
 api.llm_json_guard, api.secret_access, api.add_outcomes_table, api.business_plan_check
 ```
 
-要確認（審査系かペルソナ系か実装未読）: `api.routers.screening_misc`, `api.domestic_mode`
+要確認（審査系かペルソナ系か実装未読）: `api.routers.screening_misc`
 
 ---
 

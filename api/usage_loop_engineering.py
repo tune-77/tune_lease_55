@@ -121,9 +121,6 @@ def _call_gemini(prompt: str) -> str:
 
 
 def _build_prompt(usage: dict[str, Any]) -> str:
-    from api.domestic_mode import build_domestic_memory_context
-
-    domestic_context = build_domestic_memory_context()
     most_used_lines = "\n".join(
         f"- {p['path']}: {p['visit_count']}回, 最終訪問 {p['last_visited']}"
         for p in usage["most_used"]
@@ -143,8 +140,6 @@ UI/UXや機能の改善案を考えるのがあなたの役目の一つです。
 
 あまり使われていない画面:
 {least_used_lines}
-
-{domestic_context}
 
 この利用状況を踏まえて、実務上価値のある改善案を3〜5件、以下のJSON配列形式のみで返してください
 （前後の説明テキストは不要）:
@@ -178,8 +173,6 @@ def _proposal_text(item: dict[str, Any], key: str, fallback: str = "") -> str:
 
 def generate_proposals(days: int = _LOOKBACK_DAYS) -> dict[str, Any]:
     """利用状況を集計し、Geminiで改善案を生成して保存する。"""
-    from api.domestic_mode import connect_self_proposal_to_domestic_mode
-
     usage = aggregate_usage(days)
     if usage["total_events"] == 0:
         return {"generated": False, "reason": "利用データがまだありません", "proposals": []}
@@ -218,11 +211,6 @@ def generate_proposals(days: int = _LOOKBACK_DAYS) -> dict[str, Any]:
                 "human_decision_status": "needs_human_review",
             }
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            entry["domestic_connection"] = connect_self_proposal_to_domestic_mode(
-                entry,
-                source="usage_loop",
-                kind="画面利用",
-            )
             saved.append(entry)
 
     return {"generated": True, "usage_summary": usage, "proposals": saved}

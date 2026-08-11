@@ -133,6 +133,96 @@ def test_normalize_improvement_report_recovers_status_via_title_when_canonical_k
     assert by_id["REV-038"]["status"] == "PARKED"
 
 
+def test_normalize_improvement_report_reads_parked_improvements(monkeypatch):
+    import api.main as main
+
+    monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: {})
+    monkeypatch.setattr(main, "_latest_improvement_statuses_by_title", lambda: {})
+
+    result = main._normalize_improvement_report(
+        {
+            "parked_improvements": [
+                {"id": "REV-294", "title": "モデル監視テーマ", "reason": "継続監視"}
+            ],
+        }
+    )
+    by_id = {item["id"]: item for item in result["items"]}
+
+    assert by_id["REV-294"]["status"] == "PARKED"
+    assert result["parked"] == 1
+
+
+def test_latest_improvement_statuses_keep_terminal_decision_over_later_needs_review(tmp_path, monkeypatch):
+    import api.main as main
+
+    ledger_dir = tmp_path / "Library" / "Logs" / "tunelease"
+    ledger_dir.mkdir(parents=True)
+    ledger_path = ledger_dir / "ledger.jsonl"
+    ledger_path.write_text(
+        "\n".join(
+            json.dumps(row, ensure_ascii=False)
+            for row in [
+                {
+                    "key": "same-key",
+                    "canonical_key": "same-key",
+                    "status": "deleted",
+                    "title": "昨日削除した改善候補",
+                    "recorded_at": "2026-08-09T17:38:15",
+                },
+                {
+                    "key": "same-key",
+                    "canonical_key": "same-key",
+                    "status": "needs_review",
+                    "title": "昨日削除した改善候補",
+                    "recorded_at": "2026-08-10T04:05:00",
+                },
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(main.Path, "home", lambda: tmp_path)
+
+    assert main._latest_improvement_statuses()["same-key"] == "deleted"
+    assert main._latest_improvement_statuses_by_title()[
+        main._norm_improvement_title("昨日削除した改善候補")
+    ] == "deleted"
+
+
+def test_latest_improvement_statuses_keep_apply_failed_over_older_applied(tmp_path, monkeypatch):
+    import api.main as main
+
+    ledger_dir = tmp_path / "Library" / "Logs" / "tunelease"
+    ledger_dir.mkdir(parents=True)
+    ledger_path = ledger_dir / "ledger.jsonl"
+    ledger_path.write_text(
+        "\n".join(
+            json.dumps(row, ensure_ascii=False)
+            for row in [
+                {
+                    "key": "same-key",
+                    "canonical_key": "same-key",
+                    "status": "applied",
+                    "title": "監査で未反映に戻された候補",
+                    "recorded_at": "2026-08-07T04:03:38",
+                },
+                {
+                    "key": "same-key",
+                    "canonical_key": "same-key",
+                    "status": "apply_failed",
+                    "title": "監査で未反映に戻された候補",
+                    "recorded_at": "2026-08-08T10:49:08",
+                },
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(main.Path, "home", lambda: tmp_path)
+
+    assert main._latest_improvement_statuses()["same-key"] == "apply_failed"
+
+
 def test_cloudrun_improvement_items_include_raw_preview(monkeypatch):
     import api.main as main
 

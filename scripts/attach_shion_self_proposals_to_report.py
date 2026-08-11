@@ -23,7 +23,6 @@ LAYER_LABELS = {
     "usage_based": "利用ログ由来",
     "feedback_based": "人間反応・判断ログ由来",
     "system_audit_based": "システム監査由来",
-    "domestic_mode_based": "内政モード由来",
     "reflection_based": "内省アクション由来",
 }
 
@@ -39,19 +38,9 @@ REQUIRED_HYPOTHESIS_FIELDS = (
     "verification_plan",
     "risk",
 )
-DOMESTIC_MODE_INPUT_FIELDS = (
-    "importance",
-    "usage_context",
-    "intent",
-    "decision_rule",
-    "do_not_touch",
-    "success_metric",
-    "review_timing",
-)
 LAYER_QUALITY_WEIGHTS = {
     "feedback_based": 30,
     "system_audit_based": 24,
-    "domestic_mode_based": 34,
     "usage_based": 18,
 }
 PRIORITY_QUALITY_WEIGHTS = {
@@ -110,13 +99,6 @@ SOURCES = [
         "kind": "ナレッジ穴探し",
         "evidence_layer": "feedback_based",
         "summary_keys": ("reason", "search_hint"),
-    },
-    {
-        "path": DATA_DIR / "domestic_mode_proposals.jsonl",
-        "source": "domestic_mode",
-        "kind": "内政モード",
-        "evidence_layer": "domestic_mode_based",
-        "summary_keys": ("hypothesis", "decision_layer", "proposed_change", "success_metric"),
     },
     {
         "path": DATA_DIR / "reflection_action_candidates.jsonl",
@@ -575,8 +557,6 @@ def collect_shion_self_proposals(limit: int = 10) -> dict[str, Any]:
             "reflection_limit": DEFAULT_REFLECTION_LIMIT,
             "fitness_weight": FITNESS_WEIGHT,
             "required_fields": list(REQUIRED_HYPOTHESIS_FIELDS),
-            "domestic_mode_input_fields": list(DOMESTIC_MODE_INPUT_FIELDS),
-            "domestic_mode_doc": "docs/shion_domestic_mode_inputs.md",
             "genetic_loop": {
                 "selected": "採用/applied 系統は低い mutation_rate で継承・微修正する",
                 "selected_out": "却下/rejected 系統は同じ浅い案を抑え、必要なら別方向へ変異させる",
