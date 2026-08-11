@@ -14,6 +14,7 @@ import json
 import os
 import re
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -109,6 +110,7 @@ def _maybe_rerank_scored(
         return scored, False
     pool = scored[:pool_size]
     rest = scored[pool_size:]
+    started = time.monotonic()
     try:
         from api.loop_engineering_common import call_gemini_json
 
@@ -117,6 +119,15 @@ def _maybe_rerank_scored(
         )
     except Exception:
         return scored, False
+    finally:
+        from api.memory_cost_log import log_memory_cost
+
+        log_memory_cost(
+            phase="query",
+            func="shion_memory_recall._maybe_rerank_scored",
+            elapsed_ms=(time.monotonic() - started) * 1000,
+            item_count=len(pool),
+        )
     if not isinstance(result, list):
         return scored, False
     ordered_ids = [str(item) for item in result if isinstance(item, (str, int))]

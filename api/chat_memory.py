@@ -6,6 +6,7 @@ chat_messages テーブルを lease_data.db 内に作成し、
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, Callable
 import requests
 import re
@@ -262,6 +263,7 @@ def get_summary(user_id: str = "default") -> str:
     api_key = _get_gemini_api_key()
     if not api_key:
         return ""
+    started = time.monotonic()
     try:
         payload = {
             "system_instruction": {"parts": [{"text": "以下の会話を100文字以内で要約してください。"}]},
@@ -275,7 +277,17 @@ def get_summary(user_id: str = "default") -> str:
             timeout=30,
         )
         resp.raise_for_status()
-        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        body = resp.json()
+        from api.memory_cost_log import log_memory_cost
+
+        log_memory_cost(
+            phase="construction",
+            func="chat_memory.get_summary",
+            elapsed_ms=(time.monotonic() - started) * 1000,
+            item_count=len(rows),
+            tokens=(body.get("usageMetadata") or {}).get("totalTokenCount"),
+        )
+        return body["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception:
         return ""
 
