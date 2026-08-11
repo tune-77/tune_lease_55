@@ -359,6 +359,11 @@ else
 fi
 
 echo ""
+echo "[監査] Shion アーキテクチャ層監査（read-only・harness/agents/improverの3層で強み/リスクを可視化）を生成中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_architecture_layer_audit.py" || true
+log_step "build_shion_architecture_layer_audit" $?
+
+echo ""
 echo "[保守] 追記ログのローテーション（しきい値超過分をアーカイブへ退避して縮約）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/compact_append_logs.py" --apply; log_step "compact_append_logs" $?
 
