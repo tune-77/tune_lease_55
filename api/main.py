@@ -5424,6 +5424,12 @@ def _build_delta_awareness_prompt_block(message: str, history: list[dict[str, st
     return build_delta_awareness_prompt_block(message, history)
 
 
+def _build_chat_history_summary_context(user_id: str, history_for_gemini: list[dict]) -> str:
+    from api.chat_memory import build_chat_history_summary_context
+
+    return build_chat_history_summary_context(user_id, history_for_gemini)
+
+
 def _build_memory_to_judgment_prompt_block(
     message: str,
     *,
@@ -6775,6 +6781,7 @@ def post_chat(req: ChatRequest):
                     total_budget=int(context_budget["history_total_budget"]),
                 )
             history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
+            chat_history_summary_context = _build_chat_history_summary_context(req.user_id, history_for_gemini)
             from prompt_feedback import build_pdca_prompt_block
 
             memory_recall_context = ""
@@ -6910,6 +6917,7 @@ def post_chat(req: ChatRequest):
                 case_screening_pattern_context,
                 case_screening_mentor_dialogue_context,
                 f"\n\n{memory_recall_context}" if memory_recall_context else "",
+                chat_history_summary_context,
             ])
             pdca_block = (
                 build_pdca_prompt_block()
@@ -7181,6 +7189,7 @@ def post_chat(req: ChatRequest):
                 total_budget=int(context_budget["history_total_budget"]),
             )
         history_for_gemini = [{"role": m["role"], "content": m["content"]} for m in history]
+        chat_history_summary_context = _build_chat_history_summary_context(req.user_id, history_for_gemini)
         guidance = build_chat_guidance(req.message, history_for_gemini)
         # システムプロンプトにRAGコンテキスト・DB統計・改善照合・会話ガイダンスを追記
         from prompt_feedback import build_pdca_prompt_block
@@ -7313,6 +7322,7 @@ def post_chat(req: ChatRequest):
             case_screening_pattern_context,
             case_screening_mentor_dialogue_context,
             guidance.prompt_suffix,
+            chat_history_summary_context,
         ])
         pdca_block = (
             build_pdca_prompt_block()
