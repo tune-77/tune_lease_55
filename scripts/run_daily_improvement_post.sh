@@ -289,6 +289,17 @@ echo ""
 echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チェック（repo applied を runtime へ補完）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/check_ledger_consistency.py" --days 14 --sync-repo-applied-to-runtime; log_step "check_ledger_consistency" $?
 
+# Default-FAIL検証: 本夜間実行中に batch_apply/auto_approve_safe_recipes/promote_wiki_queue/
+# execute_codex_queue/shion_llm_triage_proposal などが自己申告した "applied" を、
+# git履歴の実コミットで裏付けが取れるかバックフィル監査する（従来は
+# tests/test_audit_ledger_applied_claims.py のユニットテストでしか実行されず、
+# 本番 ledger.jsonl には手動実行以外で一度も適用されていなかった）。
+# 裏付けが取れない場合のみ apply_failed に訂正するため、直後のレポート再同期・
+# Slack通知が偽の「適用済み」を報告しないようにする。
+echo ""
+echo "[検証] 台帳のapplied主張をgit履歴で検証（Default-FAIL: 証跡なしはapply_failedへ訂正）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/audit_ledger_applied_claims.py" --apply; log_step "audit_ledger_applied_claims" $?
+
 if [ -f "${LATEST_FILE}" ]; then
   echo ""
   echo "[反映] post台帳補完後の改善レポートを再同期中..."
