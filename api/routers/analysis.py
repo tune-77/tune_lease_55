@@ -10,6 +10,11 @@ from fastapi import APIRouter, HTTPException
 
 router = APIRouter(tags=["analysis"])
 
+
+def _gemini_generate_url() -> str:
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
 # =============================================================================
 # 高度分析 API (Phase 15.3: 計数分析・ログ・マスタ)
 # =============================================================================
