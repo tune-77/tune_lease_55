@@ -72,9 +72,6 @@ def aggregate_outcomes() -> dict[str, Any]:
 
 
 def _build_prompt(aggregate: dict[str, Any]) -> str:
-    from api.domestic_mode import build_domestic_memory_context
-
-    domestic_context = build_domestic_memory_context()
     bucket_lines = "\n".join(
         f"- {b['bucket']}: 件数={b['total']}, 延滞/デフォルト率={b['bad_rate'] * 100:.1f}%, "
         f"延滞金額合計={b['overdue_amount_sum']}千円"
@@ -88,8 +85,6 @@ def _build_prompt(aggregate: dict[str, Any]) -> str:
 【承認ライン】{aggregate['approval_line']}点
 【スコア帯ごとの実績】（承認圏=本来低リスクのはずの帯）
 {bucket_lines}
-
-{domestic_context}
 
 この集計を見て、「本来低リスクなはずの帯で延滞・デフォルト率が高い」
 「帯によって傾向が想定と逆になっている」等の乖離があれば、審査担当者が
@@ -110,8 +105,6 @@ def _build_prompt(aggregate: dict[str, Any]) -> str:
 
 
 def generate_proposals() -> dict[str, Any]:
-    from api.domestic_mode import connect_self_proposal_to_domestic_mode
-
     aggregate = aggregate_outcomes()
     if not aggregate["available"]:
         return {"generated": False, "reason": aggregate.get("reason", "データ取得に失敗しました"), "proposals": []}
@@ -145,11 +138,6 @@ def generate_proposals() -> dict[str, Any]:
             "status": "needs_human_review",
         }
         append_jsonl(_PROPOSALS_PATH, entry)
-        entry["domestic_connection"] = connect_self_proposal_to_domestic_mode(
-            entry,
-            source="outcome_drift_loop",
-            kind="実績ドリフト",
-        )
         saved.append(entry)
 
     return {"generated": True, "aggregate": aggregate, "proposals": saved}

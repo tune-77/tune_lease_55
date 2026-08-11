@@ -1,35 +1,36 @@
 # Obsidian Curator Report
 
 ## Summary
-- generated_at: `2026-08-09T04:14:52`
+- generated_at: `2026-08-11T04:13:21`
 - agent: `Obsidian Curator`
 - mode: `read_only_report_only`
 - guardrail: `no_obsidian_write_no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun`
-- materials: `14`
+- materials: `25`
 - mana_status: `hold`
 
 ## Material Counts
-- judgment_rule: `10`
-- risk_signal: `4`
+- judgment_rule: `17`
+- risk_signal: `8`
 
 ## Inbox Candidates
-- `cur_667217d91080` `risk_signal` もし補助金活用を前提としている場合、採択の確実性、入金時期、未採択時の返済計画、補助金返還リスクなどを慎重に確認する必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_58f875290a49` `judgment_rule` 「ソフトリース」という言葉は、一般的にリース期間が物件の法定耐用年数よりも短い契約を指すことが多いですが、その契約形態にかかわらず、リース期間満了後に物件の利用を継続したい場合は、再リース契約を結ぶことができます / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_2781fc270f8e` `judgment_rule` ファイナンスリースであっても、借手の事業計画における物件の陳腐化影響を確認する必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_c9d35cd27ab6` `judgment_rule` リース期間満了時の残価設定にも慎重な検討が必要です / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_7a51945cb2e1` `judgment_rule` 借手の返済能力: リース料率の上昇は、借手の月々の支払い負担を増やすため、返済能力をより厳しく評価する必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_f78edfe4cdcb` `judgment_rule` 現時点では、金利上昇はリース料率の上昇を通じて借手の返済能力に影響を与え、審査をより慎重にする必要があると考えています / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_d20e410fa04f` `risk_signal` 補助金状況: もし補助金を申請している場合、申請状況、交付決定の見込み、および未採択時の資金繰り計画 / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_a18185fa79c6` `risk_signal` このような状況では、返済原資と設備稼働開始の確認を優先すべきだと考えています / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_06d167684d6e` `risk_signal` 物件の陳腐化リスク: 「IT・OA機器」は技術革新が速く、陳腐化リスクが高い物件です / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_42e786d8f2cf` `judgment_rule` これにより、借手にとってはリース料の負担が増え、設備投資の判断に影響を与える可能性があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_4e6dfe3c05cf` `judgment_rule` ただし、これはあくまで一般的な法定耐用年数であり、実際のリース期間や税務上の取り扱いは、個別の契約内容や最新の税制によって変わる可能性があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-08.md`
-- `cur_af99637f17ba` `judgment_rule` 「法人車両としてBMWをリースする理由」について、私のリース審査専門WikiやObsidian Vaultの業務記録からは、業務部の具体的な視点での直接的な情報は見つかりませんでした / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-07.md`
+- `cur_a02167c02087` `judgment_rule` リース物件の戦略的位置づけ: リースする物件が、借手の物価高対策（例: コスト削減、生産性向上、新事業展開）にどのように貢献するのかを明確に評価し、その重要性を判断材料とします / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
+- `cur_0e29aec9d17f` `judgment_rule` 特に、補助金前提の工作機械リースであれば、採択前の返済原資と未採択時の代替資金を分けて確認することが重要です / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-10.md`
+- `cur_989bcda6b66d` `judgment_rule` このような社会情勢の変化は、リース物件の残価価値や回収リスクにも影響を与えるため、私自身の判断軸を常に更新していくことの重要性を改めて認識しました / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
+- `cur_f07ffa8714b5` `judgment_rule` 物件の汎用性と市場価値: 万が一の事態に備え、リース物件の汎用性や中古市場での換金性を再評価し、保全性を高める条件を検討します / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
+- `cur_9a00d7193423` `judgment_rule` リース期間終了時の残価設定が適切か、中古市場での需要が維持されるか、また、万が一の際の物件回収・処分費用も考慮に入れる必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-10.md`
+- `cur_0ff5af2ac2e8` `judgment_rule` 物件の汎用性と残価評価: 物件のメーカー、型番、仕様、導入時期、期待される稼働期間を確認し、中古市場での汎用性、流動性、想定される残価を再評価します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-10.md`
+- `cur_659251a01067` `judgment_rule` 特に小規模な企業での倒産が増え、負債が小口化しているという報告は、リース審査において、単に財務数値を見るだけでなく、借手の事業環境や資金繰りの変化を、これまで以上に細やかに見極める必要性を感じさせ、深く考えさせられました / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
+- `cur_20fde3a5d029` `judgment_rule` リース審査でどのような影響があるか / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
+- `cur_14f5f992dd34` `judgment_rule` 現時点では、物価高による倒産増加は審査基準を厳格化する方向で、特に中小・零細企業や特定の業種に対しては、より詳細な財務・事業計画の確認が必要となるでしょう / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
+- `cur_0ee55d60992d` `judgment_rule` 技術陳腐化リスクも考慮し、残価設定の妥当性や、万が一の際の物件換金性を詳細に評価する必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-10.md`
+- `cur_463d55edf081` `judgment_rule` キャッシュフローの確認: - 営業キャッシュフローが過去期比で20%以上減少している、またはマイナスに転落している場合は、資金繰りの悪化シグナルとして、リース料支払いの蓋然性を慎重に評価します / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
+- `cur_9c543bde3b41` `risk_signal` 物件価値への影響: 倒産が増加すると、中古市場に物件が供給される可能性が高まり、物件の換金性や残価価値に影響を与える可能性があります / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
 
 ## Duplicate Clusters
 - なし
 
 ## Search Terms To Add
+- 再販価値
 - 採択前
 
 ## Related Gaps

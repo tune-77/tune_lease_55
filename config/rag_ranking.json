@@ -2,7 +2,7 @@
   "preferred_path_boosts": {
     "knowledge_base/okf_lease_concepts/": 0.1,
     "リース知識/": 0.2,
-    "03-知識_業界/": 0.13,
+    "03-知識_業界/": 0.15,
     "Projects/tune_lease_55/Asset Knowledge/": 0.09,
     "Projects/tune_lease_55/Asset Finance/": 0.09,
     "Projects/tune_lease_55/Cases/": 0.08,
@@ -26,7 +26,7 @@
     "Humor/": 0.05
   },
   "sync_copy_penalty": 0.35,
-  "keyword_pool_multiplier": 5,
+  "keyword_pool_multiplier": 6,
   "keyword_pool_min": 12,
   "query_expansion_enabled": true,
   "query_expansion_max_variants": 4,

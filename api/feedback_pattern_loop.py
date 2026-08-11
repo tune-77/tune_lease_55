@@ -106,9 +106,6 @@ def aggregate_experience_signals(limit_examples: int = 8) -> dict[str, Any]:
 
 
 def _build_prompt(aggregate: dict[str, Any], experience: dict[str, Any]) -> str:
-    from api.domestic_mode import build_domestic_memory_context
-
-    domestic_context = build_domestic_memory_context()
     counts_lines = "\n".join(f"- {k}: {v}件" for k, v in aggregate["rating_counts"].items()) or "（データなし）"
     examples_lines = "\n".join(
         f"- [{ex['rating']}/{ex['route']}] Q: {ex['message']}\n  A: {ex['response']}"
@@ -134,8 +131,6 @@ def _build_prompt(aggregate: dict[str, Any], experience: dict[str, Any]) -> str:
 
 【②紫苑経験イベントの弱シグナル（不確実性または低スコア事例 {experience["weak_signal_count"]}/{experience["total_events"]}件）】
 {exp_lines}
-
-{domestic_context}
 
 これら2種類のデータに共通する課題パターンを分析し、応答スタンスや
 プロンプト設計を見直す際の着眼点を2〜4件、以下のJSON配列形式のみで返してください
@@ -166,8 +161,6 @@ def _proposal_text(item: dict[str, Any], key: str, fallback: str = "") -> str:
 
 
 def generate_proposals() -> dict[str, Any]:
-    from api.domestic_mode import connect_self_proposal_to_domestic_mode
-
     aggregate = aggregate_feedback()
     experience = aggregate_experience_signals()
 
@@ -207,11 +200,6 @@ def generate_proposals() -> dict[str, Any]:
             "human_decision_status": "needs_human_review",
         }
         append_jsonl(_PROPOSALS_PATH, entry)
-        entry["domestic_connection"] = connect_self_proposal_to_domestic_mode(
-            entry,
-            source="feedback_pattern_loop",
-            kind="人間反応",
-        )
         saved.append(entry)
 
     return {

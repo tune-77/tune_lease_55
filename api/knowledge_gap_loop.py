@@ -46,9 +46,6 @@ def aggregate_gaps(limit_examples: int = 20) -> dict[str, Any]:
 
 
 def _build_prompt(aggregate: dict[str, Any]) -> str:
-    from api.domestic_mode import build_domestic_memory_context
-
-    domestic_context = build_domestic_memory_context()
     questions_lines = "\n".join(f"- {q}" for q in aggregate["weak_questions"]) or "（該当データなし）"
 
     return f"""あなたはリース審査AIシステム「紫苑」です。ユーザーからの質問のうち、
@@ -58,8 +55,6 @@ Obsidianナレッジの参照が0件のまま回答した（＝知識ソース�
 
 【知識参照0件だった質問の一覧（重複除去済み・最大20件）】
 {questions_lines}
-
-{domestic_context}
 
 これらに共通する話題・分野を分析し、外部調査器官（Google検索経由でResearch
 ノートを作る仕組み）で調べるべきトピックを2〜4件、以下のJSON配列形式のみで
@@ -79,8 +74,6 @@ Obsidianナレッジの参照が0件のまま回答した（＝知識ソース�
 
 
 def generate_proposals() -> dict[str, Any]:
-    from api.domestic_mode import connect_self_proposal_to_domestic_mode
-
     aggregate = aggregate_gaps()
     if aggregate["total_logged"] == 0:
         return {"generated": False, "reason": "利用ログデータがまだありません", "proposals": []}
@@ -115,11 +108,6 @@ def generate_proposals() -> dict[str, Any]:
             "status": "needs_human_review",
         }
         append_jsonl(_PROPOSALS_PATH, entry)
-        entry["domestic_connection"] = connect_self_proposal_to_domestic_mode(
-            entry,
-            source="knowledge_gap_loop",
-            kind="ナレッジ穴探し",
-        )
         saved.append(entry)
 
     return {"generated": True, "aggregate": aggregate, "proposals": saved}

@@ -137,7 +137,7 @@
 4. 競合関連は `competitor === "競合あり"` または `customer_type === "新規先"` の時だけ表示する。
 5. `/api/score/full` の結果に `missing_but_optional_inputs` を返し、未入力でもどこが弱いかを画面に出す。
 
-## 内政モード判断
+## 採用判断
 
 これは採用候補。成功指標は以下。
 

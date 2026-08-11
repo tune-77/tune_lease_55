@@ -1,6 +1,6 @@
 # Model Pickle Compatibility Check
 
-- generated_at: `2026-08-08T19:15:08.040200+00:00`
+- generated_at: `2026-08-10T19:13:59.701810+00:00`
 - status: `warn`
 - scanned: `33` / failed: `6` / version-mismatch warnings: `18`
 - guardrail: `read_only_no_retrain_no_delete`

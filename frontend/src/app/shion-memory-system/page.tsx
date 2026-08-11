@@ -1,11 +1,15 @@
 "use client";
 
-import React from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  Activity,
+  AlertTriangle,
   ArrowRight,
   Brain,
+  ClipboardCheck,
   Database,
+  Gauge,
   HeartHandshake,
   Layers3,
   MessageSquareText,
@@ -14,6 +18,80 @@ import {
   Sparkles,
   ThumbsUp,
 } from "lucide-react";
+
+import { apiClient } from "@/lib/api";
+
+type MemoryEngineeringSummary = {
+  write_path_records?: number;
+  active_canonical_rules?: number;
+  write_amplification_per_active_rule?: number | null;
+  open_human_review_records?: number;
+  memory_records?: number;
+  recent_memory_usage_events?: number;
+  recent_unique_memory_refs?: number;
+  maintenance_status_records?: number;
+  contradiction_candidates?: number;
+};
+
+type MemoryEngineeringReport = {
+  generated?: boolean;
+  generated_at?: string;
+  guardrail?: string;
+  summary?: MemoryEngineeringSummary;
+  hardware_pressure_proxy?: {
+    notes?: number;
+    edges?: number;
+    estimated_raw_tokens?: number;
+    estimated_index_tokens?: number;
+    estimated_token_reduction_ratio?: number;
+    estimated_tokens_avoided?: number;
+  };
+  maintenance_path?: {
+    forgetting_review_sample?: Array<{
+      id: string;
+      memory_type: string;
+      last_used_at: string;
+      source_path: string;
+      content: string;
+    }>;
+  };
+  recommendations?: Array<{ area: string; action: string; reason: string }>;
+};
+
+type MemoryReviewStatus = "candidate" | "adopted" | "revised" | "held" | "rejected";
+
+type MemoryReviewItem = {
+  inbox_id: string;
+  source: string;
+  source_item_id: string;
+  status: MemoryReviewStatus;
+  title: string;
+  claim: string;
+  edited_claim: string;
+  note: string;
+  reviewed_at: string;
+  candidate_type: string;
+  quality: string;
+  topic: string;
+  date_hint: string;
+  evidence_path: string;
+  raw_status: string;
+};
+
+type MemoryReviewInboxResponse = {
+  summary: {
+    total: number;
+    open: number;
+    by_status: Record<string, number>;
+    by_source: Record<string, number>;
+  };
+  filtered_total: number;
+  limit: number;
+  offset: number;
+  items: MemoryReviewItem[];
+  review_policy: string;
+  state_path: string;
+};
 
 const layers = [
   {
@@ -122,6 +200,431 @@ const memoryLoop = [
   },
 ];
 
+function formatNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  return new Intl.NumberFormat("ja-JP").format(value);
+}
+
+function formatRatio(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+const REVIEW_STATUS_LABEL: Record<MemoryReviewStatus | "all", string> = {
+  all: "すべて",
+  candidate: "レビュー待ち",
+  adopted: "採用",
+  revised: "修正採用",
+  held: "保留",
+  rejected: "却下",
+};
+
+const REVIEW_SOURCE_LABEL: Record<string, string> = {
+  all: "全ソース",
+  judgment_materials_preview: "判断材料",
+  autoresearch_candidates: "Auto Research",
+  reflection_action_candidates: "内省アクション",
+  prediction_error_candidates: "予測誤差",
+  obsidian_memory_insight_candidates: "Obsidian候補",
+};
+
+function MemoryReviewInbox() {
+  const [data, setData] = useState<MemoryReviewInboxResponse | null>(null);
+  const [status, setStatus] = useState<MemoryReviewStatus | "all">("candidate");
+  const [source, setSource] = useState("all");
+  const [query, setQuery] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+
+  const fetchInbox = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiClient.get<MemoryReviewInboxResponse>("/api/shion/memory-review-inbox", {
+        params: { status, source, q: query, limit: 20, offset },
+      });
+      setData(res.data);
+    } catch {
+      setError("Memory Review Inbox を読み込めませんでした。");
+    } finally {
+      setLoading(false);
+    }
+  }, [offset, query, source, status]);
+
+  useEffect(() => {
+    fetchInbox();
+  }, [fetchInbox]);
+
+  const handleReview = useCallback(
+    async (item: MemoryReviewItem, decision: "adopted" | "revised" | "held" | "rejected") => {
+      const edited_claim = edits[item.inbox_id] || "";
+      if (decision === "revised" && !edited_claim.trim()) {
+        setError("修正採用には修正文が必要です。");
+        return;
+      }
+      setActionLoading((current) => ({ ...current, [item.inbox_id]: true }));
+      setError("");
+      setMessage("");
+      try {
+        await apiClient.post(`/api/shion/memory-review-inbox/${encodeURIComponent(item.inbox_id)}/review`, {
+          decision,
+          note: notes[item.inbox_id] || "",
+          edited_claim,
+        });
+        setMessage(`${REVIEW_STATUS_LABEL[decision]}として保存しました。`);
+        await fetchInbox();
+      } catch {
+        setError("レビュー判断の保存に失敗しました。");
+      } finally {
+        setActionLoading((current) => ({ ...current, [item.inbox_id]: false }));
+      }
+    },
+    [edits, fetchInbox, notes],
+  );
+
+  const summary = data?.summary;
+  const hasNext = Boolean(data && data.offset + data.limit < data.filtered_total);
+  const sourceOptions = useMemo(() => {
+    const keys = Object.keys(summary?.by_source || {});
+    return ["all", ...keys.filter((key) => key !== "all")];
+  }, [summary]);
+
+  return (
+    <section className="mx-auto max-w-7xl px-5 pb-8 md:px-8">
+      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <ClipboardCheck className="h-6 w-6 text-emerald-600" />
+              <h2 className="text-2xl font-black">Memory Review Inbox</h2>
+            </div>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+              判断資産候補を、採用・修正採用・保留・却下で仕分けます。元ファイルは変更せず、判断履歴だけを別管理します。
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4 lg:w-[520px]">
+            {(["candidate", "adopted", "revised", "rejected"] as const).map((key) => (
+              <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="text-lg font-black text-slate-950">{formatNumber(summary?.by_status?.[key] || 0)}</div>
+                <div className="text-[11px] font-black text-slate-500">{REVIEW_STATUS_LABEL[key]}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-[180px_220px_1fr_120px]">
+          <select
+            value={status}
+            onChange={(event) => {
+              setStatus(event.target.value as MemoryReviewStatus | "all");
+              setOffset(0);
+            }}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800"
+          >
+            {(["candidate", "adopted", "revised", "held", "rejected", "all"] as const).map((key) => (
+              <option key={key} value={key}>{REVIEW_STATUS_LABEL[key]}</option>
+            ))}
+          </select>
+          <select
+            value={source}
+            onChange={(event) => {
+              setSource(event.target.value);
+              setOffset(0);
+            }}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800"
+          >
+            {sourceOptions.map((key) => (
+              <option key={key} value={key}>{REVIEW_SOURCE_LABEL[key] || key}</option>
+            ))}
+          </select>
+          <input
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setOffset(0);
+            }}
+            placeholder="検索"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800"
+          />
+          <button
+            type="button"
+            onClick={fetchInbox}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-black text-slate-700 hover:bg-white"
+          >
+            <RefreshCw className="h-4 w-4" />
+            更新
+          </button>
+        </div>
+
+        {error && (
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+            <AlertTriangle className="h-4 w-4" />
+            {error}
+          </div>
+        )}
+        {message && (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+            {message}
+          </div>
+        )}
+
+        <div className="mt-5 flex items-center justify-between text-xs font-bold text-slate-500">
+          <span>
+            {loading ? "読み込み中" : `${formatNumber(data?.filtered_total || 0)}件中 ${formatNumber((data?.offset || 0) + 1)}件目から`}
+          </span>
+          <span>{data?.state_path || "data/memory_review_inbox_state.json"}</span>
+        </div>
+
+        <div className="mt-3 space-y-3">
+          {(data?.items || []).map((item) => (
+            <div key={item.inbox_id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded bg-white px-2 py-1 text-[11px] font-black text-slate-600">
+                      {REVIEW_SOURCE_LABEL[item.source] || item.source}
+                    </span>
+                    <span className="rounded bg-white px-2 py-1 text-[11px] font-black text-slate-600">
+                      {item.candidate_type || "candidate"}
+                    </span>
+                    <span className="rounded bg-white px-2 py-1 text-[11px] font-black text-slate-600">
+                      {REVIEW_STATUS_LABEL[item.status] || item.status}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-base font-black text-slate-950">{item.title}</h3>
+                  <p className="mt-2 text-sm font-bold leading-7 text-slate-700">{item.claim}</p>
+                  <p className="mt-2 text-xs font-bold text-slate-500">{item.evidence_path}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <textarea
+                  value={edits[item.inbox_id] ?? item.edited_claim ?? ""}
+                  onChange={(event) => setEdits((current) => ({ ...current, [item.inbox_id]: event.target.value }))}
+                  placeholder="修正採用する場合の文面"
+                  rows={3}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold leading-6 text-slate-800"
+                />
+                <textarea
+                  value={notes[item.inbox_id] ?? item.note ?? ""}
+                  onChange={(event) => setNotes((current) => ({ ...current, [item.inbox_id]: event.target.value }))}
+                  placeholder="判断メモ"
+                  rows={3}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold leading-6 text-slate-800"
+                />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {([
+                  ["adopted", "採用", "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"],
+                  ["revised", "修正採用", "border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100"],
+                  ["held", "保留", "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"],
+                  ["rejected", "却下", "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"],
+                ] as const).map(([decision, label, tone]) => (
+                  <button
+                    key={decision}
+                    type="button"
+                    disabled={Boolean(actionLoading[item.inbox_id])}
+                    onClick={() => handleReview(item, decision)}
+                    className={`rounded-lg border px-3 py-2 text-sm font-black disabled:opacity-50 ${tone}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {!loading && !(data?.items || []).length && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">
+              表示する候補はありません。
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex items-center justify-between">
+          <button
+            type="button"
+            disabled={!data || data.offset <= 0}
+            onClick={() => setOffset(Math.max(0, offset - (data?.limit || 20)))}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700 disabled:opacity-40"
+          >
+            前へ
+          </button>
+          <button
+            type="button"
+            disabled={!hasNext}
+            onClick={() => setOffset(offset + (data?.limit || 20))}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700 disabled:opacity-40"
+          >
+            次へ
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MemoryEngineeringPanel() {
+  const [report, setReport] = useState<MemoryEngineeringReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadReport() {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await apiClient.get<MemoryEngineeringReport>("/api/shion/memory-engineering-report");
+        if (!cancelled) setReport(res.data);
+      } catch (err) {
+        if (!cancelled) setError("Memory Engineering レポートを読み込めませんでした。");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadReport();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const summary = report?.summary || {};
+  const graph = report?.hardware_pressure_proxy || {};
+  const reviewSample = report?.maintenance_path?.forgetting_review_sample || [];
+  const recommendations = report?.recommendations || [];
+  const lensStats = useMemo(
+    () => [
+      {
+        title: "Write Cost",
+        label: "Stanford",
+        value: formatNumber(summary.write_path_records),
+        sub: `active ${formatNumber(summary.active_canonical_rules)} / x${summary.write_amplification_per_active_rule ?? "-"}`,
+        icon: Gauge,
+        tone: "border-sky-200 bg-sky-50 text-sky-950",
+      },
+      {
+        title: "Utility Density",
+        label: "Microsoft",
+        value: formatNumber(summary.open_human_review_records),
+        sub: "human review queue",
+        icon: Layers3,
+        tone: "border-emerald-200 bg-emerald-50 text-emerald-950",
+      },
+      {
+        title: "Control",
+        label: "Anthropic",
+        value: formatNumber(summary.maintenance_status_records),
+        sub: `${formatNumber(summary.contradiction_candidates)} contradiction candidates`,
+        icon: ShieldCheck,
+        tone: "border-amber-200 bg-amber-50 text-amber-950",
+      },
+      {
+        title: "Retrieval Pressure",
+        label: "Nvidia",
+        value: formatRatio(graph.estimated_token_reduction_ratio),
+        sub: `${formatNumber(graph.notes)} notes / ${formatNumber(graph.edges)} edges`,
+        icon: Activity,
+        tone: "border-rose-200 bg-rose-50 text-rose-950",
+      },
+    ],
+    [graph, summary],
+  );
+
+  return (
+    <section className="mx-auto max-w-7xl px-5 py-8 md:px-8">
+      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <Gauge className="h-6 w-6 text-sky-600" />
+              <h2 className="text-2xl font-black">Memory Engineering</h2>
+            </div>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+              記憶を増やす量ではなく、候補生成量、昇格率、使用状況、忘却レビュー候補を観測します。
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-600">
+            {loading ? "loading" : report?.generated_at || "not generated"}
+          </div>
+        </div>
+
+        {error && (
+          <div className="mt-5 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+            <AlertTriangle className="h-4 w-4" />
+            {error}
+          </div>
+        )}
+
+        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {lensStats.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <div key={stat.title} className={`rounded-lg border p-4 ${stat.tone}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-widest opacity-70">{stat.label}</p>
+                    <h3 className="mt-1 text-base font-black">{stat.title}</h3>
+                  </div>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="mt-4 text-3xl font-black tracking-tight">{stat.value}</div>
+                <div className="mt-1 text-xs font-bold opacity-75">{stat.sub}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-sm font-black text-slate-900">Recommended Next Checks</h3>
+            <div className="mt-3 space-y-2">
+              {recommendations.length ? (
+                recommendations.slice(0, 4).map((item) => (
+                  <div key={`${item.area}-${item.action}`} className="rounded-md bg-white px-3 py-2 text-sm text-slate-700">
+                    <span className="font-black text-slate-950">{item.action}</span>
+                    <span className="ml-2 text-xs font-bold text-slate-500">{item.area}</span>
+                    <p className="mt-1 text-xs leading-5">{item.reason}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm font-bold text-slate-500">緊急の記憶メンテナンスはありません。</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-sm font-black text-slate-900">Forgetting Review Sample</h3>
+            <div className="mt-3 space-y-2">
+              {reviewSample.length ? (
+                reviewSample.slice(0, 3).map((item) => (
+                  <div key={item.id} className="rounded-md bg-white px-3 py-2 text-sm text-slate-700">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs font-black text-slate-900">{item.id}</span>
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-600">
+                        {item.memory_type}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-500">last used: {item.last_used_at || "none"}</span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5">{item.content}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm font-bold text-slate-500">レビュー候補はまだありません。</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function ShionMemorySystemPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -166,6 +669,9 @@ export default function ShionMemorySystemPage() {
           </div>
         </div>
       </section>
+
+      <MemoryEngineeringPanel />
+      <MemoryReviewInbox />
 
       <section className="mx-auto max-w-7xl px-5 py-8 md:px-8">
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

@@ -5,14 +5,10 @@ import json
 
 def test_usage_loop_saves_verifiable_hypothesis_schema(tmp_path, monkeypatch):
     import api.usage_loop_engineering as usage
-    import api.domestic_mode as domestic
 
     proposals_path = tmp_path / "usage_loop_proposals.jsonl"
     captured_prompt = {}
     monkeypatch.setattr(usage, "_PROPOSALS_PATH", proposals_path)
-    monkeypatch.setattr(domestic, "_PROPOSALS_PATH", tmp_path / "domestic_mode_proposals.jsonl")
-    monkeypatch.setattr(domestic, "_IMPROVEMENT_LOG_PATH", tmp_path / "cloudrun_improvement_log.jsonl")
-    monkeypatch.setattr(domestic, "build_domestic_memory_context", lambda: "【内政モード判断メモリ】\n- FAQ: status=rejected")
     monkeypatch.setattr(
         usage,
         "aggregate_usage",
@@ -57,19 +53,16 @@ def test_usage_loop_saves_verifiable_hypothesis_schema(tmp_path, monkeypatch):
     assert saved["human_decision_status"] == "needs_human_review"
     assert saved["hypothesis"].startswith("トップから審査へ")
     assert saved["success_metric"] == "/ から /screening への遷移率"
-    assert "内政モード判断メモリ" in captured_prompt["prompt"]
+    assert "判断メモリ" not in captured_prompt["prompt"]
     assert '"proposal_style": "leap"' in captured_prompt["prompt"]
-    assert result["proposals"][0]["domestic_connection"]["saved"] is True
+    assert "domestic_connection" not in result["proposals"][0]
 
 
 def test_feedback_pattern_saves_verifiable_hypothesis_schema(tmp_path, monkeypatch):
     import api.feedback_pattern_loop as feedback
-    import api.domestic_mode as domestic
 
     proposals_path = tmp_path / "feedback_pattern_proposals.jsonl"
     monkeypatch.setattr(feedback, "_PROPOSALS_PATH", proposals_path)
-    monkeypatch.setattr(domestic, "_PROPOSALS_PATH", tmp_path / "domestic_mode_proposals.jsonl")
-    monkeypatch.setattr(domestic, "_IMPROVEMENT_LOG_PATH", tmp_path / "cloudrun_improvement_log.jsonl")
     monkeypatch.setattr(
         feedback,
         "aggregate_feedback",
@@ -108,7 +101,7 @@ def test_feedback_pattern_saves_verifiable_hypothesis_schema(tmp_path, monkeypat
     assert saved["proposal_schema"] == "shion_self_hypothesis_v1"
     assert saved["hypothesis"] == "根拠を先に出すとthin評価が減る"
     assert saved["verification_plan"].startswith("変更前後7日")
-    assert result["proposals"][0]["domestic_connection"]["saved"] is True
+    assert "domestic_connection" not in result["proposals"][0]
 
 
 def test_report_attachment_preserves_hypothesis_fields(tmp_path, monkeypatch):
@@ -238,9 +231,10 @@ def test_report_attachment_limits_review_items_to_top_three(tmp_path, monkeypatc
     assert section["displayed_count"] == 3
     assert len(section["items"]) == 3
     assert section["quality_policy"]["top_limit"] == 3
-    assert section["quality_policy"]["domestic_mode_doc"] == "docs/shion_domestic_mode_inputs.md"
-    assert "usage_context" in section["quality_policy"]["domestic_mode_input_fields"]
-    assert "do_not_touch" in section["quality_policy"]["domestic_mode_input_fields"]
+    removed_doc_key = "domestic" + "_mode_doc"
+    removed_fields_key = "domestic" + "_mode_input_fields"
+    assert removed_doc_key not in section["quality_policy"]
+    assert removed_fields_key not in section["quality_policy"]
     assert section["quality_policy"]["fitness_weight"] == 0.35
     assert section["quality_policy"]["genetic_loop"]["selected"]
     assert section["items"][0]["title"] == "提案4"
@@ -306,13 +300,13 @@ def test_report_attachment_keeps_one_leap_slot(tmp_path, monkeypatch):
 def test_report_attachment_keeps_one_reflection_action_slot(tmp_path, monkeypatch):
     import scripts.attach_shion_self_proposals_to_report as attach
 
-    strong_path = tmp_path / "domestic.jsonl"
+    strong_path = tmp_path / "usage.jsonl"
     reflection_path = tmp_path / "reflection.jsonl"
     strong_rows = []
     for idx in range(4):
         strong_rows.append(
             {
-                "title": f"強い内政提案{idx}",
+                "title": f"強い利用提案{idx}",
                 "target": f"/solid{idx}",
                 "hypothesis": f"仮説{idx}",
                 "evidence": f"/solid{idx} が {idx + 20}回利用",
@@ -353,9 +347,9 @@ def test_report_attachment_keeps_one_reflection_action_slot(tmp_path, monkeypatc
         [
             {
                 "path": strong_path,
-                "source": "domestic_mode",
-                "kind": "内政モード",
-                "evidence_layer": "domestic_mode_based",
+                "source": "usage_loop",
+                "kind": "画面利用",
+                "evidence_layer": "usage_based",
                 "summary_keys": ("hypothesis", "evidence"),
             },
             {
@@ -423,55 +417,6 @@ def test_report_attachment_classifies_system_audit_layer(tmp_path, monkeypatch):
     assert section["items"][0]["evidence_layer"] == "system_audit_based"
     assert section["items"][0]["kind"] == "システム監査"
     assert section["items"][0]["proposed_change"] == "DB品質監査をレポート化する"
-
-
-def test_report_attachment_includes_domestic_mode_layer(tmp_path, monkeypatch):
-    import scripts.attach_shion_self_proposals_to_report as attach
-
-    source_path = tmp_path / "domestic_mode_proposals.jsonl"
-    source_path.write_text(
-        json.dumps(
-            {
-                "title": "内政再判定: FAQを観測継続で扱う",
-                "target": "FAQ",
-                "hypothesis": "問い合わせ減少に効く可能性はあるが導線根拠が足りない",
-                "evidence": "内政メモ + 画面内一次判定 + Gemini再判定",
-                "proposed_change": "30日だけ導線ログを見ます",
-                "success_metric": "問い合わせ件数",
-                "verification_plan": "30日後に採用/保留/却下後の効果を確認する。",
-                "risk": "不足入力: 残す理由",
-                "priority": "medium",
-                "generated_at": "2026-07-31T08:00:00",
-                "proposal_schema": "shion_self_hypothesis_v1",
-                "human_decision_status": "needs_human_review",
-                "decision_layer": "観測継続",
-            },
-            ensure_ascii=False,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        attach,
-        "SOURCES",
-        [
-            {
-                "path": source_path,
-                "source": "domestic_mode",
-                "kind": "内政モード",
-                "evidence_layer": "domestic_mode_based",
-                "summary_keys": ("hypothesis", "decision_layer", "proposed_change", "success_metric"),
-            }
-        ],
-    )
-
-    section = attach.collect_shion_self_proposals(limit=5)
-
-    assert section["count"] == 1
-    assert section["counts_by_layer"]["domestic_mode_based"] == 1
-    assert section["layer_labels"]["domestic_mode_based"] == "内政モード由来"
-    assert section["items"][0]["kind"] == "内政モード"
-    assert section["items"][0]["evidence_layer"] == "domestic_mode_based"
 
 
 def test_report_attachment_suppresses_resolved_self_proposals(tmp_path, monkeypatch):

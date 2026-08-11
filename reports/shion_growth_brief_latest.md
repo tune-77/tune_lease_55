@@ -1,11 +1,11 @@
 # Shion Growth Brief
 
-- Date: 2026-08-09
+- Date: 2026-08-11
 - Guardrail: `brief_only_no_auto_promotion_no_prompt_no_scoring_change`
-- Memory: records=820, used_ids=202, usage_events=1190, impact_hints=60
+- Memory: records=788, used_ids=207, usage_events=1211, impact_hints=72
 - Judgment assets: A/B pairs=1, grow=0, review=0, sleeping=9
-- Obsidian graph: effective_hubs=90, complex_unproven=178, usage_nodes=297
-- Graph answer: 複雑さは部分的に効いているが、未検証の絡まりも多い。効いたノードだけを入口化するのがよい。
+- Obsidian graph: effective_hubs=93, complex_unproven=178, usage_nodes=338
+- Graph answer: 複雑さは一部判断に効いている。特に使用シグナルのあるハブと橋渡しノードは残す価値が高い。
 - Persistent audit findings: 0
 
 ## Actions
@@ -15,7 +15,7 @@
 ## Top Used Memories
 - mem_42683fdb02f4c3f9 [long_term/active] used=346 定量 39特徴の OOF AUC は LR 0.6769、MLP 0.6865 で、現行スコアより高かった。
 - mem_21e7888f37fc5688 [long_term/active] used=94 毎朝のリース最新情報収集を Obsidian の `Projects/tune_lease_55/News/*_lease-news.md` に保存し、その最新ノートの論点を審査画面の「注目論点」に自動表示する方針にした。ニュースは単なる保存ではなく、翌日の審査コメントの起点として使う。
-- mem_9487b437586edebb [long_term/active] used=76 **Shion Conscience Layer**: 紫苑には「良心の紫苑」を内蔵する。これは結論を甘くする役ではなく、否決・条件付き承認・強い断定で、人を雑に切り捨てていないか、説明責任が残っているか、ユーザーに迎合しすぎていないかを点検する。影響: 紫苑の判断に人間性・説明責任・非迎合を残せる。次の行動: 説教臭くならないよう、表示は短くし、実案件で効
+- mem_9487b437586edebb [long_term/active] used=77 **Shion Conscience Layer**: 紫苑には「良心の紫苑」を内蔵する。これは結論を甘くする役ではなく、否決・条件付き承認・強い断定で、人を雑に切り捨てていないか、説明責任が残っているか、ユーザーに迎合しすぎていないかを点検する。影響: 紫苑の判断に人間性・説明責任・非迎合を残せる。次の行動: 説教臭くならないよう、表示は短くし、実案件で効
 
 ## Judgment Asset A/B
 - demo_renewal_asset: 64e054542be673e4 vs a34492fe19a18e3a
