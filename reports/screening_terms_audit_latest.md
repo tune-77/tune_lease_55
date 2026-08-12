@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-08-11T04:13:26`
+- generated_at: `2026-08-13T04:12:57`
 - status: `ok`
-- scanned_files: `504`
+- scanned_files: `511`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
 - review: `67`
-- ok: `2200`
+- ok: `2216`
 
 ## Glossary
 
@@ -66,9 +66,9 @@
   - `if (labels.includes('デフォルト確率（PD）')) {`
 - `review` `actual_pd` `frontend/src/app/report/page.tsx:181` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `actions.push({ label: '信用保険（リース信用保険）の付保を検討', detail: 'PD高水準のリスクヘッジとして有効', priority: 'must' });`
-- `review` `actual_pd` `frontend/src/app/screening/page.tsx:2408` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/screening/page.tsx:1368` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `出典: TDB「倒産集計2025年度報」×中小企業庁データ。業種全体の母集団倒産率であり、個社の倒産確率（PD）ではありません。スコアには反映していません。`
-- `review` `score` `frontend/src/app/screening/page.tsx:2408` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `score` `frontend/src/app/screening/page.tsx:1368` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `出典: TDB「倒産集計2025年度報」×中小企業庁データ。業種全体の母集団倒産率であり、個社の倒産確率（PD）ではありません。スコアには反映していません。`
 - `review` `actual_pd` `frontend/src/components/analysis/AdvancedAnalysis.tsx:180` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `PD（デフォルト確率）: {bankruptcyPct}%`
