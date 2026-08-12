@@ -36,8 +36,6 @@ export default function Sidebar() {
   const { isCollapsed, toggleSidebar, isMobileOpen, toggleMobile } = useSidebar();
   const [isCloudRunHost, setIsCloudRunHost] = useState(true);
   const [frequentItems, setFrequentItems] = useState<Array<SidebarItem & { count: number }>>([]);
-  const hideResearchOrgan =
-    process.env.NEXT_PUBLIC_HIDE_RESEARCH_ORGAN === "1" || isCloudRunHost;
 
   useEffect(() => {
     setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
@@ -68,9 +66,7 @@ export default function Sidebar() {
       items: [
         { name: 'リース知性体 紫苑システム', href: '/', icon: Home, color: 'text-violet-400' },
         { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
-        ...(!hideResearchOrgan
-          ? [{ name: '外部調査器官', href: '/research-organ', icon: Search, color: 'text-sky-300' }]
-          : []),
+        { name: '外部調査器官', href: '/research-organ', icon: Search, color: 'text-sky-300' },
         { name: '過去案件一覧', href: '/cases', icon: Table2, color: 'text-cyan-400' },
         { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
         { name: '事業計画チェック（簡易版）', href: '/business-plan-check', icon: FileCheck2, color: 'text-teal-400' },
@@ -153,7 +149,7 @@ export default function Sidebar() {
       }
     }, 80);
     return () => window.clearTimeout(timer);
-  }, [pathname, hideResearchOrgan]);
+  }, [pathname]);
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
     Object.fromEntries(menuGroups.map(g => [g.title, g.defaultOpen]))
