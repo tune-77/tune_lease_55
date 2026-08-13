@@ -88,6 +88,12 @@ def test_chat_memory_debug_payload_keeps_core_shape_and_limits():
         memory_expression={"used": True, "memory_refs": 2, "knowledge_refs": 3},
         reflection_gate={"used": True, "mode": "check", "checklist": list(range(20))},
         grey_judgment_memory={"used": True, "query_terms": list(range(20)), "refs": list(range(20))},
+        world_proxy={
+            "used": True,
+            "level": "L1_inference_time_guidance",
+            "functions": list(range(20)),
+            "grounding": {"knowledge_refs": 12},
+        },
     )
 
     assert payload["category"] == "rag"
@@ -99,6 +105,8 @@ def test_chat_memory_debug_payload_keeps_core_shape_and_limits():
     assert payload["rag_context_used"] is True
     assert payload["db_context_used"] is True
     assert payload["relationship_loop_engineering"]["closed_loop"] is True
+    assert payload["world_proxy"]["functions"] == list(range(8))
+    assert payload["world_proxy"]["grounding"] == {"knowledge_refs": 12}
 
 
 def test_relationship_loop_engineering_payload_summarizes_loop_evidence():
@@ -135,6 +143,11 @@ def test_dialogue_shared_memory_public_payload_keeps_compact_shape():
             "memory_expression": {"used": True, "route": "lease", "memory_refs": 2, "knowledge_refs": 3, "grey_refs": 4},
             "reflection_gate": {"used": True, "mode": "check"},
             "grey_judgment_memory": {"used": True, "refs": list(range(20))},
+            "world_proxy": {
+                "used": True,
+                "level": "L1_inference_time_guidance",
+                "functions": list(range(20)),
+            },
         }
     )
 
@@ -146,6 +159,7 @@ def test_dialogue_shared_memory_public_payload_keeps_compact_shape():
     assert payload["memory_recall"]["refs"] == list(range(8))
     assert payload["memory_recall"]["practical_scene"] == {"scene": "dialogue"}
     assert payload["grey_judgment_memory"]["refs"] == list(range(8))
+    assert payload["world_proxy"]["functions"] == list(range(8))
 
 
 def test_prompt_block_helpers_preserve_existing_concat_behavior():

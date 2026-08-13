@@ -94,7 +94,7 @@ function PastCompanyHighlightBadge({ highlight }: { highlight: PastCompanyHighli
                 ].filter(Boolean).join(" / ")}
               />
               <PastCompanyPopupRow
-                label="人間評価"
+                label="紫苑レビュー評価"
                 value={pastReview.user_feedback ? FEEDBACK_LABELS[pastReview.user_feedback] : "未評価"}
               />
               <PastCompanyPopupRow
@@ -364,7 +364,7 @@ export function ShionScreeningReviewCard({
                   </div>
                 ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-violet-100 pt-3">
-                  <span className="text-[11px] font-black text-violet-500">人間評価</span>
+                  <span className="text-[11px] font-black text-violet-500">紫苑レビュー評価</span>
                   {feedbackOptions.map((option) => (
                     <button
                       key={option.key}
@@ -381,7 +381,7 @@ export function ShionScreeningReviewCard({
                     </button>
                   ))}
                   {!review.savedId && (
-                    <span className="text-[11px] font-bold text-slate-400">経験保存後に評価できます</span>
+                    <span className="text-[11px] font-bold text-slate-400">レビュー保存後に評価できます</span>
                   )}
                 </div>
                 {thoughtProcessSteps.length > 0 && (

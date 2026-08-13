@@ -7,7 +7,7 @@ import { apiClient } from '@/lib/api';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
 import { extractPrefectureFromText } from '@/lib/prefecture';
 import { CurrentIssueCard, RingiPolicyCard } from '../../components/analysis/IssuePolicyCards';
-import CaseRegistrationForm from '../../components/analysis/CaseRegistrationForm';
+import CaseRegistrationForm, { type CaseRegistrationResult } from '../../components/analysis/CaseRegistrationForm';
 import { ShionScreeningReviewCard } from '../../components/analysis/ShionReviewCard';
 import { useShionScreeningReview } from '../../lib/useShionScreeningReview';
 import type { ShionReviewFeedback } from '../../lib/shionReview';
@@ -41,6 +41,14 @@ type ConditionalApprovalAction = string | {
 type LeaseKunFullResult = ScoreResult & Record<string, unknown> & {
   conditional_approval_actions?: ConditionalApprovalAction[];
   umap_anomaly_score?: number;
+};
+
+type RegistrationSummary = {
+  caseId: string;
+  status: string;
+  finalRate: number;
+  promotionStatus: string;
+  promotionReason: string;
 };
 
 type IndustryMasterEntry = {
@@ -368,6 +376,7 @@ export default function LeaseKunWizard() {
   const [draftRestored, setDraftRestored] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<string>('');
   const [doneMessage, setDoneMessage] = useState('結果登録まで完了しました！');
+  const [registrationSummary, setRegistrationSummary] = useState<RegistrationSummary | null>(null);
   const draftReadyRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -609,6 +618,7 @@ export default function LeaseKunWizard() {
       setDraftSavedAt('');
       const resultData = res.data as LeaseKunFullResult;
       setFullResult(resultData);
+      setRegistrationSummary(null);
 
       const caseId = resultData.case_id;
 
@@ -676,6 +686,7 @@ export default function LeaseKunWizard() {
     setDraftRestored(false);
     setDraftSavedAt('');
     setDoneMessage('結果登録まで完了しました！');
+    setRegistrationSummary(null);
     setStep(0);
     setSubmitted(false);
     setErrors({});
@@ -703,6 +714,7 @@ export default function LeaseKunWizard() {
     setDraftRestored(false);
     setDraftSavedAt('');
     setDoneMessage('結果登録まで完了しました！');
+    setRegistrationSummary(null);
     setStep(0);
     setSubmitted(false);
     setErrors({});
@@ -716,7 +728,18 @@ export default function LeaseKunWizard() {
 
   const deferResultRegistration = () => {
     setDoneMessage('審査結果を保存しました。成約/失注が分かったら、結果登録へ進めます。');
+    setRegistrationSummary(null);
     setPhase('done');
+  };
+
+  const rememberRegistrationResult = (data: CaseRegistrationResult) => {
+    setRegistrationSummary({
+      caseId: data.registered_case_id || String(fullResult?.case_id || ''),
+      status: data.registered_status || '登録済',
+      finalRate: data.final_rate,
+      promotionStatus: data.experience_promotion?.status || 'skipped',
+      promotionReason: data.experience_promotion?.reason || '',
+    });
   };
 
   const submitReviewFeedbackAndOpenRegistration = async (feedback: ShionReviewFeedback) => {
@@ -1251,7 +1274,8 @@ export default function LeaseKunWizard() {
             <CaseRegistrationForm
               caseId={String(fullResult.case_id)}
               compact
-              onRegistered={() => {
+              onRegistered={(data) => {
+                rememberRegistrationResult(data);
                 setDoneMessage('結果登録まで完了しました！');
                 setPhase('done');
               }}
@@ -1264,13 +1288,64 @@ export default function LeaseKunWizard() {
           <div className="w-full bg-white border-t-2 border-[#1A1A2E] p-6 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 flex flex-col items-center text-center gap-3">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
             <p className="text-sm font-black text-[#1A1A2E]">{doneMessage}</p>
+            {!registrationSummary && fullResult?.case_id && (
+              <div className="w-full rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
+                <div className="text-[11px] font-black uppercase tracking-wider text-amber-700">結果登録: 未登録</div>
+                <p className="mt-2 text-xs font-bold leading-relaxed text-amber-900">
+                  審査結果は保存済みです。成約/失注が分かったら、この案件IDで本線の結果登録へ進めます。
+                </p>
+                <div className="mt-3 rounded-xl bg-white px-3 py-2 text-xs">
+                  <div className="font-black text-slate-400">保存済み case_id</div>
+                  <div className="mt-0.5 break-all font-black text-slate-900">{String(fullResult.case_id)}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPhase('register')}
+                  className="mt-3 h-11 w-full rounded-xl bg-amber-500 text-xs font-black text-slate-950 shadow-[0_3px_0_#92400e] transition-all active:translate-y-1 active:shadow-none"
+                >
+                  この案件を本線結果登録へ進める
+                </button>
+              </div>
+            )}
+            {registrationSummary && (
+              <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left">
+                <div className="text-[11px] font-black uppercase tracking-wider text-emerald-700">保存先: 本線の結果登録</div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-xl bg-white px-3 py-2">
+                    <div className="font-black text-slate-400">case_id</div>
+                    <div className="mt-0.5 break-all font-black text-slate-900">{registrationSummary.caseId}</div>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2">
+                    <div className="font-black text-slate-400">登録結果</div>
+                    <div className={`mt-0.5 font-black ${registrationSummary.status === '成約' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {registrationSummary.status}
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2">
+                    <div className="font-black text-slate-400">最終レート</div>
+                    <div className="mt-0.5 font-black text-slate-900">{registrationSummary.finalRate.toFixed(2)}%</div>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2">
+                    <div className="font-black text-slate-400">経験ケース</div>
+                    <div className="mt-0.5 font-black text-slate-900">
+                      {registrationSummary.promotionStatus === 'promoted' ? '昇格済み' : '未昇格'}
+                    </div>
+                  </div>
+                </div>
+                {registrationSummary.promotionReason && (
+                  <p className="mt-2 text-[11px] font-bold leading-relaxed text-emerald-800">
+                    理由: {registrationSummary.promotionReason}
+                  </p>
+                )}
+              </div>
+            )}
             {fullResult?.case_id && (
               <button
                 type="button"
                 onClick={() => router.push(`/register?case_id=${encodeURIComponent(String(fullResult.case_id))}`)}
-                className="w-full h-11 flex items-center justify-center rounded-xl font-bold bg-amber-100 text-amber-900"
+                className="w-full h-11 flex items-center justify-center rounded-xl font-bold bg-slate-100 text-slate-700"
               >
-                結果登録画面でこの案件を開く
+                {registrationSummary ? '登録内容をPC結果登録画面で確認' : 'PCの結果登録画面で開く'}
               </button>
             )}
             <button

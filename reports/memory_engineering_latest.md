@@ -1,42 +1,42 @@
 # Memory Engineering Report
 
-- Generated: 2026-08-11T04:00:54
+- Generated: 2026-08-14T04:00:52
 - Mode: `read_only_memory_engineering_observation`
 - Guardrail: `no_memory_delete_no_promotion_no_prompt_or_scoring_change`
 
 ## Summary
 
-- Write path records: 346
+- Write path records: 293
 - Active canonical rules: 11
-- Write amplification / active rule: 31.45
-- Open human review records: 340
-- Memory records: 788
-- Recent memory usage: 759 events / 188 refs
+- Write amplification / active rule: 26.64
+- Open human review records: 232
+- Memory records: 773
+- Recent memory usage: 692 events / 185 refs
 - Maintenance status records: 0
 - Contradiction candidates: 0
 - Write policy metadata completion: 0.0
 
 ## Stanford Lens: Write Cost
 
-- `judgment_materials_preview`: 25 records, 25 open review, ~25 tokens
-- `autoresearch_candidates`: 189 records, 189 open review, ~189 tokens
-- `reflection_action_candidates`: 3 records, 3 open review, ~367 tokens
-- `prediction_error_candidates`: 0 records, 0 open review, ~0 tokens
+- `judgment_materials_preview`: 23 records, 12 open review, ~23 tokens
+- `autoresearch_candidates`: 136 records, 97 open review, ~136 tokens
+- `reflection_action_candidates`: 3 records, 0 open review, ~367 tokens
+- `prediction_error_candidates`: 1 records, 0 open review, ~1 tokens
 - `obsidian_memory_insight_candidates`: 123 records, 123 open review, ~123 tokens
-- `canonical_preview`: 6 records
+- `canonical_preview`: 7 records
 - Write policy required fields: `['importance', 'confidence', 'trust_level', 'provenance']`
-- Write policy missing fields: `{'confidence': 315, 'importance': 340, 'provenance': 340, 'trust_level': 340}`
+- Write policy missing fields: `{'confidence': 263, 'importance': 286, 'provenance': 286, 'trust_level': 286}`
 
 ## Microsoft Lens: Utility Density
 
 - Latest accepted preview: 2
-- Promoted to active rules: 1
-- Promotion rate: 0.5
+- Promoted to active rules: 2
+- Promotion rate: 1.0
 
 ## Anthropic Lens: Control
 
-- Status counts: `{'active': 766, 'private': 22}`
-- Type counts: `{'dialogue_memory': 56, 'factual_memory': 258, 'judgment_memory': 166, 'reflection_memory': 43, 'technical_memory': 248, 'value_memory': 17}`
+- Status counts: `{'active': 751, 'private': 22}`
+- Type counts: `{'dialogue_memory': 57, 'factual_memory': 252, 'judgment_memory': 150, 'reflection_memory': 43, 'technical_memory': 254, 'value_memory': 17}`
 
 ### Forgetting Review Sample
 
@@ -48,10 +48,10 @@
 
 ## Nvidia Lens: Retrieval Pressure
 
-- Notes: 2178 / Edges: 3110
-- Estimated raw tokens: 2287121
-- Estimated index tokens: 198137
-- Estimated token reduction: 0.9134
+- Notes: 2319 / Edges: 3218
+- Estimated raw tokens: 2435318
+- Estimated index tokens: 211772
+- Estimated token reduction: 0.913
 
 ## Recommended Next Checks
 

@@ -7,6 +7,10 @@ description: 最新の改善レポートを表示・分析するスキル。「�
 
 ## Workflow
 
+理由: 改善レポートは日次で増えるため、古いファイルや raw JSON だけを見ると現在の要レビュー状態を誤認する。
+適用条件: ユーザーが改善リスト、最新改善、improvement report の確認を求めた時。
+削除条件: 最新レポートの選択と要約が別の公式ビュー/APIで安定して提供された時。
+
 1. リポジトリルートで最新の `reports/improvement_report_*.json` を探す。
 2. 最新ファイルを開き、`summary`、`needs_review`、`rejected`、`applied` を確認する。
 3. 単にJSONを貼るのではなく、以下を短く分析して返す。

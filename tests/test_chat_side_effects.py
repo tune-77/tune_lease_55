@@ -90,11 +90,13 @@ def test_prompt_feedback_extra_matches_general_and_rag_shapes():
         memory_expression={"tone": "plain"},
         reflection_gate={"allowed": True},
         grey_judgment_memory={"used": False},
+        world_proxy={"used": True},
     )
 
     assert extra["improvement_mode"] is False
     assert extra["memory_recall"] == {"route": "local", "refs": ["r"], "practical_scene": {}}
     assert extra["grey_judgment_memory"] == {"used": False}
+    assert extra["world_proxy"] == {"used": True}
 
 
 def test_memory_usage_extra_keeps_general_memory_and_rag_vertex_shapes():
@@ -105,12 +107,14 @@ def test_memory_usage_extra_keeps_general_memory_and_rag_vertex_shapes():
         identity_memory={"block": "x", "refs": ["i"], "layers": {"l": 1}},
         continuity_hook={"used": True},
         grey_judgment_memory={"used": True},
+        world_proxy={"used": True, "functions": ["memory_experience_proxy"]},
     )
 
     assert general["memory_recall"]["route"] == "local"
     assert general["identity_memory"] == {"used": True, "refs": ["i"], "layers": {"l": 1}}
     assert general["continuity_hook"] == {"used": True}
     assert general["grey_judgment_memory"] == {"used": True}
+    assert general["world_proxy"] == {"used": True, "functions": ["memory_experience_proxy"]}
 
     rag = memory_usage_extra(
         user_id="u1",

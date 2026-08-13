@@ -19,6 +19,9 @@ Use this skill to turn project work into searchable Obsidian notes and keep the 
 
 1. Identify the canonical hub note for the topic.
    - Prefer `Projects/tune_lease_55/tune_lease_55 Wiki.md`.
+     Reason: one default hub keeps wiki navigation from splitting across multiple entry notes.
+     Scope: use this when the task is broad project wiki maintenance or the topic has no stronger existing hub.
+     Retirement: replace this preference if a narrower domain hub becomes the accepted source of truth.
    - Add a dedicated project note when the topic is substantial.
 
 2. Add a search-first note structure.

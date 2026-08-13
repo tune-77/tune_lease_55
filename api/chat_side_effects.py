@@ -60,6 +60,7 @@ def prompt_feedback_extra(
     memory_expression: dict[str, Any] | None = None,
     reflection_gate: dict[str, Any] | None = None,
     grey_judgment_memory: dict[str, Any] | None = None,
+    world_proxy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "user_id": user_id,
@@ -77,6 +78,7 @@ def prompt_feedback_extra(
         "memory_expression": memory_expression,
         "reflection_gate": reflection_gate,
         "grey_judgment_memory": grey_judgment_memory,
+        "world_proxy": world_proxy,
     }
     for key, value in optional_payloads.items():
         if value is not None:
@@ -97,6 +99,7 @@ def memory_usage_extra(
     memory_expression: dict[str, Any] | None = None,
     reflection_gate: dict[str, Any] | None = None,
     grey_judgment_memory: dict[str, Any] | None = None,
+    world_proxy: dict[str, Any] | None = None,
     vertex_ai_search: dict[str, Any] | None = None,
     vertex_answer_api: dict[str, Any] | None = None,
     estimated_user_emotion: str = "",
@@ -124,6 +127,7 @@ def memory_usage_extra(
         "memory_expression": memory_expression,
         "reflection_gate": reflection_gate,
         "grey_judgment_memory": grey_judgment_memory,
+        "world_proxy": world_proxy,
     }
     for key, value in optional_payloads.items():
         if value is not None:

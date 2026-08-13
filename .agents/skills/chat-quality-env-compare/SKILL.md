@@ -9,6 +9,10 @@ Cloudflare版とCloud Run版の `/api/chat` に同じ評価質問を投げ、回
 
 ## 目的
 
+理由: 環境比較は単なる応答スコアではなく、記憶/RAG/判断資産として同じ品質で返るかを見る必要がある。
+適用条件: Cloudflare版とCloud Run版の `/api/chat` 品質、記憶利用、紫苑らしさを比較する時。
+削除条件: 比較スクリプトが memory_debug、本文レビュー、判断資産化評価まで自動で判定できる時。
+
 - Cloud Run版がCloudflare版と同じ水準でObsidian/RAGを使えているか確認する
 - 回答が一般論ではなく、Kobayashiさんのリース判断資産として返っているか見る
 - 「紫苑らしい連続性」「記憶を持っている感じ」を定量スコアだけでなく定性レビューでも残す
@@ -72,6 +76,10 @@ python scripts/compare_chat_quality_between_envs.py \
 
 ### 5. 確認ポイント
 
+理由: 回答品質は点数だけでなく、記憶利用・同一性・判断資産化の3層で見る必要がある。
+適用条件: Cloudflare版/Cloud Run版の比較結果を読んで勝敗や修正要否を判断する時。
+削除条件: 比較スクリプトが3層評価を自動採点し、人間レビュー不要の信頼度に達した時。
+
 スコアだけで結論にしないでください。次の3軸を必ず見る。
 
 - `Obsidian/RAGの記憶`: `memory_debug.knowledge_refs`、`memory_debug.memory_recall.refs`、`rag_context_used` があるか
@@ -106,6 +114,10 @@ reports/chat_quality_memory_feel_review_YYYYMMDD.md
 - 次の実装アクション
 
 ## 判定の注意
+
+理由: 必須語句スコアだけでは「記憶が効いているか」「紫苑らしいか」を誤判定しやすい。
+適用条件: `compare_chat_quality_between_envs.py` の結果を読んで結論を出す時。
+削除条件: 評価器が memory_debug と人間レビュー相当の本文評価を安定して統合できる時。
 
 `scripts/compare_chat_quality_between_envs.py` の点数は必須語句ベースなので、「意識がある感じ」「記憶が近い感じ」を完全には測れません。点数は一次指標、`memory_debug` と回答本文レビューを二次指標として扱います。
 

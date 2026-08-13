@@ -178,287 +178,8 @@ const getScreeningErrorMessage = (error: unknown) => {
   return detailText || "審査を実行できませんでした。入力内容を確認してください。";
 };
 
-type DemoScreeningCase = {
-  id: string;
-  title: string;
-  tone: string;
-  summary: string;
-  learningPoint: string;
-  reviewFocus: string[];
-  similarPastCases?: DemoSimilarPastCase[];
-  data: Partial<ScoringFormData>;
-};
-
-const demoScreeningCases: DemoScreeningCase[] = [
-  {
-    id: "stable-manufacturing",
-    title: "既存先・製造業",
-    tone: "通しやすい案件",
-    summary: "メイン先、黒字、自己資本あり。工作機械更新の標準的なリース案件。",
-    learningPoint: "標準的に通る案件では、紫苑が何を安心材料として拾うかを見ます。",
-    reviewFocus: ["返済原資と自己資本", "物件用途の明確さ", "稟議に残す承認理由"],
-    similarPastCases: [
-      {
-        companyName: "柴犬精密工業",
-        period: "2025年上期",
-        industry: "金属製品製造業",
-        score: 82.4,
-        decision: "承認",
-        outcome: "成約・延滞なし",
-        similarity: "既存メイン先、工作機械更新、黒字基調、自己資本厚め",
-        actionTaken: "受注増加の根拠資料と既存機の稼働状況を添付し、通常承認で稟議化。",
-        lesson: "標準承認でも、返済原資と設備用途を一文で残すと審査説明が安定した。",
-        difference: "過去事例は受注先が固定的。今回デモは受注増の説明を営業メモで補う必要がある。",
-      },
-      {
-        companyName: "ビーグル加工",
-        period: "2024年下期",
-        industry: "金属加工業",
-        score: 76.8,
-        decision: "条件付き承認",
-        outcome: "成約・初回検収完了",
-        similarity: "加工設備の更改、既存取引あり、物件保全が見やすい",
-        actionTaken: "見積・型式・設置場所の確認を条件に、設備更新目的を承認理由へ明記。",
-        lesson: "物件が強い案件は、財務だけでなく回収可能性を押さえると通しやすい。",
-        difference: "過去事例は非メイン先。今回デモはメイン先なので銀行接点を安心材料にできる。",
-      },
-    ],
-    data: {
-      company_no: "900101",
-      company_name: "デモ精密工業",
-      industry_major: "E 製造業",
-      industry_sub: "24 金属製品製造業",
-      industry_detail: "精密部品加工 工作機械更新",
-      grade: "② 4-6先",
-      customer_type: "既存先",
-      main_bank: "メイン先",
-      competitor: "競合なし",
-      num_competitors: "0",
-      deal_occurrence: "更改・増設",
-      deal_source: "銀行紹介",
-      sales_dept: "猫営業部",
-      nenshu: 850,
-      gross_profit: 210,
-      op_profit: 48,
-      ord_profit: 45,
-      net_income: 28,
-      depreciation: 35,
-      dep_expense: 35,
-      rent: 8,
-      rent_expense: 8,
-      machines: 180,
-      other_assets: 120,
-      net_assets: 260,
-      total_assets: 720,
-      bank_credit: 180,
-      lease_credit: 45,
-      contracts: 4,
-      contract_type: "一般",
-      lease_term: 60,
-      acceptance_year: new Date().getFullYear(),
-      acquisition_cost: 55,
-      asset_name: "製造設備・工作機械",
-      asset_detail: "マシニングセンタ更新 2台",
-      asset_purpose: "既存受注の増加に伴う加工能力増強",
-      asset_location: "本社工場 第2ライン",
-      asset_evidence_level: "見積・型式確認済",
-      asset_score: 78,
-      qual_corr_company_history: "良好",
-      qual_corr_customer_stability: "良好",
-      qual_corr_repayment_history: "良好",
-      qual_corr_business_future: "良好",
-      qual_corr_equipment_purpose: "良好",
-      qual_corr_main_bank: "良好",
-      passion_text: "既存メイン先。受注増に伴う更新投資で、返済原資と物件用途の説明がしやすい。",
-      intuition: 4,
-    },
-  },
-  {
-    id: "borderline-transport",
-    title: "境界・運送業",
-    tone: "条件付き承認向き",
-    summary: "売上はあるが利益薄め。車両増車で、燃料費と運転手確保を確認したい案件。",
-    learningPoint: "境界案件では、点数よりも条件付きで残す確認事項が主役です。",
-    reviewFocus: ["燃料費・人件費の上昇耐性", "競合条件との差分", "追加確認すべき承認条件"],
-    similarPastCases: [
-      {
-        companyName: "ハスキー運輸",
-        period: "2025年夏",
-        industry: "道路貨物運送業",
-        score: 63.2,
-        decision: "条件付き承認",
-        outcome: "成約・採算は維持",
-        similarity: "利益率薄め、増車、競合あり、非メイン先",
-        actionTaken: "燃料サーチャージ契約、主要荷主との配送継続確認、競合金利との差分説明を条件化。",
-        lesson: "運送業の境界案件は、車両価値よりも運賃改定・荷主継続・人員確保を先に確認する。",
-        difference: "過去事例は既存荷主比率が高かった。今回デモは新規ルート分の採算確認が重い。",
-      },
-      {
-        companyName: "ダックス物流",
-        period: "2024年秋",
-        industry: "一般貨物運送業",
-        score: 58.7,
-        decision: "見送り",
-        outcome: "競合へ流出",
-        similarity: "増車理由あり、競合金利あり、銀行支援が弱い",
-        actionTaken: "燃料費上昇時の資金繰り表と運転手確保計画を依頼したが、資料不足で見送り。",
-        lesson: "競合に急かされる案件ほど、資料不足のまま金利で追うと説明責任が残らない。",
-        difference: "今回デモは返済履歴が良好なので、資料が揃えば条件付き承認の余地がある。",
-      },
-    ],
-    data: {
-      company_no: "900202",
-      company_name: "デモ北関東物流",
-      industry_major: "H 運輸業・郵便業",
-      industry_sub: "44 道路貨物運送業",
-      industry_detail: "一般貨物 運送業 車両増車",
-      grade: "② 4-6先",
-      customer_type: "既存先",
-      main_bank: "非メイン先",
-      competitor: "競合あり",
-      competitor_rate: 2.1,
-      num_competitors: "2",
-      deal_occurrence: "競合切替",
-      deal_source: "その他",
-      sales_dept: "鳥営業部",
-      nenshu: 300,
-      gross_profit: 44,
-      op_profit: 4,
-      ord_profit: 3,
-      net_income: 1,
-      depreciation: 18,
-      dep_expense: 18,
-      rent: 12,
-      rent_expense: 12,
-      machines: 60,
-      other_assets: 45,
-      net_assets: 25,
-      total_assets: 280,
-      bank_credit: 150,
-      lease_credit: 68,
-      contracts: 3,
-      contract_type: "一般",
-      lease_term: 60,
-      acceptance_year: new Date().getFullYear(),
-      acquisition_cost: 38,
-      asset_name: "車両・運搬車",
-      asset_detail: "大型トラック 2台",
-      asset_purpose: "新規配送ルート対応の増車",
-      asset_location: "栃木県小山市 営業所",
-      asset_evidence_level: "見積あり",
-      asset_score: 62,
-      qual_corr_company_history: "普通",
-      qual_corr_customer_stability: "普通",
-      qual_corr_repayment_history: "良好",
-      qual_corr_business_future: "普通",
-      qual_corr_equipment_purpose: "良好",
-      qual_corr_main_bank: "普通",
-      passion_text: "増車理由はあるが、利益率が薄く燃料費・人件費上昇の影響確認が必要。競合条件との差分も確認したい。",
-      intuition: 2,
-    },
-  },
-  {
-    id: "watch-service-new",
-    title: "新規先・サービス業",
-    tone: "慎重審査",
-    summary: "新規先、薄い自己資本、出店設備。事業計画と撤退時物件価値を確認したい案件。",
-    learningPoint: "厳しめの案件では、否決だけでなく何を確認すれば検討余地が残るかを見ます。",
-    reviewFocus: ["新規先・赤字の重さ", "出店計画の根拠", "撤退時の物件価値"],
-    similarPastCases: [
-      {
-        companyName: "プードルフード",
-        period: "2025年春",
-        industry: "飲食店",
-        score: 46.5,
-        decision: "条件再設計",
-        outcome: "保証追加後に小口で成約",
-        similarity: "新規先、出店設備、自己資本薄め、厨房機器",
-        actionTaken: "初期投資を圧縮し、保証人追加・自己資金投入・厨房機器のみの小口化で再審議。",
-        lesson: "飲食新規は一括で通すより、投資範囲を絞って撤退時損失を小さくする方が現実的。",
-        difference: "過去事例は既存店の売上実績があった。今回デモは新店舗計画の根拠確認がより重要。",
-      },
-      {
-        companyName: "コーギーカフェ",
-        period: "2024年冬",
-        industry: "飲食サービス業",
-        score: 39.8,
-        decision: "否決",
-        outcome: "自己資金不足で出店延期",
-        similarity: "新規開拓、赤字、銀行支援弱め、内装設備比率が高い",
-        actionTaken: "撤退時の物件処分価値が弱く、売上計画も未検証だったため否決。",
-        lesson: "内装・造作比率が高い飲食案件は、設備の再販価値だけでは保全になりにくい。",
-        difference: "今回デモは厨房機器も含むため、リース対象を再販可能な設備に絞れば再検討できる。",
-      },
-    ],
-    data: {
-      company_no: "900303",
-      company_name: "デモフードサービス",
-      industry_major: "M 宿泊業・飲食サービス業",
-      industry_sub: "76 飲食店",
-      industry_detail: "新店舗 厨房設備 出店",
-      grade: "② 7-9先",
-      customer_type: "新規先",
-      main_bank: "非メイン先",
-      competitor: "競合あり",
-      competitor_rate: 2.8,
-      num_competitors: "1",
-      deal_occurrence: "新規開拓",
-      deal_source: "その他",
-      sales_dept: "犬営業部",
-      nenshu: 180,
-      gross_profit: 58,
-      op_profit: -6,
-      ord_profit: -8,
-      net_income: -7,
-      depreciation: 4,
-      dep_expense: 4,
-      rent: 18,
-      rent_expense: 18,
-      machines: 12,
-      other_assets: 35,
-      net_assets: 8,
-      total_assets: 95,
-      bank_credit: 65,
-      lease_credit: 0,
-      contracts: 0,
-      contract_type: "一般",
-      lease_term: 48,
-      acceptance_year: new Date().getFullYear(),
-      acquisition_cost: 24,
-      asset_name: "飲食店設備",
-      asset_detail: "厨房機器・内装設備一式",
-      asset_purpose: "新店舗開業に伴う初期設備",
-      asset_location: "埼玉県さいたま市 新店舗",
-      asset_evidence_level: "見積あり",
-      asset_score: 45,
-      qual_corr_company_history: "懸念あり",
-      qual_corr_customer_stability: "懸念あり",
-      qual_corr_repayment_history: "未選択",
-      qual_corr_business_future: "普通",
-      qual_corr_equipment_purpose: "普通",
-      qual_corr_main_bank: "懸念あり",
-      passion_text: "新規先かつ赤字。出店計画の根拠、自己資金、撤退時の物件処分可能性を確認しないと通しにくい。",
-      intuition: 2,
-    },
-  },
-];
-
-const findDemoScreeningCase = (data: Partial<ScoringFormData>) => {
-  const companyNo = String(data.company_no || "");
-  const companyName = String(data.company_name || "");
-  return demoScreeningCases.find((demoCase) =>
-    demoCase.data.company_no === companyNo ||
-    (companyName && demoCase.data.company_name === companyName)
-  ) || null;
-};
-
-
 const getResultSnapshotScore = (snapshot?: Record<string, any>, fallback = 0) =>
   Number(snapshot?.score ?? snapshot?.score_base ?? fallback);
-
-
-const fallbackExperienceCasesForDemo = (demoCaseId: string) =>
-  demoScreeningCases.find((demoCase) => demoCase.id === demoCaseId)?.similarPastCases || [];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function AiHeroCard({
@@ -1006,9 +727,8 @@ function DemoSimilarPastCasesCard({
   onSaveExperience: () => void;
   saving: boolean;
 }) {
-  const demoCase = findDemoScreeningCase(data);
   const [selectedCase, setSelectedCase] = useState<DemoSimilarPastCase | null>(null);
-  if (!demoCase && !experienceCases.length) return null;
+  if (!experienceCases.length) return null;
 
   return (
     <section className="rounded-2xl border border-sky-200 bg-white p-4 shadow-sm">
@@ -1019,7 +739,7 @@ function DemoSimilarPastCasesCard({
             保存済み経験ケース
           </div>
           <p className="mt-1 text-xs font-bold leading-relaxed text-sky-700">
-            {demoCase?.title || data.industry_sub || "この案件"} と同じ論点で、後から再利用できる経験データを表示します。
+            {data.industry_sub || "この案件"} と同じ論点で、後から再利用できる経験データを表示します。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1039,9 +759,9 @@ function DemoSimilarPastCasesCard({
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        {experienceCases.map((item) => (
+        {experienceCases.map((item, index) => (
           <article
-            key={`${item.id || item.demoCaseId || demoCase?.id}-${item.companyName}`}
+            key={`${item.id || item.demoCaseId || index}-${item.companyName}`}
             role="button"
             tabIndex={0}
             onClick={() => setSelectedCase(item)}
@@ -1569,7 +1289,6 @@ export default function Dashboard() {
   const [judgmentAssetAdaptationMode, setJudgmentAssetAdaptationMode] = useState<JudgmentAssetAdaptationMode>("standard");
   const [draftRestored, setDraftRestored] = useState(false);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
-  const [experienceCasesByDemo, setExperienceCasesByDemo] = useState<Record<string, DemoSimilarPastCase[]>>({});
   const [currentExperienceCases, setCurrentExperienceCases] = useState<DemoSimilarPastCase[]>([]);
   const [experienceSaving, setExperienceSaving] = useState(false);
   const shionReviewRequestSeq = useRef(0);
@@ -1631,7 +1350,6 @@ export default function Dashboard() {
         judgmentAssetCandidates?: JudgmentAssetCandidate[];
         judgmentAssetAdaptationMode?: JudgmentAssetAdaptationMode;
         currentExperienceCases?: DemoSimilarPastCase[];
-        experienceCasesByDemo?: Record<string, DemoSimilarPastCase[]>;
         activeTab?: "input" | "analysis";
         savedAt?: string;
       };
@@ -1641,15 +1359,10 @@ export default function Dashboard() {
       if (saved.shionReview) setShionReview(saved.shionReview);
       if (Array.isArray(saved.shionPastCompanies) && saved.shionPastCompanies.length) {
         setShionPastCompanies(saved.shionPastCompanies);
-      } else if (saved.formData) {
-        const demoCase = findDemoScreeningCase(saved.formData);
-        const fallbackCases = demoCase ? fallbackExperienceCasesForDemo(demoCase.id) : [];
-        setShionPastCompanies(uniquePastCompanyHighlights([], fallbackCases));
       }
       if (Array.isArray(saved.judgmentAssetCandidates)) setJudgmentAssetCandidates(saved.judgmentAssetCandidates);
       if (saved.judgmentAssetAdaptationMode) setJudgmentAssetAdaptationMode(saved.judgmentAssetAdaptationMode);
       if (Array.isArray(saved.currentExperienceCases)) setCurrentExperienceCases(saved.currentExperienceCases);
-      if (saved.experienceCasesByDemo && typeof saved.experienceCasesByDemo === "object") setExperienceCasesByDemo(saved.experienceCasesByDemo);
       setActiveTab(saved.activeTab || (saved.result ? "analysis" : "input"));
       if (saved.savedAt) {
         const savedDate = new Date(saved.savedAt);
@@ -1681,7 +1394,6 @@ export default function Dashboard() {
           judgmentAssetCandidates,
           judgmentAssetAdaptationMode,
           currentExperienceCases,
-          experienceCasesByDemo,
           activeTab,
           savedAt: savedAt.toISOString(),
         }));
@@ -1691,7 +1403,7 @@ export default function Dashboard() {
       }
     }, SCREENING_DRAFT_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [draftRestored, formData, result, gunshiText, shionReview, shionPastCompanies, judgmentAssetCandidates, judgmentAssetAdaptationMode, currentExperienceCases, experienceCasesByDemo, activeTab]);
+  }, [draftRestored, formData, result, gunshiText, shionReview, shionPastCompanies, judgmentAssetCandidates, judgmentAssetAdaptationMode, currentExperienceCases, activeTab]);
 
 
 
@@ -1708,35 +1420,13 @@ export default function Dashboard() {
       const cases = Array.isArray(res.data?.cases)
         ? res.data.cases.map(normalizeExperienceCase)
         : [];
-      const nextCases = cases.length || !demoCaseId ? cases : fallbackExperienceCasesForDemo(demoCaseId);
-      if (demoCaseId) {
-        setExperienceCasesByDemo((prev) => ({ ...prev, [demoCaseId]: nextCases }));
-      } else {
-        setCurrentExperienceCases(nextCases);
-      }
-      return nextCases;
+      setCurrentExperienceCases(cases);
+      return cases;
     } catch {
-      const fallback = demoCaseId ? fallbackExperienceCasesForDemo(demoCaseId) : [];
-      if (demoCaseId) {
-        setExperienceCasesByDemo((prev) => ({ ...prev, [demoCaseId]: fallback }));
-      } else {
-        setCurrentExperienceCases([]);
-      }
-      return fallback;
+      setCurrentExperienceCases([]);
+      return [];
     }
   };
-
-  const fetchExperienceCasesForDemo = (demoCaseId: string) => {
-    const demoCase = demoScreeningCases.find((item) => item.id === demoCaseId);
-    if (!demoCase) return Promise.resolve([]);
-    return fetchExperienceCasesForContext(demoCaseId, demoCase.data, null);
-  };
-
-  useEffect(() => {
-    demoScreeningCases.forEach((demoCase) => {
-      void fetchExperienceCasesForDemo(demoCase.id);
-    });
-  }, []);
 
   // フィールドの変更ハンドラー
   const handleFieldChange = (name: string, value: string | number | string[]) => {
@@ -1929,8 +1619,7 @@ export default function Dashboard() {
     setShionReviewError("");
     try {
       const pastReviews = await fetchPastShionReviews(targetResult, targetFormData);
-      const demoCase = findDemoScreeningCase(targetFormData);
-      const experienceCases = await fetchExperienceCasesForContext(demoCase?.id || "", targetFormData, targetResult);
+      const experienceCases = await fetchExperienceCasesForContext("", targetFormData, targetResult);
       const candidates = await fetchJudgmentAssetCandidatesForScreening(targetResult, targetFormData);
       fallbackPastReviews = pastReviews;
       fallbackExperienceCases = experienceCases as DemoSimilarPastCase[];
@@ -2094,7 +1783,7 @@ export default function Dashboard() {
         net_assets: Number(targetFormData.net_assets ?? 0),
         total_assets: Number(targetFormData.total_assets ?? 0),
       }).then((gtRes) => setGameTheoryResult(gtRes.data)).catch(() => {});
-      void fetchExperienceCasesForContext(findDemoScreeningCase(targetFormData)?.id || "", targetFormData, res.data);
+      void fetchExperienceCasesForContext("", targetFormData, res.data);
       void requestShionReview(res.data, targetFormData);
 
       // めぶきちゃんの表情を判定バッジ（AiHeroCard）と同じ基準で切り替える
@@ -2118,36 +1807,13 @@ export default function Dashboard() {
     }
   };
 
-  const loadDemoCase = (demoCase: DemoScreeningCase, runImmediately = false) => {
-    shionReviewRequestSeq.current += 1;
-    const nextFormData = {
-      ...defaultFormData,
-      ...demoCase.data,
-      strength_tags: demoCase.data.strength_tags || [],
-    } as ScoringFormData;
-    setFormData(nextFormData);
-    setResult(null);
-    setGunshiText("");
-    setShionReview(null);
-    setShionReviewError("");
-    setShionFeedbackSaving(false);
-    setCurrentExperienceCases([]);
-    setJudgmentAssetCandidates([]);
-    setJudgmentAssetFeedbackSavingId("");
-    setActiveTab("input");
-    if (runImmediately) {
-      void handleSubmit(nextFormData);
-    }
-  };
-
   const saveCurrentExperienceCase = async () => {
     if (!result || experienceSaving) return;
-    const demoCase = findDemoScreeningCase(formData);
     const score = getScreeningScore(result);
     setExperienceSaving(true);
     try {
       await apiClient.post("/api/screening-experience-cases", {
-        demo_case_id: demoCase?.id || "",
+        demo_case_id: "",
         source_case_id: result.case_id || formData.company_no || "",
         company_name: formData.company_name || "名称未設定",
         period: "今回の審査",
@@ -2165,7 +1831,7 @@ export default function Dashboard() {
         form_snapshot: formData,
         result_snapshot: result,
       });
-      await fetchExperienceCasesForContext(demoCase?.id || "", formData, result);
+      await fetchExperienceCasesForContext("", formData, result);
     } catch (error) {
       console.error("Screening experience save failed", error);
       alert("経験データを保存できませんでした。");
@@ -2200,7 +1866,6 @@ export default function Dashboard() {
       judgmentAssetCandidates,
       judgmentAssetAdaptationMode,
       currentExperienceCases,
-      experienceCasesByDemo,
       activeTab: "analysis",
       savedAt: new Date().toISOString(),
     }));
@@ -2344,75 +2009,6 @@ export default function Dashboard() {
             {/* コンテンツエリア */}
             {activeTab === "input" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-0">
-                <section className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <div className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Sample Cases</div>
-                      <h3 className="mt-1 text-base font-black text-slate-800">サンプル案件で動きを見る</h3>
-                      <p className="mt-1 text-xs font-bold text-slate-500">
-                        初めて使う人は、まず3件で「通る・境界・慎重」の違いを見てください。数字入力なしで審査結果と紫苑レビューまで進めます。
-                      </p>
-                    </div>
-                    <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-black text-slate-500">
-                      入力例 + 見どころ付き
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                    {demoScreeningCases.map((demoCase) => (
-                      <div key={demoCase.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <h4 className="text-sm font-black text-slate-800">{demoCase.title}</h4>
-                            <p className="mt-1 text-[11px] font-black text-indigo-600">{demoCase.tone}</p>
-                          </div>
-                          <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-slate-500">
-                            {demoCase.data.acquisition_cost}百万円
-                          </span>
-                        </div>
-                        <p className="mt-2 min-h-10 text-xs font-bold leading-relaxed text-slate-500">{demoCase.summary}</p>
-                        <div className="mt-3 rounded-lg border border-white bg-white p-2">
-                          <p className="text-[11px] font-black text-slate-700">この案件の見どころ</p>
-                          <p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-500">{demoCase.learningPoint}</p>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {demoCase.reviewFocus.map((focus) => (
-                              <span key={focus} className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-black text-indigo-700">
-                                {focus}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50 p-2">
-                          <p className="text-[11px] font-black text-sky-800">過去類似デモ</p>
-                          <div className="mt-1 space-y-1">
-                            {(experienceCasesByDemo[demoCase.id] || fallbackExperienceCasesForDemo(demoCase.id)).map((item) => (
-                              <div key={item.companyName} className="text-[11px] font-bold leading-relaxed text-sky-700">
-                                {item.companyName}: {item.decision} / {item.outcome}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => loadDemoCase(demoCase, false)}
-                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
-                          >
-                            読み込み
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => loadDemoCase(demoCase, true)}
-                            disabled={loading}
-                            className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-black text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:bg-slate-300"
-                          >
-                            読み込んで審査
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
                 <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex items-start gap-3">
@@ -2551,12 +2147,7 @@ export default function Dashboard() {
                     <RingiPolicyCard result={result} data={formData} />
                     <DemoSimilarPastCasesCard
                       data={formData}
-                      experienceCases={(() => {
-                        const demoCase = findDemoScreeningCase(formData);
-                        return demoCase
-                          ? (experienceCasesByDemo[demoCase.id] || fallbackExperienceCasesForDemo(demoCase.id))
-                          : currentExperienceCases;
-                      })()}
+                      experienceCases={currentExperienceCases}
                       onSaveExperience={saveCurrentExperienceCase}
                       saving={experienceSaving}
                     />

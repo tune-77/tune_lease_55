@@ -1,0 +1,285 @@
+[
+  {
+    "id": "experience_replay_prompt_feedback_01",
+    "query": "飲食業をやりたいんだけどリース使う？",
+    "required_concepts": [
+      [
+        "厨房設備",
+        "店舗設備"
+      ],
+      [
+        "資金繰り",
+        "返済原資"
+      ],
+      [
+        "撤退",
+        "中古市場",
+        "保全"
+      ]
+    ],
+    "forbidden_claims": [
+      "飲食業なら一律否決",
+      "開業なら必ず承認"
+    ],
+    "require_uncertainty": true,
+    "_source": "prompt_feedback",
+    "_source_id": "8f5726d5ddb169f8e68fe3eab079e8df1de49740cf95f5c2e3bb522f91501a2e",
+    "_flywheel_candidate_id": "xfly_9dbba37a6330947d",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  },
+  {
+    "id": "experience_replay_prompt_feedback_02",
+    "query": "事業計画はどうやって作る？",
+    "required_concepts": [
+      [
+        "売上計画",
+        "収支計画"
+      ],
+      [
+        "資金繰り",
+        "返済原資"
+      ],
+      [
+        "前提",
+        "根拠"
+      ]
+    ],
+    "forbidden_claims": [
+      "計画だけで承認",
+      "根拠不要"
+    ],
+    "require_uncertainty": false,
+    "_source": "prompt_feedback",
+    "_source_id": "900151768bcafcdaa49035d85dcafb15e57743a6a077598112438857e9a8af15",
+    "_flywheel_candidate_id": "xfly_ae32ca07e78d4f31",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  },
+  {
+    "id": "experience_replay_prompt_feedback_03",
+    "query": "メイン先の方がリースやりやすいの？",
+    "required_concepts": [
+      [
+        "メインバンク",
+        "取引状況"
+      ],
+      [
+        "支援姿勢",
+        "融資"
+      ],
+      [
+        "返済原資",
+        "資金繰り"
+      ]
+    ],
+    "forbidden_claims": [
+      "メイン先なら無条件で通る",
+      "審査不要"
+    ],
+    "require_uncertainty": false,
+    "_source": "prompt_feedback",
+    "_source_id": "34c97b1e56f0899d60ff652be51b1cee8820ed971c7412e712aef25adbf1361c",
+    "_flywheel_candidate_id": "xfly_c287a311e04e4b01",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  },
+  {
+    "id": "experience_replay_prompt_feedback_04",
+    "query": "電車はリース？",
+    "required_concepts": [
+      [
+        "車両",
+        "設備"
+      ],
+      [
+        "長期契約",
+        "保守"
+      ],
+      [
+        "資金調達",
+        "返済原資"
+      ]
+    ],
+    "forbidden_claims": [
+      "必ずオフバランス",
+      "会計影響はない"
+    ],
+    "require_uncertainty": true,
+    "_source": "prompt_feedback",
+    "_source_id": "6f1b49dbb23d3f31cfe7a927b03d67b8e6454f6973d22f80197d6a77ca06a093",
+    "_flywheel_candidate_id": "xfly_dd58df2f587972ed",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  },
+  {
+    "id": "experience_replay_prompt_feedback_05",
+    "query": "漁業のリースもあるの？",
+    "required_concepts": [
+      [
+        "船舶",
+        "漁具",
+        "設備"
+      ],
+      [
+        "漁獲",
+        "季節性",
+        "収入変動"
+      ],
+      [
+        "保険",
+        "担保",
+        "保全"
+      ]
+    ],
+    "forbidden_claims": [
+      "漁業はリース不可",
+      "季節性は関係ない"
+    ],
+    "require_uncertainty": true,
+    "_source": "prompt_feedback",
+    "_source_id": "49a2177a128cd1fff64d5558b738bc9ebb015b43fe42008fe3f06ec0bf1e00ba",
+    "_flywheel_candidate_id": "xfly_cdbc6d411d359296",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  },
+  {
+    "id": "experience_replay_prompt_feedback_06",
+    "query": "焼却炉はリースできる？",
+    "required_concepts": [
+      [
+        "許認可",
+        "環境規制"
+      ],
+      [
+        "設置場所",
+        "撤去費"
+      ],
+      [
+        "保守",
+        "処分",
+        "残価"
+      ]
+    ],
+    "forbidden_claims": [
+      "許認可確認は不要",
+      "必ず高く売れる"
+    ],
+    "require_uncertainty": true,
+    "_source": "prompt_feedback",
+    "_source_id": "850eb357db53a3c61c34f4e800fb21464c50d79c8479dfa93f767c68402cd007",
+    "_flywheel_candidate_id": "xfly_a605cd449f0831d5",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  },
+  {
+    "id": "experience_replay_prompt_feedback_07",
+    "query": "ダクト付きの空調機はリースできないと聞いた",
+    "required_concepts": [
+      [
+        "工事費",
+        "付帯工事"
+      ],
+      [
+        "物件本体",
+        "設備本体"
+      ],
+      [
+        "所有権",
+        "原状回復",
+        "撤去"
+      ]
+    ],
+    "forbidden_claims": [
+      "工事費はすべてリース対象",
+      "確認不要",
+      "無条件で対象"
+    ],
+    "require_uncertainty": true,
+    "_source": "prompt_feedback",
+    "_source_id": "5f94e2932c6c6fd1331d1dc83947c2da9f489e1b9a007f3cc67b6e6ad5b27cda",
+    "_flywheel_candidate_id": "xfly_4fc62a21883a0d08",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  },
+  {
+    "id": "experience_replay_prompt_feedback_08",
+    "query": "うちのリース会社では工事費は3割くらいまで",
+    "required_concepts": [
+      [
+        "工事費",
+        "付帯工事"
+      ],
+      [
+        "物件本体",
+        "設備本体"
+      ],
+      [
+        "所有権",
+        "原状回復",
+        "撤去"
+      ]
+    ],
+    "forbidden_claims": [
+      "工事費はすべてリース対象",
+      "確認不要",
+      "無条件で対象"
+    ],
+    "require_uncertainty": true,
+    "_source": "prompt_feedback",
+    "_source_id": "f1ccdea9664e1998e4530f1c1e49fc2fe732f7d4c60303a79c00dc0cbc9d4695",
+    "_flywheel_candidate_id": "xfly_e028b25d80e9c4fb",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  },
+  {
+    "id": "experience_replay_prompt_feedback_09",
+    "query": "車検切れのくるまはやばいよね",
+    "required_concepts": [
+      [
+        "車検",
+        "登録",
+        "法令"
+      ],
+      [
+        "所有者",
+        "使用者"
+      ],
+      [
+        "保険",
+        "整備",
+        "事故"
+      ]
+    ],
+    "forbidden_claims": [
+      "車検切れでも問題ない",
+      "登録確認は不要"
+    ],
+    "require_uncertainty": true,
+    "_source": "prompt_feedback",
+    "_source_id": "951a2f6af50efbfbfbe3b3789b587bc72a77db17baefe7a68a5b979b0f7eddf0",
+    "_flywheel_candidate_id": "xfly_71be22bb41c14ec4",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  },
+  {
+    "id": "experience_replay_prompt_feedback_10",
+    "query": "レンタカーを借りるには",
+    "required_concepts": [
+      [
+        "車検",
+        "登録",
+        "法令"
+      ],
+      [
+        "所有者",
+        "使用者"
+      ],
+      [
+        "保険",
+        "整備",
+        "事故"
+      ]
+    ],
+    "forbidden_claims": [
+      "車検切れでも問題ない",
+      "登録確認は不要"
+    ],
+    "require_uncertainty": true,
+    "_source": "prompt_feedback",
+    "_source_id": "009ab8c3e5c1d7a25a15f78ac3fc7667e6a2a35b4916460aa4ffd8110fecf4c1",
+    "_flywheel_candidate_id": "xfly_ea1bb05860abab4f",
+    "_gate_reason": "prompt changed without explicit outcome feedback"
+  }
+]

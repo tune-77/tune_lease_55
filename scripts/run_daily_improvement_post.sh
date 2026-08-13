@@ -131,6 +131,11 @@ echo "[育成] 永続記憶監査を生成（観測のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/audit_persistent_memory.py"; log_step "audit_persistent_memory" $?
 
 echo ""
+echo "[監査] AGENTS/skills/MEMORY の指示肥大化を監査（読み取り専用・自動削除なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_instruction_debt_report.py"
+log_step "build_instruction_debt_report" $?
+
+echo ""
 echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/weekly_self_management.py"; log_step "weekly_self_management" $?
 
@@ -220,6 +225,31 @@ echo "[成長] 判断資産の実利用棚卸しを生成（伸ばす/見直す/
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_field_review.py" \
   --date "${PIPELINE_DATE}"
 log_step "build_judgment_asset_field_review" $?
+
+echo ""
+echo "[育成] 経験フライホイール候補を生成（context/decision/feedbackを品質ゲート。自動昇格なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_experience_flywheel_report.py"
+log_step "build_experience_flywheel_report" $?
+
+echo ""
+echo "[評価] 経験フライホイールからリプレイ評価セットを生成（既存評価セットは上書きしない）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_experience_replay_eval_set.py"
+log_step "build_experience_replay_eval_set" $?
+
+echo ""
+echo "[評価] 経験リプレイ評価セットで過去回答を採点（ローカル履歴のみ・外部送信なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_experience_replay_historical.py" || true
+log_step "evaluate_experience_replay_historical" 0
+
+echo ""
+echo "[評価] 経験リプレイ弱点を回答チェックリスト候補へ変換（レビュー前提・自動反映なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_experience_replay_checklist_candidates.py"
+log_step "build_experience_replay_checklist_candidates" $?
+
+echo ""
+echo "[評価] レビュー済み経験リプレイチェックリストをReflection Gate用に再発行（採用済みのみ）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/review_experience_replay_checklist.py"
+log_step "review_experience_replay_checklist" $?
 
 echo ""
 echo "[育成] 判断資産A/B候補レポートを生成（勝者自動確定なし）..."

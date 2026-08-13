@@ -12,12 +12,15 @@
 - 週次集計正本: `scripts/weekly_self_management.py`
 - 再帰的自己改善派生物: `reports/recursive_self_improvement_*.json`
 - 再帰的自己改善SPEC: `specs/phase6/P6-001-recursive-self-improvement.md`
+- Vault三層運用方針: `docs/raw_wiki_schema_vault_policy.md`
+- 指示負債監査派生物: `reports/instruction_debt_latest.{json,md}`
 
 ## ルール
 
 - `reports/latest.json` は改善パイプラインの唯一の配布先として扱う
 - 再帰的自己改善は `reports/latest.json` を読み込むが、既定では書き換えない
 - 再帰レポートは観測用の派生物とし、`latest.json` にメタデータを押し戻さない
+- 指示負債監査は `AGENTS.md` / `CLAUDE.md` / `.agents/skills/*/SKILL.md` / `MEMORY.md` を読むだけで、自動削除・自動昇格・skill編集はしない
 - `ledger.jsonl` は状態履歴の正本であり、各 queue はそこから重複排除と抑制判定を行う
 
 ## 役割の切り分け
@@ -43,3 +46,4 @@
 - 「保存先が正本か、派生か」で判断する
 - 正本を増やさず、派生物を増やす
 - 変更したいときは先に `ledger.jsonl` と `reports/latest.json` のどちらが正本かを確認する
+- Raw / Wiki / Schema が混ざりそうなときは `docs/raw_wiki_schema_vault_policy.md` を確認する
