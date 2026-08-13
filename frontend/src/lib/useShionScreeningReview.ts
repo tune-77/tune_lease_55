@@ -234,7 +234,7 @@ export function useShionScreeningReview() {
   };
 
   const submitFeedback = async (feedback: ShionReviewFeedback) => {
-    if (!review?.savedId || feedbackSaving) return;
+    if (!review?.savedId || feedbackSaving) return false;
     const previous = review.userFeedback;
     setReview((current) => current ? { ...current, userFeedback: feedback } : current);
     setFeedbackSaving(true);
@@ -242,10 +242,12 @@ export function useShionScreeningReview() {
       await apiClient.patch(`/api/shion-screening-reviews/${review.savedId}/feedback`, {
         user_feedback: feedback,
       });
+      return true;
     } catch (error) {
       console.error("Shion review feedback save failed", error);
       setReview((current) => current ? { ...current, userFeedback: previous } : current);
       setError("紫苑レビュー評価を保存できませんでした。");
+      return false;
     } finally {
       setFeedbackSaving(false);
     }
