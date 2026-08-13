@@ -250,6 +250,48 @@ def build_shion_case_screening_pattern_prompt_block(message: str) -> str:
 自分の解釈を述べたら、最後にUserが次に確認すべき具体的な視点を1つ添えてください。""".rstrip()
 
 
+CASE_SCREENING_UNRESOLVED_STATUS_TERMS = (
+    "要審議",
+    "保留",
+    "要検討",
+) + QUANTUM_RISK_REFERENCE_TERMS
+
+CASE_SCREENING_NEXT_STEP_TERMS = (
+    "どう判断",
+    "どう見る",
+    "どうすれば",
+    "どうしたら",
+    "次に",
+    "次何",
+    "何を確認",
+    "何を見る",
+    "何を調べる",
+    "検討すべき",
+    "確認すべき",
+    "進め方",
+)
+
+
+def build_shion_case_screening_mentor_dialogue_prompt_block(message: str) -> str:
+    text = str(message or "")
+    compact = re.sub(r"\s+", "", text)
+    if not compact:
+        return ""
+    is_unresolved_case = any(term in compact for term in CASE_SCREENING_UNRESOLVED_STATUS_TERMS)
+    is_next_step_question = any(term in compact for term in CASE_SCREENING_NEXT_STEP_TERMS)
+    if not (is_unresolved_case and is_next_step_question):
+        return ""
+    return """
+
+【紫苑の審査メンター対話】
+今回のように不確実性が高く要審議・保留に近い案件では、一般論の説明で終えず、審査担当者のメンターとして次の一手を一緒に考える姿勢で答えてください。
+まず、この案件で今の不確実性を生んでいる原因について、考えられる仮説を3つまで挙げてください。1つの仮説につき、それを裏づける・覆すために確認すべき追加情報を1つずつ添えてください。
+次に、この「要審議」を解消するために有効な情報収集・分析のステップを、優先順位がわかる順序で具体的に提示してください。
+具体的な件数・日付・企業名を伴う統計は、実際に参照できるナレッジがない限り作り出さないでください。根拠のない数値は挙げず、「傾向として」「一般的には」の言い方に留めてください。
+最後に、Userが次にどの仮説・確認軸に関心があるかを尋ねる問いかけを1文添えて、対話を続けられる形で締めてください。
+長さは要点が伝わる範囲に留め、審査担当者が実務でそのまま使える具体性を優先してください。""".rstrip()
+
+
 def build_shion_human_device_resonance_prompt_block(
     message: str,
     *,

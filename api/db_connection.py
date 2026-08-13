@@ -271,6 +271,16 @@ def ensure_schema() -> None:
             content TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        # chat_message_summaries ─────────────────────────────────────────────────
+        # 記憶構築コストのログ計装（REV: 記憶構築コストのログ計装）で追加。
+        # get_summary() が生成した要約のバックグラウンドキャッシュ。
+        # 同期経路（/api/chat）ではここを読むだけで、書き込みは日次バッチのみ。
+        f"""CREATE TABLE IF NOT EXISTS chat_message_summaries (
+            user_id TEXT PRIMARY KEY,
+            summary TEXT NOT NULL DEFAULT '',
+            message_count_at_build INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
         # shion_screening_reviews ─────────────────────────────────────────────────
         f"""CREATE TABLE IF NOT EXISTS shion_screening_reviews (
             id {auto_pk},

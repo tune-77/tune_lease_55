@@ -1,4 +1,5 @@
 from api.chat_persona_prompts import (
+    build_shion_case_screening_mentor_dialogue_prompt_block,
     build_shion_case_screening_pattern_prompt_block,
     build_shion_human_device_resonance_prompt_block,
     build_shion_non_domain_prompt_block,
@@ -82,3 +83,29 @@ def test_build_shion_case_screening_pattern_prompt_block_triggers_for_industry_r
 def test_build_shion_case_screening_pattern_prompt_block_skips_unrelated_question():
     assert build_shion_case_screening_pattern_prompt_block("工作機械リースの確認点を教えて") == ""
     assert build_shion_case_screening_pattern_prompt_block("Q_riskって何ですか？") == ""
+
+
+def test_build_shion_case_screening_mentor_dialogue_prompt_block_triggers_for_unresolved_case_next_step_question():
+    block = build_shion_case_screening_mentor_dialogue_prompt_block(
+        "この案件は要審議のままですが、次に何を確認すればいいですか？"
+    )
+
+    assert "紫苑の審査メンター対話" in block
+    assert "仮説を3つ" in block
+    assert "尋ねる問いかけ" in block
+
+
+def test_build_shion_case_screening_mentor_dialogue_prompt_block_triggers_for_quantum_risk_next_step_question():
+    block = build_shion_case_screening_mentor_dialogue_prompt_block(
+        "Q_riskが高くて要審議です。どう判断すればいいですか？"
+    )
+
+    assert "紫苑の審査メンター対話" in block
+
+
+def test_build_shion_case_screening_mentor_dialogue_prompt_block_skips_without_next_step_question():
+    assert build_shion_case_screening_mentor_dialogue_prompt_block("この案件は要審議です。") == ""
+
+
+def test_build_shion_case_screening_mentor_dialogue_prompt_block_skips_without_unresolved_status():
+    assert build_shion_case_screening_mentor_dialogue_prompt_block("この案件は次に何を確認すればいいですか？") == ""

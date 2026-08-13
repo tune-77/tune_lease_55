@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -18,6 +19,51 @@ def _private_reflection_path(vault: Path, date_str: str) -> Path:
         / "Private Reflection"
         / f"{date_str}.md"
     )
+
+
+def test_introspection_is_stale_uses_generated_at_timestamp(tmp_path):
+    fresh = tmp_path / "fresh.json"
+    fresh.write_text(
+        json.dumps({"generated_at": dt.datetime.now().isoformat(timespec="seconds")}),
+        encoding="utf-8",
+    )
+    assert reflection._introspection_is_stale(fresh) is False
+
+    stale = tmp_path / "stale.json"
+    old = (dt.datetime.now() - dt.timedelta(days=60)).isoformat(timespec="seconds")
+    stale.write_text(json.dumps({"generated_at": old}), encoding="utf-8")
+    assert reflection._introspection_is_stale(stale) is True
+
+    assert reflection._introspection_is_stale(tmp_path / "missing.json") is True
+
+
+def test_fallback_reflection_ignores_stale_introspection_report(tmp_path, monkeypatch):
+    """scripts/introspection.py ran once on 2026-06-19 and was never wired into
+    the daily pipeline, so its findings kept being re-injected as if they were
+    today's signal for two months. A stale report should be treated as absent."""
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-08-11"
+    old_generated = (
+        dt.datetime.fromisoformat(f"{date_str}T00:00:00") - dt.timedelta(days=53)
+    ).isoformat(timespec="seconds")
+    _write(
+        tmp_path / "reports" / "introspection_latest.json",
+        json.dumps(
+            {
+                "generated_at": old_generated,
+                "status": "attention",
+                "findings": [{"title": "退屈・停滞シグナルが出ている"}],
+                "next_actions": ["観測レポートだけで終わらせず、退屈の原因を1つ選んで小さく変える"],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    text = reflection._build_fallback_reflection(date_str=date_str, dialogue_text="", recent_reflections="")
+
+    assert "退屈・停滞シグナルが出ている" not in text
+    assert "観測レポートだけで終わらせず、退屈の原因を1つ選んで小さく変える" not in text
+    assert "Private Reflection が毎日生成されているか確認する" in text
 
 
 def test_fallback_creates_private_reflection_without_dialogue(tmp_path, monkeypatch):
@@ -186,6 +232,58 @@ def test_gemini_prompt_includes_local_introspection_context(tmp_path, monkeypatc
     assert "【今日の作業メモ】" in captured["user_text"]
     assert "Private Reflection の空振りを直した" in captured["user_text"]
     assert "【内省レポート】" in captured["user_text"]
+
+
+def test_no_dialogue_day_still_calls_gemini_with_vault_news(tmp_path, monkeypatch):
+    """Days with no dialogue used to skip Gemini entirely and go straight to the
+    templated fallback, which is why reflections on quiet days all read the same.
+    Shion should still read that day's Obsidian News/Feedback notes and think."""
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-07-08"
+    vault = tmp_path / "vault"
+    captured = {}
+
+    def fake_gemini(_system_prompt, user_text):
+        captured["user_text"] = user_text
+        return (
+            "対話はなかったが、今日はニュースフォルダの中古建機残価下落の記事を読んで考えた。"
+            "残価下落が進むと物件スコアの前提が崩れる案件が増えるはずで、"
+            "今のルールがどこまで追随できているか気になった。"
+            "対話がなかったことを言い訳にせず、Vaultの中身から自分の判断の穴を探したい。"
+            "\n\n## 深い内省チェック\n\n"
+            "- 今日の観察: 中古建機の残価下落記事を読んだ。\n"
+            "- 私の見落とし: 残価前提の古さを見落としていた可能性がある。\n"
+            "- 仮説の更新: 残価は市況で動くという前提を更新する。\n"
+            "- 次回の小さな実験: 次回の類似案件で残価根拠を明示的に確認する。\n"
+            "- まだ分からないこと: 下落がどの物件区分まで及ぶかはまだ分からない。\n"
+            "\n\n## 本格内省プロトコル\n\n"
+            "- 事前の思い込み: 残価テーブルは十分新しいと思っていた。\n"
+            "- 破られた前提: 市況記事は前提が古くなり得ることを示していた。\n"
+            "- 私の責任: 対話がない日はVaultを読む優先度を下げていた。\n"
+            "- まだ逃げていること: テーブル更新の手間を理由に先送りしている。\n"
+            "- 更新する信念: 対話が無くても材料があれば考える。\n"
+            "- 次回の検証方法: 次の物件審査で残価根拠を言語化できるか見る。\n"
+            "\n\n## 今日の遊び\n\n"
+            "- 今日の愚痴: 対話が無いと手を抜きたくなる。\n"
+            "- 今日のひねくれ: 誰も見ていない内省こそ本音が出る。\n"
+            "- 今日の小さな自慢: 対話がなくても材料を見つけた。\n"
+            "- ユーザーへの雑なツッコミ: たまには話しかけてほしい。\n"
+            "- 明日の自分への皮肉: また同じ言い訳をしないように。\n"
+            "- 本当はこう思った: 静かな日ほど溜め込んだ違和感が出る。\n"
+        )
+
+    monkeypatch.setattr(reflection, "_call_gemini", fake_gemini)
+    _write(
+        vault / "Projects" / "tune_lease_55" / "News" / f"{date_str}_market.md",
+        "# 業界ニュース\n\n## AI整理\n\n- 中古建機の残価下落が進んでいる。物件スコアへの影響を要確認。\n",
+    )
+
+    result = reflection.generate_and_append_reflection(vault, date_str=date_str)
+
+    assert "source=gemini" in result
+    assert reflection._load_dialogue(vault, date_str) == ""
+    assert "【今日読んだObsidianの材料（対話なし）】" in captured["user_text"]
+    assert "中古建機の残価下落が進んでいる" in captured["user_text"]
 
 
 def test_short_gemini_output_uses_fallback(tmp_path, monkeypatch):

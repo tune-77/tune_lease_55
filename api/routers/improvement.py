@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from api.cloudrun_writeback import record_cloudrun_input_event
 from api.schemas import ReviewImprovementRequest, PromptRuleRegisterRequest
 
 router = APIRouter(tags=["improvement"])

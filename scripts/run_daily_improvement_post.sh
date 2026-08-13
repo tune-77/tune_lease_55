@@ -135,6 +135,11 @@ echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/weekly_self_management.py"; log_step "weekly_self_management" $?
 
 echo ""
+echo "[内省] 内省不足/退屈化検知レポートを再生成（観測のみ・lease_intelligence_reflectionが参照）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/introspection.py" || true
+log_step "introspection" $?
+
+echo ""
 echo "[内省] 紫苑の日次私的内省を生成（当日対話/内省材料 → Private Reflection）..."
 "${PYTHON}" "${PROJECT_ROOT}/lease_intelligence_reflection.py"; log_step "lease_intelligence_reflection" $?
 
@@ -284,6 +289,17 @@ echo ""
 echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チェック（repo applied を runtime へ補完）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/check_ledger_consistency.py" --days 14 --sync-repo-applied-to-runtime; log_step "check_ledger_consistency" $?
 
+# Default-FAIL検証: 本夜間実行中に batch_apply/auto_approve_safe_recipes/promote_wiki_queue/
+# execute_codex_queue/shion_llm_triage_proposal などが自己申告した "applied" を、
+# git履歴の実コミットで裏付けが取れるかバックフィル監査する（従来は
+# tests/test_audit_ledger_applied_claims.py のユニットテストでしか実行されず、
+# 本番 ledger.jsonl には手動実行以外で一度も適用されていなかった）。
+# 裏付けが取れない場合のみ apply_failed に訂正するため、直後のレポート再同期・
+# Slack通知が偽の「適用済み」を報告しないようにする。
+echo ""
+echo "[検証] 台帳のapplied主張をgit履歴で検証（Default-FAIL: 証跡なしはapply_failedへ訂正）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/audit_ledger_applied_claims.py" --apply; log_step "audit_ledger_applied_claims" $?
+
 if [ -f "${LATEST_FILE}" ]; then
   echo ""
   echo "[反映] post台帳補完後の改善レポートを再同期中..."
@@ -374,6 +390,11 @@ echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・We
   --judgment-asset-field-review "${PROJECT_ROOT}/reports/judgment_asset_field_review_latest.json" \
   --action-ledger-report "${PROJECT_ROOT}/reports/agent_action_ledger_latest.json"
 log_step "send_daily_improvement_slack" $?
+
+echo ""
+echo "[通知] 紫苑からの能動アラートをSlackへ送信（エラー急増・業界動向。アラート無しなら何もしない）..."
+"${PYTHON}" "${PROJECT_ROOT}/slack_bot.py" --shion-proactive || true
+log_step "send_shion_proactive_slack" 0
 
 if [ "${MANA_STATUS}" != "allow" ]; then
   echo "[番人] Mana が allow ではないため、評価候補生成と GCS Vault 配布を停止します。"

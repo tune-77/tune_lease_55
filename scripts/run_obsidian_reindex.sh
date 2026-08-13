@@ -22,4 +22,11 @@ fi
 # --- ChromaDB GCS sync (失敗してもreindexの結果を変えない) ---
 bash "$SYNC_SCRIPT" || true
 
+# --- Retrieval graph index (router/index/edges) 再構築 ---
+# Cloud Runデプロイ時(package_cloud_run_bundle.sh)のスナップショットのままだと
+# 新規ノートがobsidian_bridge.pyの_graph_route_candidates()に反映されないため、
+# 夜間reindexのタイミングでdata/obsidian_retrieval_graph.jsonも更新する。
+# 失敗してもreindexの結果には影響させない。
+"$PYTHON" -m scripts.build_obsidian_retrieval_graph || echo "[run_obsidian_reindex] retrieval graph index の再構築に失敗しました"
+
 exit $REINDEX_EXIT

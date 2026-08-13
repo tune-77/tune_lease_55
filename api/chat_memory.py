@@ -6,6 +6,7 @@ chat_messages テーブルを lease_data.db 内に作成し、
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, Callable
 import requests
 import re
@@ -262,6 +263,7 @@ def get_summary(user_id: str = "default") -> str:
     api_key = _get_gemini_api_key()
     if not api_key:
         return ""
+    started = time.monotonic()
     try:
         payload = {
             "system_instruction": {"parts": [{"text": "以下の会話を100文字以内で要約してください。"}]},
@@ -275,9 +277,125 @@ def get_summary(user_id: str = "default") -> str:
             timeout=30,
         )
         resp.raise_for_status()
-        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        body = resp.json()
+        from api.memory_cost_log import log_memory_cost
+
+        log_memory_cost(
+            phase="construction",
+            func="chat_memory.get_summary",
+            elapsed_ms=(time.monotonic() - started) * 1000,
+            item_count=len(rows),
+            tokens=(body.get("usageMetadata") or {}).get("totalTokenCount"),
+        )
+        return body["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception:
         return ""
+
+
+def _cached_message_count(user_id: str) -> int:
+    ph = placeholder()
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"SELECT message_count_at_build FROM chat_message_summaries WHERE user_id = {ph}",
+                (user_id,),
+            )
+            row = cur.fetchone()
+        return int(row["message_count_at_build"]) if row else 0
+    except Exception:
+        return 0
+
+
+def _upsert_summary_cache(user_id: str, summary: str, message_count: int) -> None:
+    ph = placeholder()
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                INSERT INTO chat_message_summaries (user_id, summary, message_count_at_build, updated_at)
+                VALUES ({ph}, {ph}, {ph}, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    summary = excluded.summary,
+                    message_count_at_build = excluded.message_count_at_build,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, summary, message_count),
+            )
+    except Exception as exc:
+        print(f"[chat_memory] _upsert_summary_cache skipped: {exc}")
+
+
+def get_cached_summary(user_id: str = "default") -> str:
+    """バックグラウンドバッチ（refresh_stale_chat_summaries）が構築済みの要約を読む。
+
+    ここではGeminiを呼ばない。チャット応答の同期経路から呼んでよいのはこの
+    関数だけで、construction（get_summary）は日次バッチ側でのみ実行する。
+    """
+    ph = placeholder()
+    try:
+        init_chat_messages_table()
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"SELECT summary FROM chat_message_summaries WHERE user_id = {ph}",
+                (user_id,),
+            )
+            row = cur.fetchone()
+        return str(row["summary"]) if row and row["summary"] else ""
+    except Exception:
+        return ""
+
+
+def build_chat_history_summary_context(user_id: str, history_for_gemini: list[dict]) -> str:
+    """直近ウィンドウで切り捨てられた古い会話がある場合、キャッシュ済み要約をcontext文字列で返す。
+
+    ここではGeminiを呼ばない（get_cached_summaryはキャッシュ読み取りのみ）。
+    切り捨てが無い、またはキャッシュが無ければ空文字を返す。
+    """
+    try:
+        if get_message_count(user_id) <= len(history_for_gemini):
+            return ""
+        summary = get_cached_summary(user_id)
+        if not summary:
+            return ""
+        return f"\n\n【過去の会話要約（直近ウィンドウ外）】\n{summary}"
+    except Exception:
+        return ""
+
+
+def refresh_stale_chat_summaries(*, stale_after_messages: int = 20, min_messages: int = 10) -> dict:
+    """会話要約キャッシュを、メッセージが一定数増えたユーザーだけ再構築する。
+
+    日次バッチ専用（api/scheduler.py）。チャット応答の同期経路からは呼ばない
+    ——毎ターンGeminiを呼ぶとconstructionコストがquery側のレイテンシに
+    乗ってしまうため。
+    """
+    init_chat_messages_table()
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT DISTINCT user_id FROM chat_messages")
+            user_ids = [str(r["user_id"]) for r in cur.fetchall()]
+    except Exception as exc:
+        print(f"[chat_memory] refresh_stale_chat_summaries skipped: {exc}")
+        return {"checked": 0, "refreshed": 0}
+
+    checked = 0
+    refreshed = 0
+    for user_id in user_ids:
+        checked += 1
+        total = get_message_count(user_id)
+        if total < min_messages:
+            continue
+        if total - _cached_message_count(user_id) < stale_after_messages:
+            continue
+        summary = get_summary(user_id)
+        if summary:
+            _upsert_summary_cache(user_id, summary, total)
+            refreshed += 1
+    return {"checked": checked, "refreshed": refreshed}
 
 
 def call_gemini_with_tools(

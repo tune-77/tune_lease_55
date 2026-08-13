@@ -482,6 +482,80 @@ def _socket_mode_main(bot_token: str, app_token: str) -> None:
     handler.start()
 
 
+def _build_shion_proactive_message() -> str | None:
+    """紫苑の能動アラート（エラー急増・業界動向）をSlack向けの一言に整形する。"""
+    from api.shion_proactive_alert import (
+        check_shion_proactive_alerts,
+        check_shion_latent_need_alert,
+    )
+
+    lines = []
+    error_alert = check_shion_proactive_alerts()
+    if error_alert.get("has_alert") and error_alert.get("message"):
+        lines.append(error_alert["message"])
+
+    latent_alert = check_shion_latent_need_alert()
+    if latent_alert.get("has_alert") and latent_alert.get("message"):
+        lines.append(latent_alert["message"])
+
+    if not lines:
+        return None
+    return "🌸 *紫苑より*\n" + "\n\n".join(lines)
+
+
+_SHION_PROACTIVE_STATE = _SCRIPT_DIR / "data" / "slack_shion_proactive_state.json"
+
+
+def send_shion_proactive_slack(*, force: bool = False) -> int:
+    """紫苑の能動アラートをSlackへ1回だけ投稿する（日次改善パイプラインから呼ぶ想定）。
+
+    既存のチャット画面向けポーリングアラート（api/shion_proactive_alert.py）と同じ判定
+    ロジックを再利用し、投稿先は日次改善レポートと同じ Webhook チャンネル。
+    """
+    import hashlib
+
+    from scripts.send_daily_improvement_slack import (
+        _is_plausible_slack_webhook,
+        _load_webhook,
+        _read_state,
+        _write_state,
+        send_slack,
+    )
+
+    message = _build_shion_proactive_message()
+    if not message:
+        print("紫苑からの能動アラートなし。スキップします。")
+        return 0
+
+    webhook_url = (SLACK_WEBHOOK_URL or "").strip() or _load_webhook(None)
+    if not webhook_url.startswith("https://hooks.slack.com/") or not _is_plausible_slack_webhook(webhook_url):
+        print("SLACK_WEBHOOK_URL が未設定/不正なため、紫苑の能動アラートをスキップします。")
+        return 0
+
+    digest = hashlib.sha256(message.encode("utf-8")).hexdigest()[:16]
+    today = datetime.date.today().isoformat()
+    state = _read_state(_SHION_PROACTIVE_STATE)
+    if not force and state.get("last_sent_date") == today and state.get("last_message_hash") == digest:
+        print(f"紫苑の能動アラートは本日({today})送信済み。スキップします。")
+        return 0
+
+    ok, detail = send_slack(webhook_url, {"text": message})
+    if not ok:
+        print(f"紫苑の能動アラート送信失敗: {detail}", file=sys.stderr)
+        return 1
+
+    _write_state(
+        _SHION_PROACTIVE_STATE,
+        {
+            "last_sent_at": datetime.datetime.now().isoformat(timespec="seconds"),
+            "last_sent_date": today,
+            "last_message_hash": digest,
+        },
+    )
+    print("紫苑の能動アラートをSlackへ送信しました。")
+    return 0
+
+
 def main():
     """ボット起動。SLACK_APP_TOKEN があれば Socket Mode、なければポーリングモード。"""
     if not SLACK_BOT_TOKEN:
@@ -529,4 +603,22 @@ def main():
 
 
 if __name__ == "__main__":
+    import argparse
+
+    _cli_parser = argparse.ArgumentParser(description="リース審査AI Slackボット")
+    _cli_parser.add_argument(
+        "--shion-proactive",
+        action="store_true",
+        help="紫苑の能動アラート（エラー急増・業界動向）を1回だけSlackへ投稿して終了する（日次パイプライン向け）",
+    )
+    _cli_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="--shion-proactive と併用: 当日分の重複送信防止stateを無視して強制送信する",
+    )
+    _cli_args = _cli_parser.parse_args()
+
+    if _cli_args.shion_proactive:
+        sys.exit(send_shion_proactive_slack(force=_cli_args.force))
+
     main()

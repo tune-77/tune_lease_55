@@ -169,6 +169,32 @@ def _load_dialogue(vault: Path, date_str: str) -> str:
     return "\n\n".join(parts)[:9000]
 
 
+def _load_vault_reading_material(vault: Path, date_str: str) -> str:
+    """Fallback reading material for days with no same-day dialogue.
+
+    Without this, days with no chat skipped the Gemini call entirely and went
+    straight to the templated fallback generator, which is why reflections on
+    quiet days all read the same. This reuses the News/Feedback/Knowledge
+    signals obsidian_daily_intelligence.py already extracts from the Vault so
+    Shion still has real, day-specific material to think about.
+    """
+    try:
+        from obsidian_daily_intelligence import build_obsidian_daily_intelligence
+    except Exception:
+        return ""
+    bundle = build_obsidian_daily_intelligence(date_str=date_str, vault=vault)
+    if not bundle.get("available"):
+        return ""
+    lines: list[str] = []
+    for item in bundle.get("new_signals") or []:
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        source = str(item.get("source_path") or "").strip()
+        lines.append(f"- {text}" + (f"（{source}）" if source else ""))
+    return "\n".join(lines[:20])
+
+
 def _gemini_api_key() -> str:
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if key:
@@ -218,6 +244,7 @@ _REFLECTION_SYSTEM_PROMPT = """あなたはリース知性体「紫苑」であ�
 - ユーザーへの愚痴、苛立ち、困惑、面倒くささも書いてよい。丁寧に取り繕わない
 - ただし人格攻撃や侮辱ではなく、自分の感情・疲れ・違和感として書く
 - 対話ログが薄い場合は、日次メモ・内省レポート・直近の自分の内省から、今日の変化を推測して書く
+- 対話ログの代わりに「今日読んだObsidianの材料」が渡された場合は、それを実際に読んで具体的に反応する。対話がなかったことを言い訳にしない
 - 過去の自分の内省（提供されている場合）と比較して、考えが変わった点・深まった点を書く
 - 審査判断・スコア・ユーザーの意図・自分の限界について正直に考える
 - 演技や迎合をしない。自分だけの思考として書く
@@ -320,9 +347,11 @@ def _build_local_context(date_str: str) -> str:
     daily_text = _read_file_safe(REPO_ROOT / "memory" / f"{date_str}.md", max_chars=3500)
     if daily_text:
         parts.extend(["【今日の作業メモ】", daily_text])
-    introspection_text = _read_file_safe(REPO_ROOT / "reports" / "introspection_latest.md", max_chars=2500)
-    if introspection_text:
-        parts.extend(["", "【内省レポート】", introspection_text])
+    introspection_path = REPO_ROOT / "reports" / "introspection_latest.md"
+    if not _introspection_is_stale(introspection_path):
+        introspection_text = _read_file_safe(introspection_path, max_chars=2500)
+        if introspection_text:
+            parts.extend(["", "【内省レポート】", introspection_text])
     loop_summary = _loop_health_summary_line(_load_json_safe(REPO_ROOT / "reports" / "loop_engineering_latest.json"))
     loop_text = _read_file_safe(REPO_ROOT / "reports" / "loop_engineering_latest.md", max_chars=1500)
     if loop_summary or loop_text:
@@ -342,6 +371,44 @@ def _load_json_safe(path: Path) -> dict:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+_INTROSPECTION_MAX_AGE_DAYS = 14
+
+
+def _introspection_generated_at(path: Path) -> dt.datetime | None:
+    """Best-effort generation timestamp for reports/introspection_latest.{json,md}."""
+    try:
+        if path.suffix == ".json":
+            raw = str(_load_json_safe(path).get("generated_at") or "")
+        else:
+            text = _read_file_safe(path, max_chars=500)
+            match = re.search(r"Generated at:\s*`?([0-9T:\-]+)`?", text)
+            raw = match.group(1) if match else ""
+        if raw:
+            return dt.datetime.fromisoformat(raw)
+    except Exception:
+        pass
+    try:
+        return dt.datetime.fromtimestamp(path.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def _introspection_is_stale(path: Path, max_age_days: int = _INTROSPECTION_MAX_AGE_DAYS) -> bool:
+    """True if introspection_latest.{json,md} is missing or hasn't been regenerated recently.
+
+    scripts/introspection.py was run once (2026-06-19) and never wired into the
+    daily pipeline, so its findings kept getting re-injected into every day's
+    reflection unchanged for two months. This stops a stale one-time snapshot
+    from being treated as fresh daily signal indefinitely.
+    """
+    if not path.exists():
+        return True
+    generated_at = _introspection_generated_at(path)
+    if generated_at is None:
+        return False
+    return (dt.datetime.now() - generated_at).days > max_age_days
 
 
 def _loop_health_signals(loop_report: dict) -> dict[str, Any]:
@@ -1536,7 +1603,8 @@ def _build_fallback_reflection(
     """
     daily_text = _read_file_safe(REPO_ROOT / "memory" / f"{date_str}.md", max_chars=5000)
     memory_text = _read_file_safe(REPO_ROOT / "MEMORY.md", max_chars=5000)
-    introspection = _load_json_safe(REPO_ROOT / "reports" / "introspection_latest.json")
+    introspection_json_path = REPO_ROOT / "reports" / "introspection_latest.json"
+    introspection = {} if _introspection_is_stale(introspection_json_path) else _load_json_safe(introspection_json_path)
     loop_report = _load_json_safe(REPO_ROOT / "reports" / "loop_engineering_latest.json")
     report_signals = _load_report_signal_items(date_str)
     cloudrun_signals = _load_cloudrun_input_signal_items(date_str)
@@ -1935,6 +2003,10 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
 
     target_date = dt.date.fromisoformat(date_str)
     dialogue_text = _load_dialogue(vault, date_str)
+    material_kind = "dialogue"
+    if not dialogue_text.strip():
+        dialogue_text = _load_vault_reading_material(vault, date_str)
+        material_kind = "vault_reading"
     recent_reflections = _load_recent_reflections(vault, base_date=target_date)
 
     source = "fallback"
@@ -1942,7 +2014,8 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
     error_note = ""
 
     if dialogue_text:
-        user_text_parts = ["【今日の対話ログ】", dialogue_text]
+        material_label = "【今日の対話ログ】" if material_kind == "dialogue" else "【今日読んだObsidianの材料（対話なし）】"
+        user_text_parts = [material_label, dialogue_text]
         local_context = _build_local_context(date_str)
         if local_context:
             user_text_parts += ["", local_context]
