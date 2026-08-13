@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
@@ -70,6 +70,8 @@ const PHASE_LABELS = {
   done: "完了",
 } as const;
 
+const DRAFT_STORAGE_KEY = 'lease-kun-draft-v1';
+
 const INITIAL_FORM_DATA = {
   // Step 0
   company_no: '', company_name: '',
@@ -107,6 +109,13 @@ const INITIAL_FORM_DATA = {
 
 type LeaseKunFormData = typeof INITIAL_FORM_DATA;
 
+type LeaseKunDraft = {
+  version: 1;
+  step: number;
+  formData: LeaseKunFormData;
+  updatedAt: string;
+};
+
 function parseMillionInput(value: string | number, fallback = 0): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
   const parsed = parseHumanNumberInput(value);
@@ -115,6 +124,44 @@ function parseMillionInput(value: string | number, fallback = 0): number {
 
 function isPositiveMillionInput(value: string | number): boolean {
   return parseMillionInput(value, NaN) > 0;
+}
+
+function hasMeaningfulDraft(formData: LeaseKunFormData): boolean {
+  return Boolean(
+    formData.company_no.trim() ||
+    formData.company_name.trim() ||
+    formData.asset_location.trim() ||
+    formData.nenshu.trim() ||
+    formData.total_assets.trim() ||
+    formData.acquisition_cost.trim() ||
+    formData.passion_text.trim() ||
+    formData.sales_dept !== INITIAL_FORM_DATA.sales_dept ||
+    formData.industry_major !== INITIAL_FORM_DATA.industry_major ||
+    formData.industry_sub !== INITIAL_FORM_DATA.industry_sub ||
+    formData.asset_name !== INITIAL_FORM_DATA.asset_name
+  );
+}
+
+function readLeaseKunDraft(): LeaseKunDraft | null {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<LeaseKunDraft>;
+    if (parsed.version !== 1 || typeof parsed.step !== 'number' || !parsed.formData) return null;
+    const boundedStep = Math.min(Math.max(Math.floor(parsed.step), 0), STEPS.length - 1);
+    return {
+      version: 1,
+      step: boundedStep,
+      formData: { ...INITIAL_FORM_DATA, ...parsed.formData },
+      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearLeaseKunDraft(): void {
+  window.localStorage.removeItem(DRAFT_STORAGE_KEY);
 }
 
 // --- メインコンポーネント ---
@@ -127,6 +174,9 @@ export default function LeaseKunWizard() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string>('');
+  const draftReadyRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 入力完了後は screening / register 画面へ離脱させず、この画面内で
@@ -142,6 +192,33 @@ export default function LeaseKunWizard() {
 
   // --- フォームステート ---
   const [formData, setFormData] = useState<LeaseKunFormData>(INITIAL_FORM_DATA);
+
+  useEffect(() => {
+    const draft = readLeaseKunDraft();
+    if (draft && hasMeaningfulDraft(draft.formData)) {
+      setFormData(draft.formData);
+      setStep(draft.step);
+      setDraftRestored(true);
+      setDraftSavedAt(draft.updatedAt);
+      setHistory([
+        { role: 'bot', text: `前回の下書きを復元しました。${STEPS[draft.step]} から続けられます。` }
+      ]);
+    }
+    draftReadyRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!draftReadyRef.current || phase !== 'wizard' || submitted) return;
+    if (!hasMeaningfulDraft(formData)) {
+      clearLeaseKunDraft();
+      setDraftSavedAt('');
+      return;
+    }
+    const updatedAt = new Date().toISOString();
+    const draft: LeaseKunDraft = { version: 1, step, formData, updatedAt };
+    window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    setDraftSavedAt(updatedAt);
+  }, [formData, step, phase, submitted]);
 
   // 業種マスター取得
   useEffect(() => {
@@ -331,6 +408,8 @@ export default function LeaseKunWizard() {
 
       const res = await apiClient.post(`/api/score/full`, payload);
       setSubmitted(true);
+      clearLeaseKunDraft();
+      setDraftSavedAt('');
       const resultData = res.data as LeaseKunFullResult;
       setFullResult(resultData);
 
@@ -396,6 +475,9 @@ export default function LeaseKunWizard() {
   };
 
   const resetWizard = () => {
+    clearLeaseKunDraft();
+    setDraftRestored(false);
+    setDraftSavedAt('');
     setStep(0);
     setSubmitted(false);
     setErrors({});
@@ -416,6 +498,21 @@ export default function LeaseKunWizard() {
       asset_location: '',
       intuition: 3,
     }));
+  };
+
+  const discardDraft = () => {
+    clearLeaseKunDraft();
+    setDraftRestored(false);
+    setDraftSavedAt('');
+    setStep(0);
+    setSubmitted(false);
+    setErrors({});
+    setPhase('wizard');
+    setFullResult(null);
+    setFormData(INITIAL_FORM_DATA);
+    setHistory([
+      { role: 'bot', text: '下書きを破棄しました。新しい審査を始めます。' }
+    ]);
   };
 
   const handleGunshiConsult = (result: ScoreResult) => {
@@ -524,6 +621,19 @@ export default function LeaseKunWizard() {
         {/* 下部フォームエリア */}
         {!loading && phase === 'wizard' && (
         <form onSubmit={handleNext} className="w-full bg-white border-t-2 border-[#1A1A2E] p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20">
+          {(draftRestored || draftSavedAt) && (
+            <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+              <span>{draftRestored ? '下書きを復元済み' : '下書き保存済み'}</span>
+              <button
+                type="button"
+                onClick={discardDraft}
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-amber-700 shadow-sm"
+                aria-label="下書きを破棄"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
           <div className="mb-4 space-y-3 max-h-[40vh] overflow-y-auto scrollbar-hide pb-2 px-1">
 
             {/* Step 0: 企業・業種 */}
