@@ -3586,49 +3586,12 @@ def _improvement_canonical_key(title: str, description: str = "") -> str:
 
 def _latest_improvement_statuses() -> dict[str, str]:
     ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-    if not ledger_path.exists():
-        return {}
-    latest_by_key: dict[str, str] = {}
-    terminal_by_key: dict[str, str] = {}
     try:
-        for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            title = str(entry.get("title") or "")
-            key = str(entry.get("canonical_key") or entry.get("key") or _improvement_canonical_key(title))
-            status = str(entry.get("status") or "")
-            if key:
-                latest_by_key[key] = status
-                if _is_terminal_improvement_ledger_status(status):
-                    terminal_by_key[key] = status
-    except OSError:
+        from scripts.improvement_state_resolver import load_latest_status_by_key
+
+        return load_latest_status_by_key(ledger_path)
+    except Exception:
         return {}
-    latest_by_key.update(terminal_by_key)
-    return latest_by_key
-
-
-def _is_terminal_improvement_ledger_status(status: str) -> bool:
-    """Human/resolution decisions should survive later automatic re-detection.
-
-    The daily pipeline appends fresh needs_review rows for the same canonical_key.
-    If we let those rows blindly win by "last line", deleted/applied/parked items
-    come back in the PM report the next morning.
-    """
-    return str(status or "").lower() in {
-        "applied",
-        "approved",
-        "deleted",
-        "rejected",
-        "deferred",
-        "parked",
-        "suppressed",
-        "rule_registered",
-        "apply_failed",
-    }
 
 
 def _norm_improvement_title(title: str) -> str:
@@ -3644,28 +3607,12 @@ def _norm_improvement_title(title: str) -> str:
 def _latest_improvement_statuses_by_title() -> dict[str, str]:
     """canonical_key が一致しない場合の保険: 正規化タイトル一致で最後のステータスを返す。"""
     ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-    if not ledger_path.exists():
-        return {}
-    latest_by_title: dict[str, str] = {}
-    terminal_by_title: dict[str, str] = {}
     try:
-        for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            title = _norm_improvement_title(str(entry.get("title") or ""))
-            status = str(entry.get("status") or "")
-            if title and status:
-                latest_by_title[title] = status
-                if _is_terminal_improvement_ledger_status(status):
-                    terminal_by_title[title] = status
-    except OSError:
+        from scripts.improvement_state_resolver import load_latest_status_by_title
+
+        return load_latest_status_by_title(ledger_path)
+    except Exception:
         return {}
-    latest_by_title.update(terminal_by_title)
-    return latest_by_title
 
 
 def _ledger_status_to_improvement_status(status: str) -> str | None:

@@ -99,6 +99,16 @@ def load_latest_by_alias(ledger_path: Path) -> dict[str, dict]:
     return latest
 
 
+def load_latest_by_key(ledger_path: Path) -> dict[str, dict]:
+    latest: dict[str, dict] = {}
+    for entry in iter_ledger_entries(ledger_path):
+        key = str(entry.get("key") or entry.get("canonical_key") or entry.get("rev_id") or "").strip()
+        if not key or not normalize_status(entry.get("status")):
+            continue
+        latest[key] = prefer_ledger_entry(latest.get(key), entry)
+    return latest
+
+
 def load_latest_status_by_key(ledger_path: Path) -> dict[str, str]:
     return {
         key: str(entry.get("status") or "")
