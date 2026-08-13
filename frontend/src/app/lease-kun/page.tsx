@@ -71,6 +71,7 @@ const PHASE_LABELS = {
 } as const;
 
 const DRAFT_STORAGE_KEY = 'lease-kun-draft-v1';
+const PENDING_RESULTS_STORAGE_KEY = 'lease-kun-pending-results-v1';
 
 const INITIAL_FORM_DATA = {
   // Step 0
@@ -125,6 +126,15 @@ type FocusCheck = {
   title: string;
   reason: string;
   tone: 'risk' | 'condition' | 'sales';
+};
+
+type PendingResultRegistration = {
+  caseId: string;
+  companyName: string;
+  assetName: string;
+  hantei: string;
+  score: number;
+  createdAt: string;
 };
 
 const SALES_ASSET_AMOUNTS: QuickAmount[] = [
@@ -216,6 +226,26 @@ function readLeaseKunDraft(): LeaseKunDraft | null {
 
 function clearLeaseKunDraft(): void {
   window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+}
+
+function rememberPendingResultRegistration(result: LeaseKunFullResult, data: LeaseKunFormData): void {
+  if (!result.case_id) return;
+  try {
+    const raw = window.localStorage.getItem(PENDING_RESULTS_STORAGE_KEY);
+    const existing = raw ? JSON.parse(raw) as PendingResultRegistration[] : [];
+    const nextItem: PendingResultRegistration = {
+      caseId: String(result.case_id),
+      companyName: result.company_name || data.company_name || '（企業名未入力）',
+      assetName: result.asset_name || data.asset_name,
+      hantei: result.hantei,
+      score: getScreeningScoreValue(result),
+      createdAt: new Date().toISOString(),
+    };
+    const deduped = [nextItem, ...existing.filter((item) => item.caseId !== nextItem.caseId)].slice(0, 20);
+    window.localStorage.setItem(PENDING_RESULTS_STORAGE_KEY, JSON.stringify(deduped));
+  } catch {
+    // 後日登録リストの保存に失敗しても、審査結果そのものはサーバー側に保存済み。
+  }
 }
 
 function getScreeningScoreValue(result: LeaseKunFullResult): number {
@@ -367,6 +397,7 @@ export default function LeaseKunWizard() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [draftRestored, setDraftRestored] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<string>('');
+  const [doneMessage, setDoneMessage] = useState('結果登録まで完了しました！');
   const draftReadyRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -674,6 +705,7 @@ export default function LeaseKunWizard() {
     clearLeaseKunDraft();
     setDraftRestored(false);
     setDraftSavedAt('');
+    setDoneMessage('結果登録まで完了しました！');
     setStep(0);
     setSubmitted(false);
     setErrors({});
@@ -700,6 +732,7 @@ export default function LeaseKunWizard() {
     clearLeaseKunDraft();
     setDraftRestored(false);
     setDraftSavedAt('');
+    setDoneMessage('結果登録まで完了しました！');
     setStep(0);
     setSubmitted(false);
     setErrors({});
@@ -709,6 +742,14 @@ export default function LeaseKunWizard() {
     setHistory([
       { role: 'bot', text: '下書きを破棄しました。新しい審査を始めます。' }
     ]);
+  };
+
+  const deferResultRegistration = () => {
+    if (fullResult?.case_id) {
+      rememberPendingResultRegistration(fullResult, formData);
+    }
+    setDoneMessage('審査結果を保存しました。成約/失注が分かったら、結果登録へ進めます。');
+    setPhase('done');
   };
 
   const handleGunshiConsult = (result: ScoreResult) => {
@@ -1195,21 +1236,30 @@ export default function LeaseKunWizard() {
                 judgmentAssetCandidates={shionReview.judgmentAssetCandidates}
               />
             </div>
-            <div className="flex gap-2 mt-4">
+            <div className="mt-4 space-y-2">
               <button
                 type="button"
-                onClick={() => router.push(`/screening?case_id=${encodeURIComponent(String(fullResult.case_id))}`)}
-                className="flex-1 h-11 flex items-center justify-center rounded-xl font-bold text-[11px] bg-slate-100 text-slate-600"
+                onClick={deferResultRegistration}
+                className="w-full h-12 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all bg-[#1A1A2E] text-white"
               >
-                PCで詳細分析
+                後で結果登録する
               </button>
-              <button
-                type="button"
-                onClick={() => setPhase('register')}
-                className="flex-[2] h-11 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all bg-[#1A1A2E] text-white"
-              >
-                次へ：結果登録 →
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/screening?case_id=${encodeURIComponent(String(fullResult.case_id))}`)}
+                  className="h-11 flex items-center justify-center rounded-xl font-bold text-[11px] bg-slate-100 text-slate-600"
+                >
+                  PCで詳細分析
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhase('register')}
+                  className="h-11 flex items-center justify-center rounded-xl font-bold text-[11px] bg-amber-100 text-amber-900"
+                >
+                  今わかるなら登録
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1227,7 +1277,10 @@ export default function LeaseKunWizard() {
             <CaseRegistrationForm
               caseId={String(fullResult.case_id)}
               compact
-              onRegistered={() => setPhase('done')}
+              onRegistered={() => {
+                setDoneMessage('結果登録まで完了しました！');
+                setPhase('done');
+              }}
             />
           </div>
         )}
@@ -1236,7 +1289,7 @@ export default function LeaseKunWizard() {
         {!loading && phase === 'done' && (
           <div className="w-full bg-white border-t-2 border-[#1A1A2E] p-6 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 flex flex-col items-center text-center gap-3">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-            <p className="text-sm font-black text-[#1A1A2E]">結果登録まで完了しました！</p>
+            <p className="text-sm font-black text-[#1A1A2E]">{doneMessage}</p>
             <button
               type="button"
               onClick={resetWizard}
