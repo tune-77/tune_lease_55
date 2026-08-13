@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2, Trash2 } from 'lucide-react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
@@ -11,6 +10,7 @@ import { CurrentIssueCard, RingiPolicyCard } from '../../components/analysis/Iss
 import CaseRegistrationForm from '../../components/analysis/CaseRegistrationForm';
 import { ShionScreeningReviewCard } from '../../components/analysis/ShionReviewCard';
 import { useShionScreeningReview } from '../../lib/useShionScreeningReview';
+import type { ShionReviewFeedback } from '../../lib/shionReview';
 import { parseHumanNumberInput } from '@/lib/numberInput';
 
 // --- 型定義 ---
@@ -719,6 +719,13 @@ export default function LeaseKunWizard() {
     setPhase('done');
   };
 
+  const submitReviewFeedbackAndOpenRegistration = async (feedback: ShionReviewFeedback) => {
+    const saved = await shionReview.submitFeedback(feedback);
+    if (saved) {
+      setPhase('register');
+    }
+  };
+
   const handleGunshiConsult = (result: ScoreResult) => {
     const assetLocation = formData.asset_location || result.asset_location || '';
     const context = {
@@ -766,8 +773,8 @@ export default function LeaseKunWizard() {
         {/* ヘッダー */}
         <div className="bg-gradient-to-r from-[#1A1A2E] to-[#2d2d4e] w-full pt-12 md:pt-10 pb-4 px-4 shadow flex justify-between items-center shrink-0 z-10 text-[#E8A838]">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white rounded-full flex justify-center items-center shadow-inner overflow-hidden border-2 border-[#E8A838]">
-              <Image src="/icons/icon-192.png" width={36} height={36} alt="" />
+            <div className="w-9 h-9 bg-[#E8A838] rounded-full flex justify-center items-center shadow-inner border-2 border-white/70 text-slate-950">
+              <MessageSquare className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
               <h3 className="font-black text-sm tracking-widest uppercase">Lease-Wizard</h3>
@@ -1197,7 +1204,7 @@ export default function LeaseKunWizard() {
                 loading={shionReview.loading}
                 error={shionReview.error}
                 onReview={() => shionReview.requestReview(fullResult, formData)}
-                onFeedback={shionReview.submitFeedback}
+                onFeedback={submitReviewFeedbackAndOpenRegistration}
                 feedbackSaving={shionReview.feedbackSaving}
                 pastCompanies={shionReview.pastCompanies}
                 judgmentAssetCandidates={shionReview.judgmentAssetCandidates}
