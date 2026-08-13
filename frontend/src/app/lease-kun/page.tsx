@@ -116,6 +116,54 @@ type LeaseKunDraft = {
   updatedAt: string;
 };
 
+type QuickAmount = {
+  label: string;
+  value: string;
+};
+
+const SALES_ASSET_AMOUNTS: QuickAmount[] = [
+  { label: '50', value: '50' },
+  { label: '100', value: '100' },
+  { label: '300', value: '300' },
+  { label: '1000', value: '1000' },
+];
+
+const PROFIT_AMOUNTS: QuickAmount[] = [
+  { label: '-5', value: '-5' },
+  { label: '0', value: '0' },
+  { label: '5', value: '5' },
+  { label: '10', value: '10' },
+];
+
+const SMALL_COST_AMOUNTS: QuickAmount[] = [
+  { label: '0', value: '0' },
+  { label: '1', value: '1' },
+  { label: '3', value: '3' },
+  { label: '5', value: '5' },
+];
+
+const CREDIT_AMOUNTS: QuickAmount[] = [
+  { label: '0', value: '0' },
+  { label: '10', value: '10' },
+  { label: '30', value: '30' },
+  { label: '100', value: '100' },
+];
+
+const ASSET_PRICE_AMOUNTS: QuickAmount[] = [
+  { label: '1', value: '1' },
+  { label: '3', value: '3' },
+  { label: '5', value: '5' },
+  { label: '10', value: '10' },
+  { label: '30', value: '30' },
+];
+
+const TERM_AMOUNTS: QuickAmount[] = [
+  { label: '36', value: '36' },
+  { label: '48', value: '48' },
+  { label: '60', value: '60' },
+  { label: '72', value: '72' },
+];
+
 function parseMillionInput(value: string | number, fallback = 0): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
   const parsed = parseHumanNumberInput(value);
@@ -162,6 +210,36 @@ function readLeaseKunDraft(): LeaseKunDraft | null {
 
 function clearLeaseKunDraft(): void {
   window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+}
+
+function AmountChips({
+  amounts,
+  activeValue,
+  onSelect,
+}: {
+  amounts: QuickAmount[];
+  activeValue: string | number;
+  onSelect: (value: string) => void;
+}) {
+  const active = String(activeValue || '');
+  return (
+    <div className="mt-1.5 grid grid-cols-4 gap-1">
+      {amounts.map((amount) => (
+        <button
+          key={`${amount.label}-${amount.value}`}
+          type="button"
+          onClick={() => onSelect(amount.value)}
+          className={`h-7 rounded-lg border text-[11px] font-black transition-colors ${
+            active === amount.value
+              ? 'border-[#E8A838] bg-[#E8A838] text-white'
+              : 'border-slate-200 bg-white text-slate-500'
+          }`}
+        >
+          {amount.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // --- メインコンポーネント ---
@@ -266,6 +344,11 @@ export default function LeaseKunWizard() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+    if (errors[name]) setErrors(prev => { const next = { ...prev }; delete next[name]; return next; });
+  };
+
+  const setQuickValue = (name: keyof LeaseKunFormData, value: string) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors(prev => { const next = { ...prev }; delete next[name]; return next; });
   };
 
@@ -791,12 +874,25 @@ export default function LeaseKunWizard() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <input type="text" inputMode="decimal" name="nenshu" value={formData.nenshu} step="0.1" onChange={handleChange} placeholder="売上高 (百万円) ※必須" className={errors.nenshu ? inpErr : inpReq} />
+                  <AmountChips amounts={SALES_ASSET_AMOUNTS} activeValue={formData.nenshu} onSelect={(value) => setQuickValue('nenshu', value)} />
                   {errors.nenshu && <p className={errMsg}>{errors.nenshu}</p>}
                 </div>
-                <input type="text" inputMode="text" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円) ※赤字は例: -5" className={inp} />
-                <input type="text" inputMode="text" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円) ※赤字は例: -5" className={inp} />
-                <input type="text" inputMode="text" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円) ※赤字は例: -5" className={inp} />
-                <input type="text" inputMode="text" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円) ※赤字は例: -5" className={inp} />
+                <div>
+                  <input type="text" inputMode="text" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円) ※赤字は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.gross_profit} onSelect={(value) => setQuickValue('gross_profit', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="text" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円) ※赤字は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.op_profit} onSelect={(value) => setQuickValue('op_profit', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="text" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円) ※赤字は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.ord_profit} onSelect={(value) => setQuickValue('ord_profit', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="text" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円) ※赤字は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.net_income} onSelect={(value) => setQuickValue('net_income', value)} />
+                </div>
               </div>
             )}
 
@@ -805,23 +901,43 @@ export default function LeaseKunWizard() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <input type="text" inputMode="decimal" name="total_assets" value={formData.total_assets} step="0.1" onChange={handleChange} placeholder="総資産 (百万円) ※必須" className={errors.total_assets ? inpErr : inpReq} />
+                  <AmountChips amounts={SALES_ASSET_AMOUNTS} activeValue={formData.total_assets} onSelect={(value) => setQuickValue('total_assets', value)} />
                   {errors.total_assets && <p className={errMsg}>{errors.total_assets}</p>}
                 </div>
                 <div className="col-span-2">
                   <input type="text" inputMode="text" name="net_assets" value={formData.net_assets} step="0.1" onChange={handleChange} placeholder="純資産/自己資本 (百万円) ※債務超過は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.net_assets} onSelect={(value) => setQuickValue('net_assets', value)} />
                 </div>
-                <input type="text" inputMode="decimal" name="machines" value={formData.machines} step="0.1" onChange={handleChange} placeholder="機械装置 (百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="other_assets" value={formData.other_assets} step="0.1" onChange={handleChange} placeholder="その他資産 (百万円)" className={inp} />
+                <div>
+                  <input type="text" inputMode="decimal" name="machines" value={formData.machines} step="0.1" onChange={handleChange} placeholder="機械装置 (百万円)" className={inp} />
+                  <AmountChips amounts={CREDIT_AMOUNTS} activeValue={formData.machines} onSelect={(value) => setQuickValue('machines', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="decimal" name="other_assets" value={formData.other_assets} step="0.1" onChange={handleChange} placeholder="その他資産 (百万円)" className={inp} />
+                  <AmountChips amounts={CREDIT_AMOUNTS} activeValue={formData.other_assets} onSelect={(value) => setQuickValue('other_assets', value)} />
+                </div>
               </div>
             )}
 
             {/* Step 5: 経費 */}
             {step === 5 && (
               <div className="grid grid-cols-2 gap-2">
-                <input type="text" inputMode="decimal" name="depreciation" value={formData.depreciation} step="0.1" onChange={handleChange} placeholder="減価償却(資産・百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="dep_expense" value={formData.dep_expense} step="0.1" onChange={handleChange} placeholder="減価償却(経費・百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="rent" value={formData.rent} step="0.1" onChange={handleChange} placeholder="賃借料(資産・百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="rent_expense" value={formData.rent_expense} step="0.1" onChange={handleChange} placeholder="賃借料(経費・百万円)" className={inp} />
+                <div>
+                  <input type="text" inputMode="decimal" name="depreciation" value={formData.depreciation} step="0.1" onChange={handleChange} placeholder="減価償却(資産・百万円)" className={inp} />
+                  <AmountChips amounts={SMALL_COST_AMOUNTS} activeValue={formData.depreciation} onSelect={(value) => setQuickValue('depreciation', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="decimal" name="dep_expense" value={formData.dep_expense} step="0.1" onChange={handleChange} placeholder="減価償却(経費・百万円)" className={inp} />
+                  <AmountChips amounts={SMALL_COST_AMOUNTS} activeValue={formData.dep_expense} onSelect={(value) => setQuickValue('dep_expense', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="decimal" name="rent" value={formData.rent} step="0.1" onChange={handleChange} placeholder="賃借料(資産・百万円)" className={inp} />
+                  <AmountChips amounts={SMALL_COST_AMOUNTS} activeValue={formData.rent} onSelect={(value) => setQuickValue('rent', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="decimal" name="rent_expense" value={formData.rent_expense} step="0.1" onChange={handleChange} placeholder="賃借料(経費・百万円)" className={inp} />
+                  <AmountChips amounts={SMALL_COST_AMOUNTS} activeValue={formData.rent_expense} onSelect={(value) => setQuickValue('rent_expense', value)} />
+                </div>
               </div>
             )}
 
@@ -834,10 +950,16 @@ export default function LeaseKunWizard() {
                   <option>③ 要注意先</option>
                   <option>④ 無格付先</option>
                 </select>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-2">
                   <input type="text" inputMode="decimal" name="contracts" value={formData.contracts} onChange={handleChange} placeholder="契約件数" className={inp} />
-                  <input type="text" inputMode="decimal" name="bank_credit" value={formData.bank_credit} step="0.1" onChange={handleChange} placeholder="銀行与信残(百万円)" className={inp} />
-                  <input type="text" inputMode="decimal" name="lease_credit" value={formData.lease_credit} step="0.1" onChange={handleChange} placeholder="リース与信残(百万円)" className={inp} />
+                  <div>
+                    <input type="text" inputMode="decimal" name="bank_credit" value={formData.bank_credit} step="0.1" onChange={handleChange} placeholder="銀行与信残(百万円)" className={inp} />
+                    <AmountChips amounts={CREDIT_AMOUNTS} activeValue={formData.bank_credit} onSelect={(value) => setQuickValue('bank_credit', value)} />
+                  </div>
+                  <div>
+                    <input type="text" inputMode="decimal" name="lease_credit" value={formData.lease_credit} step="0.1" onChange={handleChange} placeholder="リース与信残(百万円)" className={inp} />
+                    <AmountChips amounts={CREDIT_AMOUNTS} activeValue={formData.lease_credit} onSelect={(value) => setQuickValue('lease_credit', value)} />
+                  </div>
                 </div>
               </div>
             )}
@@ -847,6 +969,7 @@ export default function LeaseKunWizard() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <input type="text" inputMode="decimal" name="acquisition_cost" value={formData.acquisition_cost} step="0.1" onChange={handleChange} placeholder="取得価格 (百万円) ※必須" className={errors.acquisition_cost ? inpErr : inpReq} />
+                  <AmountChips amounts={ASSET_PRICE_AMOUNTS} activeValue={formData.acquisition_cost} onSelect={(value) => setQuickValue('acquisition_cost', value)} />
                   {errors.acquisition_cost && <p className={errMsg}>{errors.acquisition_cost}</p>}
                 </div>
                 <div>
@@ -858,6 +981,7 @@ export default function LeaseKunWizard() {
                 <div>
                   <label className={lbl}>期間(月)</label>
                   <input type="text" inputMode="decimal" name="lease_term" value={formData.lease_term} onChange={handleChange} className={inp} />
+                  <AmountChips amounts={TERM_AMOUNTS} activeValue={formData.lease_term} onSelect={(value) => setQuickValue('lease_term', value)} />
                 </div>
                 <div className="col-span-2">
                   <label className={lbl}>検収年(西暦)</label>
