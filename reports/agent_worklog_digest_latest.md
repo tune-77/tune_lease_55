@@ -1,7 +1,7 @@
 # Codex/Claude 作業録ダイジェスト
 
-- generated_at: 2026-08-13T04:03:21
-- source_count: 28
+- generated_at: 2026-08-11T04:04:59
+- source_count: 38
 - displayed: 12
 
 ## Shion Use Policy

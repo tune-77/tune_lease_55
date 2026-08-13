@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 14463 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 15147 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "14463 session age (minutes) exceed threshold 120"
+      "15147 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 14463,
+        "actual": 15147,
         "threshold": 120,
         "triggered": true
       }
@@ -60,7 +60,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 14463
+      "sessionAgeMinutes": 15147
     }
   },
   "continuity": {
@@ -75,26 +75,26 @@
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
     "Dockerfile",
-    "data/aurion_daily/latest.json",
-    "data/canonical_judgment_rules.json",
-    "data/demo.db",
-    "data/news_judgment_signals_latest.json",
-    "data/pdca_ai_rules.json",
-    "data/shion_pending_tasks.json",
-    "data/umap_anomaly_model.joblib",
-    "data/umap_embeddings.json",
+    "api/rule_engine/ledger_rules.json",
+    "frontend/.claude/state/instructions-loaded.jsonl",
     "frontend/public/lease-grumble/2026-07-12.webp",
-    "frontend/src/app/lease-kun/page.tsx",
-    "frontend/src/app/register/page.tsx",
-    "frontend/src/app/screening/page.tsx",
+    "frontend/public/lease-grumble/2026-08-12.webp",
     "frontend/src/components/layout/Sidebar.tsx",
     "reports/agent_action_ledger_latest.md",
     "reports/agent_sidecar_brief.md",
     "reports/agent_worklog_digest_latest.md",
-    "reports/autoresearch_judgment_asset_candidates_latest.md"
+    "reports/autoresearch_judgment_asset_candidates_20260812.md",
+    "reports/autoresearch_judgment_asset_candidates_latest.md",
+    "reports/canonical_judgment_rules_preview_20260812.md",
+    "reports/canonical_judgment_rules_preview_20260813.md",
+    "reports/canonical_judgment_rules_preview_latest.md",
+    "reports/judgment_asset_field_review_latest.md",
+    "reports/judgment_asset_growth_latest.md",
+    "reports/judgment_materials_preview_20260812.md",
+    "reports/judgment_materials_preview_20260813.md"
   ],
   "sessionId": "",
-  "timestamp": "2026-08-12T10:52:58Z",
+  "timestamp": "2026-08-12T22:17:00Z",
   "version": "1.0.0",
   "wipTasks": null
 }

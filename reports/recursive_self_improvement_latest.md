@@ -1,23 +1,24 @@
 # Recursive Self-Improvement Report
 
-- Generated at: `2026-08-13T04:13:14`
+- Generated at: `2026-08-11T04:14:00`
 - Source report: `/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/latest.json`
-- Canonical candidates: 6
+- Canonical candidates: 7
 - Ranked queue: 0
-- Suppressed: 6
+- Suppressed: 7
 
 ## Measurement
 - PDCA rate: 100.0%
-- Response changed rate: 35.8%
+- Response changed rate: 36.2%
 - Repeat issue rate: 0.0%
 - Reuse rate: 100.0%
 - Noise rate: 100.0%
-- Churn rate: 100.0% (healthy dedup: 0, churn: 6)
+- Churn rate: 100.0% (healthy dedup: 0, churn: 7)
 
 ## Ranked Queue
 - No auto-fix candidates
 
 ## Suppressions
+- `REV-292` `マルチエージェント討論の判断結果を登録できない` / ledger=needs_review (cooldown: 30日)
 - `promise_155e4f8db154` `リース審査でどのような影響があるか？` / ledger=needs_review (cooldown: 30日)
 - `promise_33143c3598b6` `昨日は何した？` / ledger=needs_review (cooldown: 30日)
 - `promise_4489c09fb1fa` `定性的にはどのような点を気をつければいいか？` / ledger=needs_review (cooldown: 30日)
