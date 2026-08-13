@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2 } from 'lucide-react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
@@ -10,6 +11,7 @@ import { CurrentIssueCard, RingiPolicyCard } from '../../components/analysis/Iss
 import CaseRegistrationForm from '../../components/analysis/CaseRegistrationForm';
 import { ShionScreeningReviewCard } from '../../components/analysis/ShionReviewCard';
 import { useShionScreeningReview } from '../../lib/useShionScreeningReview';
+import { parseHumanNumberInput } from '@/lib/numberInput';
 
 // --- 型定義 ---
 type Message = {
@@ -29,6 +31,16 @@ type ScoreResult = {
   sales_dept?: string;
   quantum_risk?: number;
   case_id?: string;
+};
+
+type ConditionalApprovalAction = string | {
+  action?: string;
+  reason?: string;
+};
+
+type LeaseKunFullResult = ScoreResult & Record<string, unknown> & {
+  conditional_approval_actions?: ConditionalApprovalAction[];
+  umap_anomaly_score?: number;
 };
 
 type IndustryMasterEntry = {
@@ -58,6 +70,53 @@ const PHASE_LABELS = {
   done: "完了",
 } as const;
 
+const INITIAL_FORM_DATA = {
+  // Step 0
+  company_no: '', company_name: '',
+  industry_major: 'D 建設業', industry_sub: '06 総合工事業',
+  // Step 1
+  sales_dept: '未設定',
+  main_bank: 'メイン先', competitor: '競合なし',
+  num_competitors: '未入力', deal_source: 'その他', deal_occurrence: '不明',
+  customer_type: '新規先',
+  // Step 2
+  asset_name: 'IT・OA機器',
+  asset_location: '',
+  // Step 3 (PL)
+  nenshu: '', gross_profit: '', op_profit: '', ord_profit: '', net_income: '',
+  // Step 4 (BS)
+  total_assets: '', net_assets: '', machines: '', other_assets: '',
+  // Step 5 (経費)
+  depreciation: '', dep_expense: '', rent: '', rent_expense: '',
+  // Step 6 (信用)
+  grade: '②4-6 (標準)', contracts: '', bank_credit: '', lease_credit: '',
+  // Step 7 (契約)
+  contract_type: '一般',
+  lease_term: 60, acceptance_year: new Date().getFullYear(), acquisition_cost: '',
+  // Step 8 (定性)
+  qual_corr_company_history: '未選択',
+  qual_corr_customer_stability: '未選択',
+  qual_corr_repayment_history: '未選択',
+  qual_corr_business_future: '未選択',
+  qual_corr_equipment_purpose: '未選択',
+  qual_corr_main_bank: '未選択',
+  passion_text: '',
+  // Step 9
+  intuition: 3
+};
+
+type LeaseKunFormData = typeof INITIAL_FORM_DATA;
+
+function parseMillionInput(value: string | number, fallback = 0): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+  const parsed = parseHumanNumberInput(value);
+  return parsed ?? fallback;
+}
+
+function isPositiveMillionInput(value: string | number): boolean {
+  return parseMillionInput(value, NaN) > 0;
+}
+
 // --- メインコンポーネント ---
 export default function LeaseKunWizard() {
   const router = useRouter();
@@ -73,7 +132,7 @@ export default function LeaseKunWizard() {
   // 入力完了後は screening / register 画面へ離脱させず、この画面内で
   // 分析結果の確認 → 結果登録まで一気通貫で完結させる
   const [phase, setPhase] = useState<'wizard' | 'analysis' | 'register' | 'done'>('wizard');
-  const [fullResult, setFullResult] = useState<Record<string, any> | null>(null);
+  const [fullResult, setFullResult] = useState<LeaseKunFullResult | null>(null);
   const shionReview = useShionScreeningReview();
   const shionRequestedForCaseId = useRef<string | null>(null);
 
@@ -82,40 +141,7 @@ export default function LeaseKunWizard() {
   const [subs, setSubs] = useState<string[]>([]);
 
   // --- フォームステート ---
-  const [formData, setFormData] = useState({
-    // Step 0
-    company_no: '', company_name: '',
-    industry_major: 'D 建設業', industry_sub: '06 総合工事業',
-    // Step 1
-    sales_dept: '未設定',
-    main_bank: 'メイン先', competitor: '競合なし',
-    num_competitors: '未入力', deal_source: 'その他', deal_occurrence: '不明',
-    customer_type: '新規先',
-    // Step 2
-    asset_name: 'IT・OA機器',
-    asset_location: '',
-    // Step 3 (PL)
-    nenshu: '', gross_profit: '', op_profit: '', ord_profit: '', net_income: '',
-    // Step 4 (BS)
-    total_assets: '', net_assets: '', machines: '', other_assets: '',
-    // Step 5 (経費)
-    depreciation: '', dep_expense: '', rent: '', rent_expense: '',
-    // Step 6 (信用)
-    grade: '②4-6 (標準)', contracts: '', bank_credit: '', lease_credit: '',
-    // Step 7 (契約)
-    contract_type: '一般',
-    lease_term: 60, acceptance_year: new Date().getFullYear(), acquisition_cost: '',
-    // Step 8 (定性)
-    qual_corr_company_history: '未選択',
-    qual_corr_customer_stability: '未選択',
-    qual_corr_repayment_history: '未選択',
-    qual_corr_business_future: '未選択',
-    qual_corr_equipment_purpose: '未選択',
-    qual_corr_main_bank: '未選択',
-    passion_text: '',
-    // Step 9
-    intuition: 3
-  });
+  const [formData, setFormData] = useState<LeaseKunFormData>(INITIAL_FORM_DATA);
 
   // 業種マスター取得
   useEffect(() => {
@@ -125,8 +151,8 @@ export default function LeaseKunWizard() {
         if (!data) return;
         setIndustryMaster(data);
         setMajors(Object.keys(data));
-        if (formData.industry_major && data[formData.industry_major]) {
-          setSubs(extractSubs(data[formData.industry_major]));
+        if (INITIAL_FORM_DATA.industry_major && data[INITIAL_FORM_DATA.industry_major]) {
+          setSubs(extractSubs(data[INITIAL_FORM_DATA.industry_major]));
         }
       })
       .catch(() => {});
@@ -140,7 +166,7 @@ export default function LeaseKunWizard() {
     if (newSubs.length > 0 && !newSubs.includes(formData.industry_sub)) {
       setFormData(prev => ({ ...prev, industry_sub: newSubs[0] }));
     }
-  }, [formData.industry_major, industryMaster]);
+  }, [formData.industry_major, formData.industry_sub, industryMaster]);
 
   // 自動スクロール
   useEffect(() => {
@@ -195,7 +221,7 @@ export default function LeaseKunWizard() {
         nextBotText = `損益計算書(P/L)の数値を入力してね！売上高は必須だよ。`;
         break;
       case 3:
-        if (!formData.nenshu || Number(formData.nenshu) <= 0) {
+        if (!isPositiveMillionInput(formData.nenshu)) {
           newErrors.nenshu = '売上高は必須です';
         }
         if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
@@ -203,7 +229,7 @@ export default function LeaseKunWizard() {
         nextBotText = `貸借対照表(B/S)！総資産は必須。機械やその他の内訳もあれば。`;
         break;
       case 4:
-        if (!formData.total_assets || Number(formData.total_assets) <= 0) {
+        if (!isPositiveMillionInput(formData.total_assets)) {
           newErrors.total_assets = '総資産は必須です';
         }
         if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
@@ -219,7 +245,7 @@ export default function LeaseKunWizard() {
         nextBotText = `今回の契約期間や取得価格はどうなってる？`;
         break;
       case 7:
-        if (!formData.acquisition_cost || Number(formData.acquisition_cost) <= 0) {
+        if (!isPositiveMillionInput(formData.acquisition_cost)) {
           newErrors.acquisition_cost = '取得価格（百万円）は必須です';
         }
         if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
@@ -274,25 +300,25 @@ export default function LeaseKunWizard() {
         customer_type:                formData.customer_type,
         contract_type:                formData.contract_type,
         grade:                        formData.grade,
-        nenshu:                       Number(formData.nenshu || 0),
-        gross_profit:                 Number(formData.gross_profit || 0),
-        op_profit:                    Number(formData.op_profit || 0),
-        ord_profit:                   Number(formData.ord_profit || 0),
-        net_income:                   Number(formData.net_income || 0),
-        total_assets:                 Number(formData.total_assets || 0),
-        net_assets:                   Number(formData.net_assets || 0),
-        machines:                     Number(formData.machines || 0),
-        other_assets:                 Number(formData.other_assets || 0),
-        depreciation:                 Number(formData.depreciation || 0),
-        dep_expense:                  Number(formData.dep_expense || 0),
-        rent:                         Number(formData.rent || 0),
-        rent_expense:                 Number(formData.rent_expense || 0),
-        bank_credit:                  Number(formData.bank_credit || 0),
-        lease_credit:                 Number(formData.lease_credit || 0),
-        contracts:                    Number(formData.contracts || 0),
-        acquisition_cost:             Number(formData.acquisition_cost || 0),
-        lease_term:                   Number(formData.lease_term || 60),
-        acceptance_year:              Number(formData.acceptance_year || new Date().getFullYear()),
+        nenshu:                       parseMillionInput(formData.nenshu),
+        gross_profit:                 parseMillionInput(formData.gross_profit),
+        op_profit:                    parseMillionInput(formData.op_profit),
+        ord_profit:                   parseMillionInput(formData.ord_profit),
+        net_income:                   parseMillionInput(formData.net_income),
+        total_assets:                 parseMillionInput(formData.total_assets),
+        net_assets:                   parseMillionInput(formData.net_assets),
+        machines:                     parseMillionInput(formData.machines),
+        other_assets:                 parseMillionInput(formData.other_assets),
+        depreciation:                 parseMillionInput(formData.depreciation),
+        dep_expense:                  parseMillionInput(formData.dep_expense),
+        rent:                         parseMillionInput(formData.rent),
+        rent_expense:                 parseMillionInput(formData.rent_expense),
+        bank_credit:                  parseMillionInput(formData.bank_credit),
+        lease_credit:                 parseMillionInput(formData.lease_credit),
+        contracts:                    parseMillionInput(formData.contracts),
+        acquisition_cost:             parseMillionInput(formData.acquisition_cost),
+        lease_term:                   parseMillionInput(formData.lease_term, 60),
+        acceptance_year:              parseMillionInput(formData.acceptance_year, new Date().getFullYear()),
         qual_corr_company_history:    formData.qual_corr_company_history,
         qual_corr_customer_stability: formData.qual_corr_customer_stability,
         qual_corr_repayment_history:  formData.qual_corr_repayment_history,
@@ -305,18 +331,19 @@ export default function LeaseKunWizard() {
 
       const res = await apiClient.post(`/api/score/full`, payload);
       setSubmitted(true);
-      setFullResult(res.data);
+      const resultData = res.data as LeaseKunFullResult;
+      setFullResult(resultData);
 
-      const caseId = res.data.case_id as string | null | undefined;
+      const caseId = resultData.case_id;
 
       setHistory(prev => [...prev, {
         role: 'humor',
         text: (
           <span>
             <b>🎉 審査完了！</b><br/>
-            総合スコア: {(res.data.score_base ?? res.data.score)?.toFixed(1)}点<br/>
-            判定: {res.data.hantei}<br/>
-            借手スコア: {res.data.score_borrower?.toFixed(1)}点<br/><br/>
+            総合スコア: {(resultData.score_base ?? resultData.score)?.toFixed(1)}点<br/>
+            判定: {resultData.hantei}<br/>
+            借手スコア: {resultData.score_borrower?.toFixed(1)}点<br/><br/>
             {caseId ? (
               <button
                 onClick={() => setPhase('analysis')}
@@ -331,7 +358,7 @@ export default function LeaseKunWizard() {
             )}
             <br/><br/>
             <button
-              onClick={() => handleGunshiConsult(res.data)}
+              onClick={() => handleGunshiConsult(resultData)}
               className="mt-2 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition-colors w-full justify-center"
             >
               <MessageSquare className="w-3.5 h-3.5" />
@@ -439,7 +466,7 @@ export default function LeaseKunWizard() {
         <div className="bg-gradient-to-r from-[#1A1A2E] to-[#2d2d4e] w-full pt-12 md:pt-10 pb-4 px-4 shadow flex justify-between items-center shrink-0 z-10 text-[#E8A838]">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-white rounded-full flex justify-center items-center shadow-inner overflow-hidden border-2 border-[#E8A838]">
-              <img src="https://api.dicebear.com/7.x/bottts/svg?seed=LeaseApp&backgroundColor=E8A838" />
+              <Image src="/icons/icon-192.png" width={36} height={36} alt="" />
             </div>
             <div>
               <h3 className="font-black text-sm tracking-widest uppercase">Lease-Wizard</h3>
@@ -790,8 +817,10 @@ export default function LeaseKunWizard() {
                 <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
                   <div className="text-[11px] font-black uppercase tracking-wider text-amber-600 mb-2">条件付き承認に向けた確認事項</div>
                   <ul className="space-y-1.5">
-                    {fullResult.conditional_approval_actions.slice(0, 4).map((a: any, i: number) => (
-                      <li key={i} className="text-xs font-bold text-amber-900 leading-relaxed">・{a.action || a.reason || String(a)}</li>
+                    {fullResult.conditional_approval_actions.slice(0, 4).map((a, i) => (
+                      <li key={i} className="text-xs font-bold text-amber-900 leading-relaxed">
+                        ・{typeof a === 'string' ? a : a.action || a.reason || String(a)}
+                      </li>
                     ))}
                   </ul>
                 </section>
