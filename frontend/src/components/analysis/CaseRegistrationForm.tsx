@@ -16,13 +16,31 @@ export const parseRateInput = (value: string, fallback = 0.0) => {
 type Props = {
   caseId: string;
   compact?: boolean;
-  onRegistered?: (data: any) => void;
+  onRegistered?: (data: CaseRegistrationResult) => void;
+};
+
+export type CaseRegistrationStatus = '成約' | '失注';
+
+export type CaseRegistrationResult = Record<string, unknown> & {
+  registered_case_id: string;
+  registered_status: CaseRegistrationStatus;
+  final_rate: number;
+  base_rate_at_time: number;
+  competitor_rate: number;
+  experience_promotion?: {
+    status?: string;
+    reason?: string;
+  };
+  prediction_error?: {
+    status?: string;
+    reason?: string;
+  };
 };
 
 // register（PC）と lease-kun（スマホウィザード）の両方から使う、成約/失注の最終結果登録フォーム。
 // case_id は呼び出し側（案件検索 or 審査直後の case_id）が渡す。
 export default function CaseRegistrationForm({ caseId, compact = false, onRegistered }: Props) {
-  const [status, setStatus] = useState<'成約' | '失注'>('成約');
+  const [status, setStatus] = useState<CaseRegistrationStatus>('成約');
   const [finalRate, setFinalRate] = useState('0.0');
   const [baseRate, setBaseRate] = useState('2.1');
   const [lostReason, setLostReason] = useState('');
@@ -50,15 +68,18 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
     }
     setSubmitting(true);
     try {
+      const parsedFinalRate = parseRateInput(finalRate);
+      const parsedBaseRate = parseRateInput(baseRate, 2.1);
+      const parsedCompetitorRate = parseRateInput(competitorRate);
       const res = await apiClient.post(`/api/cases/register`, {
         case_id: caseId,
         status: status,
-        final_rate: parseRateInput(finalRate),
-        base_rate_at_time: parseRateInput(baseRate, 2.1),
+        final_rate: parsedFinalRate,
+        base_rate_at_time: parsedBaseRate,
         lost_reason: lostReason,
         loan_conditions: selectedConditions,
         competitor_name: competitorName,
-        competitor_rate: parseRateInput(competitorRate),
+        competitor_rate: parsedCompetitorRate,
         note: note,
         human_discomfort: humanDiscomfort,
         but_still_reason: butStillReason,
@@ -66,7 +87,15 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
         non_negotiable_condition: nonNegotiableCondition,
         retrospective_note: retrospectiveNote
       });
-      const promoted = res.data?.experience_promotion?.status === 'promoted';
+      const registrationResult: CaseRegistrationResult = {
+        ...(res.data || {}),
+        registered_case_id: String(res.data?.case_id || caseId),
+        registered_status: status,
+        final_rate: parsedFinalRate,
+        base_rate_at_time: parsedBaseRate,
+        competitor_rate: parsedCompetitorRate,
+      };
+      const promoted = registrationResult.experience_promotion?.status === 'promoted';
       triggerMebuki(
         'approve',
         `${caseId} の結果を登録しました！${promoted ? '\n経験ケースにも自動昇格しました。' : ''}`
@@ -83,7 +112,7 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
       setApprovalConditionMemo('');
       setNonNegotiableCondition('');
       setRetrospectiveNote('');
-      onRegistered?.(res.data);
+      onRegistered?.(registrationResult);
     } catch (err) {
       console.error(err);
       triggerMebuki('reject', '登録に失敗しました。存在する案件か確認してください。');

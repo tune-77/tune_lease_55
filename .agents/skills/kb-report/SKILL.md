@@ -9,12 +9,20 @@ Use this skill to answer a focused question from promoted Obsidian knowledge and
 
 ## When to use
 
+Reason: kb-report is for durable, source-traceable answers, not quick chat replies.
+Scope: use only when the user asks for a report, curated wiki-only answer, or saved evidence-backed output.
+Retirement: remove if a dedicated report generator enforces source selection and saved output automatically.
+
 - The user asks for a report based on Obsidian wiki/knowledge notes.
 - The answer should remain reusable after the chat ends.
 - The user needs source traceability for lease screening judgment.
 - The task asks to avoid raw chat logs and use curated knowledge.
 
 ## Workflow
+
+Reason: direct Vault scans and raw chat logs make reports hard to trust or reproduce.
+Scope: use when building a Markdown report from promoted Obsidian knowledge.
+Retirement: remove if the shared Obsidian retrieval layer becomes the only available report input path.
 
 1. Build search terms with the shared project path.
    - Use `obsidian_query.py` for query splitting when running local code.
@@ -23,6 +31,9 @@ Use this skill to answer a focused question from promoted Obsidian knowledge and
 
 2. Prefer promoted knowledge.
    - Prefer `Projects/tune_lease_55/tune_lease_55 Wiki.md`.
+     Reason: reports should cite curated project knowledge before raw chat or daily notes.
+     Scope: use this for broad tune_lease_55 questions without a more specific promoted source.
+     Retirement: replace this preference if a domain-specific promoted index becomes the accepted source of truth.
    - Prefer `Projects/tune_lease_55/Asset Knowledge/`.
    - Prefer `Projects/tune_lease_55/Cases/` when the question is about past screening cases.
    - Treat `AI Chat`, `Daily`, `Improvement Log`, and `Weekly Review` as candidate material, not final authority.
@@ -48,4 +59,3 @@ Use this skill to answer a focused question from promoted Obsidian knowledge and
 - Do not use unpromoted chat logs as the only basis for a conclusion.
 - If the source set is weak, say that in the report and mark the answer as tentative.
 - Keep the final chat response short: saved path, 3-line lead, source count.
-

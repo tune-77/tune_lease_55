@@ -61,6 +61,10 @@ FORCE_RESTART=1 PATH=/usr/local/bin:/opt/homebrew/bin:/Applications/Codex.app/Co
 
 ## Workflow
 
+Reason: the app stack has separate API, Next, and tunnel processes, and a full foreground restart is more disruptive than targeted service recovery.
+Scope: use when restoring local Next/FastAPI availability or refreshing the public Cloudflare quick tunnel.
+Retirement: remove this workflow if the LaunchAgent exposes a reliable health-and-restart command that handles API, Next, and tunnel checks end to end.
+
 1. Run status first.
 2. Confirm `com.tunelease.next` is registered with `launchctl`.
 3. Use `launchctl kickstart -k` for a persistent full restart.
@@ -78,6 +82,10 @@ curl --max-time 10 -sS http://127.0.0.1:3000/ >/dev/null
 9. Report the local Next URL and the newest Cloudflare URL.
 
 ## Notes
+
+Reason: public tunnel restarts can expose the wrong app, bind too broadly, or kill unrelated local processes if the launcher path is confused.
+Scope: use for local production-style launcher operation with Cloudflare Tunnel.
+Retirement: remove these notes when `run_next_stable.sh` enforces tunnel mode, bind host, sandbox health checks, and process cleanup safely on its own.
 
 - Use `PUBLIC_TUNNEL=1`; do not fall back to `run_with_cloudflare.sh` unless the user explicitly wants the old Streamlit route.
 - Use `API_HOST=127.0.0.1` and `NEXT_HOST=127.0.0.1` for local-only binding unless the user asks for LAN binding.

@@ -5469,6 +5469,7 @@ def _build_reflection_gate_prompt_block(
     continuity_hook: dict | None = None,
     delta_awareness: dict | None = None,
     memory_to_judgment: dict | None = None,
+    message: str = "",
 ) -> tuple[str, dict]:
     from api.chat_reflection_prompts import build_reflection_gate_prompt_block
 
@@ -5476,6 +5477,7 @@ def _build_reflection_gate_prompt_block(
         continuity_hook=continuity_hook,
         delta_awareness=delta_awareness,
         memory_to_judgment=memory_to_judgment,
+        message=message,
     )
 
 
@@ -5485,6 +5487,33 @@ def _build_consciousness_ux_prompt_block() -> str:
     from api.chat_reflection_prompts import build_consciousness_ux_prompt_block
 
     return build_consciousness_ux_prompt_block()
+
+
+def _build_world_proxy_prompt_block(
+    *,
+    message: str,
+    category: str = "",
+    memory_recall: dict | None = None,
+    knowledge_refs: list[str] | None = None,
+    rag_context: str = "",
+    db_context: str = "",
+    judgment_learning_used: bool = False,
+    experience_loop: dict | None = None,
+    grey_judgment_memory: dict | None = None,
+) -> tuple[str, dict]:
+    from api.chat_reflection_prompts import build_world_proxy_prompt_block
+
+    return build_world_proxy_prompt_block(
+        message=message,
+        category=category,
+        memory_recall=memory_recall,
+        knowledge_refs=knowledge_refs,
+        rag_context=rag_context,
+        db_context=db_context,
+        judgment_learning_used=judgment_learning_used,
+        experience_loop=experience_loop,
+        grey_judgment_memory=grey_judgment_memory,
+    )
 
 
 def _build_shion_light_tone_feedback_prompt_block(message: str) -> str:
@@ -5554,6 +5583,7 @@ def _chat_memory_debug_payload(
     reflection_gate: dict | None = None,
     experience_loop: dict | None = None,
     grey_judgment_memory: dict | None = None,
+    world_proxy: dict | None = None,
 ) -> dict:
     from api.chat_debug_metadata import chat_memory_debug_payload
 
@@ -5576,6 +5606,7 @@ def _chat_memory_debug_payload(
         reflection_gate=reflection_gate,
         experience_loop=experience_loop,
         grey_judgment_memory=grey_judgment_memory,
+        world_proxy=world_proxy,
     )
 
 
@@ -5638,6 +5669,7 @@ def _build_shared_shion_dialogue_memory_context(
         continuity_hook=continuity_payload,
         delta_awareness=delta_payload,
         memory_to_judgment=memory_to_judgment_payload,
+        message=message,
     )
     for block in (delta_context, memory_to_judgment_context, reflection_gate_context):
         if block:
@@ -5655,6 +5687,17 @@ def _build_shared_shion_dialogue_memory_context(
     )
     if memory_expression_context:
         parts.append(memory_expression_context.strip())
+
+    world_proxy_context, world_proxy_payload = _build_world_proxy_prompt_block(
+        message=message,
+        category="lease_intelligence_dialogue",
+        memory_recall=memory_recall_payload,
+        knowledge_refs=[],
+        experience_loop=experience_payload,
+        grey_judgment_memory=grey_payload,
+    )
+    if world_proxy_context:
+        parts.append(world_proxy_context.strip())
 
     consciousness_context = _build_consciousness_ux_prompt_block()
     if consciousness_context:
@@ -5678,6 +5721,7 @@ def _build_shared_shion_dialogue_memory_context(
         "memory_expression": memory_expression_payload,
         "reflection_gate": reflection_gate_payload,
         "grey_judgment_memory": grey_payload,
+        "world_proxy": world_proxy_payload,
     }
     return ("\n\n".join(parts), payload)
 
@@ -6741,6 +6785,8 @@ def post_chat(req: ChatRequest):
             memory_expression_payload = {"used": False}
             reflection_gate_context = ""
             reflection_gate_payload = {"triggered": False}
+            world_proxy_context = ""
+            world_proxy_payload = {"used": False}
             if is_general_response_mode:
                 memory_recall = {
                     "route": "",
@@ -6761,6 +6807,10 @@ def post_chat(req: ChatRequest):
                 }
                 reflection_gate_payload = {
                     "triggered": False,
+                    "suppressed_by_response_mode": "general",
+                }
+                world_proxy_payload = {
+                    "used": False,
                     "suppressed_by_response_mode": "general",
                 }
             else:
@@ -6786,6 +6836,15 @@ def post_chat(req: ChatRequest):
                     continuity_hook=continuity_hook_payload,
                     delta_awareness=delta_awareness_payload,
                     memory_to_judgment=memory_to_judgment_payload,
+                    message=req.message,
+                )
+                world_proxy_context, world_proxy_payload = _build_world_proxy_prompt_block(
+                    message=req.message,
+                    category=question_category,
+                    memory_recall=memory_recall,
+                    knowledge_refs=[],
+                    experience_loop=experience_loop_payload,
+                    grey_judgment_memory=grey_judgment_payload,
                 )
             external_research = {"used": False}
             research_suggestion = build_external_research_suggestion(
@@ -6853,6 +6912,7 @@ def post_chat(req: ChatRequest):
                 memory_to_judgment_context,
                 memory_expression_context,
                 reflection_gate_context,
+                world_proxy_context,
                 external_research_context,
                 consciousness_ux_context,
                 shion_specificity_context,
@@ -6956,6 +7016,7 @@ def post_chat(req: ChatRequest):
                     user_id=req.user_id,
                     intent=req.intent or "",
                     category="general",
+                    world_proxy=world_proxy_payload,
                 ),
             )
             _record_memory_usage_if_available(
@@ -6976,6 +7037,7 @@ def post_chat(req: ChatRequest):
                     memory_expression=memory_expression_payload,
                     reflection_gate=reflection_gate_payload,
                     grey_judgment_memory=grey_judgment_payload,
+                    world_proxy=world_proxy_payload,
                 ),
             )
             _record_chat_knowledge_correction_if_needed(req.message)
@@ -7019,6 +7081,7 @@ def post_chat(req: ChatRequest):
                     reflection_gate=reflection_gate_payload,
                     experience_loop=experience_loop_payload,
                     grey_judgment_memory=grey_judgment_payload,
+                    world_proxy=world_proxy_payload,
                 )
                 response_payload["memory_debug"]["user_personal_memory"] = {
                     "used": bool(user_personal_memory_payload.get("block")),
@@ -7161,6 +7224,8 @@ def post_chat(req: ChatRequest):
         memory_expression_payload = {"used": False}
         reflection_gate_context = ""
         reflection_gate_payload = {"triggered": False}
+        world_proxy_context = ""
+        world_proxy_payload = {"used": False}
         if is_general_response_mode:
             memory_recall = {
                 "route": "",
@@ -7181,6 +7246,10 @@ def post_chat(req: ChatRequest):
             }
             reflection_gate_payload = {
                 "triggered": False,
+                "suppressed_by_response_mode": "general",
+            }
+            world_proxy_payload = {
+                "used": False,
                 "suppressed_by_response_mode": "general",
             }
         else:
@@ -7212,6 +7281,18 @@ def post_chat(req: ChatRequest):
                 continuity_hook=continuity_hook_payload,
                 delta_awareness=delta_awareness_payload,
                 memory_to_judgment=memory_to_judgment_payload,
+                message=req.message,
+            )
+            world_proxy_context, world_proxy_payload = _build_world_proxy_prompt_block(
+                message=req.message,
+                category=question_category,
+                memory_recall=memory_recall,
+                knowledge_refs=rag_refs,
+                rag_context=rag_context,
+                db_context=db_context,
+                judgment_learning_used=bool(judgment_learning_context),
+                experience_loop=experience_loop_payload,
+                grey_judgment_memory=grey_judgment_payload,
             )
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
@@ -7253,6 +7334,7 @@ def post_chat(req: ChatRequest):
             memory_to_judgment_context,
             memory_expression_context,
             reflection_gate_context,
+            world_proxy_context,
             rag_context,
             external_research_context,
             db_context,
@@ -7378,6 +7460,7 @@ def post_chat(req: ChatRequest):
                 memory_expression=memory_expression_payload,
                 reflection_gate=reflection_gate_payload,
                 grey_judgment_memory=grey_judgment_payload,
+                world_proxy=world_proxy_payload,
             ),
         )
         _record_memory_usage_if_available(
@@ -7400,6 +7483,7 @@ def post_chat(req: ChatRequest):
                 memory_expression=memory_expression_payload,
                 reflection_gate=reflection_gate_payload,
                 estimated_user_emotion=estimated_user_emotion,
+                world_proxy=world_proxy_payload,
             ),
         )
         _record_chat_knowledge_correction_if_needed(req.message)
@@ -7489,6 +7573,7 @@ def post_chat(req: ChatRequest):
                 reflection_gate=reflection_gate_payload,
                 experience_loop=experience_loop_payload,
                 grey_judgment_memory=grey_judgment_payload,
+                world_proxy=world_proxy_payload,
             )
             append_chat_debug_metadata(
                 response_payload["memory_debug"],

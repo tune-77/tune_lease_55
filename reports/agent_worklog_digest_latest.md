@@ -1,7 +1,7 @@
 # Codex/Claude 作業録ダイジェスト
 
-- generated_at: 2026-08-11T04:04:59
-- source_count: 38
+- generated_at: 2026-08-14T04:03:04
+- source_count: 30
 - displayed: 12
 
 ## Shion Use Policy
@@ -9,6 +9,70 @@
 - 禁止: 顧客情報の推測、Private Reflection原文の引用、人間承認なしの判断資産昇格
 
 ## Items
+
+### 2026-08-13 17:29 Codex
+- Summary: PR #754 Lease kun改善をmasterへマージ
+- Chat Summary: UserからGitship依頼。PR #754の必須チェック6件が成功していることを確認し、保護ブランチ運用に合わせてPR経由でmasterへマージした。
+- Decisions: master直接pushではなくGitHub PR mergeを使用。リモートfeature branchは削除済み。data/配下の既存未コミット変更はコミットせず維持。
+- Changes: frontend/src/app/lease-kun/page.tsx / frontend/src/app/register/page.tsx
+- Verification: gh pr checks 754: all pass / gh pr view 754: MERGED
+- Open Items: -
+
+### 2026-08-13 17:00 Codex
+- Summary: Lease kun 後日登録導線を本線結果登録へ接続
+- Chat Summary: Userが『ちゃんと本線の結果登録につながってるんだろうな？』と確認。調査したところ即時登録は本線APIに接続済みだったが、後日登録用localStorage控えはregister一覧に未接続だったため削除し、/register?case_id=... で本線の未登録案件を自動選択するよう修正した。
+- Decisions: 後日登録は独自localStorageリストではなく、/api/score/full が保存する past_cases 未登録案件と /api/cases/pending → /api/cases/register の本線に寄せる。
+- Changes: frontend/src/app/lease-kun/page.tsx / frontend/src/app/register/page.tsx
+- Verification: npx eslint src/app/lease-kun/page.tsx src/app/register/page.tsx / npm run typecheck
+- Open Items: -
+
+### 2026-08-13 16:55 Codex
+- Summary: Lease kun の結果登録導線を後日登録中心へ変更
+- Chat Summary: Userが『審査してすぐ結果登録するか？』と指摘。分析後の主導線を即時結果登録から後日登録へ変え、今わかる場合だけ結果登録へ進む形にした。
+- Decisions: 審査直後は結果未確定が自然なので、後で結果登録する案件として localStorage に控える。即時登録は副導線にする。data/配下の既存変更はコミット対象外。
+- Changes: frontend/src/app/lease-kun/page.tsx
+- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
+- Open Items: -
+
+### 2026-08-13 16:46 Codex
+- Summary: Lease kun に審査後の確認3点カードを追加
+- Chat Summary: Userから次改善として確認3点カードの実装を依頼。Lease kun の分析結果フェーズ先頭に、スコア・Q_risk・新規/競合/物件価格比から deterministic に最大3点を表示するカードを追加した。
+- Decisions: LLM呼び出しは増やさず、fullResult と formData だけで高速・安定に生成する。data/配下の既存変更は引き続きコミット対象外。
+- Changes: frontend/src/app/lease-kun/page.tsx
+- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
+- Open Items: -
+
+### 2026-08-13 16:42 Codex
+- Summary: Lease kun の数字入力を金額チップで簡単化
+- Chat Summary: Userから数字入力を簡単にしたいと依頼。Lease kun の金額・期間入力にワンタップ候補を追加し、スマホでの手打ち量を減らした。
+- Decisions: 手入力は維持しつつ、売上/利益/総資産/経費/与信/取得価格/期間に候補チップを追加。data/配下の既存変更はコミット対象外。
+- Changes: frontend/src/app/lease-kun/page.tsx
+- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
+- Open Items: -
+
+### 2026-08-13 16:37 Codex
+- Summary: Lease kun に途中保存と復元を追加
+- Chat Summary: Userが次の改善として途中保存 + 復元を選択。既存PRブランチに追加実装し、入力中のformData/stepをlocalStorageへ保存・復元するようにした。
+- Decisions: 審査成功時と下書き破棄時は古い入力を復元しないようdraftを削除する。data/配下の既存変更は引き続きコミット対象外。
+- Changes: frontend/src/app/lease-kun/page.tsx
+- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
+- Open Items: -
+
+### 2026-08-13 16:23 Codex
+- Summary: Lease kun の数値入力正規化とヘッダー画像修正をPR化
+- Chat Summary: UserからLease kun周辺のレビュー修正後にGitship依頼。masterは保護ブランチだったため、直接pushではなくPR #754を作成した。
+- Decisions: data/配下の既存変更はコミットせず、Lease kunコード修正のみをブランチに載せた。
+- Changes: frontend/src/app/lease-kun/page.tsx
+- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
+- Open Items: -
+
+### 2026-08-13 13:24 Codex
+- Summary: ローカル未コミット生成物更新をPR #753でmasterへ統合
+- Chat Summary: Userからローカル未コミット変更のマージ依頼。data/配下はリポジトリルールに従い除外し、生成レポート・静的データ・UI状態ファイル更新をコミットしてPR経由でmergeした。
+- Decisions: master保護のため直接pushではなくPR #753経由でmerge。data/配下のローカル状態ファイルは未コミットのまま保持。
+- Changes: commit 1be1508: chore: ローカル生成物更新を統合 / merge commit 43b9a0f: PR #753 merged
+- Verification: python3 scripts/preflight_pr_guard.py: 警告なし / python -m py_compile api/routers/gunshi.py: 成功
+- Open Items: -
 
 ### 2026-08-10 07:33 Codex
 - Summary: 管理系画面を /operations の運用情報に統合し、システム概要・DevOps・記憶運用への入口を一本化した
@@ -40,68 +104,4 @@
 - Decisions: 会話ログは知識RAGの通常候補より下げ、通常ノートでtop_kを満たせる場合は低優先ソースを混ぜない。評価セットは現行VaultのVertex Distilled知識も正解候補に含める。
 - Changes: api/knowledge/vector_store.py, scripts/analyze_rag_staleness.py, api/knowledge/rag_eval_set.json, config/rag_ranking.json, tests/test_analyze_rag_staleness.py, tests/test_knowledge_vector_store_rerank.py
 - Verification: pytest対象15件成功。RAG評価 hit@5=30/30, forbidden_cases=0/30。preflight_pr_guard警告なし。
-- Open Items: -
-
-### 2026-08-09 07:38 Codex
-- Summary: git-ship: 紫苑プロンプト優先順位と回答品質改善をPR #725でmasterへマージ
-- Chat Summary: Userのgitship指示を受け、featureブランチの変更をpushし、master保護によりPR経由へ切替。CI成功後にPR #725をマージした。
-- Decisions: masterは保護ブランチのため直接pushせずPR経由でマージ。data/配下はgit-shipルール通り除外。
-- Changes: api/chat_reflection_prompts.py, api/routers/feedback_loop.py, api/routers/shion_tasks.py, api/routers/cases.py, api/db_connection.py, reports/*, tests/*
-- Verification: pytest対象7ファイル 81 passed; python3 scripts/preflight_pr_guard.py 警告なし; GitHub PR Checks success
-- Open Items: -
-
-### 2026-08-09 07:32 Codex
-- Summary: 紫苑の内省を実務アクション候補へ接続し、PR #724 を master へマージ
-- Chat Summary: Userが『内省を実務アクション候補に変換して、採用/保留/却下を追跡する』導線を要望。実装後に gitship を依頼。
-- Decisions: 内省候補は自動昇格せず、既存の自己提案/改善トリアージUIで採用(修正)/保留/却下を人間が記録する。
-- Changes: scripts/build_reflection_action_candidates.py; scripts/attach_shion_self_proposals_to_report.py; scripts/run_daily_improvement_core.sh; scripts/run_daily_improvement_post.sh; api/chat_reflection_prompts.py; lease_intelligence_mind.py; tests/test_reflection_action_candidates.py
-- Verification: pytest 関連30件成功; preflight_pr_guard 警告なし; PR #724 merged
-- Open Items: -
-
-### 2026-08-09 07:32 Codex
-- Summary: 紫苑プロンプトの衝突時裁定ルールを共通ブロック化し、主要な紫苑入口へ注入した。
-- Chat Summary: Userが紫苑向けプロンプトのコンフリクト有無を確認し、優先順位表の追加を依頼。その後gitshipを依頼したため、対象変更のみPR化してマージした。
-- Decisions: 紫苑の指示競合は、安全・事実確認・直近依頼・リース実務・記憶/判断資産・内省/関係性・口調の順で裁定する。めぶきちゃん本体には注入しない。
-- Changes: api/shion_prompt_priority.py を追加 / api/prompt_generator.py, lease_intelligence_dialogue.py, api/shion_agent.py, api/main.py に共通優先順位ブロックを注入 / tests/test_shion_tone.py, tests/test_lease_intelligence_dialogue.py で注入と順序を固定
-- Verification: pytest -q tests/test_shion_tone.py tests/test_lease_intelligence_dialogue.py: 11 passed / python -m py_compile api/shion_prompt_priority.py api/prompt_generator.py lease_intelligence_dialogue.py api/shion_agent.py api/main.py: passed
-- Open Items: -
-
-### 2026-08-08 23:21 Codex
-- Summary: 判断資産グラフにGraph Engineeringサマリを追加し、未検証・有効・見直し・接続薄い判断資産と次に検証すべき高ポテンシャル判断を可視化した。
-- Chat Summary: Userからグラフエンジニアリングをやれるか相談があり、既存の判断資産グラフに実戦検証状況を足す方針で実装。gitship指示によりPR経由でmasterへ反映した。
-- Decisions: Neo4j等の新規基盤は入れず、既存のローカルHTML/JSON生成パイプラインを拡張した。実案件フィードバックは自動昇格せず、検証不足と候補順位だけを表示する。
-- Changes: scripts/build_judgment_asset_graph.py / tests/test_build_judgment_asset_graph.py / reports/judgment_asset_graph_latest.html
-- Verification: python -m pytest tests/test_build_judgment_asset_graph.py: 7 passed / python -m py_compile scripts/build_judgment_asset_graph.py: OK
-- Open Items: -
-
-### 2026-08-08 22:01 Codex
-- Summary: REV-048a sync_improvement_reports_post 障害を復旧し、PR #721 で master へマージした。
-- Chat Summary: ユーザーから gitship 指示。master は保護ブランチだったため、PR を作成してチェック通過後にマージした。
-- Decisions: reports/latest.json の applied が整数カウンタでも applied_improvements を読むようにし、post 後処理ログは実コマンド結果を記録する。
-- Changes: .agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py / scripts/run_daily_improvement_post.sh / tests/test_sync_improvement_reports_from_ledger.py
-- Verification: pytest tests/test_sync_improvement_reports_from_ledger.py -q: 4 passed / sync_improvement_reports.py dry-run: exit 0
-- Open Items: -
-
-### 2026-08-08 21:35 Codex
-- Summary: git ship完了: PR #720をCI成功後にmergeし、featureブランチをローカル/リモートとも削除。
-- Chat Summary: Userから再度git ship依頼。PR Checks successを確認してからPR #720をmerge。master直接pushではなく保護ブランチのPR経由で反映した。
-- Decisions: CI/CL checkを省かず、PR Checks success後にmergeした。対象feature branchは削除済み。
-- Changes: PR #720 merged: https://github.com/tune-77/tune_lease_55/pull/720
-- Verification: GitHub PR Checks run #448 success。PR merged=true確認。git branch -aで対象feature branchなし。
-- Open Items: -
-
-### 2026-08-08 19:59 Codex
-- Summary: git ship: 改善台帳のapplied確定修正、Obsidian Markdown列挙共通化、Vertex/GCS同期修正をfeatureブランチへpushし、PR #720を作成。masterは保護ブランチのため直接mergeは未実行。
-- Chat Summary: Userから作業ツリー整理後にgit ship依頼。未コミット生成物はstashへ退避し、実装差分はコミット済み。master保護によりPR経由へ切替。
-- Decisions: master直接pushは保護ルールで拒否されたため、PR #720を作成し、mergeは明示承認待ちにした。
-- Changes: コミット: b88b674, f5e6139, e3a5721, 32deac8。PR: https://github.com/tune-77/tune_lease_55/pull/720
-- Verification: pytest 18 passed。preflight_pr_guard warningなし。py_compile OK。
-- Open Items: -
-
-### 2026-08-08 19:40 Codex
-- Summary: 紫苑チャットの曖昧な情報要求で、手元データがない場合に外部調査許可を確認する制御を追加
-- Chat Summary: ユーザーから、情報がない場合に紫苑が『ネットで調査してもいいですか？』と聞くようにしたい、続けてgitshipの依頼。今回差分だけをコミットしてブランチへpush。
-- Decisions: 手元RAGが0件かつ補助金・金利・政策・ニュース等の外部確認が自然な質問では、捏造せず許可確認を返す。基本的な安定知識では確認を出さない。
-- Changes: api/chat_external_research.py, api/chat_persona_prompts.py, api/chat_context_builder.py, api/main.py, related tests
-- Verification: pytest tests/test_chat_external_research.py tests/test_chat_persona_prompts.py tests/test_shion_specificity_prompt.py tests/test_chat_context_builder.py: 35 passed; py_compile OK; git diff --check OK; preflight_pr_guard warnings only in pre-existing api/routers/vault_hub.py
 - Open Items: -
