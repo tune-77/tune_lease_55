@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "legacy_version": "1.0.0",
   "artifactType": "structured-handoff",
-  "timestamp": "2026-08-04T20:31:05Z",
+  "timestamp": "2026-08-12T10:52:58Z",
   "sessionId": "",
   "previous_state": {
     "summary": "Before compaction: 20 recent edit(s)",
@@ -26,19 +26,19 @@
       "severity": "medium",
       "kind": "verification",
       "summary": "20 recent edit(s) should be re-validated after resume",
-      "detail": ".claude/memory/session-log.md, .claude/state/handoff-artifact.json, .claude/state/precompact-snapshot.json, .claude/state/session.events.jsonl, .claude/state/worktree-info.json"
+      "detail": ".claude/state/handoff-artifact.json, .claude/state/precompact-snapshot.json, Dockerfile, data/aurion_daily/latest.json, data/canonical_judgment_rules.json"
     }
   ],
   "failed_checks": null,
   "decision_log": [
     {
-      "timestamp": "2026-08-04T20:31:05Z",
+      "timestamp": "2026-08-12T10:52:58Z",
       "actor": "pre-compact-save",
       "decision": "canonical_handoff_artifact_written",
       "rationale": "Persist a stable JSON artifact in .claude/state for long-running session handoff."
     },
     {
-      "timestamp": "2026-08-04T20:31:05Z",
+      "timestamp": "2026-08-12T10:52:58Z",
       "actor": "pre-compact-save",
       "decision": "legacy_snapshot_mirrored",
       "rationale": "Keep precompact-snapshot.json for backward compatibility with older hooks."
@@ -57,10 +57,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 3521 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 14463 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "3521 session age (minutes) exceed threshold 120"
+      "14463 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -94,7 +94,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 3521,
+        "actual": 14463,
         "threshold": 120,
         "triggered": true
       }
@@ -104,7 +104,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 3521
+      "sessionAgeMinutes": 14463
     }
   },
   "continuity": {
@@ -116,25 +116,25 @@
   "planItems": null,
   "wipTasks": null,
   "recentEdits": [
-    ".claude/memory/session-log.md",
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
-    ".claude/state/session.events.jsonl",
-    ".claude/state/worktree-info.json",
-    "CLAUDE.md",
-    "api/chat_external_research.py",
-    "api/rule_engine/ledger_rules.json",
-    "api/shion_memory_impact.py",
-    "api/shion_memory_recall.py",
-    "api/shion_memory_rerank.py",
-    "config/rag_ranking.json",
+    "Dockerfile",
     "data/aurion_daily/latest.json",
     "data/canonical_judgment_rules.json",
-    "data/coeff_auto.json",
-    "data/industry_benchmarks.json",
-    "data/industry_capex_lease.json",
-    "data/shion_monitor_report_state.json",
+    "data/demo.db",
+    "data/news_judgment_signals_latest.json",
+    "data/pdca_ai_rules.json",
     "data/shion_pending_tasks.json",
-    "data/training_meta.json"
+    "data/umap_anomaly_model.joblib",
+    "data/umap_embeddings.json",
+    "frontend/public/lease-grumble/2026-07-12.webp",
+    "frontend/src/app/lease-kun/page.tsx",
+    "frontend/src/app/register/page.tsx",
+    "frontend/src/app/screening/page.tsx",
+    "frontend/src/components/layout/Sidebar.tsx",
+    "reports/agent_action_ledger_latest.md",
+    "reports/agent_sidecar_brief.md",
+    "reports/agent_worklog_digest_latest.md",
+    "reports/autoresearch_judgment_asset_candidates_latest.md"
   ]
 }

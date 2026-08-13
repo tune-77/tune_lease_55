@@ -1,11 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Activity, ChevronDown, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
 import { extractPrefectureFromText } from '@/lib/prefecture';
+import { CurrentIssueCard, RingiPolicyCard } from '../../components/analysis/IssuePolicyCards';
+import CaseRegistrationForm from '../../components/analysis/CaseRegistrationForm';
+import { ShionScreeningReviewCard } from '../../components/analysis/ShionReviewCard';
+import { useShionScreeningReview } from '../../lib/useShionScreeningReview';
 
 // --- 型定義 ---
 type Message = {
@@ -47,6 +51,13 @@ const STEPS = [
   "経費・減価償却", "信用情報", "契約条件", "定性評価", "最終確認"
 ];
 
+const PHASE_LABELS = {
+  wizard: "入力",
+  analysis: "分析結果",
+  register: "結果登録",
+  done: "完了",
+} as const;
+
 // --- メインコンポーネント ---
 export default function LeaseKunWizard() {
   const router = useRouter();
@@ -58,6 +69,13 @@ export default function LeaseKunWizard() {
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 入力完了後は screening / register 画面へ離脱させず、この画面内で
+  // 分析結果の確認 → 結果登録まで一気通貫で完結させる
+  const [phase, setPhase] = useState<'wizard' | 'analysis' | 'register' | 'done'>('wizard');
+  const [fullResult, setFullResult] = useState<Record<string, any> | null>(null);
+  const shionReview = useShionScreeningReview();
+  const shionRequestedForCaseId = useRef<string | null>(null);
 
   const [industryMaster, setIndustryMaster] = useState<IndustryMaster>({});
   const [majors, setMajors] = useState<string[]>([]);
@@ -130,6 +148,17 @@ export default function LeaseKunWizard() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [history, step]);
+
+  // 分析結果フェーズに入ったら、screening画面と同じく紫苑レビューを自動生成する
+  // （case_idごとに1回だけ。register⇄analysis往復での再生成は防ぐ）
+  useEffect(() => {
+    if (phase !== 'analysis' || !fullResult?.case_id) return;
+    const caseId = String(fullResult.case_id);
+    if (shionRequestedForCaseId.current === caseId) return;
+    shionRequestedForCaseId.current = caseId;
+    void shionReview.requestReview(fullResult, formData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, fullResult]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -276,6 +305,7 @@ export default function LeaseKunWizard() {
 
       const res = await apiClient.post(`/api/score/full`, payload);
       setSubmitted(true);
+      setFullResult(res.data);
 
       const caseId = res.data.case_id as string | null | undefined;
 
@@ -288,15 +318,12 @@ export default function LeaseKunWizard() {
             判定: {res.data.hantei}<br/>
             借手スコア: {res.data.score_borrower?.toFixed(1)}点<br/><br/>
             {caseId ? (
-              <>
-                詳細は「📋 審査・分析」タブから確認してね！<br/><br/>
-                <button
-                  onClick={() => router.push(`/screening?case_id=${encodeURIComponent(caseId)}`)}
-                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition-colors w-full justify-center"
-                >
-                  📋 審査・分析画面で開く
-                </button>
-              </>
+              <button
+                onClick={() => setPhase('analysis')}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition-colors w-full justify-center"
+              >
+                📋 このまま分析結果を見る
+              </button>
             ) : (
               <span className="text-rose-600 font-bold">
                 ⚠️ 結果登録への保存に失敗した可能性があります。お手数ですが「📋 審査・分析」タブから内容を入力し直してください。
@@ -313,6 +340,10 @@ export default function LeaseKunWizard() {
           </span>
         )
       }]);
+
+      if (caseId) {
+        setPhase('analysis');
+      }
     } catch (e) {
       const err = e as { response?: { status?: number; data?: { detail?: string } }; message?: string };
       const status = err.response?.status;
@@ -335,6 +366,29 @@ export default function LeaseKunWizard() {
       nw.pop(); // user message
       return nw;
     });
+  };
+
+  const resetWizard = () => {
+    setStep(0);
+    setSubmitted(false);
+    setErrors({});
+    setPhase('wizard');
+    setFullResult(null);
+    setHistory([
+      { role: 'bot', text: 'はじめまして！リースくんです 🎩 まず企業名と業種から教えてね！' }
+    ]);
+    setFormData(prev => ({
+      ...prev,
+      company_no: '', company_name: '',
+      nenshu: '', gross_profit: '', op_profit: '', ord_profit: '', net_income: '',
+      total_assets: '', net_assets: '', machines: '', other_assets: '',
+      depreciation: '', dep_expense: '', rent: '', rent_expense: '',
+      contracts: '', bank_credit: '', lease_credit: '',
+      acquisition_cost: '',
+      passion_text: '',
+      asset_location: '',
+      intuition: 3,
+    }));
   };
 
   const handleGunshiConsult = (result: ScoreResult) => {
@@ -389,11 +443,13 @@ export default function LeaseKunWizard() {
             </div>
             <div>
               <h3 className="font-black text-sm tracking-widest uppercase">Lease-Wizard</h3>
-              <p className="text-[10px] opacity-80 mt-0.5">Step {step + 1} / {STEPS.length}</p>
+              <p className="text-[10px] opacity-80 mt-0.5">
+                {phase === 'wizard' ? `Step ${step + 1} / ${STEPS.length}` : PHASE_LABELS[phase]}
+              </p>
             </div>
           </div>
           <div className="text-[10px] font-bold bg-[#E8A838] text-slate-900 px-2 py-1 rounded-sm">
-            {STEPS[step]}
+            {phase === 'wizard' ? STEPS[step] : PHASE_LABELS[phase]}
           </div>
         </div>
 
@@ -401,7 +457,7 @@ export default function LeaseKunWizard() {
         <div className="h-1 bg-slate-200 shrink-0">
           <div
             className="h-full bg-gradient-to-r from-orange-400 to-[#E8A838] transition-all duration-300"
-            style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+            style={{ width: phase === 'wizard' ? `${((step + 1) / STEPS.length) * 100}%` : '100%' }}
           />
         </div>
 
@@ -439,7 +495,7 @@ export default function LeaseKunWizard() {
         </div>
 
         {/* 下部フォームエリア */}
-        {!loading && (
+        {!loading && phase === 'wizard' && (
         <form onSubmit={handleNext} className="w-full bg-white border-t-2 border-[#1A1A2E] p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20">
           <div className="mb-4 space-y-3 max-h-[40vh] overflow-y-auto scrollbar-hide pb-2 px-1">
 
@@ -722,6 +778,96 @@ export default function LeaseKunWizard() {
             </button>
           </div>
         </form>
+        )}
+
+        {/* 分析結果フェーズ: screening 画面に離脱せず、その場で争点・稟議方針を確認 */}
+        {!loading && phase === 'analysis' && fullResult && (
+          <div className="w-full bg-white border-t-2 border-[#1A1A2E] p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 max-h-[70vh] overflow-y-auto scrollbar-hide">
+            <div className="space-y-3">
+              <CurrentIssueCard result={fullResult} data={formData} />
+              <RingiPolicyCard result={fullResult} data={formData} />
+              {Array.isArray(fullResult.conditional_approval_actions) && fullResult.conditional_approval_actions.length > 0 && (
+                <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <div className="text-[11px] font-black uppercase tracking-wider text-amber-600 mb-2">条件付き承認に向けた確認事項</div>
+                  <ul className="space-y-1.5">
+                    {fullResult.conditional_approval_actions.slice(0, 4).map((a: any, i: number) => (
+                      <li key={i} className="text-xs font-bold text-amber-900 leading-relaxed">・{a.action || a.reason || String(a)}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {typeof fullResult.quantum_risk === 'number' && fullResult.quantum_risk >= 35 && (
+                <section className={`rounded-2xl border px-4 py-3 ${fullResult.quantum_risk >= 60 ? 'border-rose-300 bg-rose-50' : 'border-amber-200 bg-amber-50'}`}>
+                  <div className={`text-[11px] font-black uppercase tracking-wider ${fullResult.quantum_risk >= 60 ? 'text-rose-600' : 'text-amber-600'}`}>
+                    Q_risk {fullResult.quantum_risk.toFixed(1)}
+                  </div>
+                  <div className="mt-1 text-xs font-bold text-slate-700">
+                    {fullResult.quantum_risk >= 60 ? '強警戒：入力値の整合性を要確認' : '要注意：数値の矛盾がないか確認してください'}
+                  </div>
+                </section>
+              )}
+              <ShionScreeningReviewCard
+                result={fullResult}
+                review={shionReview.review}
+                loading={shionReview.loading}
+                error={shionReview.error}
+                onReview={() => shionReview.requestReview(fullResult, formData)}
+                onFeedback={shionReview.submitFeedback}
+                feedbackSaving={shionReview.feedbackSaving}
+                pastCompanies={shionReview.pastCompanies}
+                judgmentAssetCandidates={shionReview.judgmentAssetCandidates}
+              />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => router.push(`/screening?case_id=${encodeURIComponent(String(fullResult.case_id))}`)}
+                className="flex-1 h-11 flex items-center justify-center rounded-xl font-bold text-[11px] bg-slate-100 text-slate-600"
+              >
+                PCで詳細分析
+              </button>
+              <button
+                type="button"
+                onClick={() => setPhase('register')}
+                className="flex-[2] h-11 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all bg-[#1A1A2E] text-white"
+              >
+                次へ：結果登録 →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 結果登録フェーズ: 別画面（/register）へ移らず、そのまま成約/失注を確定 */}
+        {!loading && phase === 'register' && fullResult?.case_id && (
+          <div className="w-full bg-white border-t-2 border-[#1A1A2E] p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 max-h-[70vh] overflow-y-auto scrollbar-hide">
+            <button
+              type="button"
+              onClick={() => setPhase('analysis')}
+              className="mb-3 flex items-center gap-1 text-xs font-bold text-slate-400"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> 分析結果に戻る
+            </button>
+            <CaseRegistrationForm
+              caseId={String(fullResult.case_id)}
+              compact
+              onRegistered={() => setPhase('done')}
+            />
+          </div>
+        )}
+
+        {/* 完了フェーズ */}
+        {!loading && phase === 'done' && (
+          <div className="w-full bg-white border-t-2 border-[#1A1A2E] p-6 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 flex flex-col items-center text-center gap-3">
+            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+            <p className="text-sm font-black text-[#1A1A2E]">結果登録まで完了しました！</p>
+            <button
+              type="button"
+              onClick={resetWizard}
+              className="w-full h-12 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all bg-[#1A1A2E] text-white"
+            >
+              もう一件、審査する
+            </button>
+          </div>
         )}
 
       </div>
