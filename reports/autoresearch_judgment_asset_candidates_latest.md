@@ -1,18 +1,18 @@
-# Auto Research Judgment Asset Candidates (2026-07-30 to 2026-08-12)
+# Auto Research Judgment Asset Candidates (2026-07-31 to 2026-08-13)
 
 ## Summary
 
-- Candidates: 154
-- Deduped similar candidates: 36
-- application_rule: 38
-- confirmation_question: 42
-- condition_signal: 37
-- caution: 37
+- Candidates: 136
+- Deduped similar candidates: 45
+- application_rule: 33
+- confirmation_question: 37
+- condition_signal: 33
+- caution: 33
 - used: 0
 - edited: 0
 - ready_for_promotion: 0
 - rejected_or_deprioritized: 0
-- textbook_general: 114
+- textbook_general: 101
 
 ## Promotion Policy
 
@@ -25,204 +25,6 @@
 - `ready_for_promotion` requires useful human feedback and `verified_status=supported`.
 
 ## Candidates
-
-### 2026-07-30 / application_rule / residual-value
-
-- Claim: **IT機器**: 技術革新が速く陳腐化リスクが高いため、リース期間を短く設定し、残価は保守的に評価します。顧客の更新計画を確認し、オペレーティングリースのニーズを見極めます。
-- Edited claim: none
-- Source section: リース審査への適用
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / application_rule / residual-value
-
-- Claim: **医療機器**: 技術進歩が速く陳腐化リスクが高いため、リース期間を短縮するか、残価保証時の借手信用力を厳しく評価します。メーカーサポートや汎用性を評価します。
-- Edited claim: none
-- Source section: リース審査への適用
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / application_rule / residual-value
-
-- Claim: **建設機械・重機**: 国内外で安定した需要があり、日本製は特に人気が高いため、高い残価設定や長期リースも検討できます。稼働時間、メンテナンス状況、規制対応を厳しく確認します。
-- Edited claim: none
-- Source section: リース審査への適用
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / application_rule / residual-value
-
-- Claim: **産業機械・工作機械**: 汎用性が高くメンテナンスが行き届いた日本製は国内外で需要があり、比較的高い残価設定も検討可能です。メンテナンス履歴やメーカー・モデルの汎用性を確認します。
-- Edited claim: none
-- Source section: リース審査への適用
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / application_rule / residual-value
-
-- Claim: **自動車**: 中古市場が確立されており、人気車種や状態の良い車両は高い残価設定が可能です。リセールバリューの高い車種を選定することが重要です。
-- Edited claim: none
-- Source section: リース審査への適用
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / caution / residual-value
-
-- Claim: **市場予測の不確実性**: 物件の残価設定は将来の市場予測に基づくため、常に不確実性を伴います。過去のデータや現在のトレンドが将来も継続するとは限りません。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / caution / residual-value
-
-- Claim: **技術革新の加速**: 予測を超える技術革新や新たな競合製品の登場により、物件の陳腐化が想定以上に早まるリスクがあります。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / caution / residual-value
-
-- Claim: **補助情報源の限界**: 物件特性に関する補助情報源は一般的な傾向を示すものであり、個別の物件や特定の市場セグメントにそのまま適用できない場合があります。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / caution / residual-value
-
-- Claim: **規制変更の影響**: 環境規制や安全基準の予期せぬ変更が、旧型機の市場価値を急激に低下させる可能性があります。
-- Edited claim: none
-- Source section: 反証・過信してはいけない点
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / condition_signal / residual-value
-
-- Claim: **IT機器**: 顧客がリース期間中に頻繁な技術更新を計画している場合、リース期間の短縮や残価保証の強化が必要です。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / condition_signal / residual-value
-
-- Claim: **全般**: 市場の急激な変化、予期せぬ規制強化、または主要メーカーの撤退など、物件価値に影響を与える外部要因が発生した場合、条件の見直しが必要です。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / condition_signal / residual-value
-
-- Claim: **医療機器**: 技術革新が非常に速い分野の専門性の高い機器の場合、リース期間の短縮やメーカーの下取り保証の確認が必須です。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted
-- Asset quality: actionable / reasons=none
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / condition_signal / residual-value
-
-- Claim: **産業機械・建設機械**: メンテナンス履歴が不十分、または特定の用途に特化した汎用性の低い機種の場合、残価設定をより保守的にします。
-- Edited claim: none
-- Source section: 承認条件を変える兆候
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / confirmation_question / residual-value
-
-- Claim: 当該物件に影響を与える可能性のある、将来的な環境規制や技術革新の具体的な動向は何ですか。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / confirmation_question / residual-value
-
-- Claim: 当該物件のメーカー、モデル、仕様は中古市場において汎用性が高く、安定した需要が見込めますか。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / confirmation_question / residual-value
-
-- Claim: 残価保証を付与する場合、借手の信用力は保証額をカバーするのに十分ですか。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / confirmation_question / residual-value
-
-- Claim: 物件のメンテナンス履歴は詳細に記録されており、メーカーによる保守体制やアップグレードパスは確保されていますか。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
-
-### 2026-07-30 / confirmation_question / residual-value
-
-- Claim: 顧客の事業計画において、当該物件の更新サイクルや技術ロードマップはどのようになっていますか。
-- Edited claim: none
-- Source section: 担当者が確認する質問
-- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-07-30_residual-value.md`
-- Status: candidate / not_promoted_textbook_general
-- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
-- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 0
 
 ### 2026-07-31 / application_rule / lease-accounting-tax
 
@@ -607,7 +409,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 4
+- Deduped similar: 5
 
 ### 2026-08-01 / application_rule / industry-risk
 
@@ -618,7 +420,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 4
+- Deduped similar: 5
 
 ### 2026-08-01 / caution / industry-risk
 
@@ -629,7 +431,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 4
+- Deduped similar: 5
 
 ### 2026-08-01 / caution / industry-risk
 
@@ -640,7 +442,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 4
+- Deduped similar: 5
 
 ### 2026-08-01 / condition_signal / industry-risk
 
@@ -651,7 +453,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 4
+- Deduped similar: 5
 
 ### 2026-08-01 / condition_signal / industry-risk
 
@@ -662,7 +464,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 4
+- Deduped similar: 5
 
 ### 2026-08-01 / confirmation_question / industry-risk
 
@@ -673,7 +475,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 4
+- Deduped similar: 5
 
 ### 2026-08-01 / confirmation_question / industry-risk
 
@@ -684,7 +486,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 4
+- Deduped similar: 5
 
 ### 2026-08-01 / confirmation_question / industry-risk
 
@@ -695,7 +497,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 4
+- Deduped similar: 5
 
 ### 2026-08-02 / application_rule / asset-operation
 

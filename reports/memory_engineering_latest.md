@@ -1,37 +1,37 @@
 # Memory Engineering Report
 
-- Generated: 2026-08-13T04:01:04
+- Generated: 2026-08-11T04:00:54
 - Mode: `read_only_memory_engineering_observation`
 - Guardrail: `no_memory_delete_no_promotion_no_prompt_or_scoring_change`
 
 ## Summary
 
-- Write path records: 305
+- Write path records: 346
 - Active canonical rules: 11
-- Write amplification / active rule: 27.73
-- Open human review records: 300
+- Write amplification / active rule: 31.45
+- Open human review records: 340
 - Memory records: 788
-- Recent memory usage: 732 events / 188 refs
+- Recent memory usage: 759 events / 188 refs
 - Maintenance status records: 0
 - Contradiction candidates: 0
 - Write policy metadata completion: 0.0
 
 ## Stanford Lens: Write Cost
 
-- `judgment_materials_preview`: 19 records, 19 open review, ~19 tokens
-- `autoresearch_candidates`: 154 records, 154 open review, ~154 tokens
+- `judgment_materials_preview`: 25 records, 25 open review, ~25 tokens
+- `autoresearch_candidates`: 189 records, 189 open review, ~189 tokens
 - `reflection_action_candidates`: 3 records, 3 open review, ~367 tokens
-- `prediction_error_candidates`: 1 records, 1 open review, ~1 tokens
+- `prediction_error_candidates`: 0 records, 0 open review, ~0 tokens
 - `obsidian_memory_insight_candidates`: 123 records, 123 open review, ~123 tokens
-- `canonical_preview`: 5 records
+- `canonical_preview`: 6 records
 - Write policy required fields: `['importance', 'confidence', 'trust_level', 'provenance']`
-- Write policy missing fields: `{'confidence': 281, 'importance': 300, 'provenance': 300, 'trust_level': 300}`
+- Write policy missing fields: `{'confidence': 315, 'importance': 340, 'provenance': 340, 'trust_level': 340}`
 
 ## Microsoft Lens: Utility Density
 
 - Latest accepted preview: 2
-- Promoted to active rules: 2
-- Promotion rate: 1.0
+- Promoted to active rules: 1
+- Promotion rate: 0.5
 
 ## Anthropic Lens: Control
 

@@ -1,6 +1,7 @@
 """軍師 AI チャット・アドバイスルーター (REV-234 Phase3)"""
 from __future__ import annotations
 
+import json
 import os
 from typing import Dict, List, Optional
 
@@ -542,4 +543,3 @@ def generate_gunshi_chat(req: GunshiChatRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
