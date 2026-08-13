@@ -71,7 +71,6 @@ const PHASE_LABELS = {
 } as const;
 
 const DRAFT_STORAGE_KEY = 'lease-kun-draft-v1';
-const PENDING_RESULTS_STORAGE_KEY = 'lease-kun-pending-results-v1';
 
 const INITIAL_FORM_DATA = {
   // Step 0
@@ -126,15 +125,6 @@ type FocusCheck = {
   title: string;
   reason: string;
   tone: 'risk' | 'condition' | 'sales';
-};
-
-type PendingResultRegistration = {
-  caseId: string;
-  companyName: string;
-  assetName: string;
-  hantei: string;
-  score: number;
-  createdAt: string;
 };
 
 const SALES_ASSET_AMOUNTS: QuickAmount[] = [
@@ -226,26 +216,6 @@ function readLeaseKunDraft(): LeaseKunDraft | null {
 
 function clearLeaseKunDraft(): void {
   window.localStorage.removeItem(DRAFT_STORAGE_KEY);
-}
-
-function rememberPendingResultRegistration(result: LeaseKunFullResult, data: LeaseKunFormData): void {
-  if (!result.case_id) return;
-  try {
-    const raw = window.localStorage.getItem(PENDING_RESULTS_STORAGE_KEY);
-    const existing = raw ? JSON.parse(raw) as PendingResultRegistration[] : [];
-    const nextItem: PendingResultRegistration = {
-      caseId: String(result.case_id),
-      companyName: result.company_name || data.company_name || '（企業名未入力）',
-      assetName: result.asset_name || data.asset_name,
-      hantei: result.hantei,
-      score: getScreeningScoreValue(result),
-      createdAt: new Date().toISOString(),
-    };
-    const deduped = [nextItem, ...existing.filter((item) => item.caseId !== nextItem.caseId)].slice(0, 20);
-    window.localStorage.setItem(PENDING_RESULTS_STORAGE_KEY, JSON.stringify(deduped));
-  } catch {
-    // 後日登録リストの保存に失敗しても、審査結果そのものはサーバー側に保存済み。
-  }
 }
 
 function getScreeningScoreValue(result: LeaseKunFullResult): number {
@@ -745,9 +715,6 @@ export default function LeaseKunWizard() {
   };
 
   const deferResultRegistration = () => {
-    if (fullResult?.case_id) {
-      rememberPendingResultRegistration(fullResult, formData);
-    }
     setDoneMessage('審査結果を保存しました。成約/失注が分かったら、結果登録へ進めます。');
     setPhase('done');
   };
@@ -1290,6 +1257,15 @@ export default function LeaseKunWizard() {
           <div className="w-full bg-white border-t-2 border-[#1A1A2E] p-6 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 flex flex-col items-center text-center gap-3">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
             <p className="text-sm font-black text-[#1A1A2E]">{doneMessage}</p>
+            {fullResult?.case_id && (
+              <button
+                type="button"
+                onClick={() => router.push(`/register?case_id=${encodeURIComponent(String(fullResult.case_id))}`)}
+                className="w-full h-11 flex items-center justify-center rounded-xl font-bold bg-amber-100 text-amber-900"
+              >
+                結果登録画面でこの案件を開く
+              </button>
+            )}
             <button
               type="button"
               onClick={resetWizard}

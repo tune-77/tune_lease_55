@@ -37,7 +37,18 @@ export default function RegisterPage() {
     setRefreshing(true);
     try {
       const res = await apiClient.get(`/api/cases/pending`);
-      setPendingCases(res.data);
+      const rows = Array.isArray(res.data) ? res.data : [];
+      setPendingCases(rows);
+      const caseIdParam = new URLSearchParams(window.location.search).get('case_id') || '';
+      if (caseIdParam) {
+        const matched = rows.find((item) => String(item.id) === caseIdParam);
+        if (matched) {
+          setTargetId(matched.id);
+          setSelectedCase(matched);
+        } else {
+          setTargetId(caseIdParam);
+        }
+      }
     } catch (err) {
       console.error("Failed to fetch pending cases", err);
       triggerMebuki('reject', '未登録案件一覧の取得に失敗しました。ネットワークまたはAPIの状態を確認してください。');
