@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2, Trash2 } from 'lucide-react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
@@ -10,6 +11,7 @@ import { CurrentIssueCard, RingiPolicyCard } from '../../components/analysis/Iss
 import CaseRegistrationForm from '../../components/analysis/CaseRegistrationForm';
 import { ShionScreeningReviewCard } from '../../components/analysis/ShionReviewCard';
 import { useShionScreeningReview } from '../../lib/useShionScreeningReview';
+import { parseHumanNumberInput } from '@/lib/numberInput';
 
 // --- 型定義 ---
 type Message = {
@@ -29,6 +31,16 @@ type ScoreResult = {
   sales_dept?: string;
   quantum_risk?: number;
   case_id?: string;
+};
+
+type ConditionalApprovalAction = string | {
+  action?: string;
+  reason?: string;
+};
+
+type LeaseKunFullResult = ScoreResult & Record<string, unknown> & {
+  conditional_approval_actions?: ConditionalApprovalAction[];
+  umap_anomaly_score?: number;
 };
 
 type IndustryMasterEntry = {
@@ -58,6 +70,291 @@ const PHASE_LABELS = {
   done: "完了",
 } as const;
 
+const DRAFT_STORAGE_KEY = 'lease-kun-draft-v1';
+
+const INITIAL_FORM_DATA = {
+  // Step 0
+  company_no: '', company_name: '',
+  industry_major: 'D 建設業', industry_sub: '06 総合工事業',
+  // Step 1
+  sales_dept: '未設定',
+  main_bank: 'メイン先', competitor: '競合なし',
+  num_competitors: '未入力', deal_source: 'その他', deal_occurrence: '不明',
+  customer_type: '新規先',
+  // Step 2
+  asset_name: 'IT・OA機器',
+  asset_location: '',
+  // Step 3 (PL)
+  nenshu: '', gross_profit: '', op_profit: '', ord_profit: '', net_income: '',
+  // Step 4 (BS)
+  total_assets: '', net_assets: '', machines: '', other_assets: '',
+  // Step 5 (経費)
+  depreciation: '', dep_expense: '', rent: '', rent_expense: '',
+  // Step 6 (信用)
+  grade: '②4-6 (標準)', contracts: '', bank_credit: '', lease_credit: '',
+  // Step 7 (契約)
+  contract_type: '一般',
+  lease_term: 60, acceptance_year: new Date().getFullYear(), acquisition_cost: '',
+  // Step 8 (定性)
+  qual_corr_company_history: '未選択',
+  qual_corr_customer_stability: '未選択',
+  qual_corr_repayment_history: '未選択',
+  qual_corr_business_future: '未選択',
+  qual_corr_equipment_purpose: '未選択',
+  qual_corr_main_bank: '未選択',
+  passion_text: '',
+  // Step 9
+  intuition: 3
+};
+
+type LeaseKunFormData = typeof INITIAL_FORM_DATA;
+
+type LeaseKunDraft = {
+  version: 1;
+  step: number;
+  formData: LeaseKunFormData;
+  updatedAt: string;
+};
+
+type QuickAmount = {
+  label: string;
+  value: string;
+};
+
+type FocusCheck = {
+  title: string;
+  reason: string;
+  tone: 'risk' | 'condition' | 'sales';
+};
+
+const SALES_ASSET_AMOUNTS: QuickAmount[] = [
+  { label: '50', value: '50' },
+  { label: '100', value: '100' },
+  { label: '300', value: '300' },
+  { label: '1000', value: '1000' },
+];
+
+const PROFIT_AMOUNTS: QuickAmount[] = [
+  { label: '-5', value: '-5' },
+  { label: '0', value: '0' },
+  { label: '5', value: '5' },
+  { label: '10', value: '10' },
+];
+
+const SMALL_COST_AMOUNTS: QuickAmount[] = [
+  { label: '0', value: '0' },
+  { label: '1', value: '1' },
+  { label: '3', value: '3' },
+  { label: '5', value: '5' },
+];
+
+const CREDIT_AMOUNTS: QuickAmount[] = [
+  { label: '0', value: '0' },
+  { label: '10', value: '10' },
+  { label: '30', value: '30' },
+  { label: '100', value: '100' },
+];
+
+const ASSET_PRICE_AMOUNTS: QuickAmount[] = [
+  { label: '1', value: '1' },
+  { label: '3', value: '3' },
+  { label: '5', value: '5' },
+  { label: '10', value: '10' },
+  { label: '30', value: '30' },
+];
+
+const TERM_AMOUNTS: QuickAmount[] = [
+  { label: '36', value: '36' },
+  { label: '48', value: '48' },
+  { label: '60', value: '60' },
+  { label: '72', value: '72' },
+];
+
+function parseMillionInput(value: string | number, fallback = 0): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+  const parsed = parseHumanNumberInput(value);
+  return parsed ?? fallback;
+}
+
+function isPositiveMillionInput(value: string | number): boolean {
+  return parseMillionInput(value, NaN) > 0;
+}
+
+function hasMeaningfulDraft(formData: LeaseKunFormData): boolean {
+  return Boolean(
+    formData.company_no.trim() ||
+    formData.company_name.trim() ||
+    formData.asset_location.trim() ||
+    formData.nenshu.trim() ||
+    formData.total_assets.trim() ||
+    formData.acquisition_cost.trim() ||
+    formData.passion_text.trim() ||
+    formData.sales_dept !== INITIAL_FORM_DATA.sales_dept ||
+    formData.industry_major !== INITIAL_FORM_DATA.industry_major ||
+    formData.industry_sub !== INITIAL_FORM_DATA.industry_sub ||
+    formData.asset_name !== INITIAL_FORM_DATA.asset_name
+  );
+}
+
+function readLeaseKunDraft(): LeaseKunDraft | null {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<LeaseKunDraft>;
+    if (parsed.version !== 1 || typeof parsed.step !== 'number' || !parsed.formData) return null;
+    const boundedStep = Math.min(Math.max(Math.floor(parsed.step), 0), STEPS.length - 1);
+    return {
+      version: 1,
+      step: boundedStep,
+      formData: { ...INITIAL_FORM_DATA, ...parsed.formData },
+      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearLeaseKunDraft(): void {
+  window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+}
+
+function getScreeningScoreValue(result: LeaseKunFullResult): number {
+  return Number(result.score_base ?? result.score ?? 0);
+}
+
+function buildFocusChecks(result: LeaseKunFullResult, data: LeaseKunFormData): FocusCheck[] {
+  const checks: FocusCheck[] = [];
+  const score = getScreeningScoreValue(result);
+  const qRisk = typeof result.quantum_risk === 'number' ? result.quantum_risk : 0;
+  const sales = parseMillionInput(data.nenshu);
+  const assetPrice = parseMillionInput(data.acquisition_cost);
+  const leaseCredit = parseMillionInput(data.lease_credit);
+  const contracts = parseMillionInput(data.contracts);
+  const isNewCustomer = data.customer_type.includes('新規') || (leaseCredit <= 0 && contracts <= 0);
+  const hasCompetitor = data.competitor === '競合あり' || data.num_competitors !== '未入力' && data.num_competitors !== '0社';
+  const assetToSalesRatio = sales > 0 ? assetPrice / sales : 0;
+
+  if (qRisk >= 60) {
+    checks.push({
+      title: '入力値の桁と整合性',
+      reason: 'Q_risk が高いため、売上・総資産・物件価格の桁違いを先に潰す。',
+      tone: 'risk',
+    });
+  } else if (qRisk >= 35) {
+    checks.push({
+      title: '数字の違和感チェック',
+      reason: 'Q_risk が出ているため、主要数値の前提を軽く確認する。',
+      tone: 'risk',
+    });
+  }
+
+  if (score < 60) {
+    checks.push({
+      title: '否決理由を条件で戻せるか',
+      reason: 'スコアが低いため、保証・前受金・期間短縮で審議可能域に戻せるかを見る。',
+      tone: 'condition',
+    });
+  } else if (score < 71) {
+    checks.push({
+      title: '境界スコアの承認条件',
+      reason: '承認/否認の境目なので、追加確認と条件設定で説明できるかを見る。',
+      tone: 'condition',
+    });
+  }
+
+  if (isNewCustomer) {
+    checks.push({
+      title: '新規先としての支援材料',
+      reason: 'リース実績が薄い可能性があるため、銀行支援・既存取引・回収原資を確認する。',
+      tone: 'condition',
+    });
+  }
+
+  if (hasCompetitor) {
+    checks.push({
+      title: '競合条件と採算下限',
+      reason: '他社条件に寄せすぎず、採算を守れる下限と失注時の回収理由を決める。',
+      tone: 'sales',
+    });
+  }
+
+  if (assetToSalesRatio >= 0.25) {
+    checks.push({
+      title: '物件価格と売上規模のバランス',
+      reason: '物件価格が売上に対して重いため、稼働目的・回収期間・支払原資を確認する。',
+      tone: 'risk',
+    });
+  }
+
+  checks.push({
+    title: '物件の使い道と稼働開始',
+    reason: '最後に、何に使い、いつ売上や効率に効く設備かを短く押さえる。',
+    tone: 'sales',
+  });
+
+  const seen = new Set<string>();
+  return checks.filter((check) => {
+    if (seen.has(check.title)) return false;
+    seen.add(check.title);
+    return true;
+  }).slice(0, 3);
+}
+
+function FocusCheckCard({ checks }: { checks: FocusCheck[] }) {
+  const toneClass = {
+    risk: 'border-rose-200 bg-rose-50 text-rose-800',
+    condition: 'border-amber-200 bg-amber-50 text-amber-900',
+    sales: 'border-sky-200 bg-sky-50 text-sky-900',
+  };
+
+  return (
+    <section className="rounded-2xl border-2 border-[#1A1A2E] bg-white px-4 py-3 shadow-sm">
+      <div className="text-[11px] font-black uppercase tracking-wider text-slate-400">今回まず見る3点</div>
+      <div className="mt-2 space-y-2">
+        {checks.map((check, index) => (
+          <div key={check.title} className={`rounded-xl border px-3 py-2 ${toneClass[check.tone]}`}>
+            <div className="flex items-center gap-2 text-xs font-black">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/80 text-[10px]">{index + 1}</span>
+              <span>{check.title}</span>
+            </div>
+            <p className="mt-1 text-[11px] font-bold leading-relaxed opacity-90">{check.reason}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AmountChips({
+  amounts,
+  activeValue,
+  onSelect,
+}: {
+  amounts: QuickAmount[];
+  activeValue: string | number;
+  onSelect: (value: string) => void;
+}) {
+  const active = String(activeValue || '');
+  return (
+    <div className="mt-1.5 grid grid-cols-4 gap-1">
+      {amounts.map((amount) => (
+        <button
+          key={`${amount.label}-${amount.value}`}
+          type="button"
+          onClick={() => onSelect(amount.value)}
+          className={`h-7 rounded-lg border text-[11px] font-black transition-colors ${
+            active === amount.value
+              ? 'border-[#E8A838] bg-[#E8A838] text-white'
+              : 'border-slate-200 bg-white text-slate-500'
+          }`}
+        >
+          {amount.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // --- メインコンポーネント ---
 export default function LeaseKunWizard() {
   const router = useRouter();
@@ -68,12 +365,16 @@ export default function LeaseKunWizard() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string>('');
+  const [doneMessage, setDoneMessage] = useState('結果登録まで完了しました！');
+  const draftReadyRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 入力完了後は screening / register 画面へ離脱させず、この画面内で
   // 分析結果の確認 → 結果登録まで一気通貫で完結させる
   const [phase, setPhase] = useState<'wizard' | 'analysis' | 'register' | 'done'>('wizard');
-  const [fullResult, setFullResult] = useState<Record<string, any> | null>(null);
+  const [fullResult, setFullResult] = useState<LeaseKunFullResult | null>(null);
   const shionReview = useShionScreeningReview();
   const shionRequestedForCaseId = useRef<string | null>(null);
 
@@ -82,40 +383,34 @@ export default function LeaseKunWizard() {
   const [subs, setSubs] = useState<string[]>([]);
 
   // --- フォームステート ---
-  const [formData, setFormData] = useState({
-    // Step 0
-    company_no: '', company_name: '',
-    industry_major: 'D 建設業', industry_sub: '06 総合工事業',
-    // Step 1
-    sales_dept: '未設定',
-    main_bank: 'メイン先', competitor: '競合なし',
-    num_competitors: '未入力', deal_source: 'その他', deal_occurrence: '不明',
-    customer_type: '新規先',
-    // Step 2
-    asset_name: 'IT・OA機器',
-    asset_location: '',
-    // Step 3 (PL)
-    nenshu: '', gross_profit: '', op_profit: '', ord_profit: '', net_income: '',
-    // Step 4 (BS)
-    total_assets: '', net_assets: '', machines: '', other_assets: '',
-    // Step 5 (経費)
-    depreciation: '', dep_expense: '', rent: '', rent_expense: '',
-    // Step 6 (信用)
-    grade: '②4-6 (標準)', contracts: '', bank_credit: '', lease_credit: '',
-    // Step 7 (契約)
-    contract_type: '一般',
-    lease_term: 60, acceptance_year: new Date().getFullYear(), acquisition_cost: '',
-    // Step 8 (定性)
-    qual_corr_company_history: '未選択',
-    qual_corr_customer_stability: '未選択',
-    qual_corr_repayment_history: '未選択',
-    qual_corr_business_future: '未選択',
-    qual_corr_equipment_purpose: '未選択',
-    qual_corr_main_bank: '未選択',
-    passion_text: '',
-    // Step 9
-    intuition: 3
-  });
+  const [formData, setFormData] = useState<LeaseKunFormData>(INITIAL_FORM_DATA);
+
+  useEffect(() => {
+    const draft = readLeaseKunDraft();
+    if (draft && hasMeaningfulDraft(draft.formData)) {
+      setFormData(draft.formData);
+      setStep(draft.step);
+      setDraftRestored(true);
+      setDraftSavedAt(draft.updatedAt);
+      setHistory([
+        { role: 'bot', text: `前回の下書きを復元しました。${STEPS[draft.step]} から続けられます。` }
+      ]);
+    }
+    draftReadyRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!draftReadyRef.current || phase !== 'wizard' || submitted) return;
+    if (!hasMeaningfulDraft(formData)) {
+      clearLeaseKunDraft();
+      setDraftSavedAt('');
+      return;
+    }
+    const updatedAt = new Date().toISOString();
+    const draft: LeaseKunDraft = { version: 1, step, formData, updatedAt };
+    window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    setDraftSavedAt(updatedAt);
+  }, [formData, step, phase, submitted]);
 
   // 業種マスター取得
   useEffect(() => {
@@ -125,8 +420,8 @@ export default function LeaseKunWizard() {
         if (!data) return;
         setIndustryMaster(data);
         setMajors(Object.keys(data));
-        if (formData.industry_major && data[formData.industry_major]) {
-          setSubs(extractSubs(data[formData.industry_major]));
+        if (INITIAL_FORM_DATA.industry_major && data[INITIAL_FORM_DATA.industry_major]) {
+          setSubs(extractSubs(data[INITIAL_FORM_DATA.industry_major]));
         }
       })
       .catch(() => {});
@@ -140,7 +435,7 @@ export default function LeaseKunWizard() {
     if (newSubs.length > 0 && !newSubs.includes(formData.industry_sub)) {
       setFormData(prev => ({ ...prev, industry_sub: newSubs[0] }));
     }
-  }, [formData.industry_major, industryMaster]);
+  }, [formData.industry_major, formData.industry_sub, industryMaster]);
 
   // 自動スクロール
   useEffect(() => {
@@ -163,6 +458,11 @@ export default function LeaseKunWizard() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+    if (errors[name]) setErrors(prev => { const next = { ...prev }; delete next[name]; return next; });
+  };
+
+  const setQuickValue = (name: keyof LeaseKunFormData, value: string) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors(prev => { const next = { ...prev }; delete next[name]; return next; });
   };
 
@@ -195,7 +495,7 @@ export default function LeaseKunWizard() {
         nextBotText = `損益計算書(P/L)の数値を入力してね！売上高は必須だよ。`;
         break;
       case 3:
-        if (!formData.nenshu || Number(formData.nenshu) <= 0) {
+        if (!isPositiveMillionInput(formData.nenshu)) {
           newErrors.nenshu = '売上高は必須です';
         }
         if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
@@ -203,7 +503,7 @@ export default function LeaseKunWizard() {
         nextBotText = `貸借対照表(B/S)！総資産は必須。機械やその他の内訳もあれば。`;
         break;
       case 4:
-        if (!formData.total_assets || Number(formData.total_assets) <= 0) {
+        if (!isPositiveMillionInput(formData.total_assets)) {
           newErrors.total_assets = '総資産は必須です';
         }
         if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
@@ -219,7 +519,7 @@ export default function LeaseKunWizard() {
         nextBotText = `今回の契約期間や取得価格はどうなってる？`;
         break;
       case 7:
-        if (!formData.acquisition_cost || Number(formData.acquisition_cost) <= 0) {
+        if (!isPositiveMillionInput(formData.acquisition_cost)) {
           newErrors.acquisition_cost = '取得価格（百万円）は必須です';
         }
         if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
@@ -274,25 +574,25 @@ export default function LeaseKunWizard() {
         customer_type:                formData.customer_type,
         contract_type:                formData.contract_type,
         grade:                        formData.grade,
-        nenshu:                       Number(formData.nenshu || 0),
-        gross_profit:                 Number(formData.gross_profit || 0),
-        op_profit:                    Number(formData.op_profit || 0),
-        ord_profit:                   Number(formData.ord_profit || 0),
-        net_income:                   Number(formData.net_income || 0),
-        total_assets:                 Number(formData.total_assets || 0),
-        net_assets:                   Number(formData.net_assets || 0),
-        machines:                     Number(formData.machines || 0),
-        other_assets:                 Number(formData.other_assets || 0),
-        depreciation:                 Number(formData.depreciation || 0),
-        dep_expense:                  Number(formData.dep_expense || 0),
-        rent:                         Number(formData.rent || 0),
-        rent_expense:                 Number(formData.rent_expense || 0),
-        bank_credit:                  Number(formData.bank_credit || 0),
-        lease_credit:                 Number(formData.lease_credit || 0),
-        contracts:                    Number(formData.contracts || 0),
-        acquisition_cost:             Number(formData.acquisition_cost || 0),
-        lease_term:                   Number(formData.lease_term || 60),
-        acceptance_year:              Number(formData.acceptance_year || new Date().getFullYear()),
+        nenshu:                       parseMillionInput(formData.nenshu),
+        gross_profit:                 parseMillionInput(formData.gross_profit),
+        op_profit:                    parseMillionInput(formData.op_profit),
+        ord_profit:                   parseMillionInput(formData.ord_profit),
+        net_income:                   parseMillionInput(formData.net_income),
+        total_assets:                 parseMillionInput(formData.total_assets),
+        net_assets:                   parseMillionInput(formData.net_assets),
+        machines:                     parseMillionInput(formData.machines),
+        other_assets:                 parseMillionInput(formData.other_assets),
+        depreciation:                 parseMillionInput(formData.depreciation),
+        dep_expense:                  parseMillionInput(formData.dep_expense),
+        rent:                         parseMillionInput(formData.rent),
+        rent_expense:                 parseMillionInput(formData.rent_expense),
+        bank_credit:                  parseMillionInput(formData.bank_credit),
+        lease_credit:                 parseMillionInput(formData.lease_credit),
+        contracts:                    parseMillionInput(formData.contracts),
+        acquisition_cost:             parseMillionInput(formData.acquisition_cost),
+        lease_term:                   parseMillionInput(formData.lease_term, 60),
+        acceptance_year:              parseMillionInput(formData.acceptance_year, new Date().getFullYear()),
         qual_corr_company_history:    formData.qual_corr_company_history,
         qual_corr_customer_stability: formData.qual_corr_customer_stability,
         qual_corr_repayment_history:  formData.qual_corr_repayment_history,
@@ -305,18 +605,21 @@ export default function LeaseKunWizard() {
 
       const res = await apiClient.post(`/api/score/full`, payload);
       setSubmitted(true);
-      setFullResult(res.data);
+      clearLeaseKunDraft();
+      setDraftSavedAt('');
+      const resultData = res.data as LeaseKunFullResult;
+      setFullResult(resultData);
 
-      const caseId = res.data.case_id as string | null | undefined;
+      const caseId = resultData.case_id;
 
       setHistory(prev => [...prev, {
         role: 'humor',
         text: (
           <span>
             <b>🎉 審査完了！</b><br/>
-            総合スコア: {(res.data.score_base ?? res.data.score)?.toFixed(1)}点<br/>
-            判定: {res.data.hantei}<br/>
-            借手スコア: {res.data.score_borrower?.toFixed(1)}点<br/><br/>
+            総合スコア: {(resultData.score_base ?? resultData.score)?.toFixed(1)}点<br/>
+            判定: {resultData.hantei}<br/>
+            借手スコア: {resultData.score_borrower?.toFixed(1)}点<br/><br/>
             {caseId ? (
               <button
                 onClick={() => setPhase('analysis')}
@@ -331,7 +634,7 @@ export default function LeaseKunWizard() {
             )}
             <br/><br/>
             <button
-              onClick={() => handleGunshiConsult(res.data)}
+              onClick={() => handleGunshiConsult(resultData)}
               className="mt-2 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition-colors w-full justify-center"
             >
               <MessageSquare className="w-3.5 h-3.5" />
@@ -369,6 +672,10 @@ export default function LeaseKunWizard() {
   };
 
   const resetWizard = () => {
+    clearLeaseKunDraft();
+    setDraftRestored(false);
+    setDraftSavedAt('');
+    setDoneMessage('結果登録まで完了しました！');
     setStep(0);
     setSubmitted(false);
     setErrors({});
@@ -389,6 +696,27 @@ export default function LeaseKunWizard() {
       asset_location: '',
       intuition: 3,
     }));
+  };
+
+  const discardDraft = () => {
+    clearLeaseKunDraft();
+    setDraftRestored(false);
+    setDraftSavedAt('');
+    setDoneMessage('結果登録まで完了しました！');
+    setStep(0);
+    setSubmitted(false);
+    setErrors({});
+    setPhase('wizard');
+    setFullResult(null);
+    setFormData(INITIAL_FORM_DATA);
+    setHistory([
+      { role: 'bot', text: '下書きを破棄しました。新しい審査を始めます。' }
+    ]);
+  };
+
+  const deferResultRegistration = () => {
+    setDoneMessage('審査結果を保存しました。成約/失注が分かったら、結果登録へ進めます。');
+    setPhase('done');
   };
 
   const handleGunshiConsult = (result: ScoreResult) => {
@@ -439,7 +767,7 @@ export default function LeaseKunWizard() {
         <div className="bg-gradient-to-r from-[#1A1A2E] to-[#2d2d4e] w-full pt-12 md:pt-10 pb-4 px-4 shadow flex justify-between items-center shrink-0 z-10 text-[#E8A838]">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-white rounded-full flex justify-center items-center shadow-inner overflow-hidden border-2 border-[#E8A838]">
-              <img src="https://api.dicebear.com/7.x/bottts/svg?seed=LeaseApp&backgroundColor=E8A838" />
+              <Image src="/icons/icon-192.png" width={36} height={36} alt="" />
             </div>
             <div>
               <h3 className="font-black text-sm tracking-widest uppercase">Lease-Wizard</h3>
@@ -497,6 +825,19 @@ export default function LeaseKunWizard() {
         {/* 下部フォームエリア */}
         {!loading && phase === 'wizard' && (
         <form onSubmit={handleNext} className="w-full bg-white border-t-2 border-[#1A1A2E] p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20">
+          {(draftRestored || draftSavedAt) && (
+            <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+              <span>{draftRestored ? '下書きを復元済み' : '下書き保存済み'}</span>
+              <button
+                type="button"
+                onClick={discardDraft}
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-amber-700 shadow-sm"
+                aria-label="下書きを破棄"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
           <div className="mb-4 space-y-3 max-h-[40vh] overflow-y-auto scrollbar-hide pb-2 px-1">
 
             {/* Step 0: 企業・業種 */}
@@ -654,12 +995,25 @@ export default function LeaseKunWizard() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <input type="text" inputMode="decimal" name="nenshu" value={formData.nenshu} step="0.1" onChange={handleChange} placeholder="売上高 (百万円) ※必須" className={errors.nenshu ? inpErr : inpReq} />
+                  <AmountChips amounts={SALES_ASSET_AMOUNTS} activeValue={formData.nenshu} onSelect={(value) => setQuickValue('nenshu', value)} />
                   {errors.nenshu && <p className={errMsg}>{errors.nenshu}</p>}
                 </div>
-                <input type="text" inputMode="text" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円) ※赤字は例: -5" className={inp} />
-                <input type="text" inputMode="text" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円) ※赤字は例: -5" className={inp} />
-                <input type="text" inputMode="text" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円) ※赤字は例: -5" className={inp} />
-                <input type="text" inputMode="text" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円) ※赤字は例: -5" className={inp} />
+                <div>
+                  <input type="text" inputMode="text" name="gross_profit" value={formData.gross_profit} step="0.1" onChange={handleChange} placeholder="売上総利益 (百万円) ※赤字は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.gross_profit} onSelect={(value) => setQuickValue('gross_profit', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="text" name="op_profit" value={formData.op_profit} step="0.1" onChange={handleChange} placeholder="営業利益 (百万円) ※赤字は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.op_profit} onSelect={(value) => setQuickValue('op_profit', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="text" name="ord_profit" value={formData.ord_profit} step="0.1" onChange={handleChange} placeholder="経常利益 (百万円) ※赤字は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.ord_profit} onSelect={(value) => setQuickValue('ord_profit', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="text" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円) ※赤字は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.net_income} onSelect={(value) => setQuickValue('net_income', value)} />
+                </div>
               </div>
             )}
 
@@ -668,23 +1022,43 @@ export default function LeaseKunWizard() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <input type="text" inputMode="decimal" name="total_assets" value={formData.total_assets} step="0.1" onChange={handleChange} placeholder="総資産 (百万円) ※必須" className={errors.total_assets ? inpErr : inpReq} />
+                  <AmountChips amounts={SALES_ASSET_AMOUNTS} activeValue={formData.total_assets} onSelect={(value) => setQuickValue('total_assets', value)} />
                   {errors.total_assets && <p className={errMsg}>{errors.total_assets}</p>}
                 </div>
                 <div className="col-span-2">
                   <input type="text" inputMode="text" name="net_assets" value={formData.net_assets} step="0.1" onChange={handleChange} placeholder="純資産/自己資本 (百万円) ※債務超過は例: -5" className={inp} />
+                  <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.net_assets} onSelect={(value) => setQuickValue('net_assets', value)} />
                 </div>
-                <input type="text" inputMode="decimal" name="machines" value={formData.machines} step="0.1" onChange={handleChange} placeholder="機械装置 (百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="other_assets" value={formData.other_assets} step="0.1" onChange={handleChange} placeholder="その他資産 (百万円)" className={inp} />
+                <div>
+                  <input type="text" inputMode="decimal" name="machines" value={formData.machines} step="0.1" onChange={handleChange} placeholder="機械装置 (百万円)" className={inp} />
+                  <AmountChips amounts={CREDIT_AMOUNTS} activeValue={formData.machines} onSelect={(value) => setQuickValue('machines', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="decimal" name="other_assets" value={formData.other_assets} step="0.1" onChange={handleChange} placeholder="その他資産 (百万円)" className={inp} />
+                  <AmountChips amounts={CREDIT_AMOUNTS} activeValue={formData.other_assets} onSelect={(value) => setQuickValue('other_assets', value)} />
+                </div>
               </div>
             )}
 
             {/* Step 5: 経費 */}
             {step === 5 && (
               <div className="grid grid-cols-2 gap-2">
-                <input type="text" inputMode="decimal" name="depreciation" value={formData.depreciation} step="0.1" onChange={handleChange} placeholder="減価償却(資産・百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="dep_expense" value={formData.dep_expense} step="0.1" onChange={handleChange} placeholder="減価償却(経費・百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="rent" value={formData.rent} step="0.1" onChange={handleChange} placeholder="賃借料(資産・百万円)" className={inp} />
-                <input type="text" inputMode="decimal" name="rent_expense" value={formData.rent_expense} step="0.1" onChange={handleChange} placeholder="賃借料(経費・百万円)" className={inp} />
+                <div>
+                  <input type="text" inputMode="decimal" name="depreciation" value={formData.depreciation} step="0.1" onChange={handleChange} placeholder="減価償却(資産・百万円)" className={inp} />
+                  <AmountChips amounts={SMALL_COST_AMOUNTS} activeValue={formData.depreciation} onSelect={(value) => setQuickValue('depreciation', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="decimal" name="dep_expense" value={formData.dep_expense} step="0.1" onChange={handleChange} placeholder="減価償却(経費・百万円)" className={inp} />
+                  <AmountChips amounts={SMALL_COST_AMOUNTS} activeValue={formData.dep_expense} onSelect={(value) => setQuickValue('dep_expense', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="decimal" name="rent" value={formData.rent} step="0.1" onChange={handleChange} placeholder="賃借料(資産・百万円)" className={inp} />
+                  <AmountChips amounts={SMALL_COST_AMOUNTS} activeValue={formData.rent} onSelect={(value) => setQuickValue('rent', value)} />
+                </div>
+                <div>
+                  <input type="text" inputMode="decimal" name="rent_expense" value={formData.rent_expense} step="0.1" onChange={handleChange} placeholder="賃借料(経費・百万円)" className={inp} />
+                  <AmountChips amounts={SMALL_COST_AMOUNTS} activeValue={formData.rent_expense} onSelect={(value) => setQuickValue('rent_expense', value)} />
+                </div>
               </div>
             )}
 
@@ -697,10 +1071,16 @@ export default function LeaseKunWizard() {
                   <option>③ 要注意先</option>
                   <option>④ 無格付先</option>
                 </select>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-2">
                   <input type="text" inputMode="decimal" name="contracts" value={formData.contracts} onChange={handleChange} placeholder="契約件数" className={inp} />
-                  <input type="text" inputMode="decimal" name="bank_credit" value={formData.bank_credit} step="0.1" onChange={handleChange} placeholder="銀行与信残(百万円)" className={inp} />
-                  <input type="text" inputMode="decimal" name="lease_credit" value={formData.lease_credit} step="0.1" onChange={handleChange} placeholder="リース与信残(百万円)" className={inp} />
+                  <div>
+                    <input type="text" inputMode="decimal" name="bank_credit" value={formData.bank_credit} step="0.1" onChange={handleChange} placeholder="銀行与信残(百万円)" className={inp} />
+                    <AmountChips amounts={CREDIT_AMOUNTS} activeValue={formData.bank_credit} onSelect={(value) => setQuickValue('bank_credit', value)} />
+                  </div>
+                  <div>
+                    <input type="text" inputMode="decimal" name="lease_credit" value={formData.lease_credit} step="0.1" onChange={handleChange} placeholder="リース与信残(百万円)" className={inp} />
+                    <AmountChips amounts={CREDIT_AMOUNTS} activeValue={formData.lease_credit} onSelect={(value) => setQuickValue('lease_credit', value)} />
+                  </div>
                 </div>
               </div>
             )}
@@ -710,6 +1090,7 @@ export default function LeaseKunWizard() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <input type="text" inputMode="decimal" name="acquisition_cost" value={formData.acquisition_cost} step="0.1" onChange={handleChange} placeholder="取得価格 (百万円) ※必須" className={errors.acquisition_cost ? inpErr : inpReq} />
+                  <AmountChips amounts={ASSET_PRICE_AMOUNTS} activeValue={formData.acquisition_cost} onSelect={(value) => setQuickValue('acquisition_cost', value)} />
                   {errors.acquisition_cost && <p className={errMsg}>{errors.acquisition_cost}</p>}
                 </div>
                 <div>
@@ -721,6 +1102,7 @@ export default function LeaseKunWizard() {
                 <div>
                   <label className={lbl}>期間(月)</label>
                   <input type="text" inputMode="decimal" name="lease_term" value={formData.lease_term} onChange={handleChange} className={inp} />
+                  <AmountChips amounts={TERM_AMOUNTS} activeValue={formData.lease_term} onSelect={(value) => setQuickValue('lease_term', value)} />
                 </div>
                 <div className="col-span-2">
                   <label className={lbl}>検収年(西暦)</label>
@@ -784,14 +1166,17 @@ export default function LeaseKunWizard() {
         {!loading && phase === 'analysis' && fullResult && (
           <div className="w-full bg-white border-t-2 border-[#1A1A2E] p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 max-h-[70vh] overflow-y-auto scrollbar-hide">
             <div className="space-y-3">
+              <FocusCheckCard checks={buildFocusChecks(fullResult, formData)} />
               <CurrentIssueCard result={fullResult} data={formData} />
               <RingiPolicyCard result={fullResult} data={formData} />
               {Array.isArray(fullResult.conditional_approval_actions) && fullResult.conditional_approval_actions.length > 0 && (
                 <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
                   <div className="text-[11px] font-black uppercase tracking-wider text-amber-600 mb-2">条件付き承認に向けた確認事項</div>
                   <ul className="space-y-1.5">
-                    {fullResult.conditional_approval_actions.slice(0, 4).map((a: any, i: number) => (
-                      <li key={i} className="text-xs font-bold text-amber-900 leading-relaxed">・{a.action || a.reason || String(a)}</li>
+                    {fullResult.conditional_approval_actions.slice(0, 4).map((a, i) => (
+                      <li key={i} className="text-xs font-bold text-amber-900 leading-relaxed">
+                        ・{typeof a === 'string' ? a : a.action || a.reason || String(a)}
+                      </li>
                     ))}
                   </ul>
                 </section>
@@ -818,21 +1203,30 @@ export default function LeaseKunWizard() {
                 judgmentAssetCandidates={shionReview.judgmentAssetCandidates}
               />
             </div>
-            <div className="flex gap-2 mt-4">
+            <div className="mt-4 space-y-2">
               <button
                 type="button"
-                onClick={() => router.push(`/screening?case_id=${encodeURIComponent(String(fullResult.case_id))}`)}
-                className="flex-1 h-11 flex items-center justify-center rounded-xl font-bold text-[11px] bg-slate-100 text-slate-600"
+                onClick={deferResultRegistration}
+                className="w-full h-12 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all bg-[#1A1A2E] text-white"
               >
-                PCで詳細分析
+                後で結果登録する
               </button>
-              <button
-                type="button"
-                onClick={() => setPhase('register')}
-                className="flex-[2] h-11 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all bg-[#1A1A2E] text-white"
-              >
-                次へ：結果登録 →
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/screening?case_id=${encodeURIComponent(String(fullResult.case_id))}`)}
+                  className="h-11 flex items-center justify-center rounded-xl font-bold text-[11px] bg-slate-100 text-slate-600"
+                >
+                  PCで詳細分析
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhase('register')}
+                  className="h-11 flex items-center justify-center rounded-xl font-bold text-[11px] bg-amber-100 text-amber-900"
+                >
+                  今わかるなら登録
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -850,7 +1244,10 @@ export default function LeaseKunWizard() {
             <CaseRegistrationForm
               caseId={String(fullResult.case_id)}
               compact
-              onRegistered={() => setPhase('done')}
+              onRegistered={() => {
+                setDoneMessage('結果登録まで完了しました！');
+                setPhase('done');
+              }}
             />
           </div>
         )}
@@ -859,7 +1256,16 @@ export default function LeaseKunWizard() {
         {!loading && phase === 'done' && (
           <div className="w-full bg-white border-t-2 border-[#1A1A2E] p-6 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 flex flex-col items-center text-center gap-3">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-            <p className="text-sm font-black text-[#1A1A2E]">結果登録まで完了しました！</p>
+            <p className="text-sm font-black text-[#1A1A2E]">{doneMessage}</p>
+            {fullResult?.case_id && (
+              <button
+                type="button"
+                onClick={() => router.push(`/register?case_id=${encodeURIComponent(String(fullResult.case_id))}`)}
+                className="w-full h-11 flex items-center justify-center rounded-xl font-bold bg-amber-100 text-amber-900"
+              >
+                結果登録画面でこの案件を開く
+              </button>
+            )}
             <button
               type="button"
               onClick={resetWizard}
