@@ -121,6 +121,12 @@ type QuickAmount = {
   value: string;
 };
 
+type FocusCheck = {
+  title: string;
+  reason: string;
+  tone: 'risk' | 'condition' | 'sales';
+};
+
 const SALES_ASSET_AMOUNTS: QuickAmount[] = [
   { label: '50', value: '50' },
   { label: '100', value: '100' },
@@ -210,6 +216,113 @@ function readLeaseKunDraft(): LeaseKunDraft | null {
 
 function clearLeaseKunDraft(): void {
   window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+}
+
+function getScreeningScoreValue(result: LeaseKunFullResult): number {
+  return Number(result.score_base ?? result.score ?? 0);
+}
+
+function buildFocusChecks(result: LeaseKunFullResult, data: LeaseKunFormData): FocusCheck[] {
+  const checks: FocusCheck[] = [];
+  const score = getScreeningScoreValue(result);
+  const qRisk = typeof result.quantum_risk === 'number' ? result.quantum_risk : 0;
+  const sales = parseMillionInput(data.nenshu);
+  const assetPrice = parseMillionInput(data.acquisition_cost);
+  const leaseCredit = parseMillionInput(data.lease_credit);
+  const contracts = parseMillionInput(data.contracts);
+  const isNewCustomer = data.customer_type.includes('新規') || (leaseCredit <= 0 && contracts <= 0);
+  const hasCompetitor = data.competitor === '競合あり' || data.num_competitors !== '未入力' && data.num_competitors !== '0社';
+  const assetToSalesRatio = sales > 0 ? assetPrice / sales : 0;
+
+  if (qRisk >= 60) {
+    checks.push({
+      title: '入力値の桁と整合性',
+      reason: 'Q_risk が高いため、売上・総資産・物件価格の桁違いを先に潰す。',
+      tone: 'risk',
+    });
+  } else if (qRisk >= 35) {
+    checks.push({
+      title: '数字の違和感チェック',
+      reason: 'Q_risk が出ているため、主要数値の前提を軽く確認する。',
+      tone: 'risk',
+    });
+  }
+
+  if (score < 60) {
+    checks.push({
+      title: '否決理由を条件で戻せるか',
+      reason: 'スコアが低いため、保証・前受金・期間短縮で審議可能域に戻せるかを見る。',
+      tone: 'condition',
+    });
+  } else if (score < 71) {
+    checks.push({
+      title: '境界スコアの承認条件',
+      reason: '承認/否認の境目なので、追加確認と条件設定で説明できるかを見る。',
+      tone: 'condition',
+    });
+  }
+
+  if (isNewCustomer) {
+    checks.push({
+      title: '新規先としての支援材料',
+      reason: 'リース実績が薄い可能性があるため、銀行支援・既存取引・回収原資を確認する。',
+      tone: 'condition',
+    });
+  }
+
+  if (hasCompetitor) {
+    checks.push({
+      title: '競合条件と採算下限',
+      reason: '他社条件に寄せすぎず、採算を守れる下限と失注時の回収理由を決める。',
+      tone: 'sales',
+    });
+  }
+
+  if (assetToSalesRatio >= 0.25) {
+    checks.push({
+      title: '物件価格と売上規模のバランス',
+      reason: '物件価格が売上に対して重いため、稼働目的・回収期間・支払原資を確認する。',
+      tone: 'risk',
+    });
+  }
+
+  checks.push({
+    title: '物件の使い道と稼働開始',
+    reason: '最後に、何に使い、いつ売上や効率に効く設備かを短く押さえる。',
+    tone: 'sales',
+  });
+
+  const seen = new Set<string>();
+  return checks.filter((check) => {
+    if (seen.has(check.title)) return false;
+    seen.add(check.title);
+    return true;
+  }).slice(0, 3);
+}
+
+function FocusCheckCard({ checks }: { checks: FocusCheck[] }) {
+  const toneClass = {
+    risk: 'border-rose-200 bg-rose-50 text-rose-800',
+    condition: 'border-amber-200 bg-amber-50 text-amber-900',
+    sales: 'border-sky-200 bg-sky-50 text-sky-900',
+  };
+
+  return (
+    <section className="rounded-2xl border-2 border-[#1A1A2E] bg-white px-4 py-3 shadow-sm">
+      <div className="text-[11px] font-black uppercase tracking-wider text-slate-400">今回まず見る3点</div>
+      <div className="mt-2 space-y-2">
+        {checks.map((check, index) => (
+          <div key={check.title} className={`rounded-xl border px-3 py-2 ${toneClass[check.tone]}`}>
+            <div className="flex items-center gap-2 text-xs font-black">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/80 text-[10px]">{index + 1}</span>
+              <span>{check.title}</span>
+            </div>
+            <p className="mt-1 text-[11px] font-bold leading-relaxed opacity-90">{check.reason}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function AmountChips({
@@ -1045,6 +1158,7 @@ export default function LeaseKunWizard() {
         {!loading && phase === 'analysis' && fullResult && (
           <div className="w-full bg-white border-t-2 border-[#1A1A2E] p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 max-h-[70vh] overflow-y-auto scrollbar-hide">
             <div className="space-y-3">
+              <FocusCheckCard checks={buildFocusChecks(fullResult, formData)} />
               <CurrentIssueCard result={fullResult} data={formData} />
               <RingiPolicyCard result={fullResult} data={formData} />
               {Array.isArray(fullResult.conditional_approval_actions) && fullResult.conditional_approval_actions.length > 0 && (
