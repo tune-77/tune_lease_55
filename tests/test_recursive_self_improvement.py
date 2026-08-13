@@ -126,6 +126,38 @@ def test_recursive_self_improvement_suppresses_deleted_items(tmp_path, monkeypat
     assert bundle["canonical_candidates"][0]["state"] == "suppressed"
 
 
+def test_pipeline_ledger_uses_shared_resolution_for_deleted_then_needs_review(tmp_path, monkeypatch):
+    from scripts import recursive_self_improvement as _rsi  # noqa: F401
+    import pipeline_ledger
+    assert _rsi is not None
+
+    ledger_path = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(pipeline_ledger, "LEDGER_PATH", ledger_path)
+    pipeline_ledger.record("same-key", "deleted", "削除済み", canonical_key="same-key")
+    pipeline_ledger.record("same-key", "needs_review", "削除済み", canonical_key="same-key")
+
+    processed, status = pipeline_ledger.is_processed("same-key")
+
+    assert processed is True
+    assert status == "deleted"
+
+
+def test_pipeline_ledger_apply_failed_reopens_older_applied(tmp_path, monkeypatch):
+    from scripts import recursive_self_improvement as _rsi  # noqa: F401
+    import pipeline_ledger
+    assert _rsi is not None
+
+    ledger_path = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(pipeline_ledger, "LEDGER_PATH", ledger_path)
+    pipeline_ledger.record("same-key", "applied", "未反映訂正", canonical_key="same-key")
+    pipeline_ledger.record("same-key", "apply_failed", "未反映訂正", canonical_key="same-key")
+
+    processed, status = pipeline_ledger.is_processed("same-key")
+
+    assert processed is False
+    assert status == ""
+
+
 def test_record_ledger_events_skips_suppressed(tmp_path, monkeypatch):
     """suppressed イベントを台帳へ再記録しない（クールダウン恒久リセットの防止）。"""
     from scripts import recursive_self_improvement as rsi

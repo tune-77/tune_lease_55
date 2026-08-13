@@ -37,6 +37,17 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
+_ROOT = repo_root()
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from scripts.improvement_state_resolver import (  # noqa: E402
+    PARKED_LEDGER_STATUSES,
+    load_latest_by_alias,
+    normalize_status,
+)
+
+
 def pipeline_skill_dir(root: Path) -> Path:
     return root / ".agents" / "skills" / "auto-improvement-pipeline"
 
@@ -94,77 +105,8 @@ def normalize_text(value: str) -> str:
     return re.sub(r"[\s　・/（）()【】\[\]「」:：,，.。_-]+", "", value.lower())
 
 
-def normalize_status(value: str) -> str:
-    parts = str(value or "").split()
-    return parts[0].strip().lower() if parts else ""
-
-
-TERMINAL_LEDGER_STATUSES = {
-    "applied",
-    "approved",
-    "deleted",
-    "rejected",
-    "deferred",
-    "parked",
-    "suppressed",
-    "rule_registered",
-    "apply_failed",
-}
-
-
-PARKED_LEDGER_STATUSES = {"parked", "deferred", "deleted", "rejected", "suppressed"}
-
-
-def is_terminal_status(status: str) -> bool:
-    return normalize_status(status) in TERMINAL_LEDGER_STATUSES
-
-
-def prefer_ledger_entry(current: dict | None, candidate: dict) -> dict:
-    """Keep human/resolution decisions ahead of later automatic needs_review rows."""
-    if current is None:
-        return candidate
-    current_terminal = is_terminal_status(str(current.get("status") or ""))
-    candidate_terminal = is_terminal_status(str(candidate.get("status") or ""))
-    if candidate_terminal and not current_terminal:
-        return candidate
-    if current_terminal and not candidate_terminal:
-        return current
-    return candidate
-
-
 def load_ledger_latest(ledger_path: Path) -> dict[str, dict]:
-    latest: dict[str, dict] = {}
-    if not ledger_path.exists():
-        return latest
-
-    try:
-        content = ledger_path.read_text(encoding="utf-8")
-    except (OSError, IOError) as e:
-        print(f"警告: ledger ファイルの読み込みに失敗（パス: {ledger_path}）: {e}", file=sys.stderr)
-        return latest
-
-    for line in content.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        status = normalize_status(entry.get("status", ""))
-        if not status:
-            continue
-        aliases = [
-            entry.get("key"),
-            entry.get("canonical_key"),
-            entry.get("rev_id"),
-        ]
-        for alias in aliases:
-            alias_text = str(alias or "").strip()
-            if alias_text:
-                latest[alias_text] = prefer_ledger_entry(latest.get(alias_text), entry)
-    return latest
+    return load_latest_by_alias(ledger_path)
 
 
 def load_canonical_key_func(root: Path):
