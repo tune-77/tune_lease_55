@@ -675,7 +675,7 @@ export default function ImprovementLogPage() {
         apiClient.get<PromptFeedbackSummary>("/api/prompt-feedback/summary"),
         apiClient.get<ScreeningInputAssistSummary>("/api/screening-input-assist-events/summary", {
           params: { limit: 500 },
-        }),
+        }).catch(() => null),
         apiClient.get<OperationalTrustSummary>("/api/operational-trust/summary"),
         apiClient.get<ImprovementTriageResponse>("/api/improvement/triage"),
       ]);
@@ -683,7 +683,7 @@ export default function ImprovementLogPage() {
       setSummary(summaryRes.data);
       setGapAnalysis(gapsRes.data);
       setPromptSummary(promptRes.data || null);
-      setScreeningInputAssistSummary(inputAssistRes.data || null);
+      setScreeningInputAssistSummary(inputAssistRes?.data || null);
       setTrustSummary(trustRes.data || null);
       setTriageRecords(triageRes.data?.records || []);
     } catch {
