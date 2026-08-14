@@ -44,6 +44,24 @@ class MemoryReviewRequest(BaseModel):
     edited_claim: str = ""
 
 
+class ShionHydeDebugRequest(BaseModel):
+    message: str
+    industry: str = ""
+    asset_name: str = ""
+    score_band: str = ""
+    known_risk_tags: list[str] = Field(default_factory=list)
+    limit: int = 5
+
+
+class CounterHypothesisCardRequest(BaseModel):
+    case_summary: str
+    industry: str = ""
+    asset_name: str = ""
+    score_band: str = ""
+    human_discomfort: str = ""
+    risk_tags: list[str] = Field(default_factory=list)
+
+
 def _daily_greeting_read_json(path: Path) -> dict:
     try:
         if path.exists():
@@ -294,6 +312,52 @@ def get_shion_memory_engineering_report() -> dict:
         "hardware_pressure_proxy": {},
         "recommendations": [],
     }
+
+
+@router.get("/api/shion/post-hackathon-status")
+def get_shion_post_hackathon_status() -> dict:
+    """ハッカソン後バックログの実装状態を集約して返す。"""
+    from api.shion_post_hackathon import build_post_hackathon_status
+
+    return build_post_hackathon_status()
+
+
+@router.get("/api/shion/memory-health")
+def get_shion_memory_health() -> dict:
+    """記憶インデックスの健康診断を読み取り専用で返す。"""
+    from api.shion_post_hackathon import build_memory_health_payload
+
+    return build_memory_health_payload()
+
+
+@router.post("/api/debug/shion-hyde-rag")
+def post_shion_hyde_rag_debug(req: ShionHydeDebugRequest) -> dict:
+    """Shion-HyDE検索のdebug比較。本回答・RAG索引・プロンプトは変更しない。"""
+    from api.shion_post_hackathon import build_shion_hyde_debug_payload
+
+    return build_shion_hyde_debug_payload(
+        message=req.message,
+        industry=req.industry,
+        asset_name=req.asset_name,
+        score_band=req.score_band,
+        known_risk_tags=req.known_risk_tags,
+        limit=req.limit,
+    )
+
+
+@router.post("/api/shion/counter-hypothesis-card")
+def post_counter_hypothesis_card(req: CounterHypothesisCardRequest) -> dict:
+    """違和感抽出用の反証可能な次善仮説カードを返す。通常回答には混ぜない。"""
+    from api.shion_post_hackathon import build_counter_hypothesis_card
+
+    return build_counter_hypothesis_card(
+        case_summary=req.case_summary,
+        industry=req.industry,
+        asset_name=req.asset_name,
+        score_band=req.score_band,
+        human_discomfort=req.human_discomfort,
+        risk_tags=req.risk_tags,
+    )
 
 
 @router.get("/api/shion/memory-review-inbox")

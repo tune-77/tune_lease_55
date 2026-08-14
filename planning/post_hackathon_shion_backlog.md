@@ -4,6 +4,26 @@
 
 ハッカソン期間中は新規拡張を凍結し、安定・提出・既存URL確認を優先する。以下はハッカソン後に腰を据えて進める。
 
+## 実装状況 2026-08-15
+
+このバックログは、通常回答や本番スコアリングへ直結させず、観測・レビュー・訓練の control plane として実装した。
+
+- 状態集約: `GET /api/shion/post-hackathon-status`
+- 関係性観測: `GET /api/relationship/state`, `POST /api/relationship/feedback`
+- 判断資産運用: `/judgment-review`, `/screening`, `/improvement-log`
+- Shion-HyDE debug: `POST /api/debug/shion-hyde-rag`
+- 記憶健康診断: `GET /api/shion/memory-health`
+- 反証用次善仮説カード: `POST /api/shion/counter-hypothesis-card`
+- 自律DevOps監査: `GET /api/shion/action-ledger/summary`
+- 統合UI: `/shion-memory-system` の Post-Hackathon Control Plane
+
+安全線:
+
+- HyDE は debug 比較のみで、本回答プロンプト・RAG索引・スコアリングを変更しない。
+- 次善仮説カードは訓練専用で、通常回答には混ぜない。
+- 記憶健康診断は read-only で、記憶削除・昇格を行わない。
+- 自律DevOps は Ledger 監査を先に置き、実行権限とは分離する。
+
 ## 1. 関係性を制御対象にする
 
 紫苑とUserの関係を、好かれる/盛り上がるためではなく、判断精度・信頼・非迎合・修正耐性を保つための制御対象として扱う。
