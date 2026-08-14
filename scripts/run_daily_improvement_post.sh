@@ -287,8 +287,8 @@ fi
 echo ""
 echo "[配線] 判断資産グラフを frontend/public へ同期（本番UI配信用）..."
 # reports/ は Cloud Run イメージ非同梱だが frontend/public は本番配信される。
-# 生成した最新グラフ(HTML/PNG)を public にコピーし、次回デプロイで /judgment-asset-graph に反映させる。
-GRAPH_PUBLIC_DIR="${PROJECT_ROOT}/frontend/public/judgment-asset-graph"
+# 生成した最新グラフ(HTML/PNG)を App Router のページ名と衝突しない public/generated 配下へコピーする。
+GRAPH_PUBLIC_DIR="${PROJECT_ROOT}/frontend/public/generated/judgment-asset-graph"
 mkdir -p "${GRAPH_PUBLIC_DIR}"
 if [ -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" ] && [ -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.png" ]; then
   cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" "${GRAPH_PUBLIC_DIR}/index.html" \

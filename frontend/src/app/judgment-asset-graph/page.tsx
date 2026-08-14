@@ -5,9 +5,9 @@ import { Network, ExternalLink, Sparkles } from "lucide-react";
 
 // 判断資産グラフ（紫苑の成長・系統樹）
 // scripts/build_judgment_asset_graph.py が夜間に生成する自己完結HTMLを
-// frontend/public/judgment-asset-graph/index.html として配信し、iframe で表示する。
+// frontend/public/generated/judgment-asset-graph/index.html として配信し、iframe で表示する。
 // このグラフは evaluate_shion_growth.py の期間成長判定も内包する。
-const GRAPH_SRC = "/judgment-asset-graph/index.html";
+const GRAPH_SRC = "/generated/judgment-asset-graph/index.html";
 
 export default function JudgmentAssetGraphPage() {
   return (
