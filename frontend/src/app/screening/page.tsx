@@ -2143,14 +2143,16 @@ export default function Dashboard() {
     setInputJudgmentAssetCandidates([]);
     setInputJudgmentAssetSearched(false);
     setJudgmentAssetFeedbackSavingId("");
+    const copiedBeforeSubmit = Boolean(lastCopiedAt.current);
+    const elapsedFromCopyMs = lastCopiedAt.current ? Date.now() - lastCopiedAt.current : null;
     try {
       const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(targetFormData));
       recordInputAssistEvent("score_submitted", {
         changed_after_copy_count: countChangedAfterInputAssistCopy(targetFormData),
         copied_field_count: lastCopiedFields.current.length,
         metadata: {
-          copied_before_submit: String(Boolean(lastCopiedAt.current)),
-          elapsed_from_copy_ms: lastCopiedAt.current ? String(Date.now() - lastCopiedAt.current) : "",
+          copied_before_submit: String(copiedBeforeSubmit),
+          elapsed_from_copy_ms: elapsedFromCopyMs === null ? "" : String(elapsedFromCopyMs),
         },
       });
       setResult(res.data);

@@ -390,6 +390,7 @@ def _summarize_screening_input_assist_events(rows: list[dict[str, Any]]) -> dict
                     elapsed_after_copy.append(elapsed)
 
     copy_count = by_action.get("copied", 0)
+    copied_session_count = len(copied_sessions)
     search_count = by_action.get("search_click", 0)
     score_submit_count = by_action.get("score_submitted", 0)
     return {
@@ -401,7 +402,7 @@ def _summarize_screening_input_assist_events(rows: list[dict[str, Any]]) -> dict
         "copy_rate": round(copy_count / search_count, 3) if search_count else None,
         "score_submit_count": score_submit_count,
         "submitted_after_copy_count": len(submitted_after_copy_sessions),
-        "submitted_after_copy_rate": round(len(submitted_after_copy_sessions) / copy_count, 3) if copy_count else None,
+        "submitted_after_copy_rate": round(len(submitted_after_copy_sessions) / copied_session_count, 3) if copied_session_count else None,
         "avg_copied_fields": round(copied_field_total / copy_count, 1) if copy_count else None,
         "avg_confirm_fields": round(confirm_field_total / copy_count, 1) if copy_count else None,
         "avg_changed_after_copy": round(sum(changed_after_copy_values) / len(changed_after_copy_values), 1) if changed_after_copy_values else None,
