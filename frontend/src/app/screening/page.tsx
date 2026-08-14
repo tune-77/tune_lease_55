@@ -2453,6 +2453,13 @@ export default function Dashboard() {
                       {inputAssistLoading ? <Activity className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                       類似案件を探す
                     </button>
+                    <Link
+                      href="/improvement-log"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-black text-emerald-700 shadow-sm transition hover:bg-emerald-50"
+                    >
+                      <ChartNoAxesCombined className="h-4 w-4" />
+                      効果測定
+                    </Link>
                   </div>
 
                   {inputAssistCases.length > 0 && (
