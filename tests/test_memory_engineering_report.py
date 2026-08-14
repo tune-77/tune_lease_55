@@ -70,6 +70,32 @@ def test_build_report_tracks_write_promotion_read_and_forgetting(tmp_path):
                 "estimated_token_reduction_ratio": 0.9,
             }
         },
+        experience_flywheel={
+            "summary": {
+                "deduped_candidates": 10,
+                "by_gate": {"promote_to_review": 2, "replay_eval": 3, "quarantine": 4},
+            }
+        },
+        checklist_candidates={"summary": {"candidate_count": 5}},
+        accepted_checklist={
+            "summary": {
+                "active_count": 1,
+                "review_counts": {"accepted": 1, "rejected": 1},
+            }
+        },
+        field_review={
+            "summary": {"active_rules": 2, "grow": 1, "review": 1, "sleeping": 1, "hold": 0},
+            "buckets": {
+                "sleeping": [
+                    {
+                        "rule_id": "r_sleep",
+                        "concept": "sleeping_rule",
+                        "reason": "active but unused",
+                        "statement": "次案件で効くか確認する。",
+                    }
+                ]
+            },
+        },
         target_date="2026-08-09",
     )
 
@@ -85,8 +111,21 @@ def test_build_report_tracks_write_promotion_read_and_forgetting(tmp_path):
     assert payload["hardware_pressure_proxy"]["estimated_tokens_avoided"] == 900
     assert summary["write_policy_metadata_completion_rate"] == 0.0
     assert payload["write_path"]["write_policy"]["missing_by_field"]["provenance"] == 2
+    assert summary["candidate_to_active_pressure"] == 3.0
+    assert summary["quarantine_records"] == 4
+    assert summary["sleeping_active_rules"] == 1
+    assert payload["state_inventory"]["counts"]["quarantine"] == 4
+    assert payload["state_inventory"]["utility_kpis"]["checklist_review_rate"] == 0.4
+    assert payload["forgetting_policy"]["current_pressure"]["sleeping_active_rules"] == 1
+    assert payload["forgetting_policy"]["next_review_samples"]["sleeping_rules"][0]["rule_id"] == "r_sleep"
+    assert payload["daily_review_focus"]["actions"][0]["id"] == "review_open_candidates"
+    assert payload["daily_review_focus"]["actions"][0]["items"][0]["title"] == "候補A"
+    assert payload["daily_review_focus"]["actions"][1]["items"]["count"] == 4
+    assert payload["daily_review_focus"]["actions"][1]["items"]["sample_count"] == 0
+    assert payload["daily_review_focus"]["actions"][2]["items"][0]["rule_id"] == "r_sleep"
     assert any(item["action"] == "memory_entry_metadata_gate" for item in payload["recommendations"])
     assert any(item["action"] == "contradiction_review" for item in payload["recommendations"])
+    assert any(item["action"] == "quarantine_sample_review" for item in payload["recommendations"])
 
 
 def test_review_state_reduces_open_review_count(tmp_path):
@@ -168,6 +207,9 @@ def test_markdown_contains_four_lenses():
             "latest_preview_accepted": 1,
             "latest_preview_promoted_to_active": 1,
             "latest_preview_promotion_rate": 1.0,
+            "candidate_to_active_pressure": 0.0,
+            "quarantine_records": 0,
+            "sleeping_active_rules": 0,
         },
         "write_path": {
             "sources": [
@@ -192,6 +234,25 @@ def test_markdown_contains_four_lenses():
             "estimated_index_tokens": 20,
             "estimated_token_reduction_ratio": 0.8,
         },
+        "state_inventory": {
+            "counts": {"active": 1, "candidate_or_review": 0},
+            "utility_kpis": {"candidate_to_active_pressure": 0.0},
+        },
+        "forgetting_policy": {
+            "policy": [{"class": "candidate_memory", "rule": "review before use"}],
+            "current_pressure": {"sleeping_active_rules": 0},
+            "next_review_samples": {},
+        },
+        "daily_review_focus": {
+            "actions": [
+                {
+                    "id": "review_open_candidates",
+                    "label": "候補を少し採否する",
+                    "why": "候補圧を下げる",
+                    "items": [],
+                }
+            ]
+        },
         "recommendations": [],
     }
 
@@ -199,6 +260,8 @@ def test_markdown_contains_four_lenses():
     assert "## Stanford Lens: Write Cost" in markdown
     assert "## Microsoft Lens: Utility Density" in markdown
     assert "## Anthropic Lens: Control" in markdown
+    assert "## Forgetting Policy" in markdown
+    assert "## Daily Review Focus" in markdown
     assert "## Nvidia Lens: Retrieval Pressure" in markdown
 
 
@@ -220,9 +283,15 @@ def test_write_outputs_creates_json_and_markdown(tmp_path):
             "latest_preview_accepted": 0,
             "latest_preview_promoted_to_active": 0,
             "latest_preview_promotion_rate": None,
+            "candidate_to_active_pressure": None,
+            "quarantine_records": 0,
+            "sleeping_active_rules": 0,
         },
         "write_path": {"sources": [], "canonical_preview": {"records": 0, "by_status": {}}},
         "maintenance_path": {"by_status": {}, "by_type": {}, "forgetting_review_sample": []},
+        "state_inventory": {},
+        "forgetting_policy": {},
+        "daily_review_focus": {},
         "hardware_pressure_proxy": {},
         "recommendations": [],
     }

@@ -32,6 +32,10 @@ DEFAULT_MEMORY_USAGE = REPO_ROOT / "data" / "shion_memory_usage_log.jsonl"
 DEFAULT_CONTRADICTIONS = REPO_ROOT / "reports" / "shion_memory_contradictions_latest.json"
 DEFAULT_RETRIEVAL_GRAPH = REPO_ROOT / "data" / "obsidian_retrieval_graph.json"
 DEFAULT_MEMORY_REVIEW_STATE = REPO_ROOT / "data" / "memory_review_inbox_state.json"
+DEFAULT_EXPERIENCE_FLYWHEEL = REPO_ROOT / "reports" / "experience_flywheel_latest.json"
+DEFAULT_CHECKLIST_CANDIDATES = REPO_ROOT / "reports" / "experience_replay_checklist_candidates_latest.json"
+DEFAULT_ACCEPTED_CHECKLIST = REPO_ROOT / "data" / "experience_replay_accepted_checklist.json"
+DEFAULT_FIELD_REVIEW = REPO_ROOT / "reports" / "judgment_asset_field_review_latest.json"
 
 DEFAULT_JSONL_SOURCES = [
     ("judgment_materials_preview", REPO_ROOT / "data" / "judgment_materials_preview.jsonl"),
@@ -301,6 +305,371 @@ def summarize_write_policy(sources: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _summary_dict(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict) and isinstance(payload.get("summary"), dict):
+        return payload["summary"]
+    return {}
+
+
+def _counter_from_mapping(payload: Any) -> dict[str, int]:
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, int] = {}
+    for key, value in payload.items():
+        try:
+            result[str(key)] = int(value or 0)
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def summarize_state_inventory(
+    *,
+    source_summaries: list[dict[str, Any]],
+    preview_rules: list[dict[str, Any]],
+    active_rules: list[dict[str, Any]],
+    memory_summary: dict[str, Any],
+    experience_flywheel: Any,
+    checklist_candidates: Any,
+    accepted_checklist: Any,
+    field_review: Any,
+) -> dict[str, Any]:
+    """Build an inspectable active/candidate/quarantine/rejected inventory.
+
+    This is deliberately descriptive, not authoritative. Each source keeps its
+    own lifecycle rules; the inventory makes the current memory metabolism easy
+    to review from one report.
+    """
+    source_statuses: Counter[str] = Counter()
+    source_records = 0
+    for source in source_summaries:
+        source_records += int(source.get("records") or 0)
+        for status, count in (source.get("by_status") or {}).items():
+            source_statuses[str(status)] += int(count or 0)
+
+    preview_statuses = Counter(_status(rule) for rule in preview_rules)
+    flywheel_summary = _summary_dict(experience_flywheel)
+    checklist_summary = _summary_dict(checklist_candidates)
+    accepted_summary = _summary_dict(accepted_checklist)
+    field_summary = _summary_dict(field_review)
+
+    flywheel_by_gate = _counter_from_mapping(flywheel_summary.get("by_gate"))
+    field_counts = {
+        "grow": int(field_summary.get("grow") or 0),
+        "review": int(field_summary.get("review") or 0),
+        "sleeping": int(field_summary.get("sleeping") or 0),
+        "hold": int(field_summary.get("hold") or 0),
+    }
+    checklist_review_counts = _counter_from_mapping(accepted_summary.get("review_counts"))
+
+    candidate_count = (
+        sum(count for status, count in source_statuses.items() if _is_review_open(status))
+        + sum(
+            count
+            for status, count in preview_statuses.items()
+            if status not in {"accepted_preview", "accepted", "approved", "promoted", "rejected"}
+        )
+        + int(flywheel_by_gate.get("promote_to_review") or 0)
+        + int(flywheel_by_gate.get("replay_eval") or 0)
+        + int(checklist_summary.get("candidate_count") or 0)
+    )
+    active_count = (
+        len(active_rules)
+        + int((memory_summary.get("by_status") or {}).get("active") or 0)
+        + int(accepted_summary.get("active_count") or 0)
+    )
+    rejected_count = (
+        sum(count for status, count in source_statuses.items() if status in {"rejected", "dismissed"})
+        + int(checklist_review_counts.get("rejected") or 0)
+    )
+    quarantine_count = int(flywheel_by_gate.get("quarantine") or 0)
+    maintenance_count = (
+        int(memory_summary.get("maintenance_status_records") or 0)
+        + field_counts["review"]
+        + field_counts["sleeping"]
+    )
+
+    checklist_candidate_count = int(checklist_summary.get("candidate_count") or 0)
+    checklist_reviewed = sum(checklist_review_counts.values())
+    checklist_review_rate = (
+        round(checklist_reviewed / checklist_candidate_count, 3)
+        if checklist_candidate_count
+        else None
+    )
+    field_feedback_coverage = (
+        round((field_counts["grow"] + field_counts["review"]) / int(field_summary.get("active_rules") or 0), 3)
+        if int(field_summary.get("active_rules") or 0)
+        else None
+    )
+
+    return {
+        "counts": {
+            "active": active_count,
+            "candidate_or_review": candidate_count,
+            "quarantine": quarantine_count,
+            "rejected_or_dismissed": rejected_count,
+            "maintenance_or_forgetting_review": maintenance_count,
+        },
+        "sources": {
+            "jsonl_candidate_records": source_records,
+            "jsonl_by_status": dict(sorted(source_statuses.items())),
+            "canonical_preview_by_status": dict(sorted(preview_statuses.items())),
+            "experience_flywheel_by_gate": flywheel_by_gate,
+            "field_review": field_counts,
+            "checklist_candidates": {
+                "candidate_count": checklist_candidate_count,
+                "active_count": int(accepted_summary.get("active_count") or 0),
+                "unreviewed_count": int(accepted_summary.get("unreviewed_count") or 0),
+                "review_counts": checklist_review_counts,
+                "review_rate": checklist_review_rate,
+            },
+        },
+        "utility_kpis": {
+            "checklist_review_rate": checklist_review_rate,
+            "field_feedback_coverage": field_feedback_coverage,
+            "candidate_to_active_pressure": (
+                round(candidate_count / active_count, 3) if active_count else None
+            ),
+            "quarantine_rate_in_experience_flywheel": (
+                round(quarantine_count / int(flywheel_summary.get("deduped_candidates") or 0), 3)
+                if int(flywheel_summary.get("deduped_candidates") or 0)
+                else None
+            ),
+        },
+    }
+
+
+def summarize_forgetting_policy(
+    *,
+    memory_summary: dict[str, Any],
+    experience_flywheel: Any,
+    field_review: Any,
+) -> dict[str, Any]:
+    flywheel_summary = _summary_dict(experience_flywheel)
+    field_summary = _summary_dict(field_review)
+    field_buckets = field_review.get("buckets") if isinstance(field_review, dict) else {}
+    if not isinstance(field_buckets, dict):
+        field_buckets = {}
+    sleeping = field_buckets.get("sleeping") if isinstance(field_buckets.get("sleeping"), list) else []
+    review = field_buckets.get("review") if isinstance(field_buckets.get("review"), list) else []
+    by_gate = _counter_from_mapping(flywheel_summary.get("by_gate"))
+
+    return {
+        "policy": [
+            {
+                "class": "raw_logs",
+                "rule": "Keep as evidence; distill into fact/skill/judgment candidates before recall.",
+            },
+            {
+                "class": "candidate_memory",
+                "rule": "Hold for human review; do not inject into prompts until accepted/revised.",
+            },
+            {
+                "class": "active_but_sleeping",
+                "rule": "Do not delete immediately; ask for real-case feedback or move to hold if it stays unused.",
+            },
+            {
+                "class": "quarantine",
+                "rule": "Keep out of memory and prompts; review only as a failure/poisoning/noise signal.",
+            },
+            {
+                "class": "contradiction",
+                "rule": "Surface with dates and applicability; never auto-merge contradictory memories.",
+            },
+        ],
+        "current_pressure": {
+            "active_non_value_without_top_usage": int(memory_summary.get("active_non_value_without_top_usage") or 0),
+            "sleeping_active_rules": int(field_summary.get("sleeping") or 0),
+            "review_active_rules": int(field_summary.get("review") or 0),
+            "experience_quarantine": int(by_gate.get("quarantine") or 0),
+        },
+        "next_review_samples": {
+            "unused_memory": memory_summary.get("forgetting_review_sample") or [],
+            "sleeping_rules": [
+                {
+                    "rule_id": str(item.get("rule_id") or ""),
+                    "concept": str(item.get("concept") or ""),
+                    "reason": str(item.get("reason") or ""),
+                    "statement": str(item.get("statement") or "")[:160],
+                }
+                for item in sleeping[:5]
+                if isinstance(item, dict)
+            ],
+            "rules_needing_review": [
+                {
+                    "rule_id": str(item.get("rule_id") or ""),
+                    "concept": str(item.get("concept") or ""),
+                    "reason": str(item.get("reason") or ""),
+                    "statement": str(item.get("statement") or "")[:160],
+                }
+                for item in review[:5]
+                if isinstance(item, dict)
+            ],
+        },
+    }
+
+
+def _brief_text(value: Any, limit: int = 180) -> str:
+    text = str(value or "").replace("\n", " ").strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
+def _candidate_claim(row: dict[str, Any]) -> str:
+    for key in ("claim", "canonical_statement", "proposed_change", "suggested_update", "body", "hypothesis"):
+        value = _brief_text(row.get(key), 180)
+        if value:
+            return value
+    return _brief_text(json.dumps(row, ensure_ascii=False, sort_keys=True), 180)
+
+
+def _candidate_title(row: dict[str, Any]) -> str:
+    for key in ("title", "research_title", "target_belief", "kind", "candidate_type", "material_type"):
+        value = _brief_text(row.get(key), 80)
+        if value:
+            return value
+    return _source_item_id(row)
+
+
+def _open_candidate_samples(
+    jsonl_sources: list[tuple[str, Path]],
+    review_state: dict[str, Any],
+    *,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    samples: list[dict[str, Any]] = []
+    for source_name, path in jsonl_sources:
+        for row in _read_jsonl(path):
+            status = _review_status_for(source_name, row, review_state) or _status(row)
+            if not _is_review_open(status):
+                continue
+            samples.append(
+                {
+                    "source": source_name,
+                    "source_item_id": _source_item_id(row),
+                    "status": status,
+                    "title": _candidate_title(row),
+                    "claim": _candidate_claim(row),
+                    "topic": _brief_text(
+                        row.get("research_topic")
+                        or row.get("concept")
+                        or row.get("target")
+                        or row.get("domain"),
+                        80,
+                    ),
+                    "date_hint": _brief_text(
+                        row.get("research_date")
+                        or row.get("date")
+                        or row.get("target_date")
+                        or row.get("created_at")
+                        or row.get("generated_at"),
+                        40,
+                    ),
+                    "review_command_hint": (
+                        f"memory_review_inbox decision source={source_name} "
+                        f"id={_source_item_id(row)}"
+                    ),
+                }
+            )
+    samples.sort(
+        key=lambda item: (
+            str(item.get("date_hint") or ""),
+            str(item.get("source") or ""),
+            str(item.get("source_item_id") or ""),
+        ),
+        reverse=True,
+    )
+    return samples[:limit]
+
+
+def _quarantine_focus(experience_flywheel: Any, *, limit: int = 5) -> dict[str, Any]:
+    items = []
+    if isinstance(experience_flywheel, dict) and isinstance(experience_flywheel.get("quarantined_candidates"), list):
+        items = [item for item in experience_flywheel["quarantined_candidates"] if isinstance(item, dict)]
+    summary = _summary_dict(experience_flywheel)
+    total_count = int(((summary.get("by_gate") or {}).get("quarantine") or 0) if isinstance(summary.get("by_gate"), dict) else 0)
+    by_source = Counter(str(item.get("source") or "unknown") for item in items)
+    by_reason = Counter(str((item.get("gate") or {}).get("reason") or "unknown") for item in items)
+    samples: list[dict[str, Any]] = []
+    for item in sorted(
+        items,
+        key=lambda row: (
+            int((row.get("gate") or {}).get("priority") or 0),
+            str(row.get("timestamp") or ""),
+        ),
+        reverse=True,
+    )[:limit]:
+        context = item.get("context") if isinstance(item.get("context"), dict) else {}
+        decision = item.get("decision") if isinstance(item.get("decision"), dict) else {}
+        gate = item.get("gate") if isinstance(item.get("gate"), dict) else {}
+        samples.append(
+            {
+                "id": str(item.get("id") or ""),
+                "source": str(item.get("source") or ""),
+                "timestamp": str(item.get("timestamp") or ""),
+                "reason": str(gate.get("reason") or ""),
+                "recommended_action": str(gate.get("recommended_action") or ""),
+                "question": _brief_text(context.get("question") or context.get("surface") or "", 140),
+                "decision_preview": _brief_text(
+                    decision.get("response_preview")
+                    or decision.get("issue_text")
+                    or decision.get("ringi_policy_text")
+                    or decision,
+                    180,
+                ),
+            }
+        )
+    return {
+        "count": total_count or len(items),
+        "sample_count": len(items),
+        "sample_by_source": dict(sorted(by_source.items())),
+        "sample_by_reason": dict(sorted(by_reason.items())),
+        "review_hint": "Do not promote these. Use samples to tighten extraction gates or leave as evidence.",
+        "samples": samples,
+    }
+
+
+def build_daily_review_focus(
+    *,
+    jsonl_sources: list[tuple[str, Path]],
+    review_state: dict[str, Any],
+    experience_flywheel: Any,
+    forgetting_policy: dict[str, Any],
+) -> dict[str, Any]:
+    samples = forgetting_policy.get("next_review_samples") if isinstance(forgetting_policy, dict) else {}
+    if not isinstance(samples, dict):
+        samples = {}
+    sleeping_rules = samples.get("sleeping_rules") if isinstance(samples.get("sleeping_rules"), list) else []
+    unused_memory = samples.get("unused_memory") if isinstance(samples.get("unused_memory"), list) else []
+    return {
+        "mode": "read_only_daily_memory_engineering_focus",
+        "actions": [
+            {
+                "id": "review_open_candidates",
+                "label": "候補を少し採否する",
+                "why": "候補圧を下げ、active memory へ進めるものと捨てるものを分ける。",
+                "items": _open_candidate_samples(jsonl_sources, review_state, limit=5),
+            },
+            {
+                "id": "inspect_quarantine_source",
+                "label": "quarantine が多い抽出元を弱める",
+                "why": "隔離候補は学習材料ではなく、抽出条件のノイズを示す。",
+                "items": _quarantine_focus(experience_flywheel, limit=5),
+            },
+            {
+                "id": "exercise_sleeping_active_rules",
+                "label": "sleeping active rule を次案件で試すか保留する",
+                "why": "active でも実利用フィードバックがなければ、判断資産として効いているか不明。",
+                "items": sleeping_rules[:5],
+            },
+        ],
+        "secondary_samples": {
+            "unused_memory_for_forgetting_review": unused_memory[:5],
+        },
+    }
+
+
 def build_report(
     *,
     canonical_preview: Any,
@@ -311,6 +680,10 @@ def build_report(
     review_state: dict[str, Any] | None = None,
     contradictions: Any,
     retrieval_graph: Any,
+    experience_flywheel: Any | None = None,
+    checklist_candidates: Any | None = None,
+    accepted_checklist: Any | None = None,
+    field_review: Any | None = None,
     target_date: str | None = None,
     recent_days: int = 30,
 ) -> dict[str, Any]:
@@ -335,6 +708,27 @@ def build_report(
     usage_summary = summarize_usage(memory_usage_rows, today=today, recent_days=recent_days)
     memory_records = _records_from_index(memory_index)
     memory_summary = summarize_memory_records(memory_records, usage_summary)
+    state_inventory = summarize_state_inventory(
+        source_summaries=source_summaries,
+        preview_rules=preview_rules,
+        active_rules=active_rules,
+        memory_summary=memory_summary,
+        experience_flywheel=experience_flywheel or {},
+        checklist_candidates=checklist_candidates or {},
+        accepted_checklist=accepted_checklist or {},
+        field_review=field_review or {},
+    )
+    forgetting_policy = summarize_forgetting_policy(
+        memory_summary=memory_summary,
+        experience_flywheel=experience_flywheel or {},
+        field_review=field_review or {},
+    )
+    daily_review_focus = build_daily_review_focus(
+        jsonl_sources=jsonl_sources,
+        review_state=review_state or {},
+        experience_flywheel=experience_flywheel or {},
+        forgetting_policy=forgetting_policy,
+    )
 
     contradiction_candidates = []
     if isinstance(contradictions, dict) and isinstance(contradictions.get("candidates"), list):
@@ -372,6 +766,9 @@ def build_report(
             "maintenance_status_records": memory_summary["maintenance_status_records"],
             "contradiction_candidates": len(contradiction_candidates),
             "write_policy_metadata_completion_rate": write_policy_summary["completion_rate"],
+            "candidate_to_active_pressure": state_inventory["utility_kpis"]["candidate_to_active_pressure"],
+            "quarantine_records": state_inventory["counts"]["quarantine"],
+            "sleeping_active_rules": forgetting_policy["current_pressure"]["sleeping_active_rules"],
         },
         "write_path": {
             "sources": source_summaries,
@@ -392,6 +789,9 @@ def build_report(
             **memory_summary,
             "contradiction_candidates": len(contradiction_candidates),
         },
+        "state_inventory": state_inventory,
+        "forgetting_policy": forgetting_policy,
+        "daily_review_focus": daily_review_focus,
         "hardware_pressure_proxy": summarize_retrieval_graph(retrieval_graph),
         "recommendations": build_recommendations(
             write_path_records=write_path_records,
@@ -401,6 +801,9 @@ def build_report(
             contradiction_count=len(contradiction_candidates),
             recent_unique_refs=usage_summary["recent_unique_refs"],
             write_policy_completion_rate=write_policy_summary["completion_rate"],
+            candidate_to_active_pressure=state_inventory["utility_kpis"]["candidate_to_active_pressure"],
+            quarantine_count=state_inventory["counts"]["quarantine"],
+            sleeping_active_rules=forgetting_policy["current_pressure"]["sleeping_active_rules"],
         ),
     }
     return report
@@ -415,6 +818,9 @@ def build_recommendations(
     contradiction_count: int,
     recent_unique_refs: int,
     write_policy_completion_rate: float | None = None,
+    candidate_to_active_pressure: float | None = None,
+    quarantine_count: int = 0,
+    sleeping_active_rules: int = 0,
 ) -> list[dict[str, str]]:
     recommendations: list[dict[str, str]] = []
     if write_policy_completion_rate is not None and write_policy_completion_rate < 0.8:
@@ -439,6 +845,30 @@ def build_recommendations(
                 "area": "control",
                 "action": "human_review_batch",
                 "reason": "人間レビュー待ちが溜まっている。自動昇格せず、上位候補だけ短時間で採否する。",
+            }
+        )
+    if candidate_to_active_pressure is not None and candidate_to_active_pressure >= 0.25:
+        recommendations.append(
+            {
+                "area": "utility_density",
+                "action": "candidate_to_active_pressure_review",
+                "reason": "active記憶に対して候補・評価待ちが重い。候補生成より採否・圧縮・却下の運用を優先する。",
+            }
+        )
+    if quarantine_count:
+        recommendations.append(
+            {
+                "area": "forgetting",
+                "action": "quarantine_sample_review",
+                "reason": "経験フライホイールに隔離候補がある。学習材料ではなく、抽出条件のノイズとして扱う。",
+            }
+        )
+    if sleeping_active_rules:
+        recommendations.append(
+            {
+                "area": "utility_density",
+                "action": "sleeping_active_rule_feedback",
+                "reason": "active判断資産に実利用フィードバック未記録のものがある。削除前に次案件で効いたか確認する。",
             }
         )
     if contradiction_count:
@@ -488,6 +918,9 @@ def build_markdown(payload: dict[str, Any]) -> str:
         f"- Maintenance status records: {summary['maintenance_status_records']}",
         f"- Contradiction candidates: {summary['contradiction_candidates']}",
         f"- Write policy metadata completion: {summary.get('write_policy_metadata_completion_rate')}",
+        f"- Candidate / active pressure: {summary.get('candidate_to_active_pressure')}",
+        f"- Quarantine records: {summary.get('quarantine_records')}",
+        f"- Sleeping active rules: {summary.get('sleeping_active_rules')}",
         "",
         "## Stanford Lens: Write Cost",
         "",
@@ -512,6 +945,12 @@ def build_markdown(payload: dict[str, Any]) -> str:
         "## Anthropic Lens: Control",
         "",
     ]
+    inventory = payload.get("state_inventory") or {}
+    if inventory:
+        lines += [
+            f"- Lifecycle inventory: `{inventory.get('counts', {})}`",
+            f"- Utility KPIs: `{inventory.get('utility_kpis', {})}`",
+        ]
     maintenance = payload["maintenance_path"]
     lines.append(f"- Status counts: `{maintenance['by_status']}`")
     lines.append(f"- Type counts: `{maintenance['by_type']}`")
@@ -525,6 +964,67 @@ def build_markdown(payload: dict[str, Any]) -> str:
                 f"last_used={item['last_used_at'] or 'none'} source={item['source_path']}: "
                 f"{item['content']}"
             )
+    forgetting = payload.get("forgetting_policy") or {}
+    if forgetting:
+        lines += [
+            "",
+            "## Forgetting Policy",
+            "",
+        ]
+        for item in forgetting.get("policy") or []:
+            lines.append(f"- `{item.get('class')}`: {item.get('rule')}")
+        pressure = forgetting.get("current_pressure") or {}
+        lines.append(f"- Current pressure: `{pressure}`")
+        samples = (forgetting.get("next_review_samples") or {}).get("sleeping_rules") or []
+        if samples:
+            lines.append("")
+            lines.append("### Sleeping Rule Sample")
+            lines.append("")
+            for item in samples[:5]:
+                lines.append(
+                    f"- `{item.get('rule_id')}` {item.get('concept')}: "
+                    f"{item.get('statement')}"
+                )
+    focus = payload.get("daily_review_focus") or {}
+    if focus:
+        lines += [
+            "",
+            "## Daily Review Focus",
+            "",
+        ]
+        for action in focus.get("actions") or []:
+            lines.append(f"### {action.get('label')}")
+            lines.append("")
+            lines.append(f"- Why: {action.get('why')}")
+            items = action.get("items")
+            if isinstance(items, list):
+                if items:
+                    for item in items[:5]:
+                        if action.get("id") == "review_open_candidates":
+                            lines.append(
+                                f"- `{item.get('source')}::{item.get('source_item_id')}` "
+                                f"{item.get('title')}: {item.get('claim')}"
+                            )
+                        elif action.get("id") == "exercise_sleeping_active_rules":
+                            lines.append(
+                                f"- `{item.get('rule_id')}` {item.get('concept')}: "
+                                f"{item.get('statement')}"
+                            )
+                        else:
+                            lines.append(f"- `{item.get('id', '')}` {item}")
+                else:
+                    lines.append("- No items.")
+            elif isinstance(items, dict):
+                lines.append(f"- Count: {items.get('count', 0)}")
+                lines.append(f"- Sample count: {items.get('sample_count', 0)}")
+                lines.append(f"- Sample by source: `{items.get('sample_by_source', {})}`")
+                lines.append(f"- Review hint: {items.get('review_hint', '')}")
+                for item in items.get("samples") or []:
+                    lines.append(
+                        f"- `{item.get('id')}` {item.get('source')} "
+                        f"{item.get('reason')}: {item.get('question') or item.get('decision_preview')}"
+                    )
+            lines.append("")
     graph = payload.get("hardware_pressure_proxy") or {}
     lines += [
         "",
@@ -561,6 +1061,10 @@ def main() -> int:
     parser.add_argument("--contradictions", type=Path, default=DEFAULT_CONTRADICTIONS)
     parser.add_argument("--retrieval-graph", type=Path, default=DEFAULT_RETRIEVAL_GRAPH)
     parser.add_argument("--memory-review-state", type=Path, default=DEFAULT_MEMORY_REVIEW_STATE)
+    parser.add_argument("--experience-flywheel", type=Path, default=DEFAULT_EXPERIENCE_FLYWHEEL)
+    parser.add_argument("--checklist-candidates", type=Path, default=DEFAULT_CHECKLIST_CANDIDATES)
+    parser.add_argument("--accepted-checklist", type=Path, default=DEFAULT_ACCEPTED_CHECKLIST)
+    parser.add_argument("--field-review", type=Path, default=DEFAULT_FIELD_REVIEW)
     parser.add_argument("--output-json", type=Path, default=DEFAULT_OUTPUT_JSON)
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
     parser.add_argument("--date", default=None)
@@ -576,6 +1080,10 @@ def main() -> int:
         review_state=_read_json(args.memory_review_state),
         contradictions=_read_json(args.contradictions),
         retrieval_graph=_read_json(args.retrieval_graph),
+        experience_flywheel=_read_json(args.experience_flywheel),
+        checklist_candidates=_read_json(args.checklist_candidates),
+        accepted_checklist=_read_json(args.accepted_checklist),
+        field_review=_read_json(args.field_review),
         target_date=args.date,
         recent_days=args.recent_days,
     )
