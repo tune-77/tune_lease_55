@@ -31,6 +31,7 @@ _CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment
 _JUDGMENT_ASSET_USAGE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_usage_feedback.jsonl"
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
+_SCREENING_INPUT_ASSIST_EVENTS_JSONL = Path(_REPO_ROOT) / "data" / "screening_input_assist_events.jsonl"
 _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
 _HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
 _CLOUDRUN_RETURN_DB = Path(_REPO_ROOT) / "data" / "cloudrun_experience_return.db"
@@ -177,6 +178,37 @@ class ScreeningExperienceCaseRequest(BaseModel):
     result_snapshot: dict = Field(default_factory=dict)
 
 
+class ScreeningInputAssistEventRequest(BaseModel):
+    action: Literal[
+        "input_started",
+        "search_click",
+        "search_result",
+        "search_failed",
+        "candidate_selected",
+        "copied",
+        "score_submitted",
+    ]
+    surface: str = "screening"
+    session_id: str = ""
+    company_no: str = ""
+    company_name: str = ""
+    industry_major: str = ""
+    industry_sub: str = ""
+    asset_name: str = ""
+    source_case_id: str = ""
+    source_company_name: str = ""
+    candidate_count: int = 0
+    diff_count: int = 0
+    confirm_count: int = 0
+    copied_field_count: int = 0
+    changed_after_copy_count: int = 0
+    elapsed_ms: Optional[int] = None
+    copied_fields: list[str] = Field(default_factory=list)
+    confirm_fields: list[str] = Field(default_factory=list)
+    note: str = ""
+    metadata: dict = Field(default_factory=dict)
+
+
 class CloudRunReturnReviewRequest(BaseModel):
     review_status: Literal["approved", "held", "rejected"]
     note: str = ""
@@ -249,6 +281,127 @@ def _append_screening_loop_feedback(req: ScreeningLoopFeedbackRequest) -> dict:
     with _SCREENING_LOOP_FEEDBACK_LOG.open("a", encoding="utf-8") as f:
         f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     return entry
+
+
+def _append_screening_input_assist_event(req: ScreeningInputAssistEventRequest) -> dict:
+    import datetime as _dt
+    import hashlib as _hashlib
+    import json as _json
+
+    def clean_text(value: Any, limit: int = 120) -> str:
+        return str(value or "").strip()[:limit]
+
+    copied_fields = [clean_text(item, 80) for item in (req.copied_fields or []) if clean_text(item, 80)][:80]
+    confirm_fields = [clean_text(item, 80) for item in (req.confirm_fields or []) if clean_text(item, 80)][:80]
+    metadata = req.metadata if isinstance(req.metadata, dict) else {}
+    safe_metadata = {
+        clean_text(key, 80): clean_text(value, 240)
+        for key, value in list(metadata.items())[:20]
+    }
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    base = "\n".join([
+        now,
+        req.action,
+        req.session_id,
+        req.source_case_id,
+        clean_text(req.company_no, 40),
+        clean_text(req.company_name, 120),
+    ])
+    entry = {
+        "ts": now,
+        "id": _hashlib.sha256(base.encode("utf-8")).hexdigest()[:16],
+        "action": req.action,
+        "surface": clean_text(req.surface or "screening", 80),
+        "session_id": clean_text(req.session_id, 120),
+        "company_no": clean_text(req.company_no, 40),
+        "company_name": clean_text(req.company_name, 120),
+        "industry_major": clean_text(req.industry_major, 80),
+        "industry_sub": clean_text(req.industry_sub, 80),
+        "asset_name": clean_text(req.asset_name, 120),
+        "source_case_id": clean_text(req.source_case_id, 80),
+        "source_company_name": clean_text(req.source_company_name, 120),
+        "candidate_count": max(0, int(req.candidate_count or 0)),
+        "diff_count": max(0, int(req.diff_count or 0)),
+        "confirm_count": max(0, int(req.confirm_count or 0)),
+        "copied_field_count": max(0, int(req.copied_field_count or 0)),
+        "changed_after_copy_count": max(0, int(req.changed_after_copy_count or 0)),
+        "elapsed_ms": req.elapsed_ms if req.elapsed_ms is not None and req.elapsed_ms >= 0 else None,
+        "copied_fields": copied_fields,
+        "confirm_fields": confirm_fields,
+        "note": clean_text(req.note, 300),
+        "metadata": safe_metadata,
+    }
+    _SCREENING_INPUT_ASSIST_EVENTS_JSONL.parent.mkdir(parents=True, exist_ok=True)
+    with _SCREENING_INPUT_ASSIST_EVENTS_JSONL.open("a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    return entry
+
+
+def _read_screening_input_assist_events(limit: int = 500) -> list[dict[str, Any]]:
+    if not _SCREENING_INPUT_ASSIST_EVENTS_JSONL.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    with _SCREENING_INPUT_ASSIST_EVENTS_JSONL.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return rows[-max(1, min(int(limit or 500), 5000)):]
+
+
+def _summarize_screening_input_assist_events(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    by_action: dict[str, int] = {}
+    sessions: set[str] = set()
+    copied_sessions: set[str] = set()
+    submitted_after_copy = 0
+    elapsed_after_copy: list[int] = []
+    copied_field_total = 0
+    confirm_field_total = 0
+    changed_after_copy_total = 0
+
+    copied_at_by_session: dict[str, str] = {}
+    for row in rows:
+        action = str(row.get("action") or "")
+        by_action[action] = by_action.get(action, 0) + 1
+        session_id = str(row.get("session_id") or "")
+        if session_id:
+            sessions.add(session_id)
+        if action == "copied":
+            if session_id:
+                copied_sessions.add(session_id)
+                copied_at_by_session[session_id] = str(row.get("ts") or "")
+            copied_field_total += int(row.get("copied_field_count") or 0)
+            confirm_field_total += int(row.get("confirm_count") or 0)
+        if action == "score_submitted":
+            changed_after_copy_total += int(row.get("changed_after_copy_count") or 0)
+            if session_id and session_id in copied_at_by_session:
+                submitted_after_copy += 1
+                elapsed = row.get("elapsed_ms")
+                if isinstance(elapsed, int) and elapsed >= 0:
+                    elapsed_after_copy.append(elapsed)
+
+    copy_count = by_action.get("copied", 0)
+    search_count = by_action.get("search_click", 0)
+    score_submit_count = by_action.get("score_submitted", 0)
+    return {
+        "event_count": len(rows),
+        "session_count": len(sessions),
+        "by_action": by_action,
+        "search_count": search_count,
+        "copy_count": copy_count,
+        "copy_rate": round(copy_count / search_count, 3) if search_count else None,
+        "score_submit_count": score_submit_count,
+        "submitted_after_copy_count": submitted_after_copy,
+        "submitted_after_copy_rate": round(submitted_after_copy / copy_count, 3) if copy_count else None,
+        "avg_copied_fields": round(copied_field_total / copy_count, 1) if copy_count else None,
+        "avg_confirm_fields": round(confirm_field_total / copy_count, 1) if copy_count else None,
+        "avg_changed_after_copy": round(changed_after_copy_total / score_submit_count, 1) if score_submit_count else None,
+        "avg_elapsed_after_copy_ms": round(sum(elapsed_after_copy) / len(elapsed_after_copy)) if elapsed_after_copy else None,
+    }
 
 
 def _ensure_shion_screening_reviews_table() -> None:
@@ -2508,6 +2661,28 @@ def post_screening_loop_feedback(req: ScreeningLoopFeedbackRequest, background_t
         payload=entry,
     )
     return {"status": "ok", "feedback": entry}
+
+
+@router.post("/api/screening-input-assist-events")
+def post_screening_input_assist_event(req: ScreeningInputAssistEventRequest, background_tasks: BackgroundTasks) -> dict:
+    entry = _append_screening_input_assist_event(req)
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="screening_input_assist_event",
+        surface=req.surface or "screening",
+        payload={**entry, "schema_version": 1},
+    )
+    return {"status": "ok", "event": entry}
+
+
+@router.get("/api/screening-input-assist-events/summary")
+def get_screening_input_assist_event_summary(limit: int = 500) -> dict:
+    rows = _read_screening_input_assist_events(limit=limit)
+    return {
+        "summary": _summarize_screening_input_assist_events(rows),
+        "recent_events": rows[-20:],
+        "source": str(_SCREENING_INPUT_ASSIST_EVENTS_JSONL.relative_to(Path(_REPO_ROOT))),
+    }
 
 
 @router.post("/api/shion-screening-reviews")

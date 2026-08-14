@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Brain } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Brain, Search, Copy } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
@@ -153,6 +153,142 @@ const getJudgmentAssetTypeTone = (type: string) =>
 const SCREENING_RETURN_STATE_KEY = "lease-screening-return-state";
 const SCREENING_DRAFT_VERSION = 1;
 const SCREENING_DRAFT_SAVE_DELAY_MS = 300;
+
+const SCREENING_COPY_EXCLUDED_FIELDS = new Set<keyof ScoringFormData>([
+  "company_no",
+  "company_name",
+]);
+
+const SCREENING_COPY_FIELD_ORDER: (keyof ScoringFormData)[] = [
+  "industry_major",
+  "industry_sub",
+  "industry_detail",
+  "grade",
+  "trend_grade_t0",
+  "trend_grade_t1",
+  "trend_grade_t2",
+  "customer_type",
+  "main_bank",
+  "competitor",
+  "competitor_rate",
+  "num_competitors",
+  "deal_occurrence",
+  "deal_source",
+  "sales_dept",
+  "nenshu",
+  "gross_profit",
+  "op_profit",
+  "ord_profit",
+  "net_income",
+  "depreciation",
+  "dep_expense",
+  "rent",
+  "rent_expense",
+  "machines",
+  "other_assets",
+  "net_assets",
+  "total_assets",
+  "bank_credit",
+  "lease_credit",
+  "contracts",
+  "contract_type",
+  "lease_term",
+  "acceptance_year",
+  "acquisition_cost",
+  "selected_asset_id",
+  "asset_name",
+  "asset_detail",
+  "asset_purpose",
+  "asset_location",
+  "asset_evidence_level",
+  "asset_score",
+  "qual_corr_company_history",
+  "qual_corr_customer_stability",
+  "qual_corr_repayment_history",
+  "qual_corr_business_future",
+  "qual_corr_equipment_purpose",
+  "qual_corr_main_bank",
+  "passion_text",
+  "strength_tags",
+  "intuition",
+];
+
+const SCREENING_COPY_CONFIRM_FIELDS = new Set<keyof ScoringFormData>([
+  "nenshu",
+  "gross_profit",
+  "op_profit",
+  "ord_profit",
+  "net_income",
+  "net_assets",
+  "total_assets",
+  "bank_credit",
+  "lease_credit",
+  "contracts",
+  "lease_term",
+  "acquisition_cost",
+  "asset_name",
+  "competitor_rate",
+]);
+
+const SCREENING_FIELD_LABELS: Partial<Record<keyof ScoringFormData, string>> = {
+  ...DATA_SOURCE_FIELD_LABELS,
+  industry_detail: "詳細キーワード",
+  trend_grade_t0: "今期格付",
+  trend_grade_t1: "前期格付",
+  trend_grade_t2: "前々期格付",
+  num_competitors: "競合社数",
+  deal_occurrence: "発生経緯",
+  gross_profit: "売上総利益",
+  depreciation: "減価償却費（資産）",
+  dep_expense: "減価償却費（経費）",
+  rent: "賃借料（資産）",
+  rent_expense: "賃借料（経費）",
+  machines: "機械装置・運搬具",
+  other_assets: "その他固定資産",
+  acceptance_year: "検収年",
+  qual_corr_company_history: "業歴",
+  qual_corr_customer_stability: "顧客基盤",
+  qual_corr_repayment_history: "返済履歴",
+  qual_corr_business_future: "事業将来性",
+  qual_corr_equipment_purpose: "設備目的",
+  qual_corr_main_bank: "メイン行姿勢",
+  strength_tags: "強みタグ",
+};
+
+type ScreeningCopyDiff = {
+  key: keyof ScoringFormData;
+  label: string;
+  before: string;
+  after: string;
+  needsConfirmation: boolean;
+};
+
+const formatScreeningCopyValue = (value: unknown): string => {
+  if (Array.isArray(value)) return value.join(", ") || "未入力";
+  if (value === undefined || value === null || value === "") return "未入力";
+  return String(value);
+};
+
+const buildScreeningCopyDiffs = (
+  current: ScoringFormData,
+  snapshot: Partial<Record<keyof ScoringFormData, unknown>>,
+): ScreeningCopyDiff[] => {
+  return SCREENING_COPY_FIELD_ORDER.flatMap((key) => {
+    if (SCREENING_COPY_EXCLUDED_FIELDS.has(key) || !(key in snapshot)) return [];
+    const beforeRaw = current[key];
+    const afterRaw = snapshot[key];
+    const before = formatScreeningCopyValue(beforeRaw);
+    const after = formatScreeningCopyValue(afterRaw);
+    if (before === after) return [];
+    return [{
+      key,
+      label: SCREENING_FIELD_LABELS[key] || key,
+      before,
+      after,
+      needsConfirmation: SCREENING_COPY_CONFIRM_FIELDS.has(key),
+    }];
+  });
+};
 
 const getScreeningErrorMessage = (error: unknown) => {
   const err = error as {
@@ -532,6 +668,82 @@ function JudgmentAssetCandidateCard({
           </p>
         )}
       </div>
+    </section>
+  );
+}
+
+function InputJudgmentAssetPreview({
+  candidates,
+  loading,
+  searched,
+  onSearch,
+}: {
+  candidates: JudgmentAssetCandidate[];
+  loading: boolean;
+  searched: boolean;
+  onSearch: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-amber-100 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-slate-800">入力中の確認観点</h3>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+              業種・物件・導入目的から、今回先に見ておく判断資産を表示します。スコアや承認判定は変えません。
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onSearch}
+          disabled={loading}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-black text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
+        >
+          {loading ? <Activity className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          観点を探す
+        </button>
+      </div>
+
+      {candidates.length > 0 && (
+        <div className="mt-4 grid gap-3 xl:grid-cols-3">
+          {candidates.map((candidate) => {
+            const typeTone = getJudgmentAssetTypeTone(candidate.candidate_type);
+            const displayClaim = candidate.edited_claim || candidate.effective_claim || candidate.claim;
+            const isCanonical = isCanonicalJudgmentAsset(candidate);
+            return (
+              <article
+                key={candidate.id}
+                className={`relative overflow-hidden rounded-xl border p-3 ${typeTone.card}`}
+              >
+                <div className={`absolute inset-y-0 left-0 w-1.5 ${typeTone.accent}`} />
+                <div className="flex flex-wrap items-center gap-1.5 pl-1 text-[10px] font-black">
+                  <span className="rounded-full bg-slate-900 px-2 py-1 text-white">JA-{candidate.id.slice(0, 8)}</span>
+                  <span className={`rounded-full px-2 py-1 ${typeTone.badge}`}>{typeTone.label}</span>
+                  <span className={`rounded-full px-2 py-1 ${isCanonical ? "bg-emerald-600 text-white" : "bg-amber-500 text-white"}`}>
+                    {isCanonical ? "正規" : "候補"}
+                  </span>
+                </div>
+                <p className="mt-2 line-clamp-4 pl-1 text-sm font-bold leading-6 text-slate-900">
+                  {displayClaim}
+                </p>
+                <p className="mt-2 truncate pl-1 text-[10px] font-bold text-slate-600">
+                  {candidate.research_topic || candidate.evidence_path || "screening"}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {searched && !loading && candidates.length === 0 && (
+        <div className="mt-4 rounded-xl border border-dashed border-amber-200 bg-amber-50/40 px-3 py-3 text-xs font-bold text-amber-800">
+          この入力に合う判断資産はまだありません。業種・物件・導入目的を入れると候補が出やすくなります。
+        </div>
+      )}
     </section>
   );
 }
@@ -1285,12 +1497,26 @@ export default function Dashboard() {
   const [shionPastCompanies, setShionPastCompanies] = useState<PastCompanyHighlight[]>([]);
   const [judgmentAssetCandidates, setJudgmentAssetCandidates] = useState<JudgmentAssetCandidate[]>([]);
   const [judgmentAssetCandidatesLoading, setJudgmentAssetCandidatesLoading] = useState(false);
+  const [inputJudgmentAssetCandidates, setInputJudgmentAssetCandidates] = useState<JudgmentAssetCandidate[]>([]);
+  const [inputJudgmentAssetLoading, setInputJudgmentAssetLoading] = useState(false);
+  const [inputJudgmentAssetSearched, setInputJudgmentAssetSearched] = useState(false);
   const [judgmentAssetFeedbackSavingId, setJudgmentAssetFeedbackSavingId] = useState("");
   const [judgmentAssetAdaptationMode, setJudgmentAssetAdaptationMode] = useState<JudgmentAssetAdaptationMode>("standard");
   const [draftRestored, setDraftRestored] = useState(false);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const [currentExperienceCases, setCurrentExperienceCases] = useState<DemoSimilarPastCase[]>([]);
   const [experienceSaving, setExperienceSaving] = useState(false);
+  const [inputAssistCases, setInputAssistCases] = useState<DemoSimilarPastCase[]>([]);
+  const [inputAssistLoading, setInputAssistLoading] = useState(false);
+  const [inputAssistSearched, setInputAssistSearched] = useState(false);
+  const [inputAssistSelectedCase, setInputAssistSelectedCase] = useState<DemoSimilarPastCase | null>(null);
+  const [inputAssistNotice, setInputAssistNotice] = useState("");
+  const inputAssistSessionId = useRef(`screening-input-assist:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`);
+  const inputStartedAt = useRef(Date.now());
+  const inputStartedLogged = useRef(false);
+  const lastCopiedAt = useRef<number | null>(null);
+  const lastCopiedSnapshot = useRef<Partial<Record<keyof ScoringFormData, unknown>> | null>(null);
+  const lastCopiedFields = useRef<(keyof ScoringFormData)[]>([]);
   const shionReviewRequestSeq = useRef(0);
   const suppressNextDraftSave = useRef(false);
 
@@ -1436,6 +1662,124 @@ export default function Dashboard() {
     }));
   };
 
+  const recordInputAssistEvent = (
+    action: "input_started" | "search_click" | "search_result" | "search_failed" | "candidate_selected" | "copied" | "score_submitted",
+    extra: Record<string, unknown> = {},
+  ) => {
+    const payload = {
+      action,
+      surface: "screening",
+      session_id: inputAssistSessionId.current,
+      company_no: formData.company_no || "",
+      company_name: formData.company_name || "",
+      industry_major: formData.industry_major || "",
+      industry_sub: formData.industry_sub || "",
+      asset_name: formData.asset_name || "",
+      elapsed_ms: Date.now() - inputStartedAt.current,
+      ...extra,
+    };
+    void apiClient.post("/api/screening-input-assist-events", payload).catch((error) => {
+      console.warn("Screening input assist event failed", error);
+    });
+  };
+
+  useEffect(() => {
+    if (!draftRestored || inputStartedLogged.current) return;
+    inputStartedLogged.current = true;
+    recordInputAssistEvent("input_started");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftRestored]);
+
+  const searchInputAssistCases = async () => {
+    setInputAssistLoading(true);
+    setInputAssistSearched(true);
+    setInputAssistNotice("");
+    setInputAssistSelectedCase(null);
+    recordInputAssistEvent("search_click");
+    try {
+      const res = await apiClient.get("/api/screening-experience-cases", {
+        params: buildExperienceCaseQuery("", formData, result),
+      });
+      const cases = Array.isArray(res.data?.cases)
+        ? res.data.cases.map(normalizeExperienceCase).filter((item: DemoSimilarPastCase) => item.formSnapshot && Object.keys(item.formSnapshot).length > 0)
+        : [];
+      setInputAssistCases(cases);
+      recordInputAssistEvent("search_result", {
+        candidate_count: cases.length,
+        metadata: {
+          raw_count: String(res.data?.count ?? cases.length),
+        },
+      });
+      if (!cases.length) {
+        setInputAssistNotice("コピーできる過去案件が見つかりませんでした。審査後に経験ケース保存を増やすと候補が育ちます。");
+      }
+    } catch (error) {
+      console.error("Input assist search failed", error);
+      setInputAssistCases([]);
+      setInputAssistNotice("過去案件の取得に失敗しました。API接続を確認してください。");
+      recordInputAssistEvent("search_failed", {
+        note: error instanceof Error ? error.message : "unknown error",
+      });
+    } finally {
+      setInputAssistLoading(false);
+    }
+  };
+
+  const applyInputAssistCase = (sourceCase: DemoSimilarPastCase) => {
+    const snapshot = sourceCase.formSnapshot || {};
+    const diffs = buildScreeningCopyDiffs(formData, snapshot);
+    if (!diffs.length) {
+      setInputAssistNotice("現在の入力とコピー元に差分がありません。");
+      setInputAssistSelectedCase(null);
+      return;
+    }
+    const copiedFields = diffs.map((diff) => diff.key);
+    const confirmFields = diffs.filter((diff) => diff.needsConfirmation).map((diff) => diff.key);
+    setFormData((prev) => {
+      const next = { ...prev } as ScoringFormData;
+      SCREENING_COPY_FIELD_ORDER.forEach((key) => {
+        if (SCREENING_COPY_EXCLUDED_FIELDS.has(key) || !(key in snapshot)) return;
+        (next as unknown as Record<string, unknown>)[key] = snapshot[key];
+      });
+      return next;
+    });
+    setResult(null);
+    setGameTheoryResult(null);
+    setGunshiText("");
+    setShionReview(null);
+    setShionPastCompanies([]);
+    setJudgmentAssetCandidates([]);
+    setCurrentExperienceCases([]);
+    setInputAssistSelectedCase(null);
+    setInputAssistNotice(`${sourceCase.companyName || "過去案件"}から${diffs.length}項目をコピーしました。企業番号・企業名は上書きしていません。`);
+    lastCopiedAt.current = Date.now();
+    lastCopiedSnapshot.current = snapshot;
+    lastCopiedFields.current = copiedFields;
+    recordInputAssistEvent("copied", {
+      source_case_id: sourceCase.sourceCaseId || String(sourceCase.id || ""),
+      source_company_name: sourceCase.companyName || "",
+      diff_count: diffs.length,
+      confirm_count: confirmFields.length,
+      copied_field_count: copiedFields.length,
+      copied_fields: copiedFields,
+      confirm_fields: confirmFields,
+      metadata: {
+        source: sourceCase.source || "",
+        score: String(sourceCase.score ?? ""),
+        decision: sourceCase.decision || "",
+        outcome: sourceCase.outcome || "",
+      },
+    });
+  };
+
+  const countChangedAfterInputAssistCopy = (targetFormData: ScoringFormData) => {
+    const snapshot = lastCopiedSnapshot.current;
+    if (!snapshot || !lastCopiedFields.current.length) return 0;
+    return lastCopiedFields.current.filter((key) => (
+      formatScreeningCopyValue(targetFormData[key]) !== formatScreeningCopyValue(snapshot[key])
+    )).length;
+  };
+
 
   const fetchPastShionReviews = async (targetResult: any, targetFormData: ScoringFormData) => {
     try {
@@ -1475,6 +1819,31 @@ export default function Dashboard() {
       return [];
     } finally {
       setJudgmentAssetCandidatesLoading(false);
+    }
+  };
+
+  const searchInputJudgmentAssets = async () => {
+    setInputJudgmentAssetLoading(true);
+    setInputJudgmentAssetSearched(true);
+    try {
+      const res = await apiClient.get("/api/judgment-asset-candidates/screening", {
+        params: {
+          industry_major: formData.industry_major || "",
+          industry_sub: formData.industry_sub || "",
+          asset_name: formData.asset_name || "",
+          asset_purpose: formData.asset_purpose || "",
+          hantei: "",
+          score: "",
+          limit: 3,
+        },
+      });
+      const candidates = Array.isArray(res.data?.candidates) ? res.data.candidates as JudgmentAssetCandidate[] : [];
+      setInputJudgmentAssetCandidates(candidates);
+    } catch (error) {
+      console.warn("Input judgment asset preview fetch failed", error);
+      setInputJudgmentAssetCandidates([]);
+    } finally {
+      setInputJudgmentAssetLoading(false);
     }
   };
 
@@ -1757,6 +2126,8 @@ export default function Dashboard() {
     setCurrentExperienceCases([]);
     setShionPastCompanies([]);
     setJudgmentAssetCandidates([]);
+    setInputJudgmentAssetCandidates([]);
+    setInputJudgmentAssetSearched(false);
     setJudgmentAssetFeedbackSavingId("");
     setActiveTab("input");
     window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
@@ -1764,11 +2135,21 @@ export default function Dashboard() {
   };
 
   const handleSubmit = async (targetFormData: ScoringFormData = formData) => {
+    recordInputAssistEvent("score_submitted", {
+      changed_after_copy_count: countChangedAfterInputAssistCopy(targetFormData),
+      copied_field_count: lastCopiedFields.current.length,
+      metadata: {
+        copied_before_submit: String(Boolean(lastCopiedAt.current)),
+        elapsed_from_copy_ms: lastCopiedAt.current ? String(Date.now() - lastCopiedAt.current) : "",
+      },
+    });
     setLoading(true);
     setShionReview(null);
     setShionReviewError("");
     setShionPastCompanies([]);
     setJudgmentAssetCandidates([]);
+    setInputJudgmentAssetCandidates([]);
+    setInputJudgmentAssetSearched(false);
     setJudgmentAssetFeedbackSavingId("");
     try {
       const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(targetFormData));
@@ -2038,6 +2419,164 @@ export default function Dashboard() {
                       </button>
                     ))}
                   </div>
+                </section>
+
+                <InputJudgmentAssetPreview
+                  candidates={inputJudgmentAssetCandidates}
+                  loading={inputJudgmentAssetLoading}
+                  searched={inputJudgmentAssetSearched}
+                  onSearch={searchInputJudgmentAssets}
+                />
+
+                <section className="bg-white border border-emerald-100 rounded-2xl p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                        <Database className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-slate-800">過去案件から作成</h3>
+                        <p className="mt-1 text-xs text-slate-500">業種・物件・取引条件が近い保存済み経験ケースから、入力値を確認付きでコピーします。</p>
+                        {inputAssistNotice && (
+                          <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+                            {inputAssistNotice}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={searchInputAssistCases}
+                      disabled={inputAssistLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {inputAssistLoading ? <Activity className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                      類似案件を探す
+                    </button>
+                  </div>
+
+                  {inputAssistCases.length > 0 && (
+                    <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                      {inputAssistCases.slice(0, 3).map((item) => {
+                        const diffs = buildScreeningCopyDiffs(formData, item.formSnapshot || {});
+                        const selected = inputAssistSelectedCase?.id === item.id;
+                        return (
+                          <button
+                            key={`${item.id || item.sourceCaseId || item.companyName}-${item.period}`}
+                            type="button"
+                            onClick={() => {
+                              setInputAssistSelectedCase(item);
+                              recordInputAssistEvent("candidate_selected", {
+                                source_case_id: item.sourceCaseId || String(item.id || ""),
+                                source_company_name: item.companyName || "",
+                                diff_count: diffs.length,
+                                confirm_count: diffs.filter((diff) => diff.needsConfirmation).length,
+                                metadata: {
+                                  source: item.source || "",
+                                  similarity_score: String(item.similarityScore ?? ""),
+                                },
+                              });
+                            }}
+                            className={`rounded-xl border p-3 text-left transition ${
+                              selected ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-100" : "border-slate-200 bg-slate-50 hover:border-emerald-200 hover:bg-emerald-50/60"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-black text-slate-800">{item.companyName || "名称未設定"}</div>
+                                <div className="mt-1 truncate text-[11px] font-bold text-slate-500">
+                                  {[item.industrySub || item.industry, item.salesDept].filter(Boolean).join(" / ") || "業種未設定"}
+                                </div>
+                              </div>
+                              <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-black text-emerald-700">
+                                {Math.round(item.similarityScore || 0)}
+                              </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="rounded-md bg-white px-2 py-1 text-[10px] font-black text-slate-600">{Number(item.score || 0).toFixed(1)}点</span>
+                              {item.decision && <span className="rounded-md bg-white px-2 py-1 text-[10px] font-black text-slate-600">{item.decision}</span>}
+                              {item.outcome && <span className="rounded-md bg-white px-2 py-1 text-[10px] font-black text-slate-600">{item.outcome}</span>}
+                            </div>
+                            <p className="mt-2 line-clamp-2 text-[11px] font-bold leading-relaxed text-slate-500">
+                              {item.lesson || item.similarity || "保存済み入力をコピーできます。"}
+                            </p>
+                            <div className="mt-2 flex items-center justify-between text-[10px] font-black text-slate-400">
+                              <span>{diffs.length}項目差分</span>
+                              <span>{item.source || "experience"}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {inputAssistSelectedCase && (
+                    <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                      {(() => {
+                        const diffs = buildScreeningCopyDiffs(formData, inputAssistSelectedCase.formSnapshot || {});
+                        const confirmCount = diffs.filter((item) => item.needsConfirmation).length;
+                        return (
+                          <>
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div>
+                                <h4 className="text-sm font-black text-emerald-900">
+                                  {inputAssistSelectedCase.companyName || "過去案件"} からコピー
+                                </h4>
+                                <p className="mt-1 text-xs font-bold text-emerald-700">
+                                  企業番号・企業名は上書きしません。財務・与信・物件系はコピー後に必ず確認してください。
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setInputAssistSelectedCase(null)}
+                                  className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-50"
+                                >
+                                  閉じる
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => applyInputAssistCase(inputAssistSelectedCase)}
+                                  disabled={!diffs.length}
+                                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-emerald-800 disabled:opacity-50"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                  コピーする
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black">
+                              <span className="rounded-full bg-white px-2 py-1 text-emerald-700">差分 {diffs.length}項目</span>
+                              <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-800">要確認 {confirmCount}項目</span>
+                              <span className="rounded-full bg-white px-2 py-1 text-slate-600">会社情報は除外</span>
+                            </div>
+                            <div className="mt-3 max-h-64 overflow-auto rounded-lg border border-emerald-100 bg-white">
+                              {diffs.length ? (
+                                diffs.slice(0, 18).map((diff) => (
+                                  <div key={diff.key} className="grid gap-2 border-b border-slate-100 px-3 py-2 text-xs last:border-b-0 md:grid-cols-[120px_1fr_1fr]">
+                                    <div className="flex items-center gap-1.5 font-black text-slate-700">
+                                      {diff.needsConfirmation && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
+                                      {diff.label}
+                                    </div>
+                                    <div className="min-w-0 truncate text-slate-400">{diff.before}</div>
+                                    <div className="min-w-0 truncate font-bold text-emerald-800">{diff.after}</div>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="px-3 py-4 text-xs font-bold text-slate-500">現在の入力と差分がありません。</div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {inputAssistSearched && !inputAssistLoading && !inputAssistCases.length && !inputAssistNotice && (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-500">
+                      コピーできる過去案件はまだありません。
+                    </div>
+                  )}
                 </section>
 
                 {/* 決算書OCR読み取り */}
