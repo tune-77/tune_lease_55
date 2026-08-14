@@ -357,11 +357,11 @@ def _summarize_screening_input_assist_events(rows: list[dict[str, Any]]) -> dict
     by_action: dict[str, int] = {}
     sessions: set[str] = set()
     copied_sessions: set[str] = set()
-    submitted_after_copy = 0
+    submitted_after_copy_sessions: set[str] = set()
     elapsed_after_copy: list[int] = []
     copied_field_total = 0
     confirm_field_total = 0
-    changed_after_copy_total = 0
+    changed_after_copy_values: list[int] = []
 
     copied_at_by_session: dict[str, str] = {}
     for row in rows:
@@ -377,10 +377,15 @@ def _summarize_screening_input_assist_events(rows: list[dict[str, Any]]) -> dict
             copied_field_total += int(row.get("copied_field_count") or 0)
             confirm_field_total += int(row.get("confirm_count") or 0)
         if action == "score_submitted":
-            changed_after_copy_total += int(row.get("changed_after_copy_count") or 0)
             if session_id and session_id in copied_at_by_session:
-                submitted_after_copy += 1
-                elapsed = row.get("elapsed_ms")
+                submitted_after_copy_sessions.add(session_id)
+                changed_after_copy_values.append(int(row.get("changed_after_copy_count") or 0))
+                metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+                elapsed_raw = metadata.get("elapsed_from_copy_ms") if isinstance(metadata, dict) else None
+                try:
+                    elapsed = int(elapsed_raw)
+                except (TypeError, ValueError):
+                    elapsed = row.get("elapsed_ms")
                 if isinstance(elapsed, int) and elapsed >= 0:
                     elapsed_after_copy.append(elapsed)
 
@@ -395,11 +400,11 @@ def _summarize_screening_input_assist_events(rows: list[dict[str, Any]]) -> dict
         "copy_count": copy_count,
         "copy_rate": round(copy_count / search_count, 3) if search_count else None,
         "score_submit_count": score_submit_count,
-        "submitted_after_copy_count": submitted_after_copy,
-        "submitted_after_copy_rate": round(submitted_after_copy / copy_count, 3) if copy_count else None,
+        "submitted_after_copy_count": len(submitted_after_copy_sessions),
+        "submitted_after_copy_rate": round(len(submitted_after_copy_sessions) / copy_count, 3) if copy_count else None,
         "avg_copied_fields": round(copied_field_total / copy_count, 1) if copy_count else None,
         "avg_confirm_fields": round(confirm_field_total / copy_count, 1) if copy_count else None,
-        "avg_changed_after_copy": round(changed_after_copy_total / score_submit_count, 1) if score_submit_count else None,
+        "avg_changed_after_copy": round(sum(changed_after_copy_values) / len(changed_after_copy_values), 1) if changed_after_copy_values else None,
         "avg_elapsed_after_copy_ms": round(sum(elapsed_after_copy) / len(elapsed_after_copy)) if elapsed_after_copy else None,
     }
 

@@ -2135,14 +2135,6 @@ export default function Dashboard() {
   };
 
   const handleSubmit = async (targetFormData: ScoringFormData = formData) => {
-    recordInputAssistEvent("score_submitted", {
-      changed_after_copy_count: countChangedAfterInputAssistCopy(targetFormData),
-      copied_field_count: lastCopiedFields.current.length,
-      metadata: {
-        copied_before_submit: String(Boolean(lastCopiedAt.current)),
-        elapsed_from_copy_ms: lastCopiedAt.current ? String(Date.now() - lastCopiedAt.current) : "",
-      },
-    });
     setLoading(true);
     setShionReview(null);
     setShionReviewError("");
@@ -2153,6 +2145,14 @@ export default function Dashboard() {
     setJudgmentAssetFeedbackSavingId("");
     try {
       const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(targetFormData));
+      recordInputAssistEvent("score_submitted", {
+        changed_after_copy_count: countChangedAfterInputAssistCopy(targetFormData),
+        copied_field_count: lastCopiedFields.current.length,
+        metadata: {
+          copied_before_submit: String(Boolean(lastCopiedAt.current)),
+          elapsed_from_copy_ms: lastCopiedAt.current ? String(Date.now() - lastCopiedAt.current) : "",
+        },
+      });
       setResult(res.data);
       setActiveTab("analysis");
       // REV-224: 審査ゲーム理論分析（並列・非ブロッキング）
