@@ -2145,11 +2145,13 @@ export default function Dashboard() {
     setJudgmentAssetFeedbackSavingId("");
     const copiedBeforeSubmit = Boolean(lastCopiedAt.current);
     const elapsedFromCopyMs = lastCopiedAt.current ? Date.now() - lastCopiedAt.current : null;
+    const changedAfterCopyCount = countChangedAfterInputAssistCopy(targetFormData);
+    const copiedFieldCount = lastCopiedFields.current.length;
     try {
       const res = await apiClient.post(`/api/score/full`, toThousandYenPayload(targetFormData));
       recordInputAssistEvent("score_submitted", {
-        changed_after_copy_count: countChangedAfterInputAssistCopy(targetFormData),
-        copied_field_count: lastCopiedFields.current.length,
+        changed_after_copy_count: changedAfterCopyCount,
+        copied_field_count: copiedFieldCount,
         metadata: {
           copied_before_submit: String(copiedBeforeSubmit),
           elapsed_from_copy_ms: elapsedFromCopyMs === null ? "" : String(elapsedFromCopyMs),
