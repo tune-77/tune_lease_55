@@ -119,6 +119,10 @@ echo "[育成] 昇格後の紫苑記憶インデックスを再構築..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_index.py"; log_step "build_shion_memory_index_post_promotion" $?
 
 echo ""
+echo "[育成] 昇格後の紫苑実践知マップを再構築..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_practical_knowledge_map.py"; log_step "build_shion_practical_knowledge_map" $?
+
+echo ""
 echo "[育成] 昇格後の記憶鮮度を更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/update_shion_memory_freshness.py"; log_step "update_shion_memory_freshness_post_promotion" $?
 
