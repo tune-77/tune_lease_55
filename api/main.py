@@ -3584,12 +3584,27 @@ def _improvement_canonical_key(title: str, description: str = "") -> str:
         return normalized[:80]
 
 
-def _latest_improvement_statuses() -> dict[str, str]:
-    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-    try:
-        from scripts.improvement_state_resolver import load_latest_status_by_key
+def _ledger_entries() -> list[dict]:
+    """ローカル ledger.jsonl（macOS想定パス）と GCS ミラーを合成する。
 
-        return load_latest_status_by_key(ledger_path)
+    Cloud Run コンテナは Path.home() がローカル(macOS)のログパスに届かず、
+    ledger.jsonl の「適用済み」記録を一切参照できなかった（今日やる候補が
+    直しても消えずに出続ける不具合の原因）。scripts/sync_ledger_to_gcs.py が
+    書き込む GCS ミラーを合わせて読むことで Cloud Run 側でも解決する。
+    """
+    from scripts.improvement_state_resolver import iter_ledger_entries
+
+    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+    entries = list(iter_ledger_entries(ledger_path))
+    entries.extend(_gcs_ledger_entries())
+    return entries
+
+
+def _latest_improvement_statuses() -> dict[str, str]:
+    try:
+        from scripts.improvement_state_resolver import load_latest_status_by_key_from_entries
+
+        return load_latest_status_by_key_from_entries(_ledger_entries())
     except Exception:
         return {}
 
@@ -3606,11 +3621,10 @@ def _norm_improvement_title(title: str) -> str:
 
 def _latest_improvement_statuses_by_title() -> dict[str, str]:
     """canonical_key が一致しない場合の保険: 正規化タイトル一致で最後のステータスを返す。"""
-    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
     try:
-        from scripts.improvement_state_resolver import load_latest_status_by_title
+        from scripts.improvement_state_resolver import load_latest_status_by_title_from_entries
 
-        return load_latest_status_by_title(ledger_path)
+        return load_latest_status_by_title_from_entries(_ledger_entries())
     except Exception:
         return {}
 
@@ -3844,27 +3858,16 @@ def _historical_applied_improvements() -> tuple[set[str], set[str]]:
     applied_keys: set[str] = set()
     applied_titles: set[str] = set()
     resolved_ledger_statuses = {"applied", "suppressed", "rejected", "deferred", "deleted", "approved", "parked"}
-    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-    if ledger_path.exists():
-        try:
-            for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                status = str(entry.get("status") or entry.get("action") or "").lower()
-                if status not in resolved_ledger_statuses:
-                    continue
-                title = str(entry.get("title") or "").strip()
-                key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
-                if title:
-                    applied_titles.add(title)
-                if key:
-                    applied_keys.add(key)
-        except OSError:
-            pass
+    for entry in _ledger_entries():
+        status = str(entry.get("status") or entry.get("action") or "").lower()
+        if status not in resolved_ledger_statuses:
+            continue
+        title = str(entry.get("title") or "").strip()
+        key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
+        if title:
+            applied_titles.add(title)
+        if key:
+            applied_keys.add(key)
 
     candidates: list[Path] = []
     for reports_dir in _candidate_report_dirs():
@@ -3909,31 +3912,20 @@ def _historical_applied_timestamps() -> tuple[dict[str, str], dict[str, str]]:
     key_ts: dict[str, str] = {}
     title_ts: dict[str, str] = {}
     resolved_ledger_statuses = {"applied", "suppressed", "rejected", "deferred", "deleted", "approved", "parked"}
-    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-    if ledger_path.exists():
-        try:
-            for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                status = str(entry.get("status") or entry.get("action") or "").lower()
-                if status not in resolved_ledger_statuses:
-                    continue
-                ts = str(entry.get("recorded_at") or "").strip()
-                if not ts:
-                    continue
-                title = str(entry.get("title") or "").strip()
-                key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
-                # 同一キー/タイトルは最後の記録（最新）を優先する
-                if title and (title not in title_ts or ts > title_ts[title]):
-                    title_ts[title] = ts
-                if key and (key not in key_ts or ts > key_ts[key]):
-                    key_ts[key] = ts
-        except OSError:
-            pass
+    for entry in _ledger_entries():
+        status = str(entry.get("status") or entry.get("action") or "").lower()
+        if status not in resolved_ledger_statuses:
+            continue
+        ts = str(entry.get("recorded_at") or "").strip()
+        if not ts:
+            continue
+        title = str(entry.get("title") or "").strip()
+        key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
+        # 同一キー/タイトルは最後の記録（最新）を優先する
+        if title and (title not in title_ts or ts > title_ts[title]):
+            title_ts[title] = ts
+        if key and (key not in key_ts or ts > key_ts[key]):
+            key_ts[key] = ts
 
     candidates: list[Path] = []
     for reports_dir in _candidate_report_dirs():
@@ -5131,6 +5123,54 @@ def _cloudrun_score_pending_item_from_event(event: dict) -> dict | None:
     from api.cloudrun_pending_cases import cloudrun_score_pending_item_from_event
 
     return cloudrun_score_pending_item_from_event(event)
+
+
+_GCS_LEDGER_ENTRIES_CACHE: dict[str, Any] = {}
+
+
+def _gcs_ledger_entries() -> list[dict]:
+    """scripts/sync_ledger_to_gcs.py が書き込む ledger.jsonl ミラーを読む。
+
+    Cloud Run はローカル ledger.jsonl（macOS想定パス）を参照できないため、
+    このミラー無しでは「適用済み」判定ができず、直した候補が何度も出続ける。
+    """
+    if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
+        return []
+    try:
+        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
+        from google.cloud import storage  # type: ignore[import-untyped]
+        from api import cloudrun_writeback as _cw
+        from scripts.improvement_state_resolver import iter_ledger_entries_from_text
+        import time as _time
+
+        bucket_name = _cw._bucket_name()
+        if not bucket_name:
+            return []
+        blob_path = os.environ.get("GCS_LEDGER_MIRROR_PATH", "ledger/ledger.jsonl").strip("/")
+        cache_key = f"{bucket_name}:{blob_path}"
+        now_monotonic = _time.monotonic()
+        if (
+            _GCS_LEDGER_ENTRIES_CACHE.get("key") == cache_key
+            and float(_GCS_LEDGER_ENTRIES_CACHE.get("expires_at") or 0.0) > now_monotonic
+        ):
+            return list(_GCS_LEDGER_ENTRIES_CACHE.get("entries") or [])
+
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob(blob_path)
+        try:
+            text = blob.download_as_text()
+        except NotFound:
+            text = ""
+        entries = list(iter_ledger_entries_from_text(text))
+        _GCS_LEDGER_ENTRIES_CACHE.update({
+            "key": cache_key,
+            "expires_at": now_monotonic + float(os.environ.get("GCS_LEDGER_MIRROR_CACHE_SECONDS", "60") or 60),
+            "entries": entries,
+        })
+        return entries
+    except Exception as exc:
+        logger.warning("gcs ledger mirror read skipped: %s", exc)
+        return []
 
 
 def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:

@@ -342,6 +342,11 @@ echo ""
 echo "[検証] 台帳のapplied主張をgit履歴で検証（Default-FAIL: 証跡なしはapply_failedへ訂正）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/audit_ledger_applied_claims.py" --apply; log_step "audit_ledger_applied_claims" $?
 
+echo ""
+echo "[配布] 台帳(ledger.jsonl)をGCSへミラー（Cloud Runの「今日やる候補」重複判定用）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_ledger_to_gcs.py" || true
+log_step "sync_ledger_to_gcs" 0
+
 if [ -f "${LATEST_FILE}" ]; then
   echo ""
   echo "[反映] post台帳補完後の改善レポートを再同期中..."
