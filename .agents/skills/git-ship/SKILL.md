@@ -9,6 +9,10 @@ description: git add・commit・push・merge・ブランチ削除を一気に実
 
 ## フロー判定
 
+理由: master/main への直接pushとフィーチャーブランチのmergeでは、必要な確認と後片付けが違う。
+適用条件: ユーザーが git add/commit/push/merge をまとめて依頼した時。
+削除条件: ship 用CLIが現在ブランチ判定、commit、push、merge、ブランチ削除を安全に自動化した時。
+
 まず現在のブランチを確認する：
 
 ```bash
@@ -136,6 +140,10 @@ python3 .agents/skills/obsidian/scripts/obsidian_note.py codex-work-log \
 
 ## 注意事項
 
+理由: DB・secrets・force push は復旧困難な事故につながるため、ship時の最後の停止線として残す。
+適用条件: git add/commit/push/merge/branch delete を行う時。
+削除条件: git hooks と secret scanner と branch protection が同等の禁止を強制できる時。
+
 - `data/` 配下（DB・セッション・jsonl）はコミットしない
 - `.streamlit/secrets.toml` はコミットしない
 - `--no-verify` は使わない
@@ -152,6 +160,10 @@ python3 scripts/record_codex_auto_status.py REV-xxx \
 この状態は次回の自動改善キューから除外され、朝レポートの `Blocked by Codex Quota` に表示される。
 
 ## エラー時
+
+理由: push拒否やブランチ削除失敗を力技で進めると履歴破壊や未マージ削除につながる。
+適用条件: git ship 中に conflict、non-fast-forward、branch delete failure が起きた時。
+削除条件: ship 用CLIが安全な中断・rebase提案・merge済み確認を自動で扱える時。
 
 - **コンフリクト発生** → ユーザーに報告してマージを中断。手動解決を依頼。
 - **push拒否（non-fast-forward）** → `git pull --rebase` を提案。force pushはしない。

@@ -1,12 +1,12 @@
 # Judgment Asset Field Review
 
-- Date: 2026-08-11
+- Date: 2026-08-14
 - Mode: local_review_only
 - Guardrail: review_only_no_promotion_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 - Active rules: 9
 - Grow: 0 / Review: 0 / Sleeping: 9 / Hold: 0
 - Simulation feedback: 3 / included: False
-- Unknown feedback rows: 0
+- Unknown feedback rows: 1
 
 ## 伸ばす
 

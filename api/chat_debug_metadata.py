@@ -116,6 +116,7 @@ def chat_memory_debug_payload(
     reflection_gate: dict[str, Any] | None = None,
     experience_loop: dict[str, Any] | None = None,
     grey_judgment_memory: dict[str, Any] | None = None,
+    world_proxy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     recall = memory_recall if isinstance(memory_recall, dict) else {}
     identity = identity_memory if isinstance(identity_memory, dict) else {}
@@ -127,6 +128,7 @@ def chat_memory_debug_payload(
     reflection = reflection_gate if isinstance(reflection_gate, dict) else {}
     experience = experience_loop if isinstance(experience_loop, dict) else {}
     grey_memory = grey_judgment_memory if isinstance(grey_judgment_memory, dict) else {}
+    proxy = world_proxy if isinstance(world_proxy, dict) else {}
     loop = relationship_loop_engineering if isinstance(
         relationship_loop_engineering, dict
     ) else relationship_loop_engineering_payload(
@@ -174,6 +176,13 @@ def chat_memory_debug_payload(
             "checklist": list(reflection.get("checklist") or [])[:8],
         },
         "experience_loop": experience,
+        "world_proxy": {
+            "used": bool(proxy.get("used")),
+            "level": str(proxy.get("level") or ""),
+            "functions": list(proxy.get("functions") or [])[:8],
+            "grounding": proxy.get("grounding") or {},
+            "reason": str(proxy.get("reason") or ""),
+        },
         "grey_judgment_memory": {
             "used": bool(grey_memory.get("used")),
             "reason": str(grey_memory.get("reason") or ""),
@@ -214,6 +223,7 @@ def dialogue_shared_memory_public_payload(payload: dict[str, Any]) -> dict[str, 
     expression = payload.get("memory_expression") if isinstance(payload.get("memory_expression"), dict) else {}
     reflection = payload.get("reflection_gate") if isinstance(payload.get("reflection_gate"), dict) else {}
     grey = payload.get("grey_judgment_memory") if isinstance(payload.get("grey_judgment_memory"), dict) else {}
+    proxy = payload.get("world_proxy") if isinstance(payload.get("world_proxy"), dict) else {}
     layers = identity.get("layers") if isinstance(identity.get("layers"), dict) else {}
     return {
         "identity_memory": {
@@ -259,6 +269,11 @@ def dialogue_shared_memory_public_payload(payload: dict[str, Any]) -> dict[str, 
         "grey_judgment_memory": {
             "used": bool(grey.get("used")),
             "refs": list(grey.get("refs") or [])[:8],
+        },
+        "world_proxy": {
+            "used": bool(proxy.get("used")),
+            "level": str(proxy.get("level") or ""),
+            "functions": list(proxy.get("functions") or [])[:8],
         },
     }
 

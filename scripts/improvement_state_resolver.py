@@ -59,14 +59,8 @@ def prefer_ledger_entry(current: dict | None, candidate: dict) -> dict:
     return candidate
 
 
-def iter_ledger_entries(ledger_path: Path) -> Iterable[dict]:
-    if not ledger_path.exists():
-        return
-    try:
-        lines = ledger_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return
-    for line in lines:
+def iter_ledger_entries_from_text(text: str) -> Iterable[dict]:
+    for line in (text or "").splitlines():
         if not line.strip():
             continue
         try:
@@ -75,6 +69,16 @@ def iter_ledger_entries(ledger_path: Path) -> Iterable[dict]:
             continue
         if isinstance(entry, dict):
             yield entry
+
+
+def iter_ledger_entries(ledger_path: Path) -> Iterable[dict]:
+    if not ledger_path.exists():
+        return
+    try:
+        text = ledger_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    yield from iter_ledger_entries_from_text(text)
 
 
 def entry_aliases(entry: dict) -> set[str]:
@@ -89,9 +93,9 @@ def entry_aliases(entry: dict) -> set[str]:
     }
 
 
-def load_latest_by_alias(ledger_path: Path) -> dict[str, dict]:
+def load_latest_by_alias_from_entries(entries: Iterable[dict]) -> dict[str, dict]:
     latest: dict[str, dict] = {}
-    for entry in iter_ledger_entries(ledger_path):
+    for entry in entries:
         if not normalize_status(entry.get("status")):
             continue
         for alias in entry_aliases(entry):
@@ -99,16 +103,38 @@ def load_latest_by_alias(ledger_path: Path) -> dict[str, dict]:
     return latest
 
 
-def load_latest_status_by_key(ledger_path: Path) -> dict[str, str]:
+def load_latest_by_alias(ledger_path: Path) -> dict[str, dict]:
+    return load_latest_by_alias_from_entries(iter_ledger_entries(ledger_path))
+
+
+def load_latest_by_key_from_entries(entries: Iterable[dict]) -> dict[str, dict]:
+    latest: dict[str, dict] = {}
+    for entry in entries:
+        key = str(entry.get("key") or entry.get("canonical_key") or entry.get("rev_id") or "").strip()
+        if not key or not normalize_status(entry.get("status")):
+            continue
+        latest[key] = prefer_ledger_entry(latest.get(key), entry)
+    return latest
+
+
+def load_latest_by_key(ledger_path: Path) -> dict[str, dict]:
+    return load_latest_by_key_from_entries(iter_ledger_entries(ledger_path))
+
+
+def load_latest_status_by_key_from_entries(entries: Iterable[dict]) -> dict[str, str]:
     return {
         key: str(entry.get("status") or "")
-        for key, entry in load_latest_by_alias(ledger_path).items()
+        for key, entry in load_latest_by_alias_from_entries(entries).items()
     }
 
 
-def load_latest_status_by_title(ledger_path: Path) -> dict[str, str]:
+def load_latest_status_by_key(ledger_path: Path) -> dict[str, str]:
+    return load_latest_status_by_key_from_entries(iter_ledger_entries(ledger_path))
+
+
+def load_latest_status_by_title_from_entries(entries: Iterable[dict]) -> dict[str, str]:
     latest: dict[str, dict] = {}
-    for entry in iter_ledger_entries(ledger_path):
+    for entry in entries:
         title = normalize_title(entry.get("title"))
         if not title or not normalize_status(entry.get("status")):
             continue
@@ -117,6 +143,10 @@ def load_latest_status_by_title(ledger_path: Path) -> dict[str, str]:
         title: str(entry.get("status") or "")
         for title, entry in latest.items()
     }
+
+
+def load_latest_status_by_title(ledger_path: Path) -> dict[str, str]:
+    return load_latest_status_by_title_from_entries(iter_ledger_entries(ledger_path))
 
 
 def status_to_report_bucket(status: object) -> str:

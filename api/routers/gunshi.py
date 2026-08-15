@@ -545,4 +545,3 @@ def generate_gunshi_chat(req: GunshiChatRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-

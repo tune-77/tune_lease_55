@@ -84,6 +84,34 @@ type PredictionErrorResponse = {
   candidates: PredictionErrorCandidate[];
 };
 
+type PromotionCandidate = {
+  id: string;
+  candidate_type: string;
+  research_topic: string;
+  claim: string;
+  effective_claim: string;
+  edited_claim?: string;
+  evidence_path?: string;
+  promotion_status: string;
+  verified_status: string;
+  use_count: number;
+  useful_count: number;
+  neutral_count: number;
+  rejected_count: number;
+  edit_count: number;
+  last_feedback_at?: string;
+  verification_note?: string;
+  score: number;
+  already_active_statement?: boolean;
+};
+
+type PromotionResponse = {
+  count: number;
+  active_count: number;
+  promotion_policy: string;
+  candidates: PromotionCandidate[];
+};
+
 const STATUS_STYLE: Record<ReviewStatus, string> = {
   candidate: "border-amber-200 bg-amber-50 text-amber-700",
   approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -146,12 +174,16 @@ export default function JudgmentReviewPage() {
   const [summary, setSummary] = useState<FeedbackSummary | null>(null);
   const [predictionItems, setPredictionItems] = useState<PredictionErrorCandidate[]>([]);
   const [predictionSummary, setPredictionSummary] = useState<PredictionErrorSummary | null>(null);
+  const [promotionItems, setPromotionItems] = useState<PromotionCandidate[]>([]);
+  const [promotionSummary, setPromotionSummary] = useState<PromotionResponse | null>(null);
   const [filter, setFilter] = useState<ReviewStatus | "all">("candidate");
   const [predictionFilter, setPredictionFilter] = useState<string>("ready_for_review");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
   const [predictionActionLoading, setPredictionActionLoading] = useState<Record<string, boolean>>({});
+  const [promotionActionLoading, setPromotionActionLoading] = useState<Record<string, boolean>>({});
+  const [promotionNotes, setPromotionNotes] = useState<Record<string, string>>({});
   const [predictionNotes, setPredictionNotes] = useState<Record<string, string>>({});
   const [predictionEdits, setPredictionEdits] = useState<Record<string, string>>({});
 
@@ -159,18 +191,23 @@ export default function JudgmentReviewPage() {
     setLoading(true);
     setError("");
     try {
-      const [candidateResponse, summaryResponse] = await Promise.all([
+      const [candidateResponse, summaryResponse, predictionResponse, promotionResponse] = await Promise.all([
         apiClient.get<CandidateResponse>("/api/judgment-feedback/candidates"),
         apiClient.get<FeedbackSummary>("/api/judgment-feedback/summary"),
+        apiClient.get<PredictionErrorResponse>(
+          "/api/judgment-assets/prediction-errors/candidates",
+          { params: { limit: 100 } },
+        ),
+        apiClient.get<PromotionResponse>("/api/judgment-assets/promotion-candidates", {
+          params: { limit: 30 },
+        }),
       ]);
-      const predictionResponse = await apiClient.get<PredictionErrorResponse>(
-        "/api/judgment-assets/prediction-errors/candidates",
-        { params: { limit: 100 } },
-      );
       setItems(candidateResponse.data.items ?? []);
       setSummary(summaryResponse.data);
       setPredictionItems(predictionResponse.data.candidates ?? []);
       setPredictionSummary(predictionResponse.data.summary ?? null);
+      setPromotionItems(promotionResponse.data.candidates ?? []);
+      setPromotionSummary(promotionResponse.data ?? null);
     } catch {
       setError("判断差分候補を読み込めませんでした。APIの状態を確認してください。");
     } finally {
@@ -201,6 +238,10 @@ export default function JudgmentReviewPage() {
       )),
     [predictionFilter, predictionItems],
   );
+
+  const promotionReadyCount = promotionItems.filter(
+    (item) => item.promotion_status !== "held",
+  ).length;
 
   const handleReview = useCallback(
     async (item: JudgmentCandidate, reviewStatus: "approved" | "rejected") => {
@@ -270,6 +311,42 @@ export default function JudgmentReviewPage() {
     [predictionEdits, predictionNotes],
   );
 
+  const refreshPromotionCandidates = useCallback(async () => {
+    const response = await apiClient.get<PromotionResponse>("/api/judgment-assets/promotion-candidates", {
+      params: { limit: 30 },
+    });
+    setPromotionItems(response.data.candidates ?? []);
+    setPromotionSummary(response.data ?? null);
+  }, []);
+
+  const handlePromotionAction = useCallback(
+    async (item: PromotionCandidate, action: "promote" | "hold" | "reject") => {
+      setPromotionActionLoading((current) => ({ ...current, [item.id]: true }));
+      setError("");
+      try {
+        if (action === "promote") {
+          await apiClient.post(
+            `/api/judgment-assets/promotion-candidates/${encodeURIComponent(item.id)}/promote`,
+          );
+        } else {
+          await apiClient.post(
+            `/api/judgment-assets/promotion-candidates/${encodeURIComponent(item.id)}/review`,
+            {
+              action,
+              comment: promotionNotes[item.id] || "",
+            },
+          );
+        }
+        await refreshPromotionCandidates();
+      } catch {
+        setError("判断資産候補のレビュー結果を保存できませんでした。もう一度お試しください。");
+      } finally {
+        setPromotionActionLoading((current) => ({ ...current, [item.id]: false }));
+      }
+    },
+    [promotionNotes, refreshPromotionCandidates],
+  );
+
   return (
     <main className="min-h-screen bg-slate-50 p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-5">
@@ -325,6 +402,160 @@ export default function JudgmentReviewPage() {
               </p>
             </div>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-slate-900">
+                  判断資産 Promotion 候補
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  紫苑レビューで人間が「効いた」「修正」と返した判断だけを、正規判断資産へ昇格する前に確認します。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <SummaryCard
+              label="正規判断資産"
+              value={promotionSummary?.active_count ?? 0}
+              color="emerald"
+            />
+            <SummaryCard
+              label="昇格候補"
+              value={promotionSummary?.count ?? promotionItems.length}
+              color="amber"
+            />
+            <SummaryCard
+              label="今すぐ確認"
+              value={promotionReadyCount}
+              color="rose"
+            />
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+              安全線
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-700">
+              昇格しても自動承認・自動否決には接続しません。紫苑の回答時に参照する「確認観点」として扱います。
+            </p>
+          </div>
+
+          {loading ? null : promotionItems.length === 0 ? (
+            <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+              <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+              <p className="mt-3 font-black text-slate-800">
+                昇格候補はありません
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                審査分析で判断資産候補に評価が返ると、ここに表示されます。
+              </p>
+            </div>
+          ) : (
+            <div className="mt-5 space-y-4">
+              {promotionItems.map((item) => {
+                const displayClaim = item.edited_claim || item.effective_claim || item.claim;
+                const isBusy = !!promotionActionLoading[item.id];
+                return (
+                  <article
+                    key={item.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-black text-slate-700">
+                        JA-{item.id.slice(0, 8)}
+                      </span>
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700">
+                        {item.candidate_type}
+                      </span>
+                      <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
+                        score {item.score}
+                      </span>
+                      {item.already_active_statement && (
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">
+                          既存資産と同文
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-4 whitespace-pre-wrap text-sm font-bold leading-7 text-slate-900">
+                      {displayClaim}
+                    </p>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <InfoBlock label="研究トピック" value={item.research_topic || "-"} />
+                      <InfoBlock label="状態" value={`${item.promotion_status} / ${item.verified_status}`} />
+                      <InfoBlock label="利用実績" value={`使用 ${item.use_count} / 効いた ${item.useful_count} / 修正 ${item.edit_count} / 違う ${item.rejected_count}`} />
+                      <InfoBlock label="出典" value={item.evidence_path || "-"} />
+                    </div>
+
+                    {item.verification_note && (
+                      <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-wide text-blue-700">
+                          検証メモ
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm font-bold leading-6 text-blue-900">
+                          {item.verification_note}
+                        </p>
+                      </div>
+                    )}
+
+                    <label className="mt-4 block">
+                      <span className="text-xs font-black text-slate-500">レビュー メモ</span>
+                      <input
+                        value={promotionNotes[item.id] || ""}
+                        onChange={(event) =>
+                          setPromotionNotes((current) => ({
+                            ...current,
+                            [item.id]: event.target.value,
+                          }))
+                        }
+                        className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm font-medium text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+                        placeholder="昇格・保留・却下の理由"
+                      />
+                    </label>
+
+                    <div className="mt-5 flex flex-col gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handlePromotionAction(item, "reject")}
+                        disabled={isBusy}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 py-2.5 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        <XCircle className="h-4 w-4" />
+                        却下
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePromotionAction(item, "hold")}
+                        disabled={isBusy}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-white px-4 py-2.5 text-sm font-black text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        <AlertCircle className="h-4 w-4" />
+                        保留
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePromotionAction(item, "promote")}
+                        disabled={isBusy}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        正規資産へ昇格
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

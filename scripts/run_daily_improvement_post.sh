@@ -119,6 +119,10 @@ echo "[育成] 昇格後の紫苑記憶インデックスを再構築..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_index.py"; log_step "build_shion_memory_index_post_promotion" $?
 
 echo ""
+echo "[育成] 昇格後の紫苑実践知マップを再構築..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_practical_knowledge_map.py"; log_step "build_shion_practical_knowledge_map" $?
+
+echo ""
 echo "[育成] 昇格後の記憶鮮度を更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/update_shion_memory_freshness.py"; log_step "update_shion_memory_freshness_post_promotion" $?
 
@@ -129,6 +133,15 @@ echo "[育成] 紫苑記憶の効果測定レポートを生成（観測のみ�
 echo ""
 echo "[育成] 永続記憶監査を生成（観測のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/audit_persistent_memory.py"; log_step "audit_persistent_memory" $?
+
+echo ""
+echo "[監査] scripts/ 配下の配線漏れ（呼び出し元がないスクリプト）を監査（読み取り専用・advisory）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/check_orphaned_scripts.py"; log_step "check_orphaned_scripts" $?
+
+echo ""
+echo "[監査] AGENTS/skills/MEMORY の指示肥大化を監査（読み取り専用・自動削除なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_instruction_debt_report.py"
+log_step "build_instruction_debt_report" $?
 
 echo ""
 echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
@@ -199,6 +212,10 @@ echo "[司書] Obsidian Curator レポートを生成（Slack日次レポート 
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_curator_report.py"; log_step "obsidian_curator_report" $?
 
 echo ""
+echo "[知識] OKFナレッジパックのRAG精度を評価（obsidian_memory_effectiveness_reportが参照）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_okf_rag.py"; log_step "evaluate_okf_rag" $?
+
+echo ""
 echo "[記憶] Obsidian Memory Effectiveness を生成（保存→想起→使用→人間評価の状態を観測。自動反映なし）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_memory_effectiveness_report.py" \
   --date "${PIPELINE_DATE}"
@@ -220,6 +237,31 @@ echo "[成長] 判断資産の実利用棚卸しを生成（伸ばす/見直す/
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_field_review.py" \
   --date "${PIPELINE_DATE}"
 log_step "build_judgment_asset_field_review" $?
+
+echo ""
+echo "[育成] 経験フライホイール候補を生成（context/decision/feedbackを品質ゲート。自動昇格なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_experience_flywheel_report.py"
+log_step "build_experience_flywheel_report" $?
+
+echo ""
+echo "[評価] 経験フライホイールからリプレイ評価セットを生成（既存評価セットは上書きしない）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_experience_replay_eval_set.py"
+log_step "build_experience_replay_eval_set" $?
+
+echo ""
+echo "[評価] 経験リプレイ評価セットで過去回答を採点（ローカル履歴のみ・外部送信なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_experience_replay_historical.py" || true
+log_step "evaluate_experience_replay_historical" 0
+
+echo ""
+echo "[評価] 経験リプレイ弱点を回答チェックリスト候補へ変換（レビュー前提・自動反映なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_experience_replay_checklist_candidates.py"
+log_step "build_experience_replay_checklist_candidates" $?
+
+echo ""
+echo "[評価] レビュー済み経験リプレイチェックリストをReflection Gate用に再発行（採用済みのみ）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/review_experience_replay_checklist.py"
+log_step "review_experience_replay_checklist" $?
 
 echo ""
 echo "[育成] 判断資産A/B候補レポートを生成（勝者自動確定なし）..."
@@ -257,8 +299,8 @@ fi
 echo ""
 echo "[配線] 判断資産グラフを frontend/public へ同期（本番UI配信用）..."
 # reports/ は Cloud Run イメージ非同梱だが frontend/public は本番配信される。
-# 生成した最新グラフ(HTML/PNG)を public にコピーし、次回デプロイで /judgment-asset-graph に反映させる。
-GRAPH_PUBLIC_DIR="${PROJECT_ROOT}/frontend/public/judgment-asset-graph"
+# 生成した最新グラフ(HTML/PNG)を App Router のページ名と衝突しない public/generated 配下へコピーする。
+GRAPH_PUBLIC_DIR="${PROJECT_ROOT}/frontend/public/generated/judgment-asset-graph"
 mkdir -p "${GRAPH_PUBLIC_DIR}"
 if [ -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" ] && [ -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.png" ]; then
   cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" "${GRAPH_PUBLIC_DIR}/index.html" \
@@ -299,6 +341,11 @@ echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チ�
 echo ""
 echo "[検証] 台帳のapplied主張をgit履歴で検証（Default-FAIL: 証跡なしはapply_failedへ訂正）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/audit_ledger_applied_claims.py" --apply; log_step "audit_ledger_applied_claims" $?
+
+echo ""
+echo "[配布] 台帳(ledger.jsonl)をGCSへミラー（Cloud Runの「今日やる候補」重複判定用）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_ledger_to_gcs.py" || true
+log_step "sync_ledger_to_gcs" 0
 
 if [ -f "${LATEST_FILE}" ]; then
   echo ""
