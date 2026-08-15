@@ -212,6 +212,10 @@ echo "[司書] Obsidian Curator レポートを生成（Slack日次レポート 
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_curator_report.py"; log_step "obsidian_curator_report" $?
 
 echo ""
+echo "[知識] OKFナレッジパックのRAG精度を評価（obsidian_memory_effectiveness_reportが参照）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_okf_rag.py"; log_step "evaluate_okf_rag" $?
+
+echo ""
 echo "[記憶] Obsidian Memory Effectiveness を生成（保存→想起→使用→人間評価の状態を観測。自動反映なし）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_memory_effectiveness_report.py" \
   --date "${PIPELINE_DATE}"
