@@ -174,3 +174,20 @@ jobs:
 
       - name: Obsidian ops consistency check
         run: python scripts/check_obsidian_ops_consistency.py
+
+  # scripts/*.py の中で、どのパイプライン・ワークフロー・他スクリプトからも
+  # 呼ばれていないものを検知する（scripts/check_orphaned_scripts.py 参照）。
+  # cron/launchd 等リポジトリ外からの呼び出しは検知できず誤検知しうるため、
+  # 常に warn-only（CIを失敗させない）で $GITHUB_STEP_SUMMARY に出すだけ。
+  orphaned-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Orphaned scripts audit (warn-only)
+        run: |
+          python scripts/check_orphaned_scripts.py --dry-run | tee -a "$GITHUB_STEP_SUMMARY" || true

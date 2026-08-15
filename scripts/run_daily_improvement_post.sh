@@ -135,6 +135,10 @@ echo "[育成] 永続記憶監査を生成（観測のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/audit_persistent_memory.py"; log_step "audit_persistent_memory" $?
 
 echo ""
+echo "[監査] scripts/ 配下の配線漏れ（呼び出し元がないスクリプト）を監査（読み取り専用・advisory）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/check_orphaned_scripts.py"; log_step "check_orphaned_scripts" $?
+
+echo ""
 echo "[監査] AGENTS/skills/MEMORY の指示肥大化を監査（読み取り専用・自動削除なし）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_instruction_debt_report.py"
 log_step "build_instruction_debt_report" $?
