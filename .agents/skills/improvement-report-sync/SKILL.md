@@ -11,6 +11,10 @@ description: 改善済みの項目を reports/improvement_report_YYYYMMDD.json �
 
 ## 手順
 
+理由: 改善レポートと `latest.json` の状態がずれると、済み項目が再び needs_review に戻る。
+適用条件: 実装済み改善を applied として反映する時。
+削除条件: レポート同期が ledger を正本として完全自動化され、手動同期手順が不要になった時。
+
 1. 対象の改善 ID を確認する。
 2. 最新の `reports/improvement_report_YYYYMMDD.json` と `reports/latest.json` を開く。
 3. `scripts/sync_improvement_reports.py` で `needs_review` から `applied` へ移す。
@@ -18,6 +22,10 @@ description: 改善済みの項目を reports/improvement_report_YYYYMMDD.json �
 5. 4:00 の自動生成パイプラインでは、`scripts/run_daily_improvement_pipeline.sh` の最後で同じ同期処理を自動実行する。
 
 ## 実行方針
+
+理由: applied と needs_review の二重計上や JSON 不整合は、日次レポートの信頼性を直接落とす。
+適用条件: `reports/improvement_report_*.json` または `reports/latest.json` の状態を同期する時。
+削除条件: `sync_improvement_reports.py` と状態解決テストが全ケースをカバーし、手順確認なしで安全に実行できる時。
 
 - 既に `applied` にある項目は重複追加しない。
 - `needs_review` にある同一 ID は除去する。

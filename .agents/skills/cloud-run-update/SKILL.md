@@ -26,6 +26,10 @@ curl --max-time 20 -sS "$URL/api/score/full" -X POST -H 'Content-Type: applicati
 
 ## 使い方
 
+理由: API と Web は Cloud Run の別サービスで、片方だけ更新した時にもう片方の検証を混ぜると復旧判断が遅れる。
+適用条件: `tune_lease_55` の Cloud Run API または Web を更新・再デプロイする時。
+削除条件: deploy script が変更対象を自動判定し、サービス別の疎通確認まで一括で安定実行できるようになった時。
+
 - **API を更新したいとき**
   1. `ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_api.sh`
   2. `URL="$(gcloud run services describe tune-lease-55-api --region asia-northeast1 --format='value(status.url)')"`
@@ -37,6 +41,10 @@ curl --max-time 20 -sS "$URL/api/score/full" -X POST -H 'Content-Type: applicati
   3. ブラウザで `/home` や `/` を確認する
 
 ## 判定
+
+理由: Cloud Run は Ready でもアプリ内部のDB、Secret、画面描画が失敗することがある。
+適用条件: デプロイ直後の完了判定と、代表的な起動失敗の切り分け。
+削除条件: health check が DB/Secret/UI smoke まで含む形に拡張され、手動確認が不要になった時。
 
 - API は `Ready=True` かつ `/api/score/full` が `200` なら完了
 - Web は `Ready=True` かつ `/home` が表示されれば完了

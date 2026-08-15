@@ -214,6 +214,35 @@ type PromptFeedbackSummary = {
   };
 };
 
+type ScreeningInputAssistSummary = {
+  source?: string;
+  summary?: {
+    event_count: number;
+    session_count: number;
+    by_action: Record<string, number>;
+    search_count: number;
+    copy_count: number;
+    copy_rate: number | null;
+    score_submit_count: number;
+    submitted_after_copy_count: number;
+    submitted_after_copy_rate: number | null;
+    avg_copied_fields: number | null;
+    avg_confirm_fields: number | null;
+    avg_changed_after_copy: number | null;
+    avg_elapsed_after_copy_ms: number | null;
+  };
+  recent_events?: {
+    id?: string;
+    ts?: string;
+    action?: string;
+    industry_sub?: string;
+    asset_name?: string;
+    source_company_name?: string;
+    copied_field_count?: number;
+    changed_after_copy_count?: number;
+  }[];
+};
+
 type OperationalTrustSummary = {
   status: "ok" | "attention" | string;
   attention: string[];
@@ -401,6 +430,61 @@ function relatedFeatureActionsFor(item: ImprovementItem): RelatedFeatureAction[]
   ).slice(0, 3);
 }
 
+function formatRate(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatDurationMs(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  if (value < 1000) return `${Math.round(value)}ms`;
+  const seconds = Math.round(value / 1000);
+  if (seconds < 60) return `${seconds}秒`;
+  return `${Math.floor(seconds / 60)}分${String(seconds % 60).padStart(2, "0")}秒`;
+}
+
+function screeningInputAssistVerdict(summary?: ScreeningInputAssistSummary["summary"]) {
+  const sessionCount = summary?.session_count ?? 0;
+  const searchCount = summary?.search_count ?? 0;
+  const copyRate = summary?.copy_rate ?? null;
+  const submittedAfterCopyRate = summary?.submitted_after_copy_rate ?? null;
+  const avgChangedAfterCopy = summary?.avg_changed_after_copy ?? null;
+  if (!summary || sessionCount < 5 || searchCount < 3) {
+    return {
+      label: "保留",
+      className: "border-amber-200 bg-amber-50 text-amber-800",
+      icon: <Clock className="h-4 w-4" />,
+      reason: "まだ判断に足る利用データが少ないため、採否は保留です。",
+      nextAction: "まずは審査画面で数件使い、検索・コピー・提出までのログを増やします。",
+    };
+  }
+  if ((copyRate ?? 0) >= 0.25 && (submittedAfterCopyRate ?? 0) >= 0.6 && (avgChangedAfterCopy ?? 0) <= 3) {
+    return {
+      label: "採用",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-800",
+      icon: <CheckCircle2 className="h-4 w-4" />,
+      reason: "検索後にコピーされ、コピー後も大きな手戻りなく審査提出まで進んでいます。",
+      nextAction: "次はコピー候補の精度を上げ、平均提出時間の短縮を継続して見ます。",
+    };
+  }
+  if (searchCount >= 5 && (copyRate ?? 0) < 0.1) {
+    return {
+      label: "却下候補",
+      className: "border-rose-200 bg-rose-50 text-rose-800",
+      icon: <XCircle className="h-4 w-4" />,
+      reason: "検索されてもコピーにつながっておらず、候補品質か表示位置を見直す必要があります。",
+      nextAction: "類似案件のランキング理由と差分プレビューを改善してから再計測します。",
+    };
+  }
+  return {
+    label: "保留",
+    className: "border-amber-200 bg-amber-50 text-amber-800",
+    icon: <AlertTriangle className="h-4 w-4" />,
+    reason: "利用は始まっていますが、採用判断にはコピー率・提出率・手戻りのいずれかがまだ弱い状態です。",
+    nextAction: "コピー後に変更された項目を見て、要確認フィールドの設計を調整します。",
+  };
+}
+
 // batch_apply.py のスキップ条件と同じ判定。
 // 「承認済み」でも manual / pending_llm は自動適用されないことを画面上で区別する
 type LedgerEffectiveStatus = "applied" | "pending_review" | "manual_only" | "awaiting_apply";
@@ -422,6 +506,7 @@ export default function ImprovementLogPage() {
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [gapAnalysis, setGapAnalysis] = useState<GapAnalysis | null>(null);
   const [promptSummary, setPromptSummary] = useState<PromptFeedbackSummary | null>(null);
+  const [screeningInputAssistSummary, setScreeningInputAssistSummary] = useState<ScreeningInputAssistSummary | null>(null);
   const [trustSummary, setTrustSummary] = useState<OperationalTrustSummary | null>(null);
   const [triageRecords, setTriageRecords] = useState<ImprovementTriageRecord[]>([]);
   const [copiedFixKey, setCopiedFixKey] = useState("");
@@ -583,11 +668,14 @@ export default function ImprovementLogPage() {
   const fetchLog = useCallback(async () => {
     setLoading(true);
     try {
-      const [logRes, summaryRes, gapsRes, promptRes, trustRes, triageRes] = await Promise.all([
+      const [logRes, summaryRes, gapsRes, promptRes, inputAssistRes, trustRes, triageRes] = await Promise.all([
         apiClient.get<ImprovementLog>("/api/improvement-log"),
         apiClient.get<PipelineSummary>("/api/improvement-pipeline/summary"),
         apiClient.get<GapAnalysis>("/api/lease-system-gaps"),
         apiClient.get<PromptFeedbackSummary>("/api/prompt-feedback/summary"),
+        apiClient.get<ScreeningInputAssistSummary>("/api/screening-input-assist-events/summary", {
+          params: { limit: 500 },
+        }).catch(() => null),
         apiClient.get<OperationalTrustSummary>("/api/operational-trust/summary"),
         apiClient.get<ImprovementTriageResponse>("/api/improvement/triage"),
       ]);
@@ -595,10 +683,12 @@ export default function ImprovementLogPage() {
       setSummary(summaryRes.data);
       setGapAnalysis(gapsRes.data);
       setPromptSummary(promptRes.data || null);
+      setScreeningInputAssistSummary(inputAssistRes?.data || null);
       setTrustSummary(trustRes.data || null);
       setTriageRecords(triageRes.data?.records || []);
     } catch {
       setData(null);
+      setScreeningInputAssistSummary(null);
       setTriageRecords([]);
     } finally {
       setLoading(false);
@@ -1402,6 +1492,85 @@ export default function ImprovementLogPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {screeningInputAssistSummary?.summary && (
+          <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+            {(() => {
+              const verdict = screeningInputAssistVerdict(screeningInputAssistSummary.summary);
+              return (
+                <div className={`mb-3 rounded-lg border p-3 ${verdict.className}`}>
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 text-sm font-black">
+                        {verdict.icon}
+                        追跡判定: {verdict.label}
+                      </div>
+                      <p className="mt-1 text-xs font-bold leading-5">{verdict.reason}</p>
+                    </div>
+                    <div className="rounded-lg bg-white/70 px-3 py-2 text-[11px] font-bold leading-5">
+                      success_metric: 平均提出時間 / コピー後提出率 / コピー後変更数
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs font-bold leading-5">{verdict.nextAction}</p>
+                </div>
+              );
+            })()}
+            <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                  <ClipboardList className="h-4 w-4" />
+                  審査入力補助の効果測定
+                  {screeningInputAssistSummary.source && (
+                    <span className="ml-1 text-xs font-normal text-emerald-700">
+                      {screeningInputAssistSummary.source}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-emerald-800">
+                  過去案件コピーと入力中の確認観点が、審査実行までの行動に効いているかを確認します。
+                </p>
+              </div>
+              <a
+                href="/screening"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+              >
+                <Search className="h-3.5 w-3.5" />
+                審査画面へ
+              </a>
+            </div>
+            <div className="grid gap-3 md:grid-cols-4">
+              <MiniMetric label="セッション" value={screeningInputAssistSummary.summary.session_count} />
+              <MiniMetric label="検索→コピー率" value={formatRate(screeningInputAssistSummary.summary.copy_rate)} />
+              <MiniMetric label="コピー後提出率" value={formatRate(screeningInputAssistSummary.summary.submitted_after_copy_rate)} />
+              <MiniMetric label="平均提出時間" value={formatDurationMs(screeningInputAssistSummary.summary.avg_elapsed_after_copy_ms)} />
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-4">
+              <MiniMetric label="検索回数" value={screeningInputAssistSummary.summary.search_count} />
+              <MiniMetric label="コピー回数" value={screeningInputAssistSummary.summary.copy_count} />
+              <MiniMetric label="平均コピー項目" value={screeningInputAssistSummary.summary.avg_copied_fields ?? "-"} />
+              <MiniMetric label="コピー後変更" value={screeningInputAssistSummary.summary.avg_changed_after_copy ?? "-"} />
+            </div>
+            <div className="mt-3 rounded-lg border border-emerald-100 bg-white p-3">
+              <div className="text-xs font-bold text-slate-700">直近イベント</div>
+              <div className="mt-2 space-y-1.5">
+                {(screeningInputAssistSummary.recent_events || []).length === 0 ? (
+                  <div className="text-xs text-slate-500">まだイベントはありません</div>
+                ) : (screeningInputAssistSummary.recent_events || []).slice(-6).reverse().map((event, index) => (
+                  <div key={event.id || `${event.ts}-${index}`} className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                    <span className="font-mono text-slate-400">{event.ts || "-"}</span>
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800">{event.action || "-"}</span>
+                    {(event.industry_sub || event.asset_name) && (
+                      <span>{[event.industry_sub, event.asset_name].filter(Boolean).join(" / ")}</span>
+                    )}
+                    {event.source_company_name && <span className="text-slate-500">copy元 {event.source_company_name}</span>}
+                    {event.copied_field_count != null && <span>copy {event.copied_field_count}</span>}
+                    {event.changed_after_copy_count != null && <span>変更 {event.changed_after_copy_count}</span>}
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         )}

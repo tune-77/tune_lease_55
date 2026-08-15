@@ -8,9 +8,16 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.improvement_state_resolver import load_latest_by_alias, load_latest_by_key  # noqa: E402
 
 
 def _ensure_dir() -> None:
@@ -41,23 +48,8 @@ def is_processed(
         return False, ""
 
     now = datetime.datetime.now()
-    latest: dict | None = None
-
-    try:
-        for line in LEDGER_PATH.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-                if entry.get("key") == key:
-                    latest = entry
-            except json.JSONDecodeError:
-                continue
-    except OSError:
-        return False, ""
-
-    if latest is None:
+    latest = load_latest_by_alias(LEDGER_PATH).get(key)
+    if not latest:
         return False, ""
 
     status = latest.get("status", "")
@@ -114,23 +106,10 @@ def get_summary() -> dict[str, int]:
     if not LEDGER_PATH.exists():
         return {"applied": 0, "deleted": 0, "needs_review": 0, "parked": 0, "rejected": 0, "total": 0}
 
-    latest_status: dict[str, str] = {}
-
-    try:
-        for line in LEDGER_PATH.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-                k = entry.get("key", "")
-                s = entry.get("status", "")
-                if k and s:
-                    latest_status[k] = s
-            except json.JSONDecodeError:
-                continue
-    except OSError:
-        return {"applied": 0, "deleted": 0, "needs_review": 0, "parked": 0, "rejected": 0, "total": 0}
+    latest_status = {
+        key: str(entry.get("status") or "")
+        for key, entry in load_latest_by_key(LEDGER_PATH).items()
+    }
 
     counts: dict[str, int] = {"applied": 0, "deleted": 0, "needs_review": 0, "parked": 0, "rejected": 0}
     for s in latest_status.values():

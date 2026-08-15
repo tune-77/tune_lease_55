@@ -93,6 +93,64 @@ type MemoryReviewInboxResponse = {
   state_path: string;
 };
 
+type PostHackathonSection = {
+  id: string;
+  title: string;
+  status: string;
+  runtime_surface: string;
+  next_guardrail: string;
+  complete: boolean;
+  evidence_available: string[];
+};
+
+type PostHackathonStatusResponse = {
+  source: string;
+  total: number;
+  complete_count: number;
+  sections: PostHackathonSection[];
+};
+
+type MemoryHealthResponse = {
+  healthy: boolean;
+  message: string;
+  summary?: {
+    total?: number;
+    by_type?: Record<string, number>;
+    by_status?: Record<string, number>;
+  };
+  guardrail: string;
+};
+
+type ShionHydeDebugResponse = {
+  mode: string;
+  hyde: {
+    hyde_query: string;
+    intent_tags: string[];
+    search_terms: string[];
+    should_search: boolean;
+    reason: string;
+  };
+  baseline_hits: Array<{ path: string; title: string; snippet: string }>;
+  hyde_hits: Array<{ path: string; title: string; snippet: string }>;
+  new_paths: string[];
+  confidence: number;
+  guardrail: string;
+};
+
+type CounterHypothesisCardResponse = {
+  mode: string;
+  friction_level: number;
+  card: string;
+  questions: string[];
+  judgment_asset_template: {
+    condition: string;
+    review_point: string;
+    ringi_sentence: string;
+    do_not_use_when: string;
+  };
+  guardrail: string;
+};
+
 const layers = [
   {
     title: "長期記憶",
@@ -625,6 +683,209 @@ function MemoryEngineeringPanel() {
   );
 }
 
+function PostHackathonControlPlane() {
+  const [status, setStatus] = useState<PostHackathonStatusResponse | null>(null);
+  const [health, setHealth] = useState<MemoryHealthResponse | null>(null);
+  const [hydeMessage, setHydeMessage] = useState("この案件、補助金前提で新規先。返済原資が少し不安");
+  const [caseSummary, setCaseSummary] = useState("新規先 / 補助金採択前提 / 製造業の工作機械導入");
+  const [hydeResult, setHydeResult] = useState<ShionHydeDebugResponse | null>(null);
+  const [cardResult, setCardResult] = useState<CounterHypothesisCardResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadBase = useCallback(async () => {
+    setError("");
+    try {
+      const [statusRes, healthRes] = await Promise.all([
+        apiClient.get<PostHackathonStatusResponse>("/api/shion/post-hackathon-status"),
+        apiClient.get<MemoryHealthResponse>("/api/shion/memory-health"),
+      ]);
+      setStatus(statusRes.data);
+      setHealth(healthRes.data);
+    } catch {
+      setError("ハッカソン後コントロール面を読み込めませんでした。");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBase();
+  }, [loadBase]);
+
+  const runHyde = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiClient.post<ShionHydeDebugResponse>("/api/debug/shion-hyde-rag", {
+        message: hydeMessage,
+        limit: 4,
+        known_risk_tags: hydeMessage.includes("補助") ? ["補助金"] : [],
+      });
+      setHydeResult(res.data);
+    } catch {
+      setError("Shion-HyDE debug を実行できませんでした。");
+    } finally {
+      setLoading(false);
+    }
+  }, [hydeMessage]);
+
+  const runCounterCard = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiClient.post<CounterHypothesisCardResponse>("/api/shion/counter-hypothesis-card", {
+        case_summary: caseSummary,
+        industry: caseSummary.includes("製造") ? "製造業" : "",
+        asset_name: caseSummary.includes("工作機械") ? "工作機械" : "",
+        risk_tags: caseSummary.includes("補助") ? ["補助金"] : [],
+      });
+      setCardResult(res.data);
+    } catch {
+      setError("次善仮説カードを生成できませんでした。");
+    } finally {
+      setLoading(false);
+    }
+  }, [caseSummary]);
+
+  const completion = status?.total ? Math.round((status.complete_count / status.total) * 100) : 0;
+
+  return (
+    <section className="mx-auto max-w-7xl px-5 pt-8 md:px-8">
+      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="h-6 w-6 text-emerald-600" />
+              <h2 className="text-2xl font-black">Post-Hackathon Control Plane</h2>
+            </div>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+              ハッカソン後バックログを、実行権限ではなく観測・レビュー・訓練の面として閉じます。
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-center sm:w-[360px]">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
+              <div className="text-3xl font-black text-emerald-900">{completion}%</div>
+              <div className="text-xs font-black text-emerald-700">backlog wired</div>
+            </div>
+            <div className={`rounded-lg border px-3 py-3 ${health?.healthy ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
+              <div className="text-3xl font-black text-slate-950">{formatNumber(health?.summary?.total)}</div>
+              <div className="text-xs font-black text-slate-600">memory records</div>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mt-5 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+            <AlertTriangle className="h-4 w-4" />
+            {error}
+          </div>
+        )}
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {(status?.sections || []).map((section) => (
+            <div key={section.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-950">{section.title}</h3>
+                  <p className="mt-1 text-xs font-bold text-slate-500">{section.runtime_surface}</p>
+                </div>
+                <span className={`rounded px-2 py-1 text-[11px] font-black ${section.complete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                  {section.status}
+                </span>
+              </div>
+              <p className="mt-3 text-xs font-bold leading-5 text-slate-600">{section.next_guardrail}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-black text-slate-900">Shion-HyDE Debug</h3>
+              <button
+                type="button"
+                onClick={runHyde}
+                disabled={loading}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <RefreshCw className="h-4 w-4" />
+                比較
+              </button>
+            </div>
+            <textarea
+              value={hydeMessage}
+              onChange={(event) => setHydeMessage(event.target.value)}
+              rows={3}
+              className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold leading-6 text-slate-800"
+            />
+            {hydeResult && (
+              <div className="mt-3 rounded-lg bg-white p-3 text-xs leading-5 text-slate-700">
+                <div className="font-black text-slate-950">
+                  confidence {Math.round(hydeResult.confidence * 100)}% / {hydeResult.hyde.intent_tags.join(", ")}
+                </div>
+                <p className="mt-2 font-bold">{hydeResult.hyde.hyde_query}</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className="font-black text-slate-500">baseline</div>
+                    {hydeResult.baseline_hits.slice(0, 3).map((hit) => (
+                      <p key={`base-${hit.path}`} className="mt-1 line-clamp-2 font-bold">{hit.path}</p>
+                    ))}
+                  </div>
+                  <div>
+                    <div className="font-black text-slate-500">hyde</div>
+                    {hydeResult.hyde_hits.slice(0, 3).map((hit) => (
+                      <p key={`hyde-${hit.path}`} className="mt-1 line-clamp-2 font-bold">{hit.path}</p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-black text-slate-900">反証用 次善仮説カード</h3>
+              <button
+                type="button"
+                onClick={runCounterCard}
+                disabled={loading}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <Brain className="h-4 w-4" />
+                生成
+              </button>
+            </div>
+            <textarea
+              value={caseSummary}
+              onChange={(event) => setCaseSummary(event.target.value)}
+              rows={3}
+              className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold leading-6 text-slate-800"
+            />
+            {cardResult && (
+              <div className="mt-3 rounded-lg bg-white p-3 text-xs leading-5 text-slate-700">
+                <div className="font-black text-slate-950">
+                  friction {Math.round(cardResult.friction_level * 100)}% / {cardResult.mode}
+                </div>
+                <p className="mt-2 text-sm font-bold leading-6 text-slate-800">{cardResult.card}</p>
+                <div className="mt-3 space-y-1">
+                  {cardResult.questions.map((question) => (
+                    <p key={question} className="font-bold text-slate-600">{question}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {health && (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
+            記憶健康診断: {health.message}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function ShionMemorySystemPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -670,6 +931,7 @@ export default function ShionMemorySystemPage() {
         </div>
       </section>
 
+      <PostHackathonControlPlane />
       <MemoryEngineeringPanel />
       <MemoryReviewInbox />
 

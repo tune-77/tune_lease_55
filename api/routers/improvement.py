@@ -3,13 +3,10 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from api.cloudrun_writeback import record_cloudrun_input_event
 from api.schemas import ReviewImprovementRequest, PromptRuleRegisterRequest
@@ -363,12 +360,12 @@ def approve_improvement_triage(req: ImprovementTriageApproveRequest):
     return {"ok": True, "record": record}
 
 
-def _action_ledger_report_path() -> Path:
+def _action_ledger_report_path() -> Path | None:
     for reports_dir in _candidate_report_dirs():
         path = reports_dir / "agent_action_ledger_latest.json"
         if path.exists():
             return path
-    return Path(_REPO_ROOT) / "reports" / "agent_action_ledger_latest.json"
+    return None
 
 
 @router.get("/api/shion/action-ledger/summary")
@@ -381,7 +378,7 @@ def get_shion_action_ledger_summary(days: int = 7):
     from api.shion_action_ledger import read_actions, summarize
 
     report_path = _action_ledger_report_path()
-    if report_path.exists():
+    if report_path and report_path.exists():
         try:
             cached = json.loads(report_path.read_text(encoding="utf-8"))
             if isinstance(cached, dict) and int(cached.get("days") or 0) == days:

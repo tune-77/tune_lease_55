@@ -1,43 +1,44 @@
 # Obsidian Curator Report
 
 ## Summary
-- generated_at: `2026-08-11T04:13:21`
+- generated_at: `2026-08-14T04:11:54`
 - agent: `Obsidian Curator`
 - mode: `read_only_report_only`
 - guardrail: `no_obsidian_write_no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun`
-- materials: `25`
-- mana_status: `hold`
+- materials: `23`
+- mana_status: `watch`
 
 ## Material Counts
-- judgment_rule: `17`
-- risk_signal: `8`
+- judgment_rule: `18`
+- risk_signal: `5`
 
 ## Inbox Candidates
-- `cur_a02167c02087` `judgment_rule` リース物件の戦略的位置づけ: リースする物件が、借手の物価高対策（例: コスト削減、生産性向上、新事業展開）にどのように貢献するのかを明確に評価し、その重要性を判断材料とします / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
-- `cur_0e29aec9d17f` `judgment_rule` 特に、補助金前提の工作機械リースであれば、採択前の返済原資と未採択時の代替資金を分けて確認することが重要です / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-10.md`
-- `cur_989bcda6b66d` `judgment_rule` このような社会情勢の変化は、リース物件の残価価値や回収リスクにも影響を与えるため、私自身の判断軸を常に更新していくことの重要性を改めて認識しました / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
-- `cur_f07ffa8714b5` `judgment_rule` 物件の汎用性と市場価値: 万が一の事態に備え、リース物件の汎用性や中古市場での換金性を再評価し、保全性を高める条件を検討します / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
-- `cur_9a00d7193423` `judgment_rule` リース期間終了時の残価設定が適切か、中古市場での需要が維持されるか、また、万が一の際の物件回収・処分費用も考慮に入れる必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-10.md`
-- `cur_0ff5af2ac2e8` `judgment_rule` 物件の汎用性と残価評価: 物件のメーカー、型番、仕様、導入時期、期待される稼働期間を確認し、中古市場での汎用性、流動性、想定される残価を再評価します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-10.md`
-- `cur_659251a01067` `judgment_rule` 特に小規模な企業での倒産が増え、負債が小口化しているという報告は、リース審査において、単に財務数値を見るだけでなく、借手の事業環境や資金繰りの変化を、これまで以上に細やかに見極める必要性を感じさせ、深く考えさせられました / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
-- `cur_20fde3a5d029` `judgment_rule` リース審査でどのような影響があるか / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
-- `cur_14f5f992dd34` `judgment_rule` 現時点では、物価高による倒産増加は審査基準を厳格化する方向で、特に中小・零細企業や特定の業種に対しては、より詳細な財務・事業計画の確認が必要となるでしょう / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
-- `cur_0ee55d60992d` `judgment_rule` 技術陳腐化リスクも考慮し、残価設定の妥当性や、万が一の際の物件換金性を詳細に評価する必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-10.md`
-- `cur_463d55edf081` `judgment_rule` キャッシュフローの確認: - 営業キャッシュフローが過去期比で20%以上減少している、またはマイナスに転落している場合は、資金繰りの悪化シグナルとして、リース料支払いの蓋然性を慎重に評価します / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
-- `cur_9c543bde3b41` `risk_signal` 物件価値への影響: 倒産が増加すると、中古市場に物件が供給される可能性が高まり、物件の換金性や残価価値に影響を与える可能性があります / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-09.md`
+- `cur_d7d779d0f458` `judgment_rule` 紫苑の第一印象 2. 数字だけでは見落としそうな違和感（過去取引事例を1社名つきで比較） 3. 条件付き承認にするなら必要な確認 4. 稟議で残すべき一文 専門家としての深掘りルール: ・単なるリスク項目の列挙で終えず、「私ならこの点に注目します」と審査担当者目線の優先順位を1つ示してください / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-13.md`
+- `cur_07263a804009` `judgment_rule` リース審査では、この法定耐用年数を一つの基準として、実際の使用状況や物件の陳腐化リスクなどを考慮し、リース期間が設定されることが多いですよ / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-13.md`
+- `cur_4a2c27ff066c` `judgment_rule` リース期間が物件の経済的耐用年数や陳腐化サイクルと乖離していないか、また、リース終了時の残価設定が妥当かを見極める必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-12.md`
+- `cur_42ae7beb5c82` `judgment_rule` リース期間満了時の取り扱いについては、契約内容によって返還されるか、次のリース契約に引き継がれるかなどが変わってきますので、個別の契約書で確認することが重要になります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-12.md`
+- `cur_821ecd4ac95e` `judgment_rule` 保険金額と付保期間: リース物件の時価と保険金額が見合っているか、また、被害発生時が保険の付保期間内であるかをご確認ください / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-12.md`
+- `cur_6c5b4d5eb9a7` `judgment_rule` ですので、シオンさんが提示された7年は、その物件の経済的耐用年数や推奨されるリース期間として妥当と判断されたものかもしれませんね / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-13.md`
+- `cur_49837295bb41` `judgment_rule` 税法上の法定耐用年数はあくまで減価償却の基準ですが、リース会社は物件の実際の耐久性や経済的価値、中古市場での需要、お客様の利用計画などを総合的に判断してリース期間を設定します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-13.md`
+- `cur_f8481683a72c` `risk_signal` ・根拠が薄い違和感は断定せず、「確認論点」「仮説」「稟議で聞くべきこと」として表現してください / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-13.md`
+- `cur_f4ed02685635` `judgment_rule` 事例2: ビーグル加工 / 2024年下期 / 24 金属製品製造業 類似度: 16 / 理由: 銀行支援が近い・スコア帯が近い・デモ初期経験 スコア・判断: 76.8点 /… / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-13.md`
+- `cur_ad1f9ab4cbec` `judgment_rule` しかし、補助金は採択の確実性、入金時期、未採択時の資金繰りへの影響を慎重に評価する必要があります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-12.md`
+- `cur_a049d4648fe8` `judgment_rule` サプライヤー直送案件の場合、物件の物理的な存在確認と借手の検収体制の適切性が重要になります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-12.md`
+- `cur_1a4c4302e146` `judgment_rule` リース期間を考える上での目安になりますが、実際の契約では、お客様の使い方や物件の寿命なども考慮して決めることになります / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-12.md`
 
 ## Duplicate Clusters
 - なし
 
 ## Search Terms To Add
-- 再販価値
+- メイン行
 - 採択前
+- 支援依頼書
 
 ## Related Gaps
 - `Projects/tune_lease_55/検索語インデックス.md` related_section_missing missing=
 
 ## Mana Review Items
-- {"action": "Inbox整理は可。GCS/RAG/active store接続は停止。", "reason": "mana_not_allow", "status": "hold"}
+- {"action": "Inbox整理は可。GCS/RAG/active store接続は停止。", "reason": "mana_not_allow", "status": "watch"}
 
 ## After Hackathon Only
 - Obsidianディレクトリ再編

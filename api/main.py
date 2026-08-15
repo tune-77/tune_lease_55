@@ -3584,51 +3584,29 @@ def _improvement_canonical_key(title: str, description: str = "") -> str:
         return normalized[:80]
 
 
-def _latest_improvement_statuses() -> dict[str, str]:
-    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-    if not ledger_path.exists():
-        return {}
-    latest_by_key: dict[str, str] = {}
-    terminal_by_key: dict[str, str] = {}
-    try:
-        for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            title = str(entry.get("title") or "")
-            key = str(entry.get("canonical_key") or entry.get("key") or _improvement_canonical_key(title))
-            status = str(entry.get("status") or "")
-            if key:
-                latest_by_key[key] = status
-                if _is_terminal_improvement_ledger_status(status):
-                    terminal_by_key[key] = status
-    except OSError:
-        return {}
-    latest_by_key.update(terminal_by_key)
-    return latest_by_key
+def _ledger_entries() -> list[dict]:
+    """ローカル ledger.jsonl（macOS想定パス）と GCS ミラーを合成する。
 
-
-def _is_terminal_improvement_ledger_status(status: str) -> bool:
-    """Human/resolution decisions should survive later automatic re-detection.
-
-    The daily pipeline appends fresh needs_review rows for the same canonical_key.
-    If we let those rows blindly win by "last line", deleted/applied/parked items
-    come back in the PM report the next morning.
+    Cloud Run コンテナは Path.home() がローカル(macOS)のログパスに届かず、
+    ledger.jsonl の「適用済み」記録を一切参照できなかった（今日やる候補が
+    直しても消えずに出続ける不具合の原因）。scripts/sync_ledger_to_gcs.py が
+    書き込む GCS ミラーを合わせて読むことで Cloud Run 側でも解決する。
     """
-    return str(status or "").lower() in {
-        "applied",
-        "approved",
-        "deleted",
-        "rejected",
-        "deferred",
-        "parked",
-        "suppressed",
-        "rule_registered",
-        "apply_failed",
-    }
+    from scripts.improvement_state_resolver import iter_ledger_entries
+
+    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+    entries = list(iter_ledger_entries(ledger_path))
+    entries.extend(_gcs_ledger_entries())
+    return entries
+
+
+def _latest_improvement_statuses() -> dict[str, str]:
+    try:
+        from scripts.improvement_state_resolver import load_latest_status_by_key_from_entries
+
+        return load_latest_status_by_key_from_entries(_ledger_entries())
+    except Exception:
+        return {}
 
 
 def _norm_improvement_title(title: str) -> str:
@@ -3643,29 +3621,12 @@ def _norm_improvement_title(title: str) -> str:
 
 def _latest_improvement_statuses_by_title() -> dict[str, str]:
     """canonical_key が一致しない場合の保険: 正規化タイトル一致で最後のステータスを返す。"""
-    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-    if not ledger_path.exists():
-        return {}
-    latest_by_title: dict[str, str] = {}
-    terminal_by_title: dict[str, str] = {}
     try:
-        for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            title = _norm_improvement_title(str(entry.get("title") or ""))
-            status = str(entry.get("status") or "")
-            if title and status:
-                latest_by_title[title] = status
-                if _is_terminal_improvement_ledger_status(status):
-                    terminal_by_title[title] = status
-    except OSError:
+        from scripts.improvement_state_resolver import load_latest_status_by_title_from_entries
+
+        return load_latest_status_by_title_from_entries(_ledger_entries())
+    except Exception:
         return {}
-    latest_by_title.update(terminal_by_title)
-    return latest_by_title
 
 
 def _ledger_status_to_improvement_status(status: str) -> str | None:
@@ -3897,27 +3858,16 @@ def _historical_applied_improvements() -> tuple[set[str], set[str]]:
     applied_keys: set[str] = set()
     applied_titles: set[str] = set()
     resolved_ledger_statuses = {"applied", "suppressed", "rejected", "deferred", "deleted", "approved", "parked"}
-    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-    if ledger_path.exists():
-        try:
-            for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                status = str(entry.get("status") or entry.get("action") or "").lower()
-                if status not in resolved_ledger_statuses:
-                    continue
-                title = str(entry.get("title") or "").strip()
-                key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
-                if title:
-                    applied_titles.add(title)
-                if key:
-                    applied_keys.add(key)
-        except OSError:
-            pass
+    for entry in _ledger_entries():
+        status = str(entry.get("status") or entry.get("action") or "").lower()
+        if status not in resolved_ledger_statuses:
+            continue
+        title = str(entry.get("title") or "").strip()
+        key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
+        if title:
+            applied_titles.add(title)
+        if key:
+            applied_keys.add(key)
 
     candidates: list[Path] = []
     for reports_dir in _candidate_report_dirs():
@@ -3962,31 +3912,20 @@ def _historical_applied_timestamps() -> tuple[dict[str, str], dict[str, str]]:
     key_ts: dict[str, str] = {}
     title_ts: dict[str, str] = {}
     resolved_ledger_statuses = {"applied", "suppressed", "rejected", "deferred", "deleted", "approved", "parked"}
-    ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-    if ledger_path.exists():
-        try:
-            for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                status = str(entry.get("status") or entry.get("action") or "").lower()
-                if status not in resolved_ledger_statuses:
-                    continue
-                ts = str(entry.get("recorded_at") or "").strip()
-                if not ts:
-                    continue
-                title = str(entry.get("title") or "").strip()
-                key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
-                # 同一キー/タイトルは最後の記録（最新）を優先する
-                if title and (title not in title_ts or ts > title_ts[title]):
-                    title_ts[title] = ts
-                if key and (key not in key_ts or ts > key_ts[key]):
-                    key_ts[key] = ts
-        except OSError:
-            pass
+    for entry in _ledger_entries():
+        status = str(entry.get("status") or entry.get("action") or "").lower()
+        if status not in resolved_ledger_statuses:
+            continue
+        ts = str(entry.get("recorded_at") or "").strip()
+        if not ts:
+            continue
+        title = str(entry.get("title") or "").strip()
+        key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
+        # 同一キー/タイトルは最後の記録（最新）を優先する
+        if title and (title not in title_ts or ts > title_ts[title]):
+            title_ts[title] = ts
+        if key and (key not in key_ts or ts > key_ts[key]):
+            key_ts[key] = ts
 
     candidates: list[Path] = []
     for reports_dir in _candidate_report_dirs():
@@ -5186,6 +5125,54 @@ def _cloudrun_score_pending_item_from_event(event: dict) -> dict | None:
     return cloudrun_score_pending_item_from_event(event)
 
 
+_GCS_LEDGER_ENTRIES_CACHE: dict[str, Any] = {}
+
+
+def _gcs_ledger_entries() -> list[dict]:
+    """scripts/sync_ledger_to_gcs.py が書き込む ledger.jsonl ミラーを読む。
+
+    Cloud Run はローカル ledger.jsonl（macOS想定パス）を参照できないため、
+    このミラー無しでは「適用済み」判定ができず、直した候補が何度も出続ける。
+    """
+    if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
+        return []
+    try:
+        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
+        from google.cloud import storage  # type: ignore[import-untyped]
+        from api import cloudrun_writeback as _cw
+        from scripts.improvement_state_resolver import iter_ledger_entries_from_text
+        import time as _time
+
+        bucket_name = _cw._bucket_name()
+        if not bucket_name:
+            return []
+        blob_path = os.environ.get("GCS_LEDGER_MIRROR_PATH", "ledger/ledger.jsonl").strip("/")
+        cache_key = f"{bucket_name}:{blob_path}"
+        now_monotonic = _time.monotonic()
+        if (
+            _GCS_LEDGER_ENTRIES_CACHE.get("key") == cache_key
+            and float(_GCS_LEDGER_ENTRIES_CACHE.get("expires_at") or 0.0) > now_monotonic
+        ):
+            return list(_GCS_LEDGER_ENTRIES_CACHE.get("entries") or [])
+
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob(blob_path)
+        try:
+            text = blob.download_as_text()
+        except NotFound:
+            text = ""
+        entries = list(iter_ledger_entries_from_text(text))
+        _GCS_LEDGER_ENTRIES_CACHE.update({
+            "key": cache_key,
+            "expires_at": now_monotonic + float(os.environ.get("GCS_LEDGER_MIRROR_CACHE_SECONDS", "60") or 60),
+            "entries": entries,
+        })
+        return entries
+    except Exception as exc:
+        logger.warning("gcs ledger mirror read skipped: %s", exc)
+        return []
+
+
 def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
     if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
         return []
@@ -5522,6 +5509,7 @@ def _build_reflection_gate_prompt_block(
     continuity_hook: dict | None = None,
     delta_awareness: dict | None = None,
     memory_to_judgment: dict | None = None,
+    message: str = "",
 ) -> tuple[str, dict]:
     from api.chat_reflection_prompts import build_reflection_gate_prompt_block
 
@@ -5529,6 +5517,7 @@ def _build_reflection_gate_prompt_block(
         continuity_hook=continuity_hook,
         delta_awareness=delta_awareness,
         memory_to_judgment=memory_to_judgment,
+        message=message,
     )
 
 
@@ -5538,6 +5527,33 @@ def _build_consciousness_ux_prompt_block() -> str:
     from api.chat_reflection_prompts import build_consciousness_ux_prompt_block
 
     return build_consciousness_ux_prompt_block()
+
+
+def _build_world_proxy_prompt_block(
+    *,
+    message: str,
+    category: str = "",
+    memory_recall: dict | None = None,
+    knowledge_refs: list[str] | None = None,
+    rag_context: str = "",
+    db_context: str = "",
+    judgment_learning_used: bool = False,
+    experience_loop: dict | None = None,
+    grey_judgment_memory: dict | None = None,
+) -> tuple[str, dict]:
+    from api.chat_reflection_prompts import build_world_proxy_prompt_block
+
+    return build_world_proxy_prompt_block(
+        message=message,
+        category=category,
+        memory_recall=memory_recall,
+        knowledge_refs=knowledge_refs,
+        rag_context=rag_context,
+        db_context=db_context,
+        judgment_learning_used=judgment_learning_used,
+        experience_loop=experience_loop,
+        grey_judgment_memory=grey_judgment_memory,
+    )
 
 
 def _build_shion_light_tone_feedback_prompt_block(message: str) -> str:
@@ -5607,6 +5623,7 @@ def _chat_memory_debug_payload(
     reflection_gate: dict | None = None,
     experience_loop: dict | None = None,
     grey_judgment_memory: dict | None = None,
+    world_proxy: dict | None = None,
 ) -> dict:
     from api.chat_debug_metadata import chat_memory_debug_payload
 
@@ -5629,6 +5646,7 @@ def _chat_memory_debug_payload(
         reflection_gate=reflection_gate,
         experience_loop=experience_loop,
         grey_judgment_memory=grey_judgment_memory,
+        world_proxy=world_proxy,
     )
 
 
@@ -5691,6 +5709,7 @@ def _build_shared_shion_dialogue_memory_context(
         continuity_hook=continuity_payload,
         delta_awareness=delta_payload,
         memory_to_judgment=memory_to_judgment_payload,
+        message=message,
     )
     for block in (delta_context, memory_to_judgment_context, reflection_gate_context):
         if block:
@@ -5708,6 +5727,17 @@ def _build_shared_shion_dialogue_memory_context(
     )
     if memory_expression_context:
         parts.append(memory_expression_context.strip())
+
+    world_proxy_context, world_proxy_payload = _build_world_proxy_prompt_block(
+        message=message,
+        category="lease_intelligence_dialogue",
+        memory_recall=memory_recall_payload,
+        knowledge_refs=[],
+        experience_loop=experience_payload,
+        grey_judgment_memory=grey_payload,
+    )
+    if world_proxy_context:
+        parts.append(world_proxy_context.strip())
 
     consciousness_context = _build_consciousness_ux_prompt_block()
     if consciousness_context:
@@ -5731,6 +5761,7 @@ def _build_shared_shion_dialogue_memory_context(
         "memory_expression": memory_expression_payload,
         "reflection_gate": reflection_gate_payload,
         "grey_judgment_memory": grey_payload,
+        "world_proxy": world_proxy_payload,
     }
     return ("\n\n".join(parts), payload)
 
@@ -6794,6 +6825,8 @@ def post_chat(req: ChatRequest):
             memory_expression_payload = {"used": False}
             reflection_gate_context = ""
             reflection_gate_payload = {"triggered": False}
+            world_proxy_context = ""
+            world_proxy_payload = {"used": False}
             if is_general_response_mode:
                 memory_recall = {
                     "route": "",
@@ -6814,6 +6847,10 @@ def post_chat(req: ChatRequest):
                 }
                 reflection_gate_payload = {
                     "triggered": False,
+                    "suppressed_by_response_mode": "general",
+                }
+                world_proxy_payload = {
+                    "used": False,
                     "suppressed_by_response_mode": "general",
                 }
             else:
@@ -6839,6 +6876,15 @@ def post_chat(req: ChatRequest):
                     continuity_hook=continuity_hook_payload,
                     delta_awareness=delta_awareness_payload,
                     memory_to_judgment=memory_to_judgment_payload,
+                    message=req.message,
+                )
+                world_proxy_context, world_proxy_payload = _build_world_proxy_prompt_block(
+                    message=req.message,
+                    category=question_category,
+                    memory_recall=memory_recall,
+                    knowledge_refs=[],
+                    experience_loop=experience_loop_payload,
+                    grey_judgment_memory=grey_judgment_payload,
                 )
             external_research = {"used": False}
             research_suggestion = build_external_research_suggestion(
@@ -6906,6 +6952,7 @@ def post_chat(req: ChatRequest):
                 memory_to_judgment_context,
                 memory_expression_context,
                 reflection_gate_context,
+                world_proxy_context,
                 external_research_context,
                 consciousness_ux_context,
                 shion_specificity_context,
@@ -7009,6 +7056,7 @@ def post_chat(req: ChatRequest):
                     user_id=req.user_id,
                     intent=req.intent or "",
                     category="general",
+                    world_proxy=world_proxy_payload,
                 ),
             )
             _record_memory_usage_if_available(
@@ -7029,6 +7077,7 @@ def post_chat(req: ChatRequest):
                     memory_expression=memory_expression_payload,
                     reflection_gate=reflection_gate_payload,
                     grey_judgment_memory=grey_judgment_payload,
+                    world_proxy=world_proxy_payload,
                 ),
             )
             _record_chat_knowledge_correction_if_needed(req.message)
@@ -7072,6 +7121,7 @@ def post_chat(req: ChatRequest):
                     reflection_gate=reflection_gate_payload,
                     experience_loop=experience_loop_payload,
                     grey_judgment_memory=grey_judgment_payload,
+                    world_proxy=world_proxy_payload,
                 )
                 response_payload["memory_debug"]["user_personal_memory"] = {
                     "used": bool(user_personal_memory_payload.get("block")),
@@ -7214,6 +7264,8 @@ def post_chat(req: ChatRequest):
         memory_expression_payload = {"used": False}
         reflection_gate_context = ""
         reflection_gate_payload = {"triggered": False}
+        world_proxy_context = ""
+        world_proxy_payload = {"used": False}
         if is_general_response_mode:
             memory_recall = {
                 "route": "",
@@ -7234,6 +7286,10 @@ def post_chat(req: ChatRequest):
             }
             reflection_gate_payload = {
                 "triggered": False,
+                "suppressed_by_response_mode": "general",
+            }
+            world_proxy_payload = {
+                "used": False,
                 "suppressed_by_response_mode": "general",
             }
         else:
@@ -7265,6 +7321,18 @@ def post_chat(req: ChatRequest):
                 continuity_hook=continuity_hook_payload,
                 delta_awareness=delta_awareness_payload,
                 memory_to_judgment=memory_to_judgment_payload,
+                message=req.message,
+            )
+            world_proxy_context, world_proxy_payload = _build_world_proxy_prompt_block(
+                message=req.message,
+                category=question_category,
+                memory_recall=memory_recall,
+                knowledge_refs=rag_refs,
+                rag_context=rag_context,
+                db_context=db_context,
+                judgment_learning_used=bool(judgment_learning_context),
+                experience_loop=experience_loop_payload,
+                grey_judgment_memory=grey_judgment_payload,
             )
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
@@ -7306,6 +7374,7 @@ def post_chat(req: ChatRequest):
             memory_to_judgment_context,
             memory_expression_context,
             reflection_gate_context,
+            world_proxy_context,
             rag_context,
             external_research_context,
             db_context,
@@ -7431,6 +7500,7 @@ def post_chat(req: ChatRequest):
                 memory_expression=memory_expression_payload,
                 reflection_gate=reflection_gate_payload,
                 grey_judgment_memory=grey_judgment_payload,
+                world_proxy=world_proxy_payload,
             ),
         )
         _record_memory_usage_if_available(
@@ -7453,6 +7523,7 @@ def post_chat(req: ChatRequest):
                 memory_expression=memory_expression_payload,
                 reflection_gate=reflection_gate_payload,
                 estimated_user_emotion=estimated_user_emotion,
+                world_proxy=world_proxy_payload,
             ),
         )
         _record_chat_knowledge_correction_if_needed(req.message)
@@ -7542,6 +7613,7 @@ def post_chat(req: ChatRequest):
                 reflection_gate=reflection_gate_payload,
                 experience_loop=experience_loop_payload,
                 grey_judgment_memory=grey_judgment_payload,
+                world_proxy=world_proxy_payload,
             )
             append_chat_debug_metadata(
                 response_payload["memory_debug"],
