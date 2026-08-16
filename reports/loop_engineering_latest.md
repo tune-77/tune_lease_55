@@ -1,6 +1,6 @@
 # Loop Engineering Health
 
-- Generated at: `2026-08-14T04:12:32`
+- Generated at: `2026-08-17T04:13:22`
 - Status: `warn`
 - Source coverage: 100.0%
 
@@ -11,18 +11,18 @@
 - Review pressure: 0.0%
 
 ## Recursive Loop
-- Canonical candidates: 6
+- Canonical candidates: 7
 - Ranked queue: 0
-- Suppressed: 6
+- Suppressed: 7
 - Repeat issue rate: 0.0%
 - Reuse rate: 100.0%
 - Noise rate: 100.0%
-- Churn rate: 100.0% (healthy dedup: 0, churn: 6)
+- Churn rate: 100.0% (healthy dedup: 0, churn: 7)
 
 ## Prompt Feedback Loop
-- Total: 359
-- PDCA applied: 359 (100.0%)
-- Previous response diffs: 127 (35.4%)
+- Total: 362
+- PDCA applied: 362 (100.0%)
+- Previous response diffs: 128 (35.4%)
 
 ## Scoring Coefficients
 - Status: `ok`
@@ -35,16 +35,16 @@
 ## Guard / Safety
 - Status: `warn`
 - Codex queue: failed 0/1, carried over 0, aborted=False
-- Preflight retries: over-budget 4 (max count 5 / limit 2)
-- [warn] プリフライトのリトライ枠超過が 4 箇所（上限 2）— 人間へのバトンタッチを検討
+- Preflight retries: over-budget 5 (max count 7 / limit 2)
+- [warn] プリフライトのリトライ枠超過が 5 箇所（上限 2）— 人間へのバトンタッチを検討
 
 ## Outcome Loops
 - Status: `ok`
 - outcome_drift: 0 proposals (latest n/a)
-- feedback_pattern: 50 proposals (latest 2026-08-14T03:00:21)
+- feedback_pattern: 53 proposals (latest 2026-08-15T03:00:24)
 - judgment_divergence: 3 proposals (latest 2026-08-01T07:42:08)
 - knowledge_gap: 3 proposals (latest 2026-07-03T07:21:31)
-- PDCA effect: measured 886, improved 886, worsened 0, avg delta -0.188
+- PDCA effect: measured 1002, improved 1002, worsened 0, avg delta -0.18
 
 ## Recommendations
 - 抑制の滞留(churn)が高いため、needs_review/suppressed のクールダウン固着や台帳の suppressed 再記録を確認する（健全な重複排除は含めない）

@@ -1,17 +1,17 @@
 # Experience Flywheel Report
 
-- Generated at: `2026-08-13T19:11:56+00:00`
+- Generated at: `2026-08-16T19:12:47+00:00`
 - Mode: `read_only_experience_flywheel_gate`
 - Guardrail: no model weight update, no memory promotion, no skill edit
-- Raw candidates: 631
-- Deduped candidates: 436
-- Duplicates collapsed: 195
+- Raw candidates: 640
+- Deduped candidates: 440
+- Duplicates collapsed: 200
 
 ## Gate Summary
 - observe_only: 27
 - promote_to_review: 13
-- quarantine: 140
-- replay_eval: 256
+- quarantine: 143
+- replay_eval: 257
 
 ## Promotion Review
 - `screening_feedback` score=15 action=review_screening_judgment_pattern / 境界スコアを、追加確認と条件設定で承認側へ寄せられるか

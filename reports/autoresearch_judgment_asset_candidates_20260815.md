@@ -1,18 +1,18 @@
-# Auto Research Judgment Asset Candidates (2026-08-03 to 2026-08-16)
+# Auto Research Judgment Asset Candidates (2026-08-02 to 2026-08-15)
 
 ## Summary
 
-- Candidates: 95
-- Deduped similar candidates: 54
-- application_rule: 22
-- confirmation_question: 28
-- condition_signal: 22
-- caution: 23
+- Candidates: 114
+- Deduped similar candidates: 45
+- application_rule: 26
+- confirmation_question: 33
+- condition_signal: 27
+- caution: 28
 - used: 0
 - edited: 0
 - ready_for_promotion: 0
 - rejected_or_deprioritized: 0
-- textbook_general: 68
+- textbook_general: 81
 
 ## Promotion Policy
 
@@ -26,6 +26,215 @@
 
 ## Candidates
 
+### 2026-08-02 / application_rule / asset-operation
+
+- Claim: これらの評価は、リース期間、リース料率、残価設定、追加担保の要否など、契約条件に影響を与えます。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / application_rule / asset-operation
+
+- Claim: 保守体制は、リース物件の物理的価値維持と突発故障による事業停止リスクを評価します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / application_rule / asset-operation
+
+- Claim: 更新投資計画は、リース物件の陳腐化リスクと顧客の将来的な競争力を評価する上で重要です。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / application_rule / asset-operation
+
+- Claim: 設備稼働率は、リース物件が事業に不可欠か、安定した収益を生み出すかを評価する指標です。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / caution / asset-operation
+
+- Claim: 予知保全の費用対効果（ROI）の算出根拠や実績は、未確認の推論に基づく場合があるため、慎重な確認が必要です。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / caution / asset-operation
+
+- Claim: 事後保全が中心であっても、緊急対応体制が確立されていれば、リスクは軽減される場合があります。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / caution / asset-operation
+
+- Claim: 低稼働率でも、一時的な要因や具体的な回復策が示されれば、リース承認の可能性は残ります。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / caution / asset-operation
+
+- Claim: 更新投資計画があっても、その財源が不確実な場合は、計画の実効性を疑う必要があります。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / caution / asset-operation
+
+- Claim: 高稼働率は安定収益を示す一方で、過度な負荷は突発故障リスクを高めるため、保守体制の確認が不可欠です。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / condition_signal / asset-operation
+
+- Claim: **事後保全中心:** 突発故障・高額修理リスクが高く、リース期間短縮、料率調整、定期報告義務付けなどを検討します。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / condition_signal / asset-operation
+
+- Claim: **低稼働率:** 市場悪化、受注減、設備故障、過剰投資など原因を深掘りし、回復見込みと具体的な対策を確認する必要があります。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / condition_signal / asset-operation
+
+- Claim: **更新投資計画の欠如:** 事業競争力低下やリース物件の陳腐化リスク増大を示唆し、リース期間や料率に影響を与える可能性があります。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / condition_signal / asset-operation
+
+- Claim: **計画的な予防・予知保全:** 設備の長寿命化と資産価値保全に繋がり、リース期間延長や残価率高く設定の可能性を検討できます。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / condition_signal / asset-operation
+
+- Claim: **高稼働率:** 安定収益の可能性が高いですが、過度な負荷による突発故障リスク増大に注意し、保守体制を厳格に確認します。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_condition_signal
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / confirmation_question / asset-operation
+
+- Claim: 中長期的な設備投資計画、特に更新投資の目的（老朽化対策、省力化など）と財源計画を提示してください。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / confirmation_question / asset-operation
+
+- Claim: 保守記録（点検・修理・部品交換履歴）は整備されていますか。また、保守担当者の専門性や外部委託の状況はどうですか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / confirmation_question / asset-operation
+
+- Claim: 対象設備の直近の稼働率実績と計画、およびその算出根拠（生産量ベースか時間ベースか）は何ですか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / confirmation_question / asset-operation
+
+- Claim: 既存設備の稼働年数や陳腐化の状況について説明してください。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-02 / confirmation_question / asset-operation
+
+- Claim: 設備保全計画の有無、内容（予防・予知・事後保全のいずれが主か）、保守予算の確保状況と実績を教えてください。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-02_asset-operation.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
 ### 2026-08-03 / application_rule / subsidy-timing
 
 - Claim: 審査では、自動否決・自動承認ではなく、確認質問、承認条件、保全条件の検討材料として使います。
@@ -35,7 +244,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 6
+- Deduped similar: 5
 
 ### 2026-08-03 / application_rule / subsidy-timing
 
@@ -46,7 +255,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 6
+- Deduped similar: 5
 
 ### 2026-08-03 / caution / subsidy-timing
 
@@ -57,7 +266,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 6
+- Deduped similar: 5
 
 ### 2026-08-03 / caution / subsidy-timing
 
@@ -68,7 +277,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 6
+- Deduped similar: 5
 
 ### 2026-08-03 / condition_signal / subsidy-timing
 
@@ -79,7 +288,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 6
+- Deduped similar: 5
 
 ### 2026-08-03 / condition_signal / subsidy-timing
 
@@ -90,7 +299,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 6
+- Deduped similar: 5
 
 ### 2026-08-03 / confirmation_question / subsidy-timing
 
@@ -101,7 +310,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 6
+- Deduped similar: 5
 
 ### 2026-08-03 / confirmation_question / subsidy-timing
 
@@ -112,7 +321,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 6
+- Deduped similar: 5
 
 ### 2026-08-03 / confirmation_question / subsidy-timing
 
@@ -123,7 +332,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 6
+- Deduped similar: 5
 
 ### 2026-08-06 / application_rule / bank-support
 

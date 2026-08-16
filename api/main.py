@@ -2977,13 +2977,14 @@ def _build_codex_queue_shadow_line() -> str:
 
 
 def _load_shion_pm_quality_summary() -> dict:
-    """Phase 3 (P3-2): 事後検証レポート（的中率・Overrule率）の要約を読む。"""
-    path = Path(_REPO_ROOT) / "reports" / "shion_pm_quality_latest.json"
-    if not path.exists():
-        return {"available": False}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    """Phase 3 (P3-2): 事後検証レポート（的中率・Overrule率）の要約を読む。
+
+    Cloud Run では reports/ がイメージ外のため、_read_report_json 経由で
+    .cloudrun_bundle/reports も候補に含める（bundle への同梱は
+    package_cloud_run_bundle.sh 側）。
+    """
+    payload = _read_report_json("shion_pm_quality_latest.json")
+    if not payload:
         return {"available": False}
     kpis = payload.get("kpis") or {}
     return {

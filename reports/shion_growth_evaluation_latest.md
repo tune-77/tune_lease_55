@@ -2,16 +2,16 @@
 
 ## Judgment
 
-- Period: 2026-07-16 to 2026-08-14
+- Period: 2026-07-19 to 2026-08-17
 - Days measured: 30
-- Result: 育っている途中 (57.6)
+- Result: 育っている途中 (56.6)
 - Summary: 判断資産と再利用の兆候はあるが、実戦検証の厚みはまだ十分ではない。
 - Mode: local_measurement_only
 - Guardrail: no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 
 ## Dimensions
 
-- Inventory: `████████████████████` 99.0 / strong
+- Inventory: `███████████████████░` 93.0 / strong
 - Reuse: `█████████████░░░░░░░` 64.0 / moderate
 - Judgment change: `█████████████░░░░░░░` 64.0 / moderate
 - Field validation: `██░░░░░░░░░░░░░░░░░░` 12.0 / weak
@@ -20,7 +20,7 @@
 
 ## Evidence
 
-- Score delta: -1.6
+- Score delta: -2.2
 - Feedback used: 1
 - Feedback helped: 1
 - Feedback challenged: 0

@@ -1,6 +1,6 @@
 # Obsidian Memory Effectiveness
 
-- Date: 2026-08-14
+- Date: 2026-08-17
 - Mode: read_only_observation
 - Guardrail: no_rag_rank_change_no_prompt_change_no_obsidian_write_no_auto_promotion
 - Knowledge dir: `/Users/kobayashiisaoryou/clawd/tune_lease_55/knowledge_base/okf_lease_concepts`
@@ -41,7 +41,7 @@
 - Ref: `knowledge_base/okf_lease_concepts/rules/conditional_approval_playbook.md`
 - Type: `lease_rule` / Domain: `credit`
 - State: `used` / Score: 40.0
-- Signals: recalled=4, used=3, helped=0, challenged=0, rejected=0
+- Signals: recalled=4, used=4, helped=0, challenged=0, rejected=0
 - Next: User評価を取り、helped / neutral / challenged を記録する。
 
 ### 医療機器の保守期限・撤去費・再販リスク

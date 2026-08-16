@@ -2,31 +2,31 @@
 
 - Guardrail: `read_only_no_obsidian_write_no_rag_rank_no_prompt_no_scoring_change`
 - Answer: 複雑さは一部判断に効いている。特に使用シグナルのあるハブと橋渡しノードは残す価値が高い。
-- Notes: 1866
-- Edges: 3966
-- Avg degree: 4.25
-- Notes with usage signal: 353
-- Buckets: {'bridge_candidate': 3, 'complex_but_unproven': 186, 'dormant_isolate': 402, 'effective_hub': 92, 'isolated_but_used': 105, 'noisy': 2, 'ordinary': 1076}
+- Notes: 1920
+- Edges: 4044
+- Avg degree: 4.21
+- Notes with usage signal: 355
+- Buckets: {'bridge_candidate': 3, 'complex_but_unproven': 190, 'dormant_isolate': 418, 'effective_hub': 94, 'isolated_but_used': 106, 'noisy': 2, 'ordinary': 1107}
 
 ## Effective Hubs
-- `Projects/tune_lease_55/tune_lease_55 Wiki.md` degree=553 used=786.15 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
-- `03-知識_業界/業種分析/業種別傾向.md` degree=178 used=329.067 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
-- `03-知識_業界/リース地域市場調査/INDEX.md` degree=143 used=201.633 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
-- `03-知識_業界/INDEX_更新版.md` degree=81 used=132.883 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
-- `Projects/tune_lease_55/Asset Knowledge/Promoted Knowledge.md` degree=75 used=112.0 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
+- `Projects/tune_lease_55/tune_lease_55 Wiki.md` degree=553 used=806.5 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
+- `03-知識_業界/業種分析/業種別傾向.md` degree=181 used=333.117 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
+- `03-知識_業界/リース地域市場調査/INDEX.md` degree=143 used=205.983 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
+- `03-知識_業界/INDEX_更新版.md` degree=81 used=137.383 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
+- `Projects/tune_lease_55/Asset Knowledge/Promoted Knowledge.md` degree=75 used=121.0 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
 - `03-知識_業界/業種別資産マップ.md` degree=46 used=108.667 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
 - `03-知識_業界/リース審査実務/審査ナレッジ.md` degree=41 used=15.15 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
-- `03-知識_業界/Dataview検索ダッシュボード.md` degree=37 used=94.617 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
+- `03-知識_業界/業種分析/2026-05-13_失注要因分析.md` degree=40 used=10.45 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
+- `03-知識_業界/Dataview検索ダッシュボード.md` degree=37 used=97.617 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
 - `03-知識_業界/業種分析/2026-05-13_成約要因分析.md` degree=35 used=12.3 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
-- `Daily/2026-06-13.md` degree=35 used=73.2 effect=100.0 :: 判断に効いている中核ノード。関連ノートは増やしすぎず、入口として整える。
 
 ## Bridge Candidates
-- `03-知識_業界/リース基礎知識/リース審査ポイント.md` degree=5 used=503.183 effect=100.0 :: 複数テーマをつなぐ橋。判断資産や検索語インデックスから明示リンクすると効きやすい。
-- `Projects/tune_lease_55/2026-06-06_新リース会計基準と審査実務_autoresearch.md` degree=4 used=184.767 effect=100.0 :: 複数テーマをつなぐ橋。判断資産や検索語インデックスから明示リンクすると効きやすい。
+- `03-知識_業界/リース基礎知識/リース審査ポイント.md` degree=5 used=515.483 effect=100.0 :: 複数テーマをつなぐ橋。判断資産や検索語インデックスから明示リンクすると効きやすい。
+- `Projects/tune_lease_55/2026-06-06_新リース会計基準と審査実務_autoresearch.md` degree=4 used=187.017 effect=100.0 :: 複数テーマをつなぐ橋。判断資産や検索語インデックスから明示リンクすると効きやすい。
 - `03-知識_業界/業種分析/業種別詳細調査.md` degree=22 used=3.183 effect=50.6 :: 複数テーマをつなぐ橋。判断資産や検索語インデックスから明示リンクすると効きやすい。
 
 ## Complex But Unproven
-- `07-アーカイブ/Asset Knowledge/Q-Risk.md` degree=132 used=0.0 effect=39.1 :: リンクは多いが使用痕跡が弱い。リンク整理か、審査時に本当に参照されるか観測する。
+- `07-アーカイブ/Asset Knowledge/Q-Risk.md` degree=135 used=0.0 effect=39.3 :: リンクは多いが使用痕跡が弱い。リンク整理か、審査時に本当に参照されるか観測する。
 - `Projects/tune_lease_55/検索語インデックス.md` degree=107 used=0.0 effect=37.5 :: リンクは多いが使用痕跡が弱い。リンク整理か、審査時に本当に参照されるか観測する。
 - `Projects/tune_lease_55/日付別DATA連携インデックス.md` degree=75 used=0.0 effect=34.6 :: リンクは多いが使用痕跡が弱い。リンク整理か、審査時に本当に参照されるか観測する。
 - `06-日記_作業ログ/Daily/2026-05-23.md` degree=70 used=0.0 effect=34.1 :: リンクは多いが使用痕跡が弱い。リンク整理か、審査時に本当に参照されるか観測する。
@@ -43,16 +43,16 @@
 - `06-日記_作業ログ/Daily/2026-06-02.md` degree=39 used=0.2 effect=31.1 :: リンクは多いが使用痕跡が弱い。リンク整理か、審査時に本当に参照されるか観測する。
 
 ## Isolated But Used
-- `03-知識_業界/税務・会計知識/実務における売り手・買い手双方への影響分析.md` degree=1 used=92.6 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
-- `03-知識_業界/補助金・融資/補助金_総合レポート.md` degree=1 used=15.167 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
-- `03-知識_業界/車両・自動車知識/2026-06-07_residual-value.md` degree=1 used=249.5 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
-- `03-知識_業界/車両・自動車知識/2026-06-11_contract-ownership.md` degree=1 used=130.1 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
+- `03-知識_業界/税務・会計知識/実務における売り手・買い手双方への影響分析.md` degree=1 used=97.1 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
+- `03-知識_業界/補助金・融資/補助金_総合レポート.md` degree=1 used=16.967 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
+- `03-知識_業界/車両・自動車知識/2026-06-07_residual-value.md` degree=1 used=251.3 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
+- `03-知識_業界/車両・自動車知識/2026-06-11_contract-ownership.md` degree=1 used=132.2 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
 - `03-知識_業界/高度なリース取引/リースバック_差別化.md` degree=1 used=12.4 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
-- `Projects/tune_lease_55/Asset Knowledge/フォークリフト/フォークリフト 残価・バッテリー劣化・再販リスク.md` degree=1 used=328.25 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
+- `Projects/tune_lease_55/Asset Knowledge/フォークリフト/フォークリフト 残価・バッテリー劣化・再販リスク.md` degree=1 used=339.5 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
 - `Projects/tune_lease_55/Asset Knowledge/射出成形機/射出成形機 トン数・制御装置・残価リスク.md` degree=1 used=86.917 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
-- `Projects/tune_lease_55/Asset Knowledge/工作機械/工作機械 中古相場・残価・再販リスク.md` degree=1 used=358.483 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
-- `Projects/tune_lease_55/Asset Knowledge/建機/コマツ PC200 油圧ショベル 残価・再販リスク.md` degree=1 used=286.183 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
-- `Projects/tune_lease_55/Asset Knowledge/測定器・検査装置/測定器・検査装置 校正証明・保守期限・再販リスク.md` degree=1 used=131.017 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
+- `Projects/tune_lease_55/Asset Knowledge/工作機械/工作機械 中古相場・残価・再販リスク.md` degree=1 used=371.533 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
+- `Projects/tune_lease_55/Asset Knowledge/建機/コマツ PC200 油圧ショベル 残価・再販リスク.md` degree=1 used=292.383 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
+- `Projects/tune_lease_55/Asset Knowledge/測定器・検査装置/測定器・検査装置 校正証明・保守期限・再販リスク.md` degree=1 used=140.317 effect=100.0 :: 孤立しているが使われている。関連ハブへ1-2本だけ接続すると価値が増える。
 
 ## Noisy Nodes
 - `Projects/tune_lease_55/CloudRun移行検討.md` degree=11 used=3.083 effect=44.5 :: 使われているが低評価が勝つ。内容・適用条件・リンク先を見直す。

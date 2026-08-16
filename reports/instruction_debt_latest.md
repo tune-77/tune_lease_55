@@ -1,6 +1,6 @@
 # Instruction Debt Report
 
-- Generated at: `2026-08-13T19:11:28+00:00`
+- Generated at: `2026-08-16T19:12:33+00:00`
 - Mode: `read_only_instruction_debt_audit`
 - Guardrail: no prompt edit, no memory promotion, no skill edit
 - Files scanned: 15
