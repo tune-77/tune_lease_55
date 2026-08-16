@@ -87,6 +87,7 @@ Wiki から Schema へ上げてよい条件:
 ## Related
 
 - `OBSIDIAN_WIKI_WORKFLOW.md`
+- `docs/self_maintaining_second_brain.md`
 - `docs/shion_information_health.md`
 - `docs/shion_memory_architecture.md`
 - `docs/improvement_source_of_truth.md`

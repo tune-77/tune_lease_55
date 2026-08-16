@@ -1,34 +1,34 @@
 # Memory Engineering Report
 
-- Generated: 2026-08-14T16:53:18
+- Generated: 2026-08-17T04:01:24
 - Mode: `read_only_memory_engineering_observation`
 - Guardrail: `no_memory_delete_no_promotion_no_prompt_or_scoring_change`
 
 ## Summary
 
-- Write path records: 280
+- Write path records: 260
 - Active canonical rules: 11
-- Write amplification / active rule: 25.45
-- Open human review records: 154
-- Memory records: 773
-- Recent memory usage: 692 events / 185 refs
+- Write amplification / active rule: 23.64
+- Open human review records: 174
+- Memory records: 779
+- Recent memory usage: 597 events / 177 refs
 - Maintenance status records: 0
 - Contradiction candidates: 0
 - Write policy metadata completion: 0.0
-- Candidate / active pressure: 0.575
-- Quarantine records: 140
+- Candidate / active pressure: 0.596
+- Quarantine records: 143
 - Sleeping active rules: 9
 
 ## Stanford Lens: Write Cost
 
-- `judgment_materials_preview`: 23 records, 0 open review, ~23 tokens
-- `autoresearch_candidates`: 122 records, 31 open review, ~122 tokens
+- `judgment_materials_preview`: 30 records, 30 open review, ~30 tokens
+- `autoresearch_candidates`: 95 records, 21 open review, ~95 tokens
 - `reflection_action_candidates`: 4 records, 0 open review, ~493 tokens
 - `prediction_error_candidates`: 1 records, 0 open review, ~1 tokens
 - `obsidian_memory_insight_candidates`: 123 records, 123 open review, ~123 tokens
 - `canonical_preview`: 7 records
 - Write policy required fields: `['importance', 'confidence', 'trust_level', 'provenance']`
-- Write policy missing fields: `{'confidence': 250, 'importance': 273, 'provenance': 273, 'trust_level': 273}`
+- Write policy missing fields: `{'confidence': 223, 'importance': 253, 'provenance': 253, 'trust_level': 253}`
 
 ## Microsoft Lens: Utility Density
 
@@ -38,10 +38,10 @@
 
 ## Anthropic Lens: Control
 
-- Lifecycle inventory: `{'active': 762, 'candidate_or_review': 438, 'quarantine': 140, 'rejected_or_dismissed': 37, 'maintenance_or_forgetting_review': 9}`
-- Utility KPIs: `{'checklist_review_rate': 0.0, 'field_feedback_coverage': 0.0, 'candidate_to_active_pressure': 0.575, 'quarantine_rate_in_experience_flywheel': 0.321}`
-- Status counts: `{'active': 751, 'private': 22}`
-- Type counts: `{'dialogue_memory': 57, 'factual_memory': 252, 'judgment_memory': 150, 'reflection_memory': 43, 'technical_memory': 254, 'value_memory': 17}`
+- Lifecycle inventory: `{'active': 768, 'candidate_or_review': 458, 'quarantine': 143, 'rejected_or_dismissed': 31, 'maintenance_or_forgetting_review': 9}`
+- Utility KPIs: `{'checklist_review_rate': 0.0, 'field_feedback_coverage': 0.0, 'candidate_to_active_pressure': 0.596, 'quarantine_rate_in_experience_flywheel': 0.326}`
+- Status counts: `{'active': 757, 'private': 22}`
+- Type counts: `{'dialogue_memory': 57, 'factual_memory': 253, 'judgment_memory': 151, 'reflection_memory': 43, 'technical_memory': 258, 'value_memory': 17}`
 
 ### Forgetting Review Sample
 
@@ -58,7 +58,7 @@
 - `active_but_sleeping`: Do not delete immediately; ask for real-case feedback or move to hold if it stays unused.
 - `quarantine`: Keep out of memory and prompts; review only as a failure/poisoning/noise signal.
 - `contradiction`: Surface with dates and applicability; never auto-merge contradictory memories.
-- Current pressure: `{'active_non_value_without_top_usage': 593, 'sleeping_active_rules': 9, 'review_active_rules': 0, 'experience_quarantine': 140}`
+- Current pressure: `{'active_non_value_without_top_usage': 594, 'sleeping_active_rules': 9, 'review_active_rules': 0, 'experience_quarantine': 143}`
 
 ### Sleeping Rule Sample
 
@@ -73,16 +73,16 @@
 ### 候補を少し採否する
 
 - Why: 候補圧を下げ、active memory へ進めるものと捨てるものを分ける。
-- `autoresearch_candidates::05115599bc4c4125` 設備稼働率・保守・更新投資の確認方法: 予知保全の費用対効果（ROI）の算出根拠や実績は、未確認の推論に基づく場合があるため、慎重な確認が必要です。
-- `autoresearch_candidates::0243bb8ff0f8dcec` 設備稼働率・保守・更新投資の確認方法: 保守記録（点検・修理・部品交換履歴）は整備されていますか。また、保守担当者の専門性や外部委託の状況はどうですか。
-- `autoresearch_candidates::ef8d448fa50f2468` 契約・所有権・検収・詐欺リスク: 法人顧客の高額物件では、動産譲渡登記の有無を確認し、二重譲渡リスクを評価します。必要に応じて、リース会社が譲受人として動産譲渡登記を行うことを承認条件とします。
-- `autoresearch_candidates::ecbc932c4c9a090a` 契約・所有権・検収・詐欺リスク: リース契約の種類（ファイナンス/オペレーティング、所有権移転の有無）を契約書で確認します。会計処理上の分類だけでなく、契約書上の所有権の帰属、危険負担、中途解約条項などを詳細に確認します。
-- `autoresearch_candidates::eb6dc1184738fc12` 契約・所有権・検収・詐欺リスク: リースバック案件で、物件評価額と売却価格が著しく乖離している、または顧客が融資と誤認している場合、詐欺の可能性を疑います。
+- `judgment_materials_preview::f5c6b9eca674c117` risk_signal: ハスキー運輸では既存荷主の継続性や運賃改定が確認論点でしたが、今回の総合工事業では、新規先であるため、車両導入がどのような新規工事受注に繋がり、それが確実な返済原資となるのか、事業計画全体の根拠がより不確実です
+- `judgment_materials_preview::f15bb78bcb9a6a19` judgment_rule: 明日までに審査通るのか
+- `judgment_materials_preview::ec2564c72ed3e01a` judgment_rule: リース期間5年がいい
+- `judgment_materials_preview::e10ecaa8346ed56d` judgment_rule: 紫苑の第一印象 2. 数字だけでは見落としそうな違和感（過去取引事例を1社名つきで比較） 3. 条件付き承認にするなら必要な確認 4. 稟議で残すべき一文 専門家としての深掘りルール: ・単なるリスク項目の列挙で終えず、「私ならこの点に注目します」と審査担当者目線の優先順位を1つ示してください
+- `judgment_materials_preview::dc4555a05071ff62` judgment_rule: ・最終出力では候補一覧を長く出さず、採用した上位見立て、低確率高影響の確認点、稟議に残す一文へ圧縮してください
 
 ### quarantine が多い抽出元を弱める
 
 - Why: 隔離候補は学習材料ではなく、抽出条件のノイズを示す。
-- Count: 140
+- Count: 143
 - Sample count: 30
 - Sample by source: `{'shion_experience': 30}`
 - Review hint: Do not promote these. Use samples to tighten extraction gates or leave as evidence.
@@ -104,10 +104,10 @@
 
 ## Nvidia Lens: Retrieval Pressure
 
-- Notes: 2319 / Edges: 3218
-- Estimated raw tokens: 2435318
-- Estimated index tokens: 211772
-- Estimated token reduction: 0.913
+- Notes: 2387 / Edges: 3296
+- Estimated raw tokens: 2487010
+- Estimated index tokens: 217791
+- Estimated token reduction: 0.9124
 
 ## Recommended Next Checks
 
