@@ -4,7 +4,7 @@
 #
 # ──────────────────────────────────────────────────────────────────────
 #  対象サービス
-#    api/**    → tune-lease-55       (FastAPI)
+#    api/**    → tune-lease-55-api   (FastAPI)
 #    frontend/** → tune-lease-55-web (Next.js)
 #
 #  認証: Workload Identity Federation (WIF) を使用
@@ -31,6 +31,7 @@ name: Deploy to Cloud Run
 on:
   push:
     branches: [master]
+  workflow_dispatch: {}
 
 env:
   PROJECT_ID: gen-lang-client-0420497423
@@ -85,10 +86,10 @@ jobs:
           fi
 
   # ────────────────────────────────────────────────────────────────────
-  # Job 2a: API → tune-lease-55
+  # Job 2a: API → tune-lease-55-api
   # ────────────────────────────────────────────────────────────────────
   deploy-api:
-    name: Deploy API (tune-lease-55)
+    name: Deploy API (tune-lease-55-api)
     needs: changes
     if: needs.changes.outputs.api == 'true' && needs.changes.outputs.wif == 'true'
     runs-on: ubuntu-latest
@@ -97,7 +98,7 @@ jobs:
       id-token: write   # WIF に必須
 
     env:
-      SERVICE_NAME: tune-lease-55
+      SERVICE_NAME: tune-lease-55-api
 
     steps:
       - uses: actions/checkout@v4
@@ -193,7 +194,7 @@ jobs:
 
     env:
       SERVICE_NAME: tune-lease-55-web
-      API_SERVICE_NAME: tune-lease-55
+      API_SERVICE_NAME: tune-lease-55-api
 
     steps:
       - uses: actions/checkout@v4

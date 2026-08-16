@@ -119,6 +119,10 @@ echo "[育成] 昇格後の紫苑記憶インデックスを再構築..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_index.py"; log_step "build_shion_memory_index_post_promotion" $?
 
 echo ""
+echo "[育成] 昇格後の紫苑実践知マップを再構築..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_practical_knowledge_map.py"; log_step "build_shion_practical_knowledge_map" $?
+
+echo ""
 echo "[育成] 昇格後の記憶鮮度を更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/update_shion_memory_freshness.py"; log_step "update_shion_memory_freshness_post_promotion" $?
 
@@ -129,6 +133,10 @@ echo "[育成] 紫苑記憶の効果測定レポートを生成（観測のみ�
 echo ""
 echo "[育成] 永続記憶監査を生成（観測のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/audit_persistent_memory.py"; log_step "audit_persistent_memory" $?
+
+echo ""
+echo "[監査] scripts/ 配下の配線漏れ（呼び出し元がないスクリプト）を監査（読み取り専用・advisory）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/check_orphaned_scripts.py"; log_step "check_orphaned_scripts" $?
 
 echo ""
 echo "[監査] AGENTS/skills/MEMORY の指示肥大化を監査（読み取り専用・自動削除なし）..."
@@ -202,6 +210,10 @@ log_step "attach_shion_self_proposals_post" $?
 echo ""
 echo "[司書] Obsidian Curator レポートを生成（Slack日次レポート / Mana番人 / 成長レポートが参照）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_curator_report.py"; log_step "obsidian_curator_report" $?
+
+echo ""
+echo "[知識] OKFナレッジパックのRAG精度を評価（obsidian_memory_effectiveness_reportが参照）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_okf_rag.py"; log_step "evaluate_okf_rag" $?
 
 echo ""
 echo "[記憶] Obsidian Memory Effectiveness を生成（保存→想起→使用→人間評価の状態を観測。自動反映なし）..."
@@ -330,6 +342,11 @@ echo ""
 echo "[検証] 台帳のapplied主張をgit履歴で検証（Default-FAIL: 証跡なしはapply_failedへ訂正）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/audit_ledger_applied_claims.py" --apply; log_step "audit_ledger_applied_claims" $?
 
+echo ""
+echo "[配布] 台帳(ledger.jsonl)をGCSへミラー（Cloud Runの「今日やる候補」重複判定用）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_ledger_to_gcs.py" || true
+log_step "sync_ledger_to_gcs" 0
+
 if [ -f "${LATEST_FILE}" ]; then
   echo ""
   echo "[反映] post台帳補完後の改善レポートを再同期中..."
@@ -387,6 +404,11 @@ else
   echo "警告: ${LATEST_FILE} が存在しないため、post台帳補完後のレポート再同期をスキップします。"
   log_step "sync_improvement_reports_post" 0
 fi
+
+echo ""
+echo "[監査] Shion アーキテクチャ層監査（read-only・harness/agents/improverの3層で強み/リスクを可視化）を生成中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_architecture_layer_audit.py" || true
+log_step "build_shion_architecture_layer_audit" $?
 
 echo ""
 echo "[保守] 追記ログのローテーション（しきい値超過分をアーカイブへ退避して縮約）..."
