@@ -99,7 +99,7 @@ const INITIAL_FORM_DATA = {
   // Step 5 (経費)
   depreciation: '', dep_expense: '', rent: '', rent_expense: '',
   // Step 6 (信用)
-  grade: '②4-6 (標準)', contracts: '', bank_credit: '', lease_credit: '',
+  grade: '② 4-6先', contracts: '', bank_credit: '', lease_credit: '',
   // Step 7 (契約)
   contract_type: '一般',
   lease_term: 60, acceptance_year: new Date().getFullYear(), acquisition_cost: '',
