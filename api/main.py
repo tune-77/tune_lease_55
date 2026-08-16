@@ -30,6 +30,7 @@ import ipaddress
 import json
 import logging
 import re
+import shlex
 import shutil
 import socket
 import sys
@@ -244,10 +245,11 @@ def _record_sync_log(success: bool, error: str = "") -> None:
 
 
 async def _git_push_db() -> None:
-    """demo.db + mind.json を data-git にコピーして git push する（BackgroundTask 用）。"""
+    """DB_PATH の実DB + mind.json を data-git にコピーして git push する（BackgroundTask 用）。"""
     if not os.path.isdir(os.path.join(_DATA_GIT_DIR, ".git")):
         return
-    db_dst = os.path.join(_DATA_GIT_DIR, "data", "demo.db")
+    db_name = os.path.basename(_LEASE_DB_PATH)
+    db_dst = os.path.join(_DATA_GIT_DIR, "data", db_name)
     mind_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "mind.json")
     mind_dst = os.path.join(_DATA_GIT_DIR, "data", "mind.json")
     success = False
@@ -258,9 +260,10 @@ async def _git_push_db() -> None:
                 shutil.copy2(_LEASE_DB_PATH, db_dst)
             if os.path.exists(mind_src):
                 shutil.copy2(mind_src, mind_dst)
+            db_name_q = shlex.quote(f"data/{db_name}")
             proc = await asyncio.create_subprocess_exec(
                 "bash", "-c",
-                "git add data/demo.db data/mind.json 2>/dev/null; "
+                f"git add {db_name_q} data/mind.json 2>/dev/null; "
                 "git diff --cached --quiet || "
                 "git commit -m 'auto: update from cloud-run'; "
                 "git push",
@@ -427,7 +430,8 @@ async def lifespan(app: FastAPI):
     # shutdown: 最終 git push（コンテナ停止前にデータを永続化）
     if os.path.isdir(os.path.join(_DATA_GIT_DIR, ".git")):
         try:
-            db_dst = os.path.join(_DATA_GIT_DIR, "data", "demo.db")
+            db_name = os.path.basename(_LEASE_DB_PATH)
+            db_dst = os.path.join(_DATA_GIT_DIR, "data", db_name)
             mind_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "mind.json")
             mind_dst = os.path.join(_DATA_GIT_DIR, "data", "mind.json")
             if os.path.exists(_LEASE_DB_PATH):
@@ -435,9 +439,10 @@ async def lifespan(app: FastAPI):
             if os.path.exists(mind_src):
                 shutil.copy2(mind_src, mind_dst)
             import subprocess as _sp
+            db_name_q = shlex.quote(f"data/{db_name}")
             result = _sp.run(
                 ["bash", "-c",
-                 "git add data/demo.db data/mind.json 2>/dev/null; "
+                 f"git add {db_name_q} data/mind.json 2>/dev/null; "
                  "git diff --cached --quiet || git commit -m 'auto: shutdown sync'; "
                  "git push"],
                 cwd=_DATA_GIT_DIR, capture_output=True, timeout=30,
