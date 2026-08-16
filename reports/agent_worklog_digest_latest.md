@@ -1,7 +1,7 @@
 # Codex/Claude 作業録ダイジェスト
 
-- generated_at: 2026-08-14T04:03:04
-- source_count: 30
+- generated_at: 2026-08-17T04:04:19
+- source_count: 27
 - displayed: 12
 
 ## Shion Use Policy
@@ -9,6 +9,62 @@
 - 禁止: 顧客情報の推測、Private Reflection原文の引用、人間承認なしの判断資産昇格
 
 ## Items
+
+### 2026-08-15 07:53 Codex
+- Summary: PR #761 の追加Codexレビュー指摘を修正し、PR #762を作成
+- Chat Summary: ユーザーの『次は』に対し、PR #761の追加Codexレビューを確認。コピー後経過時間をawait前に固定し、提出率の分母をコピー済みセッションへ揃えた。
+- Decisions: PR #761はmerge済みのため、追加レビュー対応はPR #762として提出
+- Changes: api/routers/feedback_loop.py: submitted_after_copy_rateをコピー済みセッション分母に補正 / frontend/src/app/screening/page.tsx: copy-to-submit elapsedをscore API await前に取得 / tests/test_screening_input_assist_summary.py: 同一セッション複数コピーの分母テストを追加
+- Verification: pytest tests/test_screening_input_assist_summary.py; python -m py_compile api/routers/feedback_loop.py; npm run typecheck; eslint screening; npm run build; git merge-tree origin/master HEAD
+- Open Items: -
+
+### 2026-08-15 07:47 Codex
+- Summary: PR #760 のCodexレビュー指摘を修正し、PR #761を作成
+- Chat Summary: ユーザーの依頼でCodex git reviewを確認。optional metrics failure、copy-scoped平均、成功後submit記録、copy-to-submit時間の4指摘を修正し、追加PR化した。
+- Decisions: PR #760は既にmerge済みのため、レビュー対応はPR #761として追加提出
+- Changes: api/routers/feedback_loop.py: コピー済みセッションに限定した集計へ修正 / frontend/src/app/screening/page.tsx: score_submittedをスコア成功後に記録 / frontend/src/app/improvement-log/page.tsx: optional metrics取得失敗を本体ログから分離
+- Verification: pytest tests/test_screening_input_assist_summary.py; python -m py_compile api/routers/feedback_loop.py; npm run typecheck; eslint対象ページ; npm run build; git merge-tree origin/master HEAD
+- Open Items: -
+
+### 2026-08-15 07:40 Codex
+- Summary: 審査入力補助の効果測定パネルを追加し、PR #760 を作成
+- Chat Summary: ユーザーの『git ship』依頼に対し、/improvement-log の効果測定パネル、/screening からの効果測定導線、入力補助集計テストを3ファイルに絞ってコミット・PR化した。
+- Decisions: masterは保護ブランチのためPR #760で取り込む
+- Changes: frontend/src/app/improvement-log/page.tsx: 入力補助の効果測定と採用/保留/却下候補判定 / frontend/src/app/screening/page.tsx: 効果測定への導線 / tests/test_screening_input_assist_summary.py: 集計ロジックテスト
+- Verification: pytest tests/test_screening_input_assist_summary.py; python -m py_compile api/routers/feedback_loop.py; npm run typecheck; eslint対象ページ; npm run build
+- Open Items: -
+
+### 2026-08-15 07:24 Codex
+- Summary: 審査入力補助と判断資産レビュー導線を実装し、PR #759 を作成
+- Chat Summary: ユーザーの『git ship』依頼に対し、今回実装した審査入力補助・判断資産Promotionレビュー・入力中確認観点を3ファイルに絞ってコミット。masterは保護されていたためPR経由に切り替えた。
+- Decisions: master直pushは禁止されているため、PR #759でrequired checks後に取り込む
+- Changes: api/routers/feedback_loop.py: screening input assist event API / frontend/src/app/screening/page.tsx: 過去案件コピー、入力中確認観点、計測イベント / frontend/src/app/judgment-review/page.tsx: 判断資産Promotion候補レビュー
+- Verification: python -m py_compile api/main.py api/routers/feedback_loop.py; npm run typecheck; eslint対象ページ; npm run build
+- Open Items: -
+
+### 2026-08-14 16:58 Codex
+- Summary: Memory Engineering reportに日次レビュー焦点を追加
+- Chat Summary: UserがMemory Engineer観点を紫苑の記憶運用へ適用するよう依頼。候補採否、quarantine確認、sleeping active rule確認を毎朝見る形へ統合した。
+- Decisions: 自動削除・自動昇格はせず、Memory Engineeringレポートを短時間レビューの入口にする。
+- Changes: scripts/build_memory_engineering_report.py / tests/test_memory_engineering_report.py / reports/memory_engineering_latest.md
+- Verification: python -m py_compile scripts/build_memory_engineering_report.py / pytest tests/test_memory_engineering_report.py
+- Open Items: -
+
+### 2026-08-14 13:06 Codex
+- Summary: 判断資産グラフの Internal Server Error を修正し、PR #757 を作成
+- Chat Summary: ユーザーから『判断資産グラフ（紫苑の成長・系統樹）で Internal Server Error が出ている』と報告を受け、iframe の静的HTML配信先を確認。App Router ページと public 配下パスの衝突を避けるため /generated 配下へ移動した。
+- Decisions: 判断資産グラフの生成HTMLは /judgment-asset-graph/index.html ではなく /generated/judgment-asset-graph/index.html から配信する。夜間パイプラインの同期先も同じ新パスに揃える。
+- Changes: frontend/src/app/judgment-asset-graph/page.tsx / scripts/run_daily_improvement_post.sh / frontend/public/generated/judgment-asset-graph/index.html
+- Verification: npm run typecheck / npm run build
+- Open Items: -
+
+### 2026-08-14 07:22 Codex
+- Summary: World Proxy guidance and experience replay updates をコミットし、master保護によりPR #756を作成
+- Chat Summary: UserがXのWorld Proxy論文を見て『効果あるならやってみて』と依頼。既存の紫苑チャット基盤へL1推論時ガイダンスとして実装し、効果が良いと評価されたためgitshipを実行した。
+- Decisions: 新基盤追加ではなく、記憶・RAG・DB統計・判断学習・経験ループを回答前の代理フィードバックとして使う。自動学習・自動昇格には接続しない。
+- Changes: api/chat_reflection_prompts.py / api/main.py / api/chat_debug_metadata.py / api/chat_side_effects.py / tests and experience replay reports
+- Verification: pytest tests/test_chat_reflection_prompts.py tests/test_chat_architecture_helpers.py tests/test_chat_side_effects.py -q: 22 passed; py_compile passed; preflight guard warning only; PR CI in progress
+- Open Items: -
 
 ### 2026-08-13 17:29 Codex
 - Summary: PR #754 Lease kun改善をmasterへマージ
@@ -48,60 +104,4 @@
 - Decisions: 手入力は維持しつつ、売上/利益/総資産/経費/与信/取得価格/期間に候補チップを追加。data/配下の既存変更はコミット対象外。
 - Changes: frontend/src/app/lease-kun/page.tsx
 - Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
-- Open Items: -
-
-### 2026-08-13 16:37 Codex
-- Summary: Lease kun に途中保存と復元を追加
-- Chat Summary: Userが次の改善として途中保存 + 復元を選択。既存PRブランチに追加実装し、入力中のformData/stepをlocalStorageへ保存・復元するようにした。
-- Decisions: 審査成功時と下書き破棄時は古い入力を復元しないようdraftを削除する。data/配下の既存変更は引き続きコミット対象外。
-- Changes: frontend/src/app/lease-kun/page.tsx
-- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
-- Open Items: -
-
-### 2026-08-13 16:23 Codex
-- Summary: Lease kun の数値入力正規化とヘッダー画像修正をPR化
-- Chat Summary: UserからLease kun周辺のレビュー修正後にGitship依頼。masterは保護ブランチだったため、直接pushではなくPR #754を作成した。
-- Decisions: data/配下の既存変更はコミットせず、Lease kunコード修正のみをブランチに載せた。
-- Changes: frontend/src/app/lease-kun/page.tsx
-- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
-- Open Items: -
-
-### 2026-08-13 13:24 Codex
-- Summary: ローカル未コミット生成物更新をPR #753でmasterへ統合
-- Chat Summary: Userからローカル未コミット変更のマージ依頼。data/配下はリポジトリルールに従い除外し、生成レポート・静的データ・UI状態ファイル更新をコミットしてPR経由でmergeした。
-- Decisions: master保護のため直接pushではなくPR #753経由でmerge。data/配下のローカル状態ファイルは未コミットのまま保持。
-- Changes: commit 1be1508: chore: ローカル生成物更新を統合 / merge commit 43b9a0f: PR #753 merged
-- Verification: python3 scripts/preflight_pr_guard.py: 警告なし / python -m py_compile api/routers/gunshi.py: 成功
-- Open Items: -
-
-### 2026-08-10 07:33 Codex
-- Summary: 管理系画面を /operations の運用情報に統合し、システム概要・DevOps・記憶運用への入口を一本化した
-- Chat Summary: Userから管理系画面統合案の実装後、Git shipを依頼。既存の大きな未コミット変更を避け、今回の5ファイルだけをコミットしてPR化した。
-- Decisions: masterは保護ルールで直接push不可のため、PR #730 を作成し、必須チェック待ちでマージ保留
-- Changes: frontend/src/app/operations/page.tsx / frontend/src/components/layout/Sidebar.tsx / frontend/src/app/page.tsx
-- Verification: npm run typecheck 成功 / npm run lint はエラー0、既存警告あり
-- Open Items: -
-
-### 2026-08-09 17:26 Codex
-- Summary: git ship: PR #727 をmasterへmerge。自由エネルギー原理ベースの予測誤差ループを実装し、結果登録から予測/観測/誤差分類/信念更新候補/次アクションを記録。judgment-reviewに予測誤差レビューUIを追加。CI全6件通過。merge commit bb5b234。
-- Chat Summary: -
-- Decisions: -
-- Changes: -
-- Verification: -
-- Open Items: -
-
-### 2026-08-09 10:25 Codex
-- Summary: 判断資産フィードバックの学習ログ保存先を修正し、PR #726 に追加pushした。
-- Chat Summary: UserがGit shipを依頼。直接master pushはブランチ保護で拒否されたため、既存PR #726へ反映する形でshipした。
-- Decisions: masterは保護ブランチのため直接pushせず、既存PR #726でCI成功を確認する運用に切り替えた。
-- Changes: api/routers/feedback_loop.py: 紫苑レビューfeedbackの保存先をrepo直下data/judgment_asset_usage_feedback.jsonlへ統一 / tests/test_judgment_asset_bandit.py: 保存先回帰テストを追加
-- Verification: python -m pytest tests/test_judgment_asset_bandit.py tests/test_record_judgment_asset_feedback.py -q: 12 passed / python3 scripts/preflight_pr_guard.py: warningなし
-- Open Items: -
-
-### 2026-08-09 09:52 Codex
-- Summary: ChromaDB RAG検索品質と鮮度解析を改善。複合語補助抽出、低優先ソース抑制、staleness解析の現行collection/log対応、RAG評価セット拡張を実施。
-- Chat Summary: UserからChromaDB改善を依頼され、RAG検索精度と評価基盤を改善。その後Git shipを依頼され、ブランチpushとPR作成まで実施。master直接push/mergeは保護ルールでrequired checks待ち。
-- Decisions: 会話ログは知識RAGの通常候補より下げ、通常ノートでtop_kを満たせる場合は低優先ソースを混ぜない。評価セットは現行VaultのVertex Distilled知識も正解候補に含める。
-- Changes: api/knowledge/vector_store.py, scripts/analyze_rag_staleness.py, api/knowledge/rag_eval_set.json, config/rag_ranking.json, tests/test_analyze_rag_staleness.py, tests/test_knowledge_vector_store_rerank.py
-- Verification: pytest対象15件成功。RAG評価 hit@5=30/30, forbidden_cases=0/30。preflight_pr_guard警告なし。
 - Open Items: -

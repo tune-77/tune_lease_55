@@ -11,7 +11,7 @@
     "2026-07": 75,
     "2026-08": 3
   },
-  "gen_date": "2026-08-14",
+  "gen_date": "2026-08-17",
   "growth_score": 59.9,
   "coverage": 84.0,
   "reuse": 60.0,
@@ -19,7 +19,7 @@
   "human_align": 70.0,
   "field": 0.0,
   "negative": 29.0,
-  "materials": 23,
+  "materials": 30,
   "inbox": 20,
   "active_rules": 9,
   "risk_axes": 4,
@@ -27,17 +27,17 @@
   "user_evidence": 13,
   "growth_judgment": {
     "label": "育っている途中",
-    "score": 57.6,
+    "score": 56.6,
     "summary": "判断資産と再利用の兆候はあるが、実戦検証の厚みはまだ十分ではない。"
   },
-  "feedback_total": 359,
+  "feedback_total": 362,
   "feedback_pct": 100.0,
-  "fb_diffs": 127,
+  "fb_diffs": 128,
   "fb_diff_pct": 35.4,
   "needs_review": 0,
   "scoring_status": "ok",
   "applied_pct": 90,
-  "fb_other": 232,
+  "fb_other": 234,
   "fb_other_pct": 64.6,
-  "generated_at": "2026-08-14T04:12:32"
+  "generated_at": "2026-08-17T04:13:22"
 }

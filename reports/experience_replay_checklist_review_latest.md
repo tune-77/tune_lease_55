@@ -1,6 +1,6 @@
 # Experience Replay Checklist Review
 
-- Generated at: `2026-08-14T04:11:56`
+- Generated at: `2026-08-17T04:12:48`
 - Mode: `experience_replay_accepted_reflection_gate_checklist`
 - Guardrail: human-reviewed accepted/revised checklist only; inference-time auxiliary; no scoring, rag, memory, or skill changes
 - Candidates: 16

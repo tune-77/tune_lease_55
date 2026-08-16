@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 15147 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 463 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "15147 session age (minutes) exceed threshold 120"
+      "463 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 15147,
+        "actual": 463,
         "threshold": 120,
         "triggered": true
       }
@@ -60,7 +60,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 15147
+      "sessionAgeMinutes": 463
     }
   },
   "continuity": {
@@ -72,29 +72,29 @@
   "legacy_version": "1.0.0",
   "metrics": null,
   "recentEdits": [
+    ".claude/memory/session-log.md",
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
-    "Dockerfile",
-    "api/rule_engine/ledger_rules.json",
-    "frontend/.claude/state/instructions-loaded.jsonl",
-    "frontend/public/lease-grumble/2026-07-12.webp",
-    "frontend/public/lease-grumble/2026-08-12.webp",
-    "frontend/src/components/layout/Sidebar.tsx",
-    "reports/agent_action_ledger_latest.md",
-    "reports/agent_sidecar_brief.md",
-    "reports/agent_worklog_digest_latest.md",
-    "reports/autoresearch_judgment_asset_candidates_20260812.md",
-    "reports/autoresearch_judgment_asset_candidates_latest.md",
-    "reports/canonical_judgment_rules_preview_20260812.md",
-    "reports/canonical_judgment_rules_preview_20260813.md",
-    "reports/canonical_judgment_rules_preview_latest.md",
-    "reports/judgment_asset_field_review_latest.md",
-    "reports/judgment_asset_growth_latest.md",
-    "reports/judgment_materials_preview_20260812.md",
-    "reports/judgment_materials_preview_20260813.md"
+    ".claude/state/session.events.jsonl",
+    ".claude/state/worktree-info.json",
+    "api/main.py",
+    "data/aurion_daily/latest.json",
+    "data/demo.db",
+    "data/news_judgment_signals_latest.json",
+    "data/pdca_ai_rules.json",
+    "data/shion_pending_tasks.json",
+    "data/user_personal_memory.md",
+    "data/wiki_embedding_cache.json",
+    "data_cases.py",
+    "docs/hackathon_submission_copy.md",
+    "docs/improvement_source_of_truth.md",
+    "docs/raw_wiki_schema_vault_policy.md",
+    "frontend/public/lease-grumble/2026-07-15.webp",
+    "frontend/public/lease-grumble/2026-07-16.webp",
+    "memory/2026-08-14.md"
   ],
   "sessionId": "",
-  "timestamp": "2026-08-12T22:17:00Z",
+  "timestamp": "2026-08-16T11:21:39Z",
   "version": "1.0.0",
   "wipTasks": null
 }

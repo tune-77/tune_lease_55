@@ -1,6 +1,6 @@
 # Experience Replay Checklist Candidates
 
-- Generated at: `2026-08-14T04:11:56`
+- Generated at: `2026-08-17T04:12:48`
 - Mode: `experience_replay_response_checklist_candidates`
 - Guardrail: review artifact only; no active prompt injection; no automatic memory or skill promotion
 - Failed cases: 10

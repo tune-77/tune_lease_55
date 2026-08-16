@@ -13,6 +13,7 @@
 - 再帰的自己改善派生物: `reports/recursive_self_improvement_*.json`
 - 再帰的自己改善SPEC: `specs/phase6/P6-001-recursive-self-improvement.md`
 - Vault三層運用方針: `docs/raw_wiki_schema_vault_policy.md`
+- 自己メンテ型セカンドブレイン設計: `docs/self_maintaining_second_brain.md`
 - 指示負債監査派生物: `reports/instruction_debt_latest.{json,md}`
 
 ## ルール
@@ -47,3 +48,4 @@
 - 正本を増やさず、派生物を増やす
 - 変更したいときは先に `ledger.jsonl` と `reports/latest.json` のどちらが正本かを確認する
 - Raw / Wiki / Schema が混ざりそうなときは `docs/raw_wiki_schema_vault_policy.md` を確認する
+- 知識運用全体の段階設計に迷ったときは `docs/self_maintaining_second_brain.md` を確認する

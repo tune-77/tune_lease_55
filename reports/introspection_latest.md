@@ -1,13 +1,13 @@
 # Introspection Report
 
-- Generated at: `2026-08-14T04:11:28`
+- Generated at: `2026-08-17T04:12:33`
 - Status: `attention`
-- Window: 2026-08-14 / 7 days
+- Window: 2026-08-17 / 7 days
 
 ## Metrics
-- Daily notes found: 5
-- Reflection days: 3
-- Action days: 3
+- Daily notes found: 2
+- Reflection days: 1
+- Action days: 1
 - Boredom hits: 1
 - Promotable items: 0
 - Prompt previous diff rate: 35.4%
@@ -17,14 +17,14 @@
 - `info` ループ健全性に警告がある: loop_engineering status=warn。内省レポートでも同じ警告を拾う。
 
 ## Repeated Terms
-- 影響: 43
-- 次の行動: 43
-- memory: 38
+- 影響: 48
+- 次の行動: 48
+- memory: 37
 - Cloud: 31
-- json: 25
-- api: 24
-- Obsidian: 23
 - Run: 21
+- Obsidian: 20
+- User: 17
+- json: 17
 
 ## Next Actions
 - 観測レポートだけで終わらせず、退屈の原因を1つ選んで小さく変える
