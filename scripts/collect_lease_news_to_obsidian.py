@@ -885,7 +885,26 @@ def _find_duplicate(article: Article, records: list[dict[str, Any]]) -> dict[str
     return best[1]
 
 
-def _merge_related_report(record: dict[str, Any], article: Article) -> bool:
+def _update_frontmatter_field(raw: str, key: str, value: str) -> str:
+    match = re.match(r"^---\s*\n(.*?\n)---\s*\n", raw, re.DOTALL)
+    if not match:
+        return raw
+    fm = match.group(1)
+    pattern = rf"^{re.escape(key)}:.*$"
+    if re.search(pattern, fm, re.MULTILINE):
+        fm = re.sub(pattern, f"{key}: {value}", fm, count=1, flags=re.MULTILINE)
+    else:
+        fm = fm + f"{key}: {value}\n"
+    return raw[: match.start(1)] + fm + raw[match.end(1) :]
+
+
+def _merge_related_report(
+    record: dict[str, Any],
+    article: Article,
+    date_str: str,
+    week: str,
+    month: str,
+) -> bool:
     raw = str(record["raw"])
     canonical_url = _canonical_url(article.link)
     if canonical_url and canonical_url in raw:
@@ -899,6 +918,11 @@ def _merge_related_report(record: dict[str, Any], article: Article) -> bool:
         raw = raw.rstrip() + "\n" + line + "\n"
     else:
         raw = raw.rstrip() + f"\n\n{heading}\n{line}\n"
+    # 関連報道が追記された = このトピックは当日も報道が続いている。
+    # date/week/monthを当日付に更新しないと、日次ダイジェストのtoday判定に一生ヒットしなくなる。
+    raw = _update_frontmatter_field(raw, "date", date_str)
+    raw = _update_frontmatter_field(raw, "week", week)
+    raw = _update_frontmatter_field(raw, "month", month)
     path = Path(record["path"])
     path.write_text(raw, encoding="utf-8")
     record["raw"] = raw
@@ -923,7 +947,7 @@ def _save_articles_to_obsidian(
     for art in articles:
         duplicate = _find_duplicate(art, existing)
         if duplicate:
-            if _merge_related_report(duplicate, art):
+            if _merge_related_report(duplicate, art, date_str, week, month):
                 saved.append(Path(duplicate["path"]))
             continue
         fname = f"{date_str}_業界リスクニュース_{_safe_filename(art.title)}.md"
