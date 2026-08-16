@@ -12,7 +12,7 @@ import datetime
 from typing import Optional
 import numpy as np
 import pandas as pd
-from runtime_paths import ensure_cloudrun_demo_db_seeded, get_data_dir
+from runtime_paths import ensure_cloudrun_demo_db_seeded, get_data_dir, get_db_path
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -25,7 +25,7 @@ from charts import _equity_ratio_display
 # ローカルではリポジトリ内 data/、Cloud Run等では DATA_DIR で差し替える。
 _DATA_DIR = str(get_data_dir())
 CASES_FILE = os.path.join(os.path.dirname(_DATA_DIR), "past_cases.jsonl") # obsolete
-DB_PATH = os.path.join(_DATA_DIR, "lease_data.db")
+DB_PATH = get_db_path()
 COEFF_OVERRIDES_FILE = os.path.join(_DATA_DIR, "coeff_overrides.json")
 COEFF_AUTO_FILE      = os.path.join(_DATA_DIR, "coeff_auto.json")
 COEFF_HISTORY_FILE   = os.path.join(_DATA_DIR, "coeff_history.jsonl")
