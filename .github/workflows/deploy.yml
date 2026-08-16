@@ -31,7 +31,13 @@ name: Deploy to Cloud Run
 on:
   push:
     branches: [master]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: "コード差分なし（ワークフロー変更のみ等）でも deploy-api / deploy-web を強制実行する"
+        type: boolean
+        required: false
+        default: false
 
 env:
   PROJECT_ID: gen-lang-client-0420497423
@@ -91,7 +97,7 @@ jobs:
   deploy-api:
     name: Deploy API (tune-lease-55-api)
     needs: changes
-    if: needs.changes.outputs.api == 'true' && needs.changes.outputs.wif == 'true'
+    if: (needs.changes.outputs.api == 'true' || github.event.inputs.force_deploy == 'true') && needs.changes.outputs.wif == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -196,7 +202,7 @@ jobs:
   deploy-web:
     name: Deploy Frontend (tune-lease-55-web)
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' && needs.changes.outputs.wif == 'true'
+    if: (needs.changes.outputs.frontend == 'true' || github.event.inputs.force_deploy == 'true') && needs.changes.outputs.wif == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
