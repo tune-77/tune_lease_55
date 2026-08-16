@@ -71,6 +71,31 @@ The legacy wrapper still exists:
 Use the API script when only backend logic changed. Use the Web script when
 only frontend/Next.js changed. Run the wrapper only when both changed.
 
+## Revision cleanup
+
+Each deploy creates a new Cloud Run revision; old revisions with 0% traffic
+accumulate over time. `scripts/cleanup_cloud_run_revisions.py` lists and
+optionally deletes old, unreferenced revisions for `tune-lease-55-api` and
+`tune-lease-55-web`.
+
+1. Install the gcloud CLI: https://cloud.google.com/sdk/docs/install
+2. Authenticate:
+   ```bash
+   gcloud auth activate-service-account --key-file=/path/to/key.json
+   # or Application Default Credentials:
+   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+   ```
+3. Review the plan, then apply:
+   ```bash
+   python3 scripts/cleanup_cloud_run_revisions.py            # dry run: prints what would be deleted
+   python3 scripts/cleanup_cloud_run_revisions.py --apply    # deletes
+   ```
+
+Revisions currently referenced by the service's traffic spec (serving
+traffic or tagged at 0%) are never deleted. Among the rest, the most recent
+`--keep` revisions per service (default 5) are kept for rollback headroom;
+only older, untagged, 0%-traffic revisions beyond that are removed.
+
 ## セキュリティ: アクセス制御（重要）
 
 **デプロイの既定値は認証必須（`ALLOW_UNAUTHENTICATED=0`）です。** これは安全側の
