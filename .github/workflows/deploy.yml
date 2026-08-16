@@ -115,6 +115,16 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      # Dockerfile.api は COPY .cloudrun_bundle/ /app/.cloudrun_bundle/ を無条件で
+      # 実行するため、ビルドコンテキストに .cloudrun_bundle/ が存在しないと
+      # COPY failed: file not found で毎回ビルド自体が失敗する。
+      # このワークフローは意図的にデモ/ローカルデータをバンドルしない
+      # （上の「Deploy to Cloud Run」コメント参照）ため、package_cloud_run_bundle.sh
+      # は使わず、空ディレクトリを用意するだけでよい。start_api_cloud_run.sh の
+      # seed_dir は .cloudrun_bundle/data が無ければ何もしないため安全。
+      - name: Prepare empty Cloud Run bundle dir
+        run: mkdir -p .cloudrun_bundle
+
       # ── Cloud Build でイメージをビルド ──────────────────────────────
       - name: Build API image
         run: |
