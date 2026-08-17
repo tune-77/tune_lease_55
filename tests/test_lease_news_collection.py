@@ -5,6 +5,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import lease_news_digest
+
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "collect_lease_news_to_obsidian.py"
 _SPEC = importlib.util.spec_from_file_location("collect_lease_news_to_obsidian", _SCRIPT_PATH)
@@ -116,3 +118,49 @@ def test_exact_duplicate_does_not_append_twice(tmp_path):
     assert second_save == []
     content = next((vault / news_dir).glob("*.md")).read_text(encoding="utf-8")
     assert "## 関連報道" not in content
+
+
+def test_daily_digest_shows_fresh_content_after_related_report_merge(tmp_path):
+    """続報がマージされた日、ダイジェストは新しい記事内容を返すべき（date更新だけでは不十分）。
+
+    続報かどうかの類似度判定（_find_duplicate）は別テストで担保済みのため、ここでは
+    実際に本番で使われる _load_existing_news / _merge_related_report /
+    build_daily_news_digest を直結してマージ後の見え方だけを検証する。
+    """
+    vault = tmp_path / "vault"
+    news_dir = "05-クリップ_記事/業界リスクニュース"
+
+    first = _article(
+        title="設備投資が拡大",
+        link="https://example.com/story/1",
+        summary="設備投資が拡大している。背景に円安がある。",
+    )
+    news.classify_articles([first], use_ai=False)
+    news._save_articles_to_obsidian([first], vault, news_dir, "2026-06-06", "industry-watch")
+
+    # 数日後、同一トピックの続報が来て既存ノートへマージされる。
+    second = _article(
+        title="設備投資が一段と加速、補助金追い風",
+        link="https://another.example.com/story/2",
+        summary="設備投資が一段と加速している。補助金の後押しが大きい。",
+    )
+    news.classify_articles([second], use_ai=False)
+
+    existing = news._load_existing_news(vault, news_dir)
+    assert len(existing) == 1
+    record = existing[0]
+    merged = news._merge_related_report(record, second, "2026-06-09", "2026-W24", "2026-06")
+    assert merged is True
+
+    files = list((vault / news_dir).glob("*.md"))
+    assert len(files) == 1, "続報は新規ノートではなく既存ノートへマージされるべき"
+
+    digest = lease_news_digest.build_daily_news_digest(date_str="2026-06-09", vault=vault, limit=5)
+
+    assert digest["available"] is True
+    assert digest["date"] == "2026-06-09"
+    item = digest["items"][0]
+    assert item["title"] == second.title
+    assert any("補助金の後押し" in line for line in item["summary_lines"])
+    assert "円安" not in item["title"]
+    assert not any("円安" in line for line in item["summary_lines"])
