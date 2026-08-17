@@ -25,6 +25,7 @@ import joblib
 
 from ai_chat import _gemini_chat
 from config import GEMINI_MODEL_DEFAULT
+from constants import APPROVAL_LINE
 from secret_manager import get_gemini_api_key
 from runtime_paths import get_data_path
 
@@ -359,7 +360,7 @@ def _run_misjudge_embedding(work: pd.DataFrame, method: str) -> tuple[np.ndarray
     return reducer.transform(X), "PCA", meta
 
 
-def _build_misjudge_frame(df: pd.DataFrame, threshold: float = 71.0, method: str = "UMAP", only_misjudge: bool = False, month_key: str | None = None) -> pd.DataFrame:
+def _build_misjudge_frame(df: pd.DataFrame, threshold: float = float(APPROVAL_LINE), method: str = "UMAP", only_misjudge: bool = False, month_key: str | None = None) -> pd.DataFrame:
     work = df[df["final_status"].isin(_VALID_STATUSES)].copy()
     if month_key:
         work = work[work["month_key"] == month_key].copy()

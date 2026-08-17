@@ -18,6 +18,13 @@ _SUBMODULE = os.path.dirname(_WEB_DIR)
 _REPO_ROOT = os.path.dirname(_SUBMODULE)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
+# 上の _REPO_ROOT は本ファイルが lease_logic_sumaho10/web/ にあった頃の計算で、
+# 現在の web/ 配置ではリポジトリの1つ上を指す。constants.py は _SUBMODULE 側に
+# あるため、単一ソースの承認ラインを import できるようこちらも通す。
+if _SUBMODULE not in sys.path:
+    sys.path.insert(0, _SUBMODULE)
+
+from constants import APPROVAL_LINE  # noqa: E402  (sys.path 設定後に import する必要がある)
 
 CASES_FILE = os.path.join(_SUBMODULE, "past_cases.jsonl")  # obsolete: SQLite移行済み。ファイルが存在しない場合はスキップ
 DEFAULT_OUTPUT = os.path.join(_WEB_DIR, "static", "data", "visualization.json")
@@ -96,8 +103,8 @@ def _case_to_data_point(idx: int, c: dict) -> dict:
 def _generate_dummy_point(idx: int, industries: list) -> dict:
     """ダミーデータ1件を生成。"""
     total_score = 30 + random.random() * 70
-    rank = "A" if total_score >= 80 else "B" if total_score >= 71 else "C" if total_score >= 50 else "D" if total_score >= 30 else "E"
-    approved = total_score >= 71
+    rank = "A" if total_score >= 80 else "B" if total_score >= APPROVAL_LINE else "C" if total_score >= 50 else "D" if total_score >= 30 else "E"
+    approved = total_score >= APPROVAL_LINE
     return {
         "id": idx,
         "company": f"サンプル企業 {idx+1:03d}",
