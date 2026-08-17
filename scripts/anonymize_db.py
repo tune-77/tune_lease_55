@@ -9,7 +9,8 @@ Anonymization rules:
   - Financial numerics        → × uniform(0.85, 1.15) per row
   - Dates                     → ±30 day random offset
   - Sales departments         → mapped to 犬部/猫部/鳥部/魚部
-  - Base rates                → additive ±0.3–0.8% noise, floor 0.01
+  - Base rate master          → copied as-is (real values, no noise)
+  - Funding rates / pricing rate fields → additive ±0.3–0.8% noise, floor 0.01
   - Category columns          → in-column shuffle (preserves distribution)
 """
 
@@ -316,20 +317,13 @@ def _copy_ml_features(src: sqlite3.Connection, dst: sqlite3.Connection) -> None:
 
 
 def _copy_base_rate_master(src: sqlite3.Connection, dst: sqlite3.Connection) -> None:
+    """基準金利マスタはノイズを加えず実数値のまま複製する（ユーザー承認済み、2026-08）。"""
     rows = src.execute("SELECT * FROM base_rate_master").fetchall()
     cols = [d[1] for d in src.execute("PRAGMA table_info(base_rate_master)").fetchall()]
     placeholders = ", ".join("?" * len(cols))
 
-    rate_cols = {"rate", "r_2y", "r_3y", "r_4y", "r_5y",
-                 "r_6y", "r_7y", "r_8y", "r_9y", "r_over9y"}
-
     for row in rows:
-        r = dict(zip(cols, row))
-        new_vals = [
-            _rate_noise(r[c]) if c in rate_cols and r[c] is not None else r[c]
-            for c in cols
-        ]
-        dst.execute(f"INSERT INTO base_rate_master VALUES ({placeholders})", new_vals)
+        dst.execute(f"INSERT INTO base_rate_master VALUES ({placeholders})", row)
 
 
 def _copy_funding_rates(src: sqlite3.Connection, dst: sqlite3.Connection) -> None:
