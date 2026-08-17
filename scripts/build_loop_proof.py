@@ -5,7 +5,7 @@
 （reports/loop_proof.html）を、リポジトリ内の実ログから機械集計して再生成する。
 
 出典（すべて実ファイル、盛らない）:
-  - scripts/improvement_ledger.jsonl            … 改善提案→適用→PR紐づけ
+  - scripts/improvement_ledger.jsonl            … 改善提案→適用→PR紐づけ（詳細: scripts/README_ledger.md）
   - reports/judgment_asset_growth_latest.md     … 判断資産の成長スコア・構成要素・件数
   - reports/loop_engineering_latest.md          … プロンプトFBループ・レビュー滞留・健全性
 

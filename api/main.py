@@ -2859,6 +2859,8 @@ def _load_improvement_ledger_summary(limit: int = 8) -> dict:
     """scripts/improvement_ledger.jsonl の直近エントリを要約する（P0-2）。
 
     追記形式・同一キーは最後のエントリが有効（CLAUDE.md の台帳規約と同じ）。
+    このファイルはPR/REV反映専用で、日次パイプラインの全履歴（needs_review/parked含む）
+    を持つローカル ~/Library/Logs/tunelease/ledger.jsonl とは別物。詳細は scripts/README_ledger.md。
     """
     path = Path(_REPO_ROOT) / "scripts" / "improvement_ledger.jsonl"
     if not path.exists():
