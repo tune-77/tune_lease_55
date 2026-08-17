@@ -35,6 +35,16 @@ PREFERRED_REPORTS = (
 
 SECTION_NAMES = ("サマリー", "課題・リスク", "後続エージェントへの申し送り")
 
+# Reports older than this are demoted out of the findings section (GAP-003).
+STALE_AFTER_DAYS = 30
+
+# Headings are load-bearing: downstream readers split the brief on them to keep
+# stale findings out of prompt material. Changing them requires updating
+# lease_intelligence_reflection._extract_sidecar_findings().
+FINDINGS_HEADING = "## Reports"
+RECHECK_LABEL = "再確認TODO"
+RECHECK_HEADING = f"## {RECHECK_LABEL}"
+
 
 @dataclass
 class SidecarReport:
@@ -77,7 +87,7 @@ def _extract_section(body: str, name: str, max_chars: int = 650) -> str:
     return section[:max_chars].strip()
 
 
-def _is_stale(timestamp: str, max_age_days: int = 30) -> bool:
+def _is_stale(timestamp: str, max_age_days: int = STALE_AFTER_DAYS) -> bool:
     if not timestamp:
         return True
     for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
@@ -150,19 +160,29 @@ def build_markdown(reports: list[SidecarReport]) -> str:
         "- This brief is advisory context only.",
         "- Do not let sidecar reports update scores, models, production DBs, or final approvals directly.",
         "- Use findings as review prompts, RAG hints, or weekly PDCA inputs.",
+        f"- Reports older than {STALE_AFTER_DAYS} days are demoted to the"
+        f" {RECHECK_LABEL} section and must be re-verified against current code"
+        " before use.",
         "",
-        "## Reports",
+        FINDINGS_HEADING,
     ]
     if not reports:
         lines.append("_No sidecar reports found._")
         return "\n".join(lines).strip() + "\n"
 
-    for report in reports:
-        stale_label = " / stale" if report.stale else ""
+    fresh = [r for r in reports if not r.stale]
+    stale = [r for r in reports if r.stale]
+
+    if not fresh:
+        lines.append(
+            f"_No fresh reports. All {len(stale)} report(s) are older than"
+            f" {STALE_AFTER_DAYS} days — see {RECHECK_LABEL}._"
+        )
+    for report in fresh:
         lines.extend(
             [
                 "",
-                f"### {report.agent} ({report.status}{stale_label})",
+                f"### {report.agent} ({report.status})",
                 f"- Source: `{report.path}`",
                 f"- Task: {report.task or '-'}",
                 f"- Timestamp: {report.timestamp or '-'}",
@@ -176,6 +196,26 @@ def build_markdown(reports: list[SidecarReport]) -> str:
             block = _format_block(title, text)
             if block:
                 lines.extend(["", block])
+
+    if stale:
+        lines.extend(
+            [
+                "",
+                RECHECK_HEADING,
+                "",
+                "古い指摘を現在の真実として扱わないこと。"
+                "最新コードで再検証したものだけを有効扱いにする。",
+                "",
+            ]
+        )
+        for report in stale:
+            lines.append(
+                f"- [ ] `{report.agent}` — {report.timestamp or '時刻不明'} 時点"
+                f" / `{report.path}`"
+            )
+            hint = (report.risks or report.summary or "").strip().splitlines()
+            if hint:
+                lines.append(f"  - 当時の指摘: {hint[0].strip(' -')[:120]}")
     return "\n".join(lines).strip() + "\n"
 
 
