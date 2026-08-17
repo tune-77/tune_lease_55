@@ -1535,6 +1535,19 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             print(f"[WARNING] DB save failed: {_save_err}")
         data_source_summary["case_id"] = case_id
         result["case_id"] = case_id
+        # 審査時点の予測を、結果を知る前に固定する（予測誤差ループの前半）。
+        # 記録専用で、スコア・判定・応答には影響しない。
+        if case_id:
+            from api.prediction_snapshot import record_prediction_snapshot
+
+            background_tasks.add_task(
+                record_prediction_snapshot,
+                case_id=case_id,
+                inputs=inputs,
+                result=result,
+                final_status=case_data.get("final_status", ""),
+                source="score_full",
+            )
         background_tasks.add_task(
             record_cloudrun_input_event,
             event_type="score_full_calculated",

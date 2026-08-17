@@ -87,6 +87,10 @@ def normalize_prediction(prediction: dict[str, Any]) -> dict[str, Any]:
         "recommended_action": _text(prediction.get("recommended_action") or prediction.get("action")),
         "confidence": confidence,
         "used_judgment_assets": [str(item).strip() for item in used_assets if str(item).strip()],
+        # 予測がいつ・どこで固定されたか。Phase2 の prediction_coverage はこれを数える。
+        "prediction_source": _text(prediction.get("prediction_source")) or "unspecified",
+        "predicted_at": _text(prediction.get("predicted_at")),
+        "snapshot_id": _text(prediction.get("snapshot_id")),
     }
 
 
@@ -116,6 +120,18 @@ def _prediction_risk_from_score(score: float | None) -> str:
     if score >= CONDITIONAL_LINE:
         return "medium"
     return "high"
+
+
+def prediction_confidence_from_score(score: float | None) -> float | None:
+    """スコアが条件付き承認ラインからどれだけ離れているかを confidence の代理にする。
+
+    審査時点（`api/prediction_snapshot.py`）と結果登録時のフォールバックで同じ式を
+    使うため、ここを唯一の定義にする。式そのものは代理指標にすぎないので、
+    根拠は `confidence_basis` 側に別途残す。
+    """
+    if score is None:
+        return None
+    return min(0.95, max(0.35, abs(score - float(CONDITIONAL_LINE)) / 60.0 + 0.35))
 
 
 def _action_from_decision(decision: str, score: float | None) -> str:
@@ -172,13 +188,47 @@ def _collect_note_parts(*values: Any) -> str:
     return " / ".join(dict.fromkeys(parts))
 
 
+def _snapshot_prediction(case_id: str) -> dict[str, Any] | None:
+    """審査時点で固定した予測があればそれを使う（無ければ結果登録時の逆算へ落ちる）。
+
+    遅延importにしているのは、`api/prediction_snapshot.py` 側がこのモジュールの
+    ヘルパーを使っており、モジュール先頭importにすると循環参照になるため。
+    """
+    if not _text(case_id):
+        return None
+    try:
+        from api.prediction_snapshot import load_prediction_snapshot
+
+        snapshot = load_prediction_snapshot(case_id)
+    except Exception:
+        return None
+    if not isinstance(snapshot, dict):
+        return None
+    prediction = snapshot.get("prediction")
+    if not isinstance(prediction, dict):
+        return None
+    if not any(prediction.get(key) for key in ("risk_level", "main_concern", "recommended_action")):
+        return None
+    enriched = dict(prediction)
+    enriched["prediction_source"] = "snapshot"
+    enriched["predicted_at"] = snapshot.get("captured_at")
+    enriched["snapshot_id"] = snapshot.get("id")
+    return enriched
+
+
 def build_case_result_prediction_error_payload(
     *,
     case_data: dict[str, Any],
     status: str,
     patches: dict[str, Any] | None = None,
+    case_id: str = "",
 ) -> dict[str, Any]:
-    """Build prediction/outcome payloads from a saved case and result patch."""
+    """Build prediction/outcome payloads from a saved case and result patch.
+
+    予測は審査時点のスナップショットを優先する。スナップショットが無い過去案件は
+    従来どおり `case_data` からの逆算にフォールバックする（削除すると過去案件の
+    予測誤差が測れなくなるため残す）。
+    """
     patches = patches or {}
     result = case_data.get("result") if isinstance(case_data.get("result"), dict) else {}
     inputs = case_data.get("inputs") if isinstance(case_data.get("inputs"), dict) else {}
@@ -229,14 +279,16 @@ def build_case_result_prediction_error_payload(
 
     final_status = _text(status)
     user_feedback = "revised" if note or condition_changed else "neutral"
+    prediction = _snapshot_prediction(case_id or _text(case_data.get("id"))) or {
+        "risk_level": _prediction_risk_from_score(score),
+        "main_concern": main_concern,
+        "recommended_action": _action_from_decision(hantei, score),
+        "confidence": prediction_confidence_from_score(score),
+        "used_judgment_assets": assets,
+        "prediction_source": "reconstructed_at_result",
+    }
     return {
-        "prediction": {
-            "risk_level": _prediction_risk_from_score(score),
-            "main_concern": main_concern,
-            "recommended_action": _action_from_decision(hantei, score),
-            "confidence": None if score is None else min(0.95, max(0.35, abs(score - 60.0) / 60.0 + 0.35)),
-            "used_judgment_assets": assets,
-        },
+        "prediction": prediction,
         "outcome": {
             "contracted": final_status in _CONTRACTED_STATUSES,
             "delinquency": final_status in {"延滞", "事故", "デフォルト"},
@@ -264,6 +316,7 @@ def record_case_result_prediction_error(
         case_data=case_data,
         status=final_status,
         patches=patches,
+        case_id=case_id,
     )
     prediction = payload["prediction"]
     if not any(prediction.get(key) for key in ("risk_level", "main_concern", "recommended_action")):
