@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -87,6 +88,73 @@ def _extract_section(body: str, name: str, max_chars: int = 650) -> str:
     return section[:max_chars].strip()
 
 
+# 変更駆動エージェントの「担当ファイル」。壁時計の経過日数ではなく、担当ファイルが
+# レポートより後に変わったかで鮮度を判定する。出典は .claude/AGENTS.md の
+# 「起動タイミング」欄。ここに無いディレクトリは経過日数で判定する（定期監査系で、
+# 担当ファイルという概念が無いため）。
+AGENT_TRIGGER_PATHS: dict[str, tuple[str, ...]] = {
+    "scoring-audit": ("asset_scorer.py", "total_scorer.py", "category_config.py"),
+    "rule-validation": ("rule_manager.py", "coeff_definitions.py", "category_config.py"),
+    "migration": ("migrate_to_sqlite.py",),
+    # 「コード変更発生」が起動条件のもの。静穏期には fresh のままにできる。
+    "code-review": ("*.py", "frontend/src"),
+    "security": ("*.py", "frontend/src"),
+    "impact-analysis": ("*.py", "frontend/src"),
+    "file-searcher": ("*.py", "frontend/src"),
+}
+
+
+def _trigger_last_changed(paths: tuple[str, ...], root: Path | None = None) -> datetime | None:
+    """担当ファイルの最終コミット時刻。git が使えなければ None。"""
+    if not paths:
+        return None
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-1", "--format=%ct", "--", *paths],
+            cwd=str(root or PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = (proc.stdout or "").strip()
+    if proc.returncode != 0 or not out.isdigit():
+        return None
+    return datetime.fromtimestamp(int(out))
+
+
+def _parse_timestamp(timestamp: str) -> datetime | None:
+    text = (timestamp or "").strip()
+    if not text:
+        return None
+    for fmt, width in _TIMESTAMP_FORMATS:
+        try:
+            return datetime.strptime(text[:width], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def is_stale_for(report_dir: str, timestamp: str, root: Path | None = None) -> bool:
+    """レポートが古いか。担当ファイルがあればそれ基準、無ければ経過日数。
+
+    経過日数だけで見ると、その後まったく変更が無いレポートまで捨ててしまう。
+    逆に閾値内でも担当ファイルが変わっていれば、その指摘はもう当てにならない。
+    """
+    triggers = AGENT_TRIGGER_PATHS.get(report_dir)
+    if not triggers:
+        return _is_stale(timestamp)
+    written = _parse_timestamp(timestamp)
+    if written is None:
+        return True
+    changed = _trigger_last_changed(triggers, root=root)
+    if changed is None:
+        # git が使えない環境では経過日数へ退避する（判定不能を fresh にしない）。
+        return _is_stale(timestamp)
+    return changed > written
+
+
 # (書式, その書式が生成する文字数)。スライス幅は書式文字列の長さではなく
 # 出力の長さで決まる（"%Y" は2文字だが 4桁を生成する）。len(fmt) で切ると
 # どの書式もパースに失敗し、全レポートが恒久的に stale 扱いになる。
@@ -148,7 +216,7 @@ def load_sidecar_reports() -> list[SidecarReport]:
                 summary=summary,
                 risks=risks,
                 handoff=handoff,
-                stale=_is_stale(timestamp),
+                stale=is_stale_for(path.parent.name, timestamp),
             )
         )
     return reports

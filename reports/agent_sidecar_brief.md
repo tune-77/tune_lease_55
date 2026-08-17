@@ -1,6 +1,6 @@
 # Agent Sidecar Brief
 
-> Generated: 2026-08-17 07:05 | source: `.claude/reports` | mode: read-only advisory
+> Generated: 2026-08-17 11:16 | source: `.claude/reports` | mode: read-only advisory
 
 ## Operating Boundary
 - This brief is advisory context only.
@@ -9,26 +9,122 @@
 - Reports older than 30 days are demoted to the 再確認TODO section and must be re-verified against current code before use.
 
 ## Reports
-_No fresh reports. All 12 report(s) are older than 30 days — see 再確認TODO._
+
+### scoring-audit (failure)
+- Source: `.claude/reports/scoring-audit/latest.md`
+- Task: 自動監査
+- Timestamp: 2026-08-17 11:16
+
+**Summary:**
+監査を完了できなかった: 想定外の例外: '<' not supported between instances of 'NoneType' and 'str'
+
+**Risks:**
+- 想定外の例外: '<' not supported between instances of 'NoneType' and 'str'
+
+**Handoff:**
+なし
+
+<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
+     手で編集しても次回実行で上書きされる。 -->
+
+### data-quality-checker (failure)
+- Source: `.claude/reports/data-quality/latest.md`
+- Task: SQLite 審査データの件数・異常値チェック
+- Timestamp: 2026-08-17 11:16
+
+**Summary:**
+監査を完了できなかった: DB が見つからない: data/lease_data.db
+
+**Risks:**
+- DB が見つからない: data/lease_data.db
+
+**Handoff:**
+なし
+
+<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
+     手で編集しても次回実行で上書きされる。 -->
+
+### rule-validator (partial)
+- Source: `.claude/reports/rule-validation/latest.md`
+- Task: ウェイト合計・グレード閾値の整合性チェック
+- Timestamp: 2026-08-17 11:16
+
+**Summary:**
+整合性の逸脱を 1 件検出した。
+
+**Risks:**
+- IT機器: ウェイト合計 95（期待 100）
+
+**Handoff:**
+逸脱したカテゴリの定義を確認すること。スコア結果に直結する。
+
+<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
+     手で編集しても次回実行で上書きされる。 -->
+
+### build-runner (partial)
+- Source: `.claude/reports/build/latest.md`
+- Task: コアモジュールのインポート確認
+- Timestamp: 2026-08-17 11:16
+
+**Summary:**
+1/6 のモジュールが import できない。
+
+**Risks:**
+- scoring_core: ModuleNotFoundError: No module named 'numpy'
+
+**Handoff:**
+依存パッケージの不足かモジュール側の構文エラー。先に解消しないと他の監査も動かない。
+
+<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
+     手で編集しても次回実行で上書きされる。 -->
+
+### api-health-checker (partial)
+- Source: `.claude/reports/api-health/latest.md`
+- Task: 依存サービスの設定・到達性確認
+- Timestamp: 2026-08-17 11:16
+
+**Summary:**
+依存サービスに要確認事項を 4 件検出した。
+
+**Risks:**
+- data/lease_data.db が存在しない
+- GEMINI_API_KEY が未設定（該当機能は動作しない）
+- SLACK_BOT_TOKEN が未設定（該当機能は動作しない）
+- Ollama に到達できない（http://localhost:11434）: URLError
+
+**Handoff:**
+なし
+
+<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
+     手で編集しても次回実行で上書きされる。 -->
+
+### log-file-analyzer (success)
+- Source: `.claude/reports/log-analysis/latest.md`
+- Task: ログのエラー・警告抽出
+- Timestamp: 2026-08-17 11:16
+
+**Summary:**
+logs/ が存在しないため解析対象なし。
+
+**Risks:**
+- なし
+
+**Handoff:**
+なし
+
+<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
+     手で編集しても次回実行で上書きされる。 -->
 
 ## 再確認TODO
 
 古い指摘を現在の真実として扱わないこと。最新コードで再検証したものだけを有効扱いにする。
 
-- [ ] `scoring-auditor` — 2026-04-04 11:30 時点 / `.claude/reports/scoring-audit/latest.md`
-  - 当時の指摘: 1. **[高] lease_credit_log 係数の飽和問題**: scoring_core.py 内の全体_既存先係数。リース信用枠さえ入力すれば財務内容に関わらず90点超に張り付く。財務悪化企業が正当に否決されない可能性がある。係
-- [ ] `data-quality-checker` — 2026-03-28 14:55 時点 / `.claude/reports/data-quality/latest.md`
-  - 当時の指摘: 1. **即時リスク**: 現在のアプリが誤ったダミーデータを参照してスコア比較・傾向分析を行っている
-- [ ] `rule-validator` — 2026-03-28 11:00 時点 / `.claude/reports/rule-validation/latest.md`
-  - 当時の指摘: | 深刻度 | 内容 |
 - [ ] `change-impact-analyzer` — 2026-03-28 10:30 時点 / `.claude/reports/impact-analysis/latest.md`
   - 当時の指摘: ### [高] Parent_Guarantor の FC・HC 二重寄与
 - [ ] `security-checker` — 2026-03-28 11:15 時点 / `.claude/reports/security/latest.md`
   - 当時の指摘: | 重大度 | 件数 |
 - [ ] `code-reviewer` — 2026-05-23 12:30 時点 / `.claude/reports/code-review/latest.md`
   - 当時の指摘: **重大**
-- [ ] `build` — 時刻不明 時点 / `.claude/reports/build/latest.md`
-  - 当時の指摘: # ビルドチェック結果
 - [ ] `agent-team（田辺・ダッシュ・鈴木・プランナー）` — 2026-03-21 17:30 時点 / `.claude/reports/agent-team/asset_value_discussion.md`
   - 当時の指摘: 4エージェントが物件資産価値スコアリングの現状を精査し、合計22件の改善提案を提出した。
 - [ ] `agent-team (プランナー / ダッシュ / 田中さん / 鈴木さん)` — 2026-03-20 00:00 時点 / `.claude/reports/agent-team/subsidy_plan.md`

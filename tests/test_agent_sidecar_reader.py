@@ -195,3 +195,72 @@ def test_is_stale_boundary_around_threshold(monkeypatch):
     assert reader._is_stale("2026-07-18 12:00") is False
     # 閾値を1日超えると stale
     assert reader._is_stale("2026-07-17 11:00") is True
+
+
+def test_trigger_based_staleness_keeps_untouched_reports_fresh(monkeypatch):
+    """担当ファイルが変わっていなければ、何ヶ月前でも fresh のままにする。"""
+    import datetime as _dt
+
+    from scripts import agent_sidecar_reader as reader
+
+    # 担当ファイルの最終変更を 2026-01-01 に固定
+    monkeypatch.setattr(
+        reader, "_trigger_last_changed", lambda paths, root=None: _dt.datetime(2026, 1, 1)
+    )
+    # レポートはその後（2026-02-01）に書かれている
+    assert reader.is_stale_for("scoring-audit", "2026-02-01 09:00") is False
+
+
+def test_trigger_based_staleness_flags_reports_older_than_changes(monkeypatch):
+    """担当ファイルが後から変わっていれば、閾値内でも stale にする。"""
+    import datetime as _dt
+
+    from scripts import agent_sidecar_reader as reader
+
+    monkeypatch.setattr(
+        reader, "_trigger_last_changed", lambda paths, root=None: _dt.datetime(2026, 8, 16)
+    )
+    assert reader.is_stale_for("scoring-audit", "2026-08-15 09:00") is True
+
+
+def test_dirs_without_triggers_fall_back_to_age(monkeypatch):
+    from scripts import agent_sidecar_reader as reader
+
+    called = {}
+
+    def _fake_is_stale(ts, *a, **k):
+        called["ts"] = ts
+        return True
+
+    monkeypatch.setattr(reader, "_is_stale", _fake_is_stale)
+    assert reader.is_stale_for("api-health", "2026-08-15 09:00") is True
+    assert called["ts"] == "2026-08-15 09:00"
+
+
+def test_unavailable_git_falls_back_to_age(monkeypatch):
+    """git が使えない環境で「判定不能」を fresh にしないこと。"""
+    from scripts import agent_sidecar_reader as reader
+
+    monkeypatch.setattr(reader, "_trigger_last_changed", lambda paths, root=None: None)
+    monkeypatch.setattr(reader, "_is_stale", lambda ts, *a, **k: True)
+    assert reader.is_stale_for("scoring-audit", "2026-08-15 09:00") is True
+
+
+def test_unparseable_timestamp_is_stale(monkeypatch):
+    from scripts import agent_sidecar_reader as reader
+
+    monkeypatch.setattr(reader, "_trigger_last_changed", lambda paths, root=None: None)
+    assert reader.is_stale_for("scoring-audit", "") is True
+
+
+def test_trigger_paths_reference_existing_files():
+    """担当ファイルの綴り間違いを検出する（glob 指定は対象外）。"""
+    from scripts import agent_sidecar_reader as reader
+
+    missing = [
+        p
+        for paths in reader.AGENT_TRIGGER_PATHS.values()
+        for p in paths
+        if "*" not in p and not (reader.PROJECT_ROOT / p).exists()
+    ]
+    assert missing == []
