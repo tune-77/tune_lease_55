@@ -123,45 +123,6 @@ reads_from: [読んだ上流レポートのパス]
 - 過去に `agent-discussion/`・`novelist/`・`general-purpose/` が同様に残存し、数ヶ月更新の止まった内容を誤参照する恐れがあったため削除した（git 履歴から復元可能）。
 - レポートの `timestamp` は必ず確認し、古ければ上流エージェントの再実行を申し送る。
 
-### レポートの鮮度維持（再確認キュー）
-
-理由: レポートは書き手が居ないと更新されず、放置すると古い指摘が現在の真実として扱われる。
-適用条件: `.claude/reports/` の鮮度に関わる運用・障害調査時。
-削除条件: エージェントの再実行が別の仕組みで保証され、STALE が発生しなくなった時。
-
-`scripts/recheck_stale_agent_reports.py` が、30日超（`agent_sidecar_reader.STALE_AFTER_DAYS`）の
-レポートを古い順に少数だけ再実行する。日次パイプライン（`scripts/run_daily_improvement_post.sh`）が
-Brief 生成の直前に呼ぶため、同じ実行で新しい結果が蒸留される。
-
-#### ⚠️ 前提: Claude Code CLI のインストールとログイン
-
-この経路は `claude` コマンドに依存する。**未導入・未ログインだと何も起きない**
-（プリフライトで検出し、原因を出してスキップする。パイプラインは止まらない）。
-
-- launchd は `.zshrc` を読まない。plist の `PATH` にインストール先を含めること。
-  現状の plist は `/opt/homebrew/bin` までしか通っておらず、**nvm 配下に入れていると
-  見つからない**。
-- Gemini フォールバックは意図的に用意していない。`execute_codex_queue.py` と違い、
-  ここで必要なのはサブエージェントの起動とレポートの書き込みであり、
-  テキストを返すだけの経路では代替にならないため。
-- 使わない場合は `AGENT_RECHECK_DAILY_LIMIT=0` で無効化する。
-
-| 環境変数 | 既定 | 用途 |
-|---|---|---|
-| `AGENT_RECHECK_DISABLED` | 未設定 | `1` でキルスイッチ（即停止） |
-| `AGENT_RECHECK_DAILY_LIMIT` | `3` | 1日あたりの再実行数。`0` で無効化 |
-| `AGENT_RECHECK_MAX_CONSECUTIVE_FAILURES` | `2` | 連続失敗で中断 |
-| `AGENT_RECHECK_PERMISSION_MODE` | `acceptEdits` | `claude --print` の権限モード |
-
-`claude --print` は非対話実行のため許可を尋ねる相手が居ない。権限モードを指定しないと
-レポートの書き込みが通らないので `acceptEdits` を既定にしている。Bash を多用する
-エージェントが権限で止まる場合は `dontAsk` を検討する（`bypassPermissions` は全チェックを
-外すため既定にしない）。エージェントの選択はプロンプト頼みにせず `--agent` で明示する。
-
-手動実行は `python3 scripts/recheck_stale_agent_reports.py --dry-run` で対象だけ確認できる。
-エージェントを追加したら `AGENT_REPORT_DIRS` の対応表も更新すること（名前とディレクトリ名は
-一致しない。例: `scoring-auditor` → `scoring-audit/`）。テストが未マッピングを検出する。
-
 レポートの書式（frontmatter のキーと規則）は `.claude/reports/REPORT_SCHEMA.md` を参照。**配置と依存関係は本ファイルが正**で、REPORT_SCHEMA.md 側に再掲しないこと。
 
 ## カスタムコマンド（スキル）
