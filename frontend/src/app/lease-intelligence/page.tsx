@@ -188,6 +188,9 @@ type DialogueGapAnalysis = {
 type DailyNewsDigest = {
   available?: boolean;
   date?: string;
+  requested_date?: string;
+  is_stale?: boolean;
+  stale_days?: number;
   items?: {
     id?: string;
     title?: string;
@@ -507,6 +510,14 @@ const buildDailyImprovementReport = (
   if (newsDigest?.available && newsItems.length) {
     lines.push("");
     lines.push("## 今日のニュースダイジェスト");
+    if (newsDigest.is_stale) {
+      // 当日分が無く過去ノートで代替している状態。黙って当日分のように見せると
+      // 「毎日同じ内容が出る」原因が収集停止なのか判別できなくなる。
+      const staleDays = newsDigest.stale_days ?? 0;
+      lines.push(
+        `⚠️ 本日分は未収集です。${staleDays ? `${staleDays}日前` : "過去"}（${newsDigest.date || "日付不明"}）の内容を表示しています。収集ジョブの稼働を確認してください。`,
+      );
+    }
     newsItems.forEach((item) => {
       const summaries = (item.summary_lines || []).filter(Boolean);
       lines.push(`- ${item.title || "ニュース"}${summaries[0] ? `: ${summaries[0]}` : ""}`);

@@ -516,6 +516,44 @@ def find_vault() -> Path | None:
     return candidates[0] if candidates else None
 
 
+def _date_gap_days(newer: str, older: str) -> int:
+    """2つの ISO 日付の差（日数）。解釈できなければ0。"""
+    try:
+        return max(0, (dt.date.fromisoformat(newer[:10]) - dt.date.fromisoformat(older[:10])).days)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _note_filename_date(path: Path) -> str:
+    head = path.name[:10]
+    return head if re.match(r"^\d{4}-\d{2}-\d{2}$", head) else ""
+
+
+def _note_frontmatter_date(path: Path) -> str:
+    """ノート冒頭の frontmatter から date だけを軽く読む。無ければ空文字。
+
+    ファイル全体をパースせずに済ませるため、先頭付近だけを読む。
+    """
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as fh:
+            head = fh.read(2048)
+    except OSError:
+        return ""
+    match = re.search(r"^date:\s*(\d{4}-\d{2}-\d{2})", head, re.MULTILINE)
+    return match.group(1) if match else ""
+
+
+def _note_effective_date(path: Path) -> str:
+    """ノートの実質的な日付。frontmatter の date を最優先する。
+
+    続報が既存ノートへマージされるとき、ファイル名は初回作成日のまま据え置かれ、
+    frontmatter の date だけが当日へ更新される。よってファイル名だけで新しさを
+    判定すると「今日更新されたノート」が「数日前に作られた別ノート」に負け、
+    ホーム画面や注目論点が古いノートを掴み続ける。
+    """
+    return _note_frontmatter_date(path) or _note_filename_date(path)
+
+
 def _latest_news_note(vault: Path) -> Path | None:
     notes: list[Path] = []
     for rel_dir in DEFAULT_NEWS_REL_DIRS:
@@ -528,7 +566,8 @@ def _latest_news_note(vault: Path) -> Path | None:
         notes.extend(news_dir.glob("*_lease-news.md"))
     if not notes:
         return None
-    notes.sort(key=lambda p: p.name[:10], reverse=True)
+    # frontmatter の date を主キー、ファイル名日付を副キーにする（同日内の安定化）。
+    notes.sort(key=lambda p: (_note_effective_date(p), _note_filename_date(p), p.name), reverse=True)
     return notes[0]
 
 
@@ -1352,17 +1391,33 @@ def build_daily_news_digest(
 ) -> dict:
     """Build a plain daily news digest from Obsidian news notes."""
     vault = vault or find_vault()
+    requested_date = date_str or dt.date.today().isoformat()
     if not vault:
-        return {"available": False, "date": date_str or dt.date.today().isoformat(), "items": []}
-    target_date = date_str or dt.date.today().isoformat()
+        return {
+            "available": False,
+            "date": requested_date,
+            "requested_date": requested_date,
+            "is_stale": False,
+            "stale_days": 0,
+            "items": [],
+        }
+    target_date = requested_date
     items = [
         item for item in _recent_news_items(vault, limit=40)
         if str(item.get("date") or "")[:10] == target_date
     ]
+    # 当日分が無い時は直近ノートへフォールバックする。ただしこれを黙って
+    # 当日分のように返すと「毎日同じダイジェストが出るが理由が分からない」状態に
+    # なる（収集停止でも、全記事が既存ノートへマージされた日でも同じ見え方になる）。
+    # is_stale / stale_days を必ず添えて、古いデータであることを呼び出し側へ伝える。
+    is_stale = False
     if not items:
         items = _recent_news_items(vault, limit=limit)
         if items:
-            target_date = str(items[0].get("date") or target_date)[:10]
+            fallback_date = str(items[0].get("date") or target_date)[:10]
+            is_stale = fallback_date != requested_date
+            target_date = fallback_date
+    stale_days = _date_gap_days(requested_date, target_date) if is_stale else 0
 
     def _plain_news_line(line: str) -> str:
         text = str(line or "").strip()
@@ -1409,6 +1464,9 @@ def build_daily_news_digest(
     return {
         "available": bool(clean_items),
         "date": target_date,
+        "requested_date": requested_date,
+        "is_stale": bool(is_stale and clean_items),
+        "stale_days": stale_days if clean_items else 0,
         "count": len(clean_items),
         "items": clean_items,
     }
@@ -1423,7 +1481,17 @@ def daily_news_digest_as_text(
     if not digest.get("available"):
         return ""
     date = str(digest.get("date") or "").strip()
-    lines = [f"今日はこういうニュースがありました。{f'対象日: {date}' if date else ''}".strip()]
+    if digest.get("is_stale"):
+        # 古いデータを「今日のニュース」として黙って読み上げない。
+        stale_days = int(digest.get("stale_days") or 0)
+        age = f"{stale_days}日前" if stale_days else "過去"
+        header = (
+            f"本日分のニュースはまだ収集されていません。{age}（{date}）の内容を参考として表示します。"
+            "収集が止まっている可能性があるため、必要なら収集ジョブを確認してください。"
+        )
+    else:
+        header = f"今日はこういうニュースがありました。{f'対象日: {date}' if date else ''}".strip()
+    lines = [header]
     for item in digest.get("items", [])[:limit]:
         if not isinstance(item, dict):
             continue
