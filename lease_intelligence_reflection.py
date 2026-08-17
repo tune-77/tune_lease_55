@@ -500,6 +500,53 @@ def _stale_fallback_line(line: str) -> bool:
     return any(phrase in line for phrase in stale_phrases)
 
 
+def _extract_sidecar_findings(sidecar: str, limit: int = 8) -> list[str]:
+    """Pull only the *findings* out of the agent sidecar brief.
+
+    The brief opens with a title, a `> Generated: ... source: ...` line and an
+    Operating Boundary block. Feeding those into reflection material was both
+    useless (the boilerplate crowded out every real finding) and actively
+    harmful: `_score_reflection` penalises reflection text containing
+    "サイドカー: Agent Sidecar" and "source: `.claude/reports`" as hollow
+    boilerplate. So skip the preamble, read only the findings section, and stop
+    at the 再確認TODO heading so stale reports never reach prompt material.
+    """
+    if not sidecar:
+        return []
+
+    findings_heading = "## Reports"
+    recheck_heading = "## 再確認TODO"
+    skip_prefixes = ("- Source:", "- Task:", "- Timestamp:")
+
+    findings: list[str] = []
+    in_findings = False
+    for line in sidecar.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            # Any heading other than the findings one ends the region: the
+            # preamble precedes it and 再確認TODO (stale) follows it.
+            in_findings = stripped == findings_heading
+            if stripped == recheck_heading:
+                break
+            continue
+        if not in_findings or not stripped:
+            continue
+        if stripped.startswith(("#", ">", "|")) or stripped.startswith(skip_prefixes):
+            continue
+        if stripped.startswith("_") and stripped.endswith("_"):
+            # Placeholder such as "_No fresh reports..._".
+            continue
+        # "**Summary:**" style labels carry no content of their own.
+        if stripped.startswith("**") and stripped.endswith(":**"):
+            continue
+        text = stripped.lstrip("-* ").strip()
+        if len(text) > 10:
+            findings.append(text)
+        if len(findings) >= limit:
+            break
+    return findings
+
+
 def _load_report_signal_items(date_str: str) -> list[str]:
     compact = date_str.replace("-", "")
     items: list[str] = []
@@ -531,14 +578,11 @@ def _load_report_signal_items(date_str: str) -> list[str]:
                 if str(entry).strip():
                     items.append(f"自己改善: {str(entry).strip()}")
 
-    sidecar = _read_file_safe(REPO_ROOT / "reports" / "agent_sidecar_brief.md", max_chars=1200)
-    if sidecar:
-        for line in sidecar.splitlines():
-            stripped = line.strip(" -#")
-            if stripped and len(stripped) > 10:
-                items.append(f"サイドカー: {stripped}")
-            if len(items) >= 8:
-                break
+    sidecar = _read_file_safe(REPO_ROOT / "reports" / "agent_sidecar_brief.md", max_chars=4000)
+    for finding in _extract_sidecar_findings(sidecar):
+        if len(items) >= 8:
+            break
+        items.append(f"サイドカー: {finding}")
 
     return items[:8]
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,16 @@ PREFERRED_REPORTS = (
 )
 
 SECTION_NAMES = ("サマリー", "課題・リスク", "後続エージェントへの申し送り")
+
+# Reports older than this are demoted out of the findings section (GAP-003).
+STALE_AFTER_DAYS = 30
+
+# Headings are load-bearing: downstream readers split the brief on them to keep
+# stale findings out of prompt material. Changing them requires updating
+# lease_intelligence_reflection._extract_sidecar_findings().
+FINDINGS_HEADING = "## Reports"
+RECHECK_LABEL = "再確認TODO"
+RECHECK_HEADING = f"## {RECHECK_LABEL}"
 
 
 @dataclass
@@ -77,15 +88,93 @@ def _extract_section(body: str, name: str, max_chars: int = 650) -> str:
     return section[:max_chars].strip()
 
 
-def _is_stale(timestamp: str, max_age_days: int = 30) -> bool:
-    if not timestamp:
-        return True
-    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+# 変更駆動エージェントの「担当ファイル」。壁時計の経過日数ではなく、担当ファイルが
+# レポートより後に変わったかで鮮度を判定する。出典は .claude/AGENTS.md の
+# 「起動タイミング」欄。ここに無いディレクトリは経過日数で判定する（定期監査系で、
+# 担当ファイルという概念が無いため）。
+AGENT_TRIGGER_PATHS: dict[str, tuple[str, ...]] = {
+    "scoring-audit": ("asset_scorer.py", "total_scorer.py", "category_config.py"),
+    "rule-validation": ("rule_manager.py", "coeff_definitions.py", "category_config.py"),
+    "migration": ("migrate_to_sqlite.py",),
+    # 「コード変更発生」が起動条件のもの。静穏期には fresh のままにできる。
+    "code-review": ("*.py", "frontend/src"),
+    "security": ("*.py", "frontend/src"),
+    "impact-analysis": ("*.py", "frontend/src"),
+    "file-searcher": ("*.py", "frontend/src"),
+}
+
+
+def _trigger_last_changed(paths: tuple[str, ...], root: Path | None = None) -> datetime | None:
+    """担当ファイルの最終コミット時刻。git が使えなければ None。"""
+    if not paths:
+        return None
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-1", "--format=%ct", "--", *paths],
+            cwd=str(root or PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = (proc.stdout or "").strip()
+    if proc.returncode != 0 or not out.isdigit():
+        return None
+    return datetime.fromtimestamp(int(out))
+
+
+def _parse_timestamp(timestamp: str) -> datetime | None:
+    text = (timestamp or "").strip()
+    if not text:
+        return None
+    for fmt, width in _TIMESTAMP_FORMATS:
         try:
-            dt = datetime.strptime(timestamp[: len(fmt)], fmt)
-            return (datetime.now() - dt).days > max_age_days
+            return datetime.strptime(text[:width], fmt)
         except ValueError:
             continue
+    return None
+
+
+def is_stale_for(report_dir: str, timestamp: str, root: Path | None = None) -> bool:
+    """レポートが古いか。担当ファイルがあればそれ基準、無ければ経過日数。
+
+    経過日数だけで見ると、その後まったく変更が無いレポートまで捨ててしまう。
+    逆に閾値内でも担当ファイルが変わっていれば、その指摘はもう当てにならない。
+    """
+    triggers = AGENT_TRIGGER_PATHS.get(report_dir)
+    if not triggers:
+        return _is_stale(timestamp)
+    written = _parse_timestamp(timestamp)
+    if written is None:
+        return True
+    changed = _trigger_last_changed(triggers, root=root)
+    if changed is None:
+        # git が使えない環境では経過日数へ退避する（判定不能を fresh にしない）。
+        return _is_stale(timestamp)
+    return changed > written
+
+
+# (書式, その書式が生成する文字数)。スライス幅は書式文字列の長さではなく
+# 出力の長さで決まる（"%Y" は2文字だが 4桁を生成する）。len(fmt) で切ると
+# どの書式もパースに失敗し、全レポートが恒久的に stale 扱いになる。
+_TIMESTAMP_FORMATS = (
+    ("%Y-%m-%d %H:%M", 16),
+    ("%Y-%m-%dT%H:%M:%S", 19),
+    ("%Y-%m-%d", 10),
+)
+
+
+def _is_stale(timestamp: str, max_age_days: int = STALE_AFTER_DAYS) -> bool:
+    text = (timestamp or "").strip()
+    if not text:
+        return True
+    for fmt, width in _TIMESTAMP_FORMATS:
+        try:
+            parsed = datetime.strptime(text[:width], fmt)
+        except ValueError:
+            continue
+        return (datetime.now() - parsed).days > max_age_days
     return True
 
 
@@ -127,7 +216,7 @@ def load_sidecar_reports() -> list[SidecarReport]:
                 summary=summary,
                 risks=risks,
                 handoff=handoff,
-                stale=_is_stale(timestamp),
+                stale=is_stale_for(path.parent.name, timestamp),
             )
         )
     return reports
@@ -150,19 +239,29 @@ def build_markdown(reports: list[SidecarReport]) -> str:
         "- This brief is advisory context only.",
         "- Do not let sidecar reports update scores, models, production DBs, or final approvals directly.",
         "- Use findings as review prompts, RAG hints, or weekly PDCA inputs.",
+        f"- Reports older than {STALE_AFTER_DAYS} days are demoted to the"
+        f" {RECHECK_LABEL} section and must be re-verified against current code"
+        " before use.",
         "",
-        "## Reports",
+        FINDINGS_HEADING,
     ]
     if not reports:
         lines.append("_No sidecar reports found._")
         return "\n".join(lines).strip() + "\n"
 
-    for report in reports:
-        stale_label = " / stale" if report.stale else ""
+    fresh = [r for r in reports if not r.stale]
+    stale = [r for r in reports if r.stale]
+
+    if not fresh:
+        lines.append(
+            f"_No fresh reports. All {len(stale)} report(s) are older than"
+            f" {STALE_AFTER_DAYS} days — see {RECHECK_LABEL}._"
+        )
+    for report in fresh:
         lines.extend(
             [
                 "",
-                f"### {report.agent} ({report.status}{stale_label})",
+                f"### {report.agent} ({report.status})",
                 f"- Source: `{report.path}`",
                 f"- Task: {report.task or '-'}",
                 f"- Timestamp: {report.timestamp or '-'}",
@@ -176,6 +275,26 @@ def build_markdown(reports: list[SidecarReport]) -> str:
             block = _format_block(title, text)
             if block:
                 lines.extend(["", block])
+
+    if stale:
+        lines.extend(
+            [
+                "",
+                RECHECK_HEADING,
+                "",
+                "古い指摘を現在の真実として扱わないこと。"
+                "最新コードで再検証したものだけを有効扱いにする。",
+                "",
+            ]
+        )
+        for report in stale:
+            lines.append(
+                f"- [ ] `{report.agent}` — {report.timestamp or '時刻不明'} 時点"
+                f" / `{report.path}`"
+            )
+            hint = (report.risks or report.summary or "").strip().splitlines()
+            if hint:
+                lines.append(f"  - 当時の指摘: {hint[0].strip(' -')[:120]}")
     return "\n".join(lines).strip() + "\n"
 
 

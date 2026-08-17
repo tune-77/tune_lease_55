@@ -81,6 +81,13 @@ echo "[記録] e-Stat業種別統計更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_estat_industry.py"; log_step "fetch_estat_industry" $?
 
 echo ""
+echo "[監査] 決定論的な自己監査で .claude/reports/ を更新（LLM不使用）..."
+# 失敗してもパイプラインを止めない。Brief 生成より前に置くこと（同じ実行で蒸留される）。
+# テストは所要時間が読めないため日次からは外す。/run-tests で個別に実行する。
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_agent_self_reports.py" --skip test-results || true
+log_step "build_agent_self_reports" 0
+
+echo ""
 echo "[補助] Sidecar Agent Brief を生成（読み取り専用）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/agent_sidecar_reader.py"; log_step "agent_sidecar_reader" $?
 
