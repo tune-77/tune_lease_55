@@ -1,6 +1,6 @@
 # Agent Sidecar Brief
 
-> Generated: 2026-08-17 04:12 | source: `.claude/reports` | mode: read-only advisory
+> Generated: 2026-08-17 06:44 | source: `.claude/reports` | mode: read-only advisory
 
 ## Operating Boundary
 - This brief is advisory context only.
@@ -222,27 +222,6 @@ PD除去は主要パスで概ね完了しているが、アクティブコード
 
 ---
 
-### agent-discussion (リースくん / Tune / つん子杏奈 / 審査軍師 / Dr.Algo / タム / プランナー / ダッシュ) (success / stale)
-- Source: `.claude/reports/agent-discussion/ux_debate_latest.md`
-- Task: 「ユーザーがもっと直感的に使えるようにするには？」UX改善討論
-- Timestamp: 2026-03-28 11:30
-
-**Summary:**
-8エージェントが「直感的な使いやすさ」をテーマに白熱討論。リースくんが入口UXを、ダッシュが視覚設計を、つん子が「余計なものを削れ」と一刀両断、Dr.Algoがオンボーディングの数学的最適化を提示、タムが「においがしないUI」問題を指摘、軍師が戦略的優先順位を整理し、Tuneが6項目を承認した。
-
----
-
-**Risks:**
-- ロール別UIは既存のセッション管理（`SK.*`）の変更を伴う可能性があり、鈴木さんに事前アセスメントを依頼すること
-- ストリーミングレスポンスはOllama/Gemini両エンジンへの対応が必要。Ollamaは `/api/generate` のストリームモードで対応可能だが、Gemini側の実装確認が必要
-- デザインシステム統一は既存コンポーネント全てへの影響あり。段階的移行計画を立てること
-
-**Handoff:**
-- **code-reviewer**: Phase 1 実装完了後にレビュー依頼
-- **build-runner**: 各Phase完了後に起動確認
-- **report-stylist**: Phase 3のデザインシステム統一完了後にビジュアルレポート生成
-- **鈴木さん**: ロール別UIの工数見積もりとセッション管理影響調査を先行で依頼することを推奨
-
 ### file-searcher (success / stale)
 - Source: `.claude/reports/file-searcher/latest.md`
 - Task: 変更ファイル調査（直近3コミット）
@@ -270,45 +249,6 @@ PD除去は主要パスで概ね完了しているが、アクティブコード
 - **rule-validator**: `bayesian_engine.py` の `BN_EDGES` および CPT 整合性チェックを実施すること。`_prob_financial_creditworthiness(*c)` のアンパック順序が `evidence` リストの順序と一致しているか要確認。
 - **code-reviewer**: `bayesian_engine.py` の論理変更部分のレビューを推奨。UIファイル群（18件）は機械的置換のみのため優先度低。
 - **build-runner**: Streamlit の新 API `width='stretch'` が requirements に定義されたバージョンで動作するか確認を推奨。
-
-### general-purpose (success / stale)
-- Source: `.claude/reports/general-purpose/latest.md`
-- Task: SQLite DBからシステム改善レポートデータを生成し data/improvement_report_data.py として保存
-- Timestamp: 2026-03-20 00:00
-
-**Summary:**
-`data/lease_data.db`（past_cases テーブル、26件）を直接集計し、統計データ・業種別ランキング・スコア分布・直近10件・改善提案8件を `data/improvement_report_data.py` に `REPORT_DATA` dict として保存した。
-
----
-
-**Risks:**
-- 「要審議」が最終判定として残っているケースが多く、実質の否決率が不明。`rejection_rate` は現状 0.0% だが実態を反映していない可能性がある
-- 26件というサンプル数は統計的に小さく、業種別傾向の信頼性は限定的
-- `data/improvement_report_data.py` は `.gitignore` 対象外のため、機密データ（個社スコア等）を含まないよう集計値のみを記載した
-
----
-
-**Handoff:**
-- UI側（`components/` 配下）で `REPORT_DATA` を import して「システム改善レポート」タブに表示する実装が次ステップ
-- 週次自動再生成のための Cron 設定（CronCreate ツール）を検討
-- `rejection_rate` の定義を「否決」判定のみから「要審議+否決」に変更するかどうか、運用側で合意が必要
-
-### novelist-weekly-scheduler (partial / stale)
-- Source: `.claude/reports/novelist/latest.md`
-- Task: 波乱丸 第9話（第2026年03月24日号）生成
-- Timestamp: 2026-03-24 09:04
-
-**Summary:**
-毎週火曜日の自動タスクとして波乱丸 第9話を生成した。AIサービス（Streamlit）がスケジューラ環境では利用不可のため、フォールバック小説を採用した。novelist_agent.db のジャーナルファイルロックにより本番DBへの書き戻しは未完了。
-
-**Risks:**
-- novelist_agent.db に未解決のジャーナルファイル（.db-journal）が存在し、SQLite の disk I/O error が発生している
-- スケジューラ環境では Streamlit がインポートできないため、AI生成は常にフォールバックになる
-- novelist_agent_work.db（一時コピー）には正常に第9話が書き込まれているが、本番DBへの反映が未完了
-
-**Handoff:**
-- data/novelist_agent.db-journal の削除が必要（手動またはStreamlitアプリ起動後にSQLiteが自動処理する可能性あり）
-- StreamlitアプリをAIなし環境で起動できる軽量モードの検討が必要
 
 ### report-stylist (success / stale)
 - Source: `.claude/reports/report-stylist/latest.md`

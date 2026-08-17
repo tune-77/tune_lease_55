@@ -31,7 +31,6 @@ PREFERRED_REPORTS = (
     "agent-team/asset_value_discussion.md",
     "agent-team/subsidy_plan.md",
     "agent-team/report_ux_plan.md",
-    "agent-discussion/ux_debate_latest.md",
 )
 
 SECTION_NAMES = ("サマリー", "課題・リスク", "後続エージェントへの申し送り")
