@@ -821,3 +821,59 @@ def test_fallback_reflection_carries_loop_health_awareness(tmp_path, monkeypatch
     assert "安全ガード=ok" in text          # サブ状態が自己認識に出る
     assert "結果ループ=warn" in text
     assert "改善したつもり" in text          # 観測への内省的な感想が乗る
+
+
+def test_extract_sidecar_findings_skips_preamble_and_stale_section():
+    """サイドカーのヘッダは _score_reflection の減点条件そのものなので拾わない。
+
+    注入されるのが所見ではなくヘッダだけになると、hollow_dialogue_material /
+    stale_boilerplate で減点される。
+    """
+    from scripts import agent_sidecar_reader as reader
+
+    fresh = reader.SidecarReport(
+        path=".claude/reports/scoring-audit/latest.md",
+        agent="scoring-auditor",
+        task="スコア監査",
+        timestamp="2026-08-16 09:00",
+        status="success",
+        summary="物件スコアと借手スコアの乖離が3件。",
+        risks="completeness_ratio が低い案件が5件。",
+        handoff="",
+        stale=False,
+    )
+    stale = reader.SidecarReport(
+        path=".claude/reports/security/latest.md",
+        agent="security-checker",
+        task="古い監査",
+        timestamp="2026-03-01 09:00",
+        status="partial",
+        summary="STALEな古い指摘。",
+        risks="",
+        handoff="",
+        stale=True,
+    )
+
+    findings = reflection._extract_sidecar_findings(
+        reader.build_markdown([fresh, stale])
+    )
+
+    assert "物件スコアと借手スコアの乖離が3件。" in findings
+    assert "completeness_ratio が低い案件が5件。" in findings
+    # stale は prompt 材料に流さない
+    assert not any("STALE" in f for f in findings)
+    # _score_reflection が減点する定型句を含めない
+    joined = " ".join(findings)
+    for penalised in (
+        "Agent Sidecar",
+        "source: `.claude/reports`",
+        "Operating Boundary",
+        "advisory context only",
+    ):
+        assert penalised not in joined
+    # メタ行も材料にしない
+    assert not any(f.startswith(("Source:", "Task:", "Timestamp:")) for f in findings)
+
+
+def test_extract_sidecar_findings_handles_empty_input():
+    assert reflection._extract_sidecar_findings("") == []

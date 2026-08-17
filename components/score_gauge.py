@@ -5,6 +5,8 @@ D3.js アニメーションスコアゲージ
 """
 import streamlit.components.v1 as components
 
+from constants import APPROVAL_LINE
+
 
 _GAUGE_TEMPLATE = """
 <!DOCTYPE html>
@@ -58,8 +60,9 @@ svg.append("circle")
   .attr("cx", cx).attr("cy", cy).attr("r", rInner - 2)
   .attr("fill", "#0f172a");
 
-// 承認ライン マーカー（71点）
-const lineAngle = scoreToAngle(71);
+// 承認ライン マーカー（値は constants.APPROVAL_LINE から注入する）
+const APPROVAL = __APPROVAL__;
+const lineAngle = scoreToAngle(APPROVAL);
 svg.append("line")
   .attr("x1", cx + (rInner - 4) * Math.cos(lineAngle))
   .attr("y1", cy + (rInner - 4) * Math.sin(lineAngle))
@@ -75,7 +78,7 @@ svg.append("text")
   .attr("fill", "#94a3b8")
   .attr("font-size", "9px")
   .attr("text-anchor", "middle")
-  .text("71");
+  .text(String(APPROVAL));
 
 // ── 目盛り ──────────────────────────────────────────────────────────────
 [0, 25, 50, 75, 100].forEach(v => {
@@ -163,5 +166,6 @@ def render_score_gauge(score: float, hantei: str = "", width: int = 300, height:
             .replace("__SCORE__", str(round(float(score), 1)))
             .replace("__HANTEI__", hantei.replace('"', ''))
             .replace("__WIDTH__", str(width))
-            .replace("__HEIGHT__", str(height)))
+            .replace("__HEIGHT__", str(height))
+            .replace("__APPROVAL__", str(APPROVAL_LINE)))
     components.html(html, height=height + 10, scrolling=False)
