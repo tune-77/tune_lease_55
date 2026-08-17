@@ -199,3 +199,30 @@ def test_prompt_is_last_argument():
     """プロンプトがフラグとして解釈されないこと。"""
     cmd = recheck.build_command(_candidate(), "これはプロンプトです")
     assert cmd[-1] == "これはプロンプトです"
+
+
+def test_missing_claude_cli_skips_without_failing(monkeypatch, capsys):
+    """CLI 未導入時は、同じ失敗を上限まで繰り返さず原因を明示して抜ける。"""
+    monkeypatch.setattr(recheck.shutil, "which", lambda _: None)
+    monkeypatch.setattr("sys.argv", ["recheck"])
+    monkeypatch.delenv("AGENT_RECHECK_DISABLED", raising=False)
+    monkeypatch.delenv("AGENT_RECHECK_DAILY_LIMIT", raising=False)
+
+    assert recheck.main() == 0
+    out = capsys.readouterr().out
+    assert "前提未達" in out
+    assert "claude" in out
+    # 対処方法まで出す
+    assert "PATH" in out
+    assert "AGENT_RECHECK_DAILY_LIMIT=0" in out
+
+
+def test_dry_run_works_without_claude_cli(monkeypatch, capsys):
+    """CLI が無くても選定の確認はできる。"""
+    monkeypatch.setattr(recheck.shutil, "which", lambda _: None)
+    monkeypatch.setattr("sys.argv", ["recheck", "--dry-run"])
+    monkeypatch.delenv("AGENT_RECHECK_DISABLED", raising=False)
+    monkeypatch.delenv("AGENT_RECHECK_DAILY_LIMIT", raising=False)
+
+    assert recheck.main() == 0
+    assert "前提未達" not in capsys.readouterr().out

@@ -20,6 +20,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -92,6 +93,17 @@ def _permission_mode() -> str:
     mode = str(os.environ.get("AGENT_RECHECK_PERMISSION_MODE") or "").strip()
     allowed = {"acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan", "manual"}
     return mode if mode in allowed else "acceptEdits"
+
+
+def claude_cli_path() -> str | None:
+    """`claude` 実行ファイルの場所。見つからなければ None。
+
+    launchd は `.zshrc` を読まないため、plist の PATH に入っていない場所へ
+    インストールされていると起動できない（nvm 配下など）。Gemini への
+    フォールバックは用意しない。テキストを返すだけでサブエージェントの起動も
+    レポートの書き込みもできず、この用途では代替にならないため。
+    """
+    return shutil.which("claude")
 
 
 def build_command(candidate: dict[str, Any], prompt: str) -> list[str]:
@@ -263,6 +275,20 @@ def main() -> int:
 
     if _guard_disabled():
         print("[guard] AGENT_RECHECK_DISABLED が設定されているため、再実行を停止します（キルスイッチ）")
+        return 0
+
+    # 実行前に CLI の有無を確かめる。無いまま進むと同じ失敗を上限まで繰り返し、
+    # 原因が結果 JSON の stderr に埋もれて気づけない。
+    if not args.dry_run and claude_cli_path() is None:
+        print(
+            "[前提未達] `claude` コマンドが PATH 上に見つかりません。"
+            "エージェント再実行はスキップします。\n"
+            "  - Claude Code CLI のインストールとログインが必要です\n"
+            "  - launchd は .zshrc を読みません。plist の PATH に "
+            "インストール先を追加してください（nvm 配下だと見つかりません）\n"
+            f"  - 現在の PATH: {os.environ.get('PATH', '(未設定)')}\n"
+            "  - 常用しない場合は AGENT_RECHECK_DAILY_LIMIT=0 で無効化できます"
+        )
         return 0
 
     date_tag = dt.datetime.now().strftime("%Y%m%d")
