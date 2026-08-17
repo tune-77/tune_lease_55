@@ -49,71 +49,21 @@ LEDGER_PATH = Path(
                    str(Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"))
 )
 
+# 過去の台帳不整合を個別に補正するための手打ちテーブル群
+# （KNOWN_CODE_APPLIED / KNOWN_TITLE_APPLIED / KNOWN_PR_OVERRIDES /
+#  KNOWN_APPLIED_NO_PR / REV_TITLES）は cleanup_improvement_reviews_data.json に
+# 外部化している。各テーブルの役割は scripts/README_ledger.md を参照。
+_DATA_PATH = Path(__file__).resolve().parent / "cleanup_improvement_reviews_data.json"
+with _DATA_PATH.open(encoding="utf-8") as _f:
+    _OVERRIDE_DATA = json.load(_f)
+
 # PR タイトルに REV-NNN が明記されていないが確認済みのもの
 # (PR 番号, status)
 # PR を経ずにコミット直接で実装済みが確認されたチャット改善メモ
 # (canonical_key, title, commit_or_reason)
 # → --apply 実行時に台帳へ applied として追記する
 KNOWN_CODE_APPLIED: list[tuple[str, str, str]] = [
-    # PR #273 で取り込まれた raw チャットメモ（2026-06-01/02）のうち実装済みもの
-    ("misc_3dd41b39e887", "結果登録で金利が入れられない",
-     "e7e71ea: parseRateInput 追加・入力を text 型に変更"),
-    ("misc_9ae8c238acbf", "最終結果登録時にエラーが発生する",
-     "e7e71ea: api/main.py + register/page.tsx を安定化"),
-    ("misc_7531d9ed95dd", "ビジュアルインサイト画面にAIコメントがない",
-     "REV-109実装済み: visual/page.tsx L347 AI状況説明コメントパネル"),
-    ("misc_3145ef0539d7", "ニュースの要約機能がない",
-     "PR #265: リースニュース要約→Obsidian保存→ホーム掲示"),
-    ("misc_a79737a7c5ae", "リースニュースの記事内容が薄い",
-     "PR #265/266: Gemini要約＋新フォーマット統一により内容拡充"),
-    # needs_review だが実装済み REV と同一タイトルの重複エントリ
-    ("repeat_query",                 "同一クエリ繰り返し対応",              "REV-017 applied: chat_intent.py"),
-    ("industry_question_clarification", "業界情報に関する質問の具体化支援", "REV-014 applied: chat_intent.py"),
-    ("misc_08d6373ad7e9",            "業種別成約率の傾向情報提供",          "REV-023 applied（重複キー）"),
-    ("misc_1c13f7a8dbd0",            "条件付き承認の推奨アクション自動提示","REV-011 applied（重複キー）"),
-    ("misc_1dd0127850bb",            "業界別成約率データの提供",             "REV-041 applied（重複キー）"),
-    ("misc_2182c9351393",            "ホーム画面への改善項目表示",           "REV-050 applied（重複キー）"),
-    ("misc_26cd5d97058f",            "2段階モデル設計・実装",                "REV-002 applied: 動的金利提案エンジン"),
-    ("misc_54f6bcf4b493",            "業種別成約率の傾向情報提供",           "REV-023 applied（重複）"),
-    ("misc_5bd5ed432830",            "曖昧な質問「今日の」への対応強化",    "REV-013 applied: chat_intent.py"),
-    ("misc_5cebef364a12",            "補助金関連情報の整理と参照性向上",    "REV-055 applied（重複キー）"),
-    ("misc_6abc8ad3aaa1",            "アンサンブルモデル（CatBoost追加）",  "REV-004 applied（重複キー）"),
-    ("misc_8bade82fc31d",            "数字入力の効率化とOCRの改善",          "REV-048 applied（重複キー）"),
-    ("misc_b0d8041cab2b",            "期間指定データ集計機能の追加",         "REV-040 applied（重複キー）"),
-    ("misc_bcc44e9f249e",            "条件付き承認の推奨アクション自動提示","REV-011 applied（重複）"),
-    ("misc_bccd69403e88",            "知識宇宙マップの視覚化機能強化",       "REV-022 applied（重複キー）"),
-    ("misc_c992757ce799",            "曖昧な質問「今日の」への対応強化",    "REV-013 applied（重複）"),
-    ("misc_cecb0a5a3d79",            "知識宇宙マップの視覚化機能強化",       "REV-022 applied（重複）"),
-    ("misc_d1199d9942d4",            "ホーム画面へのリースニュース表示",     "PR #265 実装済み"),
-    ("misc_70ff923bdcdf",            "ホーム画面リースニュースまとめのコンテンツ拡充", "PR #265/266 実装済み"),
-    ("misc_4f0e7b380ae2",
-     "ブルドーザー、ショベル・油圧ショベルのリース期間5年→6年修正",
-     "修正済み（static_data/industry_benchmarks.json にてリース期間を6年に修正確認）"),
-    # 2026-07-08 ユーザー確認済み（needs_review クールダウン中の実装済み項目）
-    ("misc_fa848c8b7b88", "担当者の最終判断を記録する登録ボタンがない。",
-     "実装済み: cases/page.tsx 結果登録フォーム（成約/失注の final_status 登録）"),
-    ("misc_20e7d00e6c52", "担当者の最終判断を記録する登録ボタンがない。",
-     "実装済み: 現行レポートの detail 込み canonical_key。結果登録フォームで final_status 登録済み"),
-    ("misc_e3902655c2dd", "AIチャット履歴の表示を制御する機能がない。",
-     "実装済み: chat/page.tsx clearHistory・履歴削除ボタン"),
-    ("misc_23c3f6423f66", "AIチャット履歴の表示を制御する機能がない。",
-     "実装済み: 現行レポートの detail 込み canonical_key。chat/page.tsx clearHistory・履歴削除ボタン"),
-    ("misc_00ab855c5ae6", "対話AIへの接続エラーが発生し、Gemini APIの状態確認メッセージが表示される。",
-     "実装済み: REV-175 棚卸し済み。lease-intelligence/page.tsx でバックエンド detail を表示"),
-    ("misc_208f46fae136", "企業登録後、結果登録画面に直前に登録した企業が表示されない。",
-     "実装済み: cases/page.tsx 案件一覧から選択して結果登録できるUI"),
-    ("misc_3d247a6bd3cd", "企業登録後、結果登録画面に直前に登録した企業が表示されない。",
-     "実装済み: 現行レポートの detail 込み canonical_key。cases/page.tsx 案件一覧から選択して結果登録できるUI"),
-    ("misc_ecbf2e640444", "リース知性体「紫苑」が過去の会話内容を記憶していない。",
-     "実装済み: memory_debug / knowledge_refs / memory_recall.refs による記憶参照確認ルートを実装済み"),
-    ("misc_2d8a190dc89c", "ホーム画面のUIデザインについて、ユーザーからの変更要望がある。",
-     "実装済み: home/page.tsx ホーム画面刷新（2026-07-08 ユーザー確認）"),
-    ("misc_ca792a852663",
-     "ブルドーザー、ショベル・油圧ショベルのリース期間が「5年」と表示されているが、正しくは「6年」の可能",
-     "修正済み: useful_life_lookup.py 建機を別表第二30号・総合工事業用設備6年に統一（2026-07-08 ユーザー確認）"),
-    ("misc_a9d36a1c56c3",
-     "自律改善フローの自動実行元表示が「codex」のままで、実態と異なる可能性がある。",
-     "修正済み: improvement-log/page.tsx 表示を「自動改善キュー（claude実行・gemini予備）」に変更"),
+    tuple(entry) for entry in _OVERRIDE_DATA["known_code_applied"]
 ]
 
 # B群: 出荷済みだが、生メモの canonical_key（title+description 依存）が出荷 REV 番号と
@@ -123,88 +73,21 @@ KNOWN_CODE_APPLIED: list[tuple[str, str, str]] = [
 # applied 化する（_apply_title_matched_closures で処理）。
 # 値は (タイトル, 出荷エビデンス)。タイトルは recursive_self_improvement レポートの表記に合わせる。
 KNOWN_TITLE_APPLIED: list[tuple[str, str]] = [
-    ("音声入力に対して音声での応答がない。",
-     "実装済み: REV-048 音声入出力（PR#320/321）・REV-173 音声VAD修正（PR#504）"),
-    ("「紫苑」と「めぶきちゃん」間の意思疎通が不十分",
-     "実装済み: REV-060/064/065/147 めぶき⇔紫苑の認識・中継・専門知識注入（PR#343/347/354/469）"),
-    ("紫苑の記憶参照システムと重要情報統合プロセスに根本的欠陥。",
-     "実装済み: REV-091/095/201/206 長期記憶圧縮・感情スナップショット・個人記憶・ハイブリッド想起（PR#383/387/525/531）"),
-    ("複数のAIモデル（紫苑）を同時に動かし、互いに意見を出し合わせる機能がない。",
-     "実装済み: REV-123/149 軍師AI・討論ページのマルチペルソナ化（PR#453/473）"),
-    ("Cloud Runに関する改善メモが散在しており、一元管理ができていない。",
-     "実装済み: REV-125/179/208/215 Cloud Run移行・一元化・自動デプロイ（PR#447/510/543/583）"),
-    ("AIアシスタント「八奈見さん」の名称に関する課題",
-     "実装済み: REV-056 紫苑の正式名称 full_name フィールド追加（PR#336）"),
+    tuple(entry) for entry in _OVERRIDE_DATA["known_title_applied"]
 ]
 
 KNOWN_PR_OVERRIDES: dict[str, tuple[int, str]] = {
-    "REV-001": (193, "rejected"),   # PR#193 CLOSED: EDINET API連携
-    "REV-005": (202, "applied"),    # PR#202 MERGED: OCRモバイル入力機能
-    "REV-007": (207, "rejected"),   # PR#207 CLOSED: ポートフォリオリスク管理
-    "REV-010": (211, "applied"),    # PR#211 MERGED: 公平性・バイアス監査基盤
-    "REV-011": (212, "applied"),    # PR#212 MERGED: 条件付き承認の推奨アクション
-    "REV-016": (211, "applied"),    # PR#211 で同時マージ扱い
+    k: tuple(v) for k, v in _OVERRIDE_DATA["known_pr_overrides"].items()
 }
 
 # PR を経由せずコードレビューで実装確認済みの REV
 # (commit_hash, 実装ファイル, 説明)
 KNOWN_APPLIED_NO_PR: dict[str, tuple[str, str, str]] = {
-    "REV-013": ("aaf3b6a", "chat_intent.py", "is_today_scope_clarification_needed / is_ambiguous_question として実装済み"),
-    "REV-014": ("aaf3b6a", "chat_intent.py", "is_industry_clarification_needed として実装済み"),
-    "REV-017": ("aaf3b6a", "chat_intent.py", "is_repeated_query として実装済み"),
+    k: tuple(v) for k, v in _OVERRIDE_DATA["known_applied_no_pr"].items()
 }
 
 # REV ID → タイトル（reports から取得したマスタ）
-REV_TITLES: dict[str, str] = {
-    "REV-001": "EDINET連携（Phase2）",
-    "REV-002": "動的金利提案エンジン / 2段階モデル設計",
-    "REV-004": "高リスク財務パターン警告 / アンサンブルモデル",
-    "REV-005": "OCRモバイル入力機能",
-    "REV-007": "ポートフォリオリスク管理",
-    "REV-009": "帝国データバンクAPI連携 / Counterfactual分析",
-    "REV-010": "公平性・バイアス監査基盤",
-    "REV-011": "条件付き承認の推奨アクション自動提示",
-    "REV-013": "曖昧な質問「今日の」への対応強化",
-    "REV-014": "業界情報に関する質問の具体化支援",
-    "REV-016": "リース審査外の質問への対応",
-    "REV-017": "同一クエリ繰り返し対応",
-    "REV-018": "詳細情報要求への対応強化",
-    "REV-019": "物件名からの業種自動推測と更新",
-    "REV-022": "知識宇宙マップの視覚化機能強化",
-    "REV-023": "業種別成約率の傾向情報提供",
-    "REV-025": "リースバック勉強会の理解度向上",
-    "REV-026": "AI ChatのDB連携機能強化",
-    "REV-027": "リース情報活用方法の検討",
-    "REV-035": "業種別成約率タブ追加",
-    "REV-040": "期間指定データ集計機能の追加",
-    "REV-041": "業界別成約率データの提供",
-    "REV-048": "数字入力の効率化とOCRの改善",
-    "REV-050": "ホーム画面への改善項目表示",
-    "REV-055": "補助金関連情報の整理と参照性向上",
-    "REV-061": "PD表示の明確化",
-    "REV-064": "フォームUX改善",
-    "REV-067": "FAQ強化",
-    "REV-068": "ナレッジベース整備",
-    "REV-069": "リスク強調表示",
-    "REV-072": "条件付承認リスク強調",
-    "REV-073": "Q_risk解釈ガイド追加",
-    "REV-079": "リスク表示改善",
-    "REV-085": "PD表示色分け",
-    "REV-089": "量子干渉リスクUIパネル",
-    "REV-094": "業種別成約率タブ強化",
-    "REV-095": "ビジュアルインサイト改善",
-    "REV-098": "ナレッジベース拡充",
-    "REV-102": "Q_risk解釈ガイド拡充",
-    "REV-107": "知識宇宙マップ改善",
-    "REV-108": "知識宇宙マップ詳細強化",
-    "REV-109": "ビジュアルインサイト AIコメントパネル",
-    "REV-113": "Q_riskバッジ表示",
-    "REV-114": "量子干渉リスク詳細",
-    "REV-121": "営業ガイド強化",
-    "REV-122": "FAQ拡充",
-    "REV-133": "知識宇宙マップ機能拡張",
-    "REV-138": "知識宇宙マップUI改善",
-}
+REV_TITLES: dict[str, str] = _OVERRIDE_DATA["rev_titles"]
 
 
 def _extract_revs(title: str) -> list[int]:

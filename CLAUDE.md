@@ -30,7 +30,7 @@ PRタイトルに **REV番号を必ず含める** 例: `feat: REV-039 パイプ�
 | `api/main.py /api/chat` | 3経路混在（改善/通常/軍師AI） | `intent` 分岐を壊さない |
 | `obsidian_bridge.py` / ChromaDB | パス変更でRAG全壊 | iCloudパス優先。uvicornは `.zshrc` を読まないので ENV は plist で設定 |
 | `run_daily_improvement_pipeline.sh` | ステップ変更で朝報告停止 | 追記のみ・`\|\| true` 付き |
-| `ledger.jsonl` | 追記形式、最後のエントリが有効 | キーは必ず `canonical_key(title)` 形式（CLI の REV-ID 形式とは別物） |
+| `ledger.jsonl` | 追記形式、最後のエントリが有効 | キーは必ず `canonical_key(title)` 形式（CLI の REV-ID 形式とは別物）。台帳が2系統ある背景・キー不一致事故の詳細は `scripts/README_ledger.md` 参照 |
 | `api/shion_*.py`（ADKエージェント定義ファイル群） | google.adk等のimportタイミング方針がファイルごとに違う | `shion_agent.py`はモジュール先頭import、`shion_debate_adk.py`は遅延import（google.adk未導入環境でも読み込み可能にするため）。新規ファイルを書く際はどちらの方針を採るか意識すること |
 
 Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Work Logs/`
