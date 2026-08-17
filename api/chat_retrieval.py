@@ -14,6 +14,17 @@ from typing import Any, Callable
 
 FallbackSearch = Callable[[str, int], list[dict[str, Any]]]
 
+# 参照ナレッジをプロンプトへ載せるときの信頼度マーカー（REV-008）。
+# 従来は confidence_for_hit() の結果がフロントのバッジ用 payload にしか流れず、
+# モデル側は低信頼のヒットを高信頼のヒットと区別できなかった。低・中だけに印を
+# 付けて、断定を避ける判断材料をモデルに渡す（高信頼は無印＝トークンを使わない）。
+# キーは confidence_for_hit() が返すレベル文字列に対応する。
+RAG_CONFIDENCE_MARKERS = {
+    "low": "[信頼度:低] ",
+    "medium": "[信頼度:中] ",
+    "high": "",
+}
+
 
 @dataclass
 class ChatRetrievalResult:
@@ -175,12 +186,14 @@ def _append_rag_hits(
         ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
         if not text:
             continue
+        confidence, confidence_level = confidence_for_hit(hit)
         prefix = f"{ref}: " if ref else ""
-        all_docs.append((prefix + text)[:600])
+        marker = RAG_CONFIDENCE_MARKERS.get(confidence_level, "")
+        # 600字の本文予算はマーカーで削らない（マーカーは予算の外側に付ける）。
+        all_docs.append(marker + (prefix + text)[:600])
         if ref:
             rag_refs.append(ref)
         if hit.get("doc_id") or ref:
-            confidence, confidence_level = confidence_for_hit(hit)
             rag_knowledge_refs.append(
                 {
                     "doc_id": hit.get("doc_id", ""),
