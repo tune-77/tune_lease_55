@@ -5447,6 +5447,7 @@ def _build_memory_expression_prompt_block(
     rag_refs: list[str] | None = None,
     grey_judgment: dict | None = None,
     continuity_hook: dict | None = None,
+    question_category: str = "",
 ) -> tuple[str, dict]:
     from api.chat_continuity_prompts import build_memory_expression_prompt_block
 
@@ -5456,6 +5457,7 @@ def _build_memory_expression_prompt_block(
         rag_refs=rag_refs,
         grey_judgment=grey_judgment,
         continuity_hook=continuity_hook,
+        question_category=question_category,
     )
 
 
@@ -6877,6 +6879,7 @@ def post_chat(req: ChatRequest):
                     memory_recall=memory_recall,
                     grey_judgment=grey_judgment_payload,
                     continuity_hook=continuity_hook_payload,
+                    question_category=question_category,
                 )
                 reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
                     continuity_hook=continuity_hook_payload,
@@ -7322,6 +7325,7 @@ def post_chat(req: ChatRequest):
                 rag_refs=rag_refs,
                 grey_judgment=grey_judgment_payload,
                 continuity_hook=continuity_hook_payload,
+                question_category=question_category,
             )
             reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
                 continuity_hook=continuity_hook_payload,
