@@ -159,3 +159,43 @@ def test_prompt_forbids_code_changes():
     assert ".claude/reports/scoring-audit/latest.md" in prompt
     assert "REPORT_SCHEMA.md" in prompt
     assert "変更しないこと" in prompt
+
+
+def _candidate(agent="scoring-auditor"):
+    return {
+        "agent": agent,
+        "report": ".claude/reports/scoring-audit/latest.md",
+        "timestamp": "",
+        "reason": "stale",
+    }
+
+
+def test_command_selects_agent_explicitly():
+    """エージェント選択をプロンプト頼みにしない（--agent で明示する）。"""
+    cmd = recheck.build_command(_candidate(), "prompt")
+    assert cmd[0] == "claude"
+    assert "--print" in cmd
+    assert cmd[cmd.index("--agent") + 1] == "scoring-auditor"
+
+
+def test_command_sets_non_interactive_permission_mode(monkeypatch):
+    """--print には許可を尋ねる相手が居ないため、権限モードの指定が必須。"""
+    monkeypatch.delenv("AGENT_RECHECK_PERMISSION_MODE", raising=False)
+    cmd = recheck.build_command(_candidate(), "prompt")
+    assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"
+
+
+def test_permission_mode_is_overridable(monkeypatch):
+    monkeypatch.setenv("AGENT_RECHECK_PERMISSION_MODE", "dontAsk")
+    assert recheck._permission_mode() == "dontAsk"
+
+
+def test_unknown_permission_mode_falls_back_to_safe_default(monkeypatch):
+    monkeypatch.setenv("AGENT_RECHECK_PERMISSION_MODE", "rm -rf /")
+    assert recheck._permission_mode() == "acceptEdits"
+
+
+def test_prompt_is_last_argument():
+    """プロンプトがフラグとして解釈されないこと。"""
+    cmd = recheck.build_command(_candidate(), "これはプロンプトです")
+    assert cmd[-1] == "これはプロンプトです"

@@ -81,6 +81,35 @@ def _guard_max_consecutive_failures() -> int:
         return 2
 
 
+def _permission_mode() -> str:
+    """非対話実行の権限モード。
+
+    `claude --print` には許可を尋ねる相手が居ないため、既定のままでは
+    レポートの書き込みが通らない。`acceptEdits` はファイル編集を自動承認する。
+    Bash を多用するエージェントが止まる場合は `dontAsk` を検討する
+    （`bypassPermissions` は全チェックを外すので既定にはしない）。
+    """
+    mode = str(os.environ.get("AGENT_RECHECK_PERMISSION_MODE") or "").strip()
+    allowed = {"acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan", "manual"}
+    return mode if mode in allowed else "acceptEdits"
+
+
+def build_command(candidate: dict[str, Any], prompt: str) -> list[str]:
+    """`claude` の起動コマンド。
+
+    エージェント選択はプロンプト頼みではなく `--agent` で明示する。
+    """
+    return [
+        "claude",
+        "--print",
+        "--agent",
+        str(candidate["agent"]),
+        "--permission-mode",
+        _permission_mode(),
+        prompt,
+    ]
+
+
 def count_executed_today(date_tag: str, result_dir: Path | None = None) -> int:
     """今日すでに再実行した件数（dry-run は除く）。"""
     root = result_dir if result_dir is not None else RESULT_DIR
@@ -165,9 +194,9 @@ def select_stale_agents(
 def build_prompt(candidate: dict[str, Any]) -> str:
     agent = candidate["agent"]
     report = candidate["report"] or f".claude/reports/<{agent}>/latest.md"
+    # エージェント自体は `--agent` で選択済み（build_command 参照）。
     return (
-        f"{agent} サブエージェントを起動して、担当範囲を現在のコードに対して"
-        "再監査してください。\n\n"
+        f"あなたの担当範囲（{agent}）を、現在のコードに対して再監査してください。\n\n"
         f"結果は `{report}` に上書き保存してください。書式は "
         "`.claude/reports/REPORT_SCHEMA.md` に従い、frontmatter の "
         f"timestamp には実行時刻（{dt.datetime.now():%Y-%m-%d %H:%M}）を入れてください。\n\n"
@@ -198,7 +227,7 @@ def run_candidate(candidate: dict[str, Any], dry_run: bool = False) -> dict[str,
     prompt = build_prompt(candidate)
     try:
         proc = subprocess.run(
-            ["claude", "--print", prompt],
+            build_command(candidate, prompt),
             capture_output=True,
             text=True,
             timeout=CLAUDE_TIMEOUT_SEC,

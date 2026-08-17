@@ -138,6 +138,12 @@ Brief 生成の直前に呼ぶため、同じ実行で新しい結果が蒸留�
 | `AGENT_RECHECK_DISABLED` | 未設定 | `1` でキルスイッチ（即停止） |
 | `AGENT_RECHECK_DAILY_LIMIT` | `3` | 1日あたりの再実行数。`0` で無効化 |
 | `AGENT_RECHECK_MAX_CONSECUTIVE_FAILURES` | `2` | 連続失敗で中断 |
+| `AGENT_RECHECK_PERMISSION_MODE` | `acceptEdits` | `claude --print` の権限モード |
+
+`claude --print` は非対話実行のため許可を尋ねる相手が居ない。権限モードを指定しないと
+レポートの書き込みが通らないので `acceptEdits` を既定にしている。Bash を多用する
+エージェントが権限で止まる場合は `dontAsk` を検討する（`bypassPermissions` は全チェックを
+外すため既定にしない）。エージェントの選択はプロンプト頼みにせず `--agent` で明示する。
 
 手動実行は `python3 scripts/recheck_stale_agent_reports.py --dry-run` で対象だけ確認できる。
 エージェントを追加したら `AGENT_REPORT_DIRS` の対応表も更新すること（名前とディレクトリ名は
