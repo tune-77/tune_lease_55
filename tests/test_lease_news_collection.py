@@ -164,3 +164,52 @@ def test_daily_digest_shows_fresh_content_after_related_report_merge(tmp_path):
     assert any("補助金の後押し" in line for line in item["summary_lines"])
     assert "円安" not in item["title"]
     assert not any("円安" in line for line in item["summary_lines"])
+
+
+def test_news_action_reflects_escalated_risk_after_related_report_merge(tmp_path):
+    """続報でトピックの実質的なリスク種別が変わったら、region/importance/tags/活用メモ/
+    リンクも当日内容へ更新され、審査アクション推論(_infer_news_action)が新しいリスクを
+    拾うべき（タイトル/3行要約の更新だけでは不十分）。
+    """
+    vault = tmp_path / "vault"
+    news_dir = "05-クリップ_記事/業界リスクニュース"
+
+    first = _article(
+        title="設備投資が拡大",
+        link="https://example.com/story/10",
+        source="日経",
+        summary="設備投資が拡大している。背景に円安がある。",
+        tags=("設備投資",),
+        score=1,
+    )
+    news.classify_articles([first], use_ai=False)
+    news._save_articles_to_obsidian([first], vault, news_dir, "2026-08-10", "industry-watch")
+
+    # 続報で、実は金利上昇による資金繰り悪化という信用リスクの強い話に発展した。
+    second = _article(
+        title="設備投資向け融資に急ブレーキ、金利上昇で資金繰り悪化",
+        link="https://reuters.example.com/story/11",
+        source="Reuters",
+        summary="金利上昇で資金繰りが悪化している。倒産増加の懸念も出ている。",
+        tags=("金利", "与信"),
+        score=2,
+    )
+    news.classify_articles([second], use_ai=False)
+
+    existing = news._load_existing_news(vault, news_dir)
+    assert len(existing) == 1
+    record = existing[0]
+    merged = news._merge_related_report(record, second, "2026-08-15", "2026-W33", "2026-08")
+    assert merged is True
+
+    parsed = lease_news_digest._parse_news_note(Path(record["path"]))
+    assert parsed["region"] == "米国", "続報の発信元(Reuters)を踏まえた地域へ更新されるべき"
+    assert parsed["importance"] == "高", "続報のスコア・タグを踏まえた重要度へ更新されるべき"
+    assert parsed["tags"] == ["金利", "与信"]
+    assert "金利" in parsed["usage_memo"], "活用メモが続報のタグに基づく内容へ更新されるべき"
+    assert parsed["article_url"] == second.link, "詳細セクションのリンクが最新記事へ更新されるべき"
+
+    action = lease_news_digest._infer_news_action(parsed)
+    assert "金利負担・返済余力" in action.risk_flags, (
+        "region/importance/tagsが古いままだと、審査アクション推論が続報の信用リスクを拾えない"
+    )

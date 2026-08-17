@@ -916,6 +916,20 @@ def _update_title_and_summary(raw: str, article: Article) -> str:
     return raw
 
 
+def _update_usage_memo(raw: str, review: str) -> str:
+    return re.sub(
+        r"(^## 活用メモ\n)(.*?)(?=\n## )",
+        lambda m: m.group(1) + review,
+        raw,
+        count=1,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+
+
+def _update_detail_link(raw: str, link: str) -> str:
+    return re.sub(r"^- link:\s*.*$", f"- link: {link}", raw, count=1, flags=re.MULTILINE)
+
+
 def _merge_related_report(
     record: dict[str, Any],
     article: Article,
@@ -941,10 +955,17 @@ def _merge_related_report(
     raw = _update_frontmatter_field(raw, "date", date_str)
     raw = _update_frontmatter_field(raw, "week", week)
     raw = _update_frontmatter_field(raw, "month", month)
-    # dateだけ更新してもタイトル/3行要約が初回作成時のままだと、日次ダイジェストは
-    # 「today判定は通るが中身は何日も同じ」になり、体感としては直っていない。
-    # 続報の最新記事内容でタイトル/3行要約を上書きする。
+    # dateだけ更新してもタイトル/3行要約/region/importance/tags/活用メモ/リンクが
+    # 初回作成時のままだと、日次ダイジェストや審査アクション推論(_infer_news_action)が
+    # 何日経っても最初の記事の内容・重要度・地域・タグで判断し続けてしまう。
+    # 続報の最新記事内容で、日次ダイジェストと審査アクションが実際に読む項目を全て上書きする。
     raw = _update_title_and_summary(raw, article)
+    raw = _update_frontmatter_field(raw, "region", _infer_region(article))
+    raw = _update_frontmatter_field(raw, "importance", _infer_importance(article))
+    raw = _update_frontmatter_field(raw, "source", _yaml_string(article.source or "Google News"))
+    raw = _update_frontmatter_field(raw, "tags", json.dumps(list(article.tags), ensure_ascii=False))
+    raw = _update_usage_memo(raw, _review_line(article.tags, article.theme))
+    raw = _update_detail_link(raw, article.link)
     path = Path(record["path"])
     path.write_text(raw, encoding="utf-8")
     record["raw"] = raw
