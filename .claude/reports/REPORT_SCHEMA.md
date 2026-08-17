@@ -1,20 +1,17 @@
 # エージェント間レポートスキーマ
 
-エージェントはタスク完了後に以下の形式でレポートを書く。
-後続エージェントはこのレポートを読んでから作業を開始する。
+理由: レポートの書式が揺れると後続エージェントが frontmatter を解釈できず、上流の status や reads_from を取りこぼす。
+適用条件: `.claude/reports/` 配下へレポートを書く時。
+削除条件: レポート生成がテンプレート化・自動検証され、書式を人手で守る必要がなくなった時。
 
-## ファイル配置
+このファイルは **レポートの書式のみ** を定義する。
 
-```
-.claude/reports/
-  file-searcher/latest.md      ← 対象ファイル一覧
-  impact-analysis/latest.md   ← ビジネス影響分析
-  code-review/latest.md        ← コード品質レビュー
-  security/latest.md           ← セキュリティ検査
-  build/latest.md              ← ビルド結果
-  test-results/latest.md       ← テスト実行結果
-  log-analysis/latest.md       ← ログ分析結果
-```
+- **どのエージェントがどこへ書き、どの上流を読むか** → `.claude/AGENTS.md` が正。
+- **エージェントの実行順・依存関係** → `.claude/AGENTS.md` が正。
+
+過去にこのファイルと `.claude/AGENTS.md` が配置図と依存グラフを二重に持ち、
+ドメイン固有エージェント6件が本ファイル側にだけ反映されない乖離が発生した。
+配置・依存をここに再掲しないこと。
 
 ## レポートフォーマット
 
@@ -40,21 +37,17 @@ reads_from: [読み込んだ上流レポート一覧]
 次に動くべきエージェントと、伝えておくべき情報。
 ```
 
-## エージェント依存グラフ
+## frontmatter の書き方
 
-```
-file-searcher
-    ├── impact-analysis   (file-searcher のレポートを読む)
-    ├── code-reviewer     (file-searcher のレポートを読む)
-    │       └── security-checker  (file-searcher + code-review を読む)
-    └── (直接 build/test へも連携可)
+| キー | 必須 | 規則 |
+|------|------|------|
+| `agent` | ✅ | `.claude/agents/` の定義名と一致させる |
+| `task` | ✅ | 1行。何をしたかが分かる粒度で |
+| `timestamp` | ✅ | `YYYY-MM-DD HH:MM`。後続が鮮度を判定するため省略不可 |
+| `status` | ✅ | `success` / `failure` / `partial` のいずれか |
+| `reads_from` | ✅ | **実際に Read したパスのみ** を列挙。読まなかった・存在しなかったパスは含めない。何も読んでいなければ `[]` |
 
-build-runner
-    └── (独立実行 or file-searcher 後)
+## 書き込み先
 
-test-runner
-    └── test-result-analyzer  (test-runner のレポートを読む)
-
-log-file-analyzer
-    └── (独立実行 or test/build 後)
-```
+`.claude/reports/<エージェント名>/latest.md` を上書きする。
+ディレクトリが無ければ作成する（初回実行時は存在しないのが正常）。

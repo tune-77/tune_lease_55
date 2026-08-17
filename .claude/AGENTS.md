@@ -1,5 +1,9 @@
 # レポート駆動エージェント協調プロトコル
 
+理由: サブエージェントは互いの実行結果を直接参照できないため、ファイル経由で受け渡さないと後続が文脈なしで作業して重複調査や矛盾した結論が出る。
+適用条件: `.claude/agents/` に定義されたエージェントを起動する時、およびその出力を読む時。
+削除条件: エージェント間の文脈受け渡しがハーネス側で保証され、レポートファイルを介さずに上流結果を参照できるようになった時。
+
 エージェントはタスク完了後に必ずレポートを `.claude/reports/<agent>/latest.md` へ書く。
 後続エージェントは **作業前に上流レポートを Read ツールで読んでから** 開始する。
 
@@ -110,18 +114,39 @@ reads_from: [読んだ上流レポートのパス]
 | **report-stylist** | agent-team/*, scoring-audit | `report-stylist/latest.md` |
 | **migration-validator** | file-searcher, code-review | `migration/latest.md` |
 
+この表は `.claude/agents/` に定義された14エージェントを対象とする。エージェントを追加・削除したら、この表と上の依存関係図を同時に更新すること。
+
+### レポートディレクトリについての注意
+
+- 上表のディレクトリは **初回実行時に作成される**。存在しなくても異常ではない（`reads_from: []` として扱う）。
+- **上表に載っていないディレクトリを上流レポートとして信頼しないこと。** 例外は `report-stylist` が読む `agent-team/*` のみ（`.claude/agents/` 未定義の実行主体が書くため、鮮度は保証されない）。
+- 過去に `agent-discussion/`・`novelist/`・`general-purpose/` が同様に残存し、数ヶ月更新の止まった内容を誤参照する恐れがあったため削除した（git 履歴から復元可能）。
+- レポートの `timestamp` は必ず確認し、古ければ上流エージェントの再実行を申し送る。
+
+レポートの書式（frontmatter のキーと規則）は `.claude/reports/REPORT_SCHEMA.md` を参照。**配置と依存関係は本ファイルが正**で、REPORT_SCHEMA.md 側に再掲しないこと。
+
 ## カスタムコマンド（スキル）
 
-`.claude/commands/` に以下のスラッシュコマンドが定義されている：
+`.claude/commands/` に以下のスラッシュコマンドが定義されている。**各コマンドの正確な引数・挙動は `.claude/commands/<名前>.md` が正**で、下表は索引。
+
+「対応エージェント」欄の `(--full)` 等は、そのフラグを付けた時だけサブエージェントを起動する意味。フラグなしは軽量な直接実行。所要時間が `—` のものはコマンド定義に記載がない。
 
 | コマンド | 用途 | 対応エージェント | 所要時間 |
 |---------|-----|----------------|---------|
-| `/quick-score` | 物件IDと業種からクイックスコアを計算 | — | 10秒 |
-| `/check-health` | 全依存サービス（Gemini/Ollama/Slack/SQLite）の接続確認 | `api-health-checker` | 30〜120秒 |
-| `/validate-rules` | ウェイト合計・グレード閾値の整合性チェック | `rule-validator` | 10〜数分 |
-| `/generate-report` | 審査レポートの生成・改善提案 | `report-stylist` | 数秒〜数分 |
-| `/audit-scores` | スコアリング異常・乖離の監査 | `scoring-auditor` | 30秒〜数分 |
-| `/check-data` | DBデータ品質チェック（件数・異常値） | `data-quality-checker` | 10秒〜数分 |
-| `/run-tests` | ユニットテスト実行 | `test-runner` | 30〜60秒 |
-| `/build-check` | 全モジュールのインポート・依存パッケージ確認 | `build-runner` | 15秒 |
 | `/analyze-logs` | ログファイルのエラー・警告抽出 | `log-file-analyzer` | 10〜30秒 |
+| `/analyze-variables` | 変数重要度分析（IV / SHAP） | — | — |
+| `/asset-evaluation` | 物件スコア詳細評価 | — | — |
+| `/audit-scores` | スコアリング異常・乖離の監査 | `scoring-auditor` (`--full`) | 30秒〜数分 |
+| `/batch-export` | バッチ審査エクスポート・CSV形式検証 | — | — |
+| `/build-check` | 全モジュールのインポート・依存パッケージ確認 | `build-runner` | 15秒 |
+| `/case-similarity` | 類似事例検索 | — | — |
+| `/check-data` | DBデータ品質チェック（件数・異常値） | `data-quality-checker` (`--full`) | 10秒〜数分 |
+| `/check-health` | 全依存サービス（Gemini/Ollama/Slack/SQLite）の接続確認 | `api-health-checker` | 30〜120秒 |
+| `/explain-score` | スコア判定根拠説明 | — | — |
+| `/financial-forecast` | 財務予測・3期分析 | — | — |
+| `/generate-industry-brief` | 業界動向レポート生成 | — | — |
+| `/generate-report` | 審査レポートの生成・改善提案 | `report-stylist` (`--agent`) | 数秒〜数分 |
+| `/optimize-coefficients` | 係数自動最適化 | — | — |
+| `/quick-score` | 業種・売上・リース額からクイックスコアを計算 | — | 10秒 |
+| `/run-tests` | ユニットテスト実行 | `test-runner` | 30〜60秒 |
+| `/validate-rules` | ウェイト合計・グレード閾値の整合性チェック | `rule-validator` (`--full`) | 10〜数分 |
