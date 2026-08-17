@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 
 def test_agent_sidecar_reader_extracts_report_sections(tmp_path, monkeypatch):
     from scripts import agent_sidecar_reader as reader
@@ -143,3 +145,53 @@ def test_recheck_heading_appears_only_as_a_heading():
     ):
         markdown = reader.build_markdown(reports)
         assert markdown.count(reader.RECHECK_HEADING) <= 1
+
+
+@pytest.mark.parametrize(
+    "timestamp, expected",
+    [
+        ("2026-08-17 07:03", False),   # "%Y-%m-%d %H:%M"
+        ("2026-08-16T09:00:00", False),  # ISO
+        ("2026-08-17", False),          # 日付のみ
+        ("2026-01-01 09:00", True),     # 十分に古い
+        ("2026-01-01", True),
+        ("", True),
+        ("不正な値", True),
+    ],
+)
+def test_is_stale_parses_each_supported_timestamp_format(timestamp, expected, monkeypatch):
+    """全書式が恒久 stale に落ちる回帰を防ぐ。
+
+    以前は `timestamp[: len(fmt)]` と書式文字列の長さで切っており（"%Y" は
+    2文字だが 4桁を生成する）、どの書式もパースに失敗して常に True を返して
+    いた。結果、新しいレポートまで stale 扱いされ freshness gate が無意味に
+    なっていた。
+    """
+    import datetime as _dt
+
+    from scripts import agent_sidecar_reader as reader
+
+    class _FixedNow(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 17, 12, 0, 0)
+
+    monkeypatch.setattr(reader, "datetime", _FixedNow)
+    assert reader._is_stale(timestamp) is expected
+
+
+def test_is_stale_boundary_around_threshold(monkeypatch):
+    import datetime as _dt
+
+    from scripts import agent_sidecar_reader as reader
+
+    class _FixedNow(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 17, 12, 0, 0)
+
+    monkeypatch.setattr(reader, "datetime", _FixedNow)
+    # ちょうど閾値ぶん前は stale ではない（> 判定）
+    assert reader._is_stale("2026-07-18 12:00") is False
+    # 閾値を1日超えると stale
+    assert reader._is_stale("2026-07-17 11:00") is True

@@ -1,6 +1,6 @@
 # Agent Sidecar Brief
 
-> Generated: 2026-08-17 06:54 | source: `.claude/reports` | mode: read-only advisory
+> Generated: 2026-08-17 07:05 | source: `.claude/reports` | mode: read-only advisory
 
 ## Operating Boundary
 - This brief is advisory context only.

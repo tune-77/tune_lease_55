@@ -87,15 +87,26 @@ def _extract_section(body: str, name: str, max_chars: int = 650) -> str:
     return section[:max_chars].strip()
 
 
+# (書式, その書式が生成する文字数)。スライス幅は書式文字列の長さではなく
+# 出力の長さで決まる（"%Y" は2文字だが 4桁を生成する）。len(fmt) で切ると
+# どの書式もパースに失敗し、全レポートが恒久的に stale 扱いになる。
+_TIMESTAMP_FORMATS = (
+    ("%Y-%m-%d %H:%M", 16),
+    ("%Y-%m-%dT%H:%M:%S", 19),
+    ("%Y-%m-%d", 10),
+)
+
+
 def _is_stale(timestamp: str, max_age_days: int = STALE_AFTER_DAYS) -> bool:
-    if not timestamp:
+    text = (timestamp or "").strip()
+    if not text:
         return True
-    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+    for fmt, width in _TIMESTAMP_FORMATS:
         try:
-            dt = datetime.strptime(timestamp[: len(fmt)], fmt)
-            return (datetime.now() - dt).days > max_age_days
+            parsed = datetime.strptime(text[:width], fmt)
         except ValueError:
             continue
+        return (datetime.now() - parsed).days > max_age_days
     return True
 
 

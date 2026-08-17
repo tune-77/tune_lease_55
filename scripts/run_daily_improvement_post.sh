@@ -81,6 +81,14 @@ echo "[記録] e-Stat業種別統計更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/fetch_estat_industry.py"; log_step "fetch_estat_industry" $?
 
 echo ""
+echo "[監査] STALE なエージェントレポートを再確認キューから再実行（既定1日3件）..."
+# 失敗してもパイプラインを止めない。キルスイッチは AGENT_RECHECK_DISABLED=1。
+# 上限は AGENT_RECHECK_DAILY_LIMIT（既定3、0で無効化）。
+# Brief 生成より前に置くこと。同じ実行で新しい結果が蒸留されるため。
+"${PYTHON}" "${PROJECT_ROOT}/scripts/recheck_stale_agent_reports.py" || true
+log_step "recheck_stale_agent_reports" 0
+
+echo ""
 echo "[補助] Sidecar Agent Brief を生成（読み取り専用）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/agent_sidecar_reader.py"; log_step "agent_sidecar_reader" $?
 
