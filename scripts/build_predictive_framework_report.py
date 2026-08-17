@@ -44,6 +44,8 @@ REPEAT_BELIEF_LIMIT = 10
 # 同じ前提が何回外れたら「繰り返し外している」として先回り提示の対象にするか。
 # 緩めると通知が増えて無視されるため、既定の review_threshold と同じ3から始める。
 REPEAT_ALERT_THRESHOLD = 3
+# リスク帯の逆転を判定するのに必要な最低件数。少数件での逆転は偶然でしかない。
+MIN_CALIBRATION_EVENTS_PER_BAND = 5
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -175,26 +177,39 @@ def build_calibration(event_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def build_calibration_warnings(calibration: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """リスク帯の並びが実績と逆転していないかだけを見る。"""
+    """リスク帯の並びが実績と逆転していないかだけを見る。
+
+    延滞は稀にしか観測されない（結果登録の大半は成約・失注）。両帯とも延滞0件の
+    状態で率だけを比較すると 0.0 <= 0.0 が常に成立し、異常が無くても警告が出続ける。
+    そのため「延滞が1件以上観測されていること」と「各帯に最低限の件数があること」を
+    前提条件にし、それを満たさない間は判定不能として黙る。
+    """
     by_risk = {row["risk_level"]: row for row in calibration}
     warnings: list[dict[str, Any]] = []
 
     high = by_risk.get("high")
     low = by_risk.get("low")
-    if high and low and high["events"] and low["events"]:
-        high_delinquency = high["delinquency_rate"]
-        low_delinquency = low["delinquency_rate"]
-        if high_delinquency is not None and low_delinquency is not None and high_delinquency <= low_delinquency:
-            warnings.append(
-                {
-                    "kind": "risk_order_inverted",
-                    "message": (
-                        f"高リスク予測の延滞率({high_delinquency})が低リスク予測({low_delinquency})を上回っていない。"
-                        "リスクの並びが実績と逆転している可能性がある。"
-                    ),
-                    "requires_human_review": True,
-                }
-            )
+    if not high or not low:
+        return warnings
+    if high["events"] < MIN_CALIBRATION_EVENTS_PER_BAND or low["events"] < MIN_CALIBRATION_EVENTS_PER_BAND:
+        return warnings
+    if (high["delinquency"] + low["delinquency"]) < 1:
+        # 延滞が一度も出ていない＝並びを判定する材料が無い。異常ではない。
+        return warnings
+
+    high_delinquency = high["delinquency_rate"]
+    low_delinquency = low["delinquency_rate"]
+    if high_delinquency is not None and low_delinquency is not None and high_delinquency <= low_delinquency:
+        warnings.append(
+            {
+                "kind": "risk_order_inverted",
+                "message": (
+                    f"高リスク予測の延滞率({high_delinquency})が低リスク予測({low_delinquency})を上回っていない。"
+                    "リスクの並びが実績と逆転している可能性がある。"
+                ),
+                "requires_human_review": True,
+            }
+        )
     return warnings
 
 

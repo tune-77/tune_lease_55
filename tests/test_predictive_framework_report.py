@@ -91,12 +91,16 @@ def test_calibration_counts_outcomes_per_risk_band():
     assert [row["risk_level"] for row in calibration] == ["high", "low"]
 
 
+def _band(risk_level: str, count: int, *, delinquent: int = 0) -> list[dict]:
+    return [
+        _event(case_id=f"{risk_level}-{i}", risk_level=risk_level, delinquency=i < delinquent, contracted=i >= delinquent)
+        for i in range(count)
+    ]
+
+
 def test_warns_when_risk_order_is_inverted():
     calibration = report_module.build_calibration(
-        [
-            _event(case_id="a", risk_level="high", contracted=True),
-            _event(case_id="b", risk_level="low", delinquency=True),
-        ]
+        _band("high", 5) + _band("low", 5, delinquent=2),
     )
 
     warnings = report_module.build_calibration_warnings(calibration)
@@ -107,10 +111,22 @@ def test_warns_when_risk_order_is_inverted():
 
 def test_no_warning_when_risk_order_holds():
     calibration = report_module.build_calibration(
-        [
-            _event(case_id="a", risk_level="high", delinquency=True),
-            _event(case_id="b", risk_level="low", contracted=True),
-        ]
+        _band("high", 5, delinquent=2) + _band("low", 5),
+    )
+
+    assert report_module.build_calibration_warnings(calibration) == []
+
+
+def test_no_warning_while_no_delinquency_has_been_observed():
+    """延滞0件どうしの比較（0.0 <= 0.0）で警告が出続けないこと。"""
+    calibration = report_module.build_calibration(_band("high", 20) + _band("low", 20))
+
+    assert report_module.build_calibration_warnings(calibration) == []
+
+
+def test_no_warning_on_small_samples():
+    calibration = report_module.build_calibration(
+        _band("high", 2) + _band("low", 2, delinquent=1),
     )
 
     assert report_module.build_calibration_warnings(calibration) == []
