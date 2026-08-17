@@ -22,6 +22,7 @@ from typing import Any
 from api.shion_practical_knowledge import infer_practical_scene
 from api.shion_memory_taxonomy import (
     MemoryType,
+    NON_RECALLABLE_STATUSES,
     RECALL_ROUTES,
     SHARED_DIALOGUE_TERMS,
     SHARED_JUDGMENT_TERMS,
@@ -269,7 +270,8 @@ def recall_memories(
         if not isinstance(record, dict):
             continue
         status = str(record.get("status") or "active")
-        if status in {"private", "deprecated"}:
+        # 除外集合はベクトル同期側と共有する（NON_RECALLABLE_STATUSES の定義コメント参照）
+        if status in NON_RECALLABLE_STATUSES:
             continue
         content = str(record.get("content") or "").strip()
         if not content:

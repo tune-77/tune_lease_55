@@ -23,6 +23,13 @@ MemoryType = Literal[
 
 MemoryStatus = Literal["active", "revised", "deprecated", "private", "stale"]
 
+# 想起対象外のステータス。想起側（api/shion_memory_recall.recall_memories）と
+# ベクトル同期側（api/shion_memory_vector.sync_from_index）が必ず同じ集合を使うため、
+# ここを唯一の定義元にする。片方だけに status を足すと「想起は候補に入れるのに
+# ベクトル表現が無い（=埋め込みブーストを受けられない）記憶」が生まれ、
+# 言い換え質問で沈む。
+NON_RECALLABLE_STATUSES: frozenset[str] = frozenset({"private", "deprecated"})
+
 MemoryLayer = Literal["short_term", "mid_term", "long_term", "persistent", "retrieval"]
 
 MEMORY_TYPES: dict[MemoryType, dict[str, str]] = {
