@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+from constants import APPROVAL_LINE
 from data_cases import get_effective_coeffs
 from grade_normalizer import is_excluded_grade, normalize_grade
 from industry_normalizer import normalize_industry_major, normalize_industry_sub
@@ -520,7 +521,7 @@ def _score_one(row: dict) -> dict:
             _aw = _wt.get("asset_w")
             _ow = _wt.get("obligor_w")
             if _aw is not None and _ow is not None:
-                _approval_line = res.get("approval_line", 71)
+                _approval_line = res.get("approval_line", APPROVAL_LINE)
                 _weighted_score = round(asset_score * _aw + res["score"] * _ow, 1)
                 res["score"]          = _weighted_score
                 res["score_base"]     = _weighted_score

@@ -8,6 +8,7 @@ import streamlit as st
 from scipy import stats
 
 from ai_chat import _gemini_chat
+from constants import APPROVAL_LINE
 from data_cases import load_all_cases
 from analysis_regression import run_contract_driver_analysis
 from industry_normalizer import normalize_industry_major, normalize_industry_sub
@@ -453,7 +454,9 @@ def _build_dept_industry_frame(all_cases: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _build_dept_score_summary(df_dept: pd.DataFrame, threshold: float = 71.0) -> pd.DataFrame:
+def _build_dept_score_summary(
+    df_dept: pd.DataFrame, threshold: float = float(APPROVAL_LINE)
+) -> pd.DataFrame:
     if df_dept.empty or "スコア" not in df_dept.columns:
         return pd.DataFrame()
     valid = df_dept[df_dept["結果"].isin(["成約", "失注"])].copy()
@@ -1032,8 +1035,8 @@ def _build_gemini_prompt(
 ## 出力要件
 1. 3〜6個の箇条書きで、重要な示唆を先に述べること
 2. 営業部ごとの業種偏り、成約件数の強弱、月次の金利変動を必ず触れること
-3. 営業部ごとの平均スコア、FN率、FP率、閾値71との差を必ず触れること
-4. 71点を何点に見直すべきか、全体と営業部別の両方について必ず提案すること。Youden指数 / FN重視 / FP重視 の3基準を使って、具体的な点数で述べること
+3. 営業部ごとの平均スコア、FN率、FP率、閾値{APPROVAL_LINE}との差を必ず触れること
+4. {APPROVAL_LINE}点を何点に見直すべきか、全体と営業部別の両方について必ず提案すること。Youden指数 / FN重視 / FP重視 の3基準を使って、具体的な点数で述べること
 5. 足利営業部はフル判断、それ以外は参考判断であることを明示すること
 6. 営業部ごとの平均金利の変動差にも触れること
 7. 各項目について、営業部間に有意差があるかを必ず触れること
@@ -1099,7 +1102,10 @@ def _render_dept_analysis(df_dept: pd.DataFrame, threshold_reco: pd.DataFrame | 
     score_summary = _build_dept_score_summary(df_dept)
     if not score_summary.empty:
         st.markdown("#### 🔎 営業部別のスコア・誤判定率")
-        st.caption("FN率 = 成約案件のうち失注判定になった割合、FP率 = 失注案件のうち成約判定になった割合。閾値71との差は平均スコア-71。")
+        st.caption(
+            "FN率 = 成約案件のうち失注判定になった割合、FP率 = 失注案件のうち成約判定になった割合。"
+            f"閾値{APPROVAL_LINE}との差は平均スコア-{APPROVAL_LINE}。"
+        )
         st.dataframe(
             score_summary[["営業部", "件数", "成約率(%)", "平均スコア", "閾値差", "FN率(%)", "FP率(%)", "FP件数", "FN件数"]]
             .style.format({
@@ -1124,13 +1130,13 @@ def _render_dept_analysis(df_dept: pd.DataFrame, threshold_reco: pd.DataFrame | 
         ))
         fig_score.add_trace(go.Scatter(
             x=score_summary["営業部"],
-            y=[71.0] * len(score_summary),
-            name="閾値71",
+            y=[float(APPROVAL_LINE)] * len(score_summary),
+            name=f"閾値{APPROVAL_LINE}",
             mode="lines",
             line=dict(color="#111827", dash="dash", width=2),
         ))
         fig_score.update_layout(
-            title="営業部別の平均スコアと閾値71",
+            title=f"営業部別の平均スコアと閾値{APPROVAL_LINE}",
             yaxis_title="スコア",
             height=320,
             margin=dict(l=20, r=20, t=50, b=20),
