@@ -243,6 +243,18 @@ def get_shion_proactive_alert() -> dict:
     return check_shion_proactive_alerts()
 
 
+@router.get("/api/shion/judgment-prediction-alert")
+def get_shion_judgment_prediction_alert(limit: int = 3) -> dict:
+    """繰り返し外している前提を、案件を開いた時点で先回りして返す。
+
+    日次レポート（reports/predictive_framework_latest.json）を読むだけで、
+    スコアリング・判断資産は変更しない。該当が無ければ has_alert=False を返す。
+    """
+    from api.shion_proactive_alert import check_judgment_prediction_alert
+
+    return check_judgment_prediction_alert(limit=limit)
+
+
 @router.get("/api/shion/latent-need-alert")
 def get_shion_latent_need_alert(prefecture: str = "", industry: str = "") -> dict:
     """案件の業種・地域に基づき、紫苑から能動的に伝えられる気づき（業界動向・審査上の注意点）があるか判定する。"""

@@ -244,6 +244,11 @@ echo "[育成] 経験フライホイール候補を生成（context/decision/fee
 log_step "build_experience_flywheel_report" $?
 
 echo ""
+echo "[予測] 予測的フレームワークの観測レポートを生成（予測カバー率・キャリブレーション。自動反映なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_predictive_framework_report.py" || true
+log_step "build_predictive_framework_report" 0
+
+echo ""
 echo "[評価] 経験フライホイールからリプレイ評価セットを生成（既存評価セットは上書きしない）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_experience_replay_eval_set.py"
 log_step "build_experience_replay_eval_set" $?
