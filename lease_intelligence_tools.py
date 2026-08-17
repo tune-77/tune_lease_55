@@ -581,6 +581,7 @@ def get_pipeline_status(recent: int = 5) -> dict[str, Any]:
     「パイプラインの状況は？」「最近どんな改善が適用された？」「自己改善は回ってる？」
     といった質問に答えるためのツール。以下の3ソースを集約する。
     - REV台帳(scripts/improvement_ledger.jsonl): ステータス別件数と直近適用REV
+      （PR/REV反映専用のCI台帳。台帳の全体像は scripts/README_ledger.md 参照）
     - 自己改善レポート(reports/recursive_self_improvement_latest.md): 生成時刻・主要指標
     - 紫苑の未完了調査タスク(shion_pending_tasks.json): 件数と topic
     """

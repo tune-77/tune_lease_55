@@ -7,9 +7,17 @@
 | ファイル | 場所 | 誰が書くか | 内容 |
 |---|---|---|---|
 | `ledger.jsonl` | `~/Library/Logs/tunelease/ledger.jsonl`（ローカルPC、リポジトリ外） | `pipeline_ledger.py`（`.agents/skills/auto-improvement-pipeline/`） | 日次改善パイプラインが処理した**全アイデア**の履歴（applied/needs_review/parked/rejected/deleted） |
-| `improvement_ledger.jsonl` | `scripts/improvement_ledger.jsonl`（リポジトリにコミット、295行） | `.github/workflows/ledger-sync.yml` が PRマージ時に `cleanup_improvement_reviews.py --apply` を実行 | **PRとREV番号の紐付けだけ**を反映したCI用コピー |
+| `improvement_ledger.jsonl` | `scripts/improvement_ledger.jsonl`（リポジトリにコミット、295行） | `.github/workflows/ledger-sync.yml` が PRマージ時に `cleanup_improvement_reviews.py --apply` を実行 | **PRとREV番号の紐付けだけ**を反映したCI台帳 |
 
 どちらも `cleanup_improvement_reviews.py` の同じロジックが書き込むが、宛先は環境変数 `LEDGER_PATH` で切り替わる（ローカル実行時はホームディレクトリ、CI実行時は `scripts/improvement_ledger.jsonl` に上書き）。**両者は自動では同期されない** — CI台帳はPRマージ起点の反映のみ、ローカル台帳は日次パイプラインの全ステータス遷移を持つため、内容が食い違いうる。
+
+⚠️ **`scripts/improvement_ledger.jsonl` は「CIの内部ファイル」ではなく本番稼働中の読み取り対象。** リネームや構造変更は以下に直接影響する:
+
+- `api/main.py` の `_load_improvement_ledger_summary()`（chat API の応答内容に反映）
+- `lease_intelligence_tools.py`（紫苑が「パイプラインの状況は？」に答える際のツール）
+- `scripts/build_loop_proof.py` → `reports/loop_proof.html` → `frontend/src/app/loop-proof/page.tsx`（フロントエンド表示ページ）
+
+このファイルに触れる変更は、上記3経路（chat応答・紫苑ツール・loop-proofページ）の実動作確認をセットで行うこと。
 
 ## 2. キーが2形式ある（CLAUDE.mdでも警告済み）
 
