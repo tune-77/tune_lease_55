@@ -24,12 +24,17 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
 _CHROMA_DIR = str(_REPO_ROOT / "api" / "chroma_db")
 _COLLECTION_NAME = "shion_memory"
+# 最後に同期した索引の指紋を置くサイドカー。コレクションの metadata を使うと
+# chromadb の版差に依存するため、ファイル1枚で持つ方が壊れにくい。
+_SYNC_STATE_PATH = Path(_CHROMA_DIR) / ".shion_memory_sync_state.json"
 
 _lock = threading.Lock()
 _client: Any = None
 _encoder: Any = None
 _import_failed = False
 _background_sync_started = False
+# 直前に同期を試みた索引指紋。同じ指紋で何度も再同期しないための空回り防止。
+_last_sync_attempt_fingerprint = ""
 
 
 def hybrid_enabled() -> bool:
@@ -108,6 +113,56 @@ def is_available() -> bool:
         return False
 
 
+def index_fingerprint(index_path: Path = _INDEX_PATH) -> str:
+    """索引ファイルの指紋（mtime+size）。読めなければ空文字。
+
+    中身のハッシュではなく stat のみなのは、想起1回ごとに呼ばれる鮮度判定を
+    索引全体のパースなしで済ませるため。
+    """
+    try:
+        st = Path(index_path).stat()
+    except OSError:
+        return ""
+    return f"{st.st_mtime_ns}:{st.st_size}"
+
+
+def _read_synced_fingerprint() -> str:
+    try:
+        data = json.loads(_SYNC_STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(data.get("index_fingerprint") or "") if isinstance(data, dict) else ""
+
+
+def _write_synced_fingerprint(fingerprint: str, synced: int) -> None:
+    if not fingerprint:
+        return
+    payload = {
+        "index_fingerprint": fingerprint,
+        "synced": synced,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    try:
+        _SYNC_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _SYNC_STATE_PATH.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("[ShionMemoryVector] sync state unwritable: %s", exc)
+
+
+def index_sync_is_stale(index_path: Path = _INDEX_PATH) -> bool:
+    """索引がベクトルコレクションより新しいか（=同期漏れがあるか）。
+
+    記憶の改訂（scripts/revise_shion_memory.py）は索引へ後継記憶を追記するが、
+    ベクトル側は全量再構築バッチでしか更新されない。コレクションが空でない限り
+    自動復元も走らないため、これを見ないと後継記憶が埋め込みブーストを受けられず、
+    改訂済みの旧結論（コレクションに残っている）の方が言い換え質問で上位に来る。
+    """
+    fingerprint = index_fingerprint(index_path)
+    if not fingerprint:
+        return False  # 索引が読めない時は判定不能。無用な再同期を避ける。
+    return fingerprint != _read_synced_fingerprint()
+
+
 def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> dict[str, int]:
     """記憶索引の内容をベクトルコレクションへ同期する（全量再構築）。
 
@@ -132,6 +187,8 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
         logger.warning("[ShionMemoryVector] index unreadable: %s", exc)
         return {"synced": 0, "skipped": 0, "available": 0}
 
+    from api.shion_memory_taxonomy import NON_RECALLABLE_STATUSES
+
     records = [r for r in data.get("records") or [] if isinstance(r, dict)]
     targets: list[dict[str, Any]] = []
     skipped = 0
@@ -139,7 +196,9 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
         status = str(record.get("status") or "active")
         rid = str(record.get("id") or "")
         content = str(record.get("content") or "").strip()
-        if not rid or not content or status in {"private", "deprecated"}:
+        # 除外集合は想起側と共有する。片方だけ広げるとベクトル表現の無い
+        # 想起候補が生まれる（NON_RECALLABLE_STATUSES の定義コメント参照）。
+        if not rid or not content or status in NON_RECALLABLE_STATUSES:
             skipped += 1
             continue
         targets.append(record)
@@ -193,6 +252,9 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
         elapsed_ms=(time.monotonic() - started) * 1000,
         item_count=synced,
     )
+    # 同期した索引の指紋を残す。次回以降 index_sync_is_stale() が
+    # 「索引だけ進んでコレクションが取り残された」状態を検出できる。
+    _write_synced_fingerprint(index_fingerprint(index_path), synced)
     return {"synced": synced, "skipped": skipped, "available": len(targets)}
 
 
@@ -203,12 +265,18 @@ def _ensure_background_sync() -> None:
     SHION_MEMORY_HYBRID=1 を設定するだけで初回起動時に自動構築される必要がある。
     構築完了まで想起はキーワードのみで動き、完了後の質問からハイブリッドになる。
     """
-    global _background_sync_started
+    global _background_sync_started, _last_sync_attempt_fingerprint
     if _background_sync_started:
-        return
+        return  # 同期スレッドが実行中
+    fingerprint = index_fingerprint(_resolve_index_path_safe())
     with _lock:
         if _background_sync_started:
             return
+        # 同じ索引指紋で再試行し続けない（同期が失敗し続ける環境での空回り防止）。
+        # 索引が更新されれば指紋が変わり、改訂後の再同期は改めて走る。
+        if fingerprint and fingerprint == _last_sync_attempt_fingerprint:
+            return
+        _last_sync_attempt_fingerprint = fingerprint
         _background_sync_started = True
     thread = threading.Thread(
         target=_background_sync_worker, name="shion-memory-vector-sync", daemon=True
@@ -216,14 +284,26 @@ def _ensure_background_sync() -> None:
     thread.start()
 
 
-def _background_sync_worker() -> None:
+def _resolve_index_path_safe() -> Path:
     try:
         from api.shion_memory_recall import resolve_index_path
 
-        summary = sync_from_index(resolve_index_path())
+        return resolve_index_path()
+    except Exception:
+        return _INDEX_PATH
+
+
+def _background_sync_worker() -> None:
+    global _background_sync_started
+    try:
+        summary = sync_from_index(_resolve_index_path_safe())
         logger.info("[ShionMemoryVector] background sync done: %s", summary)
     except Exception as exc:
         logger.warning("[ShionMemoryVector] background sync failed: %s", exc)
+    finally:
+        # 実行中フラグを下ろす。改訂で索引が再び進んだ時に再同期できるようにする
+        # （旧実装は「起動後1回だけ」で、改訂後の同期漏れを永久に拾えなかった）。
+        _background_sync_started = False
 
 
 def similarity_scores(question: str, *, top_k: int = 24) -> dict[str, float]:
@@ -237,6 +317,12 @@ def similarity_scores(question: str, *, top_k: int = 24) -> dict[str, float]:
     try:
         count = collection.count()
         if count == 0:
+            _ensure_background_sync()
+            return {}
+        if index_sync_is_stale(_resolve_index_path_safe()):
+            # 索引だけ進んでいる（改訂で後継記憶が増えた等）。この状態で
+            # 埋め込みブーストを返すと、コレクションに残っている改訂前の旧結論だけが
+            # 加点され、後継記憶が沈む。再同期を促し、今回はキーワードのみで想起する。
             _ensure_background_sync()
             return {}
         encoder = _get_encoder()
