@@ -23,6 +23,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_SNAPSHOTS = REPO_ROOT / "data" / "prediction_snapshots.jsonl"
+DEFAULT_NUMERIC_FORECASTS = REPO_ROOT / "data" / "prediction_numeric_forecasts.jsonl"
 DEFAULT_EVENTS = REPO_ROOT / "data" / "prediction_error_events.jsonl"
 DEFAULT_CANDIDATES = REPO_ROOT / "data" / "prediction_error_update_candidates.jsonl"
 DEFAULT_REVIEWS = REPO_ROOT / "data" / "prediction_error_candidate_reviews.jsonl"
@@ -88,6 +89,30 @@ def build_snapshot_summary(snapshot_rows: list[dict[str, Any]]) -> dict[str, Any
         "total": len(snapshot_rows),
         "unique_cases": len(cases),
         "by_risk_level": by_risk,
+    }
+
+
+def build_numeric_forecast_summary(forecast_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """数値予測（将来売上・営業利益）の記録状況。
+
+    採点には3〜5年後の実績値が必要だが、現在のDBは成約/失注と延滞しか
+    持っていない。よってここは件数の観測までで、キャリブレーションはしない。
+    """
+    cases: set[str] = set()
+    by_method: dict[str, int] = {}
+    for row in forecast_rows:
+        case_id = _text(row.get("case_id"))
+        if case_id:
+            cases.add(case_id)
+        forecast = row.get("forecast") if isinstance(row.get("forecast"), dict) else {}
+        method = _text(forecast.get("method")) or "unknown"
+        by_method[method] = by_method.get(method, 0) + 1
+    return {
+        "total": len(forecast_rows),
+        "unique_cases": len(cases),
+        "by_method": by_method,
+        "calibratable": False,
+        "calibration_blocker": "future_actuals_not_collected",
     }
 
 
@@ -295,6 +320,7 @@ def build_predictive_framework_report(
     event_rows: list[dict[str, Any]],
     candidate_rows: list[dict[str, Any]],
     review_rows: list[dict[str, Any]],
+    numeric_forecast_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     calibration = build_calibration(event_rows)
     report: dict[str, Any] = {
@@ -302,6 +328,7 @@ def build_predictive_framework_report(
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "policy": "read_only_no_automatic_scoring_or_rag_change",
         "snapshots": build_snapshot_summary(snapshot_rows),
+        "numeric_forecast": build_numeric_forecast_summary(numeric_forecast_rows or []),
         "prediction_coverage": build_prediction_coverage(event_rows),
         "calibration": calibration,
         "calibration_warnings": build_calibration_warnings(calibration),
@@ -344,6 +371,19 @@ def render_markdown(report: dict[str, Any]) -> str:
     if snapshots["by_risk_level"]:
         breakdown = " / ".join(f"{key}={value}" for key, value in sorted(snapshots["by_risk_level"].items()))
         lines.append(f"- リスク帯: {breakdown}")
+    lines.append("")
+
+    numeric = report["numeric_forecast"]
+    lines.append("## 数値予測（将来売上・営業利益）")
+    lines.append("")
+    lines.append(f"- 記録 {numeric['total']} 件 / 案件 {numeric['unique_cases']} 件")
+    if numeric["by_method"]:
+        breakdown = " / ".join(f"{key}={value}" for key, value in sorted(numeric["by_method"].items()))
+        lines.append(f"- 生成方式: {breakdown}")
+    lines.append(
+        "- 採点は未実施。3〜5年後の実績値をDBが持っていないため、"
+        "当面は記録とカバー率の観測までに留める。"
+    )
     lines.append("")
 
     lines.append("## キャリブレーション（予測リスク帯 × 実績）")
@@ -413,6 +453,7 @@ def write_outputs(report: dict[str, Any], *, output_json: Path, output_md: Path)
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshots", type=Path, default=DEFAULT_SNAPSHOTS)
+    parser.add_argument("--numeric-forecasts", type=Path, default=DEFAULT_NUMERIC_FORECASTS)
     parser.add_argument("--events", type=Path, default=DEFAULT_EVENTS)
     parser.add_argument("--candidates", type=Path, default=DEFAULT_CANDIDATES)
     parser.add_argument("--reviews", type=Path, default=DEFAULT_REVIEWS)
@@ -425,6 +466,7 @@ def main() -> int:
         event_rows=read_jsonl(args.events.expanduser()),
         candidate_rows=read_jsonl(args.candidates.expanduser()),
         review_rows=read_jsonl(args.reviews.expanduser()),
+        numeric_forecast_rows=read_jsonl(args.numeric_forecasts.expanduser()),
     )
     write_outputs(report, output_json=args.output_json.expanduser(), output_md=args.output_md.expanduser())
     print(f"saved: {args.output_json.expanduser()}")

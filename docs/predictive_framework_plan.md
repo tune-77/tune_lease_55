@@ -4,7 +4,17 @@
 適用条件: `api/prediction_error_loop.py` / `timesfm_engine.py` / `future_simulation.py` / `montecarlo.py` / `api/shion_proactive_alert.py` に関わる変更を設計・実装する時。
 削除条件: 下記 Phase 1〜4 がすべて完了し、`reports/predictive_framework_latest.md` が日次で安定して出るようになった時（その時点でこの文書は `docs/loop_engineering_map.md` の1行へ縮約する）。
 
-これは**計画文書**であり、実装ではない。この文書の追加だけではスコアリング・API・UI は一切変わらない。
+## 決定事項（2026-08-17）
+
+計画時に未確定だった3点は、以下で確定した。
+
+| 論点 | 決定 | 理由 |
+|---|---|---|
+| 予測スナップショットの接続点 | `/api/score/full` の DB保存直後 | 調査の結果、`/api/cases/register` は**結果登録**（成約/失注）のエンドポイントで、案件が最初に生成されるのは `/api/score/full` の `save_case_log()` だった。ここが「case_id が発行され、かつ結果をまだ知らない」唯一の瞬間になる |
+| レポートの粒度 | 案件単位のみ | チャット側 `response_impact_predictions.jsonl` が予測しているのは「言葉がどう響くか」で、案件側の「成約するか」とは的が違う。同じキャリブレーション表に混ぜると両方の意味が濁る |
+| フェーズ順序 | 1 → 2 → 4 → 3 | Phase 4 は Phase 2 の出力を読むだけで軽く、Phase 3 は計算部の分離が必要で最も重い |
+
+Phase 1〜4 はすべて実装済み（PR分割は当初案から変更し、1ブランチ内でフェーズごとにコミットを分けた）。以下の計画本文は設計意図の記録として残す。
 
 ---
 
@@ -164,20 +174,21 @@
 
 **Phase 1 だけを先に1PRで出す。** 朝レポートに `prediction_coverage` の実数が出てから Phase 2 以降の要否を判断する。カバー率が上がらないなら、そもそも接続点が間違っているので Phase 3・4 を作っても無駄になる。
 
-想定 PR 分割:
+実装は REV-297 の1ブランチにまとめ、フェーズごとにコミットを分けた。
 
-| PR | 内容 | REV |
+| コミット | 内容 | 主なファイル |
 |---|---|---|
-| 1 | この計画文書 | REV-297 |
-| 2 | Phase 1: 予測スナップショット | 別 REV |
-| 3 | Phase 2: 観測レポート + 日次接続 | 別 REV |
-| 4 | Phase 3: 数値予測の API 化 + UI | 別 REV |
-| 5 | Phase 4: 先回り提示 | 別 REV |
+| 1 | この計画文書 | `docs/predictive_framework_plan.md` |
+| 2 | Phase 1: 予測スナップショット | `api/prediction_snapshot.py`、`api/prediction_error_loop.py`、`api/main.py` |
+| 3 | Phase 2: 観測レポート + 日次接続 | `scripts/build_predictive_framework_report.py`、`scripts/run_daily_improvement_post.sh` |
+| 4 | Phase 4: 先回り提示 | `api/shion_proactive_alert.py`、`frontend/src/app/judgment-review/page.tsx` |
+| 5 | Phase 3: 数値予測の本流化 | `future_simulation_core.py`、`api/routers/analytics.py`、`frontend/src/components/analysis/FutureSimulationPanel.tsx` |
 
 ---
 
-## 7. 未確定事項（着手前に要確認）
+## 7. 実装後に残っている限界
 
-1. **接続点**: 予測スナップショットを取るのは `/api/score/calculate`（スコア計算時）か `/api/cases/register`（案件登録時）か。前者は取りこぼしが少ないが試し打ちも全部記録される。後者は綺麗だが登録しない検討案件が落ちる。→ **案件登録時を推奨**（誤差を測れるのは結果登録される案件だけのため）
-2. **粒度**: 案件単位のみか、チャット回答（`response_impact_predictions.jsonl`）も同じレポートに含めるか
-3. **Phase 3 の優先度**: 数値予測の本流化は工数が最も大きい。Phase 4（先回り提示）を先に出す選択肢もある
+1. **数値予測は採点できていない**。将来売上・営業利益の予測は `data/prediction_numeric_forecasts.jsonl` に記録し件数は観測しているが、採点には3〜5期後の実績値が必要で、現在のDBは成約/失注と延滞しか持っていない。レポート側も `calibratable: false` / `calibration_blocker: future_actuals_not_collected` と明示している。実績財務を取り込む経路ができるまでキャリブレーションはしない
+2. **スナップショットを取るのは `/api/score/full` の経路だけ**。`api/routers/debate.py`、`api/routers/pipeline_misc.py`、バッチ取り込み経由で作られた案件には事前予測が付かず、結果登録時の逆算にフォールバックする。`prediction_coverage` はこの取りこぼしを含めた実数として読む
+3. **confidence はまだ代理指標**。`abs(score - CONDITIONAL_LINE) / 60 + 0.35` は「承認ラインから遠いほど自信がある」以上の意味を持たない。`confidence_basis`（completeness_ratio / used_default_asset_score / quantum_risk 等）を記録しているので、実データが溜まってから式を見直す
+4. **キャリブレーションは事前予測が溜まるまで参考値**。`prediction_coverage.trustworthy` が false の間は、先回り提示（Phase 4）も意図的に沈黙する

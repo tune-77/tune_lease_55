@@ -275,6 +275,65 @@ def _make_month_labels(start_year: int, start_month: int, count: int) -> list[st
         if m > 12: m = 1; y += 1
     return labels
 
+class FutureSimulationRequest(BaseModel):
+    """将来財務シミュレーションの入力。金額はすべて千円（CLAUDE.md の数値単位を参照）。"""
+
+    sales: float = Field(..., description="現在の売上高（千円）")
+    op_profit: float = Field(0.0, description="現在の営業利益（千円）")
+    drift: float = Field(0.01, ge=-0.5, le=0.5, description="年間期待成長率")
+    volatility: float = Field(0.15, gt=0.0, le=1.0, description="年間ボラティリティ")
+    years: int = Field(5, ge=1, le=10)
+    # 上限を切らないと1リクエストでワーカーを長時間占有できてしまうため固定で頭打ちにする
+    n_simulations: int = Field(5000, ge=100, le=20000)
+    use_timesfm: bool = False
+    sales_history: Optional[List[float]] = None
+    case_id: str = ""
+
+
+@router.post("/api/future-simulation")
+def api_future_simulation(req: FutureSimulationRequest) -> dict:
+    """案件の将来売上・営業利益を確率的にシミュレーションする。
+
+    計算は future_simulation_core.py（Streamlit 版と同じ関数）を使う。
+    case_id を渡すと、審査時点の数値予測として記録する（記録のみ。
+    スコアや判定には影響しない）。
+    """
+    from future_simulation_core import run_business_simulation, simulation_to_json
+
+    simulation = run_business_simulation(
+        current_sales=req.sales,
+        current_op_profit=req.op_profit,
+        drift=req.drift,
+        volatility=req.volatility,
+        years=req.years,
+        n_simulations=req.n_simulations,
+        use_timesfm=req.use_timesfm,
+        sales_history=req.sales_history,
+    )
+    payload = simulation_to_json(simulation)
+    if payload is None:
+        return {"available": False, "reason": "sales_must_be_positive"}
+
+    recorded = {"status": "skipped", "reason": "case_id_not_provided"}
+    if req.case_id.strip():
+        from api.prediction_snapshot import record_numeric_forecast
+
+        recorded = record_numeric_forecast(
+            case_id=req.case_id,
+            forecast=payload,
+            assumptions={
+                "sales": req.sales,
+                "op_profit": req.op_profit,
+                "drift": req.drift,
+                "volatility": req.volatility,
+                "years": req.years,
+                "use_timesfm": req.use_timesfm,
+            },
+        )
+
+    return {"available": True, **payload, "recorded": recorded}
+
+
 @router.post("/api/forecast", response_model=ForecastResponse)
 def api_forecast(req: ForecastRequest):
     from timesfm_engine import TIMESFM_AVAILABLE

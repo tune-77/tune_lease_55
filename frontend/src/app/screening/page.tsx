@@ -21,6 +21,7 @@ import LeasePaymentSimulator from "../../components/analysis/LeasePaymentSimulat
 import QRiskPanel from "../../components/analysis/QRiskPanel";
 import MahalanobisPanel from "../../components/analysis/MahalanobisPanel";
 import UMAPPanel from "../../components/analysis/UMAPPanel";
+import FutureSimulationPanel from "../../components/analysis/FutureSimulationPanel";
 import OcrUpload from "../../components/analysis/OcrUpload";
 import ShionGrowthBadge from "../../components/analysis/ShionGrowthBadge";
 import { ShionScreeningReviewCard } from "../../components/analysis/ShionReviewCard";
@@ -2874,6 +2875,12 @@ export default function Dashboard() {
                               }}
                             />
                           )}
+
+                          <FutureSimulationPanel
+                            salesMillionYen={Number(formData.nenshu ?? 0)}
+                            opProfitMillionYen={Number(formData.op_profit ?? 0)}
+                            caseId={String(result.case_id || "")}
+                          />
 
                           {result.umap_anomaly_score != null && result.umap_x != null && result.umap_y != null && (
                             <UMAPPanel

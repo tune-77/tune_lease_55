@@ -21,6 +21,8 @@ from typing import Any
 from api.loop_engineering_common import DATA_DIR, append_jsonl, load_jsonl
 
 SNAPSHOTS_PATH = DATA_DIR / "prediction_snapshots.jsonl"
+# 数値予測は判断予測と混ぜない（load_prediction_snapshot が誤って拾わないようにするため）
+NUMERIC_FORECASTS_PATH = DATA_DIR / "prediction_numeric_forecasts.jsonl"
 
 SCHEMA_VERSION = 1
 
@@ -191,6 +193,56 @@ def record_prediction_snapshot(
         append_jsonl(snapshots_path, snapshot)
         return {"status": "recorded", "snapshot_id": snapshot["id"], "case_id": snapshot["case_id"]}
     except Exception as err:  # 記録失敗で審査応答を壊さない
+        return {"status": "error", "reason": str(err)}
+
+
+def record_numeric_forecast(
+    *,
+    case_id: str,
+    forecast: dict[str, Any],
+    assumptions: dict[str, Any] | None = None,
+    source: str = "future_simulation",
+    forecasts_path: Path | None = None,
+) -> dict[str, Any]:
+    """審査時点の数値予測（将来売上・営業利益）を別台帳へ記録する。
+
+    判断予測（`prediction_snapshots.jsonl`）とはファイルを分ける。混ぜると
+    `load_prediction_snapshot()` が数値予測を最新の判断予測として拾ってしまうため。
+
+    注意: この予測を採点するには3〜5年後の実績値が必要だが、現在のDBは
+    成約/失注と延滞しか持っていない。よって当面は記録とカバー率の観測までで、
+    キャリブレーションはできない。
+    """
+    try:
+        path = forecasts_path or NUMERIC_FORECASTS_PATH
+        if not _text(case_id):
+            return {"status": "skipped", "reason": "case_id_unavailable"}
+        if not isinstance(forecast, dict) or not forecast:
+            return {"status": "skipped", "reason": "forecast_unavailable"}
+
+        entry = {
+            "schema_version": SCHEMA_VERSION,
+            "event_type": "numeric_forecast_snapshot",
+            "status": "shadow_only",
+            "source": source,
+            "case_id": _text(case_id),
+            "captured_at": _now_iso(),
+            "assumptions": assumptions or {},
+            "forecast": {
+                "method": forecast.get("method"),
+                "unit": forecast.get("unit"),
+                "years": forecast.get("years"),
+                "deficit_prob": forecast.get("deficit_prob"),
+                "final_op_median": forecast.get("final_op_median"),
+                "final_op_worst10": forecast.get("final_op_worst10"),
+            },
+            "calibratable": False,
+            "calibration_blocker": "future_actuals_not_collected",
+            "use_policy": _USE_POLICY,
+        }
+        append_jsonl(path, entry)
+        return {"status": "recorded", "case_id": entry["case_id"]}
+    except Exception as err:
         return {"status": "error", "reason": str(err)}
 
 
