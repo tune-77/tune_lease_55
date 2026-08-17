@@ -747,6 +747,21 @@ def _source_counts(articles: list[Article]) -> list[tuple[str, int]]:
     return sorted(counts.items(), key=lambda item: (item[1], item[0]), reverse=True)
 
 
+def _summary_bullets(article: Article) -> tuple[str, str, str]:
+    review = _review_line(article.tags, article.theme)
+    summary_text = article.summary or ""
+    if summary_text:
+        words = summary_text.split("。")
+        s1 = words[0].strip() + ("。" if words[0].strip() else "")
+        s2 = (words[1].strip() + "。") if len(words) > 1 and words[1].strip() else ""
+        s3 = review
+    else:
+        s1 = article.title
+        s2 = ""
+        s3 = review
+    return s1, s2 or "（詳細なし）", s3
+
+
 def _build_article_content(
     article: Article,
     date_str: str,
@@ -763,17 +778,7 @@ def _build_article_content(
     dedup_id = hashlib.sha256(
         (canonical_url or _normalized_title(article.title, article.source)).encode("utf-8")
     ).hexdigest()[:16]
-    summary_text = article.summary or ""
-    lines: list[str] = []
-    if summary_text:
-        words = summary_text.split("。")
-        s1 = words[0].strip() + ("。" if words[0].strip() else "")
-        s2 = (words[1].strip() + "。") if len(words) > 1 and words[1].strip() else ""
-        s3 = review
-    else:
-        s1 = article.title
-        s2 = ""
-        s3 = review
+    s1, s2, s3 = _summary_bullets(article)
 
     content = f"""---
 date: {date_str}
@@ -799,7 +804,7 @@ classification_source: {article.classification_source}
 
 ## 3行要約
 - {s1}
-- {s2 or "（詳細なし）"}
+- {s2}
 - {s3}
 
 ## 活用メモ
@@ -898,6 +903,19 @@ def _update_frontmatter_field(raw: str, key: str, value: str) -> str:
     return raw[: match.start(1)] + fm + raw[match.end(1) :]
 
 
+def _update_title_and_summary(raw: str, article: Article) -> str:
+    s1, s2, s3 = _summary_bullets(article)
+    raw = re.sub(r"^# .+$", f"# {article.title}", raw, count=1, flags=re.MULTILINE)
+    raw = re.sub(
+        r"(^## 3行要約\n)(?:- .*\n?){1,3}",
+        rf"\1- {s1}\n- {s2}\n- {s3}\n",
+        raw,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    return raw
+
+
 def _merge_related_report(
     record: dict[str, Any],
     article: Article,
@@ -923,6 +941,10 @@ def _merge_related_report(
     raw = _update_frontmatter_field(raw, "date", date_str)
     raw = _update_frontmatter_field(raw, "week", week)
     raw = _update_frontmatter_field(raw, "month", month)
+    # dateだけ更新してもタイトル/3行要約が初回作成時のままだと、日次ダイジェストは
+    # 「today判定は通るが中身は何日も同じ」になり、体感としては直っていない。
+    # 続報の最新記事内容でタイトル/3行要約を上書きする。
+    raw = _update_title_and_summary(raw, article)
     path = Path(record["path"])
     path.write_text(raw, encoding="utf-8")
     record["raw"] = raw
