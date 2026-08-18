@@ -251,6 +251,12 @@ SCORE_PENALTY_IF_LEARNING_REJECT = 0.5  # AIモデル否決時の乗算ペナル
 ALERT_BORDERLINE_MIN = 68               # 承認ライン直下の要確認ゾーン下限
 CAPITAL_DEFICIENCY_PENALTY_DEFAULT = -5.0  # 債務超過時の減点
 
+# Q_risk（量子干渉リスクスコア／financial_consistency_score）閾値の単一ソース。
+# 参照側は constants.Q_RISK_ATTENTION_LINE / Q_RISK_STRONG_WARNING_LINE を import すること。
+# .claude/rules/workflow.md 記載の閾値と一致させる。
+Q_RISK_ATTENTION_LINE = 35       # これ以上 = 要注意
+Q_RISK_STRONG_WARNING_LINE = 60  # これ以上 = 強警戒（credit_quantum_strong_warning 相当）
+
 def get_review_alert(res):
     """
     判定結果 res（last_result）を受け取り、要確認かどうかと理由リストを返す。

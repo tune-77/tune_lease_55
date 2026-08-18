@@ -113,6 +113,7 @@ jobs:
           tests/test_shion_memory_vector.py
           tests/test_validate_improvement_ledger.py
           tests/test_check_frontend_backend_schema.py
+          tests/test_scoring_anomaly_monitor.py
 
   # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）。
   # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。
