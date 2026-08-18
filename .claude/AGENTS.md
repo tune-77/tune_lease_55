@@ -88,7 +88,7 @@ reads_from: [読んだ上流レポートのパス]
 
 [report-stylist]        → .claude/reports/report-stylist/latest.md
     起動タイミング: 審査完了後・スコアリング結果のUI改善要求時
-    reads: agent-team/*, scoring-audit/latest.md
+    reads: agent-team/*, scoring-audit/latest.md, data-quality/latest.md
 
 [migration-validator]   → .claude/reports/migration/latest.md
     起動タイミング: SQLiteスキーマ変更（CREATE/ALTER/DROP）を含むコード変更後
@@ -111,7 +111,7 @@ reads_from: [読んだ上流レポートのパス]
 | **data-quality-checker** | なし | `data-quality/latest.md` |
 | **rule-validator** | file-searcher, code-review | `rule-validation/latest.md` |
 | **api-health-checker** | なし | `api-health/latest.md` |
-| **report-stylist** | agent-team/*, scoring-audit | `report-stylist/latest.md` |
+| **report-stylist** | agent-team/*, scoring-audit, data-quality | `report-stylist/latest.md` |
 | **migration-validator** | file-searcher, code-review | `migration/latest.md` |
 
 この表は `.claude/agents/` に定義された14エージェントを対象とする。エージェントを追加・削除したら、この表と上の依存関係図を同時に更新すること。
@@ -188,11 +188,17 @@ LLM 無しでは生成できない。2 は「不要な再監査を求めない�
 | `/case-similarity` | 類似事例検索 | — | — |
 | `/check-data` | DBデータ品質チェック（件数・異常値） | `data-quality-checker` (`--full`) | 10秒〜数分 |
 | `/check-health` | 全依存サービス（Gemini/Ollama/Slack/SQLite）の接続確認 | `api-health-checker` | 30〜120秒 |
+| `/explain-diff` | 変更差分の要約とレビュー観点の提示 | — | — |
 | `/explain-score` | スコア判定根拠説明 | — | — |
+| `/explore-codebase` | リポジトリ構造・依存関係の高速把握 | — | — |
 | `/financial-forecast` | 財務予測・3期分析 | — | — |
 | `/generate-industry-brief` | 業界動向レポート生成 | — | — |
 | `/generate-report` | 審査レポートの生成・改善提案 | `report-stylist` (`--agent`) | 数秒〜数分 |
 | `/optimize-coefficients` | 係数自動最適化 | — | — |
+| `/plan-feature` | 実装前の作業計画整理（Plan-First Checkpoint） | — | — |
+| `/prepare-release` | PR前の変更履歴・確認事項の整理 | — | — |
 | `/quick-score` | 業種・売上・リース額からクイックスコアを計算 | — | 10秒 |
 | `/run-tests` | ユニットテスト実行 | `test-runner` | 30〜60秒 |
+| `/update-docs` | 変更に合わせたドキュメント更新 | — | — |
 | `/validate-rules` | ウェイト合計・グレード閾値の整合性チェック | `rule-validator` (`--full`) | 10〜数分 |
+| `/write-spec` | 曖昧な依頼を受け入れ条件つき仕様に変換 | — | — |
