@@ -16,28 +16,18 @@ If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out w
 
 ### Every Session
 
-Reason: these files are the continuity layer for a fresh agent session and prevent stale or context-free work.
+Reason: these files are the continuity layer for a fresh agent session and prevent stale or context-free work; priority tags make the order explicit when context is scarce.
 Scope: apply at the start of direct workspace sessions before taking task actions.
 Retirement: remove or rewrite this bootstrap rule only if session context is loaded automatically and verified elsewhere.
 
 Before doing anything else:
-1. Read `SOUL.md` — this is who you are
-2. Read `USER.md` — this is who you're helping
-3. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
-4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
+1. **[P0 必須]** Read `SOUL.md`, `USER.md` — this is who you are and who you're helping
+2. **[P0 必須]** Read `memory/YYYY-MM-DD.md`（今日・昨日、存在しない場合はスキップしてOK）for recent context
+3. **[P0 必須]** **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
+4. **[P1 推奨]** `HEARTBEAT.md` と `memory/heartbeat-state.json` を確認
+5. **[P2 余裕がある時]** 日次メモ整理、`MEMORY.md` の棚卸し
 
 Don't ask permission. Just do it.
-
-#### Session Priority Tags
-Reason: priority tags make the bootstrap order explicit when context is scarce.
-Scope: use for startup context loading only.
-Retirement: remove if the Every Session block is replaced by a tested automatic loader.
-
-- **[P0 必須]** `SOUL.md`, `USER.md` を読む
-- **[P0 必須]** `memory/YYYY-MM-DD.md`（今日・昨日）を読む（存在しない場合はスキップしてOK）
-- **[P0 必須]** MAIN SESSION では `MEMORY.md` を読む
-- **[P1 推奨]** `HEARTBEAT.md` と `memory/heartbeat-state.json` を確認
-- **[P2 余裕がある時]** 日次メモ整理、`MEMORY.md` の棚卸し
 
 ## Memory
 
@@ -84,7 +74,7 @@ Reason: daily files are raw logs while `MEMORY.md` is curated long-term memory.
 Scope: use during heartbeat maintenance and memory review tasks.
 Retirement: remove if daily promotion and pruning become fully automated with reliable review evidence.
 
-The daily pipeline auto-promotes durable items from `memory/YYYY-MM-DD.md` into `MEMORY.md`. During heartbeats (see Heartbeats section below), use this check to:
+During heartbeats (see Heartbeats section below), use this check to catch what the daily auto-promotion pipeline (see Promotion Triggers above) missed:
 1. Read through recent `memory/YYYY-MM-DD.md` files
 2. Identify missed significant events, lessons, or insights worth keeping long-term
 3. Patch `MEMORY.md` when auto-promotion missed something
