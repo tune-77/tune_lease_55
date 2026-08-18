@@ -111,6 +111,7 @@ jobs:
           tests/test_lease_news_collection.py
           tests/test_shion_memory_revisions.py
           tests/test_shion_memory_vector.py
+          tests/test_validate_improvement_ledger.py
 
   # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）。
   # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。
