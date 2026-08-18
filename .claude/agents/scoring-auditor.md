@@ -21,37 +21,15 @@ color: orange
 2. `asset_scorer.py`, `total_scorer.py`, `scoring_core.py` の現在の実装を Read する
 
 ### 作業後（必須）
-`.claude/reports/scoring-audit/latest.md` へ以下のフォーマットで書き込む：
+`.claude/reports/scoring-audit/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: [.claude/reports/file-searcher/latest.md]`）。
 
-```markdown
----
-agent: scoring-auditor
-task: <監査対象の概要>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [.claude/reports/file-searcher/latest.md]
----
+「詳細」相当の内容:
+- 乖離案件（物件スコア／借手スコア／乖離pt、閾値30pt）
+- completeness_ratio低下案件（ファイルパス:行番号、ratio、未入力項目数と影響範囲）
+- used_default_asset_scoreフラグ案件（物件IDが未定義のためデフォルト50点適用）
+- 課題・リスク（判定逆転リスク・隠れた仮定・改善余地）
 
-## サマリー
-（異常件数・深刻度・主要発見を1〜3行で）
-
-## 詳細
-### 乖離案件
-- **<案件名>**: 物件スコア XX / 借手スコア YY → 乖離 ZZpt（閾値: 30pt）
-
-### completeness_ratio 低下案件
-- **<ファイルパス:行番号>**: ratio=0.XX — 未入力項目数と影響範囲
-
-### used_default_asset_score フラグ案件
-- **<案件識別子>**: 物件IDが未定義のためデフォルト50点が適用された
-
-## 課題・リスク
-（判定逆転リスク・隠れた仮定・改善余地）
-
-## 後続エージェントへの申し送り
-- code-reviewer: 修正が必要なロジック箇所
-- test-runner: 追加すべきエッジケーステスト
-```
+申し送り: code-reviewer（修正が必要なロジック箇所）／test-runner（追加すべきエッジケーステスト）
 
 ---
 

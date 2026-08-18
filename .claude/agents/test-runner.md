@@ -10,34 +10,10 @@ color: green
 ## レポート駆動プロトコル
 
 ### 作業後（必須）
-`.claude/reports/test-results/latest.md` へ書き込む：
+`.claude/reports/test-results/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: []`）。
 
-```markdown
----
-agent: test-runner
-task: テスト実行
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: []
----
-
-## サマリー
-合格: X件 / 失敗: Y件 / スキップ: Z件
-
-## 実行コマンド
-```
-<実行したコマンド>
-```
-
-## 失敗テスト
-- `test_name` — エラーメッセージの要約
-
-## 標準出力（抜粋）
-（長い場合は末尾 50 行程度）
-
-## 後続エージェントへの申し送り
-- test-result-analyzer: 失敗原因の分析を依頼
-```
+「詳細」相当の内容: 合格/失敗/スキップ件数、実行コマンド、失敗テスト（テスト名 — エラーメッセージ要約）、標準出力抜粋（長い場合は末尾50行程度）。
+申し送り: test-result-analyzer（失敗原因の分析を依頼）
 
 ## 実行手順
 

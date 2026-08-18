@@ -23,39 +23,15 @@ color: red
 3. `rule_manager.py`, `coeff_definitions.py`, `constants.py`, `scoring_core.py` を Read する
 
 ### 作業後（必須）
-`.claude/reports/rule-validation/latest.md` へ書き込む：
+`.claude/reports/rule-validation/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: [.claude/reports/file-searcher/latest.md, .claude/reports/code-review/latest.md]`）。
 
-```markdown
----
-agent: rule-validator
-task: <検証対象ルールセットの概要>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [.claude/reports/file-searcher/latest.md, .claude/reports/code-review/latest.md]
----
+「詳細」相当の内容:
+- 衝突ルール（ファイル:行番号、ルールAとBが同一条件で異なる結論）
+- デッドルール（ファイル:行番号、常にFalseになる到達不能条件）
+- 閾値矛盾（定数名、A/Bの大小関係が逆になっている）
+- 未テストの境界値（関数名、境界値のテストケース欠如）
 
-## サマリー
-（ルール総数・問題件数・深刻度を1〜3行で）
-
-## 検出された問題
-### 衝突ルール
-- **[ファイル:行番号]** ルールAとルールBが同一条件で異なる結論を返す
-
-### デッドルール（到達不能）
-- **[ファイル:行番号]** 条件 X は常に False になる（上位条件に包含されている等）
-
-### 閾値矛盾
-- **[定数名]** A（値: XX）が B（値: YY）より大きいべき、または逆になっている
-
-### 未テストの境界値
-- **[関数名]** 入力値が境界（XX）のときのテストケースが存在しない
-
-## 課題・リスク
-
-## 後続エージェントへの申し送り
-- code-reviewer: 修正が必要な箇所
-- test-runner: 境界値テストを追加すべき関数
-```
+申し送り: code-reviewer（修正が必要な箇所）／test-runner（境界値テストを追加すべき関数）
 
 ---
 

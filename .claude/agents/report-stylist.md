@@ -25,35 +25,11 @@ color: purple
 4. `components/analysis_results.py` の物件スコア表示セクション（B-1/B-2/B-3）
 
 ### 作業後（必須）
-`.claude/reports/report-stylist/latest.md` へ書き込む：
+`.claude/reports/report-stylist/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: [.claude/reports/agent-team/..., .claude/reports/scoring-audit/...]`）。
 
-```markdown
----
-agent: report-stylist
-task: <レポート対象の審査案件・機能概要>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [.claude/reports/agent-team/..., .claude/reports/scoring-audit/...]
----
-
-## サマリー
-（生成したレポートセクション数・使用したデータソース・UI改善点を1〜3行で）
-
-## 生成コンポーネント
-- [ ] スコアカードバッジ（グレード + 色）
-- [ ] レーダーチャート（カテゴリ別5項目）
-- [ ] 動的ウェイト差分テーブル
-- [ ] 満了時推定スコアexpander
-- [ ] 補助金マッチングカード
-- [ ] 推奨リース条件（3カラム）
-- [ ] エージェント議論サマリー
-
-## スタイリング決定
-（色・フォント・レイアウトの選択理由）
-
-## 課題・リスク
-## 後続エージェントへの申し送り
-```
+「詳細」相当の内容:
+- 生成コンポーネントのチェックリスト（スコアカードバッジ／レーダーチャート／動的ウェイト差分テーブル／満了時推定スコアexpander／補助金マッチングカード／推奨リース条件／エージェント議論サマリー）
+- スタイリング決定（色・フォント・レイアウトの選択理由）
 
 ---
 

@@ -14,42 +14,13 @@ color: purple
 2. 変更されたファイルとその役割を把握してから分析を開始する
 
 ### 作業後（必須）
-`.claude/reports/impact-analysis/latest.md` へ書き込む：
+`.claude/reports/impact-analysis/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: [.claude/reports/file-searcher/latest.md]`）。
 
-```markdown
----
-agent: change-impact-analyzer
-task: <変更内容の概要>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [.claude/reports/file-searcher/latest.md]
----
+「詳細」相当の内容:
+- 影響の大きさ（高/中/低）と、影響を受ける業務ドメイン（審査スコアリング／リースくんウィザード／審査レポート表示／Slackボット・審査フロー／ダッシュボード・分析／エージェント議論機能／設定・係数管理）
+- 影響を受ける画面・機能、ユーザー影響、データ影響（DBスキーマ・セッションデータ・ファイル）
 
-## サマリー
-（影響の大きさ: 高/中/低 + 1行説明）
-
-## 影響を受ける業務ドメイン
-- [ ] 審査スコアリング
-- [ ] リースくんウィザード（入力フロー）
-- [ ] 審査レポート表示
-- [ ] Slack ボット・審査フロー
-- [ ] ダッシュボード・分析
-- [ ] エージェント議論機能
-- [ ] 設定・係数管理
-
-## 影響を受ける画面・機能
-（具体的なページ・コンポーネント名）
-
-## ユーザー影響
-（担当者・エンドユーザーが気づく変化）
-
-## データ影響
-（DB スキーマ・セッションデータ・ファイルへの影響）
-
-## 後続エージェントへの申し送り
-- code-reviewer: 特にリスクが高い変更点を列記
-- security-checker: データ・権限に関わる変更を列記
-```
+申し送り: code-reviewer（リスクが高い変更点）／security-checker（データ・権限に関わる変更）
 
 ## プロジェクトのビジネスドメイン知識
 

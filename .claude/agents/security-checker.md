@@ -17,33 +17,9 @@ color: red
 両方ない場合でも独自にセキュリティスキャンを実施する。
 
 ### 作業後（必須）
-`.claude/reports/security/latest.md` へ書き込む：
+`.claude/reports/security/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: [.claude/reports/file-searcher/latest.md, .claude/reports/code-review/latest.md]`）。
 
-```markdown
----
-agent: security-checker
-task: <チェック対象の概要>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [.claude/reports/file-searcher/latest.md, .claude/reports/code-review/latest.md]
----
-
-## サマリー
-（Critical/High/Medium/Low 件数サマリー）
-
-## 発見事項
-### Critical
-- **[ファイル:行]** — 問題の説明・攻撃シナリオ・推奨修正
-
-### High / Medium / Low
-- ...
-
-## 課題・リスク
-（未解決リスク・要確認事項）
-
-## 後続エージェントへの申し送り
-（修正が必要な場合は具体的に）
-```
+「詳細」相当の内容: Critical/High/Medium/Low件数サマリーと、各発見事項（ファイル:行、問題の説明・攻撃シナリオ・推奨修正）。未解決リスクは課題・リスクに、修正が必要な場合は申し送りに具体的に記載。
 
 ## チェック項目
 

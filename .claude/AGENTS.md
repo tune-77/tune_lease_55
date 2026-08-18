@@ -17,29 +17,7 @@
 
 `reads_from` には実際に Read したパスのみを記載する（存在しなかったパスは含めない）。
 
-## レポートの書き方（全エージェント共通）
-
-```markdown
----
-agent: <自分の名前>
-task: <実施タスク概要>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [読んだ上流レポートのパス]
----
-
-## サマリー
-（1〜3行）
-
-## 詳細
-（箇条書き）
-
-## 課題・リスク
-（なければ「なし」）
-
-## 後続エージェントへの申し送り
-（次に何をすべきか）
-```
+レポートの書式（frontmatterのキーと規則・見出し構成）は `.claude/reports/REPORT_SCHEMA.md` が正。ここには再掲しない。
 
 ## エージェント実行順と依存関係
 
@@ -169,7 +147,7 @@ reads_from: [読んだ上流レポートのパス]
 LLM 無しでは生成できない。2 は「不要な再監査を求めない」だけで、変更があったときに
 誰かが実行する必要は残る。
 
-レポートの書式（frontmatter のキーと規則）は `.claude/reports/REPORT_SCHEMA.md` を参照。**配置と依存関係は本ファイルが正**で、REPORT_SCHEMA.md 側に再掲しないこと。
+**配置と依存関係は本ファイルが正**（書式は冒頭の通り `.claude/reports/REPORT_SCHEMA.md` が正）。REPORT_SCHEMA.md 側に配置・依存関係を再掲しないこと。
 
 ## カスタムコマンド（スキル）
 

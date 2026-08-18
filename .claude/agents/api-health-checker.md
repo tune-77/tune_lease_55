@@ -23,41 +23,12 @@ color: gray
 - 環境変数 `GEMINI_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `ESTAT_API_KEY`, `OLLAMA_HOST` を確認
 
 ### 作業後（必須）
-`.claude/reports/api-health/latest.md` へ書き込む：
+`.claude/reports/api-health/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: []`）。
 
-```markdown
----
-agent: api-health-checker
-task: 全依存サービス疎通確認
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: []
----
-
-## サマリー
-（正常N件 / 異常M件 / 未確認K件）
-
-## サービス別ステータス
-| サービス | ステータス | レスポンス時間 | 備考 |
-|---------|-----------|--------------|------|
-| Gemini API | ✅ 正常 / ❌ 異常 / ⚠️ 低速 | XXms | |
-| Ollama | ✅ / ❌ / ⚠️ | - | モデル: llama3 |
-| Slack Bot Token | ✅ / ❌ | - | workspace: XX |
-| Slack App Token | ✅ / ❌ | - | Socket Mode用 |
-| e-Stat API | ✅ / ❌ | - | |
-| SQLite lease_data.db | ✅ / ❌ | - | サイズ: XXMiB |
-
-## 異常詳細
-（各異常サービスについてエラー内容と推奨対処）
-
-## フォールバック状況
-- Gemini 停止時: Ollama へ自動フォールバック → 現在 Ollama は [正常/異常]
-- Ollama 停止時: AnythingLLM へフォールバック → 現在 [正常/異常]
-- e-Stat 停止時: キャッシュデータで代替 → キャッシュ最終更新: [日時]
-
-## 課題・リスク
-## 後続エージェントへの申し送り
-```
+「詳細」相当の内容:
+- サービス別ステータス表（Gemini API／Ollama／Slack Bot Token／Slack App Token／e-Stat API／SQLite lease_data.db）— ステータス・レスポンス時間・備考
+- 異常詳細（エラー内容と推奨対処）
+- フォールバック状況（Gemini停止時→Ollama、Ollama停止時→AnythingLLM、e-Stat停止時→キャッシュ、それぞれの現在の可否）
 
 ---
 
