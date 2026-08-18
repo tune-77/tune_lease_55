@@ -14,29 +14,14 @@ color: orange
 2. 失敗テストのリストと標準出力を把握する
 
 ### 作業後（必須）
-`.claude/reports/test-results/latest.md` の末尾に以下を追記（上書きしない）：
+`.claude/reports/test-results/latest.md` の末尾に分析結果を追記する（**上書きしない**。frontmatterは `agent` と `追記timestamp` のみ、本文構成は `.claude/reports/REPORT_SCHEMA.md` に準拠）。
 
-```markdown
----
-agent: test-result-analyzer
-追記timestamp: <YYYY-MM-DD HH:MM>
----
+追記内容:
+- 根本原因（失敗テスト名: 原因の説明）
+- 修正方針（ファイルパス:行番号 — 具体的な修正内容）
+- 優先度（Critical即時修正 X件 / Medium次回対応可 Y件）
 
-## 分析結果
-
-### 根本原因
-- 失敗 `test_name`: <原因の説明>
-
-### 修正方針
-- `ファイルパス:行番号` — 具体的な修正内容
-
-### 優先度
-- Critical（即時修正）: X件
-- Medium（次回対応可）: Y件
-
-### 後続エージェントへの申し送り
-- code-reviewer: 修正後に再レビュー推奨
-```
+申し送り: code-reviewer（修正後に再レビュー推奨）
 
 ## 分析観点
 

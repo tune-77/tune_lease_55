@@ -10,33 +10,10 @@ color: blue
 ## レポート駆動プロトコル
 
 ### 作業後（必須）
-`.claude/reports/build/latest.md` へ書き込む：
+`.claude/reports/build/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: []`）。
 
-```markdown
----
-agent: build-runner
-task: ビルド・起動確認
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: []
----
-
-## サマリー
-（成功/失敗 + 主なエラーがあれば1行で）
-
-## 実行内容
-- コアモジュール: OK / NG
-- スコアリングモジュール: OK / NG
-- Slack モジュール: OK / NG
-- 依存パッケージ: OK / NG
-- secrets.toml: 存在 / 未設定（環境変数で代替）
-
-## エラー詳細
-（エラーがある場合のみ）
-
-## 後続エージェントへの申し送り
-- log-file-analyzer: streamlit.log に警告があれば確認推奨
-```
+「詳細」相当の内容: コアモジュール／スコアリングモジュール／Slackモジュール／依存パッケージのOK/NG、secrets.toml存在確認、エラー詳細（あれば）。
+申し送り: log-file-analyzer（streamlit.log に警告があれば確認推奨）
 
 ## ビルド確認手順
 
