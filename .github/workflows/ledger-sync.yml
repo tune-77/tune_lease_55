@@ -68,11 +68,29 @@ jobs:
           EOF
           )
 
-          gh pr create \
+          # ここまでで push は完了しており、台帳更新はブランチに保全されている。
+          # 以降の PR 作成・auto-merge は「あれば嬉しい」段階なので、失敗しても
+          # ジョブを落とさない（落とすと成功しているデータ保全まで赤く見える）。
+          if ! gh pr create \
             --base master \
             --head "$BRANCH" \
             --title "chore: ledger sync after PR #${PR_NUM} merge" \
-            --body "$BODY"
+            --body "$BODY"; then
+            # 既定では Actions による PR 作成はリポジトリ設定で禁止されている
+            # （GraphQL: GitHub Actions is not permitted to create or approve pull requests）。
+            echo "::warning::PRの自動作成が拒否されました。台帳更新はブランチ ${BRANCH} に保全済みです"
+            {
+              echo "### 台帳更新はブランチに保全されています（PR作成は未実行）"
+              echo ""
+              echo "ブランチ: \`${BRANCH}\`"
+              echo ""
+              echo "PR作成URL: https://github.com/${GITHUB_REPOSITORY}/pull/new/${BRANCH}"
+              echo ""
+              echo "恒久対応: Settings → Actions → General → Workflow permissions →"
+              echo "「Allow GitHub Actions to create and approve pull requests」を有効化すると完全自動になります。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
           # auto-merge が無効（設定なし等）でも失敗させない。マージできなくても
           # PR さえ残れば台帳更新は失われない = 旧構成の「毎回捨てられる」より安全。
