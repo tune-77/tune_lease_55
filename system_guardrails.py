@@ -249,6 +249,55 @@ def _audit_data_quality(cases: list[dict]) -> list[dict]:
     return issues
 
 
+def _audit_stats_cache_consistency() -> list[dict]:
+    """dashboard/department 統計キャッシュ(JSON)が、今SQLiteから計算した値と
+    乖離していないかを検査する。
+
+    キャッシュは各書き込み経路(delete_case/update_case/save_case_log/
+    update_case_field)がコミット直後に同期で refresh_stats_caches() を
+    呼ぶことで最新化される設計。乖離が出るのは、そのどれかを経由しない
+    書き込み経路が残っている（キャッシュ再生成の配線漏れ）ことを意味する。
+    """
+    from data_cases import (
+        build_dashboard_stats_cache,
+        build_department_stats_cache,
+        load_dashboard_stats_cache,
+        load_department_stats_cache,
+    )
+
+    issues: list[dict] = []
+
+    cached_dashboard = load_dashboard_stats_cache()
+    if cached_dashboard is not None:
+        live_dashboard = build_dashboard_stats_cache()
+        cached_closed = (cached_dashboard.get("analysis") or {}).get("closed_count")
+        live_closed = (live_dashboard.get("analysis") or {}).get("closed_count")
+        if cached_closed is not None and live_closed is not None and cached_closed != live_closed:
+            issues.append({
+                "severity": "error",
+                "kind": "stats_cache_drift",
+                "message": "dashboard_stats_cache.json の closed_count がDBの実値と乖離しています"
+                f"（キャッシュ={cached_closed} / 実値={live_closed}）。"
+                "refresh_stats_caches() を呼ばない書き込み経路がないか確認してください。",
+            })
+
+    cached_department = load_department_stats_cache()
+    if cached_department is not None:
+        live_department = build_department_stats_cache()
+        cached_total = (cached_department.get("overall") or {}).get("total_count")
+        live_total = (live_department.get("overall") or {}).get("total_count")
+        if cached_total is not None and live_total is not None and cached_total != live_total:
+            issues.append({
+                "severity": "error",
+                "kind": "stats_cache_drift",
+                "message": "department_stats_cache.json の overall.total_count がDBの実値と乖離しています"
+                f"（キャッシュ={cached_total} / 実値={live_total}）。"
+                "refresh_stats_caches() を呼ばない書き込み経路がないか確認してください。",
+            })
+
+    return issues
+
+
 def _build_segment_policy(cases: list[dict], rules: dict[str, Any]) -> dict[str, Any]:
     from collections import Counter
 
@@ -408,6 +457,14 @@ def run_system_guardrails(force: bool = False) -> dict[str, Any]:
     cases = _load_closed_cases()
     rules = load_guardrail_rules()
     issues = _audit_data_quality(cases)
+    try:
+        issues.extend(_audit_stats_cache_consistency())
+    except Exception as exc:
+        issues.append({
+            "severity": "warn",
+            "kind": "stats_cache_drift_check_failed",
+            "message": f"統計キャッシュ整合性チェックの実行に失敗しました: {exc}",
+        })
     policy = _build_segment_policy(cases, rules)
     summary = _build_summary(cases, issues, policy, rules, force)
     _append_run_log(summary)
