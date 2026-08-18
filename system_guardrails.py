@@ -113,12 +113,77 @@ def _safe_float(value: object) -> float | None:
         return None
 
 
-def _load_closed_cases() -> list[dict]:
+def _load_all_cases_raw() -> list[dict]:
     from data_cases import load_all_cases
 
-    cases = [c for c in load_all_cases() if c.get("final_status") in ("成約", "失注", "検収", "検収完了")]
+    return load_all_cases()
+
+
+def _filter_closed_cases(all_cases: list[dict]) -> list[dict]:
+    cases = [c for c in all_cases if c.get("final_status") in ("成約", "失注", "検収", "検収完了")]
     cases.sort(key=lambda c: str(c.get("timestamp") or c.get("final_result_date") or ""))
     return cases
+
+
+def _load_closed_cases() -> list[dict]:
+    return _filter_closed_cases(_load_all_cases_raw())
+
+
+_CACHE_CONSISTENCY_TARGETS = (
+    ("dashboard_stats_cache", "load_dashboard_stats_cache"),
+    ("department_stats_cache", "load_department_stats_cache"),
+)
+
+
+def _audit_cache_consistency(all_cases: list[dict]) -> list[dict]:
+    """統計キャッシュ（dashboard_stats_cache.json / department_stats_cache.json）と
+    SQLite（past_cases）の件数乖離を検知する。
+
+    キャッシュはビルド時の案件件数を source_case_count として保持しており（data_cases.py）、
+    これが現在の SQLite 件数と食い違う場合、書き込み系関数が refresh_stats_caches() を
+    呼び忘れている（例: save_all_cases() の既知バグ）ことを示す。
+    """
+    import data_cases
+
+    issues: list[dict] = []
+    live_count = len(all_cases)
+
+    for cache_name, loader_name in _CACHE_CONSISTENCY_TARGETS:
+        loader = getattr(data_cases, loader_name, None)
+        cache = loader() if loader else None
+        if cache is None:
+            issues.append({
+                "severity": "warn",
+                "kind": "cache_missing",
+                "cache": cache_name,
+                "message": f"{cache_name} が未生成です。ダッシュボード表示に古い値が使われている可能性があります。",
+            })
+            continue
+
+        cached_count = cache.get("source_case_count")
+        if cached_count is None:
+            issues.append({
+                "severity": "info",
+                "kind": "cache_outdated_format",
+                "cache": cache_name,
+                "message": f"{cache_name} に source_case_count がありません（旧形式）。再生成を推奨します。",
+            })
+            continue
+
+        if cached_count != live_count:
+            issues.append({
+                "severity": "error",
+                "kind": "cache_drift",
+                "cache": cache_name,
+                "cached_count": cached_count,
+                "live_count": live_count,
+                "message": (
+                    f"{cache_name} の件数（{cached_count}）が SQLite の実件数（{live_count}）と"
+                    "一致しません。refresh_stats_caches() の再実行が必要です。"
+                ),
+            })
+
+    return issues
 
 
 def _audit_data_quality(cases: list[dict]) -> list[dict]:
@@ -405,9 +470,11 @@ def _maybe_notify(summary: dict[str, Any]) -> bool:
 
 def run_system_guardrails(force: bool = False) -> dict[str, Any]:
     """データ監査・運用ルール・通知をまとめて実行する。"""
-    cases = _load_closed_cases()
+    all_cases = _load_all_cases_raw()
+    cases = _filter_closed_cases(all_cases)
     rules = load_guardrail_rules()
     issues = _audit_data_quality(cases)
+    issues = issues + _audit_cache_consistency(all_cases)
     policy = _build_segment_policy(cases, rules)
     summary = _build_summary(cases, issues, policy, rules, force)
     _append_run_log(summary)
