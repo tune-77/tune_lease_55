@@ -2,6 +2,8 @@
 
 *[日本語版 README はこちら](README.md)*
 
+[![SHION demo video](https://img.youtube.com/vi/KWLbWEHHn-E/hqdefault.jpg)](https://youtu.be/KWLbWEHHn-E)
+
 **SHION is an AI for lease-financing credit review that captures the "something feels off" a human reviewer senses in the field — instead of letting it evaporate — and turns it into checkpoints, conditions, and material for the next decision.**
 
 A financial score alone rarely explains everything. Revenue looks fine, but collection feels risky. The asset isn't bad, but handing it to this company feels uneasy. The deal looks subsidy-dependent. It might pass with the right conditions. These vague, half-formed remarks are exactly what a normal database or rule engine tends to drop.
