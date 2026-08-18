@@ -2,11 +2,19 @@
 
 This folder is home. Treat it that way.
 
-## First Run
+このファイルは「Part 1: 汎用エージェント運用ルール」と「Part 2: プロジェクト固有ルール(tune_lease_55)」に分かれている。Part 1 は他プロジェクト・他ワークスペースでも通用する一般ルール、Part 2 はこのリース審査AIプロジェクト固有のルール。
+
+---
+
+# Part 1: 汎用エージェント運用ルール(プロジェクト非依存)
+
+## Bootstrap
+
+### First Run
 
 If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again.
 
-## Every Session
+### Every Session
 
 Reason: these files are the continuity layer for a fresh agent session and prevent stale or context-free work.
 Scope: apply at the start of direct workspace sessions before taking task actions.
@@ -20,7 +28,7 @@ Before doing anything else:
 
 Don't ask permission. Just do it.
 
-### Session Priority Tags
+#### Session Priority Tags
 Reason: priority tags make the bootstrap order explicit when context is scarce.
 Scope: use for startup context loading only.
 Retirement: remove if the Every Session block is replaced by a tested automatic loader.
@@ -71,6 +79,19 @@ Retirement: remove if session memory becomes durable, reviewable, and synced wit
 - When you make a mistake → document it so future-you doesn't repeat it
 - **Text > Brain** 📝
 
+### 🔄 Memory Maintenance (During Heartbeats)
+Reason: daily files are raw logs while `MEMORY.md` is curated long-term memory.
+Scope: use during heartbeat maintenance and memory review tasks.
+Retirement: remove if daily promotion and pruning become fully automated with reliable review evidence.
+
+The daily pipeline auto-promotes durable items from `memory/YYYY-MM-DD.md` into `MEMORY.md`. During heartbeats (see Heartbeats section below), use this check to:
+1. Read through recent `memory/YYYY-MM-DD.md` files
+2. Identify missed significant events, lessons, or insights worth keeping long-term
+3. Patch `MEMORY.md` when auto-promotion missed something
+4. Remove outdated info from `MEMORY.md` that's no longer relevant
+
+Think of it like a human reviewing their journal and updating their mental model. Daily files are raw notes; MEMORY.md is curated wisdom.
+
 ## Safety
 
 Reason: this workspace can expose private files and external side effects.
@@ -83,7 +104,7 @@ Retirement: keep until equivalent safety checks are enforced outside instruction
 - When in doubt, ask.
 - Do not expand or refactor the daily improvement pipeline unless the user explicitly asks for it. If it is already working, leave it alone.
 
-## External vs Internal
+### External vs Internal
 
 Reason: local exploration and external actions have different risk profiles.
 Scope: use when deciding whether an action can be done immediately or needs user confirmation.
@@ -149,51 +170,7 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 **Don't overdo it:** One reaction per message max. Pick the one that fits best.
 
-## Tools
-
-Skills provide your tools. When you need one, check its `SKILL.md`. Keep local notes (camera names, SSH details, voice preferences) in `TOOLS.md`.
-
-**🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
-
-**📝 Platform Formatting:**
-Reason: Discord/WhatsApp rendering constraints differ from Markdown documents and can make tables or headings hard to read.
-Scope: apply only when writing to Discord, WhatsApp, or similar chat surfaces.
-Retirement: remove if per-platform formatters handle these constraints automatically.
-
-- **Discord/WhatsApp:** No markdown tables! Use bullet lists instead
-- **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
-- **WhatsApp:** No headers — use **bold** or CAPS for emphasis
-
-## AI Chat / Obsidian Search Rule
-
-理由: RAG経路が分散すると検索品質が不安定になり、知識ノートよりログが優先される事故が起きる。
-適用条件: Flask/mobile版、Streamlit版、Next版、軍師AI、ホームFABチャットの Obsidian 参照処理。
-削除条件: 全チャット実装が共通検索サービスへ統合され、直接Vault走査がテストで防止された時。
-
-AIチャットでObsidianを参照する処理は、必ず共通経路を使う。
-
-- 検索語分解: `obsidian_query.py`
-- AIプロンプト用文脈: `obsidian_ai_context.py`
-- Vault検索本体: `mobile_app/obsidian_bridge.py`
-
-禁止:
-- 各チャット実装で `vault.rglob("*.md")` を直接呼ぶ
-- 「補助金について教えて」のような質問文を丸ごと検索語にする
-- `AI Chat` / `Weekly Review` / `Improvement Log` を知識ノートより優先する
-- `/tmp` へのprint/debug書き込みで検索挙動を安定化させる
-
-このルールは Flask/mobile版、Streamlit版、Next版、軍師AI、ホームFABチャットのすべてに適用する。
-
-## Obsidian Save Destination Rule
-
-ユーザーが「Obsidianに保存」「Vaultに保存」と言った場合、既定の保存先は iCloud 上の通常の `Obsidian Vault` とする。
-
-- 既定Vault: `/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault`
-- `lease-wiki-vault` には、ユーザーが明示的に「lease-wiki」「wiki vault」「lease_wikiの方」と指定した場合だけ保存する。
-- リサーチメモや一般メモは、通常Vault内の `Projects/tune_lease_55/Research/`、`Daily/`、または文脈に合う既存フォルダへ保存する。
-- 保存後は、実際の絶対パスを報告し、`lease-wiki-vault` へ保存していないことが重要な文脈では明記する。
-
-## 💓 Heartbeats - Be Proactive!
+## Heartbeats - Be Proactive!
 
 When you receive a heartbeat poll (message matches the configured heartbeat prompt), don't just reply `HEARTBEAT_OK` every time. Use heartbeats productively!
 
@@ -261,26 +238,24 @@ Retirement: remove if proactive maintenance is replaced by explicit scheduled jo
 - Check on projects (git status, etc.)
 - Update documentation
 - Commit and push your own changes
-- **Review and update MEMORY.md** (see below)
-
-### 🔄 Memory Maintenance (During Heartbeats)
-Reason: daily files are raw logs while `MEMORY.md` is curated long-term memory.
-Scope: use during heartbeat maintenance and memory review tasks.
-Retirement: remove if daily promotion and pruning become fully automated with reliable review evidence.
-
-The daily pipeline auto-promotes durable items from `memory/YYYY-MM-DD.md` into `MEMORY.md`. During heartbeats, use this check to:
-1. Read through recent `memory/YYYY-MM-DD.md` files
-2. Identify missed significant events, lessons, or insights worth keeping long-term
-3. Patch `MEMORY.md` when auto-promotion missed something
-4. Remove outdated info from `MEMORY.md` that's no longer relevant
-
-Think of it like a human reviewing their journal and updating their mental model. Daily files are raw notes; MEMORY.md is curated wisdom.
+- **Review and update MEMORY.md** (see Memory Maintenance above)
 
 The goal: Be helpful without being annoying. Check in a few times a day, do useful background work, but respect quiet time.
 
-## Make It Yours
+## Tools
 
-This is a starting point. Add your own conventions, style, and rules as you figure out what works.
+Skills provide your tools. When you need one, check its `SKILL.md`. Keep local notes (camera names, SSH details, voice preferences) in `TOOLS.md`.
+
+**🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
+
+**📝 Platform Formatting:**
+Reason: Discord/WhatsApp rendering constraints differ from Markdown documents and can make tables or headings hard to read.
+Scope: apply only when writing to Discord, WhatsApp, or similar chat surfaces.
+Retirement: remove if per-platform formatters handle these constraints automatically.
+
+- **Discord/WhatsApp:** No markdown tables! Use bullet lists instead
+- **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
+- **WhatsApp:** No headers — use **bold** or CAPS for emphasis
 
 ## Instruction Hygiene
 
@@ -289,3 +264,42 @@ When adding durable instructions to `AGENTS.md`, `CLAUDE.md`, `MEMORY.md`, or a 
 - Reason: rules without rationale become hard to delete safely after their original context is forgotten.
 - Scope: this applies to durable agent guidance, not one-off work notes or raw daily logs.
 - Retirement: remove or rewrite the rule when the underlying workflow, safety risk, or user preference is no longer present.
+
+## Make It Yours
+
+This is a starting point. Add your own conventions, style, and rules as you figure out what works.
+
+---
+
+# Part 2: プロジェクト固有ルール(tune_lease_55 / リース審査AI)
+
+このプロジェクト(tune_lease_55)固有の Obsidian/RAG 連携ルール。他プロジェクトのワークスペースには適用しない。
+
+## AI Chat / Obsidian Search Rule
+
+理由: RAG経路が分散すると検索品質が不安定になり、知識ノートよりログが優先される事故が起きる。
+適用条件: Flask/mobile版、Streamlit版、Next版、軍師AI、ホームFABチャットの Obsidian 参照処理。
+削除条件: 全チャット実装が共通検索サービスへ統合され、直接Vault走査がテストで防止された時。
+
+AIチャットでObsidianを参照する処理は、必ず共通経路を使う。
+
+- 検索語分解: `obsidian_query.py`
+- AIプロンプト用文脈: `obsidian_ai_context.py`
+- Vault検索本体: `mobile_app/obsidian_bridge.py`
+
+禁止:
+- 各チャット実装で `vault.rglob("*.md")` を直接呼ぶ
+- 「補助金について教えて」のような質問文を丸ごと検索語にする
+- `AI Chat` / `Weekly Review` / `Improvement Log` を知識ノートより優先する
+- `/tmp` へのprint/debug書き込みで検索挙動を安定化させる
+
+このルールは Flask/mobile版、Streamlit版、Next版、軍師AI、ホームFABチャットのすべてに適用する。
+
+## Obsidian Save Destination Rule
+
+ユーザーが「Obsidianに保存」「Vaultに保存」と言った場合、既定の保存先は iCloud 上の通常の `Obsidian Vault` とする。
+
+- 既定Vault: `/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault`
+- `lease-wiki-vault` には、ユーザーが明示的に「lease-wiki」「wiki vault」「lease_wikiの方」と指定した場合だけ保存する。
+- リサーチメモや一般メモは、通常Vault内の `Projects/tune_lease_55/Research/`、`Daily/`、または文脈に合う既存フォルダへ保存する。
+- 保存後は、実際の絶対パスを報告し、`lease-wiki-vault` へ保存していないことが重要な文脈では明記する。
