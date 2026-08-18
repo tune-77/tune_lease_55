@@ -101,6 +101,7 @@ AGENT_TRIGGER_PATHS: dict[str, tuple[str, ...]] = {
     "security": ("*.py", "frontend/src"),
     "impact-analysis": ("*.py", "frontend/src"),
     "file-searcher": ("*.py", "frontend/src"),
+    "report-stylist": ("components/analysis_results.py",),
 }
 
 
