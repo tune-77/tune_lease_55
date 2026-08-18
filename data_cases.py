@@ -882,6 +882,7 @@ def save_all_cases(cases):
             except Exception:
                 conn.rollback()
                 raise
+        refresh_stats_caches()
         return True
     except Exception:
         return False

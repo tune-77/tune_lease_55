@@ -102,6 +102,47 @@ def test_load_all_cases_cached_exists():
     assert callable(data_cases.load_all_cases_cached)
 
 
+@pytest.fixture()
+def tmp_db_full(tmp_path, monkeypatch):
+    """save_all_cases() が要求する全カラムを持つ past_cases を用意する。"""
+    db = tmp_path / "test_cases_full.db"
+    with closing(sqlite3.connect(str(db))) as conn:
+        conn.execute("""
+            CREATE TABLE past_cases (
+                id           TEXT PRIMARY KEY,
+                timestamp    TEXT,
+                industry_sub TEXT,
+                score        REAL,
+                user_eq      REAL,
+                final_status TEXT,
+                data         TEXT
+            )
+        """)
+        conn.commit()
+
+    import data_cases
+    monkeypatch.setattr(data_cases, "DB_PATH", str(db))
+    return str(db)
+
+
+def test_save_all_cases_refreshes_stats_caches(tmp_db_full, monkeypatch):
+    """既知バグ回帰テスト: save_all_cases() は refresh_stats_caches() を呼ぶこと。
+
+    save_case_log() / update_case() / delete_case() は書き込み後に
+    refresh_stats_caches() を呼んでキャッシュを再生成するが、save_all_cases() だけが
+    これを怠っており、SQLite と統計キャッシュ（dashboard/department）が乖離する
+    バグがあった。
+    """
+    import data_cases
+
+    calls = []
+    monkeypatch.setattr(data_cases, "refresh_stats_caches", lambda: calls.append(True))
+
+    cases = [{"id": "case_1", "timestamp": "2026-01-01T00:00:00", "final_status": "成約"}]
+    assert data_cases.save_all_cases(cases) is True
+    assert calls == [True]
+
+
 def test_enrich_rate_fields_infers_base_rate(monkeypatch):
     import data_cases
 
