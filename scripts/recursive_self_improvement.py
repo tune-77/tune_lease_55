@@ -239,6 +239,12 @@ def build_recursive_self_improvement(
     for item in ranked_candidates:
         policy = evaluate_auto_fix_policy(item, root)
         item["auto_fix_policy"] = policy
+        # 対象ファイルを特定できない候補（会話・質問形式など）はそもそもコード修正の
+        # 余地がなく、experience_flywheel 側で別途分類済み。needs_review の churn に
+        # 混ぜると「コード改善が滞留している」ように誤読されるため区別しておく。
+        is_conversational_non_code = str(policy.get("reason") or "").startswith("対象ファイル未特定")
+        if is_conversational_non_code:
+            item["category"] = "conversational_non_code"
         key = str(item.get("canonical_key") or "")
         processed, ledger_status = pipeline_ledger.is_processed(key)
         duplicate_count = int(item.get("duplicate_count") or 0)
@@ -262,6 +268,7 @@ def build_recursive_self_improvement(
                     "status": state,
                     "reason": reason,
                     "healthy": healthy,
+                    "code_actionable": not is_conversational_non_code,
                 }
             )
         elif item.get("source_state") == "applied":
@@ -308,6 +315,13 @@ def build_recursive_self_improvement(
     total = len(canonical_candidates)
     suppressed_healthy = sum(1 for s in suppressions if s.get("healthy"))
     suppressed_churn = len(suppressions) - suppressed_healthy
+    conversational_non_code_count = sum(
+        1 for item in canonical_candidates if item.get("category") == "conversational_non_code"
+    )
+    code_actionable_total = total - conversational_non_code_count
+    suppressed_churn_code_actionable = sum(
+        1 for s in suppressions if not s.get("healthy") and s.get("code_actionable")
+    )
     measurement_summary = {
         "pdca_rate": prompt_summary.get("pdca_rate", 0.0),
         "response_changed_rate": prompt_summary.get("previous_diff_rate", 0.0),
@@ -319,6 +333,15 @@ def build_recursive_self_improvement(
         "churn_rate": round(suppressed_churn / total * 100, 1) if total else 0.0,
         "suppressed_healthy_count": suppressed_healthy,
         "suppressed_churn_count": suppressed_churn,
+        # 会話・質問形式などコード修正の対象ファイルが特定できない候補
+        # （experience_flywheel 側で別途分類済み）を除いた、コード改善候補だけのchurn。
+        "churn_rate_code_actionable": (
+            round(suppressed_churn_code_actionable / code_actionable_total * 100, 1)
+            if code_actionable_total
+            else 0.0
+        ),
+        "code_actionable_count": code_actionable_total,
+        "conversational_non_code_count": conversational_non_code_count,
         "prompt_total": prompt_summary.get("total", 0),
         "prompt_previous_diff_count": prompt_summary.get("previous_diff_count", 0),
     }
