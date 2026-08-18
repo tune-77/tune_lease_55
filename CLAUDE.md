@@ -6,7 +6,7 @@
 適用条件: このリポジトリでコード・データ・PR・改善台帳に触る作業。
 削除条件: 該当事故の再発防止が別の仕組みで保証され、関連テストまたは自動化が不要になった時。
 
-- `eslint --fix` 禁止（UIコンポーネント削除事故あり）→ `npm run lint` でチェックのみ
+- `eslint --fix` 禁止（UIコンポーネント削除事故あり）→ `npm run lint` でチェックのみ（`.claude/hooks/guard_eslint_fix_hook.sh` がPreToolUseで機械的にブロック）
 - `data/` 配下・`.streamlit/secrets.toml` はコミット禁止
 - PR前に `cd frontend && npx tsc --noEmit` を必ず実行
 - PRタイトルに **REV番号を必ず含める**（例: `feat: REV-039 パイプライン承認UI追加`）→ 含めないと `cleanup_improvement_reviews.py --apply` が台帳を更新できない
