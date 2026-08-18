@@ -70,17 +70,8 @@ Retirement: remove if session memory becomes durable, reviewable, and synced wit
 - **Text > Brain** 📝
 
 ### 🔄 Memory Maintenance (During Heartbeats)
-Reason: daily files are raw logs while `MEMORY.md` is curated long-term memory.
-Scope: use during heartbeat maintenance and memory review tasks.
-Retirement: remove if daily promotion and pruning become fully automated with reliable review evidence.
 
-During heartbeats (see Heartbeats section below), use this check to catch what the daily auto-promotion pipeline (see Promotion Triggers above) missed:
-1. Read through recent `memory/YYYY-MM-DD.md` files
-2. Identify missed significant events, lessons, or insights worth keeping long-term
-3. Patch `MEMORY.md` when auto-promotion missed something
-4. Remove outdated info from `MEMORY.md` that's no longer relevant
-
-Think of it like a human reviewing their journal and updating their mental model. Daily files are raw notes; MEMORY.md is curated wisdom.
+日次メモをMEMORY.mdへ棚卸しする手順は `.claude/skills/memory-maintenance/SKILL.md` を参照。
 
 ## Safety
 
@@ -203,29 +194,8 @@ This is a starting point. Add your own conventions, style, and rules as you figu
 
 ## AI Chat / Obsidian Search Rule
 
-理由: RAG経路が分散すると検索品質が不安定になり、知識ノートよりログが優先される事故が起きる。
-適用条件: Flask/mobile版、Streamlit版、Next版、軍師AI、ホームFABチャットの Obsidian 参照処理。
-削除条件: 全チャット実装が共通検索サービスへ統合され、直接Vault走査がテストで防止された時。
-
-AIチャットでObsidianを参照する処理は、必ず共通経路を使う。
-
-- 検索語分解: `obsidian_query.py`
-- AIプロンプト用文脈: `obsidian_ai_context.py`
-- Vault検索本体: `mobile_app/obsidian_bridge.py`
-
-禁止:
-- 各チャット実装で `vault.rglob("*.md")` を直接呼ぶ
-- 「補助金について教えて」のような質問文を丸ごと検索語にする
-- `AI Chat` / `Weekly Review` / `Improvement Log` を知識ノートより優先する
-- `/tmp` へのprint/debug書き込みで検索挙動を安定化させる
-
-このルールは Flask/mobile版、Streamlit版、Next版、軍師AI、ホームFABチャットのすべてに適用する。
+AIチャットからObsidian/Vaultを参照する処理を実装・変更する時のルールは `.claude/skills/obsidian-search-rule/SKILL.md` を参照。
 
 ## Obsidian Save Destination Rule
 
-ユーザーが「Obsidianに保存」「Vaultに保存」と言った場合、既定の保存先は iCloud 上の通常の `Obsidian Vault` とする。
-
-- 既定Vault: `/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault`
-- `lease-wiki-vault` には、ユーザーが明示的に「lease-wiki」「wiki vault」「lease_wikiの方」と指定した場合だけ保存する。
-- リサーチメモや一般メモは、通常Vault内の `Projects/tune_lease_55/Research/`、`Daily/`、または文脈に合う既存フォルダへ保存する。
-- 保存後は、実際の絶対パスを報告し、`lease-wiki-vault` へ保存していないことが重要な文脈では明記する。
+「Obsidianに保存」「Vaultに保存」と言われた時の保存先判定は `.claude/skills/obsidian-save/SKILL.md` を参照。
