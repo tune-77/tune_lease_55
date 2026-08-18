@@ -113,77 +113,12 @@ def _safe_float(value: object) -> float | None:
         return None
 
 
-def _load_all_cases_raw() -> list[dict]:
+def _load_closed_cases() -> list[dict]:
     from data_cases import load_all_cases
 
-    return load_all_cases()
-
-
-def _filter_closed_cases(all_cases: list[dict]) -> list[dict]:
-    cases = [c for c in all_cases if c.get("final_status") in ("成約", "失注", "検収", "検収完了")]
+    cases = [c for c in load_all_cases() if c.get("final_status") in ("成約", "失注", "検収", "検収完了")]
     cases.sort(key=lambda c: str(c.get("timestamp") or c.get("final_result_date") or ""))
     return cases
-
-
-def _load_closed_cases() -> list[dict]:
-    return _filter_closed_cases(_load_all_cases_raw())
-
-
-_CACHE_CONSISTENCY_TARGETS = (
-    ("dashboard_stats_cache", "load_dashboard_stats_cache"),
-    ("department_stats_cache", "load_department_stats_cache"),
-)
-
-
-def _audit_cache_consistency(all_cases: list[dict]) -> list[dict]:
-    """統計キャッシュ（dashboard_stats_cache.json / department_stats_cache.json）と
-    SQLite（past_cases）の件数乖離を検知する。
-
-    キャッシュはビルド時の案件件数を source_case_count として保持しており（data_cases.py）、
-    これが現在の SQLite 件数と食い違う場合、書き込み系関数が refresh_stats_caches() を
-    呼び忘れている（例: save_all_cases() の既知バグ）ことを示す。
-    """
-    import data_cases
-
-    issues: list[dict] = []
-    live_count = len(all_cases)
-
-    for cache_name, loader_name in _CACHE_CONSISTENCY_TARGETS:
-        loader = getattr(data_cases, loader_name, None)
-        cache = loader() if loader else None
-        if cache is None:
-            issues.append({
-                "severity": "warn",
-                "kind": "cache_missing",
-                "cache": cache_name,
-                "message": f"{cache_name} が未生成です。ダッシュボード表示に古い値が使われている可能性があります。",
-            })
-            continue
-
-        cached_count = cache.get("source_case_count")
-        if cached_count is None:
-            issues.append({
-                "severity": "info",
-                "kind": "cache_outdated_format",
-                "cache": cache_name,
-                "message": f"{cache_name} に source_case_count がありません（旧形式）。再生成を推奨します。",
-            })
-            continue
-
-        if cached_count != live_count:
-            issues.append({
-                "severity": "error",
-                "kind": "cache_drift",
-                "cache": cache_name,
-                "cached_count": cached_count,
-                "live_count": live_count,
-                "message": (
-                    f"{cache_name} の件数（{cached_count}）が SQLite の実件数（{live_count}）と"
-                    "一致しません。refresh_stats_caches() の再実行が必要です。"
-                ),
-            })
-
-    return issues
 
 
 def _audit_data_quality(cases: list[dict]) -> list[dict]:
@@ -310,6 +245,55 @@ def _audit_data_quality(cases: list[dict]) -> list[dict]:
             "count": total,
             "message": "score_borrower が全件未入力です。",
         })
+
+    return issues
+
+
+def _audit_stats_cache_consistency() -> list[dict]:
+    """dashboard/department 統計キャッシュ(JSON)が、今SQLiteから計算した値と
+    乖離していないかを検査する。
+
+    キャッシュは各書き込み経路(delete_case/update_case/save_case_log/
+    update_case_field)がコミット直後に同期で refresh_stats_caches() を
+    呼ぶことで最新化される設計。乖離が出るのは、そのどれかを経由しない
+    書き込み経路が残っている（キャッシュ再生成の配線漏れ）ことを意味する。
+    """
+    from data_cases import (
+        build_dashboard_stats_cache,
+        build_department_stats_cache,
+        load_dashboard_stats_cache,
+        load_department_stats_cache,
+    )
+
+    issues: list[dict] = []
+
+    cached_dashboard = load_dashboard_stats_cache()
+    if cached_dashboard is not None:
+        live_dashboard = build_dashboard_stats_cache()
+        cached_closed = (cached_dashboard.get("analysis") or {}).get("closed_count")
+        live_closed = (live_dashboard.get("analysis") or {}).get("closed_count")
+        if cached_closed is not None and live_closed is not None and cached_closed != live_closed:
+            issues.append({
+                "severity": "error",
+                "kind": "stats_cache_drift",
+                "message": "dashboard_stats_cache.json の closed_count がDBの実値と乖離しています"
+                f"（キャッシュ={cached_closed} / 実値={live_closed}）。"
+                "refresh_stats_caches() を呼ばない書き込み経路がないか確認してください。",
+            })
+
+    cached_department = load_department_stats_cache()
+    if cached_department is not None:
+        live_department = build_department_stats_cache()
+        cached_total = (cached_department.get("overall") or {}).get("total_count")
+        live_total = (live_department.get("overall") or {}).get("total_count")
+        if cached_total is not None and live_total is not None and cached_total != live_total:
+            issues.append({
+                "severity": "error",
+                "kind": "stats_cache_drift",
+                "message": "department_stats_cache.json の overall.total_count がDBの実値と乖離しています"
+                f"（キャッシュ={cached_total} / 実値={live_total}）。"
+                "refresh_stats_caches() を呼ばない書き込み経路がないか確認してください。",
+            })
 
     return issues
 
@@ -470,11 +454,17 @@ def _maybe_notify(summary: dict[str, Any]) -> bool:
 
 def run_system_guardrails(force: bool = False) -> dict[str, Any]:
     """データ監査・運用ルール・通知をまとめて実行する。"""
-    all_cases = _load_all_cases_raw()
-    cases = _filter_closed_cases(all_cases)
+    cases = _load_closed_cases()
     rules = load_guardrail_rules()
     issues = _audit_data_quality(cases)
-    issues = issues + _audit_cache_consistency(all_cases)
+    try:
+        issues.extend(_audit_stats_cache_consistency())
+    except Exception as exc:
+        issues.append({
+            "severity": "warn",
+            "kind": "stats_cache_drift_check_failed",
+            "message": f"統計キャッシュ整合性チェックの実行に失敗しました: {exc}",
+        })
     policy = _build_segment_policy(cases, rules)
     summary = _build_summary(cases, issues, policy, rules, force)
     _append_run_log(summary)

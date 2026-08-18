@@ -603,7 +603,6 @@ def build_department_stats_cache() -> dict:
 
     return {
         "generated_at": datetime.datetime.now().isoformat(),
-        "source_case_count": len(all_cases),
         "overall": overall,
         "departments": departments,
         "industry_keys": top_industries,
@@ -637,7 +636,6 @@ def build_dashboard_stats_cache(limit_recent_cases: int = 15) -> dict:
 
     return {
         "generated_at": datetime.datetime.now().isoformat(),
-        "source_case_count": len(all_cases),
         "analysis": {
             "closed_count": analysis.get("closed_count"),
             "avg_financials": analysis.get("avg_financials"),

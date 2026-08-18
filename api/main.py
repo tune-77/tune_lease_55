@@ -135,6 +135,7 @@ def _gemini_generate_url() -> str:
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
+from scoring_anomaly_monitor import record_scoring_anomalies
 from api.scoring_full import run_full_scoring_api
 from lease_news_digest import (
     find_vault,
@@ -1414,6 +1415,9 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         background_tasks.add_task(_log_wizard_input_task, inputs)
         result = run_quick_scoring(inputs)
         background_tasks.add_task(
+            record_scoring_anomalies, result, inputs.get("company_no") or inputs.get("company_name") or ""
+        )
+        background_tasks.add_task(
             record_cloudrun_input_event,
             event_type="score_calculated",
             surface="score_calculate",
@@ -1482,6 +1486,9 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             result["engine_source"] = "legacy_streamlit"
         else:
             result = run_full_api_scoring(inputs)
+        background_tasks.add_task(
+            record_scoring_anomalies, result, inputs.get("company_no") or inputs.get("company_name") or ""
+        )
         conditional_actions = _build_conditional_approval_actions(inputs, result)
         rate_proposal = _build_rate_proposal(inputs, result)
         data_source_summary = _build_data_source_summary(inputs, result)
