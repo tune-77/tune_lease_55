@@ -481,3 +481,23 @@ echo "[配布] Obsidianリース知識の差分を Vertex AI Search へ同期...
   --import-documents \
   --wait
 log_step "sync_obsidian_to_vertex_agent_search" $?
+
+echo ""
+echo "[内省拡張] Vaultのタグ・フォルダ重複を監査（読み取り専用）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_taxonomy_audit.py" || true
+log_step "obsidian_taxonomy_audit" 0
+
+echo ""
+echo "[内省拡張] 新規追加ノートにタグ付け・移動先フォルダを提案・適用..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_note_curator.py" --apply || true
+log_step "obsidian_note_curator" 0
+
+echo ""
+echo "[内省拡張] Vaultの繰り返しテーマとバズ状況を確認（Vertex AI Google検索グラウンディング）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_theme_radar.py" || true
+log_step "obsidian_theme_radar" 0
+
+echo ""
+echo "[内省拡張] 重なりテーマの切り口をProblem/気づき/解決アウトラインにしてContent Strategy Journalへ記録..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py" || true
+log_step "obsidian_reflection_journal" 0
