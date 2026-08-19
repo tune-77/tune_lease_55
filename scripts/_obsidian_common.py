@@ -27,7 +27,7 @@ VAULT_SCAN_EXCLUDE_DIR_NAMES: frozenset[str] = frozenset(
         "AI Chat",
         "Cloud SQL Summaries",
         "Vertex Distilled",
-        "Content Strategy Journal",
+        "System Improvement Reflection",
     }
 )
 

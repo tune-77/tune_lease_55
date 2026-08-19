@@ -38,6 +38,42 @@ def test_action_ledger_section_summarizes_report():
     assert "Codex依頼文の生成 2" in payload["text"]
 
 
+def test_reflection_journal_section_missing_report():
+    payload = build_message({"applied_count": 0}, report_date="2026-07-14")
+    assert "*内省モード: 今日の気づき*" in payload["text"]
+    assert "レポート未生成" in payload["text"]
+
+
+def test_reflection_journal_section_summarizes_written_entry():
+    reflection_journal_report = {
+        "status": "written",
+        "theme": "機械学習",
+        "angle": "機械学習×システム改善の切り口",
+        "problem": "情報が多すぎて整理できていない。",
+        "insight": "個人の学習ログが実は一次情報として価値がある。",
+        "solution": "週次で学習ログを1本の記事にまとめる。",
+    }
+    payload = build_message(
+        {"applied_count": 0},
+        report_date="2026-07-14",
+        reflection_journal_report=reflection_journal_report,
+    )
+    assert "テーマ: 機械学習" in payload["text"]
+    assert "切り口: 機械学習×システム改善の切り口" in payload["text"]
+    assert "問題: 情報が多すぎて整理できていない。" in payload["text"]
+    assert "気づき: 個人の学習ログが実は一次情報として価値がある。" in payload["text"]
+    assert "解決: 週次で学習ログを1本の記事にまとめる。" in payload["text"]
+
+
+def test_reflection_journal_section_reports_skip_reason():
+    payload = build_message(
+        {"applied_count": 0},
+        report_date="2026-07-14",
+        reflection_journal_report={"status": "skipped_no_selected_theme"},
+    )
+    assert "Vaultにテーマ材料なし" in payload["text"]
+
+
 def test_script_dry_run_works_when_executed_by_path(tmp_path):
     # 実運用の reports/latest.json（.gitignore対象で本番実行でのみ生成される）に
     # 依存させず、--report で自己完結した最小レポートを渡す。

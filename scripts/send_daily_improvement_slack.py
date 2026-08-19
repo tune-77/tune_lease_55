@@ -26,6 +26,7 @@ DEFAULT_SCREENING_TERMS_REPORT = REPO_ROOT / "reports" / "screening_terms_audit_
 DEFAULT_JUDGMENT_ASSET_GROWTH_REPORT = REPO_ROOT / "reports" / "judgment_asset_growth_latest.json"
 DEFAULT_JUDGMENT_ASSET_FIELD_REVIEW = REPO_ROOT / "reports" / "judgment_asset_field_review_latest.json"
 DEFAULT_ACTION_LEDGER_REPORT = REPO_ROOT / "reports" / "agent_action_ledger_latest.json"
+DEFAULT_REFLECTION_JOURNAL_REPORT = REPO_ROOT / "reports" / "obsidian_reflection_journal_latest.json"
 DEFAULT_STATE = REPO_ROOT / "data" / "slack_daily_improvement_state.json"
 DEFAULT_TIMEOUT = 15
 
@@ -364,6 +365,35 @@ def _shion_self_proposal_lines(report: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _reflection_journal_lines(report: dict[str, Any] | None) -> list[str]:
+    """obsidian_reflection_journal.py（内省モード拡張・system-improvement-reflection）の当日分。"""
+    if not report:
+        return ["• status: `missing` / レポート未生成（Vertex AI未設定またはVault未接続の可能性）"]
+
+    status = str(report.get("status") or "unknown")
+    if status != "written":
+        labels = {
+            "skipped_no_theme_radar_report": "テーマレーダー未生成",
+            "skipped_no_selected_theme": "Vaultにテーマ材料なし",
+            "skipped_already_exists": "本日分は生成済み（下記は前回実行分）",
+        }
+        return [f"• status: `{status}` / {labels.get(status, '内省ノート未生成')}"]
+
+    theme = _clean_text(report.get("theme") or "", 60)
+    angle = _clean_text(report.get("angle") or "", 160)
+    lines = [f"• テーマ: {theme}", f"• 切り口: {angle}"]
+    problem = _clean_text(report.get("problem") or "", 200)
+    insight = _clean_text(report.get("insight") or "", 200)
+    solution = _clean_text(report.get("solution") or "", 200)
+    if problem:
+        lines.append(f"• 問題: {problem}")
+    if insight:
+        lines.append(f"• 気づき: {insight}")
+    if solution:
+        lines.append(f"• 解決: {solution}")
+    return lines
+
+
 def build_message(
     report: dict[str, Any],
     *,
@@ -373,6 +403,7 @@ def build_message(
     judgment_asset_growth_report: dict[str, Any] | None = None,
     judgment_asset_field_review: dict[str, Any] | None = None,
     action_ledger_report: dict[str, Any] | None = None,
+    reflection_journal_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     applied = _items(report, "applied_improvements")
     needs_review = _items(report, "needs_review")
@@ -427,6 +458,9 @@ def build_message(
             "*紫苑の行動ログ*",
             *_action_ledger_lines(action_ledger_report),
             "",
+            "*内省モード: 今日の気づき*",
+            *_reflection_journal_lines(reflection_journal_report),
+            "",
             "_自動投稿: run_daily_improvement_pipeline / Slack通知のみ。改善状態は変更していません。_",
         ]
     )
@@ -466,6 +500,7 @@ def main() -> int:
     parser.add_argument("--judgment-asset-growth-report", type=Path, default=DEFAULT_JUDGMENT_ASSET_GROWTH_REPORT)
     parser.add_argument("--judgment-asset-field-review", type=Path, default=DEFAULT_JUDGMENT_ASSET_FIELD_REVIEW)
     parser.add_argument("--action-ledger-report", type=Path, default=DEFAULT_ACTION_LEDGER_REPORT)
+    parser.add_argument("--reflection-journal-report", type=Path, default=DEFAULT_REFLECTION_JOURNAL_REPORT)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--webhook", default=None)
@@ -479,6 +514,7 @@ def main() -> int:
     judgment_asset_growth_report = _read_optional_json(args.judgment_asset_growth_report)
     judgment_asset_field_review = _read_optional_json(args.judgment_asset_field_review)
     action_ledger_report = _read_optional_json(args.action_ledger_report)
+    reflection_journal_report = _read_optional_json(args.reflection_journal_report)
     digest = _combined_hash(
         report,
         mana_report or {},
@@ -486,6 +522,7 @@ def main() -> int:
         judgment_asset_growth_report or {},
         judgment_asset_field_review or {},
         action_ledger_report or {},
+        reflection_journal_report or {},
     )
     payload = build_message(
         report,
@@ -495,6 +532,7 @@ def main() -> int:
         judgment_asset_growth_report=judgment_asset_growth_report,
         judgment_asset_field_review=judgment_asset_field_review,
         action_ledger_report=action_ledger_report,
+        reflection_journal_report=reflection_journal_report,
     )
 
     if args.dry_run:

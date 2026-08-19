@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Find recurring vault themes, check which already have real-world buzz, and
-propose one content angle where a recurring interest overlaps with buzz.
+"""Find recurring vault themes, check whether they have real-world buzz, and
+propose one improvement angle for lease screening / this system built on the
+strongest recurring theme.
 
 Recurring interest = top 3 vault themes by weighted tag + keyword frequency.
 Buzz = Vertex AI Google Search grounding (api.vertex_agent_search) returns
-multiple distinct web sources for that theme. When one of the top 3 themes
-also shows buzz, Vertex text generation proposes a single content angle built
-on that theme + evidence.
+multiple distinct web sources for a theme; it is reported as context but does
+not gate whether an angle gets proposed — the top theme always gets one, with
+or without buzz, so the daily loop keeps producing material instead of going
+silent on quiet days.
 
 Read-only: writes nothing to Obsidian. Every Vertex call failure degrades to
 an "unavailable" status for that step rather than raising.
@@ -123,13 +125,20 @@ def check_theme_buzz(theme: str, *, search_fn=None) -> dict[str, Any]:
 def propose_angle(theme: str, buzz: dict[str, Any], *, generate_fn=generate_text) -> dict[str, Any]:
     summary = str(buzz.get("summary") or "")
     source_titles = ", ".join(str(s.get("title") or "") for s in buzz.get("sources") or [] if s.get("title"))
+    if buzz.get("buzzing"):
+        buzz_context = (
+            f"このテーマは実際に世の中でも反応が大きい（世の中の反応の要約: {summary[:800] or '(要約なし)'} / "
+            f"参考にされている記事タイトル: {source_titles or '(なし)'}）。\n"
+        )
+    else:
+        buzz_context = "現時点でこのテーマについて世の中の大きな反響は確認できていない。\n"
     prompt = (
-        "あなたはコンテンツ企画のアシスタントです。\n"
-        f"ユーザーが繰り返し興味を示しているテーマ「{theme}」は、実際に世の中でも反応が大きいテーマです。\n"
-        f"世の中の反応の要約: {summary[:800] or '(要約なし)'}\n"
-        f"参考にされている記事タイトル: {source_titles or '(なし)'}\n\n"
-        "このテーマとユーザー自身の関心を軸にした、独自性のあるコンテンツの切り口を1つだけ、"
-        "1〜2文の日本語で簡潔に提案してください。説明文や前置きは不要です。"
+        "あなたはリース審査AIとこのシステム（tune_lease_55）の改善を考えるアシスタントです。\n"
+        f"ユーザーが繰り返し関心を示しているテーマ「{theme}」がある。\n"
+        f"{buzz_context}"
+        "このテーマを、リース審査AIやこのシステムをより良い方向へ進めるための"
+        "気づき・改善の切り口として1つだけ、1〜2文の日本語で簡潔に提案してください。"
+        "説明文や前置きは不要です。"
     )
     result = generate_fn(prompt)
     if not result.get("used"):
@@ -140,18 +149,20 @@ def propose_angle(theme: str, buzz: dict[str, Any], *, generate_fn=generate_text
 def build_theme_radar(vault: Path, *, search_fn=None, generate_fn=generate_text) -> dict[str, Any]:
     themes = top_recurring_themes(vault, limit=3)
     buzz_checks = [check_theme_buzz(item["theme"], search_fn=search_fn) for item in themes]
-    overlap = next((buzz for buzz in buzz_checks if buzz.get("buzzing")), None)
 
-    angle: dict[str, Any] = {"angle": "", "status": "no_overlap"}
-    if overlap:
-        angle = propose_angle(overlap["theme"], overlap, generate_fn=generate_fn)
+    angle: dict[str, Any] = {"angle": "", "status": "no_theme"}
+    selected_theme = ""
+    if themes:
+        selected_theme = themes[0]["theme"]
+        buzz = next((b for b in buzz_checks if b["theme"] == selected_theme), {})
+        angle = propose_angle(selected_theme, buzz, generate_fn=generate_fn)
 
     return {
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
         "vault": str(vault),
         "recurring_themes": themes,
         "buzz_checks": buzz_checks,
-        "overlap_theme": overlap["theme"] if overlap else "",
+        "selected_theme": selected_theme,
         "proposed_angle": angle,
     }
 
@@ -175,8 +186,8 @@ def render_markdown(report: dict[str, Any]) -> str:
             lines.append(f"  - {source.get('title')}: {source.get('uri')}")
     lines += [
         "",
-        "## Overlap Theme",
-        f"- {report['overlap_theme'] or 'なし'}",
+        "## Selected Theme",
+        f"- {report['selected_theme'] or 'なし'}",
         "",
         "## Proposed Angle",
         f"- {report['proposed_angle'].get('angle') or '(提案なし: ' + report['proposed_angle'].get('status', '') + ')'}",

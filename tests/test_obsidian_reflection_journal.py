@@ -18,13 +18,13 @@ def _fake_generate(prompt, **kwargs):
 
 
 REPORT = {
-    "overlap_theme": "機械学習",
-    "proposed_angle": {"angle": "機械学習×個人の学習ログを比較する切り口", "status": "ok"},
+    "selected_theme": "機械学習",
+    "proposed_angle": {"angle": "機械学習×システム改善の切り口", "status": "ok"},
     "buzz_checks": [{"theme": "機械学習", "sources": [{"title": "A", "uri": "http://a"}], "summary": "話題です"}],
 }
 
 
-def test_writes_note_under_content_strategy_journal_not_private_reflection(tmp_path):
+def test_writes_note_under_system_improvement_reflection_not_private_reflection(tmp_path):
     vault = tmp_path
 
     result = build_journal_entry(vault, REPORT, generate_fn=_fake_generate)
@@ -32,7 +32,7 @@ def test_writes_note_under_content_strategy_journal_not_private_reflection(tmp_p
     assert result["status"] == "written"
     note_path = Path(result["note_path"])
     assert note_path.exists()
-    assert "Content Strategy Journal" in note_path.parts
+    assert "System Improvement Reflection" in note_path.parts
     assert "Private Reflection" not in note_path.parts
     text = note_path.read_text(encoding="utf-8")
     assert "問題（困っていること）" in text
@@ -40,9 +40,9 @@ def test_writes_note_under_content_strategy_journal_not_private_reflection(tmp_p
     assert "解決（具体的にどうすればいいか）" in text
 
 
-def test_skips_when_no_overlap_theme(tmp_path):
-    result = build_journal_entry(tmp_path, {"overlap_theme": "", "proposed_angle": {}}, generate_fn=_fake_generate)
-    assert result["status"] == "skipped_no_overlap_theme"
+def test_skips_when_no_selected_theme(tmp_path):
+    result = build_journal_entry(tmp_path, {"selected_theme": "", "proposed_angle": {}}, generate_fn=_fake_generate)
+    assert result["status"] == "skipped_no_selected_theme"
     assert result["written"] is False
 
 
