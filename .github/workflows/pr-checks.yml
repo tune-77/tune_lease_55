@@ -108,6 +108,13 @@ jobs:
           tests/test_audit_ledger_applied_claims.py
           tests/test_step3_auto_apply_applied_gate.py
           tests/test_check_pr_change_risk.py
+          tests/test_lease_news_collection.py
+          tests/test_shion_memory_revisions.py
+          tests/test_shion_memory_vector.py
+          tests/test_validate_improvement_ledger.py
+          tests/test_check_frontend_backend_schema.py
+          tests/test_scoring_anomaly_monitor.py
+          tests/test_system_guardrails_stats_cache_consistency.py
 
   # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）。
   # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。
@@ -174,6 +181,25 @@ jobs:
 
       - name: Obsidian ops consistency check
         run: python scripts/check_obsidian_ops_consistency.py
+
+  # フロント(frontend/src/types/index.ts ScoringFormData)とバックエンド
+  # (api/schemas.py ScoringRequest)のフィールド名の配線漏れ・型不一致を検知する
+  # （scripts/check_frontend_backend_schema.py 参照）。
+  # 金額フィールドは frontend/src/lib/scoringUnits.ts の monetaryScoringFields
+  # に載っているものだけ百万円→千円へ変換される。追加漏れは審査スコアが
+  # 桁違いのまま計算される静かなバグになるため strict（CIを失敗させる）。
+  # スクリプトは stdlib のみで動くため追加依存は不要。
+  schema-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Frontend/backend schema consistency check
+        run: python scripts/check_frontend_backend_schema.py | tee -a "$GITHUB_STEP_SUMMARY"
 
   # scripts/*.py の中で、どのパイプライン・ワークフロー・他スクリプトからも
   # 呼ばれていないものを検知する（scripts/check_orphaned_scripts.py 参照）。

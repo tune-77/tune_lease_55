@@ -1,5 +1,9 @@
 # レポート駆動エージェント協調プロトコル
 
+理由: サブエージェントは互いの実行結果を直接参照できないため、ファイル経由で受け渡さないと後続が文脈なしで作業して重複調査や矛盾した結論が出る。
+適用条件: `.claude/agents/` に定義されたエージェントを起動する時、およびその出力を読む時。
+削除条件: エージェント間の文脈受け渡しがハーネス側で保証され、レポートファイルを介さずに上流結果を参照できるようになった時。
+
 エージェントはタスク完了後に必ずレポートを `.claude/reports/<agent>/latest.md` へ書く。
 後続エージェントは **作業前に上流レポートを Read ツールで読んでから** 開始する。
 
@@ -13,29 +17,8 @@
 
 `reads_from` には実際に Read したパスのみを記載する（存在しなかったパスは含めない）。
 
-## レポートの書き方（全エージェント共通）
-
-```markdown
----
-agent: <自分の名前>
-task: <実施タスク概要>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [読んだ上流レポートのパス]
----
-
-## サマリー
-（1〜3行）
-
-## 詳細
-（箇条書き）
-
-## 課題・リスク
-（なければ「なし」）
-
-## 後続エージェントへの申し送り
-（次に何をすべきか）
-```
+レポートの書式（frontmatterのキーと規則・見出し構成）は `.claude/reports/REPORT_SCHEMA.md` が正。ここには再掲しない。
+**新規エージェントを `.claude/agents/` に追加する時も同様に、このテンプレート一式を埋め込まないこと。** 「作業後は `.claude/reports/<agent>/latest.md` へ書く（書式はREPORT_SCHEMA.md参照、`reads_from: [...]`）」の1行＋そのエージェント固有の「詳細」相当セクションの構成・申し送り先だけを記載する（2026-08にテンプレート三重重複が発覚し解消した経緯があるため）。
 
 ## エージェント実行順と依存関係
 
@@ -84,7 +67,7 @@ reads_from: [読んだ上流レポートのパス]
 
 [report-stylist]        → .claude/reports/report-stylist/latest.md
     起動タイミング: 審査完了後・スコアリング結果のUI改善要求時
-    reads: agent-team/*, scoring-audit/latest.md
+    reads: agent-team/*, scoring-audit/latest.md, data-quality/latest.md
 
 [migration-validator]   → .claude/reports/migration/latest.md
     起動タイミング: SQLiteスキーマ変更（CREATE/ALTER/DROP）を含むコード変更後
@@ -107,21 +90,94 @@ reads_from: [読んだ上流レポートのパス]
 | **data-quality-checker** | なし | `data-quality/latest.md` |
 | **rule-validator** | file-searcher, code-review | `rule-validation/latest.md` |
 | **api-health-checker** | なし | `api-health/latest.md` |
-| **report-stylist** | agent-team/*, scoring-audit | `report-stylist/latest.md` |
+| **report-stylist** | agent-team/*, scoring-audit, data-quality | `report-stylist/latest.md` |
 | **migration-validator** | file-searcher, code-review | `migration/latest.md` |
+
+この表は `.claude/agents/` に定義された14エージェントを対象とする。エージェントを追加・削除したら、この表と上の依存関係図を同時に更新すること。
+
+### レポートディレクトリについての注意
+
+- 上表のディレクトリは **初回実行時に作成される**。存在しなくても異常ではない（`reads_from: []` として扱う）。
+- **上表に載っていないディレクトリを上流レポートとして信頼しないこと。** 例外は `report-stylist` が読む `agent-team/*` のみ（`.claude/agents/` 未定義の実行主体が書くため、鮮度は保証されない）。
+- 過去に `agent-discussion/`・`novelist/`・`general-purpose/` が同様に残存し、数ヶ月更新の止まった内容を誤参照する恐れがあったため削除した（git 履歴から復元可能）。
+- レポートの `timestamp` は必ず確認し、古ければ上流エージェントの再実行を申し送る。
+
+### レポートの鮮度維持
+
+理由: レポートは書き手が居ないと更新されず、放置すると古い指摘が現在の真実として扱われる。
+適用条件: `.claude/reports/` の鮮度に関わる運用・障害調査時。
+削除条件: 鮮度維持が別の仕組みで保証され、STALE が発生しなくなった時。
+
+**1. 決定論的な自己監査（`scripts/build_agent_self_reports.py`）**
+
+以下7件は素の Python で監査し、日次パイプラインが毎日 `latest.md` を書き換える。
+**LLM もサブエージェントも使わない。** 監査を LLM に書かせると、幻覚で「異常なし」と
+書かれるのが最悪の失敗になるため。
+
+| 出力先 | 監査内容 |
+|---|---|
+| `rule-validation/` | ウェイト合計・資産/債務者配分・グレード閾値の順序 |
+| `scoring-audit/` | スコアが 0〜100 に収まるか・`APPROVAL_LINE` 参照可否 |
+| `data-quality/` | SQLite のテーブル件数・空テーブル |
+| `build/` | コアモジュールの import 可否 |
+| `log-analysis/` | `logs/*.log` の ERROR / WARNING 件数 |
+| `api-health/` | SQLite・APIキー・Ollama 到達性 |
+| `test-results/` | pytest 実行（所要時間が読めないため日次からは除外） |
+
+依存が欠けている等で監査できない場合は `status: failure` を書く。**成功を装わない。**
+手動実行は `python3 scripts/build_agent_self_reports.py --only rule-validation` など。
+
+エージェントが書いた既存レポートを上書きする際は、初回に限り全文を同じディレクトリの
+`previous-agent-report.md` へ退避し、`latest.md` から参照する。決定論的な監査は
+「係数の飽和」のような判断込みの指摘を再現できないため、黙って消さない。
+（セクション抽出ではなくファイル退避にしているのは、過去レポートが REPORT_SCHEMA に
+厳密でなく、抽出だと静かに取りこぼすため。sidecar は `*/latest.md` しか読まないので
+退避先はブリーフを汚さない。）解消したら手で削除してよい。
+
+**2. 変更駆動エージェントは担当ファイル基準で鮮度判定（`AGENT_TRIGGER_PATHS`）**
+
+`code-reviewer` などは変更駆動であり、壁時計の経過日数で判定すると
+「その後まったく変更が無いレポート」まで捨ててしまう。担当ファイルが
+レポートより後に変わったかで判定する（出典は上の「起動タイミング」欄）。
+
+- 担当ファイル未定義のディレクトリは従来どおり経過日数（`STALE_AFTER_DAYS`）
+- git が使えない環境では経過日数へ退避する（判定不能を fresh にしない）
+- エージェントを追加したら `AGENT_TRIGGER_PATHS` も更新すること。綴り間違いはテストが検出する
+
+**残る限界**: `code-reviewer` / `security-checker` の判断を伴う中身そのものは、
+LLM 無しでは生成できない。2 は「不要な再監査を求めない」だけで、変更があったときに
+誰かが実行する必要は残る。
+
+**配置と依存関係は本ファイルが正**（書式は冒頭の通り `.claude/reports/REPORT_SCHEMA.md` が正）。REPORT_SCHEMA.md 側に配置・依存関係を再掲しないこと。
 
 ## カスタムコマンド（スキル）
 
-`.claude/commands/` に以下のスラッシュコマンドが定義されている：
+`.claude/commands/` に以下のスラッシュコマンドが定義されている。**各コマンドの正確な引数・挙動は `.claude/commands/<名前>.md` が正**で、下表は索引。
+
+「対応エージェント」欄の `(--full)` 等は、そのフラグを付けた時だけサブエージェントを起動する意味。フラグなしは軽量な直接実行。所要時間が `—` のものはコマンド定義に記載がない。
 
 | コマンド | 用途 | 対応エージェント | 所要時間 |
 |---------|-----|----------------|---------|
-| `/quick-score` | 物件IDと業種からクイックスコアを計算 | — | 10秒 |
-| `/check-health` | 全依存サービス（Gemini/Ollama/Slack/SQLite）の接続確認 | `api-health-checker` | 30〜120秒 |
-| `/validate-rules` | ウェイト合計・グレード閾値の整合性チェック | `rule-validator` | 10〜数分 |
-| `/generate-report` | 審査レポートの生成・改善提案 | `report-stylist` | 数秒〜数分 |
-| `/audit-scores` | スコアリング異常・乖離の監査 | `scoring-auditor` | 30秒〜数分 |
-| `/check-data` | DBデータ品質チェック（件数・異常値） | `data-quality-checker` | 10秒〜数分 |
-| `/run-tests` | ユニットテスト実行 | `test-runner` | 30〜60秒 |
-| `/build-check` | 全モジュールのインポート・依存パッケージ確認 | `build-runner` | 15秒 |
 | `/analyze-logs` | ログファイルのエラー・警告抽出 | `log-file-analyzer` | 10〜30秒 |
+| `/analyze-variables` | 変数重要度分析（IV / SHAP） | — | — |
+| `/asset-evaluation` | 物件スコア詳細評価 | — | — |
+| `/audit-scores` | スコアリング異常・乖離の監査 | `scoring-auditor` (`--full`) | 30秒〜数分 |
+| `/batch-export` | バッチ審査エクスポート・CSV形式検証 | — | — |
+| `/build-check` | 全モジュールのインポート・依存パッケージ確認 | `build-runner` | 15秒 |
+| `/case-similarity` | 類似事例検索 | — | — |
+| `/check-data` | DBデータ品質チェック（件数・異常値） | `data-quality-checker` (`--full`) | 10秒〜数分 |
+| `/check-health` | 全依存サービス（Gemini/Ollama/Slack/SQLite）の接続確認 | `api-health-checker` | 30〜120秒 |
+| `/explain-diff` | 変更差分の要約とレビュー観点の提示 | — | — |
+| `/explain-score` | スコア判定根拠説明 | — | — |
+| `/explore-codebase` | リポジトリ構造・依存関係の高速把握 | — | — |
+| `/financial-forecast` | 財務予測・3期分析 | — | — |
+| `/generate-industry-brief` | 業界動向レポート生成 | — | — |
+| `/generate-report` | 審査レポートの生成・改善提案 | `report-stylist` (`--agent`) | 数秒〜数分 |
+| `/optimize-coefficients` | 係数自動最適化 | — | — |
+| `/plan-feature` | 実装前の作業計画整理（Plan-First Checkpoint） | — | — |
+| `/prepare-release` | PR前の変更履歴・確認事項の整理 | — | — |
+| `/quick-score` | 業種・売上・リース額からクイックスコアを計算 | — | 10秒 |
+| `/run-tests` | ユニットテスト実行 | `test-runner` | 30〜60秒 |
+| `/update-docs` | 変更に合わせたドキュメント更新 | — | — |
+| `/validate-rules` | ウェイト合計・グレード閾値の整合性チェック | `rule-validator` (`--full`) | 10〜数分 |
+| `/write-spec` | 曖昧な依頼を受け入れ条件つき仕様に変換 | — | — |

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2, Trash2, Upload, Loader2, ScanText, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
@@ -177,6 +177,35 @@ const TERM_AMOUNTS: QuickAmount[] = [
   { label: '60', value: '60' },
   { label: '72', value: '72' },
 ];
+
+// 決算書OCR（/api/ocr）が返す財務項目。lease-kunのformDataキーと1:1で対応する。
+type LeaseKunOcrResult = {
+  nenshu?: number | null;
+  gross_profit?: number | null;
+  op_profit?: number | null;
+  ord_profit?: number | null;
+  net_income?: number | null;
+  net_assets?: number | null;
+  total_assets?: number | null;
+  depreciation?: number | null;
+  dep_expense?: number | null;
+  rent?: number | null;
+  rent_expense?: number | null;
+  machines?: number | null;
+  other_assets?: number | null;
+  detected_fields?: string[];
+  confidence?: number;
+};
+
+const OCR_FIELD_KEYS = [
+  'nenshu', 'gross_profit', 'op_profit', 'ord_profit', 'net_income',
+  'net_assets', 'total_assets', 'depreciation', 'dep_expense',
+  'rent', 'rent_expense', 'machines', 'other_assets',
+] as const satisfies readonly (keyof LeaseKunFormData)[];
+
+function formatMillion(value: number): string {
+  return String(Math.round(value * 100) / 100);
+}
 
 function parseMillionInput(value: string | number, fallback = 0): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
@@ -394,6 +423,13 @@ export default function LeaseKunWizard() {
   // --- フォームステート ---
   const [formData, setFormData] = useState<LeaseKunFormData>(INITIAL_FORM_DATA);
 
+  // --- 決算書OCR一括入力（Step3で使用） ---
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrFileName, setOcrFileName] = useState('');
+  const [ocrResult, setOcrResult] = useState<LeaseKunOcrResult | null>(null);
+  const [ocrError, setOcrError] = useState('');
+  const ocrFileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const draft = readLeaseKunDraft();
     if (draft && hasMeaningfulDraft(draft.formData)) {
@@ -473,6 +509,46 @@ export default function LeaseKunWizard() {
   const setQuickValue = (name: keyof LeaseKunFormData, value: string) => {
     setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors(prev => { const next = { ...prev }; delete next[name]; return next; });
+  };
+
+  const handleOcrFile = async (file: File) => {
+    setOcrFileName(file.name);
+    setOcrLoading(true);
+    setOcrResult(null);
+    setOcrError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await apiClient.post('/api/ocr', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data?.error) {
+        setOcrError(String(res.data.error));
+      } else {
+        setOcrResult(res.data as LeaseKunOcrResult);
+      }
+    } catch {
+      setOcrError('OCR処理に失敗しました。FastAPIサーバーが起動しているか確認してください。');
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  const applyOcrResult = () => {
+    if (!ocrResult) return;
+    const updates: Partial<LeaseKunFormData> = {};
+    for (const field of OCR_FIELD_KEYS) {
+      const val = ocrResult[field];
+      if (typeof val === 'number') {
+        updates[field] = formatMillion(val);
+      }
+    }
+    setFormData(prev => ({ ...prev, ...updates }));
+    setErrors(prev => {
+      const next = { ...prev };
+      for (const field of OCR_FIELD_KEYS) delete next[field];
+      return next;
+    });
   };
 
   const handleNext = (e: React.FormEvent) => {
@@ -1022,7 +1098,52 @@ export default function LeaseKunWizard() {
 
             {/* Step 3: P/L */}
             {step === 3 && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-3">
+                <div className="bg-indigo-50/60 border-2 border-dashed border-indigo-200 rounded-xl p-3">
+                  <input
+                    ref={ocrFileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleOcrFile(f);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => ocrFileInputRef.current?.click()}
+                    className="w-full flex items-center justify-center gap-2 text-xs font-black text-indigo-700"
+                  >
+                    {ocrLoading ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Gemini Vision で読み取り中...</>
+                    ) : (
+                      <><Upload className="w-4 h-4" /> 決算書を撮影/選択して自動入力{ocrFileName ? `（${ocrFileName}）` : ''}</>
+                    )}
+                  </button>
+                  {ocrError && (
+                    <p className="mt-2 flex items-center gap-1 text-[11px] font-bold text-rose-600">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {ocrError}
+                    </p>
+                  )}
+                  {ocrResult && !ocrError && (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex items-center gap-1 text-[11px] font-black text-emerald-700">
+                        <ScanText className="w-3.5 h-3.5" />
+                        {ocrResult.detected_fields?.length ?? 0}項目を読み取り完了（信頼度 {Math.round((ocrResult.confidence ?? 0) * 100)}%）
+                      </div>
+                      <button
+                        type="button"
+                        onClick={applyOcrResult}
+                        className="w-full py-2 bg-indigo-600 text-white rounded-lg font-black text-xs"
+                      >
+                        P/L・資産・経費の入力欄に反映する
+                      </button>
+                    </div>
+                  )}
+                  <p className="mt-1 text-[10px] text-slate-400">この後のStep（資産情報・経費）の欄も自動で埋まります</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <input type="text" inputMode="decimal" name="nenshu" value={formData.nenshu} step="0.1" onChange={handleChange} placeholder="売上高 (百万円) ※必須" className={errors.nenshu ? inpErr : inpReq} />
                   <AmountChips amounts={SALES_ASSET_AMOUNTS} activeValue={formData.nenshu} onSelect={(value) => setQuickValue('nenshu', value)} />
@@ -1043,6 +1164,7 @@ export default function LeaseKunWizard() {
                 <div>
                   <input type="text" inputMode="text" name="net_income" value={formData.net_income} step="0.1" onChange={handleChange} placeholder="当期純利益 (百万円) ※赤字は例: -5" className={inp} />
                   <AmountChips amounts={PROFIT_AMOUNTS} activeValue={formData.net_income} onSelect={(value) => setQuickValue('net_income', value)} />
+                </div>
                 </div>
               </div>
             )}

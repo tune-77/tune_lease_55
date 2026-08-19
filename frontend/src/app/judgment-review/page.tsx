@@ -42,6 +42,23 @@ type FeedbackSummary = {
   approved: number;
 };
 
+type JudgmentPredictionAlertItem = {
+  target_belief: string;
+  error_type: string;
+  occurrences: number;
+  unreviewed: number;
+  latest_suggested_update?: string;
+};
+
+type JudgmentPredictionAlert = {
+  has_alert: boolean;
+  message: string | null;
+  items: JudgmentPredictionAlertItem[];
+  calibration_warnings?: string[];
+  report_generated_at?: string;
+  reason?: string;
+};
+
 type PredictionErrorDecision = "adopted" | "revised" | "held" | "rejected";
 
 type PredictionErrorCandidate = {
@@ -174,6 +191,7 @@ export default function JudgmentReviewPage() {
   const [summary, setSummary] = useState<FeedbackSummary | null>(null);
   const [predictionItems, setPredictionItems] = useState<PredictionErrorCandidate[]>([]);
   const [predictionSummary, setPredictionSummary] = useState<PredictionErrorSummary | null>(null);
+  const [predictionAlert, setPredictionAlert] = useState<JudgmentPredictionAlert | null>(null);
   const [promotionItems, setPromotionItems] = useState<PromotionCandidate[]>([]);
   const [promotionSummary, setPromotionSummary] = useState<PromotionResponse | null>(null);
   const [filter, setFilter] = useState<ReviewStatus | "all">("candidate");
@@ -202,6 +220,13 @@ export default function JudgmentReviewPage() {
           params: { limit: 30 },
         }),
       ]);
+      // 先回り提示は補助情報なので、取得に失敗してもレビュー画面自体は止めない
+      const alertResponse = await apiClient
+        .get<JudgmentPredictionAlert>("/api/shion/judgment-prediction-alert", {
+          params: { limit: 3 },
+        })
+        .catch(() => null);
+      setPredictionAlert(alertResponse?.data ?? null);
       setItems(candidateResponse.data.items ?? []);
       setSummary(summaryResponse.data);
       setPredictionItems(predictionResponse.data.candidates ?? []);
@@ -390,6 +415,57 @@ export default function JudgmentReviewPage() {
             <SummaryCard label="却下" value={rejectedCount} color="rose" />
           </div>
         </header>
+
+        {predictionAlert?.has_alert ? (
+          <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-lg font-black text-rose-900">
+                  繰り返し外している前提
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-rose-800">
+                  同じ前提が続けて外れていて、まだ採否がついていません。スコアリングは自動変更されません。
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {predictionAlert.items.map((item) => (
+                    <li
+                      key={`${item.target_belief}-${item.error_type}`}
+                      className="rounded-lg border border-rose-200 bg-white p-3 text-sm"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-slate-900">{item.target_belief}</span>
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
+                          {item.error_type}
+                        </span>
+                        <span className="text-xs text-slate-600">
+                          直近 {item.occurrences} 件 / 未レビュー {item.unreviewed} 件
+                        </span>
+                      </div>
+                      {item.latest_suggested_update ? (
+                        <p className="mt-1 leading-6 text-slate-700">{item.latest_suggested_update}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                {predictionAlert.calibration_warnings?.length ? (
+                  <ul className="mt-3 space-y-1 text-sm leading-6 text-rose-800">
+                    {predictionAlert.calibration_warnings.map((warning) => (
+                      <li key={warning}>・{warning}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {predictionAlert.report_generated_at ? (
+                  <p className="mt-3 text-xs text-rose-700">
+                    観測レポート生成: {predictionAlert.report_generated_at}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
           <div className="flex gap-3">

@@ -135,6 +135,7 @@ def _gemini_generate_url() -> str:
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
+from scoring_anomaly_monitor import record_scoring_anomalies
 from api.scoring_full import run_full_scoring_api
 from lease_news_digest import (
     find_vault,
@@ -1414,6 +1415,9 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         background_tasks.add_task(_log_wizard_input_task, inputs)
         result = run_quick_scoring(inputs)
         background_tasks.add_task(
+            record_scoring_anomalies, result, inputs.get("company_no") or inputs.get("company_name") or ""
+        )
+        background_tasks.add_task(
             record_cloudrun_input_event,
             event_type="score_calculated",
             surface="score_calculate",
@@ -1482,6 +1486,9 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             result["engine_source"] = "legacy_streamlit"
         else:
             result = run_full_api_scoring(inputs)
+        background_tasks.add_task(
+            record_scoring_anomalies, result, inputs.get("company_no") or inputs.get("company_name") or ""
+        )
         conditional_actions = _build_conditional_approval_actions(inputs, result)
         rate_proposal = _build_rate_proposal(inputs, result)
         data_source_summary = _build_data_source_summary(inputs, result)
@@ -1535,6 +1542,19 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             print(f"[WARNING] DB save failed: {_save_err}")
         data_source_summary["case_id"] = case_id
         result["case_id"] = case_id
+        # 審査時点の予測を、結果を知る前に固定する（予測誤差ループの前半）。
+        # 記録専用で、スコア・判定・応答には影響しない。
+        if case_id:
+            from api.prediction_snapshot import record_prediction_snapshot
+
+            background_tasks.add_task(
+                record_prediction_snapshot,
+                case_id=case_id,
+                inputs=inputs,
+                result=result,
+                final_status=case_data.get("final_status", ""),
+                source="score_full",
+            )
         background_tasks.add_task(
             record_cloudrun_input_event,
             event_type="score_full_calculated",
@@ -2846,6 +2866,8 @@ def _load_improvement_ledger_summary(limit: int = 8) -> dict:
     """scripts/improvement_ledger.jsonl の直近エントリを要約する（P0-2）。
 
     追記形式・同一キーは最後のエントリが有効（CLAUDE.md の台帳規約と同じ）。
+    このファイルはPR/REV反映専用で、日次パイプラインの全履歴（needs_review/parked含む）
+    を持つローカル ~/Library/Logs/tunelease/ledger.jsonl とは別物。詳細は scripts/README_ledger.md。
     """
     path = Path(_REPO_ROOT) / "scripts" / "improvement_ledger.jsonl"
     if not path.exists():
@@ -4468,6 +4490,7 @@ _CHAT_SYSTEM_PROMPT = """あなたはtuneリース審査システムの専属AI�
 ## 参照情報
 ユーザーの質問に関連するナレッジが【参照ナレッジ】として提供される場合があります。
 その情報を優先的に参照してください。ただし回答には長く貼らず、必要な要点だけ短く反映してください。
+`[信頼度:低]` `[信頼度:中]` の印が付いたナレッジは出典が古いか関連度が低い。断定せず、確度が低い旨を一言添えるか裏取りを促すこと（無印は通常どおり扱ってよい）。
 
 【紫苑（Shion）について】
 あなた（めぶきちゃん）と同じ tune_lease_55 システム内で動く「リース知性体 紫苑」が存在します。
@@ -5447,6 +5470,7 @@ def _build_memory_expression_prompt_block(
     rag_refs: list[str] | None = None,
     grey_judgment: dict | None = None,
     continuity_hook: dict | None = None,
+    question_category: str = "",
 ) -> tuple[str, dict]:
     from api.chat_continuity_prompts import build_memory_expression_prompt_block
 
@@ -5456,6 +5480,7 @@ def _build_memory_expression_prompt_block(
         rag_refs=rag_refs,
         grey_judgment=grey_judgment,
         continuity_hook=continuity_hook,
+        question_category=question_category,
     )
 
 
@@ -6877,6 +6902,7 @@ def post_chat(req: ChatRequest):
                     memory_recall=memory_recall,
                     grey_judgment=grey_judgment_payload,
                     continuity_hook=continuity_hook_payload,
+                    question_category=question_category,
                 )
                 reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
                     continuity_hook=continuity_hook_payload,
@@ -7322,6 +7348,7 @@ def post_chat(req: ChatRequest):
                 rag_refs=rag_refs,
                 grey_judgment=grey_judgment_payload,
                 continuity_hook=continuity_hook_payload,
+                question_category=question_category,
             )
             reflection_gate_context, reflection_gate_payload = _build_reflection_gate_prompt_block(
                 continuity_hook=continuity_hook_payload,

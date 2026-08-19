@@ -747,6 +747,21 @@ def _source_counts(articles: list[Article]) -> list[tuple[str, int]]:
     return sorted(counts.items(), key=lambda item: (item[1], item[0]), reverse=True)
 
 
+def _summary_bullets(article: Article) -> tuple[str, str, str]:
+    review = _review_line(article.tags, article.theme)
+    summary_text = article.summary or ""
+    if summary_text:
+        words = summary_text.split("。")
+        s1 = words[0].strip() + ("。" if words[0].strip() else "")
+        s2 = (words[1].strip() + "。") if len(words) > 1 and words[1].strip() else ""
+        s3 = review
+    else:
+        s1 = article.title
+        s2 = ""
+        s3 = review
+    return s1, s2 or "（詳細なし）", s3
+
+
 def _build_article_content(
     article: Article,
     date_str: str,
@@ -763,17 +778,7 @@ def _build_article_content(
     dedup_id = hashlib.sha256(
         (canonical_url or _normalized_title(article.title, article.source)).encode("utf-8")
     ).hexdigest()[:16]
-    summary_text = article.summary or ""
-    lines: list[str] = []
-    if summary_text:
-        words = summary_text.split("。")
-        s1 = words[0].strip() + ("。" if words[0].strip() else "")
-        s2 = (words[1].strip() + "。") if len(words) > 1 and words[1].strip() else ""
-        s3 = review
-    else:
-        s1 = article.title
-        s2 = ""
-        s3 = review
+    s1, s2, s3 = _summary_bullets(article)
 
     content = f"""---
 date: {date_str}
@@ -799,7 +804,7 @@ classification_source: {article.classification_source}
 
 ## 3行要約
 - {s1}
-- {s2 or "（詳細なし）"}
+- {s2}
 - {s3}
 
 ## 活用メモ
@@ -885,7 +890,53 @@ def _find_duplicate(article: Article, records: list[dict[str, Any]]) -> dict[str
     return best[1]
 
 
-def _merge_related_report(record: dict[str, Any], article: Article) -> bool:
+def _update_frontmatter_field(raw: str, key: str, value: str) -> str:
+    match = re.match(r"^---\s*\n(.*?\n)---\s*\n", raw, re.DOTALL)
+    if not match:
+        return raw
+    fm = match.group(1)
+    pattern = rf"^{re.escape(key)}:.*$"
+    if re.search(pattern, fm, re.MULTILINE):
+        fm = re.sub(pattern, f"{key}: {value}", fm, count=1, flags=re.MULTILINE)
+    else:
+        fm = fm + f"{key}: {value}\n"
+    return raw[: match.start(1)] + fm + raw[match.end(1) :]
+
+
+def _update_title_and_summary(raw: str, article: Article) -> str:
+    s1, s2, s3 = _summary_bullets(article)
+    raw = re.sub(r"^# .+$", f"# {article.title}", raw, count=1, flags=re.MULTILINE)
+    raw = re.sub(
+        r"(^## 3行要約\n)(?:- .*\n?){1,3}",
+        rf"\1- {s1}\n- {s2}\n- {s3}\n",
+        raw,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    return raw
+
+
+def _update_usage_memo(raw: str, review: str) -> str:
+    return re.sub(
+        r"(^## 活用メモ\n)(.*?)(?=\n## )",
+        lambda m: m.group(1) + review,
+        raw,
+        count=1,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+
+
+def _update_detail_link(raw: str, link: str) -> str:
+    return re.sub(r"^- link:\s*.*$", f"- link: {link}", raw, count=1, flags=re.MULTILINE)
+
+
+def _merge_related_report(
+    record: dict[str, Any],
+    article: Article,
+    date_str: str,
+    week: str,
+    month: str,
+) -> bool:
     raw = str(record["raw"])
     canonical_url = _canonical_url(article.link)
     if canonical_url and canonical_url in raw:
@@ -899,6 +950,22 @@ def _merge_related_report(record: dict[str, Any], article: Article) -> bool:
         raw = raw.rstrip() + "\n" + line + "\n"
     else:
         raw = raw.rstrip() + f"\n\n{heading}\n{line}\n"
+    # 関連報道が追記された = このトピックは当日も報道が続いている。
+    # date/week/monthを当日付に更新しないと、日次ダイジェストのtoday判定に一生ヒットしなくなる。
+    raw = _update_frontmatter_field(raw, "date", date_str)
+    raw = _update_frontmatter_field(raw, "week", week)
+    raw = _update_frontmatter_field(raw, "month", month)
+    # dateだけ更新してもタイトル/3行要約/region/importance/tags/活用メモ/リンクが
+    # 初回作成時のままだと、日次ダイジェストや審査アクション推論(_infer_news_action)が
+    # 何日経っても最初の記事の内容・重要度・地域・タグで判断し続けてしまう。
+    # 続報の最新記事内容で、日次ダイジェストと審査アクションが実際に読む項目を全て上書きする。
+    raw = _update_title_and_summary(raw, article)
+    raw = _update_frontmatter_field(raw, "region", _infer_region(article))
+    raw = _update_frontmatter_field(raw, "importance", _infer_importance(article))
+    raw = _update_frontmatter_field(raw, "source", _yaml_string(article.source or "Google News"))
+    raw = _update_frontmatter_field(raw, "tags", json.dumps(list(article.tags), ensure_ascii=False))
+    raw = _update_usage_memo(raw, _review_line(article.tags, article.theme))
+    raw = _update_detail_link(raw, article.link)
     path = Path(record["path"])
     path.write_text(raw, encoding="utf-8")
     record["raw"] = raw
@@ -923,7 +990,7 @@ def _save_articles_to_obsidian(
     for art in articles:
         duplicate = _find_duplicate(art, existing)
         if duplicate:
-            if _merge_related_report(duplicate, art):
+            if _merge_related_report(duplicate, art, date_str, week, month):
                 saved.append(Path(duplicate["path"]))
             continue
         fname = f"{date_str}_業界リスクニュース_{_safe_filename(art.title)}.md"

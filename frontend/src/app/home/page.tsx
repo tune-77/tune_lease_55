@@ -108,6 +108,14 @@ type DashboardStats = {
       category?: string;
       canonical_key?: string;
     }>;
+    shion_self_proposal_items?: Array<{
+      title?: string;
+      kind?: string;
+      evidence_layer_label?: string;
+      hypothesis?: string;
+      success_metric?: string;
+      canonical_key?: string;
+    }>;
   };
   lease_system_gaps?: {
     available?: boolean;
@@ -388,6 +396,8 @@ export default function HomeDashboard() {
   const recentCases = stats?.recent_cases || [];
   const improvementHighlights = stats?.improvement_highlights?.items || [];
   const improvementCounts = stats?.improvement_highlights?.counts;
+  const shionSelfProposalItems = stats?.improvement_highlights?.shion_self_proposal_items || [];
+  const shionSelfProposalCount = improvementCounts?.shion_self_proposals ?? 0;
   const dailyClinic = stats?.improvement_highlights?.daily_clinic;
   const clinicChecks = dailyClinic?.checks || {};
   const gapHighlights = stats?.lease_system_gaps?.items || [];
@@ -752,6 +762,40 @@ export default function HomeDashboard() {
                         <p className="mt-1 text-xs leading-relaxed text-slate-600">{item.reason || "理由なし"}</p>
                       </div>
                     ))}
+                  </div>
+                )}
+                {shionSelfProposalCount > 0 && (
+                  <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+                    <div className="flex items-center gap-2">
+                      <Brain className="text-indigo-500 w-4 h-4" />
+                      <span className="font-bold text-indigo-900 text-sm">紫苑の自己提案</span>
+                      <span className="rounded-full bg-indigo-600 px-2.5 py-1 text-[10px] font-black text-white">
+                        {shionSelfProposalCount}件・レビュー待ち
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] font-bold text-indigo-700">
+                      内省・利用ログ由来の仮説。User判断なしにプロンプト・RAG・スコアリングへは反映されません。
+                    </p>
+                    {shionSelfProposalItems.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {shionSelfProposalItems.slice(0, 3).map((item) => (
+                          <div key={item.canonical_key || item.title} className="rounded-lg bg-white px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-black text-indigo-700">
+                                {item.kind || "自己提案"}
+                              </span>
+                              {item.evidence_layer_label && (
+                                <span className="text-[10px] font-bold text-slate-400">{item.evidence_layer_label}</span>
+                              )}
+                            </div>
+                            <div className="mt-1 text-xs font-bold text-slate-800">{item.title || "-"}</div>
+                            {item.hypothesis && (
+                              <p className="mt-1 text-[11px] leading-relaxed text-slate-600">{item.hypothesis}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </section>

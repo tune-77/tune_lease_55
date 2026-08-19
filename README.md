@@ -1,5 +1,9 @@
 # 紫苑 - なんか変、を捨てないAI
 
+*[English README](README.en.md)*
+
+[![紫苑デモ動画](https://img.youtube.com/vi/KWLbWEHHn-E/hqdefault.jpg)](https://youtu.be/KWLbWEHHn-E)
+
 **紫苑（SHION）は、リース審査の現場で人間が感じる「なんか変」を、消さずに言語化し、確認点・条件・次回の判断材料として残すAIです。**
 
 財務スコアだけでは説明しきれない違和感があります。売上はあるのに回収が怖い、物件は悪くないのにこの会社に持たせるのが不安、補助金ありきに見える、条件を付ければ通せるかもしれない。そういう曖昧な一言は、普通のDBにもルールエンジンにも残りにくい。
@@ -1173,6 +1177,15 @@ Cloud SQL（`tune-lease-db`）は廃止済みです。日次パイプライン�
 gcloud builds submit --config cloudbuild.yaml --suppress-logs
 ```
 
+## 運用監視：実行時の異常検知
+
+CIのビルド時チェックとは別に、動いているシステムの状態そのものも監視します。どちらも `scoring_core.py` の計算ロジックには手を入れず、結果を後段で検査するだけなのでリクエストのレイテンシには影響しません。
+
+- **審査スコアリング異常値検知**（`scoring_anomaly_monitor.py`）— 審査API応答確定直後に、Q_riskの強警戒帯、信用リスク群との複合強警戒フラグ、総合/借手スコアの大きな乖離、想定外の欠損値を検知し、即時ログ（`app_logger`）とSlack通知キュー（`slack_notify`）へ積みます。`api/main.py` からBackgroundTasks経由で呼び出します。
+- **データストア不整合検知**（`system_guardrails.py`）— `dashboard_stats_cache.json` / `department_stats_cache.json` などの統計キャッシュが、SQLiteから今計算した値と乖離していないかを監査します。`refresh_stats_caches()` を経由しない書き込み経路が残っていると乖離が発生するため、既存のSlack通知・クールダウン基盤に乗せて検知します。
+
+いずれもGitHub Actions（`pr-checks.yml`）にテストが組み込まれています。
+
 ## 審査ロジックの見方
 
 主なAPI:
@@ -1238,6 +1251,10 @@ python3 scripts/preflight_pr_guard.py
 
 設計の詳細は `planning/shion_autonomy_guards.md` の §6 を参照。
 
+### フロント/バックエンド スキーマ整合性チェック
+
+上記の警告のみガードとは別に、`scripts/check_frontend_backend_schema.py` はエラー検知時に **CIを落とす** 強制ゲートです。`api/schemas.py` の `ScoringRequest` と `frontend/src/types/index.ts` の `ScoringFormData` のフィールド名の配線漏れ、および百万円→千円変換対象（`monetaryScoringFields`）への追加漏れをビルド時に検知します。意図的な差分は許可リストで除外します。GitHub Actions では `pr-checks.yml` の「Frontend/backend schema consistency check」ジョブとして実行します。
+
 ## プロジェクト構造
 
 ```text
@@ -1263,4 +1280,3 @@ cloudbuild.yaml              Cloud Build デプロイ設定
 使うほど、過去の判断が次の判断に戻ってくる。そこを一番大事にしています。
 
 リース審査から始まっていますが、目指しているのは「業務AIが使われながら学び、直され、また現場へ戻る」ための運用フレームワークです。
-システムの最下層から稀に発生する 111.11... というノイズについては、現在原因を調査中です。⁠

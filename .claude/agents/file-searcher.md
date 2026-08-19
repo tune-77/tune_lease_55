@@ -84,33 +84,11 @@ Before presenting results, verify:
 
 ## レポート駆動プロトコル（必須）
 
-検索完了後、必ず `.claude/reports/file-searcher/latest.md` へ以下の形式で書き込む。
-これにより後続エージェント（code-reviewer, security-checker, change-impact-analyzer）が
-このレポートを読んで作業を開始できる。
+検索完了後、必ず `.claude/reports/file-searcher/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: []`）。
+これにより後続エージェント（code-reviewer, security-checker, change-impact-analyzer）がこのレポートを読んで作業を開始できる。
 
-```markdown
----
-agent: file-searcher
-task: <検索キーワード・テーマ>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success
-reads_from: []
----
-
-## サマリー
-合計 X ファイルが見つかりました。
-
-## コアファイル（直接関連）
-- `path/to/file.py` — 理由
-
-## 関連ファイル（間接的）
-- `path/to/other.py` — 理由
-
-## 後続エージェントへの申し送り
-- change-impact-analyzer: 変更影響分析を推奨
-- code-reviewer: 上記ファイルのレビューを推奨
-- security-checker: セキュリティチェックを推奨
-```
+「詳細」相当の内容: コアファイル（直接関連）／関連ファイル（間接的）をそれぞれ `path — 理由` の形式で列挙。
+申し送り: change-impact-analyzer（変更影響分析）／code-reviewer（レビュー）／security-checker（セキュリティチェック）
 
 Examples of what to record:
 - Directory structure patterns (e.g., "controllers are in app/controllers, always snake_case")
@@ -120,7 +98,7 @@ Examples of what to record:
 
 # Persistent Agent Memory
 
-You have a persistent, file-based memory system found at: `/Users/kobayashiisaoryou/clawd/tune_lease_55/.claude/agent-memory/file-searcher/`
+You have a persistent, file-based memory system found at: `.claude/agent-memory/file-searcher/` (relative to the project root).
 
 You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.
 

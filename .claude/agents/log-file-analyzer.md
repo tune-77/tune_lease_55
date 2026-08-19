@@ -15,33 +15,11 @@ color: gray
 - `.claude/reports/test-results/latest.md` — テスト失敗の文脈
 
 ### 作業後（必須）
-`.claude/reports/log-analysis/latest.md` へ書き込む：
+`.claude/reports/log-analysis/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: [分析したレポートパス]`）。
 
-```markdown
----
-agent: log-file-analyzer
-task: ログ分析
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [分析したレポートパス]
----
-
-## サマリー
-（Critical/Error/Warning 件数）
-
-## 主要エラー
-| 件数 | レベル | メッセージ概要 | 初回発生 |
-|-----|--------|--------------|---------|
-| X   | ERROR  | ...          | HH:MM   |
-
-## 異常パターン
-（繰り返しエラー・急増・特定時間帯の集中など）
-
-## 推奨アクション
-（対処が必要なものを優先順に）
-
-## 後続エージェントへの申し送り
-```
+「詳細」相当の内容:
+- Critical/Error/Warning件数、主要エラー（件数・レベル・メッセージ概要・初回発生を表で）
+- 異常パターン（繰り返しエラー・急増・特定時間帯の集中）と推奨アクション（優先順）
 
 ## 分析対象ログファイル
 

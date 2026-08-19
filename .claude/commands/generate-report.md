@@ -53,8 +53,9 @@
 report-stylist エージェントを起動します。
 以下の情報を読んでから、analysis_results.py の
 物件スコア表示セクションを最適化してください：
-- .claude/reports/agent-team/latest.md
+- .claude/reports/agent-team/asset_value_discussion.md
 - .claude/reports/scoring-audit/latest.md
+- .claude/reports/data-quality/latest.md
 ```
 
 ### `--pdf` モード

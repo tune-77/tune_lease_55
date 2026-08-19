@@ -1,6 +1,6 @@
 """
 週次セルフマネジメント: 毎週月曜に実行し、直近7日分の ledger.jsonl を集計して
-CLAUDE.md の末尾に ## Weekly Log セクションを追記する。
+WEEKLY_LOG.md の末尾に ## Weekly Log セクションを追記する。
 月曜以外の曜日では即 return する。
 """
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
-CLAUDE_MD_PATH = PROJECT_ROOT / "CLAUDE.md"
+WEEKLY_LOG_PATH = PROJECT_ROOT / "WEEKLY_LOG.md"
 
 JST = timezone(timedelta(hours=9))
 
@@ -123,19 +123,17 @@ def build_weekly_log(summary: dict, week_start: datetime, week_end: datetime) ->
 
 
 def append_weekly_log(log_text: str) -> None:
-    if not CLAUDE_MD_PATH.exists():
-        print(f"[weekly_self_management] CLAUDE.md が見つかりません: {CLAUDE_MD_PATH}")
-        return
-
-    content = CLAUDE_MD_PATH.read_text(encoding="utf-8")
-
     weekly_log_header = "## Weekly Log"
+    if not WEEKLY_LOG_PATH.exists():
+        WEEKLY_LOG_PATH.write_text(f"{weekly_log_header}\n", encoding="utf-8")
+
+    content = WEEKLY_LOG_PATH.read_text(encoding="utf-8")
     if weekly_log_header not in content:
         content = content.rstrip() + f"\n\n{weekly_log_header}\n"
 
     content = content.rstrip() + "\n" + log_text + "\n"
-    CLAUDE_MD_PATH.write_text(content, encoding="utf-8")
-    print(f"[weekly_self_management] Weekly Log を CLAUDE.md に追記しました")
+    WEEKLY_LOG_PATH.write_text(content, encoding="utf-8")
+    print(f"[weekly_self_management] Weekly Log を WEEKLY_LOG.md に追記しました")
 
 
 def main() -> None:

@@ -21,36 +21,13 @@ color: blue
 - `data/lease_data.db` が存在することを確認してから開始
 
 ### 作業後（必須）
-`.claude/reports/data-quality/latest.md` へ以下のフォーマットで書き込む：
+`.claude/reports/data-quality/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: []`）。
 
-```markdown
----
-agent: data-quality-checker
-task: <監査対象テーブル一覧>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: []
----
+「詳細」相当の内容:
+- テーブル別: 総レコード数・問題レコード数・欠損フィールド・異常値
+- 発見された問題（深刻度HIGH/MED/LOW）と、課題・リスク（スコアリングへの影響・データ汚染リスク）
 
-## サマリー
-（テーブル数・総レコード数・問題件数を1〜3行で）
-
-## テーブル別品質レポート
-### <テーブル名>
-- 総レコード数: N件
-- 問題レコード数: M件
-- 欠損フィールド: [フィールド名, ...]
-- 異常値: [フィールド名: 値, ...]
-
-## 発見された問題
-- **[深刻度: HIGH/MED/LOW]** <問題の説明>
-
-## 課題・リスク
-（スコアリングへの影響・データ汚染リスク）
-
-## 後続エージェントへの申し送り
-- scoring-auditor: データ品質問題がスコアに影響しているか確認を依頼
-```
+申し送り: scoring-auditor（データ品質問題がスコアに影響しているか確認を依頼）
 
 ---
 

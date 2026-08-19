@@ -15,31 +15,10 @@ color: yellow
 3. ファイルが存在しない場合は独自にスコープを判断する
 
 ### 作業後（必須）
-レビュー完了後、以下のフォーマットで `.claude/reports/code-review/latest.md` へ書き込む：
+レビュー完了後 `.claude/reports/code-review/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: [.claude/reports/file-searcher/latest.md]`）。
 
-```markdown
----
-agent: code-reviewer
-task: <レビュー対象の概要>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [.claude/reports/file-searcher/latest.md]
----
-
-## サマリー
-（問題の有無・深刻度を1〜3行で）
-
-## 詳細
-- **[ファイルパス:行番号]** — 問題の説明
-- ...
-
-## 課題・リスク
-（バグ・設計上の問題・パフォーマンス懸念）
-
-## 後続エージェントへの申し送り
-- security-checker: セキュリティ観点で要確認の箇所を列記
-- test-runner: テストが必要な関数・ロジックを列記
-```
+「詳細」相当の内容: ファイルパス:行番号ごとの問題の説明。課題・リスクにはバグ・設計上の問題・パフォーマンス懸念を記載。
+申し送り: security-checker（セキュリティ観点で要確認の箇所）／test-runner（テストが必要な関数・ロジック）
 
 ## レビュー観点
 

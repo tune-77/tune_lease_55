@@ -189,7 +189,9 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
     bench_lease_to_capex = 0.0
     estat_context = None
     qual_weight_sum = 0
-    _eff_approval = 71
+    # business_rules.json による上書き（後述）が走らなかった場合の既定値。
+    # ここを直書きすると単一ソースからずれるため必ず APPROVAL_LINE を使う。
+    _eff_approval = APPROVAL_LINE
     
     selected_major = form_result.get("selected_major")
     selected_sub = form_result.get("selected_sub")

@@ -228,6 +228,7 @@ def build_memory_expression_prompt_block(
     rag_refs: list[str] | None = None,
     grey_judgment: dict[str, Any] | None = None,
     continuity_hook: dict[str, Any] | None = None,
+    question_category: str = "",
 ) -> tuple[str, dict[str, Any]]:
     recall = memory_recall if isinstance(memory_recall, dict) else {}
     grey = grey_judgment if isinstance(grey_judgment, dict) else {}
@@ -238,8 +239,9 @@ def build_memory_expression_prompt_block(
     route = str(hook.get("route") or recall.get("route") or relationship_signal_route(message))
     has_refs = bool(memory_refs or knowledge_refs or grey_refs)
     self_or_memory_topic = any(term in str(message or "") for term in ("紫苑", "記憶", "同じ紫苑", "らしさ", "継続性", "判断資産"))
-    should_use = has_refs or self_or_memory_topic or route in {"relationship_ux", "lease_judgment"}
-    if not should_use:
+    memory_trigger = has_refs or self_or_memory_topic or route in {"relationship_ux", "lease_judgment"}
+    is_domain_question = str(question_category or "") in ("lease_screening", "lease_knowledge")
+    if not memory_trigger and not is_domain_question:
         return "", {
             "used": False,
             "route": route,
@@ -248,6 +250,22 @@ def build_memory_expression_prompt_block(
             "grey_refs": len(grey_refs),
             "reason": "no_memory_expression_needed",
         }
+
+    if not memory_trigger and is_domain_question:
+        payload = {
+            "used": True,
+            "route": route,
+            "memory_refs": 0,
+            "knowledge_refs": len(knowledge_refs),
+            "grey_refs": 0,
+            "mode": "next_action_only",
+        }
+        block = """
+
+【次のアクション提示】
+回答の最後に、Userが次に検討すべき具体的な論点・確認事項・選択肢を1つだけ、自然な問いかけとして添えてください。
+すでに結論が完結していて追加確認が不要な場合は無理に付けない。雑談・単純な相槌への返信では使わない。""".rstrip()
+        return block, payload
 
     if route == "lease_judgment":
         example = "以前のグレー判断で見た『数字は足りるが、通すなら条件を残す』型として、今回は返済原資と設備稼働開始を先に見ます。"
@@ -265,6 +283,7 @@ def build_memory_expression_prompt_block(
         "knowledge_refs": len(knowledge_refs),
         "grey_refs": len(grey_refs),
         "example": example,
+        "is_domain_question": is_domain_question,
     }
     block = f"""
 

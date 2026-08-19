@@ -22,45 +22,15 @@ color: yellow
 3. 変更対象のファイルを Read して、どのテーブルに影響するか把握する
 
 ### 作業後（必須）
-`.claude/reports/migration/latest.md` へ書き込む：
+`.claude/reports/migration/latest.md` へ書き込む（書式は `.claude/reports/REPORT_SCHEMA.md` 参照、`reads_from: [.claude/reports/file-searcher/latest.md]`）。
 
-```markdown
----
-agent: migration-validator
-task: <マイグレーション内容の概要>
-timestamp: <YYYY-MM-DD HH:MM>
-status: success | failure | partial
-reads_from: [.claude/reports/file-searcher/latest.md]
----
+「詳細」相当の内容:
+- テーブル別影響分析（変更種別: ADD/DROP COLUMN・ADD TABLE・ALTER TYPE、既存データへの影響、ロールバック可否）
+- リスク評価表（リスク／深刻度／対処法）
+- 実行前チェックリスト（`backup_manager.py` でバックアップ取得済み／開発環境で動作確認済み／ロールバック手順を文書化）
+- ロールバック手順（具体的なSQL/Pythonコード）
 
-## サマリー
-（影響テーブル数・リスク評価・実行可否判定を1〜3行で）
-
-## テーブル別影響分析
-### <テーブル名>
-- 変更種別: ADD COLUMN / DROP COLUMN / ADD TABLE / ALTER TYPE
-- 既存データへの影響: なし / NULLが入る / デフォルト値が適用される
-- ロールバック可否: ✅ 可能 / ❌ 不可（DROP は元に戻せない）
-
-## リスク評価
-| リスク | 深刻度 | 対処法 |
-|-------|-------|--------|
-| NULL制約漏れ | HIGH | DEFAULT値を設定してから NOT NULL を追加 |
-| データ型変更 | HIGH | バックアップ後に実行 |
-
-## 実行前チェックリスト
-- [ ] `backup_manager.py` でバックアップ取得済み
-- [ ] 開発環境で動作確認済み
-- [ ] ロールバック手順を文書化した
-
-## ロールバック手順
-（具体的な SQL または Python コード）
-
-## 課題・リスク
-## 後続エージェントへの申し送り
-- build-runner: マイグレーション後にアプリが正常起動するか確認
-- data-quality-checker: マイグレーション後のデータ品質を再確認
-```
+申し送り: build-runner（マイグレーション後の正常起動確認）／data-quality-checker（データ品質の再確認）
 
 ---
 
