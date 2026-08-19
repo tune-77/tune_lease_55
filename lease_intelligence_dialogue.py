@@ -30,6 +30,7 @@ _MEBUKI_BASE = os.environ.get("MEBUKI_URL", "http://localhost:5001")
 _PROJECT_MIND_PATH = Path(__file__).parent / "data" / "mind.json"
 _MEBUKI_LOG_PATH = Path(__file__).parent / "data" / "mebuki_shion_log.jsonl"
 _WORLD_VIEW_NOTIFIED_PATH = Path(__file__).parent / "data" / "world_view_notified.json"
+_SYSTEM_IMPROVEMENT_REFLECTION_PATH = Path(__file__).parent / "reports" / "obsidian_reflection_journal_latest.json"
 
 import time as _time
 
@@ -394,6 +395,43 @@ def _emotional_response_guidance(summary: dict[str, Any]) -> str:
 - 感情の自己説明を毎回答で長々と行わない。必要なら一文だけ自然ににじませる。"""
 
 
+def _build_system_improvement_reflection_block() -> str:
+    """今日のSystem Improvement Reflection（scripts/obsidian_reflection_journal.py）をプロンプトへ注入する。
+
+    Private Reflectionとは違い、これはUser向けに生成された改善アイデアの下書きなので、
+    対話で自然に触れてよい（引用・言及を避ける必要はない）。
+    """
+    try:
+        data = json.loads(_SYSTEM_IMPROVEMENT_REFLECTION_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(data, dict) or data.get("status") != "written":
+        return ""
+    theme = str(data.get("theme") or "").strip()
+    angle = str(data.get("angle") or "").strip()
+    if not theme or not angle:
+        return ""
+    lines = [
+        "## 今日のシステム改善の気づき（System Improvement Reflection）",
+        f"テーマ: {theme}",
+        f"切り口: {angle}",
+    ]
+    problem = str(data.get("problem") or "").strip()
+    insight = str(data.get("insight") or "").strip()
+    solution = str(data.get("solution") or "").strip()
+    if problem:
+        lines.append(f"問題: {problem}")
+    if insight:
+        lines.append(f"気づき: {insight}")
+    if solution:
+        lines.append(f"解決案: {solution}")
+    lines.append(
+        "これはUser向けに生成された改善アイデアの下書きであり、Private Reflectionと違い、"
+        "話題が合えば対話の中で自然に触れてよい（改善PMとして「今日やる/後回し/捨てる」の一つとして扱ってよい）。"
+    )
+    return "\n".join(lines)
+
+
 def build_dialogue_context(
     vault: Path,
     message: str,
@@ -471,10 +509,13 @@ def build_dialogue_context(
     recall_block = build_memory_recall_block(vault)
     # 昨日の内省テキストを思い出しブロックの直後に注入する（REV-094）
     reflection_block = build_reflection_block(vault)
+    # 今日のSystem Improvement Reflection（内省モード拡張・obsidian_reflection_journal.py）
+    system_improvement_block = _build_system_improvement_reflection_block()
     if is_compact:
         recall_block = _clip_prompt_text(recall_block, 1200 if mode == "casual" else 1800)
         reflection_block = _clip_prompt_text(reflection_block, 500 if mode == "casual" else 900)
-    recall_parts = [b for b in (recall_block, reflection_block) if b]
+        system_improvement_block = _clip_prompt_text(system_improvement_block, 500 if mode == "casual" else 900)
+    recall_parts = [b for b in (recall_block, reflection_block, system_improvement_block) if b]
     recall_section = "\n\n".join(recall_parts) + "\n\n" if recall_parts else ""
 
     _pad = state.get("pad", {})

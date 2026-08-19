@@ -1,6 +1,8 @@
+import json
 from pathlib import Path
 
 from lease_intelligence_dialogue import (
+    _build_system_improvement_reflection_block,
     _build_useful_life_lookup_block,
     _emotional_response_guidance,
     append_dialogue_note,
@@ -178,3 +180,83 @@ def test_protective_frustration_is_converted_to_action():
     assert "ユーザーを責めず" in guidance
     assert "修正可能な行動" in guidance
     assert "審査基準" in guidance
+
+
+def test_system_improvement_reflection_block_empty_when_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "lease_intelligence_dialogue._SYSTEM_IMPROVEMENT_REFLECTION_PATH",
+        tmp_path / "missing.json",
+    )
+    assert _build_system_improvement_reflection_block() == ""
+
+
+def test_system_improvement_reflection_block_empty_when_skipped(tmp_path, monkeypatch):
+    report_path = tmp_path / "obsidian_reflection_journal_latest.json"
+    report_path.write_text(json.dumps({"status": "skipped_no_selected_theme"}), encoding="utf-8")
+    monkeypatch.setattr("lease_intelligence_dialogue._SYSTEM_IMPROVEMENT_REFLECTION_PATH", report_path)
+    assert _build_system_improvement_reflection_block() == ""
+
+
+def test_system_improvement_reflection_block_formats_written_entry(tmp_path, monkeypatch):
+    report_path = tmp_path / "obsidian_reflection_journal_latest.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "status": "written",
+                "theme": "量子干渉",
+                "angle": "量子干渉の計算コストと否決率の関係を検証する",
+                "problem": "閾値の効き目が未検証。",
+                "insight": "メモは溜まっているが突き合わせ未実施。",
+                "solution": "閾値通過ログと否決率を1週間分突き合わせる。",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("lease_intelligence_dialogue._SYSTEM_IMPROVEMENT_REFLECTION_PATH", report_path)
+
+    block = _build_system_improvement_reflection_block()
+
+    assert "テーマ: 量子干渉" in block
+    assert "切り口: 量子干渉の計算コストと否決率の関係を検証する" in block
+    assert "問題: 閾値の効き目が未検証。" in block
+    assert "気づき: メモは溜まっているが突き合わせ未実施。" in block
+    assert "解決案: 閾値通過ログと否決率を1週間分突き合わせる。" in block
+    assert "対話の中で自然に触れてよい" in block
+
+
+def test_dialogue_context_includes_system_improvement_reflection(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    report_path = tmp_path / "obsidian_reflection_journal_latest.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "status": "written",
+                "theme": "量子干渉",
+                "angle": "量子干渉の切り口",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("lease_intelligence_dialogue._SYSTEM_IMPROVEMENT_REFLECTION_PATH", report_path)
+    monkeypatch.setattr(
+        "lease_intelligence_dialogue.build_lease_intelligence_knowledge",
+        lambda **kwargs: type(
+            "Knowledge",
+            (),
+            {
+                "available": True,
+                "context_block": "",
+                "query": "",
+                "source_paths": (),
+                "indexed_notes": 0,
+                "knowledge_notes": 0,
+                "chat_log_notes": 0,
+            },
+        )(),
+    )
+
+    prompt, _state = build_dialogue_context(vault, "最近どう？")
+
+    assert "System Improvement Reflection" in prompt
+    assert "テーマ: 量子干渉" in prompt
