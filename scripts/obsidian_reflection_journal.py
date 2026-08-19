@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Turn obsidian_theme_radar's overlap-theme angle into a Problem/Insight/
-Solution outline and write it as a daily note in the vault.
+"""Turn obsidian_theme_radar's selected-theme angle into a Problem/Insight/
+Solution outline about improving lease screening / this system, and write it
+as a daily note in the vault.
 
-Deliberately writes to a new ``Content Strategy Journal/`` folder at the
+Deliberately writes to a new ``System Improvement Reflection/`` folder at the
 vault root, separate from ``Private Reflection`` (Shion's own dialogue
 reflection log) — see the design discussion in this feature's planning:
-mixing the user's content-strategy ideation into Shion's internal
-reflection log would blur two unrelated logs.
+mixing this material into Shion's internal reflection log would blur two
+unrelated logs. This folder is meant as raw material a human can later feed
+into the REV improvement pipeline (e.g. scripts/build_reflection_action_candidates.py-style
+review) — it does not write to the improvement ledger itself.
 
 Input is scripts/obsidian_theme_radar.py's latest report. If it found no
-overlap theme (no recurring interest currently has real-world buzz), this
+theme at all (empty vault) or Vertex text generation is unavailable, this
 script writes nothing for the day and reports why.
 """
 from __future__ import annotations
@@ -32,7 +35,7 @@ from scripts._vertex_text_gen import generate_text  # noqa: E402
 REPORTS_DIR = REPO_ROOT / "reports"
 DEFAULT_THEME_RADAR_JSON = REPORTS_DIR / "obsidian_theme_radar_latest.json"
 DEFAULT_OUTPUT_JSON = REPORTS_DIR / "obsidian_reflection_journal_latest.json"
-JOURNAL_DIR_REL = Path("Content Strategy Journal")
+JOURNAL_DIR_REL = Path("System Improvement Reflection")
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -58,9 +61,11 @@ def _parse_outline(text: str) -> dict[str, str]:
 def build_outline(theme: str, angle: str, buzz: dict[str, Any], *, generate_fn=generate_text) -> dict[str, Any]:
     summary = str(buzz.get("summary") or "")
     prompt = (
-        "あなたはコンテンツ企画のアシスタントです。以下の切り口を、"
-        "「問題（困っていること）」「気づき（新しい見方）」「解決（具体的にどうすればいいか）」の"
-        "3段構成の簡単なアウトラインにしてください。各項目は2〜3文で日本語で書いてください。\n\n"
+        "あなたはリース審査AIとこのシステム（tune_lease_55）の改善を考えるアシスタントです。"
+        "以下の切り口を、「問題（困っていること）」「気づき（新しい見方）」"
+        "「解決（具体的にどうすればいいか）」の3段構成の簡単なアウトラインにしてください。"
+        "「解決」は、リース審査AIやこのシステムの改善につながる具体的なアクションにしてください。"
+        "各項目は2〜3文で日本語で書いてください。\n\n"
         f"テーマ: {theme}\n"
         f"切り口: {angle}\n"
         f"世の中の反応の要約: {summary[:600] or '(なし)'}\n\n"
@@ -84,9 +89,9 @@ def render_note(*, today: dt.date, theme: str, angle: str, outline: dict[str, An
 date: {today.isoformat()}
 source: obsidian_theme_radar
 theme: "{theme}"
-tags: ["content-strategy", "theme-radar"]
+tags: ["system-improvement", "theme-radar"]
 ---
-# {today.isoformat()} コンテンツの切り口
+# {today.isoformat()} システム改善の内省
 
 ## テーマ
 {theme}
@@ -123,11 +128,11 @@ def build_journal_entry(
     if not theme_radar_report:
         return {"status": "skipped_no_theme_radar_report", "note_path": str(note_path), "written": False}
 
-    theme = str(theme_radar_report.get("overlap_theme") or "")
+    theme = str(theme_radar_report.get("selected_theme") or "")
     angle_info = theme_radar_report.get("proposed_angle") or {}
     angle = str(angle_info.get("angle") or "")
     if not theme or not angle:
-        return {"status": "skipped_no_overlap_theme", "note_path": str(note_path), "written": False}
+        return {"status": "skipped_no_selected_theme", "note_path": str(note_path), "written": False}
 
     if note_path.exists() and not force:
         return {"status": "skipped_already_exists", "note_path": str(note_path), "written": False}
@@ -169,7 +174,7 @@ def main() -> int:
     theme_radar_report = _read_json(args.theme_radar_json.expanduser())
 
     if args.dry_run:
-        theme = str((theme_radar_report or {}).get("overlap_theme") or "")
+        theme = str((theme_radar_report or {}).get("selected_theme") or "")
         angle = str(((theme_radar_report or {}).get("proposed_angle") or {}).get("angle") or "")
         print(json.dumps({"would_write_theme": theme, "would_write_angle": angle}, ensure_ascii=False, indent=2))
         return 0

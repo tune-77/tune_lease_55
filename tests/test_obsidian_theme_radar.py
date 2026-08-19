@@ -8,7 +8,7 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def test_finds_overlap_theme_and_proposes_angle(tmp_path):
+def test_finds_buzzing_theme_and_proposes_angle(tmp_path):
     vault = tmp_path
     for i in range(3):
         _write(vault / f"note{i}.md", "---\ntags: [機械学習]\n---\n機械学習の勉強メモ。")
@@ -30,11 +30,11 @@ def test_finds_overlap_theme_and_proposes_angle(tmp_path):
     report = build_theme_radar(vault, search_fn=fake_search, generate_fn=fake_generate)
 
     assert report["recurring_themes"][0]["theme"] == "機械学習"
-    assert report["overlap_theme"] == "機械学習"
+    assert report["selected_theme"] == "機械学習"
     assert report["proposed_angle"]["angle"] == "機械学習×学習ログの切り口"
 
 
-def test_no_buzz_means_no_overlap_and_no_angle_call(tmp_path):
+def test_no_buzz_still_proposes_angle_for_top_theme(tmp_path):
     vault = tmp_path
     _write(vault / "note.md", "---\ntags: [料理]\n---\n料理のメモ。")
 
@@ -45,12 +45,35 @@ def test_no_buzz_means_no_overlap_and_no_angle_call(tmp_path):
 
     def fake_generate(prompt, **kwargs):
         calls.append(prompt)
-        return {"used": True, "status": "ok", "text": "should not be called", "error": ""}
+        return {"used": True, "status": "ok", "text": "料理×システム改善の切り口", "error": ""}
 
     report = build_theme_radar(vault, search_fn=fake_search, generate_fn=fake_generate)
 
-    assert report["overlap_theme"] == ""
-    assert report["proposed_angle"]["status"] == "no_overlap"
+    assert report["selected_theme"] == "料理"
+    assert report["proposed_angle"]["status"] == "ok"
+    assert report["proposed_angle"]["angle"] == "料理×システム改善の切り口"
+    assert len(calls) == 1
+    assert "リース審査AI" in calls[0]
+
+
+def test_empty_vault_yields_no_selected_theme(tmp_path):
+    vault = tmp_path
+    vault.mkdir(exist_ok=True)
+
+    calls = []
+
+    def fake_generate(prompt, **kwargs):
+        calls.append(prompt)
+        return {"used": True, "status": "ok", "text": "should not be called", "error": ""}
+
+    report = build_theme_radar(
+        vault,
+        search_fn=lambda *a, **k: {"used": True, "status": "ok", "text": "", "sources": []},
+        generate_fn=fake_generate,
+    )
+
+    assert report["selected_theme"] == ""
+    assert report["proposed_angle"]["status"] == "no_theme"
     assert calls == []
 
 

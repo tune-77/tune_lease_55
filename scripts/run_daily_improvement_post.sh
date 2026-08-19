@@ -498,6 +498,6 @@ echo "[内省拡張] Vaultの繰り返しテーマとバズ状況を確認（Ver
 log_step "obsidian_theme_radar" 0
 
 echo ""
-echo "[内省拡張] 重なりテーマの切り口をProblem/気づき/解決アウトラインにしてContent Strategy Journalへ記録..."
+echo "[内省拡張] 一番強いテーマの改善の切り口をProblem/気づき/解決アウトラインにしてSystem Improvement Reflectionへ記録..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py" || true
 log_step "obsidian_reflection_journal" 0
