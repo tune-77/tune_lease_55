@@ -154,6 +154,9 @@ def build_journal_entry(
         "theme": theme,
         "angle": angle,
         "outline_status": outline.get("status"),
+        "problem": outline.get("problem", ""),
+        "insight": outline.get("insight", ""),
+        "solution": outline.get("solution", ""),
     }
 
 

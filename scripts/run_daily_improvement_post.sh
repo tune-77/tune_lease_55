@@ -445,6 +445,31 @@ echo "[監査] 紫苑 Agent Action Ledger の日次サマリを生成（backlog 
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_agent_action_ledger_report.py" || true
 log_step "build_agent_action_ledger_report" $?
 
+if [ "${MANA_STATUS}" = "allow" ]; then
+  echo ""
+  echo "[内省拡張] Vaultのタグ・フォルダ重複を監査（読み取り専用）..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_taxonomy_audit.py" || true
+  log_step "obsidian_taxonomy_audit" 0
+
+  echo ""
+  echo "[内省拡張] 新規追加ノートにタグ付け・移動先フォルダを提案・適用..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_note_curator.py" --apply || true
+  log_step "obsidian_note_curator" 0
+
+  echo ""
+  echo "[内省拡張] Vaultの繰り返しテーマとバズ状況を確認（Vertex AI Google検索グラウンディング）..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_theme_radar.py" || true
+  log_step "obsidian_theme_radar" 0
+
+  echo ""
+  echo "[内省拡張] 一番強いテーマの改善の切り口をProblem/気づき/解決アウトラインにしてSystem Improvement Reflectionへ記録（Slack朝報告に載せるため送信前に実行）..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py" || true
+  log_step "obsidian_reflection_journal" 0
+else
+  echo ""
+  echo "[内省拡張] Mana が allow ではないため、Vaultタグ付け/内省ジャーナル生成をスキップします。"
+fi
+
 echo ""
 echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・Webhook未設定ならスキップ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/send_daily_improvement_slack.py" \
@@ -452,7 +477,8 @@ echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・We
   --mana-report "${MANA_REPORT_JSON}" \
   --screening-terms-report "${SCREENING_TERMS_REPORT_JSON}" \
   --judgment-asset-field-review "${PROJECT_ROOT}/reports/judgment_asset_field_review_latest.json" \
-  --action-ledger-report "${PROJECT_ROOT}/reports/agent_action_ledger_latest.json"
+  --action-ledger-report "${PROJECT_ROOT}/reports/agent_action_ledger_latest.json" \
+  --reflection-journal-report "${PROJECT_ROOT}/reports/obsidian_reflection_journal_latest.json"
 log_step "send_daily_improvement_slack" $?
 
 echo ""
@@ -481,23 +507,3 @@ echo "[配布] Obsidianリース知識の差分を Vertex AI Search へ同期...
   --import-documents \
   --wait
 log_step "sync_obsidian_to_vertex_agent_search" $?
-
-echo ""
-echo "[内省拡張] Vaultのタグ・フォルダ重複を監査（読み取り専用）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_taxonomy_audit.py" || true
-log_step "obsidian_taxonomy_audit" 0
-
-echo ""
-echo "[内省拡張] 新規追加ノートにタグ付け・移動先フォルダを提案・適用..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_note_curator.py" --apply || true
-log_step "obsidian_note_curator" 0
-
-echo ""
-echo "[内省拡張] Vaultの繰り返しテーマとバズ状況を確認（Vertex AI Google検索グラウンディング）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_theme_radar.py" || true
-log_step "obsidian_theme_radar" 0
-
-echo ""
-echo "[内省拡張] 一番強いテーマの改善の切り口をProblem/気づき/解決アウトラインにしてSystem Improvement Reflectionへ記録..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py" || true
-log_step "obsidian_reflection_journal" 0
