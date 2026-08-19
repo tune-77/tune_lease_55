@@ -394,8 +394,20 @@ def check_deploy_scripts(checks: CheckRun) -> None:
             "DATABASE_URL/Cloud SQL is intentionally not attached",
         )
         missing = [needle for needle in required if needle not in text]
-        if "DB_PATH=data/demo.db" not in text and "DB_PATH=/app/data/demo.db" not in text:
-            missing.append("DB_PATH=/app/data/demo.db")
+        # DB_PATH は b497b96（2026-08-16）で demo.db から lease_data.db に
+        # 意図的に切替済み（_git_push_db() のバックアップ先不整合修正のため）。
+        # 両方の値を許容し、どちらのファイル名でも安全ガード扱いにする。
+        db_path_ok = any(
+            needle in text
+            for needle in (
+                "DB_PATH=data/demo.db",
+                "DB_PATH=/app/data/demo.db",
+                "DB_PATH=data/lease_data.db",
+                "DB_PATH=/app/data/lease_data.db",
+            )
+        )
+        if not db_path_ok:
+            missing.append("DB_PATH=/app/data/lease_data.db (or demo.db)")
         if missing:
             checks.fail(f"{rel} is missing predeploy safeguards: {', '.join(missing)}")
         else:
