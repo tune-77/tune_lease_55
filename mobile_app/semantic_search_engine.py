@@ -12,10 +12,12 @@ import os
 import json
 import logging
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 from functools import lru_cache
 import numpy as np
+import chromadb
 from datetime import datetime
 
 try:
@@ -70,7 +72,9 @@ class SemanticSearchEngine:
         # ここを直書きすると RAG の索引先だけ他モジュールとずれる。
         self.vault_path = str(resolve_obsidian_vault())
         self.cache_file = "mobile_app/.embeddings_cache.json"
-        
+        # 検索専用のインメモリ chromadb クライアント（永続化しない・Obsidian Vault の共有DBとは無関係）
+        self._chroma_client = chromadb.EphemeralClient()
+
         if EMBEDDING_AVAILABLE:
             try:
                 logger.info(f"📦 Embedding モデル読み込み中: {self.model_name}")
@@ -195,22 +199,50 @@ class SemanticSearchEngine:
         if not EMBEDDING_AVAILABLE:
             logger.warning("⚠️  Embedding 機能が利用できません")
             return documents[:top_k]
-        
+
         query_embedding = self.generate_embedding(query)
         if query_embedding is None:
             return documents[:top_k]
-        
-        results = []
-        for doc in documents:
+
+        if not documents:
+            return []
+
+        scores: dict[int, float] = {}
+        ids: list[str] = []
+        embeddings: list[list[float]] = []
+        for i, doc in enumerate(documents):
             doc_text = f"{doc.get('title', '')} {doc.get('content', '')}"
             doc_embedding = self.generate_embedding(doc_text)
-            
-            similarity = self.cosine_similarity(query_embedding, doc_embedding)
-            results.append({
-                **doc,
-                "similarity_score": similarity
-            })
-        
+            if doc_embedding is None:
+                scores[i] = 0.0
+                continue
+            ids.append(str(i))
+            embeddings.append(doc_embedding.tolist())
+
+        if embeddings:
+            # chromadb（インメモリ）で cosine 類似度検索
+            collection_name = f"search_{uuid.uuid4().hex}"
+            collection = self._chroma_client.create_collection(
+                collection_name, metadata={"hnsw:space": "cosine"}
+            )
+            try:
+                collection.add(ids=ids, embeddings=embeddings)
+                result = collection.query(
+                    query_embeddings=[query_embedding.tolist()],
+                    n_results=len(ids),
+                    include=["distances"],
+                )
+            finally:
+                self._chroma_client.delete_collection(collection_name)
+
+            for doc_id, distance in zip(result["ids"][0], result["distances"][0]):
+                scores[int(doc_id)] = float(max(0.0, min(1.0, 1.0 - distance)))
+
+        results = [
+            {**doc, "similarity_score": scores.get(i, 0.0)}
+            for i, doc in enumerate(documents)
+        ]
+
         # スコアで降順ソート
         results.sort(key=lambda x: x["similarity_score"], reverse=True)
         return results[:top_k]

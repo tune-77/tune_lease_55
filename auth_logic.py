@@ -9,6 +9,7 @@ auth_logic.py
 移行: .app_password が存在する場合、初回起動時に admin ユーザーとして自動取り込む。
 """
 import streamlit as st
+import bcrypt
 import hashlib
 import os
 import sqlite3
@@ -20,9 +21,22 @@ _USERS_DB  = os.path.join(_PKG_DIR, "data", "users.db")
 _PW_FILE   = os.path.join(_PKG_DIR, ".app_password")   # 旧形式（移行用）
 _TIMEOUT_S = 60 * 60 * 8  # 8時間でセッション期限切れ
 
+_BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
+
 
 def _hash(pw: str) -> str:
+    """旧SHA-256方式（後方互換の検証専用。新規ハッシュ生成には使わない）。"""
     return hashlib.sha256(pw.encode("utf-8")).hexdigest()
+
+
+def _hash_password(pw: str) -> str:
+    return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_password(stored_hash: str, pw: str) -> bool:
+    if stored_hash.startswith(_BCRYPT_PREFIXES):
+        return bcrypt.checkpw(pw.encode("utf-8"), stored_hash.encode("utf-8"))
+    return _hash(pw) == stored_hash
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -73,7 +87,7 @@ def _add_user(username: str, password: str, role: str = "user") -> bool:
         with closing(sqlite3.connect(_USERS_DB)) as conn:
             conn.execute(
                 "INSERT INTO users(username, password_hash, role, created_at) VALUES (?,?,?,datetime('now'))",
-                (username, _hash(password), role),
+                (username, _hash_password(password), role),
             )
             conn.commit()
         return True
@@ -91,7 +105,7 @@ def _change_password(username: str, new_password: str) -> None:
     with closing(sqlite3.connect(_USERS_DB)) as conn:
         conn.execute(
             "UPDATE users SET password_hash=? WHERE username=?",
-            (_hash(new_password), username),
+            (_hash_password(new_password), username),
         )
         conn.commit()
 
@@ -166,12 +180,14 @@ def _login_ui() -> None:
         if not uname or not pw:
             return
         user = _get_user(uname)
-        if user and user["password_hash"] == _hash(pw):
+        if user and _verify_password(user["password_hash"], pw):
             st.session_state["authenticated"] = True
             st.session_state["auth_time"]     = time.time()
             st.session_state["username"]      = uname
             st.session_state["user_role"]     = user["role"]
             st.session_state["_login_error"]  = False
+            if not user["password_hash"].startswith(_BCRYPT_PREFIXES):
+                _change_password(uname, pw)  # 旧SHA-256形式をbcryptへ自動移行
             _update_last_login(uname)
         else:
             st.session_state["_login_error"] = True
@@ -242,7 +258,7 @@ def _change_password_sidebar() -> None:
         if st.button("変更する", key="chg_pw_btn"):
             uname = st.session_state.get("username", "")
             user  = _get_user(uname)
-            if not user or user["password_hash"] != _hash(pw_old):
+            if not user or not _verify_password(user["password_hash"], pw_old):
                 st.error("現在のパスワードが違います。")
             elif len(pw_new) < 6:
                 st.error("6文字以上で設定してください。")
