@@ -599,10 +599,13 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
             md = snapshot["memory_debug"]
             if isinstance(md.get("knowledge_refs"), list):
                 refs = [str(r) for r in md["knowledge_refs"] if r]
-        if not refs:
-            refs = ["shion_screening_review"]
     except Exception:
-        refs = ["shion_screening_review"]
+        refs = []
+
+    # 実ルール参照が無いフィードバックは判断資産に紐付けようがないため、
+    # judgment_asset_growth の unknown_rule 減点対象になる偽rule_idは書き込まない。
+    if not refs:
+        return
 
     now = _dt.now().isoformat(timespec="seconds")
     _FEEDBACK_JSONL.parent.mkdir(parents=True, exist_ok=True)
