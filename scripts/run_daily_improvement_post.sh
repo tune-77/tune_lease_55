@@ -445,21 +445,23 @@ echo "[監査] 紫苑 Agent Action Ledger の日次サマリを生成（backlog 
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_agent_action_ledger_report.py" || true
 log_step "build_agent_action_ledger_report" $?
 
-if [ "${MANA_STATUS}" = "allow" ]; then
-  echo ""
-  echo "[内省拡張] Vaultのタグ・フォルダ重複を監査（読み取り専用）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_taxonomy_audit.py" || true
-  log_step "obsidian_taxonomy_audit" 0
+# 読み取り専用の2つ（Vaultへ書き込まない）はMana判定に関わらず毎日実行する。
+# Vault書き込みを伴う2つ（note_curator --apply / reflection_journal）だけをMana allowでゲートする。
+echo ""
+echo "[内省拡張] Vaultのタグ・フォルダ重複を監査（読み取り専用・Mana判定に関わらず実行）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_taxonomy_audit.py" || true
+log_step "obsidian_taxonomy_audit" 0
 
+echo ""
+echo "[内省拡張] Vaultの繰り返しテーマとバズ状況を確認（読み取り専用・Mana判定に関わらず実行・Vertex AI Google検索グラウンディング）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_theme_radar.py" || true
+log_step "obsidian_theme_radar" 0
+
+if [ "${MANA_STATUS}" = "allow" ]; then
   echo ""
   echo "[内省拡張] 新規追加ノートにタグ付け・移動先フォルダを提案・適用..."
   "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_note_curator.py" --apply || true
   log_step "obsidian_note_curator" 0
-
-  echo ""
-  echo "[内省拡張] Vaultの繰り返しテーマとバズ状況を確認（Vertex AI Google検索グラウンディング）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_theme_radar.py" || true
-  log_step "obsidian_theme_radar" 0
 
   echo ""
   echo "[内省拡張] 一番強いテーマの改善の切り口をProblem/気づき/解決アウトラインにしてSystem Improvement Reflectionへ記録（Slack朝報告に載せるため送信前に実行）..."
@@ -467,7 +469,7 @@ if [ "${MANA_STATUS}" = "allow" ]; then
   log_step "obsidian_reflection_journal" 0
 else
   echo ""
-  echo "[内省拡張] Mana が allow ではないため、Vaultタグ付け/内省ジャーナル生成をスキップします。"
+  echo "[内省拡張] Mana が allow ではないため、Vault書き込み系（note_curator/reflection_journal）をスキップします。"
 fi
 
 echo ""
