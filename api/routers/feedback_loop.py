@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -19,6 +20,13 @@ from judgment_asset_bandit import (
     signal_for_candidate,
 )
 
+try:
+    from filelock import FileLock, Timeout as _FileLockTimeout
+    _FILELOCK_AVAILABLE = True
+except ImportError:
+    _FILELOCK_AVAILABLE = False
+    _FileLockTimeout = Exception  # type: ignore[assignment,misc]
+
 _SCRIPT_DIR = str(Path(__file__).resolve().parent)
 _REPO_ROOT = str(Path(_SCRIPT_DIR).parent.parent)
 
@@ -32,6 +40,7 @@ _JUDGMENT_ASSET_USAGE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
 _SCREENING_INPUT_ASSIST_EVENTS_JSONL = Path(_REPO_ROOT) / "data" / "screening_input_assist_events.jsonl"
+_JUDGMENT_ASSET_PROMOTION_LOCK_PATH = Path(_REPO_ROOT) / "data" / ".judgment_asset_promotion.lock"
 _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
 _HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
 _CLOUDRUN_RETURN_DB = Path(_REPO_ROOT) / "data" / "cloudrun_experience_return.db"
@@ -669,33 +678,7 @@ def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[
                         break
         except OSError:
             rows = []
-    demo_candidates = [
-        {
-            "asset_quality": "actionable",
-            "candidate_type": "condition_signal",
-            "claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edited_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "effective_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edit_count": 1,
-            "evidence_path": "manual://screening/demo-renewal-asset-candidate",
-            "id": "demo-renewal-asset-candidate",
-            "promotion_status": "not_promoted",
-            "research_date": "2026-07-18",
-            "research_title": "Manual Judgment Asset",
-            "research_topic": "demo-renewal-asset",
-            "review_status": "candidate",
-            "source_section": "manual_input",
-            "use_count": 0,
-            "useful_count": 0,
-            "rejected_count": 0,
-            "verified_status": "unverified",
-            "verification_note": "demo_candidate_for_screening_review",
-        },
-    ]
-    for item in reversed(demo_candidates):
-        demo_id = str(item.get("id") or "")
-        rows = [row for row in rows if str(row.get("id") or "") != demo_id]
-        rows.insert(0, item)
+    rows = [row for row in rows if str(row.get("id") or "") != "demo-renewal-asset-candidate"]
     return rows[:limit]
 
 
@@ -850,7 +833,7 @@ def _rank_screening_judgment_asset_candidate(item: dict[str, Any], context_terms
     penalty = float(item.get("rejected_count") or 0) * 2.0
     generic_penalty = 2.5 if any(term in claim for term in ("Gemini", "自動否決", "自動承認", "一次情報か", "検討材料として使")) else 0.0
     update_context_bonus = 0.0
-    if context_terms & {"更新", "更改", "増額"} and any(term in haystack for term in ("更新設備", "更改", "既存設備", "demo-renewal-asset")):
+    if context_terms & {"更新", "更改", "増額"} and any(term in haystack for term in ("更新設備", "更改", "既存設備")):
         update_context_bonus = 6.0
     new_customer_penalty = 0.0
     if "新規" not in context_terms and any(term in haystack for term in ("新規先", "demo-new-customer-competition")):
@@ -1205,10 +1188,7 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
         candidate_id = str(item.get("id") or "")
         if not candidate_id:
             continue
-        if candidate_id == "demo-renewal-asset-candidate":
-            merged = dict(item)
-        else:
-            merged = {**item, **dict(state.get(candidate_id) or {})}
+        merged = {**item, **dict(state.get(candidate_id) or {})}
         promotion_status = str(merged.get("promotion_status") or item.get("promotion_status") or "not_promoted")
         if promotion_status in {"active", "promoted", "rejected_or_deprioritized", "rejected"}:
             continue
@@ -1255,7 +1235,6 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
     candidates.sort(
         key=lambda item: (
             0 if item.get("already_active_statement") else 1,
-            1 if str(item.get("research_topic") or "") == "demo-renewal-asset" else 0,
             1 if int(item.get("edit_count") or 0) > 0 else 0,
             int(item.get("score") or 0),
             int(item.get("useful_count") or 0),
@@ -1266,101 +1245,123 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
     return candidates[:max(1, min(int(limit or 30), 100))]
 
 
+@contextlib.contextmanager
+def _judgment_asset_promotion_lock():
+    """canonical_judgment_rules.json / candidate_state.json への同時書き込みを直列化する。
+
+    filelock 未導入環境（BR-426と同じフォールバック方針）ではロック無しで進む。
+    """
+    if not _FILELOCK_AVAILABLE:
+        yield
+        return
+    _JUDGMENT_ASSET_PROMOTION_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(_JUDGMENT_ASSET_PROMOTION_LOCK_PATH), timeout=10)
+    try:
+        lock.acquire()
+    except _FileLockTimeout:
+        raise HTTPException(status_code=409, detail="judgment asset store is busy, try again")
+    try:
+        yield
+    finally:
+        lock.release()
+
+
 def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[str, Any]:
     import datetime as _dt
     import hashlib as _hashlib
 
-    candidates = _load_judgment_asset_promotion_candidates(limit=1000)
-    candidate = next((item for item in candidates if str(item.get("id") or "") == candidate_id), None)
-    if not candidate:
-        raise HTTPException(status_code=404, detail="promotion candidate not found")
-    statement = str(candidate.get("edited_claim") or candidate.get("effective_claim") or candidate.get("claim") or "").strip()
-    if len(statement) < 12:
-        raise HTTPException(status_code=422, detail="candidate statement is too short")
-    now = _dt.datetime.now().isoformat(timespec="seconds")
-    material_type = {
-        "confirmation_question": "judgment_rule",
-        "condition_signal": "risk_signal",
-        "application_rule": "judgment_rule",
-        "caution": "risk_signal",
-    }.get(str(candidate.get("candidate_type") or ""), "judgment_rule")
-    concept_raw = str(candidate.get("research_topic") or "manual_screening").strip() or "manual_screening"
-    concept = re.sub(r"[^A-Za-z0-9_]+", "_", concept_raw).strip("_")[:60] or "manual_screening"
-    payload: dict[str, Any] = {}
-    try:
-        payload = json.loads(_CANONICAL_JUDGMENT_RULES_JSON.read_text(encoding="utf-8", errors="ignore"))
-    except (json.JSONDecodeError, OSError):
-        payload = {}
-    rules = payload.get("rules") if isinstance(payload, dict) else []
-    if not isinstance(rules, list):
-        rules = []
-    normalized_statement = " ".join(statement.split())
-    existing = next((rule for rule in rules if " ".join(str(rule.get("canonical_statement") or "").split()) == normalized_statement), None)
-    if existing:
-        existing["updated_at"] = now
-        existing["evidence_count"] = max(int(existing.get("evidence_count") or 0), int(candidate.get("use_count") or 0) + 1)
-        existing["user_evidence_count"] = max(int(existing.get("user_evidence_count") or 0), int(candidate.get("useful_count") or 0) + int(candidate.get("edit_count") or 0))
-        evidence_paths = list(existing.get("evidence_paths") or [])
-        evidence_path = str(candidate.get("evidence_path") or f"judgment_asset_candidate_state:{candidate_id}")
-        if evidence_path and evidence_path not in evidence_paths:
-            evidence_paths.append(evidence_path)
-        existing["evidence_paths"] = evidence_paths[:12]
-        promoted_rule = existing
-        promoted_status = "updated"
-    else:
-        promoted_rule = {
-            "id": _hashlib.sha256(f"manual_promotion|{material_type}|{concept}|{statement}".encode("utf-8")).hexdigest()[:16],
-            "status": "active",
-            "source_status": "manual_promoted",
-            "material_type": material_type,
-            "domain": "lease_screening",
-            "concept": concept,
-            "canonical_statement": statement,
-            "evidence_count": max(1, int(candidate.get("use_count") or 0)),
-            "user_evidence_count": max(1, int(candidate.get("useful_count") or 0) + int(candidate.get("edit_count") or 0)),
-            "confidence": 0.78 + min(0.16, float(candidate.get("useful_count") or 0) * 0.04 + float(candidate.get("edit_count") or 0) * 0.03),
-            "risk_axis": [],
-            "sample_claims": [str(candidate.get("claim") or statement)[:220]],
-            "evidence_paths": [str(candidate.get("evidence_path") or f"judgment_asset_candidate_state:{candidate_id}")],
-            "created_at": now,
-            "updated_at": now,
-            "promotion_source": "judgment_asset_review_gate",
-            "private": False,
-            "material_types": [material_type],
-            "domains": ["lease_screening"],
+    with _judgment_asset_promotion_lock():
+        candidates = _load_judgment_asset_promotion_candidates(limit=1000)
+        candidate = next((item for item in candidates if str(item.get("id") or "") == candidate_id), None)
+        if not candidate:
+            raise HTTPException(status_code=404, detail="promotion candidate not found")
+        statement = str(candidate.get("edited_claim") or candidate.get("effective_claim") or candidate.get("claim") or "").strip()
+        if len(statement) < 12:
+            raise HTTPException(status_code=422, detail="candidate statement is too short")
+        now = _dt.datetime.now().isoformat(timespec="seconds")
+        material_type = {
+            "confirmation_question": "judgment_rule",
+            "condition_signal": "risk_signal",
+            "application_rule": "judgment_rule",
+            "caution": "risk_signal",
+        }.get(str(candidate.get("candidate_type") or ""), "judgment_rule")
+        concept_raw = str(candidate.get("research_topic") or "manual_screening").strip() or "manual_screening"
+        concept = re.sub(r"[^A-Za-z0-9_]+", "_", concept_raw).strip("_")[:60] or "manual_screening"
+        payload: dict[str, Any] = {}
+        try:
+            payload = json.loads(_CANONICAL_JUDGMENT_RULES_JSON.read_text(encoding="utf-8", errors="ignore"))
+        except (json.JSONDecodeError, OSError):
+            payload = {}
+        rules = payload.get("rules") if isinstance(payload, dict) else []
+        if not isinstance(rules, list):
+            rules = []
+        normalized_statement = " ".join(statement.split())
+        existing = next((rule for rule in rules if " ".join(str(rule.get("canonical_statement") or "").split()) == normalized_statement), None)
+        if existing:
+            existing["updated_at"] = now
+            existing["evidence_count"] = max(int(existing.get("evidence_count") or 0), int(candidate.get("use_count") or 0) + 1)
+            existing["user_evidence_count"] = max(int(existing.get("user_evidence_count") or 0), int(candidate.get("useful_count") or 0) + int(candidate.get("edit_count") or 0))
+            evidence_paths = list(existing.get("evidence_paths") or [])
+            evidence_path = str(candidate.get("evidence_path") or f"judgment_asset_candidate_state:{candidate_id}")
+            if evidence_path and evidence_path not in evidence_paths:
+                evidence_paths.append(evidence_path)
+            existing["evidence_paths"] = evidence_paths[:12]
+            promoted_rule = existing
+            promoted_status = "updated"
+        else:
+            promoted_rule = {
+                "id": _hashlib.sha256(f"manual_promotion|{material_type}|{concept}|{statement}".encode("utf-8")).hexdigest()[:16],
+                "status": "active",
+                "source_status": "manual_promoted",
+                "material_type": material_type,
+                "domain": "lease_screening",
+                "concept": concept,
+                "canonical_statement": statement,
+                "evidence_count": max(1, int(candidate.get("use_count") or 0)),
+                "user_evidence_count": max(1, int(candidate.get("useful_count") or 0) + int(candidate.get("edit_count") or 0)),
+                "confidence": 0.78 + min(0.16, float(candidate.get("useful_count") or 0) * 0.04 + float(candidate.get("edit_count") or 0) * 0.03),
+                "risk_axis": [],
+                "sample_claims": [str(candidate.get("claim") or statement)[:220]],
+                "evidence_paths": [str(candidate.get("evidence_path") or f"judgment_asset_candidate_state:{candidate_id}")],
+                "created_at": now,
+                "updated_at": now,
+                "promotion_source": "judgment_asset_review_gate",
+                "private": False,
+                "material_types": [material_type],
+                "domains": ["lease_screening"],
+            }
+            rules.append(promoted_rule)
+            promoted_status = "promoted"
+        rules = sorted(
+            [rule for rule in rules if isinstance(rule, dict)],
+            key=lambda item: (
+                -int(item.get("evidence_count") or 0),
+                -int(item.get("user_evidence_count") or 0),
+                str(item.get("concept") or ""),
+            ),
+        )
+        store = {
+            "schema_version": int(payload.get("schema_version") or 1) if isinstance(payload, dict) else 1,
+            "generated_at": now,
+            "source": "canonical_judgment_rules",
+            "summary": {
+                "active_rules": len(rules),
+                "promoted": 1 if promoted_status == "promoted" else 0,
+                "updated": 1 if promoted_status == "updated" else 0,
+                "skipped": 0,
+            },
+            "rules": rules,
         }
-        rules.append(promoted_rule)
-        promoted_status = "promoted"
-    rules = sorted(
-        [rule for rule in rules if isinstance(rule, dict)],
-        key=lambda item: (
-            -int(item.get("evidence_count") or 0),
-            -int(item.get("user_evidence_count") or 0),
-            str(item.get("concept") or ""),
-        ),
-    )
-    store = {
-        "schema_version": int(payload.get("schema_version") or 1) if isinstance(payload, dict) else 1,
-        "generated_at": now,
-        "source": "canonical_judgment_rules",
-        "summary": {
-            "active_rules": len(rules),
-            "promoted": 1 if promoted_status == "promoted" else 0,
-            "updated": 1 if promoted_status == "updated" else 0,
-            "skipped": 0,
-        },
-        "rules": rules,
-    }
-    _CANONICAL_JUDGMENT_RULES_JSON.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    state = _read_judgment_asset_candidate_state()
-    current = dict(state.get(candidate_id) or {})
-    current["promotion_status"] = "promoted"
-    current["promoted_at"] = now
-    current["promoted_rule_id"] = str(promoted_rule.get("id") or "")
-    current["verified_status"] = "canonical"
-    state[candidate_id] = current
-    _write_judgment_asset_candidate_state(state)
-    return {"status": promoted_status, "candidate_id": candidate_id, "rule": promoted_rule, "active_rules": len(rules)}
+        _CANONICAL_JUDGMENT_RULES_JSON.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        state = _read_judgment_asset_candidate_state()
+        current = dict(state.get(candidate_id) or {})
+        current["promotion_status"] = "promoted"
+        current["promoted_at"] = now
+        current["promoted_rule_id"] = str(promoted_rule.get("id") or "")
+        current["verified_status"] = "canonical"
+        state[candidate_id] = current
+        _write_judgment_asset_candidate_state(state)
+        return {"status": promoted_status, "candidate_id": candidate_id, "rule": promoted_rule, "active_rules": len(rules)}
 
 
 def _review_judgment_asset_promotion_candidate(candidate_id: str, req: JudgmentAssetPromotionReviewRequest) -> dict[str, Any]:
@@ -1369,35 +1370,20 @@ def _review_judgment_asset_promotion_candidate(candidate_id: str, req: JudgmentA
     candidate_id = str(candidate_id or "").strip()
     if not candidate_id:
         raise HTTPException(status_code=422, detail="candidate_id is required")
-    candidates = _load_autoresearch_judgment_asset_candidates(limit=1000)
-    if not any(str(item.get("id") or "") == candidate_id for item in candidates):
-        raise HTTPException(status_code=404, detail="candidate not found")
-    state = _read_judgment_asset_candidate_state()
-    current = dict(state.get(candidate_id) or {})
-    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
-    current["promotion_status"] = "held" if req.action == "hold" else "rejected"
-    current["promotion_reviewed_at"] = now
-    if req.comment:
-        current["promotion_review_comment"] = str(req.comment)[:300]
-    state[candidate_id] = current
-    _write_judgment_asset_candidate_state(state)
-    return {"status": "ok", "candidate": {"id": candidate_id, **current}}
-
-
-def _queue_judgment_asset_promotion_for_local(candidate_id: str) -> dict[str, Any]:
-    candidate_id = str(candidate_id or "").strip()
-    if not candidate_id:
-        raise HTTPException(status_code=422, detail="candidate_id is required")
-    candidates = _load_judgment_asset_promotion_candidates(limit=1000)
-    candidate = next((item for item in candidates if str(item.get("id") or "") == candidate_id), None)
-    if not candidate:
-        raise HTTPException(status_code=404, detail="promotion candidate not found")
-    return {
-        "status": "queued_for_local_promotion",
-        "candidate_id": candidate_id,
-        "candidate": candidate,
-        "reason": "Cloud Run runtime does not update the canonical judgment-asset store directly.",
-    }
+    with _judgment_asset_promotion_lock():
+        candidates = _load_autoresearch_judgment_asset_candidates(limit=1000)
+        if not any(str(item.get("id") or "") == candidate_id for item in candidates):
+            raise HTTPException(status_code=404, detail="candidate not found")
+        state = _read_judgment_asset_candidate_state()
+        current = dict(state.get(candidate_id) or {})
+        now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        current["promotion_status"] = "held" if req.action == "hold" else "rejected"
+        current["promotion_reviewed_at"] = now
+        if req.comment:
+            current["promotion_review_comment"] = str(req.comment)[:300]
+        state[candidate_id] = current
+        _write_judgment_asset_candidate_state(state)
+        return {"status": "ok", "candidate": {"id": candidate_id, **current}}
 
 
 _CHAT_JUDGMENT_ASSET_TRIGGERS = (
@@ -2807,15 +2793,6 @@ def get_judgment_asset_promotion_candidates(limit: int = 30) -> dict:
 
 @router.post("/api/judgment-assets/promotion-candidates/{candidate_id}/promote")
 def post_judgment_asset_promotion_candidate(candidate_id: str, background_tasks: BackgroundTasks) -> dict:
-    if os.environ.get("K_SERVICE") and os.environ.get("ALLOW_CLOUDRUN_JUDGMENT_ASSET_PROMOTION") != "1":
-        result = _queue_judgment_asset_promotion_for_local(candidate_id)
-        background_tasks.add_task(
-            record_cloudrun_input_event,
-            event_type="judgment_asset_promotion_requested",
-            surface="improvement_log",
-            payload={**result, "schema_version": 1},
-        )
-        return {"status": "ok", "promotion": result}
     result = _promote_judgment_asset_candidate_to_canonical(candidate_id)
     background_tasks.add_task(
         record_cloudrun_input_event,

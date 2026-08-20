@@ -68,33 +68,7 @@ def load_autoresearch_judgment_asset_candidates(
                         break
         except OSError:
             rows = []
-    demo_candidates = [
-        {
-            "asset_quality": "actionable",
-            "candidate_type": "condition_signal",
-            "claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edited_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "effective_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edit_count": 1,
-            "evidence_path": "manual://screening/demo-renewal-asset-candidate",
-            "id": "demo-renewal-asset-candidate",
-            "promotion_status": "not_promoted",
-            "research_date": "2026-07-18",
-            "research_title": "Manual Judgment Asset",
-            "research_topic": "demo-renewal-asset",
-            "review_status": "candidate",
-            "source_section": "manual_input",
-            "use_count": 0,
-            "useful_count": 0,
-            "rejected_count": 0,
-            "verified_status": "unverified",
-            "verification_note": "demo_candidate_for_screening_review",
-        },
-    ]
-    for item in reversed(demo_candidates):
-        demo_id = str(item.get("id") or "")
-        rows = [row for row in rows if str(row.get("id") or "") != demo_id]
-        rows.insert(0, item)
+    rows = [row for row in rows if str(row.get("id") or "") != "demo-renewal-asset-candidate"]
     return rows[:limit]
 
 

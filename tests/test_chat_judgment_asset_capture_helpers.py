@@ -36,7 +36,7 @@ def test_load_autoresearch_judgment_asset_candidates_overlays_state(tmp_path):
     row = next(item for item in rows if item["id"] == "c1")
     assert row["use_count"] == 3
     assert row["verified_status"] == "verified"
-    assert rows[0]["id"] == "demo-renewal-asset-candidate"
+    assert all(item["id"] != "demo-renewal-asset-candidate" for item in rows)
 
 
 def test_create_manual_judgment_asset_candidate_writes_jsonl_and_state(tmp_path):
