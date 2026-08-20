@@ -40,10 +40,10 @@ git stash -- .claude/ && git pull origin master && git stash drop
 `~/Library/Logs/tunelease/improvement_YYYYMMDD.log` に自動生成された改善候補（REV-XXX）を参照。
 Next.js フロントエンドの実装を優先して進める。
 
-スコア閾値：
-- ≥70pt = 承認
-- 60-69pt = 条件付き承認  
-- <60pt = 否決
+スコア閾値（唯一のソースは `constants.py` の `APPROVAL_LINE`/`CONDITIONAL_LINE`。`scoring_core.py` がこれをimportして参照する。数値のハードコード複製禁止 — CLAUDE.md参照）：
+- `APPROVAL_LINE`（既定71点）以上 = 承認
+- `CONDITIONAL_LINE`（既定60点）以上〜`APPROVAL_LINE`未満 = 条件付き承認
+- `CONDITIONAL_LINE`未満 = 否決
 
 Q_risk 閾値：
 - ≥35 = 要注意
