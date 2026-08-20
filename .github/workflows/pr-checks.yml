@@ -83,6 +83,8 @@ jobs:
           tests/test_execute_codex_queue_guards.py
           tests/test_sync_cloudrun_inputs_from_gcs.py
           tests/test_judgment_asset_promotion.py
+          tests/test_judgment_asset_bandit.py
+          tests/test_screening_input_assist_summary.py
           tests/test_chat_judgment_asset_capture_helpers.py
           tests/test_chat_judgment_asset_capture.py
           tests/test_lease_intelligence_dialogue.py
