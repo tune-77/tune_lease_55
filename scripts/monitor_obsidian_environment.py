@@ -221,6 +221,13 @@ def check_private_reflection_meaning(vault: Path, target: date) -> MonitorCheck:
         "私の見落とし:",
         "仮説の更新:",
         "次回の小さな実験:",
+        "紫苑の初期仮説:",
+        "監査の声:",
+        "実装の声:",
+        "別視点の声:",
+        "良心の声:",
+        "衝突した点:",
+        "紫苑の統合:",
         "前回の入力:",
         "前回の判断:",
         "人間の修正:",
@@ -240,8 +247,10 @@ def check_private_reflection_meaning(vault: Path, target: date) -> MonitorCheck:
         problems.append(f"too_similar_to_yesterday:{similarity}")
     if missing_categories:
         problems.append(f"missing_meaning_categories:{','.join(missing_categories)}")
-    if len(matched_labels) < 4:
+    if len(matched_labels) < 8:
         problems.append("reflection_protocol_labels_missing")
+    if "## 複数の声の衝突ログ" not in today_body:
+        problems.append("voice_collision_log_missing")
 
     status = "ok" if not problems else "warn"
     if status == "ok":

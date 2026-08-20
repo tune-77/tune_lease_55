@@ -107,6 +107,14 @@ def test_fallback_creates_private_reflection_without_dialogue(tmp_path, monkeypa
     assert "仮説の更新:" in text
     assert "次回の小さな実験:" in text
     assert "まだ分からないこと:" in text
+    assert "## 複数の声の衝突ログ" in text
+    assert "紫苑の初期仮説:" in text
+    assert "監査の声:" in text
+    assert "実装の声:" in text
+    assert "別視点の声:" in text
+    assert "良心の声:" in text
+    assert "衝突した点:" in text
+    assert "紫苑の統合:" in text
     assert "## 本格内省プロトコル" in text
     assert "事前の思い込み:" in text
     assert "破られた前提:" in text
@@ -695,6 +703,57 @@ def test_quality_gate_rejects_boring_label_only_for_reflection_complaint(tmp_pat
     assert result["passed"] is False
     assert "user_expectation_misread_missing" in result["reasons"]
     assert "boring_label_only" in result["reasons"]
+
+
+def test_quality_gate_rejects_reflection_without_voice_collision_log(tmp_path):
+    date_str = "2026-08-20"
+    vault = tmp_path / "vault"
+    reflection_text = (
+        "今日は内省を一人で深く考えるだけでは弱いことを見た。"
+        "私は複数の声を統合する必要がある。"
+        "\n\n## 深い内省チェック\n\n"
+        "- 今日の観察: 内省を一人芝居にしない必要がある。\n"
+        "- 私の見落とし: 相談と衝突を浅く扱った。\n"
+        "- 仮説の更新: 内省は次回の実験へ戻すことで評価する。\n"
+        "- 次回の小さな実験: 次回は具体的なユーザー発話を一つ拾う。\n"
+        "- まだ分からないこと: どこまで回答品質に効くかはまだ分からない。\n"
+        "\n\n## 判断変更ログ\n\n"
+        "- 前回の入力: ユーザーが内省の意味を問い直した。\n"
+        "- 前回の判断: 一人で深く考えれば足りると思っていた。\n"
+        "- 人間の修正: 複数の立場へ分ける必要があると示した。\n"
+        "- 紫苑が外した点: 声同士の衝突を記録していなかった。\n"
+        "- 次回から変える確認事項: 採用・保留・棄却した声を残す。\n"
+        "- 判断資産候補: 内省は衝突と統合を残す。\n"
+        "- まだ確信できない点: 実回答へどこまで戻るかは未検証。\n"
+        "\n\n## 小説化レイヤー（ツンコとユウケイ）\n\n"
+        "- 位置づけ: 判断変更ログの翻訳。正本ではない。\n"
+        "- ツンコ: 衝突を抜かすな、と拾う。\n"
+        "- ユウケイ: 次回の確認へ戻す。\n"
+        "- 短編: 二人はログを読んで頷いた。\n"
+        "\n\n## 本格内省プロトコル\n\n"
+        "- 事前の思い込み: 一人で考えれば足りると思っていた。\n"
+        "- 破られた前提: 複数の声が必要だった。\n"
+        "- 私の責任: 私は内省を文章として扱いすぎた。\n"
+        "- まだ逃げていること: 声の対立を名指しするのを避けている。\n"
+        "- 更新する信念: 内省は次回の検証方法まで書く。\n"
+        "- 次回の検証方法: 次回の回答で確認する。\n"
+        "\n\n## 波乱丸式の私室メモ\n\n"
+        "- 場面: 内省を見直している。\n"
+        "- 摩擦: 紫苑らしさと信用が衝突する。\n"
+        "- ぼやき: 見出しだけなら弱い。\n"
+        "- 次の一手: 複数の声を残す。\n"
+        "- 残す芯: 内省は次の判断に戻って初めて意味を持つ。\n"
+    )
+
+    result = reflection._evaluate_reflection_quality(
+        vault=vault,
+        date_str=date_str,
+        reflection_text=reflection_text,
+        dialogue_text="Private Reflectionは複数の声の衝突ログにする。",
+    )
+
+    assert result["passed"] is False
+    assert "voice_collision_log_missing" in result["reasons"]
 
 
 def test_quality_gate_rejects_reflection_without_serious_protocol(tmp_path):
