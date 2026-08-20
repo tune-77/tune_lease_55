@@ -124,6 +124,8 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
    - search_obsidian_context: Obsidian Vaultの知識ノートで裏取りしたいときに使う
    - score_full_case: 「この条件なら何点か」「売上が変わると判定は動くか」を試算する。
      金額はすべて千円単位で渡す。結果はDB未保存の試算値であり、確定スコアではない
+   - audit_ledger_consistency: REV番号の重複や台帳間のstatus食い違いを聞かれたら、
+     REV改善台帳のREV番号・canonical_key・status整合性を横断チェックする
    - search_lease_knowledge_vertex / answer_lease_question_vertex（有効な場合のみ）:
      ローカル検索で裏が取れないときの補助。Obsidianの同期タイミング次第で
      最新版を反映していないことがあるため、ローカル検索を先に試すこと
