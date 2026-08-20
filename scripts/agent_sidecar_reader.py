@@ -22,6 +22,8 @@ OUT_MD = PROJECT_ROOT / "reports" / "agent_sidecar_brief.md"
 OUT_JSON = PROJECT_ROOT / "reports" / "agent_sidecar_brief.json"
 
 PREFERRED_REPORTS = (
+    "judgment-asset-audit/latest.md",
+    "ledger-consistency/latest.md",
     "scoring-audit/latest.md",
     "data-quality/latest.md",
     "rule-validation/latest.md",
@@ -102,6 +104,16 @@ AGENT_TRIGGER_PATHS: dict[str, tuple[str, ...]] = {
     "impact-analysis": ("*.py", "frontend/src"),
     "file-searcher": ("*.py", "frontend/src"),
     "report-stylist": ("components/analysis_results.py",),
+    "ledger-consistency": ("scripts/improvement_ledger.jsonl", "api/rule_engine/ledger_rules.json", "scripts/rev_ledger_utils.py"),
+    "judgment-asset-audit": (
+        "scripts/build_autoresearch_judgment_asset_candidates.py",
+        "scripts/build_canonical_judgment_rules.py",
+        "scripts/promote_canonical_judgment_rules.py",
+        "scripts/judgment_asset_growth_report.py",
+        "scripts/build_judgment_asset_field_review.py",
+        "api/routers/feedback_loop.py",
+        "scripts/sync_cloudrun_inputs_from_gcs.py",
+    ),
 }
 
 

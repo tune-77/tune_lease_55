@@ -122,6 +122,8 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "chat_new": 0,
         "hypothesis_collision_new": 0,
         "shion_memory_usage_new": 0,
+        "shion_agent_consultations_new": 0,
+        "shion_agent_consultation_status_updates": 0,
         "personal_memory_new": 0,
         "score_inputs_new": 1,
         "ocr_results_new": 0,
@@ -186,6 +188,72 @@ def test_materialize_events_writes_prompt_feedback_log(tmp_path, monkeypatch) ->
     assert result2["prompt_feedback_new"] == 0
     rows_after = prompt_feedback_log.read_text(encoding="utf-8").splitlines()
     assert len(rows_after) == 1
+
+
+def test_materialize_events_restores_shion_agent_consultation_queue(tmp_path, monkeypatch) -> None:
+    queue_log = tmp_path / "shion_agent_consultation_queue.jsonl"
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    monkeypatch.setattr(syncer, "CLOUDRUN_IMPROVEMENT_LOG", tmp_path / "improvement.jsonl")
+    monkeypatch.setattr(syncer, "CLOUDRUN_CHAT_LOG", tmp_path / "chat.jsonl")
+    monkeypatch.setattr(syncer, "PROMPT_FEEDBACK_LOG", tmp_path / "prompt_feedback.jsonl")
+    monkeypatch.setattr(syncer, "SHION_MEMORY_USAGE_LOG", tmp_path / "shion_memory_usage.jsonl")
+    monkeypatch.setattr(syncer, "SHION_HYPOTHESIS_COLLISION_LOG", tmp_path / "hypothesis_collision.jsonl")
+    monkeypatch.setattr(syncer, "SHION_AGENT_CONSULTATION_QUEUE", queue_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+
+    events = [
+        {
+            "event_id": "agentq-evt-1",
+            "ts": "2026-08-20T00:00:00Z",
+            "event_type": "shion_agent_consultation_requested",
+            "surface": "shion_agent_consultation",
+            "payload": {
+                "id": "agentq_abc123",
+                "agent": "judgment-asset-auditor",
+                "title": "判断資産候補の断線疑い",
+                "reason": "候補stateとJSONLの件数が合わない。",
+                "observed_signal": "candidate_count_mismatch",
+                "suggested_scope": "reportsとdataを照合",
+                "priority": "high",
+                "source": "lease_intelligence_tool",
+                "created_at": "2026-08-20T00:00:00Z",
+                "report_target": ".claude/reports/judgment-asset-audit/latest.md",
+            },
+        },
+        {
+            "event_id": "agentq-evt-2",
+            "ts": "2026-08-20T00:01:00Z",
+            "event_type": "shion_agent_consultation_status_changed",
+            "surface": "shion_agent_consultation",
+            "payload": {
+                "queue_id": "agentq_abc123",
+                "status": "in_review",
+                "note": "Codexが確認開始",
+            },
+        },
+    ]
+
+    result = syncer.materialize_events(events)
+
+    assert result["shion_agent_consultations_new"] == 1
+    assert result["shion_agent_consultation_status_updates"] == 1
+    rows = [json.loads(line) for line in queue_log.read_text(encoding="utf-8").splitlines()]
+    assert [row["event_type"] for row in rows] == [
+        "consultation_requested",
+        "consultation_status_changed",
+    ]
+    assert rows[0]["queue_id"] == "agentq_abc123"
+    assert rows[0]["payload"]["agent"] == "judgment-asset-auditor"
+    assert rows[1]["payload"]["status"] == "in_review"
+
+    result2 = syncer.materialize_events(events)
+    assert result2["shion_agent_consultations_new"] == 0
+    assert result2["shion_agent_consultation_status_updates"] == 0
+    assert len(queue_log.read_text(encoding="utf-8").splitlines()) == 2
 
 
 def test_materialize_events_restores_shion_review_and_feedback_to_local_db(tmp_path, monkeypatch) -> None:

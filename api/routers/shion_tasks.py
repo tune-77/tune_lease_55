@@ -62,6 +62,21 @@ class CounterHypothesisCardRequest(BaseModel):
     risk_tags: list[str] = Field(default_factory=list)
 
 
+class AgentConsultationRequest(BaseModel):
+    agent: str
+    title: str
+    reason: str
+    observed_signal: str = ""
+    suggested_scope: str = ""
+    priority: Literal["low", "medium", "high"] = "medium"
+    source: str = "shion_dialogue"
+
+
+class AgentConsultationStatusRequest(BaseModel):
+    status: Literal["open", "in_review", "done", "cancelled"]
+    note: str = ""
+
+
 def _daily_greeting_read_json(path: Path) -> dict:
     try:
         if path.exists():
@@ -253,6 +268,76 @@ def get_shion_judgment_prediction_alert(limit: int = 3) -> dict:
     from api.shion_proactive_alert import check_judgment_prediction_alert
 
     return check_judgment_prediction_alert(limit=limit)
+
+
+@router.get("/api/shion/agent-consultations")
+def get_shion_agent_consultations(
+    status: Literal["open", "in_review", "done", "cancelled", "all"] = "open",
+    agent: str = "all",
+    limit: int = 50,
+) -> dict:
+    """紫苑からCodex AGENTへの相談キューを返す。AGENT実行はしない。"""
+    from api.shion_agent_consultation_queue import list_consultations
+
+    items = list_consultations(status=status, agent=agent, limit=limit)
+    return {
+        "count": len(items),
+        "status_filter": status,
+        "agent_filter": agent,
+        "ledger": "data/shion_agent_consultation_queue.jsonl",
+        "safety_policy": "queue_only_no_agent_execution_no_code_change",
+        "items": items,
+    }
+
+
+@router.post("/api/shion/agent-consultations")
+def post_shion_agent_consultation(req: AgentConsultationRequest, background_tasks: BackgroundTasks) -> dict:
+    """紫苑がCodex AGENTへ相談票を出す。実行・修正・PR作成は行わない。"""
+    from api.shion_agent_consultation_queue import request_consultation
+
+    try:
+        item = request_consultation(
+            agent=req.agent,
+            title=req.title,
+            reason=req.reason,
+            observed_signal=req.observed_signal,
+            suggested_scope=req.suggested_scope,
+            priority=req.priority,
+            source=req.source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_agent_consultation_requested",
+        surface="shion_agent_consultation",
+        payload={**item, "schema_version": 1},
+    )
+    return {"status": "queued", "item": item}
+
+
+@router.patch("/api/shion/agent-consultations/{queue_id}")
+def patch_shion_agent_consultation(
+    queue_id: str,
+    req: AgentConsultationStatusRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """相談票の状態だけを更新する。AGENTレポート本文やデータ正本は変更しない。"""
+    from api.shion_agent_consultation_queue import set_consultation_status
+
+    try:
+        item = set_consultation_status(queue_id, req.status, note=req.note)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="agent consultation not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_agent_consultation_status_changed",
+        surface="shion_agent_consultation",
+        payload={"schema_version": 1, "queue_id": queue_id, "status": req.status},
+    )
+    return {"status": "ok", "item": item}
 
 
 @router.get("/api/shion/latent-need-alert")

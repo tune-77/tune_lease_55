@@ -1926,6 +1926,23 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
         return get_recent_commits(int(args.get("limit", 10)))
     if name == "get_commit_diff":
         return get_commit_diff(args.get("commit_hash", ""))
+    if name == "request_agent_consultation":
+        from api.shion_agent_consultation_queue import request_consultation
+
+        return {
+            "queued": True,
+            "item": request_consultation(
+                agent=args.get("agent", ""),
+                title=args.get("title", ""),
+                reason=args.get("reason", ""),
+                observed_signal=args.get("observed_signal", ""),
+                suggested_scope=args.get("suggested_scope", ""),
+                priority=args.get("priority", "medium"),
+                source="lease_intelligence_tool",
+                record_writeback=True,
+            ),
+            "safety_policy": "queue_only_no_agent_execution_no_code_change",
+        }
     if name == "consult_senior_reasoner":
         if vault is None:
             return {"error": "vault path not available", "consulted": False}
@@ -2268,6 +2285,33 @@ TOOL_DECLARATIONS: list[dict] = [
                 "commit_hash": {"type": "string", "description": "調査するコミットのハッシュ（短縮形でも可）"},
             },
             "required": ["commit_hash"],
+        },
+    },
+    {
+        "name": "request_agent_consultation",
+        "description": (
+            "紫苑がシステム異常・判断資産の断線・AGENT監査が必要な兆候を見つけた時、"
+            "Codex AGENTへの相談票を作る。AGENTを直接実行せず、コード変更・データ変更・PR作成もしない。"
+            "ユーザーが『AGENTに見せて』『Codexに相談して』『監査に回して』と明示した時、"
+            "または判断資産/REV/scoring/DBの断線が高確度で疑われる時だけ使う。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "description": "相談先AGENT名。例: judgment-asset-auditor / ledger-consistency-auditor / scoring-auditor",
+                },
+                "title": {"type": "string", "description": "相談票の短い見出し"},
+                "reason": {"type": "string", "description": "なぜAGENT監査が必要か"},
+                "observed_signal": {"type": "string", "description": "紫苑が観測した兆候・矛盾・滞留"},
+                "suggested_scope": {"type": "string", "description": "AGENTに見てほしいファイル・レポート・データ範囲"},
+                "priority": {
+                    "type": "string",
+                    "description": "low / medium / high。実案件や判断資産断線なら high",
+                },
+            },
+            "required": ["agent", "title", "reason"],
         },
     },
     {
