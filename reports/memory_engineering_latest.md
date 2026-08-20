@@ -1,55 +1,55 @@
 # Memory Engineering Report
 
-- Generated: 2026-08-17T04:01:24
+- Generated: 2026-08-21T04:01:02
 - Mode: `read_only_memory_engineering_observation`
 - Guardrail: `no_memory_delete_no_promotion_no_prompt_or_scoring_change`
 
 ## Summary
 
-- Write path records: 260
+- Write path records: 232
 - Active canonical rules: 11
-- Write amplification / active rule: 23.64
-- Open human review records: 174
-- Memory records: 779
-- Recent memory usage: 597 events / 177 refs
-- Maintenance status records: 0
+- Write amplification / active rule: 21.09
+- Open human review records: 8
+- Memory records: 755
+- Recent memory usage: 569 events / 177 refs
+- Maintenance status records: 144
 - Contradiction candidates: 0
 - Write policy metadata completion: 0.0
-- Candidate / active pressure: 0.596
+- Candidate / active pressure: 0.492
 - Quarantine records: 143
 - Sleeping active rules: 9
 
 ## Stanford Lens: Write Cost
 
-- `judgment_materials_preview`: 30 records, 30 open review, ~30 tokens
-- `autoresearch_candidates`: 95 records, 21 open review, ~95 tokens
-- `reflection_action_candidates`: 4 records, 0 open review, ~493 tokens
+- `judgment_materials_preview`: 16 records, 8 open review, ~16 tokens
+- `autoresearch_candidates`: 79 records, 0 open review, ~79 tokens
+- `reflection_action_candidates`: 8 records, 0 open review, ~1160 tokens
 - `prediction_error_candidates`: 1 records, 0 open review, ~1 tokens
-- `obsidian_memory_insight_candidates`: 123 records, 123 open review, ~123 tokens
-- `canonical_preview`: 7 records
+- `obsidian_memory_insight_candidates`: 123 records, 0 open review, ~123 tokens
+- `canonical_preview`: 5 records
 - Write policy required fields: `['importance', 'confidence', 'trust_level', 'provenance']`
-- Write policy missing fields: `{'confidence': 223, 'importance': 253, 'provenance': 253, 'trust_level': 253}`
+- Write policy missing fields: `{'confidence': 211, 'importance': 227, 'provenance': 227, 'trust_level': 227}`
 
 ## Microsoft Lens: Utility Density
 
-- Latest accepted preview: 2
-- Promoted to active rules: 2
+- Latest accepted preview: 1
+- Promoted to active rules: 1
 - Promotion rate: 1.0
 
 ## Anthropic Lens: Control
 
-- Lifecycle inventory: `{'active': 768, 'candidate_or_review': 458, 'quarantine': 143, 'rejected_or_dismissed': 31, 'maintenance_or_forgetting_review': 9}`
-- Utility KPIs: `{'checklist_review_rate': 0.0, 'field_feedback_coverage': 0.0, 'candidate_to_active_pressure': 0.596, 'quarantine_rate_in_experience_flywheel': 0.326}`
-- Status counts: `{'active': 757, 'private': 22}`
-- Type counts: `{'dialogue_memory': 57, 'factual_memory': 253, 'judgment_memory': 151, 'reflection_memory': 43, 'technical_memory': 258, 'value_memory': 17}`
+- Lifecycle inventory: `{'active': 600, 'candidate_or_review': 295, 'quarantine': 143, 'rejected_or_dismissed': 170, 'maintenance_or_forgetting_review': 153}`
+- Utility KPIs: `{'checklist_review_rate': 0.0, 'field_feedback_coverage': 0.0, 'candidate_to_active_pressure': 0.492, 'quarantine_rate_in_experience_flywheel': 0.323}`
+- Status counts: `{'active': 589, 'private': 22, 'stale': 144}`
+- Type counts: `{'dialogue_memory': 50, 'factual_memory': 249, 'judgment_memory': 143, 'reflection_memory': 42, 'technical_memory': 254, 'value_memory': 17}`
 
 ### Forgetting Review Sample
 
-- `mem_0091b5c5e75261b5` technical_memory last_used=none source=MEMORY.md: **Active Script**: `lease_logic_sumaho3.py` (Replaced `lease_logic.py` as the main driver).
-- `mem_08782ec7b9ee36c9` factual_memory last_used=none source=knowledge_base/okf_lease_concepts/README.md: Related: [Statutory useful life](rules/statutory_useful_life.md)
-- `mem_0c86c77f2c6a0258` factual_memory last_used=none source=knowledge_base/okf_lease_concepts/assets/machine_tool_resale_risk.md: 根拠: 中古市場がある物件でも、実際の換価額は「売れる価格」から撤去・搬出・再整備コストを引いた金額になる。
-- `mem_0de35462b2e34771` technical_memory last_used=none source=MEMORY.md: [2026-06-28] Cloud Run bundleに日次知性などの生成JSONを含める時は、`.dockerignore` / `.gcloudignore` の `reports` 除外に注意する。`reports/` ではなく `.cloudrun_bundle/ob
-- `mem_13c326dd9999e28b` factual_memory last_used=none source=MEMORY.md: QCL は本番導線から外した。`train_quantum.py` の QCL CLI/ helper を削除し、`quantum_qcl.py` と生成レポートも除去した。
+- `mem_4de5f04f517736a1` technical_memory last_used=none source=MEMORY.md: [2026-07-07] AIチャット履歴が画面遷移で消える問題に対応。Cloud Run demo/readonly ではDB保存が失敗するため、`frontend/src/lib/chatLocalHistory.ts` を追加し、通常 `/chat` と右下 `Floati
+- `mem_53df17aaa3f14f36` technical_memory last_used=none source=MEMORY.md: [2026-07-07] Cloud Run input sync was downloading events and writing summary notes, but `improvement_note` events were not materialized into
+- `mem_5734bba9e52b2bb8` technical_memory last_used=none source=MEMORY.md: [2026-07-07] 結果登録画面の未登録一覧が Cloud Run版の審査入力を拾えていなかった。原因は `/api/cases/pending` が `past_cases.final_status='未登録'` だけを見ており、Cloud Run demo/readon
+- `mem_a969441d5de90bf9` technical_memory last_used=none source=MEMORY.md: [2026-07-07] Audited all existing `data/cloudrun_inputs/*.jsonl` event types: `shion_memory_usage` 155, `improvement_note` 27, `rag_feedback
+- `mem_ab1867025d0e2b55` factual_memory last_used=none source=MEMORY.md: [2026-07-07] The personal-memory extractor had incorrectly stored incomplete dog-name text as `Dog name: は`. Removed the bad confirmed fact 
 
 ## Forgetting Policy
 
@@ -58,7 +58,7 @@
 - `active_but_sleeping`: Do not delete immediately; ask for real-case feedback or move to hold if it stays unused.
 - `quarantine`: Keep out of memory and prompts; review only as a failure/poisoning/noise signal.
 - `contradiction`: Surface with dates and applicability; never auto-merge contradictory memories.
-- Current pressure: `{'active_non_value_without_top_usage': 594, 'sleeping_active_rules': 9, 'review_active_rules': 0, 'experience_quarantine': 143}`
+- Current pressure: `{'active_non_value_without_top_usage': 429, 'sleeping_active_rules': 9, 'review_active_rules': 0, 'experience_quarantine': 143}`
 
 ### Sleeping Rule Sample
 
@@ -73,11 +73,11 @@
 ### 候補を少し採否する
 
 - Why: 候補圧を下げ、active memory へ進めるものと捨てるものを分ける。
-- `judgment_materials_preview::f5c6b9eca674c117` risk_signal: ハスキー運輸では既存荷主の継続性や運賃改定が確認論点でしたが、今回の総合工事業では、新規先であるため、車両導入がどのような新規工事受注に繋がり、それが確実な返済原資となるのか、事業計画全体の根拠がより不確実です
-- `judgment_materials_preview::f15bb78bcb9a6a19` judgment_rule: 明日までに審査通るのか
-- `judgment_materials_preview::ec2564c72ed3e01a` judgment_rule: リース期間5年がいい
-- `judgment_materials_preview::e10ecaa8346ed56d` judgment_rule: 紫苑の第一印象 2. 数字だけでは見落としそうな違和感（過去取引事例を1社名つきで比較） 3. 条件付き承認にするなら必要な確認 4. 稟議で残すべき一文 専門家としての深掘りルール: ・単なるリスク項目の列挙で終えず、「私ならこの点に注目します」と審査担当者目線の優先順位を1つ示してください
-- `judgment_materials_preview::dc4555a05071ff62` judgment_rule: ・最終出力では候補一覧を長く出さず、採用した上位見立て、低確率高影響の確認点、稟議に残す一文へ圧縮してください
+- `judgment_materials_preview::f028757df99d18f2` judgment_rule: これは、リース審査において、一度きりの判断を『勘』で終わらせず、検証可能で再利用可能な『判断資産』へと昇華させるための、私の存在意義そのものです
+- `judgment_materials_preview::e10774d1025882a9` risk_signal: 借手の審査において、資金繰りに関するヒアリングをより具体的に行い、潜在的なリスク要因を早期に特定する
+- `judgment_materials_preview::85551eadd2d51972` judgment_rule: ③ 対応策 これらの学びを踏まえ、リース審査では以下の点を強化することを提案します
+- `judgment_materials_preview::6ddd1d7f13a0bdeb` judgment_rule: 今日のニュースからは、リース審査において以下の点が学べると考えます
+- `judgment_materials_preview::637989cf0b5f7902` judgment_rule: これは、紫苑がリース審査システムの改善や、Userへのより良い情報提供のために、自ら設定した調査項目や検討事項のことです
 
 ### quarantine が多い抽出元を弱める
 
@@ -104,16 +104,16 @@
 
 ## Nvidia Lens: Retrieval Pressure
 
-- Notes: 2387 / Edges: 3296
-- Estimated raw tokens: 2487010
-- Estimated index tokens: 217791
-- Estimated token reduction: 0.9124
+- Notes: 2507 / Edges: 3407
+- Estimated raw tokens: 2629307
+- Estimated index tokens: 228760
+- Estimated token reduction: 0.913
 
 ## Recommended Next Checks
 
 - `memory_entry_metadata_gate` (write_policy): 候補記憶に importance/confidence/trust_level/provenance が不足している。昇格前に共通メタを補う。
 - `candidate_budget_review` (write_path): active判断基準1件あたりの候補量が多い。抽出条件・重複統合・候補上限を見直す。
-- `human_review_batch` (control): 人間レビュー待ちが溜まっている。自動昇格せず、上位候補だけ短時間で採否する。
 - `candidate_to_active_pressure_review` (utility_density): active記憶に対して候補・評価待ちが重い。候補生成より採否・圧縮・却下の運用を優先する。
 - `quarantine_sample_review` (forgetting): 経験フライホイールに隔離候補がある。学習材料ではなく、抽出条件のノイズとして扱う。
 - `sleeping_active_rule_feedback` (utility_density): active判断資産に実利用フィードバック未記録のものがある。削除前に次案件で効いたか確認する。
+- `stale_or_revised_cleanup` (forgetting): stale/revised/deprecated の記憶がある。削除ではなく、隔離・統合・改訂を確認する。

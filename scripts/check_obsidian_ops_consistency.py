@@ -48,7 +48,7 @@ DEFAULT_LAUNCHD_DIR = REPO_ROOT / "launchd"
 
 # 直書きスキャンから除外するディレクトリ（ベンダコード・アーカイブ・仮想環境）。
 _SCAN_EXCLUDED_DIR_PARTS = frozenset(
-    {".git", ".claude", "node_modules", "_archive", ".venv", "pydeps"}
+    {".git", ".claude", "node_modules", "_archive", ".venv", "pydeps", "tune_lease_55_wt_cibundle"}
 )
 
 # Vault パス（iCloud~md~obsidian）を直書きしていることが分かっている箇所。
@@ -101,6 +101,10 @@ VAULT_JOB_LABELS = frozenset(
         "com.tunelease.daily-knowledge-feed",
         "com.tunelease.prompt-feedback-monthly",
         "com.tunelease.weekly-health-check",
+        "com.tunelease.dispatch-log",
+        "com.tunelease.improvement-pipeline",
+        "com.tunelease.morning-rag-review",
+        "com.tunelease.vault-watcher",
     }
 )
 

@@ -1,6 +1,6 @@
 # Loop Engineering Health
 
-- Generated at: `2026-08-17T04:13:22`
+- Generated at: `2026-08-21T04:14:46`
 - Status: `warn`
 - Source coverage: 100.0%
 
@@ -20,9 +20,9 @@
 - Churn rate: 100.0% (healthy dedup: 0, churn: 7)
 
 ## Prompt Feedback Loop
-- Total: 362
-- PDCA applied: 362 (100.0%)
-- Previous response diffs: 128 (35.4%)
+- Total: 368
+- PDCA applied: 368 (100.0%)
+- Previous response diffs: 130 (35.3%)
 
 ## Scoring Coefficients
 - Status: `ok`
@@ -41,10 +41,10 @@
 ## Outcome Loops
 - Status: `ok`
 - outcome_drift: 0 proposals (latest n/a)
-- feedback_pattern: 53 proposals (latest 2026-08-15T03:00:24)
+- feedback_pattern: 59 proposals (latest 2026-08-21T03:00:25)
 - judgment_divergence: 3 proposals (latest 2026-08-01T07:42:08)
 - knowledge_gap: 3 proposals (latest 2026-07-03T07:21:31)
-- PDCA effect: measured 1002, improved 1002, worsened 0, avg delta -0.18
+- PDCA effect: measured 1255, improved 1255, worsened 0, avg delta -0.167
 
 ## Recommendations
 - 抑制の滞留(churn)が高いため、needs_review/suppressed のクールダウン固着や台帳の suppressed 再記録を確認する（健全な重複排除は含めない）

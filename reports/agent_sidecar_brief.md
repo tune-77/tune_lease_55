@@ -1,6 +1,6 @@
 # Agent Sidecar Brief
 
-> Generated: 2026-08-17 11:16 | source: `.claude/reports` | mode: read-only advisory
+> Generated: 2026-08-21 04:12 | source: `.claude/reports` | mode: read-only advisory
 
 ## Operating Boundary
 - This brief is advisory context only.
@@ -13,41 +13,35 @@
 ### scoring-audit (failure)
 - Source: `.claude/reports/scoring-audit/latest.md`
 - Task: 自動監査
-- Timestamp: 2026-08-17 11:16
+- Timestamp: 2026-08-21 04:12
 
 **Summary:**
-監査を完了できなかった: 想定外の例外: '<' not supported between instances of 'NoneType' and 'str'
+監査を完了できなかった: 想定外の例外: '<' not supported between instances of 'str' and 'NoneType'
 
 **Risks:**
-- 想定外の例外: '<' not supported between instances of 'NoneType' and 'str'
+- 想定外の例外: '<' not supported between instances of 'str' and 'NoneType'
 
 **Handoff:**
 なし
 
-<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
-     手で編集しても次回実行で上書きされる。 -->
-
-### data-quality-checker (failure)
+### data-quality-checker (partial)
 - Source: `.claude/reports/data-quality/latest.md`
 - Task: SQLite 審査データの件数・異常値チェック
-- Timestamp: 2026-08-17 11:16
+- Timestamp: 2026-08-21 04:12
 
 **Summary:**
-監査を完了できなかった: DB が見つからない: data/lease_data.db
+27 テーブルを確認し、要確認事項を 1 件検出した。
 
 **Risks:**
-- DB が見つからない: data/lease_data.db
+- 空のテーブル: emotion_feedback, judgment_lifecycle_events, payment_history, phrase_weights, sync_log
 
 **Handoff:**
 なし
-
-<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
-     手で編集しても次回実行で上書きされる。 -->
 
 ### rule-validator (partial)
 - Source: `.claude/reports/rule-validation/latest.md`
 - Task: ウェイト合計・グレード閾値の整合性チェック
-- Timestamp: 2026-08-17 11:16
+- Timestamp: 2026-08-21 04:12
 
 **Summary:**
 整合性の逸脱を 1 件検出した。
@@ -58,53 +52,13 @@
 **Handoff:**
 逸脱したカテゴリの定義を確認すること。スコア結果に直結する。
 
-<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
-     手で編集しても次回実行で上書きされる。 -->
-
-### build-runner (partial)
+### build-runner (success)
 - Source: `.claude/reports/build/latest.md`
 - Task: コアモジュールのインポート確認
-- Timestamp: 2026-08-17 11:16
+- Timestamp: 2026-08-21 04:12
 
 **Summary:**
-1/6 のモジュールが import できない。
-
-**Risks:**
-- scoring_core: ModuleNotFoundError: No module named 'numpy'
-
-**Handoff:**
-依存パッケージの不足かモジュール側の構文エラー。先に解消しないと他の監査も動かない。
-
-<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
-     手で編集しても次回実行で上書きされる。 -->
-
-### api-health-checker (partial)
-- Source: `.claude/reports/api-health/latest.md`
-- Task: 依存サービスの設定・到達性確認
-- Timestamp: 2026-08-17 11:16
-
-**Summary:**
-依存サービスに要確認事項を 4 件検出した。
-
-**Risks:**
-- data/lease_data.db が存在しない
-- GEMINI_API_KEY が未設定（該当機能は動作しない）
-- SLACK_BOT_TOKEN が未設定（該当機能は動作しない）
-- Ollama に到達できない（http://localhost:11434）: URLError
-
-**Handoff:**
-なし
-
-<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
-     手で編集しても次回実行で上書きされる。 -->
-
-### log-file-analyzer (success)
-- Source: `.claude/reports/log-analysis/latest.md`
-- Task: ログのエラー・警告抽出
-- Timestamp: 2026-08-17 11:16
-
-**Summary:**
-logs/ が存在しないため解析対象なし。
+コアモジュール 6 件すべて import できる。
 
 **Risks:**
 - なし
@@ -112,8 +66,41 @@ logs/ が存在しないため解析対象なし。
 **Handoff:**
 なし
 
-<!-- scripts/build_agent_self_reports.py が自動生成（決定論的監査・LLM不使用）。
-     手で編集しても次回実行で上書きされる。 -->
+### api-health-checker (partial)
+- Source: `.claude/reports/api-health/latest.md`
+- Task: 依存サービスの設定・到達性確認
+- Timestamp: 2026-08-21 04:12
+
+**Summary:**
+依存サービスに要確認事項を 1 件検出した。
+
+**Risks:**
+- SLACK_BOT_TOKEN が未設定（該当機能は動作しない）
+
+**Handoff:**
+なし
+
+<!-- generated-by: build_agent_self_reports.py -->
+<!-- 決定論的監査・LLM不使用。手で編集しても次回実行で上書きされる。
+     『過去のエージェント指摘』は解消したら手で消すこと。 -->
+
+### log-file-analyzer (partial)
+- Source: `.claude/reports/log-analysis/latest.md`
+- Task: ログのエラー・警告抽出
+- Timestamp: 2026-08-21 04:12
+
+**Summary:**
+12 ファイルから ERROR 165 行、WARNING 57 行を検出した。
+
+**Risks:**
+- なし
+
+**Handoff:**
+頻出パターンは analyze_error_logs.py が改善台帳へ起票する。
+
+<!-- generated-by: build_agent_self_reports.py -->
+<!-- 決定論的監査・LLM不使用。手で編集しても次回実行で上書きされる。
+     『過去のエージェント指摘』は解消したら手で消すこと。 -->
 
 ## 再確認TODO
 

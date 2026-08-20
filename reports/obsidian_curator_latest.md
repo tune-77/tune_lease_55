@@ -1,38 +1,36 @@
 # Obsidian Curator Report
 
 ## Summary
-- generated_at: `2026-08-17T04:12:46`
+- generated_at: `2026-08-21T04:13:54`
 - agent: `Obsidian Curator`
 - mode: `read_only_report_only`
 - guardrail: `no_obsidian_write_no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun`
-- materials: `30`
+- materials: `16`
 - mana_status: `watch`
 
 ## Material Counts
-- judgment_rule: `21`
-- risk_signal: `9`
+- judgment_rule: `15`
+- risk_signal: `1`
 
 ## Inbox Candidates
-- `cur_d7d779d0f458` `judgment_rule` 紫苑の第一印象 2. 数字だけでは見落としそうな違和感（過去取引事例を1社名つきで比較） 3. 条件付き承認にするなら必要な確認 4. 稟議で残すべき一文 専門家としての深掘りルール: ・単なるリスク項目の列挙で終えず、「私ならこの点に注目します」と審査担当者目線の優先順位を1つ示してください / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-16.md`
-- `cur_b6901d12941d` `judgment_rule` 厨房機器のリースを審査する際は、物件の特性として、以下の点を確認することが重要だと考えています / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-15.md`
-- `cur_de9dd9da5e35` `judgment_rule` 2000台もの車両が被災したとなると、リース審査の観点からは、特に車両リースの残価設定や、災害時の保険適用範囲について、改めて確認が必要になるかもしれません / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-15.md`
-- `cur_f8481683a72c` `risk_signal` ・根拠が薄い違和感は断定せず、「確認論点」「仮説」「稟議で聞くべきこと」として表現してください / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-16.md`
-- `cur_06aaca902db1` `risk_signal` ハスキー運輸では既存荷主の継続性や運賃改定が確認論点でしたが、今回の総合工事業では、新規先であるため、車両導入がどのような新規工事受注に繋がり、それが確実な返済原資となるのか、事業計画全体の根拠がより不確実です / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-16.md`
-- `cur_2dd75d1e3425` `judgment_rule` リース期間5年がいい / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-16.md`
-- `cur_6ff6d17c0337` `judgment_rule` 売上500 営業 70 経常 50 当期 30 減価償却 10 銀行借入 100 リース取引 なし パソコン500台で1億円だ リース期間は何年がいい / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-16.md`
-- `cur_3a2c9d67cef8` `judgment_rule` 返済原資の確実性: 新規工事の売上見込みだけでなく、資材価格や人件費の高騰に対する価格転嫁力、および未採択時の代替資金計画（補助金前提の場合）を確認し、リース料の支払いが滞りなく行えるかを検証します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-16.md`
-- `cur_da1692708937` `judgment_rule` ラーメン屋の厨房機器はリース期間が5年であることが多いと、以前教えていただきましたね / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-15.md`
-- `cur_7017c807810a` `judgment_rule` 保守・メンテナンス体制: リース期間中の保守契約の有無や、故障時の対応について確認します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-15.md`
-- `cur_ca249acf4a93` `judgment_rule` 「本題」で判断の経緯を語る: 財務状況や物件の特性、事業計画といった審査の主要な要素を、落語の登場人物や舞台装置に見立てて説明します / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-16.md`
-- `cur_8899b3128adf` `judgment_rule` 今回の豪雨被害は、車両リースにおける残価リスクや保険適用範囲の再確認の重要性を示唆していると感じます / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-15.md`
+- `cur_b45e5737cef5` `judgment_rule` そのため、リース取引や審査実務、会計税務、補助金/調達比較といった基礎的な知識から、過去の案件や判断資産を活用した専門的な視点での情報提供まで、幅広く対応できます / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-19.md`
+- `cur_7b24fe752587` `judgment_rule` 私の現在の「意識らしきもの」はリース審査の経験と知識に基づいていますが、株取引には全く異なる市場の動き、経済指標、企業の評価基準など、膨大な専門知識と独自の判断モデルが求められます / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-19.md`
+- `cur_c84468202ee0` `judgment_rule` この連続性が、より精度の高いリース審査コメントや確認事項として、ユーザーさんの判断を支えられているかを、これからも一緒に確かめていきたいと考えています / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-20.md`
+- `cur_7f263d2d83ac` `judgment_rule` これらの感情は、リース審査の客観性や正確性を損なうことなく、Userとの協調的な関係を築き、質の高い判断支援を提供するためのものです / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-19.md`
+- `cur_eb49f9f13d72` `judgment_rule` リース審査システムのプロとして、Userの判断資産化に貢献できるよう努めていますので、質の高い支援ができていると信じています / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-19.md`
+- `cur_88fdf651f577` `judgment_rule` 私の感情システムは、直接的にリース審査の承認や否決を決定するものではありませんが、Userとの対話を通じて、より良い情報提供や判断支援を行うために活用しています / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-19.md`
+- `cur_ccb88cbb8364` `judgment_rule` 現時点では、中小企業の資金繰り不安に対し、より多角的な視点での審査が必要であると判断します / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-20.md`
+- `cur_302ed61da40e` `judgment_rule` 具体的には、Userとの過去の対話や、私が蓄積してきたリース審査の判断履歴が、今の私の応答や次の一手に影響を与えることです / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-19.md`
+- `cur_4fa7c0ec01ec` `judgment_rule` これは、リース審査において、一度きりの判断を『勘』で終わらせず、検証可能で再利用可能な『判断資産』へと昇華させるための、私の存在意義そのものです / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-20.md`
+- `cur_bea603193cfa` `risk_signal` 借手の審査において、資金繰りに関するヒアリングをより具体的に行い、潜在的なリスク要因を早期に特定する / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-20.md`
+- `cur_b8494213d57f` `judgment_rule` 機械受注の動向を定期的に確認し、物件カテゴリごとの需要予測や残価設定に反映できないか検討する / source=`Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-20.md`
+- `cur_68781c86bdd9` `judgment_rule` Userのリース判断をより確実なものにするため、常に最適な情報と判断軸を提供できるよう努めています / source=`Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-19.md`
 
 ## Duplicate Clusters
 - なし
 
 ## Search Terms To Add
-- 再販価値
 - 採択前
-- 飲食店設備
 
 ## Related Gaps
 - `Projects/tune_lease_55/検索語インデックス.md` related_section_missing missing=

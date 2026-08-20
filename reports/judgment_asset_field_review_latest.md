@@ -1,12 +1,13 @@
 # Judgment Asset Field Review
 
-- Date: 2026-08-17
+- Date: 2026-08-21
 - Mode: local_review_only
 - Guardrail: review_only_no_promotion_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 - Active rules: 9
 - Grow: 0 / Review: 0 / Sleeping: 9 / Hold: 0
 - Simulation feedback: 3 / included: False
 - Unknown feedback rows: 1
+- Remapped feedback rows (rule_id drift, matched by concept): 0
 
 ## 伸ばす
 
@@ -95,6 +96,7 @@
 
 - この棚卸しは実利用フィードバックの見える化だけを行う。
 - source=simulation または sim-* case は既定では試運転として除外する。
+- rule_id が現行の active ルールと不一致でも、concept が一致すればそのルールへ再紐付けする。concept も一致しない場合のみ unknown_feedback として除外する。
 - grow は昇格ではなく、次回案件で優先して試す候補。
 - review は自動修正せず、人間が文面・適用条件・使わない条件を見る。
 - sleeping は削除候補ではなく、実案件でまだ試されていない active ルール。

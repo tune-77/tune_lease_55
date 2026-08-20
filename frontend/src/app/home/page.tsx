@@ -228,10 +228,11 @@ type HomePanelSettings = {
 };
 
 const HOME_SETTINGS_KEY = "home-dashboard-panel-settings";
+const HOME_NEWS_DEFAULT_MIGRATION_KEY = "home-news-panel-default-visible-v2";
 const DEFAULT_PANEL_SETTINGS: HomePanelSettings = {
   showKpis: true,
   showHighlights: true,
-  showNews: false,
+  showNews: true,
   showRecentCases: true,
   showNewsDigest: true,
   showGaps: true,
@@ -279,6 +280,10 @@ export default function HomeDashboard() {
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<HomePanelSettings>;
         setPanelSettings((prev) => ({ ...prev, ...parsed }));
+      }
+      if (!window.localStorage.getItem(HOME_NEWS_DEFAULT_MIGRATION_KEY)) {
+        setPanelSettings((prev) => ({ ...prev, showNews: true }));
+        window.localStorage.setItem(HOME_NEWS_DEFAULT_MIGRATION_KEY, "1");
       }
     } catch {
       // ignore
@@ -421,7 +426,9 @@ export default function HomeDashboard() {
       // 後発リクエストが既にある場合、古いレスポンスで上書きしない
       if (seq !== briefRequestSeqRef.current) return;
       setLeaseNewsBrief(res.data || null);
-      const showKey = `lease-news-brief-seen-${formatLocalDateKey()}`;
+      const noteDate = String(res.data?.note_date || formatLocalDateKey());
+      const digestSignature = String(res.data?.opening_line || res.data?.national_headline || "").slice(0, 80);
+      const showKey = `lease-news-brief-seen-${noteDate}-${digestSignature}`;
       const seen = window.localStorage.getItem(showKey);
       const available = Boolean(res.data?.available);
       // 一度表示したら入力編集中に閉じない（既読判定は自動表示の初回のみ）

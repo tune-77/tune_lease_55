@@ -1,6 +1,6 @@
 # 紫苑 アーキテクチャ層監査
 
-- Date: 2026-07-29
+- Date: 2026-08-21
 - Mode: read_only_architecture_audit
 - Guardrail: read_only_no_prompt_no_scoring_no_rag_no_memory_write_no_auto_promotion
 - Overall status: attention
@@ -15,9 +15,9 @@ HOIKUAGENT 型の `harness / agents / improver` という見方を、紫苑に�
 - Active judgment assets: 9
 - Lineage assets: 1
 - Field feedback sleeping: 9
-- Field validation score: 0.0
-- Growth: 後退・要点検
-- Loop engineering: attention
+- Field validation score: 12.0
+- Growth: 育っている途中
+- Loop engineering: warn
 
 ## 3層の見立て
 
@@ -57,7 +57,6 @@ HOIKUAGENT 型の `harness / agents / improver` という見方を、紫苑に�
   - 判断資産に親子系統を持たせ始めており、派生の履歴を追える
 - リスク:
   - active 判断資産 9 件のうち、実案件フィードバック未記録が 9 件ある
-  - field_validation が 0 のため、資産は増えているが実戦で効いた証拠がまだ弱い
   - 改善提案を正式資産にする承認ゲートは、まず read-only 設計から固めるべき
 - 安全な次の一手: 未使用判断資産を削除せず、次の実案件で1件ずつ helped/neutral/challenged を記録する。
 

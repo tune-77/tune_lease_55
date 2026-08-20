@@ -1051,5 +1051,18 @@
     "risk": "low",
     "auto_fix_allowed": false,
     "note": "重要度高のため削除候補ではなく内容確認・再インデックスを推奨"
+  },
+  {
+    "rev_id": "REV-303a",
+    "type": "manual",
+    "pending_review": true,
+    "category": "pipeline_fix",
+    "description": "[パイプライン自動検出] check_obsidian_ops_consistency が過去7日で失敗率50%（4/8件, 4日失敗）",
+    "status": "pending_review",
+    "source": "analyze_pipeline_health",
+    "detected_at": "2026-08-20T19:04:10Z",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false
   }
 ]
