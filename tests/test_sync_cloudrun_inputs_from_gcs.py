@@ -126,6 +126,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "ocr_results_new": 0,
         "shion_reviews_new": 0,
         "shion_review_feedback_updated": 0,
+        "judgment_asset_promotions_applied": 0,
         "judgment_asset_candidates_new": 0,
         "prompt_feedback_new": 0,
     }
@@ -250,6 +251,57 @@ def test_materialize_events_restores_shion_review_and_feedback_to_local_db(tmp_p
         asset = conn.execute("SELECT * FROM cloudrun_judgment_asset_candidates").fetchone()
         assert asset["event_type"] == "shion_screening_review_feedback"
         assert asset["signal"] == "useful"
+
+
+def test_materialize_events_applies_judgment_asset_promotion_to_local_canonical_rules(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    local_db = tmp_path / "lease_data.db"
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", local_db)
+    canonical_path = tmp_path / "canonical_judgment_rules.json"
+    state_path = tmp_path / "candidate_state.json"
+    monkeypatch.setattr(syncer, "CANONICAL_JUDGMENT_RULES_JSON", canonical_path)
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_CANDIDATE_STATE_JSON", state_path)
+
+    rule = {
+        "id": "cloudrun-rule-1",
+        "status": "active",
+        "canonical_statement": "更新設備の増額申込は稼働率と処分予定の整合を確認する。",
+        "evidence_count": 1,
+        "user_evidence_count": 1,
+        "confidence": 0.8,
+        "private": False,
+    }
+    event = {
+        "event_id": "promote-evt-1",
+        "ts": "2026-08-20T00:00:00Z",
+        "event_type": "judgment_asset_candidate_promoted",
+        "surface": "improvement_log",
+        "payload": {
+            "status": "promoted",
+            "candidate_id": "cand-1",
+            "rule": rule,
+            "active_rules": 1,
+        },
+    }
+
+    result = syncer.materialize_events([event])
+
+    assert result["judgment_asset_promotions_applied"] == 1
+    canonical_store = json.loads(canonical_path.read_text(encoding="utf-8"))
+    assert [r["id"] for r in canonical_store["rules"]] == ["cloudrun-rule-1"]
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["cand-1"]["promotion_status"] == "promoted"
+    assert state["cand-1"]["promoted_rule_id"] == "cloudrun-rule-1"
+
+    # Re-syncing the same event (e.g. next day's window overlap) must not duplicate the rule.
+    result_again = syncer.materialize_events([event])
+    assert result_again["judgment_asset_promotions_applied"] == 0
+    canonical_store_again = json.loads(canonical_path.read_text(encoding="utf-8"))
+    assert len(canonical_store_again["rules"]) == 1
 
 
 def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatch) -> None:
