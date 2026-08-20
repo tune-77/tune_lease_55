@@ -370,6 +370,118 @@ def test_get_pipeline_status_handles_missing_sources(tmp_path, monkeypatch):
     assert result["pending_investigations"]["available"] is False
 
 
+def test_audit_ledger_consistency_reports_malformed_jsonl_with_physical_line(tmp_path, monkeypatch):
+    import json
+
+    import lease_intelligence_tools as tools
+
+    scripts_dir = tmp_path / "scripts"
+    rules_dir = tmp_path / "api" / "rule_engine"
+    scripts_dir.mkdir(parents=True)
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "ledger_rules.json").write_text("[]", encoding="utf-8")
+    (scripts_dir / "improvement_ledger.jsonl").write_text(
+        "\n".join([
+            json.dumps({"key": "ok", "rev_id": "REV-301", "status": "applied", "canonical_key": "ok"}),
+            "{bad json",
+            json.dumps({"key": "later", "rev_id": "REV-302", "status": "applied", "canonical_key": "later"}),
+        ]),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(tools, "_REPO_PATH", tmp_path)
+    monkeypatch.setattr(tools.Path, "home", lambda: tmp_path / "home")
+    monkeypatch.setattr(tools, "_gcs_ledger_entries", lambda: [])
+
+    result = tools.audit_ledger_consistency()
+
+    malformed = [item for item in result["anomalies"] if item["type"] == "malformed_jsonl"]
+    assert malformed == [
+        {
+            "rev_id": "",
+            "type": "malformed_jsonl",
+            "detail": "JSONLを解析できません: Expecting property name enclosed in double quotes",
+            "source": "improvement_ledger",
+            "line": 2,
+        }
+    ]
+
+
+def test_audit_ledger_consistency_preserves_deleted_runtime_status(tmp_path, monkeypatch):
+    import json
+
+    import lease_intelligence_tools as tools
+
+    scripts_dir = tmp_path / "scripts"
+    rules_dir = tmp_path / "api" / "rule_engine"
+    local_dir = tmp_path / "home" / "Library" / "Logs" / "tunelease"
+    scripts_dir.mkdir(parents=True)
+    rules_dir.mkdir(parents=True)
+    local_dir.mkdir(parents=True)
+    (rules_dir / "ledger_rules.json").write_text("[]", encoding="utf-8")
+    (scripts_dir / "improvement_ledger.jsonl").write_text(
+        json.dumps({"key": "same", "rev_id": "REV-303", "status": "applied", "canonical_key": "same"}),
+        encoding="utf-8",
+    )
+    (local_dir / "ledger.jsonl").write_text(
+        "\n".join([
+            json.dumps({"key": "same", "rev_id": "REV-303", "status": "applied", "canonical_key": "same"}),
+            json.dumps({"key": "same", "rev_id": "REV-303", "status": "deleted", "canonical_key": "same"}),
+        ]),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(tools, "_REPO_PATH", tmp_path)
+    monkeypatch.setattr(tools.Path, "home", lambda: tmp_path / "home")
+    monkeypatch.setattr(tools, "_gcs_ledger_entries", lambda: [])
+
+    result = tools.audit_ledger_consistency()
+
+    mismatch = [item for item in result["anomalies"] if item["type"] == "status_mismatch"]
+    assert mismatch == [
+        {
+            "rev_id": "REV-303",
+            "type": "status_mismatch",
+            "detail": "improvement_ledger.jsonl とruntime ledgerでstatusが食い違っています",
+            "improvement_status": "applied",
+            "runtime_status": "deleted",
+            "runtime_source": "local_ledger",
+        }
+    ]
+
+
+def test_audit_ledger_consistency_uses_gcs_runtime_ledger_mirror(tmp_path, monkeypatch):
+    import json
+
+    import lease_intelligence_tools as tools
+
+    scripts_dir = tmp_path / "scripts"
+    rules_dir = tmp_path / "api" / "rule_engine"
+    scripts_dir.mkdir(parents=True)
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "ledger_rules.json").write_text("[]", encoding="utf-8")
+    (scripts_dir / "improvement_ledger.jsonl").write_text(
+        json.dumps({"key": "same", "rev_id": "REV-304", "status": "applied", "canonical_key": "same"}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(tools, "_REPO_PATH", tmp_path)
+    monkeypatch.setattr(tools.Path, "home", lambda: tmp_path / "home")
+    monkeypatch.setattr(
+        tools,
+        "_gcs_ledger_entries",
+        lambda: [{"key": "same", "rev_id": "REV-304", "status": "deleted", "canonical_key": "same"}],
+    )
+
+    result = tools.audit_ledger_consistency()
+
+    assert result["local_ledger_checked"] is True
+    assert result["runtime_ledger_sources"] == ["gcs_ledger_mirror"]
+    mismatch = [item for item in result["anomalies"] if item["type"] == "status_mismatch"]
+    assert mismatch[0]["runtime_source"] == "gcs_ledger_mirror"
+    assert mismatch[0]["runtime_status"] == "deleted"
+
+
 def test_get_pipeline_status_excludes_stale_and_expired_tasks(tmp_path, monkeypatch):
     """未完了件数は「陳腐化していない pending」のみ。放置された古い約束や expired は除外。"""
     import json
