@@ -242,8 +242,20 @@ def build_review(
     feedback_rows = feedback_rows or []
     rules = active_rules(canonical)
     active_ids = {str(rule.get("id") or "").strip() for rule in rules}
+    id_to_concept = {
+        str(rule.get("id") or "").strip(): str(rule.get("concept") or "").strip()
+        for rule in _canonical_rules(canonical)
+        if rule.get("id")
+    }
+    concept_to_active_id: dict[str, str] = {}
+    for rule in rules:
+        concept = str(rule.get("concept") or "").strip()
+        rule_id = str(rule.get("id") or "").strip()
+        if concept and rule_id and concept not in concept_to_active_id:
+            concept_to_active_id[concept] = rule_id
     rows_by_rule: dict[str, list[dict[str, Any]]] = defaultdict(list)
     unknown_feedback = 0
+    remapped_feedback = 0
     invalid_feedback = 0
     simulation_feedback = 0
 
@@ -258,8 +270,14 @@ def build_review(
             invalid_feedback += 1
             continue
         if rule_id not in active_ids:
-            unknown_feedback += 1
-            continue
+            # ルール文面の再生成で rule_id が変わっていても、concept が現行の
+            # active ルールと一致すればそちらへ紐付け直す（REV: rule_id drift 救済）。
+            remapped_id = concept_to_active_id.get(id_to_concept.get(rule_id, ""))
+            if not remapped_id:
+                unknown_feedback += 1
+                continue
+            rule_id = remapped_id
+            remapped_feedback += 1
         rows_by_rule[rule_id].append({**row, "outcome": outcome})
 
     buckets: dict[str, list[dict[str, Any]]] = {"grow": [], "review": [], "sleeping": [], "hold": []}
@@ -295,6 +313,7 @@ def build_review(
         "sleeping": len(buckets["sleeping"]),
         "hold": len(buckets["hold"]),
         "unknown_feedback": unknown_feedback,
+        "remapped_feedback": remapped_feedback,
         "invalid_feedback": invalid_feedback,
         "simulation_feedback": simulation_feedback,
         "include_simulation": include_simulation,
@@ -312,6 +331,7 @@ def build_review(
         "notes": [
             "この棚卸しは実利用フィードバックの見える化だけを行う。",
             "source=simulation または sim-* case は既定では試運転として除外する。",
+            "rule_id が現行の active ルールと不一致でも、concept が一致すればそのルールへ再紐付けする。concept も一致しない場合のみ unknown_feedback として除外する。",
             "grow は昇格ではなく、次回案件で優先して試す候補。",
             "review は自動修正せず、人間が文面・適用条件・使わない条件を見る。",
             "sleeping は削除候補ではなく、実案件でまだ試されていない active ルール。",
@@ -338,6 +358,7 @@ def build_markdown(payload: dict[str, Any]) -> str:
         f"- Grow: {summary['grow']} / Review: {summary['review']} / Sleeping: {summary['sleeping']} / Hold: {summary['hold']}",
         f"- Simulation feedback: {summary.get('simulation_feedback', 0)} / included: {summary.get('include_simulation', False)}",
         f"- Unknown feedback rows: {summary['unknown_feedback']}",
+        f"- Remapped feedback rows (rule_id drift, matched by concept): {summary.get('remapped_feedback', 0)}",
         "",
     ]
     for label, key in labels:

@@ -157,8 +157,26 @@ def _feedback_outcome(row: dict[str, Any]) -> str:
 
 def summarize_field_feedback(feedback_rows: list[dict[str, Any]], rules: list[dict[str, Any]]) -> dict[str, Any]:
     active_ids = {str(rule.get("id") or "").strip() for rule in rules if rule.get("status") == "active" and rule.get("id")}
+    id_to_concept = {str(rule.get("id") or "").strip(): str(rule.get("concept") or "").strip() for rule in rules if rule.get("id")}
+    concept_to_active_id: dict[str, str] = {}
+    for rule in rules:
+        if rule.get("status") != "active":
+            continue
+        concept = str(rule.get("concept") or "").strip()
+        rule_id = str(rule.get("id") or "").strip()
+        if concept and rule_id and concept not in concept_to_active_id:
+            concept_to_active_id[concept] = rule_id
     by_rule: dict[str, dict[str, Any]] = {}
-    totals = {"used": 0, "helped": 0, "challenged": 0, "neutral": 0, "rejected": 0, "unknown_rule": 0, "simulation_skipped": 0}
+    totals = {
+        "used": 0,
+        "helped": 0,
+        "challenged": 0,
+        "neutral": 0,
+        "rejected": 0,
+        "unknown_rule": 0,
+        "remapped_by_concept": 0,
+        "simulation_skipped": 0,
+    }
     for row in feedback_rows:
         source = str(row.get("source") or "").strip().lower()
         case_id = str(row.get("case_id") or row.get("case") or "").strip()
@@ -170,8 +188,14 @@ def summarize_field_feedback(feedback_rows: list[dict[str, Any]], rules: list[di
         if not rule_id or not outcome:
             continue
         if active_ids and rule_id not in active_ids:
-            totals["unknown_rule"] += 1
-            continue
+            # ルール文面の再生成で rule_id が変わっていても、concept が現行の
+            # active ルールと一致すればそちらへ紐付け直す（REV: rule_id drift 救済）。
+            remapped_id = concept_to_active_id.get(id_to_concept.get(rule_id, ""))
+            if not remapped_id:
+                totals["unknown_rule"] += 1
+                continue
+            rule_id = remapped_id
+            totals["remapped_by_concept"] += 1
         entry = by_rule.setdefault(
             rule_id,
             {
@@ -224,6 +248,7 @@ def summarize_field_feedback(feedback_rows: list[dict[str, Any]], rules: list[di
             "field_validation は実案件・ユーザー反応で使われた判断資産だけを評価する。",
             "source=manual_example は実案件前の例題検証としてカウントし、本物の実案件とは source で分離する。",
             "source=simulation または sim-* case は試運転として除外する。",
+            "rule_id が現行の active ルールと不一致でも、concept が一致すればそのルールへ再紐付けする（remapped_by_concept）。concept も一致しない場合のみ unknown_rule として除外する。",
             "helped は加点、challenged/rejected は減点、未使用active ruleは軽い減点。",
             "この値が低い間は、判断資産を単なるルールブックとして扱い、RAG/プロンプトで過信しない。",
         ],
@@ -409,6 +434,8 @@ def build_markdown(payload: dict[str, Any]) -> str:
             f"- Challenged: {int(totals.get('challenged') or 0)}",
             f"- Rejected: {int(totals.get('rejected') or 0)}",
             f"- Unused active rules: {int(feedback.get('unused_active_rules') or 0)}",
+            f"- Remapped by concept: {int(totals.get('remapped_by_concept') or 0)}",
+            f"- Unknown rule: {int(totals.get('unknown_rule') or 0)}",
             "",
         ]
     )

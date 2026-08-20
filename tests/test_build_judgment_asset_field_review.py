@@ -73,6 +73,32 @@ def test_build_review_buckets_active_assets_by_field_feedback():
     assert "--source real_case" in payload["action_plan"]["feedback_template"]["command"]
 
 
+def test_stale_rule_id_feedback_is_remapped_by_concept():
+    canonical = _canonical_payload()
+    canonical["rules"].append(
+        {
+            "id": "rule-support-old",
+            "status": "demoted",
+            "concept": "support_specificity",
+            "canonical_statement": "旧版: 支援の直接性を確認する。",
+        }
+    )
+
+    payload = review.build_review(
+        target_date="2026-07-25",
+        canonical=canonical,
+        feedback_rows=[
+            {"rule_id": "rule-support-old", "outcome": "helped", "case_id": "case-old"},
+        ],
+    )
+
+    assert payload["summary"]["unknown_feedback"] == 0
+    assert payload["summary"]["remapped_feedback"] == 1
+    assert payload["summary"]["grow"] == 1
+    assert payload["summary"]["sleeping"] == 2
+    assert payload["buckets"]["grow"][0]["rule_id"] == "rule-sleeping"
+
+
 def test_neutral_or_used_only_feedback_goes_to_hold():
     payload = review.build_review(
         target_date="2026-07-25",
