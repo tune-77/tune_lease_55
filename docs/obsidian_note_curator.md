@@ -51,9 +51,18 @@ Problem/気づき/解決メモであり、性質が異なるため `System Impro
 
 ## 日次パイプライン
 
-`scripts/run_daily_improvement_post.sh` の末尾（Mana判定が `allow` の場合のみ実行される
-ブロック内）に追記のみ・`|| true` 付きで4スクリプトを順番に呼ぶ:
-taxonomy_audit → note_curator(--apply) → theme_radar → reflection_journal。
+`scripts/run_daily_improvement_post.sh` の中で、追記のみ・`|| true` 付きで4スクリプトを
+順番に呼ぶ。Mana判定によるゲートは読み取り専用かどうかで分けている:
+
+- `obsidian_taxonomy_audit.py` → `obsidian_theme_radar.py`（どちらもVaultに書き込まない）
+  はMana判定に関わらず**毎日必ず実行**する。
+- `obsidian_note_curator.py --apply` → `obsidian_reflection_journal.py`（どちらもVaultへ
+  書き込む）は**Mana判定が`allow`の時だけ**実行する。
+
+理由: Mana判定は「内省の質」だけでなく、有害コンテンツの記憶昇格阻止・自己参照ループ防止・
+記憶汚染攻撃の検知も兼ねる暴走防止ガードであり、Vault書き込みを伴う操作はこのガードで
+守るべきだが、読み取り専用のタグ監査・テーマレーダーまで止める理由はない
+（Mana判定がallowでない日が続いても、内省ループ自体は観測を止めない）。
 
 ## 環境変数
 
