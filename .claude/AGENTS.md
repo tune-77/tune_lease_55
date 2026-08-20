@@ -160,6 +160,59 @@ LLM 無しでは生成できない。2 は「不要な再監査を求めない�
 
 **配置と依存関係は本ファイルが正**（書式は冒頭の通り `.claude/reports/REPORT_SCHEMA.md` が正）。REPORT_SCHEMA.md 側に配置・依存関係を再掲しないこと。
 
+## 標準作業プロトコル
+
+理由: AGENTを単発で呼ぶだけだと、探索・実装・検証・PR前確認の間で指摘が落ち、同じ種類の断線を繰り返す。
+適用条件: コード変更、設定変更、運用手順変更、PRレビュー対応、git ship 前。
+削除条件: ハーネス側で同等の作業ゲートが自動化され、AGENTレポートとテスト実行の対応が機械的に保証された時。
+
+### 1. 受付と領域分類
+- 目的を1行にし、変更領域を `判断資産` / `ledger` / `scoring` / `DB` / `chat・RAG` / `UI` / `deploy` / `other` に分類する。
+- `data/`、secrets、実DB、外部送信が絡む場合は、ステージ禁止・読み取り専用・承認要否を先に決める。
+- 判断資産・ledger・scoring・DB のいずれかを触る場合は、後続の専門AGENTゲートを省略しない。
+
+### 2. 探索ゲート
+- 変更前に file-searcher 相当の範囲確認を行い、関連ファイル・既存テスト・既存AGENTレポートを確認する。
+- 大きい変更やレビュー対応では `.claude/reports/file-searcher/latest.md` を更新し、後続AGENTが同じ前提を読めるようにする。
+
+### 3. 実装ゲート
+- 既存パターンに合わせて小さく直す。
+- 状態遷移を触る時は、保存・読込・表示・同期の4点を同時に確認する。
+- 判断資産では `promotion_status`、候補保全、dedupe、active count、Cloud Run帰還を必ず確認する。
+
+### 4. 検証ゲート
+- まず変更に近い targeted tests を実行する。
+- 状態遷移、同期、昇格、候補保全を触った場合は回帰テストを追加する。
+- テストが失敗した場合は、修正前に test-result-analyzer 相当で原因・影響・再発防止を分ける。
+
+### 5. 専門AGENTゲート
+| 変更領域 | 通すAGENT |
+|---|---|
+| 判断資産候補・昇格・レビューUI・Cloud Run帰還 | judgment-asset-auditor |
+| REV採番・改善台帳・ledger_rules | ledger-consistency-auditor |
+| scoring・物件評価・カテゴリウェイト | scoring-auditor, rule-validator |
+| DBスキーマ・migration・同期テーブル | migration-validator, data-quality-checker |
+| API・認証・外部入力・secrets・ファイル書き込み | security-checker |
+| 審査レポートUI・分析表示 | report-stylist |
+| 起動・依存・Cloud Run bundle・runtime | build-runner, api-health-checker |
+| ログ・常駐プロセス・launchd・pipeline運用 | log-file-analyzer |
+
+### 6. レビューゲート
+- code-reviewer 相当で、バグ・回帰・欠けたテスト・状態取りこぼしを優先して見る。
+- 指摘を修正したら、関連テストと必要な専門AGENTゲートを再実行する。
+- レポートの鮮度は `timestamp` だけでなく、`scripts/agent_sidecar_reader.py` の `AGENT_TRIGGER_PATHS` による担当ファイル変更基準も見る。
+
+### 7. PR前ゲート
+- `/pre-merge-agent-check` で必須AGENT、領域別AGENT、禁止混入、テスト不足を確認する。
+- `data/`、生成物、secretsが意図せずステージされている場合は ship しない。
+- CIで落ちそうなチェックをローカルで先に実行する。
+
+### 8. ship条件
+- targeted tests が通っている。
+- 必要な専門AGENTゲートが missing/stale のまま残っていない。
+- code-reviewer 相当の重大指摘が未解決でない。
+- PR前ゲートの判定が `mergeable` である。
+
 ## カスタムコマンド（スキル）
 
 `.claude/commands/` に以下のスラッシュコマンドが定義されている。**各コマンドの正確な引数・挙動は `.claude/commands/<名前>.md` が正**で、下表は索引。
@@ -170,6 +223,7 @@ LLM 無しでは生成できない。2 は「不要な再監査を求めない�
 |---------|-----|----------------|---------|
 | `/analyze-logs` | ログファイルのエラー・警告抽出 | `log-file-analyzer` | 10〜30秒 |
 | `/analyze-variables` | 変数重要度分析（IV / SHAP） | — | — |
+| `/agent-workflow` | AGENT標準作業プロトコルの選定 | file-searcher / code-reviewer / test-runner / 該当専門AGENT | 数分 |
 | `/asset-evaluation` | 物件スコア詳細評価 | — | — |
 | `/audit-scores` | スコアリング異常・乖離の監査 | `scoring-auditor` (`--full`) | 30秒〜数分 |
 | `/batch-export` | バッチ審査エクスポート・CSV形式検証 | — | — |
