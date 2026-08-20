@@ -85,6 +85,23 @@ def test_not_eligible_when_claim_too_short():
     assert payload["summary"]["not_eligible"] == 1
 
 
+def test_held_candidate_is_never_reported_as_ready_even_with_high_score():
+    # 人間が「保留」を選んだ候補は、その後usefulが積まれてscoreが正になっても
+    # 人間の判断を勝手に覆してready_for_reviewへ戻してはいけない。
+    candidates = [
+        {"id": "cand-held", "claim": "十分に長い判断資産候補の文面です。", "research_topic": "topic-held"},
+    ]
+    state = {"cand-held": {"promotion_status": "held", "useful_count": 10, "rejected_count": 0}}
+
+    payload = readiness.build_report(
+        target_date="2026-08-20", candidates=candidates, state=state, canonical={},
+    )
+
+    assert payload["summary"]["held_by_human"] == 1
+    assert payload["summary"]["ready_for_review"] == 0
+    assert payload["buckets"]["held_by_human"][0]["id"] == "cand-held"
+
+
 def test_duplicate_no_new_evidence_when_matches_active_statement_without_signal():
     candidates = [
         {"id": "cand-6", "claim": "既存の正規判断資産の文面です。", "research_topic": "topic-f"},

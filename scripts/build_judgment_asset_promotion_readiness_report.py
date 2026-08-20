@@ -38,6 +38,7 @@ BUCKET_ORDER = [
     "insufficient_evidence",
     "duplicate_no_new_evidence",
     "not_eligible",
+    "held_by_human",
     "already_promoted",
     "already_rejected",
 ]
@@ -47,6 +48,7 @@ BUCKET_CRITERIA = {
     "insufficient_evidence": "score <= 0 かつ manual 由来でない（実案件での評価がまだ足りない）",
     "duplicate_no_new_evidence": "既存の正規判断資産と同一文面で、新しい根拠（useful/edit）が無い",
     "not_eligible": f"文面が{MIN_CLAIM_LENGTH}文字未満など、そもそも候補として不十分",
+    "held_by_human": "人間が既に「保留」を選択済み。スコアに関わらずready扱いにしない。",
 }
 
 
@@ -141,6 +143,9 @@ def evaluate_candidate(
     elif promotion_status in {"rejected_or_deprioritized", "rejected"}:
         bucket = "already_rejected"
         reasons.append("既に却下・優先度低として処理済み。")
+    elif promotion_status == "held":
+        bucket = "held_by_human"
+        reasons.append("人間が既に「保留」を選択済み。スコアに関わらずready扱いにしない。")
     elif len(claim) < MIN_CLAIM_LENGTH:
         bucket = "not_eligible"
         reasons.append(f"文面が短すぎる（{len(claim)}文字 < {MIN_CLAIM_LENGTH}文字）。")
@@ -240,7 +245,7 @@ def build_markdown(payload: dict[str, Any]) -> str:
         f"- 最低文字数: {criteria['min_claim_length']}文字",
         "",
     ]
-    for bucket_key in BUCKET_ORDER[:5]:
+    for bucket_key in BUCKET_ORDER[:6]:
         lines.append(f"- **{bucket_key}**: {criteria['buckets'].get(bucket_key, '')}")
     lines.append("")
 
@@ -250,6 +255,7 @@ def build_markdown(payload: dict[str, Any]) -> str:
         ("根拠不足", "insufficient_evidence"),
         ("重複・新規根拠なし", "duplicate_no_new_evidence"),
         ("対象外", "not_eligible"),
+        ("人間が保留済み", "held_by_human"),
     ]
     for label, key in labels:
         entries = payload["buckets"].get(key) or []
