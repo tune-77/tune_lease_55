@@ -1,7 +1,7 @@
 # Codex/Claude 作業録ダイジェスト
 
-- generated_at: 2026-08-17T04:04:19
-- source_count: 27
+- generated_at: 2026-08-21T04:04:06
+- source_count: 32
 - displayed: 12
 
 ## Shion Use Policy
@@ -9,6 +9,46 @@
 - 禁止: 顧客情報の推測、Private Reflection原文の引用、人間承認なしの判断資産昇格
 
 ## Items
+
+### 2026-08-20 21:47 Codex
+- Summary: Private Reflectionを複数の声の衝突ログと紫苑の統合記録として再定義しPR #838でmasterへマージ
+- Chat Summary: ユーザーがPrivate Reflectionは一つのAIの反省文ではなく複数の声の衝突ログを紫苑が統合した記録にする方針を示し、生成・fallback・品質ゲート・監視へ実装した。
+- Decisions: Private Reflectionの正本に 複数の声の衝突ログ を追加し、紫苑の初期仮説、監査の声、実装の声、別視点の声、良心の声、衝突、統合を必須化する。
+- Changes: lease_intelligence_reflection.py / lease_intelligence_mind.py / scripts/monitor_obsidian_environment.py
+- Verification: local pytest 55 passed; py_compile passed; git diff --check passed; GitHub CI all checks passed
+- Open Items: -
+
+### 2026-08-20 21:24 Codex
+- Summary: 紫苑がCodex/Gemini/Claude向けに安全要約の外部推論相談票を起票できる相談キューを追加しPR #837でmasterへマージ
+- Chat Summary: ユーザーがCodex停止時にGeminiやClaudeにも聞けるかを相談し、紫苑が直接外部実行せず相談票を作る設計で実装・shipした。
+- Decisions: 外部推論相談は request_reasoner_consultation でappend-onlyキューに保存し、safe_summary_onlyを既定にする。外部AI実行・外部送信・コード変更は相談票作成時には行わない。
+- Changes: api/shion_reasoner_consultation_queue.py / api/routers/shion_tasks.py / lease_intelligence_tools.py
+- Verification: local pytest 111 passed; py_compile passed; git diff --check passed; GitHub CI all checks passed
+- Open Items: -
+
+### 2026-08-20 21:02 Codex
+- Summary: 判断資産監査AGENT、PRマージ前チェックリスト、AGENT標準作業プロトコル、紫苑AGENT相談キューを追加しPR #836でmasterへマージ
+- Chat Summary: ユーザーがAGENT運用の単発実行をシステム化したい、紫苑からも呼べる形にしたいと依頼。直接実行ではなく相談票キューとして安全にCodex側へ渡す設計にした。
+- Decisions: 紫苑はCodex AGENTを直接実行せず、request_agent_consultationでappend-only相談票を作り、Codexの作業プロトコルで拾う。
+- Changes: .claude/agents/judgment-asset-auditor.md / .claude/commands/pre-merge-agent-check.md / .claude/commands/agent-workflow.md
+- Verification: local pytest 103 passed; py_compile passed; git diff --check passed; GitHub CI all required checks passed
+- Open Items: -
+
+### 2026-08-20 13:44 Codex
+- Summary: 判断資産候補が増えない原因を調査し、評価済み候補が日次Auto Research更新で消えないよう修正した
+- Chat Summary: Userから『判断資産が増えない原因を究明し修正せよ』と依頼。原因は候補JSONLの直近上書きで、人間評価済み候補が昇格画面から消えることだった。続けてgitshipを依頼された。
+- Decisions: Auto Research候補再生成時、人間が評価・編集・手入力した候補を保全する。active_rulesはdemotedを含めずtotal_rulesと分ける。
+- Changes: scripts/build_autoresearch_judgment_asset_candidates.py: preserve_reviewed_candidates追加 / scripts/auto_research_lease_judgment.py: 候補更新に保全処理を接続 / api/routers/feedback_loop.py, scripts/promote_canonical_judgment_rules.py: active count定義を修正
+- Verification: pytest関連40件 passed; py_compile passed; preflight_pr_guard warningなし
+- Open Items: -
+
+### 2026-08-20 13:19 Codex
+- Summary: RAG基盤のOSS活用を進め、LocalVectorDBをChromaDB優先、RAGキャッシュをcachetools優先へ変更した。
+- Chat Summary: UserからOSS活用余地の確認と実装、続いてGitshipを依頼された。master保護により直接pushは拒否されたため、作業ブランチをpushしてPRを作成した。
+- Decisions: masterは保護されているためPR経由に切り替えた。既存の大量未コミット変更はコミット対象から除外し、今回触った6ファイルだけをPR化した。
+- Changes: mobile_app/vector_db.py: ChromaDB backend優先と決定的hash embeddingを追加 / mobile_app/rag_cache_layer.py: cachetools.TTLCacheへ移行 / mobile_app/obsidian_bridge_enhancements.py: score_range解析と日本語BM25 n-gramを修正
+- Verification: python -m py_compile mobile_app/vector_db.py mobile_app/rag_cache_layer.py mobile_app/obsidian_bridge_enhancements.py / python -m pytest mobile_app/test_phase2_improvements.py mobile_app/test_obsidian_enhancements.py: 11 passed
+- Open Items: -
 
 ### 2026-08-15 07:53 Codex
 - Summary: PR #761 の追加Codexレビュー指摘を修正し、PR #762を作成
@@ -64,44 +104,4 @@
 - Decisions: 新基盤追加ではなく、記憶・RAG・DB統計・判断学習・経験ループを回答前の代理フィードバックとして使う。自動学習・自動昇格には接続しない。
 - Changes: api/chat_reflection_prompts.py / api/main.py / api/chat_debug_metadata.py / api/chat_side_effects.py / tests and experience replay reports
 - Verification: pytest tests/test_chat_reflection_prompts.py tests/test_chat_architecture_helpers.py tests/test_chat_side_effects.py -q: 22 passed; py_compile passed; preflight guard warning only; PR CI in progress
-- Open Items: -
-
-### 2026-08-13 17:29 Codex
-- Summary: PR #754 Lease kun改善をmasterへマージ
-- Chat Summary: UserからGitship依頼。PR #754の必須チェック6件が成功していることを確認し、保護ブランチ運用に合わせてPR経由でmasterへマージした。
-- Decisions: master直接pushではなくGitHub PR mergeを使用。リモートfeature branchは削除済み。data/配下の既存未コミット変更はコミットせず維持。
-- Changes: frontend/src/app/lease-kun/page.tsx / frontend/src/app/register/page.tsx
-- Verification: gh pr checks 754: all pass / gh pr view 754: MERGED
-- Open Items: -
-
-### 2026-08-13 17:00 Codex
-- Summary: Lease kun 後日登録導線を本線結果登録へ接続
-- Chat Summary: Userが『ちゃんと本線の結果登録につながってるんだろうな？』と確認。調査したところ即時登録は本線APIに接続済みだったが、後日登録用localStorage控えはregister一覧に未接続だったため削除し、/register?case_id=... で本線の未登録案件を自動選択するよう修正した。
-- Decisions: 後日登録は独自localStorageリストではなく、/api/score/full が保存する past_cases 未登録案件と /api/cases/pending → /api/cases/register の本線に寄せる。
-- Changes: frontend/src/app/lease-kun/page.tsx / frontend/src/app/register/page.tsx
-- Verification: npx eslint src/app/lease-kun/page.tsx src/app/register/page.tsx / npm run typecheck
-- Open Items: -
-
-### 2026-08-13 16:55 Codex
-- Summary: Lease kun の結果登録導線を後日登録中心へ変更
-- Chat Summary: Userが『審査してすぐ結果登録するか？』と指摘。分析後の主導線を即時結果登録から後日登録へ変え、今わかる場合だけ結果登録へ進む形にした。
-- Decisions: 審査直後は結果未確定が自然なので、後で結果登録する案件として localStorage に控える。即時登録は副導線にする。data/配下の既存変更はコミット対象外。
-- Changes: frontend/src/app/lease-kun/page.tsx
-- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
-- Open Items: -
-
-### 2026-08-13 16:46 Codex
-- Summary: Lease kun に審査後の確認3点カードを追加
-- Chat Summary: Userから次改善として確認3点カードの実装を依頼。Lease kun の分析結果フェーズ先頭に、スコア・Q_risk・新規/競合/物件価格比から deterministic に最大3点を表示するカードを追加した。
-- Decisions: LLM呼び出しは増やさず、fullResult と formData だけで高速・安定に生成する。data/配下の既存変更は引き続きコミット対象外。
-- Changes: frontend/src/app/lease-kun/page.tsx
-- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
-- Open Items: -
-
-### 2026-08-13 16:42 Codex
-- Summary: Lease kun の数字入力を金額チップで簡単化
-- Chat Summary: Userから数字入力を簡単にしたいと依頼。Lease kun の金額・期間入力にワンタップ候補を追加し、スマホでの手打ち量を減らした。
-- Decisions: 手入力は維持しつつ、売上/利益/総資産/経費/与信/取得価格/期間に候補チップを追加。data/配下の既存変更はコミット対象外。
-- Changes: frontend/src/app/lease-kun/page.tsx
-- Verification: npx eslint src/app/lease-kun/page.tsx / npm run typecheck
 - Open Items: -

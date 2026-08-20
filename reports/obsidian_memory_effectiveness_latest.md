@@ -1,6 +1,6 @@
 # Obsidian Memory Effectiveness
 
-- Date: 2026-08-17
+- Date: 2026-08-21
 - Mode: read_only_observation
 - Guardrail: no_rag_rank_change_no_prompt_change_no_obsidian_write_no_auto_promotion
 - Knowledge dir: `/Users/kobayashiisaoryou/clawd/tune_lease_55/knowledge_base/okf_lease_concepts`
@@ -34,7 +34,7 @@
 - Ref: `knowledge_base/okf_lease_concepts/rules/expected_usage_period_and_lease_term.md`
 - Type: `lease_rule` / Domain: `contract`
 - State: `used` / Score: 40.0
-- Signals: recalled=8, used=4, helped=0, challenged=0, rejected=0
+- Signals: recalled=8, used=5, helped=0, challenged=0, rejected=0
 - Next: User評価を取り、helped / neutral / challenged を記録する。
 
 ### 条件付き承認の判断ルール
@@ -58,6 +58,13 @@
 - Signals: recalled=4, used=2, helped=0, challenged=0, rejected=0
 - Next: User評価を取り、helped / neutral / challenged を記録する。
 
+### 紫苑の記憶参照と検索効率
+- Ref: `knowledge_base/okf_lease_concepts/rules/shion_memory_retrieval.md`
+- Type: `agent_policy` / Domain: `rag`
+- State: `used` / Score: 34.0
+- Signals: recalled=3, used=2, helped=0, challenged=0, rejected=0
+- Next: User評価を取り、helped / neutral / challenged を記録する。
+
 ### OKF-style lease knowledge pack
 - Ref: `knowledge_base/okf_lease_concepts/README.md`
 - Type: `index` / Domain: `rag`
@@ -77,13 +84,6 @@
 - Type: `asset_profile` / Domain: `asset_life`
 - State: `used` / Score: 28.0
 - Signals: recalled=10, used=1, helped=0, challenged=0, rejected=0
-- Next: User評価を取り、helped / neutral / challenged を記録する。
-
-### 紫苑の記憶参照と検索効率
-- Ref: `knowledge_base/okf_lease_concepts/rules/shion_memory_retrieval.md`
-- Type: `agent_policy` / Domain: `rag`
-- State: `used` / Score: 26.0
-- Signals: recalled=3, used=1, helped=0, challenged=0, rejected=0
 - Next: User評価を取り、helped / neutral / challenged を記録する。
 
 ### AI回答の現在日時コンテキスト

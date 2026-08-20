@@ -1,18 +1,18 @@
 # Instruction Debt Report
 
-- Generated at: `2026-08-16T19:12:33+00:00`
+- Generated at: `2026-08-20T19:13:31+00:00`
 - Mode: `read_only_instruction_debt_audit`
 - Guardrail: no prompt edit, no memory promotion, no skill edit
 - Files scanned: 15
-- Instructions found: 215
-- Debt items: 32
+- Instructions found: 199
+- Debt items: 33
 
 ## Issue Summary
 - missing_rationale: 13
-- missing_retirement_condition: 20
+- missing_retirement_condition: 21
 
 ## Guidance Debt Items
-- No guidance instruction debt detected.
+- `AGENTS.md:54` [medium] missing_retirement_condition: - 1週間以上有効そうな個人設定/好みが確認できた
 
 ## Memory Policy Candidates
 - `MEMORY.md:27` [medium] missing_rationale: - `past_cases` 1526件の確認では、現行 `score` AUC 0.6268 / `score_borrower` 0.6350。
@@ -48,4 +48,4 @@
 
 ## Recommendations
 - add_rationale_comments: 13 (instructions without reasons are hard to delete safely later)
-- add_retirement_conditions: 20 (temporary or context-specific rules need an explicit condition for removal)
+- add_retirement_conditions: 21 (temporary or context-specific rules need an explicit condition for removal)

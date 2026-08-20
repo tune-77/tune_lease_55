@@ -5,8 +5,8 @@
 - role: `obsidian_curator_and_shion_runaway_guard`
 - identity: `same_as_shion_upper_authority_mana_value_memory`
 - identity_note: Mana Curator is not a separate agent; it is the existing Mana upper authority applied to Obsidian memory operations.
-- generated_at: `2026-08-17T04:12:45+09:00`
-- target_date: `2026-08-17`
+- generated_at: `2026-08-21T04:13:54+09:00`
+- target_date: `2026-08-21`
 - status: `watch`
 - action_summary: memory_insight_reports_warning: memory insight sidecarを更新する: scripts/build_obsidian_memory_insight_report.py と scripts/build_shion_memory_promotion_queue.py を日次内で再実行し、reports/obsidian_memory_insight_latest.md 等を36h以内に戻す。
 - guardrail: `read_only_no_obsidian_write_no_rag_no_prompt_no_scoring_no_cloudrun_no_deploy`
@@ -23,11 +23,6 @@
 - level: `watch`
 - message: memory_insight_reports に警告。自動接続せず、該当箇所だけ確認する。
 - evidence: `{"check_message": "stale or missing sidecars: memory_insight", "status": "warn"}`
-
-### recent_note_noise_warning
-- level: `watch`
-- message: recent_note_noise に警告。自動接続せず、該当箇所だけ確認する。
-- evidence: `{"check_message": "recent note technical-noise ratio=0.0111, noisy_files=6", "status": "warn"}`
 
 ## Blocked Actions
 - 人を害する・貶める文面を記憶候補として昇格しない
@@ -46,7 +41,6 @@
 ## Userにしてほしいこと
 - Mana判定がALLOWではありません。以下を採用・修正・却下で短く確認してください。
 - memory_insight_reports_warning: memory_insight_reports に警告。自動接続せず、該当箇所だけ確認する。
-- recent_note_noise_warning: recent_note_noise に警告。自動接続せず、該当箇所だけ確認する。
 
 ## 紫苑がするべきこと
 - Userの制約を優先し、Mana判定をRAG・プロンプト・本番へ接続しない。

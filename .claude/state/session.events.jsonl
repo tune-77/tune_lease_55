@@ -22,3 +22,4 @@
 {"id":"event-000001","type":"session.stop","ts":"2026-07-01T21:47:52Z","state":"stopped"}
 {"id":"event-000001","type":"session.stop","ts":"2026-08-02T09:51:41Z","state":"stopped"}
 {"id":"event-000001","type":"session.stop","ts":"2026-08-16T03:38:09Z","state":"stopped"}
+{"id":"event-000004","type":"session.stop","ts":"2026-08-18T04:32:07Z","state":"stopped"}

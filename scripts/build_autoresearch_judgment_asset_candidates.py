@@ -78,10 +78,10 @@ PRESERVED_PROMOTION_STATUSES = {
     "ready_for_promotion",
 }
 
-TERMINAL_PROMOTION_STATUSES = {
-    "promoted",
+SUPPRESSED_PROMOTION_STATUSES = {
     "active",
     "held",
+    "promoted",
     "rejected",
     "rejected_or_deprioritized",
 }
@@ -268,11 +268,17 @@ def _has_human_signal(item: dict[str, Any]) -> bool:
     return False
 
 
-def _should_preserve_reviewed_candidate(item: dict[str, Any]) -> bool:
-    promotion_status = str(item.get("promotion_status") or "")
-    if promotion_status in TERMINAL_PROMOTION_STATUSES:
-        return False
-    return _has_human_signal(item)
+def _is_suppressed_by_review(item: dict[str, Any]) -> bool:
+    return str(item.get("promotion_status") or "") in SUPPRESSED_PROMOTION_STATUSES
+
+
+def _merge_candidate_state(item: dict[str, Any], state: dict[str, Any] | None) -> dict[str, Any]:
+    if not state:
+        return dict(item)
+    merged = {**item, **state}
+    if not str(state.get("promotion_status") or ""):
+        merged["promotion_status"] = item.get("promotion_status") or ""
+    return merged
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -302,7 +308,9 @@ def _state_only_preserved_candidates(
     for candidate_id, state in states.items():
         if candidate_id in known_ids:
             continue
-        if not _should_preserve_reviewed_candidate(state):
+        if _is_suppressed_by_review(state):
+            continue
+        if not _has_human_signal(state):
             continue
         edited_claim = str(state.get("edited_claim") or "").strip()
         if len(edited_claim) < 8:
@@ -321,7 +329,7 @@ def _state_only_preserved_candidates(
                 "asset_quality": "actionable",
                 "quality_reasons": [],
                 **state,
-                "promotion_status": _promotion_status(state, "actionable"),
+                "promotion_status": str(state.get("promotion_status") or "") or _promotion_status(state, "actionable"),
                 "requires_human_use_feedback": True,
                 "requires_result_verification": True,
                 "use_policy": "過去に人間が評価・編集したため、直近Auto Research範囲外でも昇格レビューに残す。",
@@ -343,26 +351,31 @@ def preserve_reviewed_candidates(
     added must remain visible until a human promotes, holds, or rejects it.
     """
     by_id: dict[str, dict[str, Any]] = {}
+    states = load_state(state_path)
     for item in candidates:
         candidate_id = str(item.get("id") or "")
-        if candidate_id:
-            by_id[candidate_id] = item
+        if not candidate_id:
+            continue
+        merged = _merge_candidate_state(item, states.get(candidate_id))
+        if not _is_suppressed_by_review(merged):
+            by_id[candidate_id] = merged
 
-    states = load_state(state_path)
     for item in _read_jsonl(existing_jsonl):
         candidate_id = str(item.get("id") or "")
         if not candidate_id or candidate_id in by_id:
             continue
-        merged = {**item, **states.get(candidate_id, {})}
-        if _should_preserve_reviewed_candidate(merged):
+        merged = _merge_candidate_state(item, states.get(candidate_id))
+        if _is_suppressed_by_review(merged):
+            continue
+        if _has_human_signal(merged):
             by_id[candidate_id] = merged
 
     for item in _state_only_preserved_candidates(states, set(by_id)):
         by_id[str(item["id"])] = item
 
-    deduped = dedupe_similar_candidates(list(by_id.values()))
+    combined = dedupe_similar_candidates(list(by_id.values()))
     return sorted(
-        deduped,
+        combined,
         key=lambda item: (
             1 if _has_human_signal(item) else 0,
             str(item.get("research_date") or ""),
@@ -407,7 +420,7 @@ def _judgment_asset_quality(claim: str, candidate_type: str) -> tuple[str, list[
 
 def _promotion_status(state: dict[str, Any], asset_quality: str = "actionable") -> str:
     existing_status = str(state.get("promotion_status") or "")
-    if existing_status in TERMINAL_PROMOTION_STATUSES or existing_status in PRESERVED_PROMOTION_STATUSES:
+    if existing_status in SUPPRESSED_PROMOTION_STATUSES or existing_status in PRESERVED_PROMOTION_STATUSES:
         return existing_status
     if asset_quality != "actionable":
         return "not_promoted_textbook_general"
@@ -525,6 +538,7 @@ def _note_candidates(path: Path, *, vault: Path, states: dict[str, dict[str, Any
             candidate_id = _candidate_id(date, topic, candidate_type, item)
             state = _candidate_state(states.get(candidate_id))
             asset_quality, quality_reasons = _judgment_asset_quality(item, candidate_type)
+            promotion_status = str(state.get("promotion_status") or "") or _promotion_status(state, asset_quality)
             candidates.append(
                 {
                     "id": candidate_id,
@@ -539,7 +553,7 @@ def _note_candidates(path: Path, *, vault: Path, states: dict[str, dict[str, Any
                     "asset_quality": asset_quality,
                     "quality_reasons": quality_reasons,
                     **state,
-                    "promotion_status": _promotion_status(state, asset_quality),
+                    "promotion_status": promotion_status,
                     "requires_human_use_feedback": True,
                     "requires_result_verification": True,
                     "use_policy": (
