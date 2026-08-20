@@ -11,7 +11,7 @@ import time
 import logging
 import re
 import threading
-from functools import lru_cache, wraps
+from functools import wraps
 from typing import Any, Callable
 from cachetools import TTLCache
 
@@ -72,9 +72,10 @@ class LRURAGCache:
     
     def clear(self):
         """キャッシュをクリア"""
-        self.cache.clear()
-        self.hits = 0
-        self.misses = 0
+        with self._lock:
+            self.cache.clear()
+            self.hits = 0
+            self.misses = 0
     
     def get_stats(self) -> dict:
         """統計情報を取得"""

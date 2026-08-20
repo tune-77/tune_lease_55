@@ -11,8 +11,10 @@ import os
 import json
 import logging
 import pickle
-from typing import Any, Optional
-from pathlib import Path
+import hashlib
+import math
+import re
+from typing import Any
 import numpy as np
 from datetime import datetime
 
@@ -137,7 +139,13 @@ class VectorIndex:
 class LocalVectorDB:
     """ローカルベクトル DB（Pinecone/Weaviate 互換）"""
     
-    def __init__(self, db_name: str = "lease_rag", embedding_model: Any = None):
+    def __init__(
+        self,
+        db_name: str = "lease_rag",
+        embedding_model: Any = None,
+        persist_path: str = "mobile_app/.vector_index",
+        prefer_chroma: bool = True,
+    ):
         """
         初期化
         
@@ -147,7 +155,75 @@ class LocalVectorDB:
         """
         self.db_name = db_name
         self.embedding_model = embedding_model
-        self.index = VectorIndex(index_name=db_name)
+        self.persist_path = persist_path
+        self.backend = "local"
+        self.index: VectorIndex | None = None
+        self._chroma_client = None
+        self._chroma_collection = None
+
+        if prefer_chroma and self._init_chroma():
+            self.backend = "chroma"
+        else:
+            self.index = VectorIndex(index_name=db_name, persist_path=persist_path)
+
+    def _init_chroma(self) -> bool:
+        """ChromaDB を初期化。失敗時は旧ローカル実装へフォールバック。"""
+        try:
+            import chromadb
+
+            chroma_path = os.path.join(self.persist_path, "chroma")
+            os.makedirs(chroma_path, exist_ok=True)
+            self._chroma_client = chromadb.PersistentClient(path=chroma_path)
+            self._chroma_collection = self._chroma_client.get_or_create_collection(
+                name=self.db_name,
+                metadata={"hnsw:space": "cosine"},
+            )
+            logger.info("✅ ChromaDB backend initialized: %s", chroma_path)
+            return True
+        except Exception as e:
+            logger.warning("⚠️  ChromaDB backend unavailable, using local fallback: %s", e)
+            self._chroma_client = None
+            self._chroma_collection = None
+            return False
+
+    @staticmethod
+    def _clean_metadata(metadata: dict | None) -> dict:
+        """ChromaDB が受け取れる scalar metadata に整形。"""
+        cleaned: dict[str, str | int | float | bool] = {}
+        for key, value in (metadata or {}).items():
+            if value is None:
+                continue
+            if isinstance(value, (str, int, float, bool)):
+                cleaned[str(key)] = value
+            else:
+                cleaned[str(key)] = json.dumps(value, ensure_ascii=False, default=str)
+        return cleaned
+
+    @staticmethod
+    def _default_embedding(text: str, dimension: int = 384) -> np.ndarray:
+        """embedding_fn 未指定時の決定的な軽量ベクトル化。ランダム検索を避ける。"""
+        vec = np.zeros(dimension, dtype=np.float32)
+        tokens = re.findall(r"[\w\d]+", (text or "").lower())
+        if not tokens:
+            tokens = [(text or "")[:64]]
+        for token in tokens:
+            digest = hashlib.blake2b(token.encode("utf-8", errors="ignore"), digest_size=8).digest()
+            idx = int.from_bytes(digest[:4], "little") % dimension
+            sign = 1.0 if digest[4] % 2 == 0 else -1.0
+            vec[idx] += sign
+        norm = math.sqrt(float(np.dot(vec, vec))) or 1.0
+        return vec / norm
+
+    def _embed(self, text: str, embedding_fn=None) -> np.ndarray:
+        if embedding_fn:
+            embedding = embedding_fn(text)
+        elif self.embedding_model is not None:
+            embedding = self.embedding_model.encode(text, convert_to_numpy=True)
+        else:
+            embedding = self._default_embedding(text)
+        if embedding is None:
+            return self._default_embedding(text)
+        return np.asarray(embedding, dtype=np.float32)
     
     def upsert(self, documents: list[dict], embedding_fn=None):
         """
@@ -158,17 +234,43 @@ class LocalVectorDB:
             embedding_fn: embedding 生成関数
         """
         logger.info(f"📥 {len(documents)} 個のドキュメントを upsert 中...")
+
+        if self.backend == "chroma" and self._chroma_collection is not None:
+            ids: list[str] = []
+            contents: list[str] = []
+            metadatas: list[dict] = []
+            embeddings: list[list[float]] = []
+
+            for doc in documents:
+                doc_id = str(doc.get("id") or doc.get("path") or "unknown")
+                content = f"{doc.get('title', '')} {doc.get('content', '')}"
+                ids.append(doc_id)
+                contents.append(content)
+                metadatas.append(self._clean_metadata({
+                    "title": doc.get("title"),
+                    "path": doc.get("path"),
+                    "content_preview": content[:200],
+                    "timestamp": datetime.now().isoformat(),
+                }))
+                embeddings.append(self._embed(content, embedding_fn).tolist())
+
+            if ids:
+                self._chroma_collection.upsert(
+                    ids=ids,
+                    documents=contents,
+                    metadatas=metadatas,
+                    embeddings=embeddings,
+                )
+            logger.info(f"✅ ChromaDB upsert 完了: {len(ids)} 件")
+            return
+
+        if self.index is None:
+            self.index = VectorIndex(index_name=self.db_name, persist_path=self.persist_path)
         
         for doc in documents:
             doc_id = doc.get("id", doc.get("path", "unknown"))
             content = f"{doc.get('title', '')} {doc.get('content', '')}"
-            
-            # embedding 生成
-            if embedding_fn:
-                embedding = embedding_fn(content)
-            else:
-                # ダミー embedding（ランダムベクトル）
-                embedding = np.random.rand(384)
+            embedding = self._embed(content, embedding_fn)
             
             self.index.add_vector(
                 vector_id=doc_id,
@@ -197,12 +299,38 @@ class LocalVectorDB:
             スコア付きドキュメント
         """
         logger.info(f"🔍 クエリ: {query_text}")
-        
-        # query embedding 生成
-        if embedding_fn:
-            query_embedding = embedding_fn(query_text)
-        else:
-            query_embedding = np.random.rand(384)
+        query_embedding = self._embed(query_text, embedding_fn)
+
+        if self.backend == "chroma" and self._chroma_collection is not None:
+            count = self._chroma_collection.count()
+            if count == 0:
+                return []
+            results = self._chroma_collection.query(
+                query_embeddings=[query_embedding.tolist()],
+                n_results=min(top_k, count),
+                include=["documents", "metadatas", "distances"],
+            )
+
+            response = []
+            for vector_id, document, metadata, distance in zip(
+                results.get("ids", [[]])[0],
+                results.get("documents", [[]])[0],
+                results.get("metadatas", [[]])[0],
+                results.get("distances", [[]])[0],
+            ):
+                similarity = max(0.0, min(1.0, 1.0 - float(distance or 0.0)))
+                response.append({
+                    "id": vector_id,
+                    "similarity_score": similarity,
+                    "content_preview": (document or "")[:200],
+                    **(metadata or {}),
+                })
+
+            logger.info(f"✅ ChromaDB query 完了: {len(response)} 件")
+            return response
+
+        if self.index is None:
+            self.index = VectorIndex(index_name=self.db_name, persist_path=self.persist_path)
         
         # 検索
         results = self.index.search(query_embedding, top_k=top_k)
@@ -232,6 +360,17 @@ class LocalVectorDB:
         """
         logger.info(f"🗑️  {len(document_ids)} 個のドキュメント削除中...")
 
+        if self.backend == "chroma" and self._chroma_collection is not None:
+            existing = self._chroma_collection.get(ids=[str(doc_id) for doc_id in document_ids])
+            existing_ids = [str(doc_id) for doc_id in existing.get("ids", [])]
+            if existing_ids:
+                self._chroma_collection.delete(ids=existing_ids)
+            logger.info(f"✅ ChromaDB 削除完了: {len(existing_ids)} / {len(document_ids)} 件")
+            return len(existing_ids)
+
+        if self.index is None:
+            self.index = VectorIndex(index_name=self.db_name, persist_path=self.persist_path)
+
         deleted_count = 0
         for doc_id in document_ids:
             if doc_id in self.index.vectors:
@@ -248,7 +387,18 @@ class LocalVectorDB:
 
     def get_stats(self) -> dict:
         """DB の統計情報を取得"""
-        return self.index.get_stats()
+        if self.backend == "chroma" and self._chroma_collection is not None:
+            return {
+                "index_name": self.db_name,
+                "backend": "chroma",
+                "vector_count": self._chroma_collection.count(),
+                "timestamp": datetime.now().isoformat(),
+            }
+        if self.index is None:
+            self.index = VectorIndex(index_name=self.db_name, persist_path=self.persist_path)
+        stats = self.index.get_stats()
+        stats["backend"] = "local"
+        return stats
 
 
 # テスト用
