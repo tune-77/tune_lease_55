@@ -25,6 +25,7 @@
 2. **探索: file-searcher相当の範囲確認**
    - 触るファイルと隣接ファイルを洗う
    - 既存テスト・既存レポート・既存AGENT指摘を確認する
+   - `/api/shion/agent-consultations?status=open` または `data/shion_agent_consultation_queue.jsonl` を確認し、紫苑からの相談票がある場合は領域分類に反映する
    - 大きい変更なら `.claude/reports/file-searcher/latest.md` を更新する
 
 3. **実装: 小さく直す**
@@ -45,6 +46,7 @@
    - API / secrets / 外部入力を触ったら `security-checker`
    - UI / reportを触ったら `report-stylist`
    - 起動・bundle・依存を触ったら `build-runner` と `api-health-checker`
+   - 紫苑の相談票がある場合は、対象相談票を `in_review` にしてから該当AGENTを実行し、完了後に `done` または `cancelled` と理由を残す
 
 6. **レビュー: code-reviewer相当**
    - バグ、回帰、欠けたテスト、状態の取りこぼしを優先して見る

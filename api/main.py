@@ -6099,6 +6099,12 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     improvement_report_context = _build_dialogue_improvement_report_context(limit=4)
     news_digest_context = _build_dialogue_news_digest_context(limit=3)
     improvement_observability_context = _build_dialogue_improvement_observability_context(full_message)
+    try:
+        from api.shion_agent_consultation_queue import build_agent_consultation_prompt_block
+
+        agent_consultation_context = build_agent_consultation_prompt_block(limit=3)
+    except Exception:
+        agent_consultation_context = ""
     # 通常会話での自発報告（常時レイヤ）は同一内容を毎ターン繰り返さないよう抑制する。
     # 改善相談（オンデマンド詳細）はユーザーが明示的に尋ねているので抑制しない。
     if not _is_improvement_consultation_message(full_message):
@@ -6143,6 +6149,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 {improvement_report_context}
 {news_digest_context}
 {improvement_observability_context}
+{agent_consultation_context}
 {improvement_triage_context}
 {judgment_response_shape_context}
 {build_shion_feminine_tone_block()}
@@ -6207,6 +6214,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         system_prompt += f"\n\n{news_digest_context}"
     if improvement_observability_context:
         system_prompt += f"\n\n{improvement_observability_context}"
+    if agent_consultation_context:
+        system_prompt += f"\n\n{agent_consultation_context}"
     if improvement_triage_context:
         system_prompt += f"\n\n{improvement_triage_context}"
     if judgment_response_shape_context:

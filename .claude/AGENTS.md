@@ -197,6 +197,11 @@ LLM 無しでは生成できない。2 は「不要な再監査を求めない�
 | 起動・依存・Cloud Run bundle・runtime | build-runner, api-health-checker |
 | ログ・常駐プロセス・launchd・pipeline運用 | log-file-analyzer |
 
+### 紫苑からAGENTへの相談キュー
+- 紫苑はCodex AGENTを直接実行しない。異常・断線・監査が必要な兆候を見つけた時は `request_agent_consultation` で `data/shion_agent_consultation_queue.jsonl` へ相談票を追記する。
+- Codexは作業開始時または `/agent-workflow` 実行時に `/api/shion/agent-consultations` を確認し、必要なら該当AGENTを実行して `.claude/reports/<agent>/latest.md` に結果を書く。
+- 相談票は `open` / `in_review` / `done` / `cancelled` の状態だけを持つ。相談票の作成はコード変更・データ正本変更・PR作成・AGENT実行を意味しない。
+
 ### 6. レビューゲート
 - code-reviewer 相当で、バグ・回帰・欠けたテスト・状態取りこぼしを優先して見る。
 - 指摘を修正したら、関連テストと必要な専門AGENTゲートを再実行する。

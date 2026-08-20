@@ -50,6 +50,40 @@ def test_execute_tool_dispatches_scoring_policy():
     assert result["facts"]["requires_route_identification"] is True
 
 
+def test_execute_tool_dispatches_agent_consultation_queue(tmp_path, monkeypatch):
+    import lease_intelligence_tools as tools
+    from api import shion_agent_consultation_queue as queue
+
+    queue_path = tmp_path / "agent_queue.jsonl"
+    monkeypatch.setattr(queue, "QUEUE_PATH", queue_path)
+    monkeypatch.setattr(queue, "_log_action_ledger", lambda item: None)
+    writeback_calls = []
+    monkeypatch.setattr(queue, "_record_cloudrun_consultation_event", lambda item: writeback_calls.append(item))
+
+    result = tools.execute_tool(
+        "request_agent_consultation",
+        {
+            "agent": "judgment-asset-auditor",
+            "title": "判断資産候補の断線疑い",
+            "reason": "候補stateとJSONLの件数が合わない。",
+            "priority": "high",
+        },
+    )
+
+    assert result["queued"] is True
+    assert result["safety_policy"] == "queue_only_no_agent_execution_no_code_change"
+    assert writeback_calls and writeback_calls[0]["agent"] == "judgment-asset-auditor"
+    listed = queue.list_consultations(path=queue_path)
+    assert listed[0]["agent"] == "judgment-asset-auditor"
+
+
+def test_tool_declarations_include_agent_consultation():
+    from lease_intelligence_tools import TOOL_DECLARATIONS
+
+    names = {item["name"] for item in TOOL_DECLARATIONS}
+    assert "request_agent_consultation" in names
+
+
 def test_tool_declarations_include_senior_reasoner_contract():
     from lease_intelligence_tools import TOOL_DECLARATIONS
 
