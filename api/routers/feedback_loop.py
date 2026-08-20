@@ -37,6 +37,7 @@ _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / 
 _NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signals.jsonl"
 _CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment_rules.json"
 _JUDGMENT_ASSET_USAGE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_usage_feedback.jsonl"
+_JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_feedback_drops.jsonl"
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
 _SCREENING_INPUT_ASSIST_EVENTS_JSONL = Path(_REPO_ROOT) / "data" / "screening_input_assist_events.jsonl"
@@ -559,11 +560,57 @@ def _update_shion_screening_review_feedback(review_id: int, user_feedback: str) 
     return {"id": review_id, "user_feedback": normalized}
 
 
+def _log_judgment_asset_feedback_drop(
+    *,
+    review_id: int,
+    user_feedback: str,
+    reason: str,
+    case_id: str = "",
+) -> None:
+    """判断資産フィードバックが記録されず握りつぶされた事実を可視化用に残す.
+
+    data/judgment_asset_feedback_drops.jsonl に追記するだけ。
+    判断資産の集計・昇格・スコアリングには一切使わない（原因調査専用）。
+
+    Cloud Run のディスクはスケールゼロ・再起動で失われるため、ローカル追記に加えて
+    既存の cloudrun_input_writeback 経路（GCS）にも同じ理由を送る。日次同期
+    （scripts/sync_cloudrun_inputs_from_gcs.py）がこのイベントを読み、正本の
+    data/judgment_asset_feedback_drops.jsonl へ反映する。
+    """
+    import json as _json
+    from datetime import datetime as _dt
+
+    entry = {
+        "schema_version": "1",
+        "review_id": review_id,
+        "user_feedback": str(user_feedback or ""),
+        "reason": reason,
+        "case_id": case_id,
+        "dropped_at": _dt.now().isoformat(timespec="seconds"),
+    }
+    try:
+        _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG.open("a", encoding="utf-8") as _f:
+            _f.write(_json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+    except Exception:
+        pass
+
+    try:
+        record_cloudrun_input_event(
+            event_type="judgment_asset_feedback_drop",
+            surface="screening",
+            payload=entry,
+        )
+    except Exception:
+        pass
+
+
 def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: str) -> None:
     """紫苑レビューへのユーザーフィードバックを判断資産使用ログに記録する（バックグラウンドタスク用）.
 
     data/judgment_asset_usage_feedback.jsonl に追記するだけ。
     プロンプト・スコアリング・DB スキーマには一切触れない。
+    記録されずに握りつぶされた場合は data/judgment_asset_feedback_drops.jsonl に理由を残す。
     """
     import json as _json
     from datetime import datetime as _dt
@@ -580,6 +627,9 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
     }
     outcome = _OUTCOME_MAP.get(str(user_feedback or "").strip())
     if not outcome:
+        _log_judgment_asset_feedback_drop(
+            review_id=review_id, user_feedback=user_feedback, reason="unknown_outcome",
+        )
         return
 
     try:
@@ -588,32 +638,41 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                f"SELECT case_id, result_snapshot FROM shion_screening_reviews WHERE id = {ph}",
+                f"SELECT case_id, review_text FROM shion_screening_reviews WHERE id = {ph}",
                 (review_id,),
             )
             row = cur.fetchone()
             if not row:
+                _log_judgment_asset_feedback_drop(
+                    review_id=review_id, user_feedback=user_feedback, reason="review_not_found",
+                )
                 return
             case_id = str(row[0] or "")
-            result_snapshot_str = str(row[1] or "{}")
+            review_text = str(row[1] or "")
     except Exception:
+        _log_judgment_asset_feedback_drop(
+            review_id=review_id, user_feedback=user_feedback, reason="review_lookup_error",
+        )
         return
 
+    # レビュー本文の「判断資産出典: 正規 JA-cr-<rule_id先頭>」citationから
+    # 能動ルールIDを解決する。result_snapshot.knowledge_refs はRAG参照件数であり
+    # 判断資産の出典ではないため使わない（REV-JUDGMENT-ASSET-FEEDBACK-DROP-VISIBILITY）。
     try:
-        snapshot = _json.loads(result_snapshot_str)
-        refs: list[str] = []
-        if isinstance(snapshot.get("knowledge_refs"), list):
-            refs = [str(r) for r in snapshot["knowledge_refs"] if r]
-        if not refs and isinstance(snapshot.get("memory_debug"), dict):
-            md = snapshot["memory_debug"]
-            if isinstance(md.get("knowledge_refs"), list):
-                refs = [str(r) for r in md["knowledge_refs"] if r]
+        from judgment_asset_citation import resolve_rule_ids_from_citations
+        from scripts.record_judgment_asset_feedback import load_active_rules
+
+        active_rules = load_active_rules(path=_CANONICAL_JUDGMENT_RULES_JSON)
+        refs = resolve_rule_ids_from_citations(review_text, active_rules.keys())
     except Exception:
         refs = []
 
     # 実ルール参照が無いフィードバックは判断資産に紐付けようがないため、
     # judgment_asset_growth の unknown_rule 減点対象になる偽rule_idは書き込まない。
     if not refs:
+        _log_judgment_asset_feedback_drop(
+            review_id=review_id, user_feedback=user_feedback, reason="no_matching_refs", case_id=case_id,
+        )
         return
 
     now = _dt.now().isoformat(timespec="seconds")
@@ -626,13 +685,16 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
                     "rule_id": rule_id.strip(),
                     "outcome": outcome,
                     "case_id": case_id,
+                    "review_id": review_id,
                     "note": "",
                     "source": "shion_screening_review",
                     "used_at": now,
                 }
                 _f.write(_json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
     except Exception:
-        pass
+        _log_judgment_asset_feedback_drop(
+            review_id=review_id, user_feedback=user_feedback, reason="usage_log_write_error", case_id=case_id,
+        )
 
 
 def _screening_candidate_terms(*values: str) -> set[str]:
