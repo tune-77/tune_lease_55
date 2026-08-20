@@ -174,6 +174,29 @@ def test_field_feedback_excludes_simulation_from_real_validation():
     assert summary["unused_active_rules"] == 1
 
 
+def test_field_feedback_remaps_stale_rule_id_by_concept():
+    rules = [
+        {"id": "rule-a-old", "status": "demoted", "concept": "asset_life"},
+        {"id": "rule-a-new", "status": "active", "concept": "asset_life"},
+        {"id": "rule-b", "status": "active", "concept": "support"},
+    ]
+
+    summary = growth.summarize_field_feedback(
+        [
+            {"rule_id": "rule-a-old", "outcome": "helped", "case_id": "case-002"},
+            {"rule_id": "rule-unknown", "outcome": "used"},
+        ],
+        rules,
+    )
+
+    assert summary["totals"]["unknown_rule"] == 1
+    assert summary["totals"]["remapped_by_concept"] == 1
+    assert summary["totals"]["helped"] == 1
+    assert summary["unused_active_rules"] == 1
+    assert summary["rules"][0]["rule_id"] == "rule-a-new"
+    assert summary["rules"][0]["last_used_case"] == "case-002"
+
+
 def test_main_writes_latest_json_markdown_and_history(tmp_path):
     curator = tmp_path / "curator.json"
     mana = tmp_path / "mana.json"
