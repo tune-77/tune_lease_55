@@ -638,7 +638,7 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                f"SELECT case_id, result_snapshot FROM shion_screening_reviews WHERE id = {ph}",
+                f"SELECT case_id, review_text FROM shion_screening_reviews WHERE id = {ph}",
                 (review_id,),
             )
             row = cur.fetchone()
@@ -648,22 +648,22 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
                 )
                 return
             case_id = str(row[0] or "")
-            result_snapshot_str = str(row[1] or "{}")
+            review_text = str(row[1] or "")
     except Exception:
         _log_judgment_asset_feedback_drop(
             review_id=review_id, user_feedback=user_feedback, reason="review_lookup_error",
         )
         return
 
+    # レビュー本文の「判断資産出典: 正規 JA-cr-<rule_id先頭>」citationから
+    # 能動ルールIDを解決する。result_snapshot.knowledge_refs はRAG参照件数であり
+    # 判断資産の出典ではないため使わない（REV-JUDGMENT-ASSET-FEEDBACK-DROP-VISIBILITY）。
     try:
-        snapshot = _json.loads(result_snapshot_str)
-        refs: list[str] = []
-        if isinstance(snapshot.get("knowledge_refs"), list):
-            refs = [str(r) for r in snapshot["knowledge_refs"] if r]
-        if not refs and isinstance(snapshot.get("memory_debug"), dict):
-            md = snapshot["memory_debug"]
-            if isinstance(md.get("knowledge_refs"), list):
-                refs = [str(r) for r in md["knowledge_refs"] if r]
+        from judgment_asset_citation import resolve_rule_ids_from_citations
+        from scripts.record_judgment_asset_feedback import load_active_rules
+
+        active_rules = load_active_rules(path=_CANONICAL_JUDGMENT_RULES_JSON)
+        refs = resolve_rule_ids_from_citations(review_text, active_rules.keys())
     except Exception:
         refs = []
 
