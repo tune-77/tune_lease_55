@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-08-17T04:12:49`
+- generated_at: `2026-08-21T04:14:09`
 - status: `ok`
-- scanned_files: `521`
+- scanned_files: `538`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
 - review: `72`
-- ok: `2237`
+- ok: `2284`
 
 ## Glossary
 
@@ -30,9 +30,9 @@
   - `default_prob = max(0.0, 1 - (credit_score / 100) * 0.8 - collateral_ratio * 0.2)`
 - `review` `actual_pd` `api/game_theory/negotiation.py:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `safety_utility = 1.0 - default_prob`
-- `review` `actual_pd` `api/main.py:5277` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:5340` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:5301` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:5364` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
@@ -42,7 +42,7 @@
   - `UPDATE shion_screening_reviews`
 - `review` `actual_pd` `api/routers/feedback_loop.py:545` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",`
-- `review` `actual_pd` `api/routers/feedback_loop.py:2023` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/routers/feedback_loop.py:2028` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table_name}`
 - `review` `actual_pd` `api/shion_conscience.py:85` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `cautions.append("デフォルト確率が高い場合は、承認可否より先に返済原資の説明可能性を見る。")`
@@ -72,9 +72,9 @@
   - `if (labels.includes('デフォルト確率（PD）')) {`
 - `review` `actual_pd` `frontend/src/app/report/page.tsx:181` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `actions.push({ label: '信用保険（リース信用保険）の付保を検討', detail: 'PD高水準のリスクヘッジとして有効', priority: 'must' });`
-- `review` `actual_pd` `frontend/src/app/screening/page.tsx:1300` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `frontend/src/app/screening/page.tsx:1301` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `出典: TDB「倒産集計2025年度報」×中小企業庁データ。業種全体の母集団倒産率であり、個社の倒産確率（PD）ではありません。スコアには反映していません。`
-- `review` `score` `frontend/src/app/screening/page.tsx:1300` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `score` `frontend/src/app/screening/page.tsx:1301` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `出典: TDB「倒産集計2025年度報」×中小企業庁データ。業種全体の母集団倒産率であり、個社の倒産確率（PD）ではありません。スコアには反映していません。`
 - `review` `actual_pd` `frontend/src/components/analysis/AdvancedAnalysis.tsx:180` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `PD（デフォルト確率）: {bankruptcyPct}%`
@@ -124,9 +124,9 @@
   - `UPDATE past_cases`
 - `review` `actual_pd` `scripts/backfill_demo_qrisk.py:386` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE screening_records`
-- `review` `actual_pd` `scripts/cleanup_improvement_reviews.py:184` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/cleanup_improvement_reviews_data.json:28` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-061": "PD表示の明確化",`
-- `review` `actual_pd` `scripts/cleanup_improvement_reviews.py:192` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/cleanup_improvement_reviews_data.json:36` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-085": "PD表示色分け",`
 - `review` `actual_pd` `scripts/dogify_demo_company_names.py:148` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `conn.executemany("UPDATE past_cases SET data = ? WHERE id = ?", past_updates)`

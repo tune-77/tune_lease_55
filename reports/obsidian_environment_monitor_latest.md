@@ -1,8 +1,8 @@
 # Obsidian Environment Monitor
 
 ## Summary
-- generated_at: `2026-08-17T04:12:34+09:00`
-- target_date: `2026-08-17`
+- generated_at: `2026-08-21T04:13:42+09:00`
+- target_date: `2026-08-21`
 - status: `warn`
 - guardrail: `monitor_only_no_obsidian_write_no_rag_no_prompt_no_cloudrun`
 
@@ -20,8 +20,8 @@
 ## Checks
 ### vault
 - status: `ok`
-- message: Vault reachable, markdown files=2462
-- details: `{"md_count": 2462}`
+- message: Vault reachable, markdown files=2588
+- details: `{"md_count": 2588}`
 
 ### key_paths
 - status: `ok`
@@ -29,29 +29,29 @@
 - details: `{"missing": []}`
 
 ### daily_notes
-- status: `warn`
-- message: missing daily notes: 2026-08-17.md
-- details: `{"today": false, "yesterday": true}`
+- status: `ok`
+- message: today/yesterday daily notes exist
+- details: `{"today": true, "yesterday": true}`
 
 ### surface_freshness
 - status: `ok`
 - message: dialogue/reflection surfaces fresh
-- details: `{"cloudrun_conversation": {"age_hours": 0.2, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-16.md"}, "dialogue": {"age_hours": 0.2, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-16.md"}, "private_reflection": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-08-17.md"}}`
+- details: `{"cloudrun_conversation": {"age_hours": 0.2, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-08-20.md"}, "dialogue": {"age_hours": 0.2, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-08-20.md"}, "private_reflection": {"age_hours": 0.0, "exists": true, "path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-08-21.md"}}`
 
 ### private_reflection_meaning
 - status: `ok`
 - message: Private Reflection has meaningful update signals
-- details: `{"matched_labels": ["今日の観察:", "私の見落とし:", "仮説の更新:", "次回の小さな実験:", "前回の入力:", "前回の判断:", "人間の修正:", "紫苑が外した点:", "次回から変える確認事項:", "判断資産候補:", "まだ確信できない点:", "私の責任:", "更新する信念:", "次回の検証方法:"], "missing_categories": [], "required_categories": ["misread", "next_behavior", "self_responsibility", "user_expectation"], "similarity_to_yesterday": 0.469, "today_length": 3059, "today_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-08-17.md", "yesterday_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-08-16.md"}`
+- details: `{"matched_labels": ["今日の観察:", "私の見落とし:", "仮説の更新:", "次回の小さな実験:", "前回の入力:", "前回の判断:", "人間の修正:", "紫苑が外した点:", "次回から変える確認事項:", "判断資産候補:", "まだ確信できない点:", "私の責任:", "更新する信念:", "次回の検証方法:"], "missing_categories": [], "required_categories": ["misread", "next_behavior", "self_responsibility", "user_expectation"], "similarity_to_yesterday": 0.465, "today_length": 3583, "today_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-08-21.md", "yesterday_path": "/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/Projects/tune_lease_55/Lease Intelligence/Private Reflection/2026-08-20.md"}`
 
 ### rag_index
 - status: `ok`
 - message: RAG index fresh
-- details: `{"chroma_age_hours": 0.1, "chroma_db": "/Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db/chroma.sqlite3", "chroma_size": 141783040, "completion_source": "rag_daily_maintenance", "last_reindex_age_hours": 1.2, "reindex_log": "/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_reindex.out.log", "total_in_db": 2160}`
+- details: `{"chroma_age_hours": 0.2, "chroma_db": "/Users/kobayashiisaoryou/clawd/tune_lease_55/api/chroma_db/chroma.sqlite3", "chroma_size": 148500480, "completion_source": "rag_daily_maintenance", "last_reindex_age_hours": 1.2, "reindex_log": "/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_obsidian_reindex.out.log", "total_in_db": 2272}`
 
 ### memory_insight_reports
 - status: `warn`
 - message: stale or missing sidecars: memory_insight
-- details: `{"memory_insight": {"age_hours": 457.7, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/obsidian_memory_insight_latest.md"}, "promotion_queue": {"age_hours": 24.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_memory_promotion_queue_latest.md"}, "reflection_delta": {"age_hours": 24.0, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_reflection_delta_latest.md"}}`
+- details: `{"memory_insight": {"age_hours": 553.7, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/obsidian_memory_insight_latest.md"}, "promotion_queue": {"age_hours": 14.9, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_memory_promotion_queue_latest.md"}, "reflection_delta": {"age_hours": 14.9, "exists": true, "path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/shion_reflection_delta_latest.md"}}`
 
 ### self_reference_loop
 - status: `ok`
@@ -59,14 +59,14 @@
 - details: `{"candidate_count": 123, "candidate_path": "/Users/kobayashiisaoryou/clawd/tune_lease_55/data/obsidian_memory_insight_candidates.jsonl", "candidate_type_counts": {"judgment_rule": 30, "noise": 30, "reflection_update": 30, "research_material": 30, "user_preference": 3}, "meta_hit_sample": [{"claim": "構造分析：所有権移転リースと非所有権移転リースの本質的差異。", "source": "Projects/tune_lease_55/Research/所有権移転リース　総合レポート_(executive_report)_report (1).md"}, {"claim": "[ ] 現在、登録申請中（登録完了予定日：＿＿年＿＿月頃）。", "source": "Projects/tune_lease_55/Research/インボイス　総合レポート_(executive_report)_report (1).md"}, {"claim": "期間安定性: 5年以上の長期間、仕様変更なく利用する環境か。", "source": "Projects/tune_lease_55/Research/ソフトリース　総合レポート_(executive_report)_report (1).md"}, {"claim": "補助金ルールにおいて、「交付決定前の契約」は補助対象外です。", "source": "Projects/tune_lease_55/Research/補助金　総合レポート.md"}, {"claim": "以下の3点を必ず遵守してください。", "source": "Projects/tune_lease_55/Research/補助金　総合レポート.md"}],...`
 
 ### recent_note_noise
-- status: `warn`
-- message: recent note technical-noise ratio=0.0111, noisy_files=6
-- details: `{"noisy_files": ["Daily/2026-08-15.md", "Claude会話記録/2026-08-16_Claude会話セッション.md", "Daily/2026-08-14.md", "Claude会話記録/2026-08-14_Claude会話セッション.md", "Daily/2026-08-13.md", "Claude会話記録/2026-08-13_Claude会話セッション.md"], "ratio": 0.0111}`
+- status: `ok`
+- message: recent note technical-noise ratio=0.0053, noisy_files=3
+- details: `{"noisy_files": ["Daily/2026-08-20.md", "Claude会話記録/2026-08-20_Claude会話セッション.md", "Claude会話記録/2026-08-18_Claude会話セッション.md"], "ratio": 0.0053}`
 
 ### wikilinks
 - status: `ok`
-- message: recent wikilinks=159, unresolved_sample=5
-- details: `{"link_count": 159, "unresolved_sample": [{"source": "Claude会話記録/2026-08-16_Claude会話セッション.md", "target": "-d \"$src\""}, {"source": "lease-wiki-vault/@AI_Daily_Report_2026-08-16_0600.md", "target": "LightGBM スコアリング"}, {"source": "lease-wiki-vault/@AI_Daily_Report_2026-08-15_0600.md", "target": "LightGBM スコアリング"}, {"source": "lease-wiki-vault/@AI_Daily_Report_2026-08-14_0600.md", "target": "LightGBM スコアリング"}, {"source": "lease-wiki-vault/@AI_Daily_Report_2026-08-13_0600.md", "target": "LightGBM スコアリング"}]}`
+- message: recent wikilinks=134, unresolved_sample=4
+- details: `{"link_count": 134, "unresolved_sample": [{"source": "lease-wiki-vault/@AI_Daily_Report_2026-08-20_0600.md", "target": "LightGBM スコアリング"}, {"source": "lease-wiki-vault/@AI_Daily_Report_2026-08-19_0600.md", "target": "LightGBM スコアリング"}, {"source": "lease-wiki-vault/@AI_Daily_Report_2026-08-18_0600.md", "target": "LightGBM スコアリング"}, {"source": "Claude会話記録/2026-08-16_Claude会話セッション.md", "target": "-d \"$src\""}]}`
 
 ## Next Safe Action
 - `warn` が出た項目だけ手動で確認する。

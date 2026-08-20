@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "legacy_version": "1.0.0",
   "artifactType": "structured-handoff",
-  "timestamp": "2026-08-16T11:21:39Z",
+  "timestamp": "2026-08-20T10:29:39Z",
   "sessionId": "",
   "previous_state": {
     "summary": "Before compaction: 20 recent edit(s)",
@@ -32,13 +32,13 @@
   "failed_checks": null,
   "decision_log": [
     {
-      "timestamp": "2026-08-16T11:21:39Z",
+      "timestamp": "2026-08-20T10:29:39Z",
       "actor": "pre-compact-save",
       "decision": "canonical_handoff_artifact_written",
       "rationale": "Persist a stable JSON artifact in .claude/state for long-running session handoff."
     },
     {
-      "timestamp": "2026-08-16T11:21:39Z",
+      "timestamp": "2026-08-20T10:29:39Z",
       "actor": "pre-compact-save",
       "decision": "legacy_snapshot_mirrored",
       "rationale": "Keep precompact-snapshot.json for backward compatibility with older hooks."
@@ -57,10 +57,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 463 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 3240 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "463 session age (minutes) exceed threshold 120"
+      "3240 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -94,7 +94,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 463,
+        "actual": 3240,
         "threshold": 120,
         "triggered": true
       }
@@ -104,7 +104,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 463
+      "sessionAgeMinutes": 3240
     }
   },
   "continuity": {
@@ -121,20 +121,20 @@
     ".claude/state/precompact-snapshot.json",
     ".claude/state/session.events.jsonl",
     ".claude/state/worktree-info.json",
-    "api/main.py",
     "data/aurion_daily/latest.json",
+    "data/canonical_judgment_rules.json",
     "data/demo.db",
     "data/news_judgment_signals_latest.json",
     "data/pdca_ai_rules.json",
+    "data/shion_monitor_report_state.json",
     "data/shion_pending_tasks.json",
     "data/user_personal_memory.md",
     "data/wiki_embedding_cache.json",
-    "data_cases.py",
-    "docs/hackathon_submission_copy.md",
-    "docs/improvement_source_of_truth.md",
-    "docs/raw_wiki_schema_vault_policy.md",
-    "frontend/public/lease-grumble/2026-07-15.webp",
-    "frontend/public/lease-grumble/2026-07-16.webp",
-    "memory/2026-08-14.md"
+    "frontend/public/lease-grumble/2026-07-17.webp",
+    "frontend/public/lease-grumble/2026-07-18.webp",
+    "frontend/public/lease-grumble/2026-07-19.webp",
+    "frontend/public/lease-grumble/2026-07-20.webp",
+    "reports/agent_action_ledger_latest.md",
+    "reports/agent_sidecar_brief.md"
   ]
 }
