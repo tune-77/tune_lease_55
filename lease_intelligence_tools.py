@@ -1219,11 +1219,12 @@ def audit_ledger_consistency(limit: int = 20) -> dict[str, Any]:
     """REV改善台帳のREV番号・canonical_key・status整合性を横断監査する。
 
     scripts/improvement_ledger.jsonl、api/rule_engine/ledger_rules.json、存在する場合は
-    ~/Library/Logs/tunelease/ledger.jsonl を読み取り専用で突き合わせる。台帳の修正や
-    レポート書き込みは行わない。
+    ~/Library/Logs/tunelease/ledger.jsonl（Cloud Run環境ではGCSミラーも合わせて）を
+    読み取り専用で突き合わせる。台帳の修正やレポート書き込みは行わない。
     """
+    from scripts.improvement_state_resolver import normalize_status
+
     rev_re = re.compile(r"REV-(\d+)")
-    valid_statuses = {"applied", "needs_review", "parked", "rejected"}
 
     try:
 
@@ -1233,21 +1234,26 @@ def audit_ledger_consistency(limit: int = 20) -> dict[str, Any]:
             data = json.loads(path.read_text(encoding="utf-8"))
             return [entry for entry in data if isinstance(entry, dict)] if isinstance(data, list) else []
 
-        def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+        def _read_jsonl(path: Path) -> tuple[list[tuple[int, dict[str, Any]]], list[int]]:
+            """(物理行番号, entry) のリストと、JSON解析に失敗した物理行番号のリストを返す。"""
             if not path.exists():
-                return []
-            entries: list[dict[str, Any]] = []
-            for line in path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
+                return [], []
+            entries: list[tuple[int, dict[str, Any]]] = []
+            malformed_lines: list[int] = []
+            for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                line = raw_line.strip()
                 if not line:
                     continue
                 try:
                     entry = json.loads(line)
                 except json.JSONDecodeError:
+                    malformed_lines.append(line_no)
                     continue
                 if isinstance(entry, dict):
-                    entries.append(entry)
-            return entries
+                    entries.append((line_no, entry))
+                else:
+                    malformed_lines.append(line_no)
+            return entries, malformed_lines
 
         def _extract_rev(entry: dict[str, Any]) -> str | None:
             for value in entry.values():
@@ -1278,15 +1284,40 @@ def audit_ledger_consistency(limit: int = 20) -> dict[str, Any]:
         local_ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
 
         source_entries: list[dict[str, Any]] = []
-        for source, entry_list in (
-            ("ledger_rules", _read_json(ledger_rules_path)),
-            ("improvement_ledger", _read_jsonl(improvement_ledger_path)),
-            ("local_ledger", _read_jsonl(local_ledger_path)),
-        ):
-            for index, entry in enumerate(entry_list, start=1):
-                source_entries.append({"source": source, "line": index, "entry": entry})
-
         anomalies: list[dict[str, Any]] = []
+        for index, entry in enumerate(_read_json(ledger_rules_path), start=1):
+            source_entries.append({"source": "ledger_rules", "line": index, "entry": entry})
+
+        for source, path in (
+            ("improvement_ledger", improvement_ledger_path),
+            ("local_ledger", local_ledger_path),
+        ):
+            entries, malformed_lines = _read_jsonl(path)
+            for line_no, entry in entries:
+                source_entries.append({"source": source, "line": line_no, "entry": entry})
+            for line_no in malformed_lines:
+                anomalies.append({
+                    "rev_id": "",
+                    "type": "malformed_line",
+                    "detail": f"{source} の {line_no} 行目がJSONとして解析できません",
+                    "source": source,
+                    "line": line_no,
+                })
+
+        # Cloud Run コンテナは Path.home() がローカル(macOS)のログパスに届かず local_ledger
+        # を一切参照できない。api/main.py::_ledger_entries と同じ問題への同じ対処として、
+        # scripts/sync_ledger_to_gcs.py が書き込む GCS ミラーを local_ledger に合流させる
+        # （ローカルファイルは上の _read_jsonl で読んでいるため、ここは GCS 分のみ追加）。
+        try:
+            from api.main import _gcs_ledger_entries
+
+            gcs_entries = _gcs_ledger_entries()
+        except Exception:
+            gcs_entries = []
+        for entry in gcs_entries:
+            if isinstance(entry, dict):
+                source_entries.append({"source": "local_ledger", "line": None, "entry": entry})
+
         by_rev: dict[str, list[dict[str, Any]]] = {}
         for item in source_entries:
             entry = item["entry"]
@@ -1327,8 +1358,10 @@ def audit_ledger_consistency(limit: int = 20) -> dict[str, Any]:
             if item["source"] not in ("improvement_ledger", "local_ledger"):
                 continue
             rev_id = _extract_rev(item["entry"])
-            status = str(item["entry"].get("status") or "").strip()
-            if rev_id and status in valid_statuses:
+            # 台帳は追記形式・最後のエントリが有効（CLAUDE.md）。source_entries はファイル
+            # 出現順のため、既知ステータスに限定せず単純に最後の値で上書きしていく。
+            status = normalize_status(item["entry"].get("status"))
+            if rev_id and status:
                 latest_status_by_source[(item["source"], rev_id)] = status
 
         for rev_id in sorted(by_rev):
@@ -1338,7 +1371,7 @@ def audit_ledger_consistency(limit: int = 20) -> dict[str, Any]:
                 anomalies.append({
                     "rev_id": rev_id,
                     "type": "status_mismatch",
-                    "detail": "improvement_ledger.jsonl とローカルledger.jsonlでstatusが食い違っています",
+                    "detail": "improvement_ledger.jsonl とローカル/GCSミラーledger.jsonlでstatusが食い違っています",
                     "improvement_status": improvement_status,
                     "local_status": local_status,
                 })
@@ -1376,7 +1409,7 @@ def audit_ledger_consistency(limit: int = 20) -> dict[str, Any]:
             "anomalies": anomalies[:capped_limit],
             "count": len(anomalies),
             "checked_rev_count": len(by_rev),
-            "local_ledger_checked": local_ledger_path.exists(),
+            "local_ledger_checked": local_ledger_path.exists() or bool(gcs_entries),
         }
     except Exception as exc:
         return {"anomalies": [], "count": 0, "error": str(exc)}
