@@ -1215,6 +1215,171 @@ def get_pipeline_item_details(status: str = "requires_check", limit: int = 10, s
     }
 
 
+def audit_ledger_consistency(limit: int = 20) -> dict[str, Any]:
+    """REV改善台帳のREV番号・canonical_key・status整合性を横断監査する。
+
+    scripts/improvement_ledger.jsonl、api/rule_engine/ledger_rules.json、存在する場合は
+    ~/Library/Logs/tunelease/ledger.jsonl を読み取り専用で突き合わせる。台帳の修正や
+    レポート書き込みは行わない。
+    """
+    rev_re = re.compile(r"REV-(\d+)")
+    valid_statuses = {"applied", "needs_review", "parked", "rejected"}
+
+    try:
+
+        def _read_json(path: Path) -> list[dict[str, Any]]:
+            if not path.exists():
+                return []
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return [entry for entry in data if isinstance(entry, dict)] if isinstance(data, list) else []
+
+        def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+            if not path.exists():
+                return []
+            entries: list[dict[str, Any]] = []
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(entry, dict):
+                    entries.append(entry)
+            return entries
+
+        def _extract_rev(entry: dict[str, Any]) -> str | None:
+            for value in entry.values():
+                if isinstance(value, (str, int, float, bool)):
+                    match = rev_re.search(str(value))
+                    if match:
+                        return f"REV-{int(match.group(1)):03d}"
+            return None
+
+        def _canonical_key(entry: dict[str, Any]) -> str:
+            return str(entry.get("canonical_key") or entry.get("key") or "").strip()
+
+        def _title_text(entry: dict[str, Any]) -> str:
+            values = [
+                entry.get("title"),
+                entry.get("description"),
+                entry.get("purpose"),
+                entry.get("objective"),
+                entry.get("target"),
+            ]
+            return " / ".join(str(value).strip() for value in values if str(value or "").strip())
+
+        def _sig(text: str) -> str:
+            return re.sub(r"\s+", "", text).lower()
+
+        ledger_rules_path = _REPO_PATH / "api" / "rule_engine" / "ledger_rules.json"
+        improvement_ledger_path = _REPO_PATH / "scripts" / "improvement_ledger.jsonl"
+        local_ledger_path = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
+
+        source_entries: list[dict[str, Any]] = []
+        for source, entry_list in (
+            ("ledger_rules", _read_json(ledger_rules_path)),
+            ("improvement_ledger", _read_jsonl(improvement_ledger_path)),
+            ("local_ledger", _read_jsonl(local_ledger_path)),
+        ):
+            for index, entry in enumerate(entry_list, start=1):
+                source_entries.append({"source": source, "line": index, "entry": entry})
+
+        anomalies: list[dict[str, Any]] = []
+        by_rev: dict[str, list[dict[str, Any]]] = {}
+        for item in source_entries:
+            entry = item["entry"]
+            rev_id = _extract_rev(entry)
+            key = _canonical_key(entry)
+            # ledger_rules.json（業務ルール台帳）は canonical_key を持たない設計のため対象外。
+            # canonical_key はREV改善台帳（improvement_ledger / local_ledger）側の概念。
+            if not key and item["source"] != "ledger_rules":
+                anomalies.append({
+                    "rev_id": rev_id or "",
+                    "type": "missing_canonical_key",
+                    "detail": "canonical_key/key が空または欠落しています",
+                    "source": item["source"],
+                    "line": item["line"],
+                })
+            if rev_id:
+                by_rev.setdefault(rev_id, []).append(item)
+
+        for rev_id, items_for_rev in by_rev.items():
+            keys = sorted({
+                _canonical_key(item["entry"])
+                for item in items_for_rev
+                if _canonical_key(item["entry"])
+            })
+            if len(keys) > 1:
+                anomalies.append({
+                    "rev_id": rev_id,
+                    "type": "multiple_canonical_keys",
+                    "detail": "同一REV番号が複数の canonical_key/key に紐づいています",
+                    "keys": keys,
+                    "sources": sorted({item["source"] for item in items_for_rev}),
+                })
+
+        latest_status_by_source: dict[tuple[str, str], str] = {}
+        for item in source_entries:
+            if item["source"] not in ("improvement_ledger", "local_ledger"):
+                continue
+            rev_id = _extract_rev(item["entry"])
+            status = str(item["entry"].get("status") or "").strip()
+            if rev_id and status in valid_statuses:
+                latest_status_by_source[(item["source"], rev_id)] = status
+
+        for rev_id in sorted(by_rev):
+            improvement_status = latest_status_by_source.get(("improvement_ledger", rev_id))
+            local_status = latest_status_by_source.get(("local_ledger", rev_id))
+            if improvement_status and local_status and improvement_status != local_status:
+                anomalies.append({
+                    "rev_id": rev_id,
+                    "type": "status_mismatch",
+                    "detail": "improvement_ledger.jsonl とローカルledger.jsonlでstatusが食い違っています",
+                    "improvement_status": improvement_status,
+                    "local_status": local_status,
+                })
+
+        rule_by_rev = {
+            rev_id: [item for item in items_for_rev if item["source"] == "ledger_rules"]
+            for rev_id, items_for_rev in by_rev.items()
+        }
+        improvement_by_rev = {
+            rev_id: [item for item in items_for_rev if item["source"] == "improvement_ledger"]
+            for rev_id, items_for_rev in by_rev.items()
+        }
+        for rev_id, rule_items in rule_by_rev.items():
+            improvement_items = improvement_by_rev.get(rev_id) or []
+            if not rule_items or not improvement_items:
+                continue
+            rule_title = _title_text(rule_items[-1]["entry"])
+            improvement_title = _title_text(improvement_items[-1]["entry"])
+            rule_key = _canonical_key(rule_items[-1]["entry"])
+            improvement_key = _canonical_key(improvement_items[-1]["entry"])
+            if rule_title and improvement_title and _sig(rule_title) != _sig(improvement_title) and rule_key != improvement_key:
+                anomalies.append({
+                    "rev_id": rev_id,
+                    "type": "ledger_rules_collision",
+                    "detail": "ledger_rules.json と improvement_ledger.jsonl で同じREV番号が別タイトル・別目的に見えます",
+                    "ledger_rules_title": rule_title,
+                    "improvement_ledger_title": improvement_title,
+                    "ledger_rules_key": rule_key,
+                    "improvement_ledger_key": improvement_key,
+                })
+
+        anomalies.sort(key=lambda item: (item.get("rev_id") or "", item.get("type") or ""))
+        capped_limit = max(1, min(limit, 100))
+        return {
+            "anomalies": anomalies[:capped_limit],
+            "count": len(anomalies),
+            "checked_rev_count": len(by_rev),
+            "local_ledger_checked": local_ledger_path.exists(),
+        }
+    except Exception as exc:
+        return {"anomalies": [], "count": 0, "error": str(exc)}
+
+
 def recall_judgment_memory(question: str, limit: int = 5) -> dict[str, Any]:
     """質問に関連する審査判断の記憶を、正準ルールと紫苑の記憶索引の両方から想起する。
 

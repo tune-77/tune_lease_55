@@ -10,6 +10,7 @@ ADK（google.adk）に依存させず import できるよう、ツール関数�
 from __future__ import annotations
 
 from lease_intelligence_tools import (
+    audit_ledger_consistency,
     build_judgment_preview,
     get_pipeline_item_details,
     get_portfolio_stats,
@@ -36,4 +37,5 @@ READ_ONLY_DB_TOOLS = [
     recall_judgment_memory,    # 正準ルール＋紫苑の記憶索引から判断根拠を想起
     build_judgment_preview,    # 判断材料プレビュー（レビュー前の下書き）を取得
     search_obsidian_context,   # Obsidian Vaultの知識ノート検索
+    audit_ledger_consistency,  # REV改善台帳のREV番号・canonical_key・status整合性監査
 ]
