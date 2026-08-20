@@ -571,6 +571,11 @@ def _log_judgment_asset_feedback_drop(
 
     data/judgment_asset_feedback_drops.jsonl に追記するだけ。
     判断資産の集計・昇格・スコアリングには一切使わない（原因調査専用）。
+
+    Cloud Run のディスクはスケールゼロ・再起動で失われるため、ローカル追記に加えて
+    既存の cloudrun_input_writeback 経路（GCS）にも同じ理由を送る。日次同期
+    （scripts/sync_cloudrun_inputs_from_gcs.py）がこのイベントを読み、正本の
+    data/judgment_asset_feedback_drops.jsonl へ反映する。
     """
     import json as _json
     from datetime import datetime as _dt
@@ -587,6 +592,15 @@ def _log_judgment_asset_feedback_drop(
         _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG.parent.mkdir(parents=True, exist_ok=True)
         with _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG.open("a", encoding="utf-8") as _f:
             _f.write(_json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+    except Exception:
+        pass
+
+    try:
+        record_cloudrun_input_event(
+            event_type="judgment_asset_feedback_drop",
+            surface="screening",
+            payload=entry,
+        )
     except Exception:
         pass
 
@@ -677,7 +691,9 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
                 }
                 _f.write(_json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
     except Exception:
-        pass
+        _log_judgment_asset_feedback_drop(
+            review_id=review_id, user_feedback=user_feedback, reason="usage_log_write_error", case_id=case_id,
+        )
 
 
 def _screening_candidate_terms(*values: str) -> set[str]:

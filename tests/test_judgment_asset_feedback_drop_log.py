@@ -90,3 +90,42 @@ def test_unmapped_feedback_value_is_dropped_and_logged(redirected_logs):
     drops = _read_jsonl(drops_log)
     assert len(drops) == 1
     assert drops[0]["reason"] == "unknown_outcome"
+
+
+def test_drop_is_also_sent_through_cloudrun_writeback(redirected_logs, monkeypatch):
+    sent = []
+    monkeypatch.setattr(
+        feedback_loop,
+        "record_cloudrun_input_event",
+        lambda **kwargs: sent.append(kwargs),
+    )
+
+    feedback_loop._record_judgment_asset_feedback_from_review(1, "not_a_real_option")
+
+    assert len(sent) == 1
+    assert sent[0]["event_type"] == "judgment_asset_feedback_drop"
+    assert sent[0]["payload"]["reason"] == "unknown_outcome"
+
+
+def test_usage_log_write_failure_is_logged_as_drop(sqlite_db, redirected_logs, monkeypatch):
+    usage_log, drops_log = redirected_logs
+    review_id = _insert_review(sqlite_db, result_snapshot={"knowledge_refs": ["rule-abc"]})
+
+    class _BoomParent:
+        def mkdir(self, *_args, **_kwargs):
+            pass
+
+    class _BoomPath:
+        parent = _BoomParent()
+
+        def open(self, *_args, **_kwargs):
+            raise OSError("disk full")
+
+    monkeypatch.setattr(feedback_loop, "_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG", _BoomPath())
+
+    feedback_loop._record_judgment_asset_feedback_from_review(review_id, "useful")
+
+    drops = _read_jsonl(drops_log)
+    assert len(drops) == 1
+    assert drops[0]["reason"] == "usage_log_write_error"
+    assert not usage_log.exists()

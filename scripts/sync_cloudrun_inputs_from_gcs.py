@@ -31,6 +31,7 @@ CLOUDRUN_IMPROVEMENT_LOG = PROJECT_ROOT / "data" / "cloudrun_improvement_log.jso
 CLOUDRUN_CHAT_LOG = PROJECT_ROOT / "data" / "cloudrun_chat_log.jsonl"
 PROMPT_FEEDBACK_LOG = PROJECT_ROOT / "data" / "prompt_feedback_log.jsonl"
 SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
+JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = PROJECT_ROOT / "data" / "judgment_asset_feedback_drops.jsonl"
 SHION_HYPOTHESIS_COLLISION_LOG = PROJECT_ROOT / "data" / "shion_hypothesis_collision_log.jsonl"
 USER_PERSONAL_MEMORY_PATH = PROJECT_ROOT / "data" / "user_personal_memory.md"
 CANONICAL_JUDGMENT_RULES_JSON = PROJECT_ROOT / "data" / "canonical_judgment_rules.json"
@@ -623,6 +624,20 @@ def _apply_judgment_asset_promotion_from_event(conn: sqlite3.Connection, event: 
     return 1
 
 
+def _judgment_asset_feedback_drop_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "judgment_asset_feedback_drop":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    if not payload:
+        return None
+    return {
+        **payload,
+        "event_id": event.get("event_id"),
+        "ts": event.get("ts") or payload.get("dropped_at"),
+        "source": "cloudrun_input_writeback",
+    }
+
+
 def _screening_loop_feedback_from_event(event: dict) -> dict | None:
     if event.get("event_type") != "screening_loop_feedback":
         return None
@@ -955,6 +970,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     all_events_new = _append_jsonl_dedup(CLOUDRUN_EVENT_ARCHIVE_LOG, events) if events else 0
     wizard_rows = [row for event in events if (row := _wizard_entry_from_event(event))]
     screening_loop_rows = [row for event in events if (row := _screening_loop_feedback_from_event(event))]
+    judgment_asset_feedback_drop_rows = [row for event in events if (row := _judgment_asset_feedback_drop_from_event(event))]
     improvement_rows = [row for event in events if (row := _improvement_entry_from_event(event))]
     chat_rows = [row for event in events if (row := _chat_entry_from_event(event))]
     prompt_feedback_rows = [row for event in events if (row := _prompt_feedback_entry_from_event(event))]
@@ -983,6 +999,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "rag_feedback_new": _append_jsonl_dedup(RAG_FEEDBACK_LOG, rag_feedback_rows) if rag_feedback_rows else 0,
         "rag_hit_new": _append_jsonl_dedup(RAG_HIT_LOG, rag_hit_rows) if rag_hit_rows else 0,
         "screening_loop_feedback_new": _append_jsonl_dedup(SCREENING_LOOP_FEEDBACK_LOG, screening_loop_rows) if screening_loop_rows else 0,
+        "judgment_asset_feedback_drop_new": _append_jsonl_dedup(JUDGMENT_ASSET_FEEDBACK_DROPS_LOG, judgment_asset_feedback_drop_rows) if judgment_asset_feedback_drop_rows else 0,
         "improvement_new": _append_jsonl_dedup(CLOUDRUN_IMPROVEMENT_LOG, improvement_rows) if improvement_rows else 0,
         "chat_new": _append_jsonl_dedup(CLOUDRUN_CHAT_LOG, chat_rows) if chat_rows else 0,
         "prompt_feedback_new": _append_jsonl_dedup(PROMPT_FEEDBACK_LOG, prompt_feedback_rows) if prompt_feedback_rows else 0,

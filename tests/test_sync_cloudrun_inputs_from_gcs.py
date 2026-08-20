@@ -117,6 +117,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "rag_feedback_new": 1,
         "rag_hit_new": 1,
         "screening_loop_feedback_new": 0,
+        "judgment_asset_feedback_drop_new": 0,
         "improvement_new": 0,
         "chat_new": 0,
         "hypothesis_collision_new": 0,
@@ -337,6 +338,61 @@ def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatc
         asset = conn.execute("SELECT * FROM cloudrun_judgment_asset_candidates").fetchone()
         assert asset["asset_type"] == "screening_loop_feedback"
         assert asset["signal"] == "合っている"
+
+
+def test_materialize_events_appends_judgment_asset_feedback_drop(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    drops_log = tmp_path / "judgment_asset_feedback_drops.jsonl"
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_FEEDBACK_DROPS_LOG", drops_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+
+    result = syncer.materialize_events([
+        {
+            "event_id": "drop-1",
+            "ts": "2026-08-20T00:03:00Z",
+            "event_type": "judgment_asset_feedback_drop",
+            "surface": "screening",
+            "payload": {
+                "schema_version": "1",
+                "review_id": 42,
+                "user_feedback": "useful",
+                "reason": "no_matching_refs",
+                "case_id": "case-42",
+                "dropped_at": "2026-08-20T00:03:00",
+            },
+        }
+    ])
+
+    rows = [json.loads(line) for line in drops_log.read_text(encoding="utf-8").splitlines()]
+    assert result["judgment_asset_feedback_drop_new"] == 1
+    assert result["judgment_asset_candidates_new"] == 0
+    assert rows[0]["event_id"] == "drop-1"
+    assert rows[0]["reason"] == "no_matching_refs"
+    assert rows[0]["review_id"] == 42
+    assert rows[0]["source"] == "cloudrun_input_writeback"
+
+    # Re-syncing the same event must not duplicate the row.
+    result_again = syncer.materialize_events([{
+        "event_id": "drop-1",
+        "ts": "2026-08-20T00:03:00Z",
+        "event_type": "judgment_asset_feedback_drop",
+        "surface": "screening",
+        "payload": {
+            "schema_version": "1",
+            "review_id": 42,
+            "user_feedback": "useful",
+            "reason": "no_matching_refs",
+            "case_id": "case-42",
+            "dropped_at": "2026-08-20T00:03:00",
+        },
+    }])
+    assert result_again["judgment_asset_feedback_drop_new"] == 0
+    rows_again = [json.loads(line) for line in drops_log.read_text(encoding="utf-8").splitlines()]
+    assert len(rows_again) == 1
 
 
 def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, monkeypatch) -> None:
