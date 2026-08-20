@@ -31,8 +31,11 @@ CLOUDRUN_IMPROVEMENT_LOG = PROJECT_ROOT / "data" / "cloudrun_improvement_log.jso
 CLOUDRUN_CHAT_LOG = PROJECT_ROOT / "data" / "cloudrun_chat_log.jsonl"
 PROMPT_FEEDBACK_LOG = PROJECT_ROOT / "data" / "prompt_feedback_log.jsonl"
 SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
+JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = PROJECT_ROOT / "data" / "judgment_asset_feedback_drops.jsonl"
 SHION_HYPOTHESIS_COLLISION_LOG = PROJECT_ROOT / "data" / "shion_hypothesis_collision_log.jsonl"
 USER_PERSONAL_MEMORY_PATH = PROJECT_ROOT / "data" / "user_personal_memory.md"
+CANONICAL_JUDGMENT_RULES_JSON = PROJECT_ROOT / "data" / "canonical_judgment_rules.json"
+JUDGMENT_ASSET_CANDIDATE_STATE_JSON = PROJECT_ROOT / "data" / "autoresearch_judgment_asset_candidate_state.json"
 JUDGMENT_ASSET_EVENT_TYPES = {
     "human_response_feedback",
     "screening_loop_feedback",
@@ -520,7 +523,10 @@ def _apply_shion_review_feedback_from_event(conn: sqlite3.Connection, event: dic
         return 0
     payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
     feedback = str(payload.get("user_feedback") or "").strip()
-    if feedback not in {"useful", "needs_fix", "wrong"}:
+    if feedback not in {
+        "useful", "needs_fix", "wrong",
+        "specific", "thin", "discomfort_hit", "over_inferred",
+    }:
         _record_sync_event(conn, event_id=event_id, event_type="shion_screening_review_feedback", local_table="skipped")
         return 0
     cloud_review_id = str(payload.get("cloud_review_id") or payload.get("id") or "")
@@ -546,6 +552,93 @@ def _apply_shion_review_feedback_from_event(conn: sqlite3.Connection, event: dic
         cloud_id=cloud_review_id,
     )
     return 1
+
+
+def _apply_judgment_asset_promotion_from_event(conn: sqlite3.Connection, event: dict) -> int:
+    """Cloud Run上での判断資産昇格をローカルの正本ファイルへ反映する。
+
+    ローカルの data/canonical_judgment_rules.json / candidate_state.json が正本。
+    Cloud Runの書き込み可能ディスクはスケールゼロ・再起動で失われるため、
+    Cloud Run側の昇格はこの日次同期で正本に反映されて初めて永続化される。
+    """
+    if event.get("event_type") != "judgment_asset_candidate_promoted":
+        return 0
+    canonical_path = CANONICAL_JUDGMENT_RULES_JSON
+    state_path = JUDGMENT_ASSET_CANDIDATE_STATE_JSON
+    event_id = str(event.get("event_id") or "")
+    if _sync_event_seen(conn, event_id):
+        return 0
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    rule = payload.get("rule") if isinstance(payload.get("rule"), dict) else {}
+    candidate_id = str(payload.get("candidate_id") or "")
+    rule_id = str(rule.get("id") or "")
+    if not rule_id or not candidate_id:
+        _record_sync_event(conn, event_id=event_id, event_type="judgment_asset_candidate_promoted", local_table="skipped")
+        return 0
+
+    try:
+        store = json.loads(canonical_path.read_text(encoding="utf-8", errors="ignore")) if canonical_path.exists() else {}
+    except (json.JSONDecodeError, OSError):
+        store = {}
+    if not isinstance(store, dict):
+        store = {}
+    rules = store.get("rules") if isinstance(store.get("rules"), list) else []
+    rules = [r for r in rules if isinstance(r, dict)]
+    existing_index = next((i for i, r in enumerate(rules) if str(r.get("id") or "") == rule_id), None)
+    if existing_index is not None:
+        rules[existing_index] = rule
+    else:
+        rules.append(rule)
+    store["schema_version"] = int(store.get("schema_version") or 1)
+    store["generated_at"] = str(event.get("ts") or datetime.now(timezone.utc).isoformat())
+    store["source"] = "canonical_judgment_rules"
+    store["summary"] = {
+        "active_rules": len(rules),
+        "promoted": 1 if payload.get("status") == "promoted" else 0,
+        "updated": 1 if payload.get("status") == "updated" else 0,
+        "skipped": 0,
+    }
+    store["rules"] = rules
+    canonical_path.parent.mkdir(parents=True, exist_ok=True)
+    canonical_path.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8", errors="ignore")) if state_path.exists() else {}
+    except (json.JSONDecodeError, OSError):
+        state = {}
+    if not isinstance(state, dict):
+        state = {}
+    current = dict(state.get(candidate_id) or {})
+    current["promotion_status"] = "promoted"
+    current["promoted_at"] = str(event.get("ts") or datetime.now(timezone.utc).isoformat())
+    current["promoted_rule_id"] = rule_id
+    current["verified_status"] = "canonical"
+    state[candidate_id] = current
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    _record_sync_event(
+        conn,
+        event_id=event_id,
+        event_type="judgment_asset_candidate_promoted",
+        local_table="canonical_judgment_rules.json",
+        cloud_id=candidate_id,
+    )
+    return 1
+
+
+def _judgment_asset_feedback_drop_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "judgment_asset_feedback_drop":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    if not payload:
+        return None
+    return {
+        **payload,
+        "event_id": event.get("event_id"),
+        "ts": event.get("ts") or payload.get("dropped_at"),
+        "source": "cloudrun_input_writeback",
+    }
 
 
 def _screening_loop_feedback_from_event(event: dict) -> dict | None:
@@ -856,6 +949,7 @@ def _materialize_local_db(events: list[dict]) -> dict[str, int]:
         score_inputs_new = 0
         ocr_results_new = 0
         judgment_assets_new = 0
+        judgment_asset_promotions_applied = 0
         for event in events:
             score_inputs_new += _insert_score_input_from_event(conn, event)
             ocr_results_new += _insert_ocr_result_from_event(conn, event)
@@ -863,12 +957,14 @@ def _materialize_local_db(events: list[dict]) -> dict[str, int]:
             judgment_assets_new += _insert_judgment_asset_candidate_from_event(conn, event)
         for event in events:
             shion_feedback_updated += _apply_shion_review_feedback_from_event(conn, event)
+            judgment_asset_promotions_applied += _apply_judgment_asset_promotion_from_event(conn, event)
         conn.commit()
     return {
         "score_inputs_new": score_inputs_new,
         "ocr_results_new": ocr_results_new,
         "shion_reviews_new": shion_new,
         "shion_review_feedback_updated": shion_feedback_updated,
+        "judgment_asset_promotions_applied": judgment_asset_promotions_applied,
         "judgment_asset_candidates_new": judgment_assets_new,
     }
 
@@ -877,6 +973,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     all_events_new = _append_jsonl_dedup(CLOUDRUN_EVENT_ARCHIVE_LOG, events) if events else 0
     wizard_rows = [row for event in events if (row := _wizard_entry_from_event(event))]
     screening_loop_rows = [row for event in events if (row := _screening_loop_feedback_from_event(event))]
+    judgment_asset_feedback_drop_rows = [row for event in events if (row := _judgment_asset_feedback_drop_from_event(event))]
     improvement_rows = [row for event in events if (row := _improvement_entry_from_event(event))]
     chat_rows = [row for event in events if (row := _chat_entry_from_event(event))]
     prompt_feedback_rows = [row for event in events if (row := _prompt_feedback_entry_from_event(event))]
@@ -896,6 +993,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "ocr_results_new": 0,
         "shion_reviews_new": 0,
         "shion_review_feedback_updated": 0,
+        "judgment_asset_promotions_applied": 0,
         "judgment_asset_candidates_new": 0,
     }
     return {
@@ -904,6 +1002,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "rag_feedback_new": _append_jsonl_dedup(RAG_FEEDBACK_LOG, rag_feedback_rows) if rag_feedback_rows else 0,
         "rag_hit_new": _append_jsonl_dedup(RAG_HIT_LOG, rag_hit_rows) if rag_hit_rows else 0,
         "screening_loop_feedback_new": _append_jsonl_dedup(SCREENING_LOOP_FEEDBACK_LOG, screening_loop_rows) if screening_loop_rows else 0,
+        "judgment_asset_feedback_drop_new": _append_jsonl_dedup(JUDGMENT_ASSET_FEEDBACK_DROPS_LOG, judgment_asset_feedback_drop_rows) if judgment_asset_feedback_drop_rows else 0,
         "improvement_new": _append_jsonl_dedup(CLOUDRUN_IMPROVEMENT_LOG, improvement_rows) if improvement_rows else 0,
         "chat_new": _append_jsonl_dedup(CLOUDRUN_CHAT_LOG, chat_rows) if chat_rows else 0,
         "prompt_feedback_new": _append_jsonl_dedup(PROMPT_FEEDBACK_LOG, prompt_feedback_rows) if prompt_feedback_rows else 0,

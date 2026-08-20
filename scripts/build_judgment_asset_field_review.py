@@ -20,6 +20,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CANONICAL_JSON = PROJECT_ROOT / "data" / "canonical_judgment_rules.json"
 DEFAULT_FEEDBACK_JSONL = PROJECT_ROOT / "data" / "judgment_asset_usage_feedback.jsonl"
+DEFAULT_FEEDBACK_DROPS_JSONL = PROJECT_ROOT / "data" / "judgment_asset_feedback_drops.jsonl"
 DEFAULT_NEXT_CASE_TARGETS_JSON = PROJECT_ROOT / "data" / "judgment_asset_next_case_targets.json"
 DEFAULT_OUTPUT_JSON = PROJECT_ROOT / "reports" / "judgment_asset_field_review_latest.json"
 DEFAULT_OUTPUT_MD = PROJECT_ROOT / "reports" / "judgment_asset_field_review_latest.md"
@@ -231,6 +232,14 @@ def _build_action_plan(
     }
 
 
+def _feedback_drop_counts(drop_rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for row in drop_rows:
+        reason = str(row.get("reason") or "unknown").strip() or "unknown"
+        counts[reason] += 1
+    return dict(sorted(counts.items(), key=lambda item: item[0]))
+
+
 def build_review(
     *,
     target_date: str,
@@ -238,8 +247,10 @@ def build_review(
     feedback_rows: list[dict[str, Any]] | None = None,
     include_simulation: bool = False,
     next_case_target_config: dict[str, Any] | None = None,
+    feedback_drop_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     feedback_rows = feedback_rows or []
+    feedback_drop_rows = feedback_drop_rows or []
     rules = active_rules(canonical)
     active_ids = {str(rule.get("id") or "").strip() for rule in rules}
     id_to_concept = {
@@ -317,6 +328,8 @@ def build_review(
         "invalid_feedback": invalid_feedback,
         "simulation_feedback": simulation_feedback,
         "include_simulation": include_simulation,
+        "feedback_drops": _feedback_drop_counts(feedback_drop_rows),
+        "feedback_drops_total": len(feedback_drop_rows),
     }
     action_plan = _build_action_plan(buckets, summary, next_case_target_config)
     return {
@@ -335,6 +348,7 @@ def build_review(
             "grow は昇格ではなく、次回案件で優先して試す候補。",
             "review は自動修正せず、人間が文面・適用条件・使わない条件を見る。",
             "sleeping は削除候補ではなく、実案件でまだ試されていない active ルール。",
+            "feedback_drops は評価ボタンは押されたが判断資産に記録されなかった件数（原因調査専用、集計には使わない）。",
         ],
     }
 
@@ -359,6 +373,12 @@ def build_markdown(payload: dict[str, Any]) -> str:
         f"- Simulation feedback: {summary.get('simulation_feedback', 0)} / included: {summary.get('include_simulation', False)}",
         f"- Unknown feedback rows: {summary['unknown_feedback']}",
         f"- Remapped feedback rows (rule_id drift, matched by concept): {summary.get('remapped_feedback', 0)}",
+        f"- Feedback drops (submitted but not recorded): {summary.get('feedback_drops_total', 0)}"
+        + (
+            " (" + ", ".join(f"{reason}={count}" for reason, count in summary.get("feedback_drops", {}).items()) + ")"
+            if summary.get("feedback_drops")
+            else ""
+        ),
         "",
     ]
     for label, key in labels:
@@ -411,6 +431,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--canonical-json", type=Path, default=DEFAULT_CANONICAL_JSON)
     parser.add_argument("--feedback-jsonl", type=Path, default=DEFAULT_FEEDBACK_JSONL)
+    parser.add_argument("--feedback-drops-jsonl", type=Path, default=DEFAULT_FEEDBACK_DROPS_JSONL)
     parser.add_argument("--next-case-targets-json", type=Path, default=DEFAULT_NEXT_CASE_TARGETS_JSON)
     parser.add_argument("--output-json", type=Path, default=DEFAULT_OUTPUT_JSON)
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
@@ -430,6 +451,7 @@ def main() -> int:
         feedback_rows=_read_jsonl(args.feedback_jsonl),
         include_simulation=args.include_simulation,
         next_case_target_config=_read_json(args.next_case_targets_json),
+        feedback_drop_rows=_read_jsonl(args.feedback_drops_jsonl),
     )
     _write_json(args.output_json, payload)
     args.output_md.parent.mkdir(parents=True, exist_ok=True)

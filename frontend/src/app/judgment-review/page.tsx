@@ -202,6 +202,7 @@ export default function JudgmentReviewPage() {
   const [predictionActionLoading, setPredictionActionLoading] = useState<Record<string, boolean>>({});
   const [promotionActionLoading, setPromotionActionLoading] = useState<Record<string, boolean>>({});
   const [promotionNotes, setPromotionNotes] = useState<Record<string, string>>({});
+  const [promotionNotice, setPromotionNotice] = useState("");
   const [predictionNotes, setPredictionNotes] = useState<Record<string, string>>({});
   const [predictionEdits, setPredictionEdits] = useState<Record<string, string>>({});
 
@@ -348,11 +349,17 @@ export default function JudgmentReviewPage() {
     async (item: PromotionCandidate, action: "promote" | "hold" | "reject") => {
       setPromotionActionLoading((current) => ({ ...current, [item.id]: true }));
       setError("");
+      setPromotionNotice("");
       try {
         if (action === "promote") {
-          await apiClient.post(
+          const response = await apiClient.post<{ promotion?: { status?: string } }>(
             `/api/judgment-assets/promotion-candidates/${encodeURIComponent(item.id)}/promote`,
           );
+          if (response.data?.promotion?.status === "updated") {
+            setPromotionNotice(
+              "新規の正規判断資産としてではなく、既存の同一内容の資産に証跡として統合されました（正規判断資産の件数は増えません）。",
+            );
+          }
         } else {
           await apiClient.post(
             `/api/judgment-assets/promotion-candidates/${encodeURIComponent(item.id)}/review`,
@@ -363,8 +370,9 @@ export default function JudgmentReviewPage() {
           );
         }
         await refreshPromotionCandidates();
-      } catch {
-        setError("判断資産候補のレビュー結果を保存できませんでした。もう一度お試しください。");
+      } catch (err) {
+        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setError(detail || "判断資産候補のレビュー結果を保存できませんでした。もう一度お試しください。");
       } finally {
         setPromotionActionLoading((current) => ({ ...current, [item.id]: false }));
       }
@@ -523,6 +531,13 @@ export default function JudgmentReviewPage() {
               昇格しても自動承認・自動否決には接続しません。紫苑の回答時に参照する「確認観点」として扱います。
             </p>
           </div>
+
+          {promotionNotice && (
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-700">
+              <AlertCircle className="h-5 w-5" />
+              {promotionNotice}
+            </div>
+          )}
 
           {loading ? null : promotionItems.length === 0 ? (
             <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">

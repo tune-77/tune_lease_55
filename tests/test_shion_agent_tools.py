@@ -22,6 +22,7 @@ EXPECTED_DB_TOOLS = {
     "recall_judgment_memory",
     "build_judgment_preview",
     "search_obsidian_context",
+    "audit_ledger_consistency",
 }
 
 EXPECTED_VERTEX_TOOLS = {
