@@ -202,6 +202,12 @@ LLM 無しでは生成できない。2 は「不要な再監査を求めない�
 - Codexは作業開始時または `/agent-workflow` 実行時に `/api/shion/agent-consultations` を確認し、必要なら該当AGENTを実行して `.claude/reports/<agent>/latest.md` に結果を書く。
 - 相談票は `open` / `in_review` / `done` / `cancelled` の状態だけを持つ。相談票の作成はコード変更・データ正本変更・PR作成・AGENT実行を意味しない。
 
+### 紫苑から外部推論役への相談キュー
+- 紫苑はCodex停止時、低確信度、別視点が必要な論点では `request_reasoner_consultation` で `data/shion_reasoner_consultation_queue.jsonl` へ相談票を追記する。
+- 相談先は `codex` / `gemini` / `claude` / `auto`。Codexは実装・監査、Geminiは仮説比較、Claudeは長文レビュー・第二意見を基本役割にする。
+- 相談票は安全要約のみを保存する。生の顧客名・社名・財務数値・秘密・DB本体は渡さず、`privacy_level=safe_summary_only` を既定にする。
+- 相談票の作成は外部AI実行・外部送信・コード変更・データ正本変更を意味しない。Codexは作業開始時に `/api/shion/reasoner-consultations` を確認し、回答要約だけを `answered` / `done` として残す。
+
 ### 6. レビューゲート
 - code-reviewer 相当で、バグ・回帰・欠けたテスト・状態取りこぼしを優先して見る。
 - 指摘を修正したら、関連テストと必要な専門AGENTゲートを再実行する。

@@ -1943,6 +1943,25 @@ def execute_tool(name: str, args: dict, vault: Path | None = None) -> Any:
             ),
             "safety_policy": "queue_only_no_agent_execution_no_code_change",
         }
+    if name == "request_reasoner_consultation":
+        from api.shion_reasoner_consultation_queue import request_reasoner_consultation
+
+        return {
+            "queued": True,
+            "item": request_reasoner_consultation(
+                target=args.get("target", "auto"),
+                purpose=args.get("purpose", "hypothesis_check"),
+                title=args.get("title", ""),
+                question=args.get("question", ""),
+                shion_hypothesis=args.get("shion_hypothesis", ""),
+                context_summary=args.get("context_summary", ""),
+                privacy_level=args.get("privacy_level", "safe_summary_only"),
+                priority=args.get("priority", "medium"),
+                source="lease_intelligence_tool",
+                record_writeback=True,
+            ),
+            "safety_policy": "queue_only_safe_summary_no_raw_customer_data_no_code_execution",
+        }
     if name == "consult_senior_reasoner":
         if vault is None:
             return {"error": "vault path not available", "consulted": False}
@@ -2312,6 +2331,49 @@ TOOL_DECLARATIONS: list[dict] = [
                 },
             },
             "required": ["agent", "title", "reason"],
+        },
+    },
+    {
+        "name": "request_reasoner_consultation",
+        "description": (
+            "紫苑が低確信度・別視点が必要な論点・Codex停止時の代替確認を、Codex/Gemini/Claude向けの"
+            "外部推論相談票として安全要約で起票する。外部AIを直接実行せず、コード変更・データ変更・PR作成もしない。"
+            "生の顧客名、社名、財務数値、秘密は渡さない。Geminiは仮説比較、Claudeは長文レビュー/第二意見、Codexは実装/監査相談に向く。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "相談先。codex / gemini / claude / auto。Codex停止時は claude か gemini を選ぶ。",
+                },
+                "purpose": {
+                    "type": "string",
+                    "description": "hypothesis_check / judgment_review / code_review / design_review / fallback / long_context_review",
+                },
+                "title": {"type": "string", "description": "相談票の短い見出し"},
+                "question": {
+                    "type": "string",
+                    "description": "匿名化・要約済みの相談論点。個人名・社名・生の財務数値は含めない。",
+                },
+                "shion_hypothesis": {
+                    "type": "string",
+                    "description": "相談前に紫苑自身が考えた仮説。丸投げ防止のため必須。",
+                },
+                "context_summary": {
+                    "type": "string",
+                    "description": "確認済み根拠・迷い・制約の安全要約。",
+                },
+                "privacy_level": {
+                    "type": "string",
+                    "description": "safe_summary_only / local_only / do_not_send。既定は safe_summary_only。",
+                },
+                "priority": {
+                    "type": "string",
+                    "description": "low / medium / high。実案件やCodex停止中の高影響相談なら high",
+                },
+            },
+            "required": ["target", "purpose", "title", "question", "shion_hypothesis"],
         },
     },
     {

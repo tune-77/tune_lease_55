@@ -34,6 +34,7 @@ SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
 JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = PROJECT_ROOT / "data" / "judgment_asset_feedback_drops.jsonl"
 SHION_HYPOTHESIS_COLLISION_LOG = PROJECT_ROOT / "data" / "shion_hypothesis_collision_log.jsonl"
 SHION_AGENT_CONSULTATION_QUEUE = PROJECT_ROOT / "data" / "shion_agent_consultation_queue.jsonl"
+SHION_REASONER_CONSULTATION_QUEUE = PROJECT_ROOT / "data" / "shion_reasoner_consultation_queue.jsonl"
 USER_PERSONAL_MEMORY_PATH = PROJECT_ROOT / "data" / "user_personal_memory.md"
 CANONICAL_JUDGMENT_RULES_JSON = PROJECT_ROOT / "data" / "canonical_judgment_rules.json"
 JUDGMENT_ASSET_CANDIDATE_STATE_JSON = PROJECT_ROOT / "data" / "autoresearch_judgment_asset_candidate_state.json"
@@ -892,6 +893,58 @@ def _shion_agent_consultation_status_from_event(event: dict) -> dict | None:
     }
 
 
+def _shion_reasoner_consultation_request_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "shion_reasoner_consultation_requested":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    queue_id = str(payload.get("id") or payload.get("queue_id") or "")
+    if not queue_id:
+        return None
+    return {
+        "event_id": str(event.get("event_id") or f"cloudrun:{queue_id}:requested"),
+        "schema_version": 1,
+        "event_type": "reasoner_consultation_requested",
+        "queue_id": queue_id,
+        "ts": str(payload.get("created_at") or event.get("ts") or datetime.now(timezone.utc).isoformat()),
+        "payload": {
+            "target": str(payload.get("target") or "auto"),
+            "purpose": str(payload.get("purpose") or "hypothesis_check"),
+            "title": str(payload.get("title") or ""),
+            "question": str(payload.get("question") or ""),
+            "shion_hypothesis": str(payload.get("shion_hypothesis") or ""),
+            "context_summary": str(payload.get("context_summary") or ""),
+            "privacy_level": str(payload.get("privacy_level") or "safe_summary_only"),
+            "priority": str(payload.get("priority") or "medium"),
+            "source": str(payload.get("source") or "cloudrun_writeback"),
+        },
+        "source": "cloudrun_input_writeback",
+    }
+
+
+def _shion_reasoner_consultation_status_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "shion_reasoner_consultation_status_changed":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    queue_id = str(payload.get("queue_id") or payload.get("id") or "")
+    status = str(payload.get("status") or "")
+    if not queue_id or status not in {"open", "in_review", "answered", "done", "cancelled"}:
+        return None
+    return {
+        "event_id": str(event.get("event_id") or f"cloudrun:{queue_id}:status:{status}"),
+        "schema_version": 1,
+        "event_type": "reasoner_consultation_status_changed",
+        "queue_id": queue_id,
+        "ts": str(payload.get("updated_at") or event.get("ts") or datetime.now(timezone.utc).isoformat()),
+        "payload": {
+            "status": status,
+            "note": str(payload.get("note") or payload.get("resolution_note") or ""),
+            "answered_by": str(payload.get("answered_by") or ""),
+            "answer_summary": str(payload.get("answer_summary") or ""),
+        },
+        "source": "cloudrun_input_writeback",
+    }
+
+
 def _build_hypothesis_collision_rows(chat_rows: list[dict]) -> list[dict]:
     if not chat_rows:
         return []
@@ -1035,6 +1088,12 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     shion_agent_consultation_status_rows = [
         row for event in events if (row := _shion_agent_consultation_status_from_event(event))
     ]
+    shion_reasoner_consultation_rows = [
+        row for event in events if (row := _shion_reasoner_consultation_request_from_event(event))
+    ]
+    shion_reasoner_consultation_status_rows = [
+        row for event in events if (row := _shion_reasoner_consultation_status_from_event(event))
+    ]
     personal_memory_new = _sync_personal_memory_from_events(events) if events else 0
     rag_feedback_rows: list[dict] = []
     rag_hit_rows: list[dict] = []
@@ -1066,6 +1125,8 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "shion_memory_usage_new": _append_jsonl_dedup(SHION_MEMORY_USAGE_LOG, shion_memory_usage_rows) if shion_memory_usage_rows else 0,
         "shion_agent_consultations_new": _append_jsonl_dedup(SHION_AGENT_CONSULTATION_QUEUE, shion_agent_consultation_rows) if shion_agent_consultation_rows else 0,
         "shion_agent_consultation_status_updates": _append_jsonl_dedup(SHION_AGENT_CONSULTATION_QUEUE, shion_agent_consultation_status_rows) if shion_agent_consultation_status_rows else 0,
+        "shion_reasoner_consultations_new": _append_jsonl_dedup(SHION_REASONER_CONSULTATION_QUEUE, shion_reasoner_consultation_rows) if shion_reasoner_consultation_rows else 0,
+        "shion_reasoner_consultation_status_updates": _append_jsonl_dedup(SHION_REASONER_CONSULTATION_QUEUE, shion_reasoner_consultation_status_rows) if shion_reasoner_consultation_status_rows else 0,
         "personal_memory_new": personal_memory_new,
         **db_result,
     }

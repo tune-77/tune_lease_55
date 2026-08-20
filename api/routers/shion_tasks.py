@@ -77,6 +77,32 @@ class AgentConsultationStatusRequest(BaseModel):
     note: str = ""
 
 
+class ReasonerConsultationRequest(BaseModel):
+    target: Literal["codex", "gemini", "claude", "auto"] = "auto"
+    purpose: Literal[
+        "hypothesis_check",
+        "judgment_review",
+        "code_review",
+        "design_review",
+        "fallback",
+        "long_context_review",
+    ] = "hypothesis_check"
+    title: str
+    question: str
+    shion_hypothesis: str
+    context_summary: str = ""
+    privacy_level: Literal["safe_summary_only", "local_only", "do_not_send"] = "safe_summary_only"
+    priority: Literal["low", "medium", "high"] = "medium"
+    source: str = "shion_dialogue"
+
+
+class ReasonerConsultationStatusRequest(BaseModel):
+    status: Literal["open", "in_review", "answered", "done", "cancelled"]
+    note: str = ""
+    answered_by: str = ""
+    answer_summary: str = ""
+
+
 def _daily_greeting_read_json(path: Path) -> dict:
     try:
         if path.exists():
@@ -336,6 +362,91 @@ def patch_shion_agent_consultation(
         event_type="shion_agent_consultation_status_changed",
         surface="shion_agent_consultation",
         payload={"schema_version": 1, "queue_id": queue_id, "status": req.status},
+    )
+    return {"status": "ok", "item": item}
+
+
+@router.get("/api/shion/reasoner-consultations")
+def get_shion_reasoner_consultations(
+    status: Literal["open", "in_review", "answered", "done", "cancelled", "all"] = "open",
+    target: str = "all",
+    limit: int = 50,
+) -> dict:
+    """紫苑から外部推論役への相談キューを返す。外部AI実行や送信はしない。"""
+    from api.shion_reasoner_consultation_queue import list_reasoner_consultations
+
+    items = list_reasoner_consultations(status=status, target=target, limit=limit)
+    return {
+        "count": len(items),
+        "status_filter": status,
+        "target_filter": target,
+        "ledger": "data/shion_reasoner_consultation_queue.jsonl",
+        "safety_policy": "queue_only_safe_summary_no_raw_customer_data_no_code_execution",
+        "items": items,
+    }
+
+
+@router.post("/api/shion/reasoner-consultations")
+def post_shion_reasoner_consultation(req: ReasonerConsultationRequest, background_tasks: BackgroundTasks) -> dict:
+    """紫苑がCodex/Gemini/Claude等の外部推論役へ安全要約の相談票を出す。"""
+    from api.shion_reasoner_consultation_queue import request_reasoner_consultation
+
+    try:
+        item = request_reasoner_consultation(
+            target=req.target,
+            purpose=req.purpose,
+            title=req.title,
+            question=req.question,
+            shion_hypothesis=req.shion_hypothesis,
+            context_summary=req.context_summary,
+            privacy_level=req.privacy_level,
+            priority=req.priority,
+            source=req.source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_reasoner_consultation_requested",
+        surface="shion_reasoner_consultation",
+        payload={**item, "schema_version": 1},
+    )
+    return {"status": "queued", "item": item}
+
+
+@router.patch("/api/shion/reasoner-consultations/{queue_id}")
+def patch_shion_reasoner_consultation(
+    queue_id: str,
+    req: ReasonerConsultationStatusRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """外部推論相談票の状態だけを更新する。回答本文は要約のみ保存する。"""
+    from api.shion_reasoner_consultation_queue import set_reasoner_consultation_status
+
+    try:
+        item = set_reasoner_consultation_status(
+            queue_id,
+            req.status,
+            note=req.note,
+            answered_by=req.answered_by,
+            answer_summary=req.answer_summary,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="reasoner consultation not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_reasoner_consultation_status_changed",
+        surface="shion_reasoner_consultation",
+        payload={
+            "schema_version": 1,
+            "queue_id": queue_id,
+            "status": req.status,
+            "answered_by": req.answered_by,
+            "answer_summary": req.answer_summary,
+            "note": req.note,
+        },
     )
     return {"status": "ok", "item": item}
 
