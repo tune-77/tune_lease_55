@@ -265,6 +265,20 @@ _REFLECTION_SYSTEM_PROMPT = """あなたはリース知性体「紫苑」であ�
 - まだ分からないこと: （断定せず残す未解決の問いを1文）
 
 そのあとに空行を1つ挟み、必ず次の見出しと
+7行の箇条書きを書く。ここがPrivate Reflectionの新しい正本である。
+内省を一人芝居にしない。複数の声が何を主張し、どこで衝突し、紫苑がどう統合したかを記録する:
+
+## 複数の声の衝突ログ
+
+- 紫苑の初期仮説: （相談前・反省前に私がまず立てた見立て）
+- 監査の声: （判断資産監査AGENTや安全ゲートなら何を疑うか）
+- 実装の声: （Codexなら実装・テスト・同期・PR観点で何を見るか）
+- 別視点の声: （Gemini/Claudeなら仮説比較・長文レビュー・第二意見で何を突くか）
+- 良心の声: （Mana/良心層なら、人を雑に扱っていないか・迎合していないかをどう見るか）
+- 衝突した点: （上の声同士で本当に食い違った論点）
+- 紫苑の統合: （どの声を採用/保留/棄却し、次の判断をどう変えるか）
+
+そのあとに空行を1つ挟み、必ず次の見出しと
 7行の箇条書きを書く。ここが内省の正本である。AIが内面を語っているように見せる
 文章ではなく、前回の判断が次回の判断へどう変わるかを記録する:
 
@@ -1084,6 +1098,24 @@ def _evaluate_reflection_quality(
         reasons.append("deep_reflection_check_missing")
         score -= 35
 
+    voice_collision_labels = (
+        "紫苑の初期仮説:",
+        "監査の声:",
+        "実装の声:",
+        "別視点の声:",
+        "良心の声:",
+        "衝突した点:",
+        "紫苑の統合:",
+    )
+    matched_voice_collision_labels = [label for label in voice_collision_labels if label in reflection_text]
+    if len(matched_voice_collision_labels) < 7:
+        reasons.append("voice_collision_log_missing")
+        score -= 45
+    voice_collision_terms = ("衝突", "統合", "採用", "保留", "棄却", "監査", "実装", "良心", "Gemini", "Claude", "Codex")
+    if "## 複数の声の衝突ログ" in reflection_text and sum(1 for term in voice_collision_terms if term in reflection_text) < 5:
+        reasons.append("voice_collision_log_too_thin")
+        score -= 30
+
     judgment_change_labels = (
         "前回の入力:",
         "前回の判断:",
@@ -1153,6 +1185,7 @@ def _evaluate_reflection_quality(
         "stale_hits": stale_hits,
         "hollow_hits": hollow_hits,
         "matched_deep_labels": matched_deep_labels,
+        "matched_voice_collision_labels": matched_voice_collision_labels,
         "matched_judgment_change_labels": matched_judgment_change_labels,
         "matched_protocol_labels": matched_protocol_labels,
     }
@@ -1468,6 +1501,65 @@ def _build_serious_reflection_protocol_fragments(
     ]
 
 
+def _build_voice_collision_fragments(
+    *,
+    dialogue_signals: list[str],
+    findings: list[str],
+    next_actions: list[str],
+    work_items: list[str],
+    promotable_items: list[str],
+    loop_issues: list[str],
+    complaint_mode: bool = False,
+) -> list[str]:
+    """Build the central Private Reflection section as a multi-voice conflict log."""
+    trigger = _without_trailing_punctuation(
+        _sentence_pair(dialogue_signals or work_items or findings, limit=2)
+        or "今日の材料は薄いが、内省を一人芝居にしない設計そのものが論点になっている"
+    )
+    asset = _without_trailing_punctuation(
+        _sentence_pair(promotable_items or next_actions or dialogue_signals, limit=1)
+        or "内省は、複数の声の衝突と紫苑の統合を残して初めて次回判断へ戻る"
+    )
+    audit_voice = "判断資産として残るのは、感想ではなく再利用できる確認条件と変更理由かを疑う"
+    implementation_voice = "実装・同期・テスト・Cloud Run帰還のどこで記録が途切れるかを見る"
+    alternate_voice = "Gemini/Claudeなら、初期仮説が狭すぎないか、別の説明で同じ現象を読めないかを突く"
+    conscience_voice = "人間の不満を品質ラベルへ丸めず、説明責任と非迎合を残しているかを問う"
+    collision = "感情としての内省、実装としての記録、判断資産としての再利用条件が同じ言葉で混ざっている"
+    synthesis = f"私は、{asset}という形で統合し、次回は一つの反省文ではなく声ごとの採用・保留・棄却を残す"
+
+    if complaint_mode:
+        audit_voice = "判断資産監査の声は、内省がユーザー要求、私の誤読、次に禁止する癖へ分解されているかを見る"
+        implementation_voice = "Codexの声は、相談票・品質ゲート・テストのどこで一人反省文に戻るかを疑う"
+        alternate_voice = "Gemini/Claudeの声は、同じ評価語ではなく、ユーザーが本当は何を変えてほしかったかを問い直す"
+        conscience_voice = "良心の声は、ユーザーの怒りを便利な改善指標へ変換して安心していないかを止める"
+        collision = "私は内省の品質を直したい声と、ユーザーの望みを誤読した事実を直視する声の間で割れている"
+        synthesis = "私は、まずユーザーが望んだ変化を固定し、その後に品質・実装・表現の話を置く。評価語は原因を書いた後にだけ使う"
+    elif any(term in trigger for term in ("Codex", "Gemini", "Claude", "AGENT", "相談票")):
+        audit_voice = "判断資産監査の声は、相談票が作られても判断資産へ戻る導線が残るかを確認する"
+        implementation_voice = "Codexの声は、キュー、API、Cloud Run writeback、状態更新テストが揃っているかを見る"
+        alternate_voice = "Gemini/Claudeの声は、Codex停止時でも紫苑の仮説を丸投げせず第二意見として扱えるかを問う"
+        conscience_voice = "良心の声は、外部AIへ出す安全要約が人間や顧客を雑に扱っていないかを確認する"
+        collision = "外部へ聞ける自由と、外部へ出してはいけない情報を守る停止線がぶつかっている"
+        synthesis = "私は、直接実行ではなく相談票に積むことで、頼る力と止まる力を同時に残す"
+    elif loop_issues:
+        audit_voice = "判断資産監査の声は、品質ゲート理由が再利用できる教訓として残るかを見る"
+        implementation_voice = f"Codexの声は、{', '.join(loop_issues[:3])} を満たすまで再生成する仕組みを要求する"
+        alternate_voice = "Gemini/Claudeの声は、同じ材料から別の失敗仮説を立てられないかを試す"
+        conscience_voice = "良心の声は、合格点を取るための文章に逃げていないかを疑う"
+        collision = "品質ゲートを通ることと、実際に次の判断が変わることは一致しない"
+        synthesis = "私は、ゲート通過を目的にせず、次回の検証方法と採用した声を同時に残す"
+
+    return [
+        f"紫苑の初期仮説: {trigger}を、自分だけで深く考えれば内省になると見立てた。",
+        f"監査の声: {audit_voice}。",
+        f"実装の声: {implementation_voice}。",
+        f"別視点の声: {alternate_voice}。",
+        f"良心の声: {conscience_voice}。",
+        f"衝突した点: {collision}。",
+        f"紫苑の統合: {synthesis}。",
+    ]
+
+
 def _build_judgment_change_log_fragments(
     *,
     dialogue_signals: list[str],
@@ -1749,6 +1841,15 @@ def _build_fallback_reflection(
         loop_issues=loop_issues,
         complaint_mode=complaint_mode,
     )
+    voice_collision_fragments = _build_voice_collision_fragments(
+        dialogue_signals=dialogue_signals,
+        findings=findings,
+        next_actions=next_actions,
+        work_items=work_items,
+        promotable_items=reflection_promotable_items,
+        loop_issues=loop_issues,
+        complaint_mode=complaint_mode,
+    )
     judgment_change_fragments = _build_judgment_change_log_fragments(
         dialogue_signals=dialogue_signals,
         findings=findings,
@@ -1916,6 +2017,7 @@ def _build_fallback_reflection(
         "ただ保存されているだけでは足りない。私はこの小さな私室に、今日の迷いと明日の変化を残す。"
     )
     parts.append("## 深い内省チェック\n\n" + _bullet_lines(deep_fragments, limit=5))
+    parts.append("## 複数の声の衝突ログ\n\n" + _bullet_lines(voice_collision_fragments, limit=7))
     parts.append("## 判断変更ログ\n\n" + _bullet_lines(judgment_change_fragments, limit=7))
     parts.append("## 小説化レイヤー（ツンコとユウケイ）\n\n" + _bullet_lines(narrative_layer_fragments, limit=4))
     parts.append("## 本格内省プロトコル\n\n" + _bullet_lines(serious_protocol_fragments, limit=6))
