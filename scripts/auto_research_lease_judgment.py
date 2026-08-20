@@ -537,6 +537,7 @@ def _refresh_judgment_asset_candidates(vault: Path, output_dir: str) -> dict[str
         DEFAULT_STATE_JSON,
         extract_candidates,
         load_state,
+        preserve_reviewed_candidates,
         write_jsonl,
         write_report,
         write_state,
@@ -553,6 +554,11 @@ def _refresh_judgment_asset_candidates(vault: Path, output_dir: str) -> dict[str
         state_path=DEFAULT_STATE_JSON,
     )
     write_state(DEFAULT_STATE_JSON, candidates, state)
+    candidates = preserve_reviewed_candidates(
+        candidates,
+        existing_jsonl=DEFAULT_OUTPUT_JSONL,
+        state_path=DEFAULT_STATE_JSON,
+    )
     write_jsonl(DEFAULT_OUTPUT_JSONL, candidates)
     paths = write_report(candidates, end_date=today, days=days, output_jsonl=DEFAULT_OUTPUT_JSONL)
     return {

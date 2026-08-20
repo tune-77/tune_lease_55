@@ -68,6 +68,12 @@ DEFAULT_CANDIDATE_STATE = {
     "last_edited_at": "",
 }
 
+PRESERVED_PROMOTION_STATUSES = {
+    "ready_for_promotion",
+    "promoted",
+    "active",
+}
+
 CANDIDATE_SECTIONS = {
     "リース審査への適用": "application_rule",
     "担当者が確認する質問": "confirmation_question",
@@ -232,6 +238,120 @@ def write_state(path: Path, candidates: list[dict[str, Any]], existing: dict[str
     for item in candidates:
         merged.setdefault(str(item["id"]), _candidate_state(item))
     path.write_text(json.dumps(merged, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _has_human_signal(item: dict[str, Any]) -> bool:
+    if str(item.get("source_section") or "") == "manual_input":
+        return True
+    if str(item.get("research_topic") or "") == "chat_judgment_teaching":
+        return True
+    if str(item.get("promotion_status") or "") in PRESERVED_PROMOTION_STATUSES:
+        return True
+    for key in ("use_count", "useful_count", "rejected_count", "neutral_count", "edit_count"):
+        try:
+            if int(item.get(key) or 0) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict):
+                rows.append(item)
+    except OSError:
+        return []
+    return rows
+
+
+def _state_only_preserved_candidates(
+    states: dict[str, dict[str, Any]],
+    known_ids: set[str],
+) -> list[dict[str, Any]]:
+    preserved: list[dict[str, Any]] = []
+    for candidate_id, state in states.items():
+        if candidate_id in known_ids:
+            continue
+        if not _has_human_signal(state):
+            continue
+        edited_claim = str(state.get("edited_claim") or "").strip()
+        if len(edited_claim) < 8:
+            continue
+        preserved.append(
+            {
+                "id": candidate_id,
+                "candidate_type": "application_rule",
+                "research_topic": "preserved_human_review",
+                "research_title": "Preserved Human-Reviewed Judgment Asset Candidate",
+                "research_date": str(state.get("last_feedback_at") or state.get("last_edited_at") or "")[:10],
+                "claim": edited_claim,
+                "source_section": "preserved_state",
+                "evidence_path": f"state://autoresearch_judgment_asset_candidate_state/{candidate_id}",
+                "review_status": "candidate",
+                "asset_quality": "actionable",
+                "quality_reasons": [],
+                "promotion_status": _promotion_status(state, "actionable"),
+                **state,
+                "requires_human_use_feedback": True,
+                "requires_result_verification": True,
+                "use_policy": "過去に人間が評価・編集したため、直近Auto Research範囲外でも昇格レビューに残す。",
+            }
+        )
+    return preserved
+
+
+def preserve_reviewed_candidates(
+    candidates: list[dict[str, Any]],
+    *,
+    existing_jsonl: Path,
+    state_path: Path = DEFAULT_STATE_JSON,
+) -> list[dict[str, Any]]:
+    """Keep human-touched candidates from disappearing on daily refresh.
+
+    Auto Research only scans a recent date window, but judgment asset review is a
+    longer-lived workflow. A candidate that has been used, edited, or manually
+    added must remain visible until a human promotes, holds, or rejects it.
+    """
+    by_id: dict[str, dict[str, Any]] = {}
+    for item in candidates:
+        candidate_id = str(item.get("id") or "")
+        if candidate_id:
+            by_id[candidate_id] = item
+
+    states = load_state(state_path)
+    for item in _read_jsonl(existing_jsonl):
+        candidate_id = str(item.get("id") or "")
+        if not candidate_id or candidate_id in by_id:
+            continue
+        merged = {**item, **states.get(candidate_id, {})}
+        if _has_human_signal(merged):
+            by_id[candidate_id] = merged
+
+    for item in _state_only_preserved_candidates(states, set(by_id)):
+        by_id[str(item["id"])] = item
+
+    return sorted(
+        by_id.values(),
+        key=lambda item: (
+            1 if _has_human_signal(item) else 0,
+            str(item.get("research_date") or ""),
+            str(item.get("research_topic") or ""),
+            str(item.get("candidate_type") or ""),
+            str(item.get("claim") or ""),
+        ),
+        reverse=True,
+    )
 
 
 def _judgment_asset_quality(claim: str, candidate_type: str) -> tuple[str, list[str]]:
@@ -566,6 +686,11 @@ def main() -> None:
         state_path=state_path,
     )
     write_state(state_path, candidates, load_state(state_path))
+    candidates = preserve_reviewed_candidates(
+        candidates,
+        existing_jsonl=output_path,
+        state_path=state_path,
+    )
     write_jsonl(output_path, candidates)
     paths = write_report(candidates, end_date=end_date, days=days, output_jsonl=output_path)
     print(
