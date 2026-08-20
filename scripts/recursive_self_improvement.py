@@ -392,6 +392,11 @@ def render_markdown(bundle: dict[str, Any]) -> str:
         f"(healthy dedup: {measurement.get('suppressed_healthy_count', 0)}, "
         f"churn: {measurement.get('suppressed_churn_count', 0)})"
     )
+    lines.append(
+        f"- Churn rate (code actionable only): {measurement.get('churn_rate_code_actionable', 0.0)}% "
+        f"(code actionable: {measurement.get('code_actionable_count', 0)}, "
+        f"conversational/non-code: {measurement.get('conversational_non_code_count', 0)})"
+    )
     lines.append("")
     lines.append("## Ranked Queue")
     if not bundle["ranked_queue"]:
@@ -408,7 +413,8 @@ def render_markdown(bundle: dict[str, Any]) -> str:
         lines.append("- No suppressed items")
     else:
         for item in bundle["suppressions"][:10]:
-            lines.append(f"- `{item.get('id')}` `{item.get('title')}` / {item.get('reason')}")
+            tag = "" if item.get("code_actionable", True) else " [conversational_non_code]"
+            lines.append(f"- `{item.get('id')}` `{item.get('title')}` / {item.get('reason')}{tag}")
     return "\n".join(lines) + "\n"
 
 
