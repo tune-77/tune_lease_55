@@ -42,27 +42,6 @@ _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impac
 _SCREENING_INPUT_ASSIST_EVENTS_JSONL = Path(_REPO_ROOT) / "data" / "screening_input_assist_events.jsonl"
 _JUDGMENT_ASSET_PROMOTION_LOCK_PATH = Path(_REPO_ROOT) / "data" / ".judgment_asset_promotion.lock"
 _HUMAN_RESPONSE_POSITIVE_RATINGS = {"shion_like", "good"}
-
-
-@contextlib.contextmanager
-def _judgment_asset_promotion_lock():
-    """canonical_judgment_rules.json / candidate_state.json への同時書き込みを直列化する。
-
-    filelock 未導入環境（BR-426と同じフォールバック方針）ではロック無しで進む。
-    """
-    if not _FILELOCK_AVAILABLE:
-        yield
-        return
-    _JUDGMENT_ASSET_PROMOTION_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-    lock = FileLock(str(_JUDGMENT_ASSET_PROMOTION_LOCK_PATH), timeout=10)
-    try:
-        lock.acquire()
-    except _FileLockTimeout:
-        raise HTTPException(status_code=409, detail="judgment asset store is busy, try again")
-    try:
-        yield
-    finally:
-        lock.release()
 _HUMAN_RESPONSE_NEGATIVE_RATINGS = {"thin", "generic", "not_shion", "bad"}
 _CLOUDRUN_RETURN_DB = Path(_REPO_ROOT) / "data" / "cloudrun_experience_return.db"
 _CLOUDRUN_RETURN_REVIEW_TABLES = {
@@ -1264,6 +1243,27 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
         reverse=True,
     )
     return candidates[:max(1, min(int(limit or 30), 100))]
+
+
+@contextlib.contextmanager
+def _judgment_asset_promotion_lock():
+    """canonical_judgment_rules.json / candidate_state.json への同時書き込みを直列化する。
+
+    filelock 未導入環境（BR-426と同じフォールバック方針）ではロック無しで進む。
+    """
+    if not _FILELOCK_AVAILABLE:
+        yield
+        return
+    _JUDGMENT_ASSET_PROMOTION_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(_JUDGMENT_ASSET_PROMOTION_LOCK_PATH), timeout=10)
+    try:
+        lock.acquire()
+    except _FileLockTimeout:
+        raise HTTPException(status_code=409, detail="judgment asset store is busy, try again")
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[str, Any]:
