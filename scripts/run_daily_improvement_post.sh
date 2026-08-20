@@ -252,6 +252,12 @@ echo "[観測] 紫苑レビュー本文の判断資産citationを実記録と突
 log_step "build_judgment_asset_response_manifest" $?
 
 echo ""
+echo "[観測] 判断資産候補の昇格基準を明文化して分類する（read-only。自動昇格しない）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_promotion_readiness_report.py" \
+  --date "${PIPELINE_DATE}"
+log_step "build_judgment_asset_promotion_readiness_report" $?
+
+echo ""
 echo "[育成] 経験フライホイール候補を生成（context/decision/feedbackを品質ゲート。自動昇格なし）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_experience_flywheel_report.py"
 log_step "build_experience_flywheel_report" $?
