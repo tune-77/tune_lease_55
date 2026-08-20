@@ -61,49 +61,79 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def load_reviews(db_path: Path, *, limit: int = 500) -> list[dict[str, Any]]:
-    """shion_screening_reviews を新しい順に読む。テーブルが無ければ空リスト。"""
+    """shion_screening_reviews を新しい順に読む。テーブルが無ければ空リスト。
+
+    Cloud Run から scripts/sync_cloudrun_inputs_from_gcs.py で同期されたレビューは、
+    ローカルの id とは別の cloud_review_id（Cloud Run側の元id）を持つ。取り込み側の
+    テーブルにだけ存在する列なので、無ければ選択せず None 扱いにする。
+    """
     if not db_path.exists():
         return []
     conn = sqlite3.connect(str(db_path))
     try:
         conn.row_factory = sqlite3.Row
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(shion_screening_reviews)").fetchall()}
+        if not columns:
+            return []
+        select_cols = ["id", "case_id", "review_text", "user_feedback", "created_at"]
+        if "cloud_review_id" in columns:
+            select_cols.append("cloud_review_id")
         cur = conn.cursor()
         cur.execute(
-            """
-            SELECT id, case_id, review_text, user_feedback, created_at
-            FROM shion_screening_reviews
-            ORDER BY id DESC
-            LIMIT ?
-            """,
+            f"SELECT {', '.join(select_cols)} FROM shion_screening_reviews ORDER BY id DESC LIMIT ?",
             (limit,),
         )
-        return [dict(row) for row in cur.fetchall()]
+        rows = [dict(row) for row in cur.fetchall()]
+        for row in rows:
+            row.setdefault("cloud_review_id", None)
+        return rows
     except sqlite3.OperationalError:
         return []
     finally:
         conn.close()
 
 
+def _review_match_id(review: dict[str, Any]) -> str:
+    """usage_feedback / drop ログの review_id と突き合わせる際に使う識別子.
+
+    Cloud Runから同期されたレビューは、記録時点(Cloud Run側)のreview_idが
+    cloud_review_idに残っている。ローカル作成分はローカルidがそのまま記録時のIDなので、
+    cloud_review_idが無ければローカルidへフォールバックする。
+    """
+    cloud_review_id = review.get("cloud_review_id")
+    if cloud_review_id:
+        return str(cloud_review_id)
+    return str(review.get("id") or "")
+
+
 def _review_manifest_entry(
     review: dict[str, Any],
     *,
     active_rules: dict[str, dict[str, Any]],
-    usage_rule_ids_by_case: dict[str, set[str]],
-    drop_reasons_by_review_id: dict[int, list[str]],
+    usage_rule_ids_by_review: dict[tuple[str, str], set[str]],
+    usage_rule_ids_by_case_legacy: dict[str, set[str]],
+    cases_with_review_scoped_usage: set[str],
+    drop_reasons_by_review_id: dict[str, list[str]],
 ) -> dict[str, Any]:
     review_id = review.get("id")
     case_id = str(review.get("case_id") or "")
     review_text = str(review.get("review_text") or "")
+    match_id = _review_match_id(review)
     classification = classify_citations(review_text, active_rules.keys())
     resolved = classification["resolved"]
     cited_assets = [
         {"rule_id": rule_id, "concept": str(active_rules.get(rule_id, {}).get("concept") or "")}
         for rule_id in resolved
     ]
-    recorded_case_rule_ids = usage_rule_ids_by_case.get(case_id, set())
+    # 同一case_idに複数レビューがあり得るため、review_id付きの使用実績があるcaseは
+    # そのレビュー自身の実績だけで判定する（他レビュー分を誤って「記録済み」にしない）。
+    if case_id in cases_with_review_scoped_usage:
+        recorded_case_rule_ids = usage_rule_ids_by_review.get((case_id, match_id), set())
+    else:
+        recorded_case_rule_ids = usage_rule_ids_by_case_legacy.get(case_id, set())
     recorded_rule_ids = [rule_id for rule_id in resolved if rule_id in recorded_case_rule_ids]
     unrecorded_rule_ids = [rule_id for rule_id in resolved if rule_id not in recorded_case_rule_ids]
-    drop_reasons = drop_reasons_by_review_id.get(review_id, [])
+    drop_reasons = drop_reasons_by_review_id.get(match_id, [])
 
     user_feedback = str(review.get("user_feedback") or "")
     if not user_feedback:
@@ -140,25 +170,36 @@ def build_manifest(
     usage_feedback_rows: list[dict[str, Any]],
     drop_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    usage_rule_ids_by_case: dict[str, set[str]] = defaultdict(set)
+    usage_rule_ids_by_review: dict[tuple[str, str], set[str]] = defaultdict(set)
+    usage_rule_ids_by_case_legacy: dict[str, set[str]] = defaultdict(set)
+    cases_with_review_scoped_usage: set[str] = set()
     for row in usage_feedback_rows:
         case_id = str(row.get("case_id") or "")
         rule_id = str(row.get("rule_id") or "")
-        if case_id and rule_id:
-            usage_rule_ids_by_case[case_id].add(rule_id)
+        if not case_id or not rule_id:
+            continue
+        review_id_raw = row.get("review_id")
+        if review_id_raw is not None:
+            usage_rule_ids_by_review[(case_id, str(review_id_raw))].add(rule_id)
+            cases_with_review_scoped_usage.add(case_id)
+        else:
+            # review_id を持たない旧形式のエントリ。case単位でしか判定できない。
+            usage_rule_ids_by_case_legacy[case_id].add(rule_id)
 
-    drop_reasons_by_review_id: dict[int, list[str]] = defaultdict(list)
+    drop_reasons_by_review_id: dict[str, list[str]] = defaultdict(list)
     for row in drop_rows:
         review_id = row.get("review_id")
         reason = str(row.get("reason") or "")
         if review_id is not None and reason:
-            drop_reasons_by_review_id[int(review_id)].append(reason)
+            drop_reasons_by_review_id[str(review_id)].append(reason)
 
     entries = [
         _review_manifest_entry(
             review,
             active_rules=active_rules,
-            usage_rule_ids_by_case=usage_rule_ids_by_case,
+            usage_rule_ids_by_review=usage_rule_ids_by_review,
+            usage_rule_ids_by_case_legacy=usage_rule_ids_by_case_legacy,
+            cases_with_review_scoped_usage=cases_with_review_scoped_usage,
             drop_reasons_by_review_id=drop_reasons_by_review_id,
         )
         for review in reviews

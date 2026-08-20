@@ -93,6 +93,7 @@ def test_feedback_with_citation_is_recorded_without_drop(sqlite_db, redirected_l
     assert len(entries) == 1
     assert entries[0]["rule_id"] == "b259411afb954d6d"
     assert entries[0]["outcome"] == "helped"
+    assert entries[0]["review_id"] == review_id
     assert _read_jsonl(drops_log) == []
 
 

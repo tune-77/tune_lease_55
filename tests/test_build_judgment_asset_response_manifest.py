@@ -11,6 +11,72 @@ def _active_rules():
     }
 
 
+def test_second_review_of_same_case_is_not_falsely_marked_recorded():
+    # 同じcase_idに2件レビューがあり、同じルールを引用している。1件目は正常に記録され、
+    # 2件目は書き込み失敗（drop）。case_id単位でしか見なければ2件目も「記録済み」に
+    # 誤判定されてしまう。review_id単位で見て正しく区別できることを確認する。
+    reviews = [
+        {
+            "id": 10,
+            "case_id": "case-multi",
+            "review_text": "判断資産出典: 正規 JA-cr-b2594",
+            "user_feedback": "useful",
+            "created_at": "2026-08-20T00:00:00",
+        },
+        {
+            "id": 11,
+            "case_id": "case-multi",
+            "review_text": "判断資産出典: 正規 JA-cr-b2594",
+            "user_feedback": "useful",
+            "created_at": "2026-08-20T00:05:00",
+        },
+    ]
+    usage_rows = [{"rule_id": "b259411afb954d6d", "case_id": "case-multi", "review_id": 10}]
+    drop_rows = [{"review_id": 11, "reason": "usage_log_write_error"}]
+
+    payload = manifest.build_manifest(
+        target_date="2026-08-20",
+        reviews=reviews,
+        active_rules=_active_rules(),
+        usage_feedback_rows=usage_rows,
+        drop_rows=drop_rows,
+    )
+
+    entries_by_id = {entry["review_id"]: entry for entry in payload["entries"]}
+    assert entries_by_id[10]["status"] == "recorded"
+    assert entries_by_id[11]["status"] == "citation_not_recorded"
+    assert entries_by_id[11]["drop_reasons"] == ["usage_log_write_error"]
+
+
+def test_cloud_run_review_id_is_translated_via_cloud_review_id():
+    # Cloud Run上ではreview_id=77で記録されたdropが、ローカル同期後は
+    # ローカルid(=1)とは別にcloud_review_id="77"として残る。dropログの
+    # review_idはCloud Run側の値(77)のままなので、ローカルidではなく
+    # cloud_review_id経由で突き合わせないと理由が見えなくなる。
+    reviews = [
+        {
+            "id": 1,
+            "cloud_review_id": "77",
+            "case_id": "case-cloud",
+            "review_text": "判断資産出典: 正規 JA-cr-b2594",
+            "user_feedback": "useful",
+            "created_at": "2026-08-20T00:00:00",
+        }
+    ]
+    drop_rows = [{"review_id": 77, "reason": "no_matching_refs"}]
+
+    payload = manifest.build_manifest(
+        target_date="2026-08-20",
+        reviews=reviews,
+        active_rules=_active_rules(),
+        usage_feedback_rows=[],
+        drop_rows=drop_rows,
+    )
+
+    entry = payload["entries"][0]
+    assert entry["drop_reasons"] == ["no_matching_refs"]
+
+
 def test_recorded_review_is_status_recorded():
     reviews = [
         {

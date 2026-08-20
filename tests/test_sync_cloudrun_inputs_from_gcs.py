@@ -254,6 +254,47 @@ def test_materialize_events_restores_shion_review_and_feedback_to_local_db(tmp_p
         assert asset["signal"] == "useful"
 
 
+def test_materialize_events_syncs_all_seven_shion_review_feedback_values(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    local_db = tmp_path / "lease_data.db"
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", local_db)
+
+    # 旧実装は useful/needs_fix/wrong の3値しか同期せず、endpointが受け付ける残り4値
+    # (specific/thin/discomfort_hit/over_inferred) は無言でスキップされていた。
+    review_event = {
+        "event_id": "review-evt-2",
+        "ts": "2026-08-01T00:00:00Z",
+        "event_type": "shion_screening_review",
+        "surface": "screening",
+        "payload": {
+            "id": 99,
+            "cloud_review_id": 99,
+            "case_id": "C-002",
+            "review_text": "判断資産出典: 正規 JA-cr-b2594",
+            "form_snapshot": {},
+            "result_snapshot": {},
+        },
+    }
+    feedback_event = {
+        "event_id": "feedback-evt-2",
+        "ts": "2026-08-01T00:01:00Z",
+        "event_type": "shion_screening_review_feedback",
+        "surface": "screening",
+        "payload": {"id": 99, "cloud_review_id": 99, "user_feedback": "specific"},
+    }
+
+    syncer.materialize_events([review_event, feedback_event])
+
+    with sqlite3.connect(local_db) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT user_feedback FROM shion_screening_reviews WHERE case_id = ?", ("C-002",)).fetchone()
+        assert row["user_feedback"] == "specific"
+
+
 def test_materialize_events_applies_judgment_asset_promotion_to_local_canonical_rules(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
     monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")

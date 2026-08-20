@@ -685,6 +685,7 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
                     "rule_id": rule_id.strip(),
                     "outcome": outcome,
                     "case_id": case_id,
+                    "review_id": review_id,
                     "note": "",
                     "source": "shion_screening_review",
                     "used_at": now,

@@ -523,7 +523,10 @@ def _apply_shion_review_feedback_from_event(conn: sqlite3.Connection, event: dic
         return 0
     payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
     feedback = str(payload.get("user_feedback") or "").strip()
-    if feedback not in {"useful", "needs_fix", "wrong"}:
+    if feedback not in {
+        "useful", "needs_fix", "wrong",
+        "specific", "thin", "discomfort_hit", "over_inferred",
+    }:
         _record_sync_event(conn, event_id=event_id, event_type="shion_screening_review_feedback", local_table="skipped")
         return 0
     cloud_review_id = str(payload.get("cloud_review_id") or payload.get("id") or "")
