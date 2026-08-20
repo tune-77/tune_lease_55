@@ -117,6 +117,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "rag_feedback_new": 1,
         "rag_hit_new": 1,
         "screening_loop_feedback_new": 0,
+        "judgment_asset_feedback_drop_new": 0,
         "improvement_new": 0,
         "chat_new": 0,
         "hypothesis_collision_new": 0,
@@ -126,6 +127,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "ocr_results_new": 0,
         "shion_reviews_new": 0,
         "shion_review_feedback_updated": 0,
+        "judgment_asset_promotions_applied": 0,
         "judgment_asset_candidates_new": 0,
         "prompt_feedback_new": 0,
     }
@@ -252,6 +254,98 @@ def test_materialize_events_restores_shion_review_and_feedback_to_local_db(tmp_p
         assert asset["signal"] == "useful"
 
 
+def test_materialize_events_syncs_all_seven_shion_review_feedback_values(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    local_db = tmp_path / "lease_data.db"
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", local_db)
+
+    # 旧実装は useful/needs_fix/wrong の3値しか同期せず、endpointが受け付ける残り4値
+    # (specific/thin/discomfort_hit/over_inferred) は無言でスキップされていた。
+    review_event = {
+        "event_id": "review-evt-2",
+        "ts": "2026-08-01T00:00:00Z",
+        "event_type": "shion_screening_review",
+        "surface": "screening",
+        "payload": {
+            "id": 99,
+            "cloud_review_id": 99,
+            "case_id": "C-002",
+            "review_text": "判断資産出典: 正規 JA-cr-b2594",
+            "form_snapshot": {},
+            "result_snapshot": {},
+        },
+    }
+    feedback_event = {
+        "event_id": "feedback-evt-2",
+        "ts": "2026-08-01T00:01:00Z",
+        "event_type": "shion_screening_review_feedback",
+        "surface": "screening",
+        "payload": {"id": 99, "cloud_review_id": 99, "user_feedback": "specific"},
+    }
+
+    syncer.materialize_events([review_event, feedback_event])
+
+    with sqlite3.connect(local_db) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT user_feedback FROM shion_screening_reviews WHERE case_id = ?", ("C-002",)).fetchone()
+        assert row["user_feedback"] == "specific"
+
+
+def test_materialize_events_applies_judgment_asset_promotion_to_local_canonical_rules(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    local_db = tmp_path / "lease_data.db"
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", local_db)
+    canonical_path = tmp_path / "canonical_judgment_rules.json"
+    state_path = tmp_path / "candidate_state.json"
+    monkeypatch.setattr(syncer, "CANONICAL_JUDGMENT_RULES_JSON", canonical_path)
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_CANDIDATE_STATE_JSON", state_path)
+
+    rule = {
+        "id": "cloudrun-rule-1",
+        "status": "active",
+        "canonical_statement": "更新設備の増額申込は稼働率と処分予定の整合を確認する。",
+        "evidence_count": 1,
+        "user_evidence_count": 1,
+        "confidence": 0.8,
+        "private": False,
+    }
+    event = {
+        "event_id": "promote-evt-1",
+        "ts": "2026-08-20T00:00:00Z",
+        "event_type": "judgment_asset_candidate_promoted",
+        "surface": "improvement_log",
+        "payload": {
+            "status": "promoted",
+            "candidate_id": "cand-1",
+            "rule": rule,
+            "active_rules": 1,
+        },
+    }
+
+    result = syncer.materialize_events([event])
+
+    assert result["judgment_asset_promotions_applied"] == 1
+    canonical_store = json.loads(canonical_path.read_text(encoding="utf-8"))
+    assert [r["id"] for r in canonical_store["rules"]] == ["cloudrun-rule-1"]
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["cand-1"]["promotion_status"] == "promoted"
+    assert state["cand-1"]["promoted_rule_id"] == "cloudrun-rule-1"
+
+    # Re-syncing the same event (e.g. next day's window overlap) must not duplicate the rule.
+    result_again = syncer.materialize_events([event])
+    assert result_again["judgment_asset_promotions_applied"] == 0
+    canonical_store_again = json.loads(canonical_path.read_text(encoding="utf-8"))
+    assert len(canonical_store_again["rules"]) == 1
+
+
 def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
     monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
@@ -285,6 +379,61 @@ def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatc
         asset = conn.execute("SELECT * FROM cloudrun_judgment_asset_candidates").fetchone()
         assert asset["asset_type"] == "screening_loop_feedback"
         assert asset["signal"] == "合っている"
+
+
+def test_materialize_events_appends_judgment_asset_feedback_drop(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    drops_log = tmp_path / "judgment_asset_feedback_drops.jsonl"
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_FEEDBACK_DROPS_LOG", drops_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+
+    result = syncer.materialize_events([
+        {
+            "event_id": "drop-1",
+            "ts": "2026-08-20T00:03:00Z",
+            "event_type": "judgment_asset_feedback_drop",
+            "surface": "screening",
+            "payload": {
+                "schema_version": "1",
+                "review_id": 42,
+                "user_feedback": "useful",
+                "reason": "no_matching_refs",
+                "case_id": "case-42",
+                "dropped_at": "2026-08-20T00:03:00",
+            },
+        }
+    ])
+
+    rows = [json.loads(line) for line in drops_log.read_text(encoding="utf-8").splitlines()]
+    assert result["judgment_asset_feedback_drop_new"] == 1
+    assert result["judgment_asset_candidates_new"] == 0
+    assert rows[0]["event_id"] == "drop-1"
+    assert rows[0]["reason"] == "no_matching_refs"
+    assert rows[0]["review_id"] == 42
+    assert rows[0]["source"] == "cloudrun_input_writeback"
+
+    # Re-syncing the same event must not duplicate the row.
+    result_again = syncer.materialize_events([{
+        "event_id": "drop-1",
+        "ts": "2026-08-20T00:03:00Z",
+        "event_type": "judgment_asset_feedback_drop",
+        "surface": "screening",
+        "payload": {
+            "schema_version": "1",
+            "review_id": 42,
+            "user_feedback": "useful",
+            "reason": "no_matching_refs",
+            "case_id": "case-42",
+            "dropped_at": "2026-08-20T00:03:00",
+        },
+    }])
+    assert result_again["judgment_asset_feedback_drop_new"] == 0
+    rows_again = [json.loads(line) for line in drops_log.read_text(encoding="utf-8").splitlines()]
+    assert len(rows_again) == 1
 
 
 def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, monkeypatch) -> None:

@@ -226,3 +226,38 @@ def test_main_writes_json_and_markdown(tmp_path):
 
     assert json.loads(output_json.read_text(encoding="utf-8"))["summary"]["grow"] == 1
     assert "Judgment Asset Field Review" in output_md.read_text(encoding="utf-8")
+
+
+def test_feedback_drops_are_summarized_and_shown_in_markdown():
+    payload = review.build_review(
+        target_date="2026-08-20",
+        canonical=_canonical_payload(),
+        feedback_rows=[],
+        feedback_drop_rows=[
+            {"reason": "no_matching_refs", "review_id": 1},
+            {"reason": "no_matching_refs", "review_id": 2},
+            {"reason": "review_not_found", "review_id": 3},
+        ],
+    )
+
+    assert payload["summary"]["feedback_drops_total"] == 3
+    assert payload["summary"]["feedback_drops"] == {
+        "no_matching_refs": 2,
+        "review_not_found": 1,
+    }
+
+    markdown = review.build_markdown(payload)
+    assert "Feedback drops (submitted but not recorded): 3" in markdown
+    assert "no_matching_refs=2" in markdown
+
+
+def test_no_feedback_drops_omits_reason_breakdown_in_markdown():
+    payload = review.build_review(
+        target_date="2026-08-20",
+        canonical=_canonical_payload(),
+        feedback_rows=[],
+    )
+
+    assert payload["summary"]["feedback_drops_total"] == 0
+    markdown = review.build_markdown(payload)
+    assert "Feedback drops (submitted but not recorded): 0" in markdown
