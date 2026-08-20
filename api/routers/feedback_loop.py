@@ -37,6 +37,7 @@ _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / 
 _NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signals.jsonl"
 _CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment_rules.json"
 _JUDGMENT_ASSET_USAGE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_usage_feedback.jsonl"
+_JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_feedback_drops.jsonl"
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
 _SCREENING_INPUT_ASSIST_EVENTS_JSONL = Path(_REPO_ROOT) / "data" / "screening_input_assist_events.jsonl"
@@ -559,11 +560,43 @@ def _update_shion_screening_review_feedback(review_id: int, user_feedback: str) 
     return {"id": review_id, "user_feedback": normalized}
 
 
+def _log_judgment_asset_feedback_drop(
+    *,
+    review_id: int,
+    user_feedback: str,
+    reason: str,
+    case_id: str = "",
+) -> None:
+    """判断資産フィードバックが記録されず握りつぶされた事実を可視化用に残す.
+
+    data/judgment_asset_feedback_drops.jsonl に追記するだけ。
+    判断資産の集計・昇格・スコアリングには一切使わない（原因調査専用）。
+    """
+    import json as _json
+    from datetime import datetime as _dt
+
+    entry = {
+        "schema_version": "1",
+        "review_id": review_id,
+        "user_feedback": str(user_feedback or ""),
+        "reason": reason,
+        "case_id": case_id,
+        "dropped_at": _dt.now().isoformat(timespec="seconds"),
+    }
+    try:
+        _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG.open("a", encoding="utf-8") as _f:
+            _f.write(_json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+    except Exception:
+        pass
+
+
 def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: str) -> None:
     """紫苑レビューへのユーザーフィードバックを判断資産使用ログに記録する（バックグラウンドタスク用）.
 
     data/judgment_asset_usage_feedback.jsonl に追記するだけ。
     プロンプト・スコアリング・DB スキーマには一切触れない。
+    記録されずに握りつぶされた場合は data/judgment_asset_feedback_drops.jsonl に理由を残す。
     """
     import json as _json
     from datetime import datetime as _dt
@@ -580,6 +613,9 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
     }
     outcome = _OUTCOME_MAP.get(str(user_feedback or "").strip())
     if not outcome:
+        _log_judgment_asset_feedback_drop(
+            review_id=review_id, user_feedback=user_feedback, reason="unknown_outcome",
+        )
         return
 
     try:
@@ -593,10 +629,16 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
             )
             row = cur.fetchone()
             if not row:
+                _log_judgment_asset_feedback_drop(
+                    review_id=review_id, user_feedback=user_feedback, reason="review_not_found",
+                )
                 return
             case_id = str(row[0] or "")
             result_snapshot_str = str(row[1] or "{}")
     except Exception:
+        _log_judgment_asset_feedback_drop(
+            review_id=review_id, user_feedback=user_feedback, reason="review_lookup_error",
+        )
         return
 
     try:
@@ -614,6 +656,9 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
     # 実ルール参照が無いフィードバックは判断資産に紐付けようがないため、
     # judgment_asset_growth の unknown_rule 減点対象になる偽rule_idは書き込まない。
     if not refs:
+        _log_judgment_asset_feedback_drop(
+            review_id=review_id, user_feedback=user_feedback, reason="no_matching_refs", case_id=case_id,
+        )
         return
 
     now = _dt.now().isoformat(timespec="seconds")
