@@ -18,7 +18,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-from rev_ledger_utils import max_rev_number  # noqa: E402
+from rev_ledger_utils import load_all_rev_sources, max_rev_number  # noqa: E402
 
 REPORT_QUALITY_LOG = PROJECT_ROOT / "data" / "report_quality_log.jsonl"
 LEDGER_FILE = PROJECT_ROOT / "api" / "rule_engine" / "ledger_rules.json"
@@ -116,7 +116,7 @@ def main() -> None:
         print("[analyze_report_quality] 既存エントリあり。スキップ。", flush=True)
         return
 
-    base_rev = max_rev_number(ledger)
+    base_rev = max_rev_number(load_all_rev_sources())
     base_rev += 1
     rev_id = f"REV-{base_rev:03d}q"
     now_iso = datetime.now(timezone.utc).isoformat()
