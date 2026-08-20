@@ -10,14 +10,12 @@ Obsidian RAG 改善モジュール
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
-from functools import lru_cache
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
@@ -104,9 +102,15 @@ def extract_metadata(path: Path, text: str) -> dict[str, Any]:
             industry = "d 建設業"
         # ... その他の業種も同様
 
-    # スコア範囲（frontmatter に min_score/max_score があれば）
+    # スコア範囲（frontmatter の score_range または min_score/max_score）
     score_range = None
-    if fm.get("min_score") is not None and fm.get("max_score") is not None:
+    raw_score_range = fm.get("score_range")
+    if isinstance(raw_score_range, (list, tuple)) and len(raw_score_range) >= 2:
+        try:
+            score_range = (int(raw_score_range[0]), int(raw_score_range[1]))
+        except (ValueError, TypeError):
+            score_range = None
+    elif fm.get("min_score") is not None and fm.get("max_score") is not None:
         try:
             score_range = (int(fm["min_score"]), int(fm["max_score"]))
         except (ValueError, TypeError):
@@ -232,7 +236,15 @@ class BM25Scorer:
     def _tokenize(text: str) -> list[str]:
         """テキストをトークン化。"""
         text = text.lower()
-        tokens = re.findall(r"[\w\d]+", text)
+        tokens = re.findall(r"[a-z0-9_\-]+|[一-龥ぁ-んァ-ヶー]+", text)
+        cjk_ngrams: list[str] = []
+        for token in tokens:
+            if re.fullmatch(r"[一-龥ぁ-んァ-ヶー]+", token):
+                for size in (2, 3, 4):
+                    cjk_ngrams.extend(
+                        token[i : i + size] for i in range(0, max(0, len(token) - size + 1))
+                    )
+        tokens.extend(cjk_ngrams)
         return tokens
 
 
