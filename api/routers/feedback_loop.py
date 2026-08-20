@@ -669,33 +669,7 @@ def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[
                         break
         except OSError:
             rows = []
-    demo_candidates = [
-        {
-            "asset_quality": "actionable",
-            "candidate_type": "condition_signal",
-            "claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edited_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "effective_claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。",
-            "edit_count": 1,
-            "evidence_path": "manual://screening/demo-renewal-asset-candidate",
-            "id": "demo-renewal-asset-candidate",
-            "promotion_status": "not_promoted",
-            "research_date": "2026-07-18",
-            "research_title": "Manual Judgment Asset",
-            "research_topic": "demo-renewal-asset",
-            "review_status": "candidate",
-            "source_section": "manual_input",
-            "use_count": 0,
-            "useful_count": 0,
-            "rejected_count": 0,
-            "verified_status": "unverified",
-            "verification_note": "demo_candidate_for_screening_review",
-        },
-    ]
-    for item in reversed(demo_candidates):
-        demo_id = str(item.get("id") or "")
-        rows = [row for row in rows if str(row.get("id") or "") != demo_id]
-        rows.insert(0, item)
+    rows = [row for row in rows if str(row.get("id") or "") != "demo-renewal-asset-candidate"]
     return rows[:limit]
 
 
@@ -850,7 +824,7 @@ def _rank_screening_judgment_asset_candidate(item: dict[str, Any], context_terms
     penalty = float(item.get("rejected_count") or 0) * 2.0
     generic_penalty = 2.5 if any(term in claim for term in ("Gemini", "自動否決", "自動承認", "一次情報か", "検討材料として使")) else 0.0
     update_context_bonus = 0.0
-    if context_terms & {"更新", "更改", "増額"} and any(term in haystack for term in ("更新設備", "更改", "既存設備", "demo-renewal-asset")):
+    if context_terms & {"更新", "更改", "増額"} and any(term in haystack for term in ("更新設備", "更改", "既存設備")):
         update_context_bonus = 6.0
     new_customer_penalty = 0.0
     if "新規" not in context_terms and any(term in haystack for term in ("新規先", "demo-new-customer-competition")):
@@ -1205,10 +1179,7 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
         candidate_id = str(item.get("id") or "")
         if not candidate_id:
             continue
-        if candidate_id == "demo-renewal-asset-candidate":
-            merged = dict(item)
-        else:
-            merged = {**item, **dict(state.get(candidate_id) or {})}
+        merged = {**item, **dict(state.get(candidate_id) or {})}
         promotion_status = str(merged.get("promotion_status") or item.get("promotion_status") or "not_promoted")
         if promotion_status in {"active", "promoted", "rejected_or_deprioritized", "rejected"}:
             continue
@@ -1255,7 +1226,6 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
     candidates.sort(
         key=lambda item: (
             0 if item.get("already_active_statement") else 1,
-            1 if str(item.get("research_topic") or "") == "demo-renewal-asset" else 0,
             1 if int(item.get("edit_count") or 0) > 0 else 0,
             int(item.get("score") or 0),
             int(item.get("useful_count") or 0),
