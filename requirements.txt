@@ -35,3 +35,6 @@ filelock>=3.0.0
 psycopg2-binary>=2.9.0
 # REV-164: GCS 書き込みロック機構
 google-cloud-storage>=2.0.0
+bcrypt>=4.0.0  # auth_logic.py のパスワードハッシュ方式（旧SHA-256から移行）
+cachetools>=5.0.0  # mobile_app/rag_cache_layer.py の LRURAGCache 実装に使用
+chromadb>=0.5.0  # mobile_app/semantic_search_engine.py のインメモリ類似検索に使用

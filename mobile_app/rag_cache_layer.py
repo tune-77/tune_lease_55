@@ -13,14 +13,13 @@ import re
 import threading
 from functools import lru_cache, wraps
 from typing import Any, Callable
-from collections import OrderedDict
-from datetime import datetime, timedelta
+from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
 
 
 class LRURAGCache:
-    """LRU キャッシュ実装"""
+    """LRU キャッシュ実装（cachetools.TTLCache ベース）"""
 
     def __init__(self, maxsize: int = 256, ttl_seconds: int = 3600):
         """
@@ -32,7 +31,7 @@ class LRURAGCache:
         """
         self.maxsize = maxsize
         self.ttl_seconds = ttl_seconds
-        self.cache: OrderedDict[str, tuple[Any, datetime]] = OrderedDict()
+        self.cache: TTLCache = TTLCache(maxsize=maxsize, ttl=ttl_seconds)
         self.hits = 0
         self.misses = 0
         self._lock = threading.RLock()  # PHASE 2: スレッドセーフ対応
@@ -58,34 +57,18 @@ class LRURAGCache:
     def get(self, key: str) -> Any | None:
         """キャッシュから取得（PHASE 2: スレッドセーフ対応）"""
         with self._lock:
-            if key not in self.cache:
+            try:
+                value = self.cache[key]
+            except KeyError:
                 self.misses += 1
                 return None
-
-            value, timestamp = self.cache[key]
-
-            # TTL チェック
-            if datetime.now() - timestamp > timedelta(seconds=self.ttl_seconds):
-                del self.cache[key]
-                self.misses += 1
-                return None
-
-            # LRU: 最近使用したアイテムを最後に移動
-            self.cache.move_to_end(key)
             self.hits += 1
             return value
-    
+
     def set(self, key: str, value: Any):
         """キャッシュに設定（PHASE 2: スレッドセーフ対応）"""
         with self._lock:
-            if key in self.cache:
-                self.cache.move_to_end(key)
-
-            self.cache[key] = (value, datetime.now())
-
-            # 容量超過時は最古のアイテムを削除
-            if len(self.cache) > self.maxsize:
-                self.cache.popitem(last=False)
+            self.cache[key] = value
     
     def clear(self):
         """キャッシュをクリア"""
