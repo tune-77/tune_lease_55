@@ -76,6 +76,10 @@
 [ledger-consistency-auditor] → .claude/reports/ledger-consistency/latest.md
     起動タイミング: REV番号採番ロジック変更後、または定期監査時
     reads: なし（台帳直接参照）
+
+[judgment-asset-auditor] → .claude/reports/judgment-asset-audit/latest.md
+    起動タイミング: 判断資産候補生成・昇格・レビューUI・Cloud Run同期の変更後、または定期監査時
+    reads: file-searcher, code-review（任意）
 ```
 
 ## 各エージェントの読み書きルール
@@ -97,8 +101,9 @@
 | **report-stylist** | agent-team/*, scoring-audit, data-quality | `report-stylist/latest.md` |
 | **migration-validator** | file-searcher, code-review | `migration/latest.md` |
 | **ledger-consistency-auditor** | なし | `ledger-consistency/latest.md` |
+| **judgment-asset-auditor** | file-searcher, code-review（任意） | `judgment-asset-audit/latest.md` |
 
-この表は `.claude/agents/` に定義された15エージェントを対象とする。エージェントを追加・削除したら、この表と上の依存関係図を同時に更新すること。
+この表は `.claude/agents/` に定義された16エージェントを対象とする。エージェントを追加・削除したら、この表と上の依存関係図を同時に更新すること。
 
 ### レポートディレクトリについての注意
 
@@ -181,6 +186,7 @@ LLM 無しでは生成できない。2 は「不要な再監査を求めない�
 | `/optimize-coefficients` | 係数自動最適化 | — | — |
 | `/plan-feature` | 実装前の作業計画整理（Plan-First Checkpoint） | — | — |
 | `/prepare-release` | PR前の変更履歴・確認事項の整理 | — | — |
+| `/pre-merge-agent-check` | PRマージ前AGENTチェックリスト | judgment-asset-auditor / ledger-consistency-auditor ほか該当AGENT | 数分 |
 | `/quick-score` | 業種・売上・リース額からクイックスコアを計算 | — | 10秒 |
 | `/run-tests` | ユニットテスト実行 | `test-runner` | 30〜60秒 |
 | `/update-docs` | 変更に合わせたドキュメント更新 | — | — |
