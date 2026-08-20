@@ -224,12 +224,14 @@ def promote_rules(preview_rules: list[dict[str, Any]], existing_store: dict[str,
             str(item.get("material_type") or ""),
         ),
     )
+    active_rule_count = sum(1 for rule in rules if str(rule.get("status") or "") == "active")
     return {
         "schema_version": 1,
         "generated_at": now,
         "source": "canonical_judgment_rules_preview",
         "summary": {
-            "active_rules": len(rules),
+            "active_rules": active_rule_count,
+            "total_rules": len(rules),
             "promoted": promoted_count,
             "updated": updated_count,
             "skipped": skipped_count,
