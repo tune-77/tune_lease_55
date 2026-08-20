@@ -1339,12 +1339,14 @@ def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[st
             str(item.get("concept") or ""),
         ),
     )
+    active_rule_count = sum(1 for rule in rules if str(rule.get("status") or "") == "active")
     store = {
         "schema_version": int(payload.get("schema_version") or 1) if isinstance(payload, dict) else 1,
         "generated_at": now,
         "source": "canonical_judgment_rules",
         "summary": {
-            "active_rules": len(rules),
+            "active_rules": active_rule_count,
+            "total_rules": len(rules),
             "promoted": 1 if promoted_status == "promoted" else 0,
             "updated": 1 if promoted_status == "updated" else 0,
             "skipped": 0,
@@ -1360,7 +1362,7 @@ def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[st
     current["verified_status"] = "canonical"
     state[candidate_id] = current
     _write_judgment_asset_candidate_state(state)
-    return {"status": promoted_status, "candidate_id": candidate_id, "rule": promoted_rule, "active_rules": len(rules)}
+    return {"status": promoted_status, "candidate_id": candidate_id, "rule": promoted_rule, "active_rules": active_rule_count}
 
 
 def _review_judgment_asset_promotion_candidate(candidate_id: str, req: JudgmentAssetPromotionReviewRequest) -> dict[str, Any]:

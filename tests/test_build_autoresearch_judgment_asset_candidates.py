@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -276,6 +277,92 @@ def test_dedupe_prefers_edited_candidate_as_representative():
     assert len(deduped) == 1
     assert deduped[0]["id"] == "b"
     assert deduped[0]["edit_count"] == 1
+
+
+def test_preserve_reviewed_candidates_keeps_human_touched_rows_outside_recent_window(tmp_path):
+    output_jsonl = tmp_path / "candidates.jsonl"
+    state_path = tmp_path / "state.json"
+    old_row = {
+        "id": "old-useful",
+        "candidate_type": "condition_signal",
+        "research_topic": "bank-support",
+        "research_title": "Old Candidate",
+        "research_date": "2026-07-01",
+        "claim": "銀行支援は対象リースへの直接性と入金時期を分けて確認する。",
+        "source_section": "承認条件を変える兆候",
+        "evidence_path": "old-note.md",
+        "review_status": "candidate",
+        "promotion_status": "not_promoted",
+        "use_count": 0,
+        "useful_count": 0,
+        "rejected_count": 0,
+        "neutral_count": 0,
+        "verified_status": "unverified",
+    }
+    current_row = {
+        **old_row,
+        "id": "current",
+        "research_date": "2026-07-13",
+        "claim": "直近3か月の資金繰りを確認する。",
+    }
+    output_jsonl.write_text(json.dumps(old_row, ensure_ascii=False) + "\n", encoding="utf-8")
+    state_path.write_text(
+        json.dumps(
+            {
+                "old-useful": {
+                    "use_count": 2,
+                    "useful_count": 1,
+                    "verified_status": "supported",
+                    "verification_note": "案件で効いた",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    preserved = builder.preserve_reviewed_candidates(
+        [current_row],
+        existing_jsonl=output_jsonl,
+        state_path=state_path,
+    )
+
+    rows = {item["id"]: item for item in preserved}
+    assert set(rows) == {"current", "old-useful"}
+    assert rows["old-useful"]["useful_count"] == 1
+    assert rows["old-useful"]["verified_status"] == "supported"
+
+
+def test_preserve_reviewed_candidates_recovers_edited_state_without_jsonl_row(tmp_path):
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "edited-only": {
+                    "use_count": 2,
+                    "useful_count": 2,
+                    "edited_claim": "更新設備は既存機の稼働率と受注根拠が整合する時だけ前向きに見る。",
+                    "edit_count": 1,
+                    "verified_status": "supported",
+                    "last_feedback_at": "2026-07-18T12:00:00+00:00",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    preserved = builder.preserve_reviewed_candidates(
+        [],
+        existing_jsonl=tmp_path / "missing.jsonl",
+        state_path=state_path,
+    )
+
+    assert len(preserved) == 1
+    assert preserved[0]["id"] == "edited-only"
+    assert preserved[0]["source_section"] == "preserved_state"
+    assert preserved[0]["promotion_status"] == "ready_for_promotion"
+    assert "更新設備" in preserved[0]["claim"]
 
 
 def test_write_report_describes_promotion_policy(tmp_path, monkeypatch):
