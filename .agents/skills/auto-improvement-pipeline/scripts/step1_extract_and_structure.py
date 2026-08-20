@@ -134,27 +134,15 @@ def _find_repo_root() -> Path | None:
     return None
 
 
-def _load_improvement_ledger_entries(ledger_path: Path) -> list[dict[str, Any]]:
-    """scripts/improvement_ledger.jsonl（追記式JSONL）を list[dict] として読む。"""
-    entries: list[dict[str, Any]] = []
-    for line in ledger_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entries.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return entries
-
-
 def _max_ledger_rev_number() -> int:
-    """scripts/improvement_ledger.jsonl に記録済みの最大REV番号を返す（無ければ0）。
+    """全台帳に記録済みの最大REV番号を返す（無ければ0）。
 
     抽出時のIDをここから採番することで、実行のたびに 1 から振り直して
     既存REVと衝突する事故（REV番号の使い回し）を防ぐ。
-    max_rev_number() 自体は analyze_error_logs.py 等5スクリプトと共有の
-    scripts/rev_ledger_utils.py に一本化済み（コピペ実装による事故の再発防止）。
+    scripts/improvement_ledger.jsonl だけを見ていると、api/rule_engine/
+    ledger_rules.json 側（analyze_error_logs.py 等5スクリプト）が発行した
+    番号を見落として衝突するため、load_all_rev_sources() で両方を横断する。
+    共有ロジックは scripts/rev_ledger_utils.py に一本化済み。
     """
     repo_root = _find_repo_root()
     if repo_root is None:
@@ -162,12 +150,9 @@ def _max_ledger_rev_number() -> int:
     scripts_dir = repo_root / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
-    from rev_ledger_utils import max_rev_number
+    from rev_ledger_utils import load_all_rev_sources, max_rev_number
 
-    ledger_path = scripts_dir / "improvement_ledger.jsonl"
-    if not ledger_path.exists():
-        return 0
-    entries = _load_improvement_ledger_entries(ledger_path)
+    entries = load_all_rev_sources(repo_root)
     return max_rev_number(entries, fields=("rev_id", "key"))
 
 

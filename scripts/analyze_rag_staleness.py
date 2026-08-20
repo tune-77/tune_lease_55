@@ -26,7 +26,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-from rev_ledger_utils import max_rev_number  # noqa: E402
+from rev_ledger_utils import load_all_rev_sources, max_rev_number  # noqa: E402
 
 FEEDBACK_LOG = PROJECT_ROOT / "data" / "rag_feedback_log.jsonl"
 HIT_LOG = PROJECT_ROOT / "data" / "rag_hit_log.jsonl"
@@ -260,7 +260,7 @@ def main() -> None:
         return
 
     ledger = load_ledger()
-    base_rev = max_rev_number(ledger)
+    base_rev = max_rev_number(load_all_rev_sources())
     now_iso = now.isoformat()
     added = 0
 
