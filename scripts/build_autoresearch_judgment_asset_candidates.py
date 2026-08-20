@@ -66,12 +66,24 @@ DEFAULT_CANDIDATE_STATE = {
     "edited_claim": "",
     "edit_count": 0,
     "last_edited_at": "",
+    "promotion_status": "",
+    "promotion_requested_at": "",
+    "promotion_reviewed_at": "",
+    "promotion_review_comment": "",
+    "promoted_at": "",
+    "promoted_rule_id": "",
 }
 
 PRESERVED_PROMOTION_STATUSES = {
     "ready_for_promotion",
+}
+
+TERMINAL_PROMOTION_STATUSES = {
     "promoted",
     "active",
+    "held",
+    "rejected",
+    "rejected_or_deprioritized",
 }
 
 CANDIDATE_SECTIONS = {
@@ -211,7 +223,7 @@ def _candidate_state(raw: dict[str, Any] | None = None) -> dict[str, Any]:
                     state[key] = 0
             else:
                 state[key] = str(raw[key] or "")
-    if state["verified_status"] not in {"unverified", "supported", "contradicted", "unclear"}:
+    if state["verified_status"] not in {"unverified", "supported", "contradicted", "unclear", "canonical"}:
         state["verified_status"] = "unverified"
     return state
 
@@ -256,6 +268,13 @@ def _has_human_signal(item: dict[str, Any]) -> bool:
     return False
 
 
+def _should_preserve_reviewed_candidate(item: dict[str, Any]) -> bool:
+    promotion_status = str(item.get("promotion_status") or "")
+    if promotion_status in TERMINAL_PROMOTION_STATUSES:
+        return False
+    return _has_human_signal(item)
+
+
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -283,7 +302,7 @@ def _state_only_preserved_candidates(
     for candidate_id, state in states.items():
         if candidate_id in known_ids:
             continue
-        if not _has_human_signal(state):
+        if not _should_preserve_reviewed_candidate(state):
             continue
         edited_claim = str(state.get("edited_claim") or "").strip()
         if len(edited_claim) < 8:
@@ -301,8 +320,8 @@ def _state_only_preserved_candidates(
                 "review_status": "candidate",
                 "asset_quality": "actionable",
                 "quality_reasons": [],
-                "promotion_status": _promotion_status(state, "actionable"),
                 **state,
+                "promotion_status": _promotion_status(state, "actionable"),
                 "requires_human_use_feedback": True,
                 "requires_result_verification": True,
                 "use_policy": "過去に人間が評価・編集したため、直近Auto Research範囲外でも昇格レビューに残す。",
@@ -335,14 +354,15 @@ def preserve_reviewed_candidates(
         if not candidate_id or candidate_id in by_id:
             continue
         merged = {**item, **states.get(candidate_id, {})}
-        if _has_human_signal(merged):
+        if _should_preserve_reviewed_candidate(merged):
             by_id[candidate_id] = merged
 
     for item in _state_only_preserved_candidates(states, set(by_id)):
         by_id[str(item["id"])] = item
 
+    deduped = dedupe_similar_candidates(list(by_id.values()))
     return sorted(
-        by_id.values(),
+        deduped,
         key=lambda item: (
             1 if _has_human_signal(item) else 0,
             str(item.get("research_date") or ""),
@@ -386,6 +406,9 @@ def _judgment_asset_quality(claim: str, candidate_type: str) -> tuple[str, list[
 
 
 def _promotion_status(state: dict[str, Any], asset_quality: str = "actionable") -> str:
+    existing_status = str(state.get("promotion_status") or "")
+    if existing_status in TERMINAL_PROMOTION_STATUSES or existing_status in PRESERVED_PROMOTION_STATUSES:
+        return existing_status
     if asset_quality != "actionable":
         return "not_promoted_textbook_general"
     if state["verified_status"] == "supported" and (int(state["useful_count"]) > 0 or int(state.get("edit_count") or 0) > 0):
@@ -515,8 +538,8 @@ def _note_candidates(path: Path, *, vault: Path, states: dict[str, dict[str, Any
                     "review_status": "candidate",
                     "asset_quality": asset_quality,
                     "quality_reasons": quality_reasons,
-                    "promotion_status": _promotion_status(state, asset_quality),
                     **state,
+                    "promotion_status": _promotion_status(state, asset_quality),
                     "requires_human_use_feedback": True,
                     "requires_result_verification": True,
                     "use_policy": (

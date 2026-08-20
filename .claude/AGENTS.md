@@ -72,6 +72,10 @@
 [migration-validator]   → .claude/reports/migration/latest.md
     起動タイミング: SQLiteスキーマ変更（CREATE/ALTER/DROP）を含むコード変更後
     reads: file-searcher, code-review
+
+[ledger-consistency-auditor] → .claude/reports/ledger-consistency/latest.md
+    起動タイミング: REV番号採番ロジック変更後、または定期監査時
+    reads: なし（台帳直接参照）
 ```
 
 ## 各エージェントの読み書きルール
@@ -92,8 +96,9 @@
 | **api-health-checker** | なし | `api-health/latest.md` |
 | **report-stylist** | agent-team/*, scoring-audit, data-quality | `report-stylist/latest.md` |
 | **migration-validator** | file-searcher, code-review | `migration/latest.md` |
+| **ledger-consistency-auditor** | なし | `ledger-consistency/latest.md` |
 
-この表は `.claude/agents/` に定義された14エージェントを対象とする。エージェントを追加・削除したら、この表と上の依存関係図を同時に更新すること。
+この表は `.claude/agents/` に定義された15エージェントを対象とする。エージェントを追加・削除したら、この表と上の依存関係図を同時に更新すること。
 
 ### レポートディレクトリについての注意
 

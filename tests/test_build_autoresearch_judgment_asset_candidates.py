@@ -279,6 +279,36 @@ def test_dedupe_prefers_edited_candidate_as_representative():
     assert deduped[0]["edit_count"] == 1
 
 
+def test_load_state_preserves_review_terminal_fields(tmp_path):
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "reviewed": {
+                    "use_count": 3,
+                    "verified_status": "canonical",
+                    "promotion_status": "rejected",
+                    "promotion_reviewed_at": "2026-07-18T12:00:00+00:00",
+                    "promotion_review_comment": "案件で使わない判断として却下",
+                    "promoted_at": "2026-07-18T12:05:00+00:00",
+                    "promoted_rule_id": "RULE-1",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    state = builder.load_state(state_path)["reviewed"]
+
+    assert state["verified_status"] == "canonical"
+    assert state["promotion_status"] == "rejected"
+    assert state["promotion_reviewed_at"] == "2026-07-18T12:00:00+00:00"
+    assert state["promotion_review_comment"] == "案件で使わない判断として却下"
+    assert state["promoted_at"] == "2026-07-18T12:05:00+00:00"
+    assert state["promoted_rule_id"] == "RULE-1"
+
+
 def test_preserve_reviewed_candidates_keeps_human_touched_rows_outside_recent_window(tmp_path):
     output_jsonl = tmp_path / "candidates.jsonl"
     state_path = tmp_path / "state.json"
@@ -331,6 +361,115 @@ def test_preserve_reviewed_candidates_keeps_human_touched_rows_outside_recent_wi
     assert set(rows) == {"current", "old-useful"}
     assert rows["old-useful"]["useful_count"] == 1
     assert rows["old-useful"]["verified_status"] == "supported"
+
+
+def test_preserve_reviewed_candidates_drops_terminal_reviewed_rows(tmp_path):
+    output_jsonl = tmp_path / "candidates.jsonl"
+    state_path = tmp_path / "state.json"
+    old_row = {
+        "id": "old-rejected",
+        "candidate_type": "application_rule",
+        "research_topic": "old-topic",
+        "research_title": "Old Candidate",
+        "research_date": "2026-07-01",
+        "claim": "古い判断候補は却下後に再表示しない。",
+        "source_section": "manual_input",
+        "evidence_path": "old-note.md",
+        "review_status": "candidate",
+        "promotion_status": "ready_for_promotion",
+        "use_count": 2,
+        "useful_count": 1,
+        "rejected_count": 0,
+        "neutral_count": 0,
+        "verified_status": "supported",
+    }
+    output_jsonl.write_text(json.dumps(old_row, ensure_ascii=False) + "\n", encoding="utf-8")
+    state_path.write_text(
+        json.dumps(
+            {
+                "old-rejected": {
+                    "promotion_status": "rejected",
+                    "promotion_reviewed_at": "2026-07-18T12:00:00+00:00",
+                    "promotion_review_comment": "人間が却下済み",
+                    "verified_status": "canonical",
+                },
+                "old-held": {
+                    "promotion_status": "held",
+                    "edited_claim": "人間が保留した候補も状態だけで再表示しない。",
+                    "edit_count": 1,
+                    "verified_status": "supported",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    preserved = builder.preserve_reviewed_candidates(
+        [],
+        existing_jsonl=output_jsonl,
+        state_path=state_path,
+    )
+
+    assert preserved == []
+
+
+def test_preserve_reviewed_candidates_dedupes_after_adding_preserved_rows(tmp_path):
+    output_jsonl = tmp_path / "candidates.jsonl"
+    state_path = tmp_path / "state.json"
+    old_row = {
+        "id": "old-reviewed",
+        "candidate_type": "confirmation_question",
+        "research_topic": "bank-support-old",
+        "research_title": "Old Candidate",
+        "research_date": "2026-07-01",
+        "claim": "銀行支援は対象リースへの直接性と入金時期を分けて確認する。",
+        "source_section": "担当者が確認する質問",
+        "evidence_path": "old-note.md",
+        "review_status": "candidate",
+        "promotion_status": "not_promoted",
+        "use_count": 0,
+        "useful_count": 0,
+        "rejected_count": 0,
+        "neutral_count": 0,
+        "verified_status": "unverified",
+        "edit_count": 0,
+    }
+    current_row = {
+        **old_row,
+        "id": "current-similar",
+        "research_topic": "bank-support-current",
+        "research_date": "2026-07-18",
+        "claim": "銀行支援は対象リースへの直接性と入金時期を分けて確認します。",
+        "evidence_path": "current-note.md",
+    }
+    output_jsonl.write_text(json.dumps(old_row, ensure_ascii=False) + "\n", encoding="utf-8")
+    state_path.write_text(
+        json.dumps(
+            {
+                "old-reviewed": {
+                    "use_count": 2,
+                    "useful_count": 1,
+                    "edit_count": 1,
+                    "verified_status": "supported",
+                    "edited_claim": "銀行支援は対象リースへの直接性と入金時期を分けて確認する。",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    preserved = builder.preserve_reviewed_candidates(
+        [current_row],
+        existing_jsonl=output_jsonl,
+        state_path=state_path,
+    )
+
+    assert len(preserved) == 1
+    assert preserved[0]["id"] == "old-reviewed"
+    assert preserved[0]["deduped_count"] == 1
+    assert preserved[0]["similar_candidates"][0]["id"] == "current-similar"
 
 
 def test_preserve_reviewed_candidates_recovers_edited_state_without_jsonl_row(tmp_path):
