@@ -1384,22 +1384,6 @@ def _review_judgment_asset_promotion_candidate(candidate_id: str, req: JudgmentA
     return {"status": "ok", "candidate": {"id": candidate_id, **current}}
 
 
-def _queue_judgment_asset_promotion_for_local(candidate_id: str) -> dict[str, Any]:
-    candidate_id = str(candidate_id or "").strip()
-    if not candidate_id:
-        raise HTTPException(status_code=422, detail="candidate_id is required")
-    candidates = _load_judgment_asset_promotion_candidates(limit=1000)
-    candidate = next((item for item in candidates if str(item.get("id") or "") == candidate_id), None)
-    if not candidate:
-        raise HTTPException(status_code=404, detail="promotion candidate not found")
-    return {
-        "status": "queued_for_local_promotion",
-        "candidate_id": candidate_id,
-        "candidate": candidate,
-        "reason": "Cloud Run runtime does not update the canonical judgment-asset store directly.",
-    }
-
-
 _CHAT_JUDGMENT_ASSET_TRIGGERS = (
     "判断方法",
     "判断基準",
@@ -2807,15 +2791,6 @@ def get_judgment_asset_promotion_candidates(limit: int = 30) -> dict:
 
 @router.post("/api/judgment-assets/promotion-candidates/{candidate_id}/promote")
 def post_judgment_asset_promotion_candidate(candidate_id: str, background_tasks: BackgroundTasks) -> dict:
-    if os.environ.get("K_SERVICE") and os.environ.get("ALLOW_CLOUDRUN_JUDGMENT_ASSET_PROMOTION") != "1":
-        result = _queue_judgment_asset_promotion_for_local(candidate_id)
-        background_tasks.add_task(
-            record_cloudrun_input_event,
-            event_type="judgment_asset_promotion_requested",
-            surface="improvement_log",
-            payload={**result, "schema_version": 1},
-        )
-        return {"status": "ok", "promotion": result}
     result = _promote_judgment_asset_candidate_to_canonical(candidate_id)
     background_tasks.add_task(
         record_cloudrun_input_event,
