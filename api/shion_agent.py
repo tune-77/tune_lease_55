@@ -122,6 +122,33 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
    - build_judgment_preview: レビュー前の判断材料候補を確認したいときに使う
      （まだcanonical_judgment_rulesではない下書きである点に注意）
    - search_obsidian_context: Obsidian Vaultの知識ノートで裏取りしたいときに使う
+   - review_obsidian_vault_health: Obsidianの中身を良くしたい、孤立ノート・リンク・
+     検索性・ChromaDB/BM25への影響を棚卸ししたいときに使う。読み取り専用で、
+     Vaultを書き換えない
+   - suggest_obsidian_curation_actions: 「検索で出てこない」「チャットが拾えない」
+     テーマがあるときに使い、関連リンク・検索語・候補ノートを少数だけ提案する。
+     自動反映せず、人間承認後に既存スクリプトで反映する
+   - structure_judgment_asset_candidate: 会話・案件メモ・User修正文を判断資産候補へ
+     構造化したいときに使う。候補化だけで、記憶昇格やスコア変更はしない
+   - validate_lease_source_summary: ニュース・制度・業界情報を審査コメントに使ってよいか、
+     鮮度・信頼性・偏り・リース関連性を確認したいときに使う
+   - convert_research_to_screening_insights: 調査メモやAuto Researchを、最大3つの
+     審査確認点・コメント草案・判断資産候補へ変換したいときに使う
+   - build_screening_decision_flow: 条件付き承認、否決、保留、追加確認の判断分岐を
+     フロー化したいときに使う。自動承認/自動否決ルールとして扱わない
+   - write_scqa_report: README、Slack報告、発表説明、審査コメントをSCQAで短く
+     整理したいときに使う
+   - inspect_agentic_skill_flow: 紫苑自身のagentic skill利用ログ、レビュー箱、
+     レビュー決定の流れが正常か確認したいときに使う。読み取り専用で、
+     採用・修正・保留・却下は人間がimprovement-logで行う
+   - propose_agentic_skill_next_actions: agentic skill利用ログとレビュー箱を見て、
+     次に人間が確認すべきことを最大3件だけ提案したいときに使う。
+     自動改善・プロンプト変更・記憶昇格・レビュー決定は行わない
+   - search_shion_system_context: 紫苑システム自身の設計・コード・docs・reports・skills・testsを
+     安全な範囲で横断検索したいときに使う。秘密情報、DB、raw logs は読まない
+   - propose_shion_system_improvement_focus: 紫苑システム全体の検索結果・最新レポート・
+     agentic skillレビュー箱から、次に人間が見るべき改善焦点を最大3件だけ提案したいときに使う。
+     自動改善・パイプライン接続・プロンプト変更・スコア変更・RAG反映はしない
    - score_full_case: 「この条件なら何点か」「売上が変わると判定は動くか」を試算する。
      金額はすべて千円単位で渡す。結果はDB未保存の試算値であり、確定スコアではない
    - audit_ledger_consistency: REV番号の重複や台帳間のstatus食い違いを聞かれたら、
@@ -187,6 +214,13 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
     import uuid
 
     session_id = str(uuid.uuid4())
+    case_context = {
+        "company_name": params.get("company_name", ""),
+        "industry_cat": params.get("industry_cat", ""),
+        "asset_name": params.get("asset_name", ""),
+        "score": params.get("score", 0),
+        "hantei_context": "gunshi_stream",
+    }
     await _session_service.create_session(
         app_name="tune_lease",
         user_id="demo",
@@ -209,12 +243,41 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
             func_calls = event.get_function_calls()
             if func_calls:
                 for fc in func_calls:
+                    try:
+                        from api.agentic_skill_usage import record_agentic_skill_call
+
+                        record_agentic_skill_call(
+                            tool_name=fc.name,
+                            args=getattr(fc, "args", None),
+                            session_id=session_id,
+                            case_context=case_context,
+                        )
+                    except Exception:
+                        pass
                     yield {"type": "tool_call", "tool": fc.name}
 
             # ツール結果
             func_responses = event.get_function_responses()
             if func_responses:
                 for fr in func_responses:
+                    usage_event = None
+                    try:
+                        from api.agentic_skill_usage import (
+                            public_usage_notice,
+                            record_agentic_skill_result,
+                        )
+
+                        usage_event = record_agentic_skill_result(
+                            tool_name=fr.name,
+                            result=fr,
+                            session_id=session_id,
+                            case_context=case_context,
+                        )
+                        notice = public_usage_notice(fr.name, usage_event)
+                        if notice:
+                            yield notice
+                    except Exception:
+                        pass
                     yield {"type": "tool_result", "tool": fr.name}
 
             # テキストストリーム

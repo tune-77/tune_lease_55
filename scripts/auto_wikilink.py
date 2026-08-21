@@ -61,6 +61,20 @@ DEFAULT_GRAPH_EFFECT_JSON = _REPO_ROOT / "reports" / "obsidian_graph_judgment_ef
 _GRAPH_EFFECT_LINK_BUCKETS = ("isolated_but_used", "bridge_candidates")
 _GRAPH_EFFECT_SECTION_HEADER = "## 関連（判断効果分析による自動リンク）"
 _GRAPH_EFFECT_MAX_HUBS_PER_NOTE = 2
+_GRAPH_EFFECT_HUB_EXCLUDED_PARTS = (
+    "Daily/",
+    "AI Chat/",
+    "Cloud Run Conversation Log/",
+    "Improvement Log/",
+    "Work Logs/",
+    "作業ログ/",
+    "06-日記_作業ログ/",
+    "Private Reflection/",
+    "Reflection/",
+)
+_GRAPH_EFFECT_TARGET_EXCLUDED_PARTS = _GRAPH_EFFECT_HUB_EXCLUDED_PARTS + (
+    "Generated/",
+)
 
 
 def find_vault(override: str | None = None) -> Path:
@@ -120,6 +134,8 @@ def load_graph_effect_link_targets(report_path: Path) -> dict[str, list[str]]:
         path = str(item.get("path") or "").strip()
         if path.lower().endswith(".md"):
             path = path[:-3]
+        if any(part in path for part in _GRAPH_EFFECT_HUB_EXCLUDED_PARTS):
+            continue
         if path:
             hub_stems.append(path)
     if not hub_stems:
@@ -130,6 +146,8 @@ def load_graph_effect_link_targets(report_path: Path) -> dict[str, list[str]]:
         for item in report.get(bucket) or []:
             path = str(item.get("path") or "").strip()
             if not path:
+                continue
+            if any(part in path for part in _GRAPH_EFFECT_TARGET_EXCLUDED_PARTS):
                 continue
             targets[path] = hub_stems[:_GRAPH_EFFECT_MAX_HUBS_PER_NOTE]
     return targets
@@ -377,6 +395,13 @@ def process_vault(
         paths = target_paths
     else:
         paths = list(iter_vault_md_files(vault, TARGET_FOLDERS, EXCLUDED_PARTS))
+        if graph_effect_targets:
+            seen = {p.resolve() for p in paths}
+            for rel_path in graph_effect_targets:
+                candidate = (vault / rel_path).resolve()
+                if candidate.is_file() and candidate not in seen:
+                    paths.append(candidate)
+                    seen.add(candidate)
 
     results = []
     for p in sorted(paths):

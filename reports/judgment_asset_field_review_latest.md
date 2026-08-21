@@ -1,6 +1,6 @@
 # Judgment Asset Field Review
 
-- Date: 2026-08-21
+- Date: 2026-08-22
 - Mode: local_review_only
 - Guardrail: review_only_no_promotion_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 - Active rules: 9
@@ -8,6 +8,7 @@
 - Simulation feedback: 3 / included: False
 - Unknown feedback rows: 1
 - Remapped feedback rows (rule_id drift, matched by concept): 0
+- Feedback drops (submitted but not recorded): 0
 
 ## 伸ばす
 
@@ -100,3 +101,4 @@
 - grow は昇格ではなく、次回案件で優先して試す候補。
 - review は自動修正せず、人間が文面・適用条件・使わない条件を見る。
 - sleeping は削除候補ではなく、実案件でまだ試されていない active ルール。
+- feedback_drops は評価ボタンは押されたが判断資産に記録されなかった件数（原因調査専用、集計には使わない）。

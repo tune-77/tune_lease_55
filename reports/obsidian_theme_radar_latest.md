@@ -1,35 +1,40 @@
 # Obsidian Theme Radar
 
-- Generated at: `2026-08-21T04:16:00`
+- Generated at: `2026-08-22T04:16:03`
 
 ## Recurring Themes (top 3)
-- https (score=3281)
-- com (score=2872)
-- tune_lease_55 (score=2336)
+- https (score=3309)
+- com (score=2909)
+- tune_lease_55 (score=2868)
 
 ## Buzz Check
 ### https
 - status: `ok`
 - buzzing: True
-  - smart-hojokin.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEkl-dKaDzx271HTC6TeUaZ6kkpCw4MULyyw1N5UTstP01KeN6J1PBjAWx5h-UY3K1it0DHjYUMNNP5nhIGJjDUtGmu3dHn3Cy1slJVEbZAjuP6iynfEviIum5y2TWQr0jvQg==
-  - mirasapo-plus.go.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHFr1eduZGW3F3BLV579awkqMj6eSTyJ6-DH_PArf_nd2bXSoVSholI0u5OekbH7dJQEd5Juod7TopqFJEec384tXS4P5w4mI1-Zp3TZnoYdRS_nVfDdoa4x0Ejy9M9
-  - kikaicatalog.com: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE3VN8Wg7toFSnG0v2HmFStAe1r-oflqbHhqNNwyRH7OtargveRTAwY-a8PYCXWWcRW6Vmb-pgGj8cB6gjHS95aJN6yBkWaEF9qmNJzgPzT-3MzYJDWQ1U21hpvNyvX6h4QmPYz1z1HLINhIMII0tnk4mGhj1_U1NTnaiKcuEJUEppYTadDzCfU
-  - sme-support.co.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFMMK86Wq9IvjB4eDGvOeZi6jjcKw6GrixfqTz2yU7bRSkgyijb9kydpGEVScTbbPibIVTOeOSOIA3WGpfTjBwnpVb0TSarbzmJ7t6CUzI9wPyHBglmyb9j8dGqiBNHegk-iSPrLA==
-  - planbase.co.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHPnwix1YBcLZ2Iysig5KHmjcISet8gkH32UcZpA338RSEnPTsa8doEDg9bYjPSQ63lcCgcO77WRo-txkK46WPhxR4Rqtnsi_BtD-f510w4evDxJgtcyHjZzmG-6jH3PXM6CieOrZgOlt73
+  - kikaicatalog.com: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGCOPeXP9eb-qniwYDRoXW2JWZPkwo_ufhX59qQjHWpoK1ETc7qils5-2xjJ36Ro8jSBLBxm5lMtghQj5_mEUczO-bMU8Kr2LeVk6RxJ-5nCKWj_9e-cemV77hKUR41EKdxtL9SzbCA7Ah0dZUhYh9V1i43mreBKwSD7X92cF06xFf2A23GRUo4hw==
+  - sme-support.co.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHjvei6_j5bvJfsdEA8vIryOwQhlJjJ2HxlAB5fi53441eIpDZLa8T1evKdC7qg_HGmKXFNOhHhZf4hguydsS_feMs-Mhwa3crSM9T16F8dO9j2EYieUGDQIMvOGEU14JoDWFUYzdI=
+  - leasing.or.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHIQQVDOg6pltkBH3rmW4Y2myodH6CPq74ealqZnI9La8HdPL9NBbZ8EOFkyXtUrR6tj1hyOelzdFb_73YKIicr0DuZ9PU4zL-EbiY6XERCfV1TlD5oj6Bzh-IeREUoZNgA_G55jDs=
+  - smrj.go.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGoYYY831qVZPK1ANqQpeZ1UMzUatchGgmDwcOsQhzhJAhRZN2bKzZEmGODXnMOMUfqba854MYw1DJnIewQXd7yoitSVR3_bDBheSF-zMv4QTxpyosG8fCX_wwdH3F8f0ofB66ZKE2g8lKgafukGv4=
+  - esg-lease.or.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHeY41fn9aTEl7h4M2wSaJN8ya9aMnv8OIGhihUOEXTiLXivSlyXXFJJiCFojqJYKvkCLB4l-IOgqg_l1x3p2X1HneUpB7IHlN1xTu5Ebn7a8vaEw==
 ### com
 - status: `ok`
 - buzzing: True
-  - mufg.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG368z_RD7rE8HkCui9lM74aEDnQCj-0fF_tBMLe8Ufhnh55r8vFQ-zZcHvXn5i8gN12k4o8FtwwOfNEql8OvnNGNeqluFzWgfwLYvThYjWIw9eXTjUKDPJ2TnZfw5tRQOvB1NmAZCp
-  - sr-ky.net: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHfOGSZexTH-EBAi2W6neoUnN4EzktnB-tkdJqM_dNAUxsvO2HOuSTZ2BvtJNPQOnbtRlwpYP-0WoQiVBoozKUzp9ZNUIUKWGsmII79QXoAewylFeIfZBvyWAcD_qkmgoRJsw==
-  - mikatanavi.com: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGmKKWyPeK5BMUB2EgjhYr2CwEWd_d1wwMzrbM-qldC3eBA3_7usRot91FoCOUyZAn5x1A4pPFxqoY56tT7jK62J9xg19xz5CIYdfvGYZi_EhUHkXaaKx7tkZtSrTg4_zvnlesVf_Aj4Oepx51PsmlB
-  - dawnlight.co.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFatTNs98dDoABdRY5prbdcvyCiXCzONsGmXEHMZ2t0xk9aQoz6uvpsj3AURvJq-dlNUX_VN-Ns0IUcmSSOa2_C2aam23i4AVQExrNIbM6DDqZJHM9-cr8dyZUH2mdiR69j4KLHmGZ0_cvODvQeI1bZ19DqkOfwY54BPWvPRkzkqQ==
-  - mirasapo-plus.go.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFUSoIC_B5aD_fTwEe21XwzvThcabY0hmdnr_4G2mEztEZ71Slo_-KVySzYGuG34SUJtVHwEhi1LQAQL7-s0ddEcUI4sbTTVtvmzQfRxfD5cAOADHDupZmJOiyKlGUeGw==
+  - leasing.or.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG3ieC8HeSB1sgL01npvl0lLdWHkuj_JA4sfNfyLlSqB29NyBYPRSXy81PElmL3nzMVIqwWNZAFkkKWJx7xDBGueNYbWKkcgZPmC0xTA-vQXPgX4rVNZC5D8ATFLzsaIIlL1GUgtPQ=
+  - kikaicatalog.com: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGJKxwv8AoYvr2gmdm_yZxIC2SUgMhLTKtCqsCQn0sURh4Oqaw5vLAttzI26W1FMQYEYVE65u_NF6s-zPsV_4df9OPngNmOq5FNNAkbEheYLGfZeLmiOAFJPrdxb6NexbsHni0Ra7HAyZwTTf-jDkePKl_EJ57ja2O0bJguhQuYzJuwbrKrtXwURQ==
+  - stayway.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGYGNv6QzD2bOyQpnRychr3H89KbYbEvcQ1auTDbIqkBK-EpN7L2SrihZaJnqD6nwrxlgSWh9i2LguIMGfa8ozwkk0ilGUYutPNg3E5NqEgcvSruZy7H8evv-Cvg2h9p_oO
+  - hojokin-times.com: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEjM69VSZLUPwhrItaMp3ypcGGAqoPJ03CQELI-quWLggGkyj6acWSam0VU5pP6sDBEaFNbt7s9ge2ZYq4lkn6jtMVz8uJA1yMmr0LM7m_lebJF9UQQxDaTClGYTv_KmCoAR9szy6glGG1WrNLEJIfW2BbCfw5VvSzQveQtJ4gVLXwsl-KorZ_diuBoWcKsW1Mx4V2axb9e60anzzJYKFiz7PtyP8Xz9bsvGJxRHT3Zltv3t-o25zORd1_XKsVby0RWi-fSIm4l3O38XNzaYLKdW7DYIakVo2C0mNIRToSDh6fvYKeW5IssPMn25DVj2MO0_1VfQVwn3SSLMKGdO84xCXMTY0XyNjscDa4P1jSOIHXdtsjKSDyljo5pcrkNiufXveNq
+  - esg-lease.or.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH04A8aNT87Iec6vTmJdfJ_4kXBqb08aC0wyujJ5LUszW-O5ozPRMYG7cw27m5uaF2NE9lux7KtCreJww1eVSepeEkKuF8HsAEkfpoX-B7TOnYWaQ==
 ### tune_lease_55
 - status: `ok`
-- buzzing: False
+- buzzing: True
+  - kikaicatalog.com: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFhEpe_9zBdPJ9pFBSY-9jLH8HUCOcSdvZWSNjhay7nYC60THUDmt6PDLtjCpAX6jn6OLYmm3wejfus4LEFU92qIouO0kdxPBaIyXooza5HH0tk_M9sHqOBo39YDKI2XeYg2zlV-1BoWbPoY5pV5fg9BFJDsgxNDZKOpIvaox5FBiXIp4gcQBZN5A==
+  - stayway.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGHuxulfmwLlfOerM62RbcbV9M7ifddGevLgBueyKP_ifqa5vbqjdPpeC6vSZa8FOudvA1wcJP6OXwkgmUcI3OrYAH09Lvmku14oBz_1R0N2H0gysdFTTXDRjooInh5vjP3
+  - leasing.or.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQElcWdap9KEYOWWjlX7cByxrflZGWRbyOEccrwTjTHgchZgkrhQNTGLYOOXpXfJGuCcu8sOoIaRn7bZELb2wqZ-Q4sgt09YAXHpWZUG2j7VDWQa1jcBU0bJOb699ASKBXx5mRc0SVw=
+  - esg-lease.or.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGoMrm8zxYIzBgqys1lt2oegF6779G6RKQl9lpR2zxzkqc8SahYkjpbfq0xZiFENHjBuNelV-3FBphJes_vN6N_9k2TGKGNUr8OZZrflL_xDlM_vQ==
+  - hojokin-agent.jp: https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEbUKUyKIV4yBID0raYQbxn5Dpn64m9oTu_3xv6vubw4HGtNhSKPfl5iGSVoc6-eqTyXSYeSKxMY1hhFox1K4ojeLrEBa2hphRqyjLayKV6P2LtaNyxoOaxc0Ev3EEw3V8=
 
 ## Selected Theme
 - https
 
 ## Proposed Angle
-- システムは、最新の公的補助金情報をリアルタイムでリース審査に反映させ、顧客への最適なリース条件提示とリスク評価に活用すべきです。」
+- リース審査AIが最新の公的制度・補助金情報をリアルタイムで参照し、申請企業のリース料負担軽減効果や審査への影響を自動評価する機能を実装する。

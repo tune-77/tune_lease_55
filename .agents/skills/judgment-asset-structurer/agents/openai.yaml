@@ -1,0 +1,4 @@
+interface:
+  display_name: "Judgment Asset Structurer"
+  short_description: "Structure messy notes into reusable lease judgment assets."
+  default_prompt: "Turn the provided note, chat, or case observation into a reusable lease judgment asset candidate."

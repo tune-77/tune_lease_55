@@ -216,13 +216,13 @@ def build_report(
         },
         "answer": _answer(records),
         "top_effective_hubs": [r for r in records if r["bucket"] == "effective_hub"][:10],
-        "bridge_candidates": [r for r in records if r["bucket"] == "bridge_candidate"][:10],
+        "bridge_candidates": [r for r in records if r["bucket"] == "bridge_candidate"][:50],
         "complex_but_unproven": sorted(
             [r for r in records if r["bucket"] == "complex_but_unproven"],
             key=lambda item: int(item["degree"]),
             reverse=True,
         )[:15],
-        "isolated_but_used": [r for r in records if r["bucket"] == "isolated_but_used"][:10],
+        "isolated_but_used": [r for r in records if r["bucket"] == "isolated_but_used"][:100],
         "noisy_nodes": [r for r in records if r["bucket"] == "noisy"][:10],
     }
 

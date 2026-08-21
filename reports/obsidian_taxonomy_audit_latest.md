@@ -1,11 +1,11 @@
 # Obsidian Taxonomy Audit
 
-- Generated at: `2026-08-21T04:14:49`
+- Generated at: `2026-08-22T04:15:05`
 - Distinct tags: 206
 - Distinct folders: 84
 
 ## Tag Duplicate Clusters (normalized match)
-- cloud-run(1), cloud_run(60), cloudrun(131)
+- cloud-run(1), cloud_run(61), cloudrun(131)
 - GCS(1), gcs(1)
 - RAG(1), rag(7)
 
@@ -26,23 +26,23 @@
 - 新しいタグを作る前に既存タグ一覧を検索し、近い意味のタグがあれば使い回す
 
 ## Top Tags
-- その他: 209
-- 紫苑: 192
-- 設備投資: 172
-- 建設/不動産: 160
-- AURION: 152
-- 製造/DX: 144
+- その他: 212
+- 紫苑: 193
+- 設備投資: 176
+- 建設/不動産: 163
+- AURION: 154
+- 製造/DX: 146
 - cloudrun: 131
 - 物流/車両: 129
-- リース審査: 99
-- autoresearch: 80
+- リース審査: 100
+- autoresearch: 81
 - 判断資産: 80
 - 帰還データ: 80
-- 日次レポート: 76
-- AI洞察: 76
-- cloud_run: 60
-- chat_memory: 60
-- public_knowledge: 60
-- past_cases: 57
+- 日次レポート: 77
+- AI洞察: 77
+- cloud_run: 61
+- chat_memory: 61
+- public_knowledge: 61
+- past_cases: 58
 - obsidian_sync: 51
 - 入力ログ: 51

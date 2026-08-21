@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research To Screening Insights"
+  short_description: "Convert research into concrete lease screening checks."
+  default_prompt: "Synthesize this research into actionable lease screening insights, questions, and caution signals."

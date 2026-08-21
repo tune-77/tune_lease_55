@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lease Source Validator"
+  short_description: "Check source reliability before using lease news or research."
+  default_prompt: "Evaluate these sources for lease screening use and summarize what can be trusted."

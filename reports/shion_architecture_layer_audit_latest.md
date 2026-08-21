@@ -1,6 +1,6 @@
 # 紫苑 アーキテクチャ層監査
 
-- Date: 2026-08-21
+- Date: 2026-08-22
 - Mode: read_only_architecture_audit
 - Guardrail: read_only_no_prompt_no_scoring_no_rag_no_memory_write_no_auto_promotion
 - Overall status: attention

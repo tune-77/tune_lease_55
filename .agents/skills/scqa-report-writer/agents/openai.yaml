@@ -1,0 +1,4 @@
+interface:
+  display_name: "SCQA Report Writer"
+  short_description: "Write concise SCQA reports for lease AI explanations."
+  default_prompt: "Rewrite this material as a concise SCQA report for lease screening or project communication."

@@ -1,7 +1,7 @@
 ---
 agent: data-quality-checker
 task: SQLite 審査データの件数・異常値チェック
-timestamp: 2026-08-21 04:12
+timestamp: 2026-08-22 04:12
 status: partial
 reads_from: []
 ---
@@ -15,7 +15,7 @@ reads_from: []
 -   past_cases: 2179件
 -   screening_records: 2109件
 -   ml_features: 1941件
--   chat_messages: 1232件
+-   chat_messages: 1240件
 -   screening_outcomes: 118件
 -   emotion_history: 109件
 -   excluded_grade_cases: 99件

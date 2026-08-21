@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-08-21T04:01:03.519125",
+  "fetched_at": "2026-08-22T04:01:03.762413",
   "source": "FinceptTerminal/AkShare (https://github.com/Fincept-Corporation/FinceptTerminal)",
   "boj_policy_rate": {
     "value": 1.0,
@@ -9,17 +9,17 @@
     "source": "akshare.macro_japan_bank_rate"
   },
   "core_cpi": {
-    "value": 1.2,
-    "prev": 1.1,
-    "period": "2026年06月",
-    "published": "2026-07-24",
+    "value": 1.4,
+    "prev": 1.2,
+    "period": "2026年07月",
+    "published": "2026-08-21",
     "source": "akshare.macro_japan_core_cpi_yearly"
   },
   "cpi": {
-    "value": 1.7,
-    "prev": 1.5,
-    "period": "2026年06月",
-    "published": "2026-07-24",
+    "value": 1.9,
+    "prev": 1.6,
+    "period": "2026年07月",
+    "published": "2026-08-21",
     "source": "akshare.macro_japan_cpi_yearly"
   },
   "leading_indicator": {
@@ -46,7 +46,7 @@
       },
       "core_cpi": {
         "score": 20,
-        "comment": "コアCPI 1.2%: 低インフレ環境"
+        "comment": "コアCPI 1.4%: 低インフレ環境"
       },
       "leading_indicator": {
         "score": 10,

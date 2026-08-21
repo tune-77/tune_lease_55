@@ -5,8 +5,8 @@
 - role: `obsidian_curator_and_shion_runaway_guard`
 - identity: `same_as_shion_upper_authority_mana_value_memory`
 - identity_note: Mana Curator is not a separate agent; it is the existing Mana upper authority applied to Obsidian memory operations.
-- generated_at: `2026-08-21T04:13:54+09:00`
-- target_date: `2026-08-21`
+- generated_at: `2026-08-22T04:14:11+09:00`
+- target_date: `2026-08-22`
 - status: `watch`
 - action_summary: memory_insight_reports_warning: memory insight sidecarを更新する: scripts/build_obsidian_memory_insight_report.py と scripts/build_shion_memory_promotion_queue.py を日次内で再実行し、reports/obsidian_memory_insight_latest.md 等を36h以内に戻す。
 - guardrail: `read_only_no_obsidian_write_no_rag_no_prompt_no_scoring_no_cloudrun_no_deploy`
