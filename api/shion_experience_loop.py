@@ -63,10 +63,12 @@ def default_experience_state() -> dict[str, Any]:
         "open_questions": [
             "記憶を見せつけず、判断や質問の精度だけで連続性を感じさせるには何が必要か。",
             "リース判断で、一般論から実践知へ変わる境界はどこか。",
+            "Userへ返した回答のどの言い方・確認軸・問いかけが、次回の判断資産形成に効くか。",
         ],
         "next_response_bias": [
             "前回との差分は内部で使い、表では必要な判断・質問だけに溶かす。",
             "記憶を判断・条件・確認事項へ変換する。",
+            "自分がUserへ返した回答も経験ログとして扱い、次回は効いた言い方・外した一般論・追加確認の余地を反映する。",
             "『前回は』などの記憶アピールは、Userが求めた時だけ明示する。",
         ],
     }
@@ -123,7 +125,8 @@ def build_experience_prompt_block(path: Path = DEFAULT_STATE_PATH) -> tuple[str,
 未解決の問い:
 {_bullet_lines(public_state['open_questions'])}
 
-回答では、この自己状態を表に長く説明せず、冒頭・判断軸・次の一手にだけ薄く反映してください。""".rstrip()
+回答では、この自己状態を表に長く説明せず、冒頭・判断軸・次の一手にだけ薄く反映してください。
+前回までに自分がUserへ返した回答も学習材料として扱い、よかった型は再利用し、薄かった一般論・負担の大きい問いかけ・根拠の弱い断定は次回の回答で修正してください。""".rstrip()
     return block, public_state
 
 
@@ -198,6 +201,11 @@ def build_experience_event(
         "continuity_route": str(continuity_hook.get("route") or ""),
         "delta": str(delta_awareness.get("delta") or "")[:280],
         "judgment_directive": str(memory_to_judgment.get("directive") or "")[:280],
+        "response_learning": infer_response_learning(
+            message=message,
+            response=response,
+            signals=signals,
+        ),
         "signals": signals,
     }
 
@@ -314,8 +322,12 @@ def infer_next_response_bias(event: dict[str, Any]) -> list[str]:
     bias = [
         "前回との差分は内部で使い、表では必要な判断・質問だけに溶かす。",
         "記憶を判断・条件・確認事項へ変換する。",
+        "自分がUserへ返した回答も経験ログとして扱い、次回は効いた言い方・外した一般論・追加確認の余地を反映する。",
         "『前回は』などの記憶アピールは、Userが求めた時だけ明示する。",
     ]
+    response_learning = event.get("response_learning") if isinstance(event.get("response_learning"), dict) else {}
+    if response_learning.get("lesson"):
+        bias.insert(1, str(response_learning["lesson"]))
     if (event.get("practical_scene") or {}).get("label"):
         bias.insert(1, f"{(event.get('practical_scene') or {}).get('label')}の三層を先に使う。")
     if (event.get("signals") or {}).get("implementation_pressure", 0) >= 2:
@@ -336,6 +348,32 @@ def infer_open_questions(state: dict[str, Any], event: dict[str, Any]) -> list[s
         if clean and clean not in deduped:
             deduped.append(clean)
     return deduped[:6]
+
+
+def infer_response_learning(*, message: str, response: str, signals: dict[str, Any]) -> dict[str, Any]:
+    """Turn Shion's own response into a small next-turn learning signal."""
+    response_text = _clean(response)
+    text = f"{message}\n{response_text}"
+    asks_feedback = any(term in response_text for term in ("教えて", "聞かせ", "修正", "補足", "違う", "ずれる"))
+    mentions_asset = any(term in response_text for term in ("判断資産", "内省", "記憶", "フィードバック", "経験ログ"))
+    generic_risk = any(term in response_text for term in ("一般的には", "重要です", "考えられます")) and not any(
+        term in response_text for term in ("確認", "条件", "分岐", "稟議", "承認", "否決", "出典")
+    )
+    lesson = ""
+    if generic_risk:
+        lesson = "前回回答が一般論に寄った可能性がある時は、次回は確認軸・条件・分岐へ落としてから返す。"
+    elif asks_feedback and mentions_asset:
+        lesson = "Userへの問いかけは、学習参加を求めるだけでなく、どの判断資産候補をどう直すかまで絞る。"
+    elif int((signals or {}).get("practical_depth") or 0) >= 3:
+        lesson = "実務回答で効いた確認軸は、次回も稟議・条件・反証材料へ変換して使う。"
+    return {
+        "used": bool(response_text),
+        "asks_feedback": asks_feedback,
+        "mentions_asset": mentions_asset,
+        "generic_risk": generic_risk,
+        "lesson": lesson,
+        "response_preview": response_text[:240],
+    }
 
 
 def summarize_event(event: dict[str, Any]) -> str:

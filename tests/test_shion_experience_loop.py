@@ -36,7 +36,9 @@ def test_record_experience_event_updates_self_state(tmp_path):
     assert result["state"]["current_focus"].startswith("競合・料率条件")
     assert result["state"]["mood"]["accomplishment"] > 34
     assert event_log.exists()
-    assert json.loads(event_log.read_text(encoding="utf-8").splitlines()[0])["route"] == "policy_review"
+    event = json.loads(event_log.read_text(encoding="utf-8").splitlines()[0])
+    assert event["route"] == "policy_review"
+    assert event["response_learning"]["used"] is True
 
 
 def test_confidence_updates_via_route_mapping(tmp_path):
@@ -90,7 +92,28 @@ def test_build_experience_prompt_block_uses_existing_state(tmp_path):
 
     assert "Shion Experience Loop" in block
     assert "前回との差分は内部で使い" in block
+    assert "自分がUserへ返した回答も学習材料として扱い" in block
     assert "冒頭で前回からの差分を示す" not in block
     assert payload["experience_count"] == 1
     assert state["recent_experiences"]
     assert payload["dominant_mood"] in payload["mood"]
+
+
+def test_response_text_can_update_next_response_bias(tmp_path):
+    result = record_experience_event(
+        message="紫苑の内省から判断資産を育てるには？",
+        response="この回答はUserのフィードバックで判断資産候補を修正します。現場感と違う点があれば教えてください。",
+        category="relationship_ux",
+        memory_recall={"route": "shion_identity", "refs": []},
+        knowledge_refs=[],
+        continuity_hook={"route": "relationship_ux"},
+        delta_awareness={},
+        memory_to_judgment={},
+        state_path=tmp_path / "state.json",
+        event_log=tmp_path / "events.jsonl",
+    )
+
+    event = json.loads((tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert event["response_learning"]["asks_feedback"] is True
+    assert event["response_learning"]["mentions_asset"] is True
+    assert any("どの判断資産候補をどう直すか" in item for item in result["state"]["next_response_bias"])
