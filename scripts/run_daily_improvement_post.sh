@@ -234,6 +234,13 @@ echo "[育成] Obsidianグラフの複雑さが判断に効いているかを測
 log_step "build_obsidian_graph_judgment_effect" $?
 
 echo ""
+echo "[司書] 紫苑ADK Obsidian Curatorの日次診断を生成（読み取り専用・自動反映なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/shion_obsidian_curator_daily.py" \
+  --date "${PIPELINE_DATE}" \
+  --limit 5
+log_step "shion_obsidian_curator_daily" $?
+
+echo ""
 echo "[成長] Judgment Asset Growth Score を記録（Slack日次レポート / loop-proof が参照）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/judgment_asset_growth_report.py" \
   --date "${PIPELINE_DATE}"
@@ -480,7 +487,8 @@ echo "[通知] 日次改善レポートをSlackへ送信（Mana判定込み・We
   --screening-terms-report "${SCREENING_TERMS_REPORT_JSON}" \
   --judgment-asset-field-review "${PROJECT_ROOT}/reports/judgment_asset_field_review_latest.json" \
   --action-ledger-report "${PROJECT_ROOT}/reports/agent_action_ledger_latest.json" \
-  --reflection-journal-report "${PROJECT_ROOT}/reports/obsidian_reflection_journal_latest.json"
+  --reflection-journal-report "${PROJECT_ROOT}/reports/obsidian_reflection_journal_latest.json" \
+  --shion-obsidian-curator-daily "${PROJECT_ROOT}/reports/shion_obsidian_curator_daily_latest.json"
 log_step "send_daily_improvement_slack" $?
 
 echo ""

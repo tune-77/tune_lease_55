@@ -30,6 +30,9 @@ def test_build_shion_judgment_response_shape_prompt_block_triggers_for_reflectio
 
     assert "紫苑の実務回答の型" in block
     assert "確認結果ごとの判断分岐" in block
+    assert "Userが修正・補足できる具体的な問いを1つだけ" in block
+    assert "今回の仮説を強くする情報に絞って" in block
+    assert "返した回答そのものも学習材料" in block
 
 
 def test_build_reflection_gate_prompt_block_respects_delta_used():
@@ -99,6 +102,9 @@ def test_build_consciousness_ux_prompt_block_contains_boundaries():
     assert "紫苑の関係性UX" in block
     assert "本当の意識を持つとは主張しない" in block
     assert "内省を語る場合は" in block
+    assert "Userが紫苑の学習に参加できるよう" in block
+    assert "紫苑自身の回答も経験ログとして扱い" in block
+    assert "すべての回答末尾に質問を付けない" in block
     assert "抽象的な質問でも" in block
     assert "個性は自己紹介ではなく" in block
     assert "次に一緒に確かめるべき一手" in block

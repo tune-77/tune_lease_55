@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-08-21T04:14:09`
+- generated_at: `2026-08-22T04:14:26`
 - status: `ok`
-- scanned_files: `538`
+- scanned_files: `545`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
 - review: `72`
-- ok: `2284`
+- ok: `2301`
 
 ## Glossary
 
@@ -38,11 +38,11 @@
   - `帯ごとの延滞・デフォルト率を集計する`
 - `review` `actual_pd` `api/outcome_drift_loop.py:89` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `この集計を見て、「本来低リスクなはずの帯で延滞・デフォルト率が高い」`
-- `review` `actual_pd` `api/routers/feedback_loop.py:533` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/routers/feedback_loop.py:543` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE shion_screening_reviews`
-- `review` `actual_pd` `api/routers/feedback_loop.py:545` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/routers/feedback_loop.py:555` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",`
-- `review` `actual_pd` `api/routers/feedback_loop.py:2028` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/routers/feedback_loop.py:2076` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table_name}`
 - `review` `actual_pd` `api/shion_conscience.py:85` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `cautions.append("デフォルト確率が高い場合は、承認可否より先に返済原資の説明可能性を見る。")`
@@ -148,7 +148,7 @@
   - `log "Cloud Run 新リビジョン起動: $CLOUD_RUN_SERVICE (CHROMADB_UPDATED_AT=$TIMESTAMP)"`
 - `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `--update-env-vars "CHROMADB_UPDATED_AT=$TIMESTAMP" 2>&1 | tee -a "$LOG_FILE"; then`
-- `review` `actual_pd` `scripts/sync_cloudrun_inputs_from_gcs.py:537` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/sync_cloudrun_inputs_from_gcs.py:545` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"UPDATE shion_screening_reviews SET user_feedback = ? WHERE id = ?",`
 - `review` `actual_pd` `scripts/sync_implemented_to_obsidian.py:32` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-041":             ["PD表示箇所の明確化"],`

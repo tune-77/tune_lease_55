@@ -2,24 +2,24 @@
 
 ## Current
 
-- Date: 2026-08-21
-- Score: 59.5
+- Date: 2026-08-22
+- Score: 60.8
 - Mode: local_measurement_only
 - Guardrail: no_rag_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 
 ## Components
 
-- Coverage: `████████████████░░░░` 80.4
+- Coverage: `█████████████████░░░` 84.0
 - Reuse proxy: `████████████░░░░░░░░` 60.0
-- Judgment change proxy: `█████████████░░░░░░░` 64.0
+- Judgment change proxy: `█████████████░░░░░░░` 66.0
 - Human alignment proxy: `██████████████░░░░░░` 70.0
 - Field validation: `░░░░░░░░░░░░░░░░░░░░` 0.0
 - Negative signal: `█████░░░░░░░░░░░░░░░` 24.0
 
 ## Counts
 
-- Materials: 16
-- Inbox candidates: 16
+- Materials: 22
+- Inbox candidates: 20
 - Active rules: 9
 - Risk axes: 4
 - Concepts: 8
@@ -37,7 +37,6 @@
 
 ## Trend
 
-- 2026-08-08: `██████████░░░░░░░░░░` 51.0
 - 2026-08-09: `███████████░░░░░░░░░` 55.5
 - 2026-08-10: `███████████░░░░░░░░░` 57.4
 - 2026-08-11: `███████████░░░░░░░░░` 56.9
@@ -51,6 +50,7 @@
 - 2026-08-19: `████████████░░░░░░░░` 60.4
 - 2026-08-20: `███████████░░░░░░░░░` 56.6
 - 2026-08-21: `████████████░░░░░░░░` 59.5
+- 2026-08-22: `████████████░░░░░░░░` 60.8
 
 ## Notes
 

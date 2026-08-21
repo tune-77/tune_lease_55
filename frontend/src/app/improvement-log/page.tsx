@@ -21,6 +21,7 @@ import {
   TrendingDown,
   BookOpenCheck,
   Trash2,
+  PenLine,
 } from "lucide-react";
 import LoopEngineeringCard from "@/components/analysis/LoopEngineeringCard";
 
@@ -320,6 +321,67 @@ type JudgmentAssetPromotionSummary = {
   candidates: JudgmentAssetPromotionCandidate[];
 };
 
+type AgenticSkillInboxItem = {
+  id: string;
+  source_event_id?: string;
+  tool_name: string;
+  candidate_type: string;
+  claim: string;
+  status: string;
+  review_decision?: string;
+  review_note?: string;
+  created_at?: string;
+  promotion_policy?: string;
+  case_context?: {
+    company_name?: string;
+    industry_cat?: string;
+    asset_name?: string;
+    score?: number;
+  };
+};
+
+type AgenticSkillInboxSummary = {
+  count: number;
+  promotion_policy: string;
+  items: AgenticSkillInboxItem[];
+};
+
+type AgenticSkillFlowCheck = {
+  status: "ok" | "warn" | "empty" | string;
+  checks: { name: string; status: string; message: string }[];
+  summary: {
+    usage_events: number;
+    result_events: number;
+    reviewable_results: number;
+    linked_reviewable_results: number;
+    inbox_items: number;
+    open_inbox_items: number;
+    review_decisions: number;
+  };
+  guardrail: string;
+};
+
+type AgenticSkillNextActions = {
+  mode: string;
+  status: string;
+  proposals: {
+    priority: string;
+    type: string;
+    title: string;
+    reason: string;
+    human_action: string;
+    score?: {
+      impact: string;
+      risk: string;
+      effort: string;
+      evidence: string;
+      recommendation: string;
+    };
+    target?: unknown;
+  }[];
+  guardrail: string;
+};
+
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   APPROVED: { label: "承認", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   AUTO_FIX_CANDIDATE: { label: "自動修正候補", className: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -500,6 +562,14 @@ function ledgerEffectiveStatus(rule: LedgerRule): LedgerEffectiveStatus {
   return "awaiting_apply";
 }
 
+const AGENTIC_SKILL_LABELS: Record<string, string> = {
+  structure_judgment_asset_candidate: "判断資産候補化",
+  validate_lease_source_summary: "情報源検証",
+  convert_research_to_screening_insights: "審査確認点化",
+  build_screening_decision_flow: "判断分岐整理",
+  write_scqa_report: "SCQA整理",
+};
+
 export default function ImprovementLogPage() {
   const [activeTab, setActiveTab] = useState<ImprovementLogTab>("improvements");
   const [data, setData] = useState<ImprovementLog | null>(null);
@@ -531,6 +601,14 @@ export default function ImprovementLogPage() {
   const [judgmentAssetPromotionError, setJudgmentAssetPromotionError] = useState("");
   const [judgmentAssetPromotionMessage, setJudgmentAssetPromotionMessage] = useState("");
   const [judgmentAssetActionLoading, setJudgmentAssetActionLoading] = useState<Record<string, boolean>>({});
+  const [agenticSkillInbox, setAgenticSkillInbox] = useState<AgenticSkillInboxSummary | null>(null);
+  const [agenticSkillInboxLoading, setAgenticSkillInboxLoading] = useState(false);
+  const [agenticSkillInboxError, setAgenticSkillInboxError] = useState("");
+  const [agenticSkillInboxMessage, setAgenticSkillInboxMessage] = useState("");
+  const [agenticSkillReviewLoading, setAgenticSkillReviewLoading] = useState<Record<string, boolean>>({});
+  const [agenticSkillDrafts, setAgenticSkillDrafts] = useState<Record<string, string>>({});
+  const [agenticSkillFlowCheck, setAgenticSkillFlowCheck] = useState<AgenticSkillFlowCheck | null>(null);
+  const [agenticSkillNextActions, setAgenticSkillNextActions] = useState<AgenticSkillNextActions | null>(null);
 
   const fetchJudgmentAssetPromotion = useCallback(async () => {
     setJudgmentAssetPromotionLoading(true);
@@ -578,6 +656,68 @@ export default function ImprovementLogPage() {
       setJudgmentAssetActionLoading((prev) => ({ ...prev, [candidate.id]: false }));
     }
   }, [fetchJudgmentAssetPromotion]);
+
+  const fetchAgenticSkillInbox = useCallback(async () => {
+    setAgenticSkillInboxLoading(true);
+    setAgenticSkillInboxError("");
+    try {
+      const [res, flowRes, nextActionsRes] = await Promise.all([
+        apiClient.get<AgenticSkillInboxSummary>("/api/judgment-assets/agentic-skill-inbox", {
+          params: { limit: 10, status: "candidate" },
+        }),
+        apiClient.get<AgenticSkillFlowCheck>("/api/judgment-assets/agentic-skill-flow-check"),
+        apiClient.get<AgenticSkillNextActions>("/api/judgment-assets/agentic-skill-next-actions", {
+          params: { limit: 3 },
+        }),
+      ]);
+      setAgenticSkillInbox(res.data);
+      setAgenticSkillFlowCheck(flowRes.data);
+      setAgenticSkillNextActions(nextActionsRes.data);
+      const drafts: Record<string, string> = {};
+      (res.data.items || []).forEach((item) => {
+        drafts[item.id] = item.claim || "";
+      });
+      setAgenticSkillDrafts(drafts);
+    } catch {
+      setAgenticSkillInbox(null);
+      setAgenticSkillFlowCheck(null);
+      setAgenticSkillNextActions(null);
+      setAgenticSkillInboxError("紫苑ADKレビュー箱を取得できませんでした");
+    } finally {
+      setAgenticSkillInboxLoading(false);
+    }
+  }, []);
+
+  const handleAgenticSkillReview = useCallback(async (
+    item: AgenticSkillInboxItem,
+    decision: "adopted" | "revised" | "held" | "rejected",
+  ) => {
+    setAgenticSkillReviewLoading((prev) => ({ ...prev, [item.id]: true }));
+    setAgenticSkillInboxError("");
+    setAgenticSkillInboxMessage("");
+    try {
+      const draft = (agenticSkillDrafts[item.id] || item.claim || "").trim();
+      await apiClient.post(`/api/judgment-assets/agentic-skill-inbox/${item.id}/review`, {
+        decision,
+        note: `improvement-log UI ${decision}`,
+        edited_claim: decision === "revised" ? draft : "",
+      });
+      setAgenticSkillInboxMessage(
+        decision === "adopted"
+          ? "ADK候補を採用として記録しました。自動昇格はしていません。"
+          : decision === "revised"
+            ? "ADK候補を修正済みとして記録しました。"
+            : decision === "held"
+              ? "ADK候補を保留しました。"
+              : "ADK候補を却下しました。"
+      );
+      await fetchAgenticSkillInbox();
+    } catch {
+      setAgenticSkillInboxError("紫苑ADKレビュー箱の更新に失敗しました");
+    } finally {
+      setAgenticSkillReviewLoading((prev) => ({ ...prev, [item.id]: false }));
+    }
+  }, [agenticSkillDrafts, fetchAgenticSkillInbox]);
 
   const fetchLedgerRules = useCallback(async () => {
     setLedgerLoading(true);
@@ -718,6 +858,10 @@ export default function ImprovementLogPage() {
   useEffect(() => {
     fetchJudgmentAssetPromotion();
   }, [fetchJudgmentAssetPromotion]);
+
+  useEffect(() => {
+    fetchAgenticSkillInbox();
+  }, [fetchAgenticSkillInbox]);
 
   useEffect(() => {
     fetchRecipes();
@@ -1081,6 +1225,206 @@ export default function ImprovementLogPage() {
                           >
                             <Trash2 className="h-4 w-4" />
                             捨てる
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-cyan-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-cyan-100 bg-cyan-50 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-600 text-white">
+                <PenLine className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-cyan-950">紫苑ADKレビュー箱</h2>
+                <p className="mt-1 text-sm font-bold leading-6 text-cyan-800">
+                  紫苑が内側で作った判断資産候補・審査確認点・判断フローを、人間レビュー用に隔離しています。
+                </p>
+                <p className="mt-1 text-xs font-bold leading-5 text-cyan-700">
+                  採用しても自動昇格・スコア変更・RAG反映はしません。使えそうな候補だけ、後続の判断資産レビューへ回します。
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs font-black">
+              <span className="rounded-full bg-white px-3 py-1 text-cyan-800">
+                未レビュー {agenticSkillInbox?.count ?? 0}件
+              </span>
+              <button
+                type="button"
+                onClick={fetchAgenticSkillInbox}
+                disabled={agenticSkillInboxLoading}
+                className="inline-flex items-center gap-1 rounded-full bg-cyan-700 px-3 py-1 text-white transition hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${agenticSkillInboxLoading ? "animate-spin" : ""}`} />
+                更新
+              </button>
+            </div>
+          </div>
+          <div className="p-4">
+            {agenticSkillInboxError && (
+              <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">
+                {agenticSkillInboxError}
+              </div>
+            )}
+            {agenticSkillInboxMessage && (
+              <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-700">
+                {agenticSkillInboxMessage}
+              </div>
+            )}
+            {agenticSkillFlowCheck && (
+              <div className={`mb-3 rounded-xl border p-3 ${
+                agenticSkillFlowCheck.status === "ok"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : agenticSkillFlowCheck.status === "empty"
+                    ? "border-slate-200 bg-slate-50 text-slate-600"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-2 text-sm font-black">
+                    {agenticSkillFlowCheck.status === "ok" ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : agenticSkillFlowCheck.status === "empty" ? (
+                      <Clock className="h-4 w-4" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4" />
+                    )}
+                    一連の流れ: {agenticSkillFlowCheck.status === "ok" ? "正常" : agenticSkillFlowCheck.status === "empty" ? "未使用" : "要確認"}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-[11px] font-black">
+                    <span className="rounded-full bg-white/80 px-2 py-1">使用 {agenticSkillFlowCheck.summary.usage_events}</span>
+                    <span className="rounded-full bg-white/80 px-2 py-1">候補 {agenticSkillFlowCheck.summary.inbox_items}</span>
+                    <span className="rounded-full bg-white/80 px-2 py-1">未レビュー {agenticSkillFlowCheck.summary.open_inbox_items}</span>
+                    <span className="rounded-full bg-white/80 px-2 py-1">レビュー {agenticSkillFlowCheck.summary.review_decisions}</span>
+                  </div>
+                </div>
+                {agenticSkillFlowCheck.status === "warn" && (
+                  <div className="mt-2 grid gap-1 text-[11px] font-bold">
+                    {agenticSkillFlowCheck.checks.filter((check) => check.status === "warn").slice(0, 3).map((check) => (
+                      <div key={check.name}>{check.name}: {check.message}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {agenticSkillNextActions?.proposals?.length ? (
+              <div className="mb-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-violet-900">
+                <div className="mb-2 flex items-center gap-2 text-sm font-black">
+                  <Sparkles className="h-4 w-4" />
+                  紫苑からの提案
+                </div>
+                <div className="grid gap-2">
+                  {agenticSkillNextActions.proposals.slice(0, 3).map((proposal, index) => (
+                    <div key={`${proposal.type}-${index}`} className="rounded-lg bg-white/80 p-3">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-black">
+                        <span className="rounded-full bg-violet-100 px-2 py-1 text-violet-800">{proposal.priority}</span>
+                        {proposal.score?.recommendation && (
+                          <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">{proposal.score.recommendation}</span>
+                        )}
+                        <span className="text-slate-900">{proposal.title}</span>
+                      </div>
+                      {proposal.score && (
+                        <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-black text-slate-600">
+                          <span className="rounded-full bg-slate-100 px-2 py-1">impact {proposal.score.impact}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-1">risk {proposal.score.risk}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-1">effort {proposal.score.effort}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-1">evidence {proposal.score.evidence}</span>
+                        </div>
+                      )}
+                      <p className="mt-1 text-xs font-bold leading-5 text-violet-800">{proposal.reason}</p>
+                      <p className="mt-1 text-[11px] font-black text-slate-600">次: {proposal.human_action}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {agenticSkillInboxLoading ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
+                紫苑ADKレビュー箱を読み込み中...
+              </div>
+            ) : !agenticSkillInbox?.items?.length ? (
+              <div className="rounded-xl border border-dashed border-cyan-200 bg-cyan-50/40 p-6 text-center">
+                <PenLine className="mx-auto h-7 w-7 text-cyan-600" />
+                <p className="mt-2 text-sm font-black text-cyan-950">未レビューのADK候補はありません</p>
+                <p className="mt-1 text-xs font-bold text-cyan-700">
+                  紫苑が審査中にagentic skillを使い、候補化したものだけがここに出ます。
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {agenticSkillInbox.items.map((item) => {
+                  const isBusy = !!agenticSkillReviewLoading[item.id];
+                  const draft = agenticSkillDrafts[item.id] ?? item.claim ?? "";
+                  const caseContext = item.case_context || {};
+                  return (
+                    <article key={item.id} className="rounded-xl border border-cyan-100 bg-cyan-50/50 p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] font-black">
+                            <span className="rounded-full bg-slate-900 px-2 py-1 text-white">ADK-{item.id.slice(0, 8)}</span>
+                            <span className="rounded-full bg-cyan-100 px-2 py-1 text-cyan-800">
+                              {AGENTIC_SKILL_LABELS[item.tool_name] || item.tool_name}
+                            </span>
+                            <span className="rounded-full bg-white px-2 py-1 text-slate-600">{item.candidate_type}</span>
+                            {caseContext.company_name && (
+                              <span className="rounded-full bg-white px-2 py-1 text-slate-600">{caseContext.company_name}</span>
+                            )}
+                            {caseContext.score !== undefined && (
+                              <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">score {caseContext.score}</span>
+                            )}
+                          </div>
+                          <textarea
+                            value={draft}
+                            onChange={(event) => setAgenticSkillDrafts((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                            rows={3}
+                            className="mt-3 w-full resize-y rounded-lg border border-cyan-100 bg-white px-3 py-2 text-sm font-bold leading-7 text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                          />
+                          <p className="mt-2 break-all text-[11px] font-semibold text-slate-500">
+                            出典: {item.source_event_id || "agentic_skill"} / 作成: {item.created_at || "-"} / 状態: {item.status}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleAgenticSkillReview(item, "adopted")}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            採用
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAgenticSkillReview(item, "revised")}
+                            disabled={isBusy || !draft.trim()}
+                            className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <PenLine className="h-4 w-4" />
+                            修正
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAgenticSkillReview(item, "held")}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Clock className="h-4 w-4" />
+                            保留
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAgenticSkillReview(item, "rejected")}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            却下
                           </button>
                         </div>
                       </div>
