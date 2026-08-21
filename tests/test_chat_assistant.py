@@ -305,7 +305,9 @@ def test_search_notes_uses_retrieval_graph_as_keyword_prerouter(tmp_path, monkey
     vault = _make_vault(tmp_path)
     target = vault / "Projects" / "tune_lease_55" / "Asset Knowledge" / "残価リスク.md"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("# 残価リスク\n中古売却と換金性を確認する。", encoding="utf-8")
+    target.write_text("# 残価リスク\n中古売却と換金性を確認する。[[中古市場]]", encoding="utf-8")
+    linked = vault / "Projects" / "tune_lease_55" / "Asset Knowledge" / "中古市場.md"
+    linked.write_text("# 中古市場\n残価リスクと中古売却の換金性を見る。", encoding="utf-8")
     unrelated = vault / "Daily" / "2026-08-09.md"
     unrelated.parent.mkdir(parents=True, exist_ok=True)
     unrelated.write_text("残価リスクという単語だけがある日記。", encoding="utf-8")
@@ -316,6 +318,7 @@ def test_search_notes_uses_retrieval_graph_as_keyword_prerouter(tmp_path, monkey
     from scripts import build_obsidian_retrieval_graph
 
     graph_path = tmp_path / "obsidian_retrieval_graph.json"
+    search_log_path = tmp_path / "rag_search_log.jsonl"
     graph_path.write_text(
         json.dumps(
             build_obsidian_retrieval_graph.build_index(vault),
@@ -328,6 +331,7 @@ def test_search_notes_uses_retrieval_graph_as_keyword_prerouter(tmp_path, monkey
 
     from mobile_app import obsidian_bridge
     importlib.reload(obsidian_bridge)
+    monkeypatch.setattr(obsidian_bridge, "_rag_search_log_path", lambda: search_log_path)
 
     seen_path_batches = []
     original = obsidian_bridge._search_in_paths
@@ -340,9 +344,19 @@ def test_search_notes_uses_retrieval_graph_as_keyword_prerouter(tmp_path, monkey
     hits = obsidian_bridge.search_notes("残価リスク", limit=1)
 
     assert hits[0]["path"] == "Projects/tune_lease_55/Asset Knowledge/残価リスク.md"
+    debug = hits[0]["retrieval_debug"]
+    assert debug["source"] == "retrieval_graph"
+    assert debug["query_salience"] > 0
+    assert debug["traversal_edge_count"] == 1
+    assert debug["linked_context"][0]["path"] == "Projects/tune_lease_55/Asset Knowledge/中古市場.md"
+    assert debug["estimated_token_saving_ratio"] >= 0
     assert seen_path_batches
     assert "Projects/tune_lease_55/Asset Knowledge/残価リスク.md" in seen_path_batches[0]
     assert "Projects/tune_lease_55/Work Logs/2026-08-09.md" not in seen_path_batches[0]
+    log_entry = json.loads(search_log_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert log_entry["surface"] == "obsidian_graph_prerouter"
+    assert log_entry["results"][0]["obsidian_ref"] == "Projects/tune_lease_55/Asset Knowledge/残価リスク.md"
+    assert log_entry["results"][0]["retrieval_debug"]["linked_context"][0]["path"].endswith("中古市場.md")
 
 
 def test_append_wiki_note_writes_hub(tmp_path, monkeypatch):
