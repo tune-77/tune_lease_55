@@ -27,6 +27,7 @@ DEFAULT_JUDGMENT_ASSET_GROWTH_REPORT = REPO_ROOT / "reports" / "judgment_asset_g
 DEFAULT_JUDGMENT_ASSET_FIELD_REVIEW = REPO_ROOT / "reports" / "judgment_asset_field_review_latest.json"
 DEFAULT_ACTION_LEDGER_REPORT = REPO_ROOT / "reports" / "agent_action_ledger_latest.json"
 DEFAULT_REFLECTION_JOURNAL_REPORT = REPO_ROOT / "reports" / "obsidian_reflection_journal_latest.json"
+DEFAULT_SHION_OBSIDIAN_CURATOR_DAILY = REPO_ROOT / "reports" / "shion_obsidian_curator_daily_latest.json"
 DEFAULT_STATE = REPO_ROOT / "data" / "slack_daily_improvement_state.json"
 DEFAULT_TIMEOUT = 15
 
@@ -394,6 +395,28 @@ def _reflection_journal_lines(report: dict[str, Any] | None) -> list[str]:
     return lines
 
 
+def _shion_obsidian_curator_lines(report: dict[str, Any] | None) -> list[str]:
+    if not report:
+        return ["• status: `missing` / 日次Curator診断なし"]
+    if str(report.get("mode") or "") != "read_only_daily_obsidian_curator":
+        return ["• status: `invalid` / Curator診断形式が想定外"]
+    health = report.get("health") if isinstance(report.get("health"), dict) else {}
+    summary = health.get("summary") if isinstance(health.get("summary"), dict) else {}
+    buckets = summary.get("graph_buckets") if isinstance(summary.get("graph_buckets"), dict) else {}
+    lines = [
+        f"• isolated_used: `{buckets.get('isolated_but_used', 0)}` / degree0: `{summary.get('degree0_count', 0)}`",
+    ]
+    for item in (report.get("top_actions") or [])[:2]:
+        if not isinstance(item, dict):
+            continue
+        target = _clean_text(item.get("target") or "unknown", 80)
+        reason = _clean_text(item.get("reason") or "", 80)
+        theme = _clean_text(item.get("theme") or "", 40)
+        prefix = f"[{theme}] " if theme else ""
+        lines.append(f"• {prefix}{target}: {reason}")
+    return lines
+
+
 def build_message(
     report: dict[str, Any],
     *,
@@ -404,6 +427,7 @@ def build_message(
     judgment_asset_field_review: dict[str, Any] | None = None,
     action_ledger_report: dict[str, Any] | None = None,
     reflection_journal_report: dict[str, Any] | None = None,
+    shion_obsidian_curator_daily: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     applied = _items(report, "applied_improvements")
     needs_review = _items(report, "needs_review")
@@ -461,6 +485,9 @@ def build_message(
             "*内省モード: 今日の気づき*",
             *_reflection_journal_lines(reflection_journal_report),
             "",
+            "*Obsidian Curator*",
+            *_shion_obsidian_curator_lines(shion_obsidian_curator_daily),
+            "",
             "_自動投稿: run_daily_improvement_pipeline / Slack通知のみ。改善状態は変更していません。_",
         ]
     )
@@ -501,6 +528,7 @@ def main() -> int:
     parser.add_argument("--judgment-asset-field-review", type=Path, default=DEFAULT_JUDGMENT_ASSET_FIELD_REVIEW)
     parser.add_argument("--action-ledger-report", type=Path, default=DEFAULT_ACTION_LEDGER_REPORT)
     parser.add_argument("--reflection-journal-report", type=Path, default=DEFAULT_REFLECTION_JOURNAL_REPORT)
+    parser.add_argument("--shion-obsidian-curator-daily", type=Path, default=DEFAULT_SHION_OBSIDIAN_CURATOR_DAILY)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--webhook", default=None)
@@ -515,6 +543,7 @@ def main() -> int:
     judgment_asset_field_review = _read_optional_json(args.judgment_asset_field_review)
     action_ledger_report = _read_optional_json(args.action_ledger_report)
     reflection_journal_report = _read_optional_json(args.reflection_journal_report)
+    shion_obsidian_curator_daily = _read_optional_json(args.shion_obsidian_curator_daily)
     digest = _combined_hash(
         report,
         mana_report or {},
@@ -523,6 +552,7 @@ def main() -> int:
         judgment_asset_field_review or {},
         action_ledger_report or {},
         reflection_journal_report or {},
+        shion_obsidian_curator_daily or {},
     )
     payload = build_message(
         report,
@@ -533,6 +563,7 @@ def main() -> int:
         judgment_asset_field_review=judgment_asset_field_review,
         action_ledger_report=action_ledger_report,
         reflection_journal_report=reflection_journal_report,
+        shion_obsidian_curator_daily=shion_obsidian_curator_daily,
     )
 
     if args.dry_run:

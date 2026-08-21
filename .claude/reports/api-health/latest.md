@@ -1,21 +1,22 @@
 ---
 agent: api-health-checker
 task: 依存サービスの設定・到達性確認
-timestamp: 2026-08-21 04:12
+timestamp: 2026-08-22 04:12
 status: partial
 reads_from: []
 ---
 
 ## サマリー
-依存サービスに要確認事項を 1 件検出した。
+依存サービスに要確認事項を 2 件検出した。
 
 ## 詳細
 - SQLite: あり
-- GEMINI_API_KEY: 設定あり
+- GEMINI_API_KEY: 未設定
 - SLACK_BOT_TOKEN: 未設定
 - Ollama (http://localhost:11434): 到達
 
 ## 課題・リスク
+- GEMINI_API_KEY が未設定（該当機能は動作しない）
 - SLACK_BOT_TOKEN が未設定（該当機能は動作しない）
 
 ## 後続エージェントへの申し送り

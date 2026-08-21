@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
-import { Activity, AlertTriangle, Bot, CheckCircle2, FileText, HelpCircle, Loader2, PenLine, Target, Users } from 'lucide-react';
+import { Activity, AlertTriangle, Bot, CheckCircle2, FileText, HelpCircle, Loader2, PenLine, Sparkles, Target, Users } from 'lucide-react';
 import type { ScoringFormData } from '@/types';
 
 interface GunshiAdviceProps {
@@ -42,15 +42,23 @@ type StrategyCards = {
 };
 
 type GunshiStreamChunk = {
-  type?: 'bayes' | 'phrases' | 'strategy_cards' | 'stream' | 'done' | 'tool_call' | 'tool_result';
+  type?: 'bayes' | 'phrases' | 'strategy_cards' | 'stream' | 'done' | 'tool_call' | 'tool_result' | 'agentic_skill_usage';
   cards?: StrategyCards;
   delta?: string;
   tool?: string;
+  label?: string;
+  review_inbox_id?: string;
+  logged?: boolean;
 };
 
 const TOOL_LABELS: Record<string, string> = {
   get_industry_benchmark: '業種ベンチマーク照合',
   assess_risk_level: 'リスクレベル評価',
+  structure_judgment_asset_candidate: '判断資産候補化',
+  validate_lease_source_summary: '情報源検証',
+  convert_research_to_screening_insights: '審査確認点化',
+  build_screening_decision_flow: '判断分岐整理',
+  write_scqa_report: 'SCQA整理',
 };
 
 type HumorMode = 'yanami' | 'standard' | 'yukikaze';
@@ -162,6 +170,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
   const [statusText, setStatusText] = useState('');
   const [streamingText, setStreamingText] = useState('');
   const [toolSteps, setToolSteps] = useState<{tool: string; done: boolean}[]>([]);
+  const [agenticSkillNotices, setAgenticSkillNotices] = useState<{tool: string; label: string; reviewInboxId?: string; logged?: boolean}[]>([]);
   const [strategyCards, setStrategyCards] = useState<StrategyCards | null>(null);
   const [strategyOpen, setStrategyOpen] = useState(false);
   const [humanDecision, setHumanDecision] = useState('');
@@ -246,6 +255,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     setStreamingText('');
     setStrategyCards(null);
     setToolSteps([]);
+    setAgenticSkillNotices([]);
     setStatusText('AIが考えています...');
 
     try {
@@ -283,6 +293,16 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
               setToolSteps(prev => [...prev, { tool: chunk.tool!, done: false }]);
             } else if (chunk.type === 'tool_result' && chunk.tool) {
               setToolSteps(prev => prev.map(s => s.tool === chunk.tool ? { ...s, done: true } : s));
+            } else if (chunk.type === 'agentic_skill_usage' && chunk.tool) {
+              setAgenticSkillNotices(prev => [
+                ...prev,
+                {
+                  tool: chunk.tool!,
+                  label: chunk.label || TOOL_LABELS[chunk.tool!] || chunk.tool!,
+                  reviewInboxId: chunk.review_inbox_id,
+                  logged: chunk.logged,
+                },
+              ]);
             } else if (chunk.type === 'strategy_cards') {
               setStrategyCards(chunk.cards || null);
               setStrategyOpen(Boolean(chunk.cards));
@@ -834,6 +854,22 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
                     {TOOL_LABELS[step.tool] ?? step.tool}
                   </span>
                 </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {agenticSkillNotices.length > 0 && (
+          <div className={`rounded-xl border p-3 text-xs ${isYukikaze ? 'border-cyan-500/40 bg-cyan-950/30 text-cyan-100 font-mono' : 'border-cyan-200 bg-cyan-50 text-cyan-900'}`}>
+            <div className="mb-2 flex items-center gap-2 font-black">
+              <Sparkles className="h-4 w-4" />
+              紫苑の内側で整理したこと
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {agenticSkillNotices.slice(-5).map((notice, i) => (
+                <span key={`${notice.tool}-${notice.reviewInboxId || i}`} className={`rounded-full px-2 py-1 font-bold ${isYukikaze ? 'bg-black/50 text-cyan-100 ring-1 ring-cyan-500/50' : 'bg-white text-cyan-800 ring-1 ring-cyan-200'}`}>
+                  {notice.label}{notice.reviewInboxId ? '・レビュー箱' : notice.logged ? '・ログ済' : ''}
+                </span>
               ))}
             </div>
           </div>

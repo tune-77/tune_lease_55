@@ -1,7 +1,7 @@
 ---
 agent: rule-validator
 task: ウェイト合計・グレード閾値の整合性チェック
-timestamp: 2026-08-21 04:12
+timestamp: 2026-08-22 04:12
 status: partial
 reads_from: []
 ---

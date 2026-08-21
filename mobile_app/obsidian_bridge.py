@@ -148,6 +148,15 @@ _NOISE_PATH_PARTS = (
 _RETRIEVAL_GRAPH_CACHE: dict[str, Any] = {"path": "", "mtime": 0.0, "index": None}
 
 
+def _rag_search_log_path() -> Path:
+    try:
+        from runtime_paths import get_data_path
+
+        return Path(get_data_path("rag_search_log.jsonl"))
+    except Exception:
+        return _REPO_ROOT / "data" / "rag_search_log.jsonl"
+
+
 def _normalize_search_text(text: str) -> str:
     normalized = unicodedata.normalize("NFKC", text or "").lower()
     normalized = re.sub(r"[‐‑‒–—―−_]+", "-", normalized)
@@ -544,6 +553,20 @@ def _graph_route_candidates(
                 "graph_rank": rank + 1,
                 "graph_route_score": float(node.get("route_score") or 0.0),
                 "graph_route": str(node.get("route") or ""),
+                "retrieval_debug": {
+                    "source": "retrieval_graph",
+                    "mode": (index.get("summary") or {}).get("retrieval_mode", "graph_preroute"),
+                    "graph_rank": rank + 1,
+                    "route": str(node.get("route") or ""),
+                    "route_score": node.get("route_score"),
+                    "query_salience": node.get("query_salience"),
+                    "matched_terms": list(node.get("matched_terms") or [])[:8],
+                    "linked_context": list(node.get("linked_context") or [])[:4],
+                    "traversal_edge_count": node.get("traversal_edge_count"),
+                    "estimated_tokens_if_full_scan": node.get("estimated_tokens_if_full_scan"),
+                    "estimated_tokens_if_traced": node.get("estimated_tokens_if_traced"),
+                    "estimated_token_saving_ratio": node.get("estimated_token_saving_ratio"),
+                },
                 "score": _candidate_score(
                     path=rel,
                     text=snippet,
@@ -555,6 +578,41 @@ def _graph_route_candidates(
             }
         )
     return hits, paths
+
+
+def _write_obsidian_graph_search_log(query: str, results: list[dict[str, Any]]) -> None:
+    graph_results = [
+        item
+        for item in results
+        if isinstance(item.get("retrieval_debug"), dict)
+    ]
+    if not graph_results:
+        return
+    entry = {
+        "ts": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "query": query,
+        "surface": "obsidian_graph_prerouter",
+        "retrieval_mode": "graph_preroute_then_trace_relevant_edges_only",
+        "results": [
+            {
+                "rank": index + 1,
+                "obsidian_ref": item.get("path", ""),
+                "doc_id": item.get("path", ""),
+                "file_name": Path(str(item.get("path") or "")).name,
+                "final_score": item.get("final_score"),
+                "score_breakdown": item.get("score_breakdown"),
+                "retrieval_debug": item.get("retrieval_debug"),
+            }
+            for index, item in enumerate(graph_results[:5])
+        ],
+    }
+    try:
+        path = _rag_search_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        return
 
 
 _CHAT_LOG_DIRS = ("AI Chat", "Improvement Log", "Weekly Review", "Daily")
@@ -661,7 +719,7 @@ def iter_indexed_obsidian_documents(
 _build_vault_index()
 
 
-def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[str, str]]:
+def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[str, Any]]:
     """Search the shared Vault and rerank candidates by query relevance."""
     vault, knowledge, chat_logs = _get_indexed_paths()
     primary_terms = _split_query_terms(query)
@@ -780,6 +838,11 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
                 merged["vector_rank"] = existing.get("vector_rank")
                 merged["vector_distance"] = existing.get("vector_distance")
                 merged["vector_rank_score"] = existing.get("vector_rank_score")
+                if existing.get("retrieval_debug"):
+                    merged["retrieval_debug"] = existing.get("retrieval_debug")
+                    merged["graph_rank"] = existing.get("graph_rank")
+                    merged["graph_route_score"] = existing.get("graph_route_score")
+                    merged["graph_route"] = existing.get("graph_route")
                 merged["source"] = f"{existing.get('source', 'rag')}+keyword"
             else:
                 merged["semantic_score"] = 0.0
@@ -788,12 +851,14 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
         elif existing is not None:
             existing["source"] = f"{existing.get('source', 'rag')}+keyword"
 
-    return _rerank_obsidian_candidates(
+    ranked = _rerank_obsidian_candidates(
         candidates,
         query=query,
         primary_terms=primary_terms,
         limit=limit,
     )
+    _write_obsidian_graph_search_log(query, ranked)
+    return ranked
 
 
 def _split_query_terms(query: str) -> list[str]:

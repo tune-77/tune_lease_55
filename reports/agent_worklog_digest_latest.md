@@ -1,7 +1,7 @@
 # Codex/Claude 作業録ダイジェスト
 
-- generated_at: 2026-08-21T04:04:06
-- source_count: 32
+- generated_at: 2026-08-22T04:04:15
+- source_count: 30
 - displayed: 12
 
 ## Shion Use Policy
@@ -9,6 +9,30 @@
 - 禁止: 顧客情報の推測、Private Reflection原文の引用、人間承認なしの判断資産昇格
 
 ## Items
+
+### 2026-08-21 08:25 Codex
+- Summary: #835 Codexレビュー修正をPR #841でship
+- Chat Summary: Userから#835のCodexレビュー修正依頼を受け、REV台帳監査のCloud Run runtime ledger検出、deleted等の終端ステータス保持、malformed JSONL検出を修正。master保護のため直接pushではなくPR #841でマージした。
+- Decisions: masterは保護ブランチのため、修正コミットをfix/codex-835-ledger-audit-runtimeへpushし、CI通過後にPRマージした。
+- Changes: lease_intelligence_tools.py / tests/test_lease_intelligence_tools.py
+- Verification: pytest -q tests/test_shion_agent_tools.py tests/test_lease_intelligence_tools.py: 50 passed / python -m py_compile lease_intelligence_tools.py api/shion_agent_tools.py
+- Open Items: -
+
+### 2026-08-21 07:42 Codex
+- Summary: LaunchAgent監査と朝ニュース表示を整備し、PR #840 をマージ
+- Chat Summary: 朝ニュース未更新に見える問題からLaunchAgent全体を監査。古い設定を同期し、監査スクリプトと回帰テストを追加してGit shipした。
+- Decisions: master保護により直接pushは拒否されたため、既存PR #840経由でマージ。com.tunelease.next は外部公開トンネルを起動し得るため自動ロードしない。
+- Changes: frontend/src/app/home/page.tsx / launchd/com.tunelease.*.plist / scripts/audit_launchagents.py
+- Verification: npm run typecheck / python3 scripts/audit_launchagents.py --no-launchctl
+- Open Items: -
+
+### 2026-08-21 07:16 Codex
+- Summary: Gitship: 判断資産候補保全と日次Slack設定更新をPR化
+- Chat Summary: UserからGitship依頼。master直pushは保護ブランチで拒否されたため、rebase後にPRブランチへpushし、PR #840を作成した。
+- Decisions: data/ と .streamlit/secrets.toml と tune_lease_55_wt_cibundle/ はコミット対象外。master保護に従いPR経由に切替。
+- Changes: scripts/build_autoresearch_judgment_asset_candidates.py / tests/test_build_autoresearch_judgment_asset_candidates.py / reports・frontend assets・memory/2026-08-21.md
+- Verification: pytest tests/test_build_autoresearch_judgment_asset_candidates.py -q: 14 passed / python3 scripts/preflight_pr_guard.py: no warnings
+- Open Items: -
 
 ### 2026-08-20 21:47 Codex
 - Summary: Private Reflectionを複数の声の衝突ログと紫苑の統合記録として再定義しPR #838でmasterへマージ
@@ -80,28 +104,4 @@
 - Decisions: master直pushは禁止されているため、PR #759でrequired checks後に取り込む
 - Changes: api/routers/feedback_loop.py: screening input assist event API / frontend/src/app/screening/page.tsx: 過去案件コピー、入力中確認観点、計測イベント / frontend/src/app/judgment-review/page.tsx: 判断資産Promotion候補レビュー
 - Verification: python -m py_compile api/main.py api/routers/feedback_loop.py; npm run typecheck; eslint対象ページ; npm run build
-- Open Items: -
-
-### 2026-08-14 16:58 Codex
-- Summary: Memory Engineering reportに日次レビュー焦点を追加
-- Chat Summary: UserがMemory Engineer観点を紫苑の記憶運用へ適用するよう依頼。候補採否、quarantine確認、sleeping active rule確認を毎朝見る形へ統合した。
-- Decisions: 自動削除・自動昇格はせず、Memory Engineeringレポートを短時間レビューの入口にする。
-- Changes: scripts/build_memory_engineering_report.py / tests/test_memory_engineering_report.py / reports/memory_engineering_latest.md
-- Verification: python -m py_compile scripts/build_memory_engineering_report.py / pytest tests/test_memory_engineering_report.py
-- Open Items: -
-
-### 2026-08-14 13:06 Codex
-- Summary: 判断資産グラフの Internal Server Error を修正し、PR #757 を作成
-- Chat Summary: ユーザーから『判断資産グラフ（紫苑の成長・系統樹）で Internal Server Error が出ている』と報告を受け、iframe の静的HTML配信先を確認。App Router ページと public 配下パスの衝突を避けるため /generated 配下へ移動した。
-- Decisions: 判断資産グラフの生成HTMLは /judgment-asset-graph/index.html ではなく /generated/judgment-asset-graph/index.html から配信する。夜間パイプラインの同期先も同じ新パスに揃える。
-- Changes: frontend/src/app/judgment-asset-graph/page.tsx / scripts/run_daily_improvement_post.sh / frontend/public/generated/judgment-asset-graph/index.html
-- Verification: npm run typecheck / npm run build
-- Open Items: -
-
-### 2026-08-14 07:22 Codex
-- Summary: World Proxy guidance and experience replay updates をコミットし、master保護によりPR #756を作成
-- Chat Summary: UserがXのWorld Proxy論文を見て『効果あるならやってみて』と依頼。既存の紫苑チャット基盤へL1推論時ガイダンスとして実装し、効果が良いと評価されたためgitshipを実行した。
-- Decisions: 新基盤追加ではなく、記憶・RAG・DB統計・判断学習・経験ループを回答前の代理フィードバックとして使う。自動学習・自動昇格には接続しない。
-- Changes: api/chat_reflection_prompts.py / api/main.py / api/chat_debug_metadata.py / api/chat_side_effects.py / tests and experience replay reports
-- Verification: pytest tests/test_chat_reflection_prompts.py tests/test_chat_architecture_helpers.py tests/test_chat_side_effects.py -q: 22 passed; py_compile passed; preflight guard warning only; PR CI in progress
 - Open Items: -

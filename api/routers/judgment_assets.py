@@ -22,6 +22,13 @@ from api.prediction_error_loop import (
     record_prediction_error_event,
     summarize_prediction_errors,
 )
+from api.agentic_skill_usage import (
+    agentic_skill_usage_summary,
+    check_agentic_skill_flow,
+    load_agentic_skill_review_inbox,
+    review_agentic_skill_inbox_item,
+)
+from api.shion_agentic_skills import propose_agentic_skill_next_actions
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _RULES_PATH = _REPO_ROOT / "data" / "judgment_asset_rules_v2.json"
@@ -106,6 +113,12 @@ class PredictionErrorReviewRequest(BaseModel):
     decision: str
     note: str = ""
     edited_update: str = ""
+
+
+class AgenticSkillReviewRequest(BaseModel):
+    decision: str
+    note: str = ""
+    edited_claim: str = ""
 
 
 # ── エンドポイント ─────────────────────────────────────────────────────────────
@@ -315,6 +328,49 @@ def review_prediction_error_candidate(candidate_id: str, req: PredictionErrorRev
             decision=req.decision,
             note=req.note,
             edited_update=req.edited_update,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/api/judgment-assets/agentic-skill-usage")
+def get_agentic_skill_usage(limit: int = 50):
+    """紫苑ADKがagentic skillを使ったログを返す。"""
+    return agentic_skill_usage_summary(limit=limit)
+
+
+@router.get("/api/judgment-assets/agentic-skill-flow-check")
+def get_agentic_skill_flow_check():
+    """agentic skill の使用ログ→レビュー箱→レビュー決定の一連の流れを診断する。"""
+    return check_agentic_skill_flow()
+
+
+@router.get("/api/judgment-assets/agentic-skill-next-actions")
+def get_agentic_skill_next_actions(limit: int = 3):
+    """agentic skill の見える状態から、紫苑が次の人間アクションを提案する。"""
+    return propose_agentic_skill_next_actions(limit=limit)
+
+
+@router.get("/api/judgment-assets/agentic-skill-inbox")
+def get_agentic_skill_inbox(limit: int = 50, status: str | None = None):
+    """agentic skill が作ったレビュー候補を返す。昇格は行わない。"""
+    items = load_agentic_skill_review_inbox(limit=limit, status=status)
+    return {
+        "count": len(items),
+        "promotion_policy": "human_review_required_no_automatic_scoring_or_rag_change",
+        "items": items,
+    }
+
+
+@router.post("/api/judgment-assets/agentic-skill-inbox/{inbox_id}/review")
+def review_agentic_skill_inbox(inbox_id: str, req: AgenticSkillReviewRequest):
+    """agentic skill レビュー箱の候補を採用/修正/保留/却下として記録する。"""
+    try:
+        return review_agentic_skill_inbox_item(
+            inbox_id=inbox_id,
+            decision=req.decision,
+            note=req.note,
+            edited_claim=req.edited_claim,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

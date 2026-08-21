@@ -23,8 +23,12 @@ from lease_intelligence_tools import (
     search_cases,
     search_obsidian_context,
 )
+from api.shion_agentic_skills import AGENTIC_SKILL_TOOLS
+from api.shion_obsidian_curator import OBSIDIAN_CURATOR_TOOLS
+from api.shion_system_self_inspection import SHION_SYSTEM_SELF_INSPECTION_TOOLS
 
-# ローカル SQLite / JSON / ログファイル読み取りのみ。外部 API を叩かない（追加課金ゼロ）。
+# ローカル SQLite / JSON / ログファイル読み取り、または副作用なしの整形ツールのみ。
+# 外部 API を叩かない（追加課金ゼロ）。
 READ_ONLY_DB_TOOLS = [
     search_cases,              # 類似・過去案件の検索
     get_score_detail,          # 企業名からスコア内訳を取得（過去の採点結果）
@@ -38,4 +42,7 @@ READ_ONLY_DB_TOOLS = [
     build_judgment_preview,    # 判断材料プレビュー（レビュー前の下書き）を取得
     search_obsidian_context,   # Obsidian Vaultの知識ノート検索
     audit_ledger_consistency,  # REV改善台帳のREV番号・canonical_key・status整合性監査
+    *OBSIDIAN_CURATOR_TOOLS,   # Obsidian情報健康・検索不調テーマの読み取り専用curation提案
+    *AGENTIC_SKILL_TOOLS,      # 判断資産/ソース検証/調査変換/判断フロー/SCQAの副作用なしスキル
+    *SHION_SYSTEM_SELF_INSPECTION_TOOLS,  # 紫苑システム全体の安全な自己検索・改善焦点提案
 ]

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Screening Decision Flow Builder"
+  short_description: "Map lease screening logic into compact decision flows."
+  default_prompt: "Build a concise lease screening decision flow from the provided criteria or case notes."

@@ -17,6 +17,8 @@ def test_build_index_extracts_nodes_edges_and_routes(tmp_path):
 
     assert index["summary"]["notes"] == 2
     assert index["summary"]["edges"] == 1
+    assert index["summary"]["retrieval_mode"] == "graph_preroute_then_trace_relevant_edges_only"
+    assert index["schema_version"] == 2
     node = next(n for n in index["nodes"] if n["key"] == "residual-value")
     assert node["route"] == "judgment_memory"
     assert node["links"] == ["asset-market"]
@@ -36,6 +38,29 @@ def test_route_query_scores_without_opening_note_bodies(tmp_path):
     assert len(candidates) == 1
     assert candidates[0]["path"] == "billing-rules.md"
     assert candidates[0]["route_score"] > 0
+    assert candidates[0]["query_salience"] > 0
+    assert candidates[0]["estimated_tokens_if_traced"] <= candidates[0]["estimated_tokens_if_full_scan"]
+
+
+def test_route_query_returns_linked_context_for_relevant_edges_only(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "subsidy.md").write_text(
+        "# 補助金案件\n補助金採択前の返済原資を確認する。[[cash-flow]] [[daily-log]]\n",
+        encoding="utf-8",
+    )
+    (vault / "cash-flow.md").write_text("# 返済原資\n補助金未採択時の代替資金を確認する。", encoding="utf-8")
+    (vault / "daily-log.md").write_text("# 日記\n昼食と移動の記録。", encoding="utf-8")
+
+    index = graph.build_index(vault)
+    candidates = graph.route_query("補助金 返済原資", index, limit=1)
+
+    assert candidates[0]["path"] == "subsidy.md"
+    assert candidates[0]["traversal_edge_count"] == 1
+    linked = candidates[0]["linked_context"]
+    assert linked[0]["path"] == "cash-flow.md"
+    assert all(item["path"] != "daily-log.md" for item in linked)
+    assert linked[0]["edge_direction"] == "out"
 
 
 def test_route_query_penalizes_logs_and_news_for_judgment_questions(tmp_path):

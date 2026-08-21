@@ -1,34 +1,34 @@
 # Memory Engineering Report
 
-- Generated: 2026-08-21T04:01:02
+- Generated: 2026-08-22T04:01:02
 - Mode: `read_only_memory_engineering_observation`
 - Guardrail: `no_memory_delete_no_promotion_no_prompt_or_scoring_change`
 
 ## Summary
 
-- Write path records: 232
+- Write path records: 247
 - Active canonical rules: 11
-- Write amplification / active rule: 21.09
-- Open human review records: 8
-- Memory records: 755
-- Recent memory usage: 569 events / 177 refs
+- Write amplification / active rule: 22.45
+- Open human review records: 31
+- Memory records: 765
+- Recent memory usage: 529 events / 170 refs
 - Maintenance status records: 144
 - Contradiction candidates: 0
 - Write policy metadata completion: 0.0
-- Candidate / active pressure: 0.492
-- Quarantine records: 143
+- Candidate / active pressure: 0.528
+- Quarantine records: 147
 - Sleeping active rules: 9
 
 ## Stanford Lens: Write Cost
 
-- `judgment_materials_preview`: 16 records, 8 open review, ~16 tokens
-- `autoresearch_candidates`: 79 records, 0 open review, ~79 tokens
-- `reflection_action_candidates`: 8 records, 0 open review, ~1160 tokens
+- `judgment_materials_preview`: 22 records, 14 open review, ~22 tokens
+- `autoresearch_candidates`: 83 records, 17 open review, ~83 tokens
+- `reflection_action_candidates`: 10 records, 0 open review, ~1432 tokens
 - `prediction_error_candidates`: 1 records, 0 open review, ~1 tokens
 - `obsidian_memory_insight_candidates`: 123 records, 0 open review, ~123 tokens
-- `canonical_preview`: 5 records
+- `canonical_preview`: 8 records
 - Write policy required fields: `['importance', 'confidence', 'trust_level', 'provenance']`
-- Write policy missing fields: `{'confidence': 211, 'importance': 227, 'provenance': 227, 'trust_level': 227}`
+- Write policy missing fields: `{'confidence': 217, 'importance': 239, 'provenance': 239, 'trust_level': 239}`
 
 ## Microsoft Lens: Utility Density
 
@@ -38,10 +38,10 @@
 
 ## Anthropic Lens: Control
 
-- Lifecycle inventory: `{'active': 600, 'candidate_or_review': 295, 'quarantine': 143, 'rejected_or_dismissed': 170, 'maintenance_or_forgetting_review': 153}`
-- Utility KPIs: `{'checklist_review_rate': 0.0, 'field_feedback_coverage': 0.0, 'candidate_to_active_pressure': 0.492, 'quarantine_rate_in_experience_flywheel': 0.323}`
-- Status counts: `{'active': 589, 'private': 22, 'stale': 144}`
-- Type counts: `{'dialogue_memory': 50, 'factual_memory': 249, 'judgment_memory': 143, 'reflection_memory': 42, 'technical_memory': 254, 'value_memory': 17}`
+- Lifecycle inventory: `{'active': 608, 'candidate_or_review': 321, 'quarantine': 147, 'rejected_or_dismissed': 158, 'maintenance_or_forgetting_review': 153}`
+- Utility KPIs: `{'checklist_review_rate': 0.0, 'field_feedback_coverage': 0.0, 'candidate_to_active_pressure': 0.528, 'quarantine_rate_in_experience_flywheel': 0.327}`
+- Status counts: `{'active': 597, 'private': 24, 'stale': 144}`
+- Type counts: `{'dialogue_memory': 41, 'factual_memory': 257, 'judgment_memory': 146, 'reflection_memory': 43, 'technical_memory': 262, 'value_memory': 16}`
 
 ### Forgetting Review Sample
 
@@ -58,7 +58,7 @@
 - `active_but_sleeping`: Do not delete immediately; ask for real-case feedback or move to hold if it stays unused.
 - `quarantine`: Keep out of memory and prompts; review only as a failure/poisoning/noise signal.
 - `contradiction`: Surface with dates and applicability; never auto-merge contradictory memories.
-- Current pressure: `{'active_non_value_without_top_usage': 429, 'sleeping_active_rules': 9, 'review_active_rules': 0, 'experience_quarantine': 143}`
+- Current pressure: `{'active_non_value_without_top_usage': 439, 'sleeping_active_rules': 9, 'review_active_rules': 0, 'experience_quarantine': 147}`
 
 ### Sleeping Rule Sample
 
@@ -73,16 +73,16 @@
 ### 候補を少し採否する
 
 - Why: 候補圧を下げ、active memory へ進めるものと捨てるものを分ける。
-- `judgment_materials_preview::f028757df99d18f2` judgment_rule: これは、リース審査において、一度きりの判断を『勘』で終わらせず、検証可能で再利用可能な『判断資産』へと昇華させるための、私の存在意義そのものです
-- `judgment_materials_preview::e10774d1025882a9` risk_signal: 借手の審査において、資金繰りに関するヒアリングをより具体的に行い、潜在的なリスク要因を早期に特定する
-- `judgment_materials_preview::85551eadd2d51972` judgment_rule: ③ 対応策 これらの学びを踏まえ、リース審査では以下の点を強化することを提案します
-- `judgment_materials_preview::6ddd1d7f13a0bdeb` judgment_rule: 今日のニュースからは、リース審査において以下の点が学べると考えます
-- `judgment_materials_preview::637989cf0b5f7902` judgment_rule: これは、紫苑がリース審査システムの改善や、Userへのより良い情報提供のために、自ら設定した調査項目や検討事項のことです
+- `judgment_materials_preview::f07dcd715dadb336` judgment_rule: 物件の保全性と残価: 医療機器は技術陳腐化が早いため、中古市場での流通性、保守契約の有無、撤去・搬出費用を含めた残価設定の妥当性を確認します
+- `judgment_materials_preview::ea6f87a2b966080f` risk_signal: ・根拠が薄い違和感は断定せず、「確認論点」「仮説」「稟議で聞くべきこと」として表現してください
+- `judgment_materials_preview::e96b470222df47ed` risk_signal: 返済原資の確実性: 導入目的と連動した収益改善計画、または既存事業からの安定したキャッシュフローでリース料を賄えるか
+- `judgment_materials_preview::d2bc70f15cdab5e4` judgment_rule: 稟議で残すべき一文 Qriskは低いが、導入目的が不明瞭なため、物件の必要性、返済原資の確実性、および医療機器特有の技術陳腐化リスクと残価設定の妥当性を、銀行紹介元と連携して確認することを条件に承認を検討する
+- `judgment_materials_preview::c5da5e67676b6cf2` risk_signal: 過去事例の「ダックス物流」と比較すると、あちらもスコア帯が近く、銀行支援が弱い中で資料不足で見送りとなりました
 
 ### quarantine が多い抽出元を弱める
 
 - Why: 隔離候補は学習材料ではなく、抽出条件のノイズを示す。
-- Count: 143
+- Count: 147
 - Sample count: 30
 - Sample by source: `{'shion_experience': 30}`
 - Review hint: Do not promote these. Use samples to tighten extraction gates or leave as evidence.
@@ -104,15 +104,16 @@
 
 ## Nvidia Lens: Retrieval Pressure
 
-- Notes: 2507 / Edges: 3407
-- Estimated raw tokens: 2629307
-- Estimated index tokens: 228760
-- Estimated token reduction: 0.913
+- Notes: 2536 / Edges: 5463
+- Estimated raw tokens: 2691696
+- Estimated index tokens: 238763
+- Estimated token reduction: 0.9113
 
 ## Recommended Next Checks
 
 - `memory_entry_metadata_gate` (write_policy): 候補記憶に importance/confidence/trust_level/provenance が不足している。昇格前に共通メタを補う。
 - `candidate_budget_review` (write_path): active判断基準1件あたりの候補量が多い。抽出条件・重複統合・候補上限を見直す。
+- `human_review_batch` (control): 人間レビュー待ちが溜まっている。自動昇格せず、上位候補だけ短時間で採否する。
 - `candidate_to_active_pressure_review` (utility_density): active記憶に対して候補・評価待ちが重い。候補生成より採否・圧縮・却下の運用を優先する。
 - `quarantine_sample_review` (forgetting): 経験フライホイールに隔離候補がある。学習材料ではなく、抽出条件のノイズとして扱う。
 - `sleeping_active_rule_feedback` (utility_density): active判断資産に実利用フィードバック未記録のものがある。削除前に次案件で効いたか確認する。
