@@ -4597,6 +4597,7 @@ def _record_cloudrun_chat_exchange(
 ) -> None:
     """Cloud RunのDB保存がreadonlyでも会話1往復をGCS inputへ退避する。"""
     if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_DATA_MODE")):
+        print(f"[CloudRunChatExchange] skip: ローカル実行(K_SERVICE/CLOUDRUN_DATA_MODE未設定)のため記録スキップ (surface={surface})")
         return
     try:
         hypothesis: dict = {}
