@@ -171,8 +171,6 @@ def test_agentic_skill_tools_are_side_effect_free_and_bounded():
 
 
 def test_agentic_skill_usage_log_and_review_inbox(tmp_path):
-    from google.genai.types import FunctionResponse
-
     from api.agentic_skill_usage import (
         load_agentic_skill_review_inbox,
         public_usage_notice,
@@ -197,17 +195,14 @@ def test_agentic_skill_usage_log_and_review_inbox(tmp_path):
 
     result = record_agentic_skill_result(
         tool_name="structure_judgment_asset_candidate",
-        result=FunctionResponse(
-            name="structure_judgment_asset_candidate",
-            response={
-                "result": {
-                    "candidate": {
-                        "core_judgment": "競合見積がある時は信用リスクと成約リスクを分ける",
-                        "recommended_action": "追加確認する",
-                    }
+        result={
+            "result": {
+                "candidate": {
+                    "core_judgment": "競合見積がある時は信用リスクと成約リスクを分ける",
+                    "recommended_action": "追加確認する",
                 }
-            },
-        ),
+            }
+        },
         session_id="s1",
         case_context={"company_name": "demo"},
         usage_log_path=usage_log,
