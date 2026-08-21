@@ -70,10 +70,14 @@ def _extract_bullets(text: str, headings: tuple[str, ...] = ()) -> list[str]:
 
 def _recent_files(vault: Path, date_str: str) -> list[Path]:
     candidates: list[Path] = []
+    # 注意: 同日のPrivate Reflectionノートをここに含めない。
+    # generate_and_append_reflection() が当日中に複数回実行されると、前回実行が
+    # 書いたPrivate Reflection自身を「今日読んだ材料」として読み込み、そこに含まれる
+    # 古い/誤った記述（例: 「対話ログ: なし」）を次の生成に再引用してしまう自己参照
+    # 汚染バグがあったため意図的に除外している。
     exact_paths = [
         vault / "Daily" / f"{date_str}.md",
         vault / "Projects" / "tune_lease_55" / "Lease Intelligence" / "Dialogue" / f"{date_str}.md",
-        vault / "Projects" / "tune_lease_55" / "Lease Intelligence" / "Private Reflection" / f"{date_str}.md",
     ]
     candidates.extend(path for path in exact_paths if path.exists())
 

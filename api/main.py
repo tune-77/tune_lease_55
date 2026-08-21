@@ -4585,6 +4585,45 @@ def _redact_chat_log_text(value: str, limit: int = 1200) -> str:
     return text
 
 
+def _append_local_cloudrun_chat_log(
+    *,
+    surface: str,
+    user_id: str,
+    category: str,
+    response_mode: str,
+    user_message: str,
+    assistant_reply: str,
+    metadata: dict,
+) -> None:
+    """ローカル実行時、Private Reflectionが読むdata/cloudrun_chat_log.jsonlに直接1行追記する。
+
+    scripts/sync_cloudrun_inputs_from_gcs.py の _chat_entry_from_event() と同じスキーマ
+    （event_id/ts/surface/user_id/category/response_mode/user_message/assistant_reply/
+    metadata/shion_hypothesis/source）に合わせている。GCS writebackはローカルでは無効な
+    ため、この関数がローカル対話をPrivate Reflectionへ到達させる唯一の経路になる。
+    """
+    import datetime as _dt
+    from uuid import uuid4
+
+    row = {
+        "event_id": str(uuid4()),
+        "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "surface": surface or "unknown",
+        "user_id": str(user_id or "default")[:80],
+        "category": str(category or "")[:80],
+        "response_mode": str(response_mode or "")[:40],
+        "user_message": _redact_chat_log_text(user_message, limit=1200),
+        "assistant_reply": _redact_chat_log_text(assistant_reply, limit=1800),
+        "metadata": metadata if isinstance(metadata, dict) else {},
+        "shion_hypothesis": {},
+        "source": "local_direct",
+    }
+    path = Path(get_data_path("cloudrun_chat_log.jsonl"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+
+
 def _record_cloudrun_chat_exchange(
     *,
     surface: str,
@@ -4597,6 +4636,20 @@ def _record_cloudrun_chat_exchange(
 ) -> None:
     """Cloud RunのDB保存がreadonlyでも会話1往復をGCS inputへ退避する。"""
     if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_DATA_MODE")):
+        try:
+            _append_local_cloudrun_chat_log(
+                surface=surface,
+                user_id=user_id,
+                category=category,
+                response_mode=response_mode,
+                user_message=user_message,
+                assistant_reply=assistant_reply,
+                metadata=metadata or {},
+            )
+        except Exception as exc:
+            print(f"[CloudRunChatExchange] ローカル記録失敗: {exc} (surface={surface})")
+        else:
+            print(f"[CloudRunChatExchange] ローカル記録: data/cloudrun_chat_log.jsonl に追記 (surface={surface})")
         return
     try:
         hypothesis: dict = {}
