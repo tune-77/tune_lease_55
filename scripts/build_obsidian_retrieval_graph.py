@@ -327,12 +327,13 @@ def build_index(vault: Path, *, include_private: bool = False) -> dict[str, Any]
 
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "schema_version": 1,
+        "schema_version": 2,
         "guardrail": GUARDRAIL,
         "vault": str(vault),
         "summary": {
             "vault_exists": vault.exists(),
             "include_private": include_private,
+            "retrieval_mode": "graph_preroute_then_trace_relevant_edges_only",
             "notes": len(nodes),
             "routes": dict(sorted(route_counts.items())),
             "edges": sum(int(node["out_degree"]) for node in nodes),
@@ -364,6 +365,12 @@ def route_query(query: str, index: dict[str, Any], *, limit: int = 5) -> list[di
     normalized_query = " ".join(term_set)
     wants_news = any(term in normalized_query for term in NEWS_QUERY_TERMS)
     wants_logs = any(term in normalized_query for term in LOG_QUERY_TERMS)
+    node_by_key = {
+        str(node.get("key")): node
+        for node in index.get("nodes") or []
+        if isinstance(node, dict) and node.get("key")
+    }
+    raw_token_total = int((index.get("summary") or {}).get("estimated_raw_tokens") or 0)
     scored: list[tuple[float, dict[str, Any]]] = []
     for node in index.get("nodes") or []:
         if not isinstance(node, dict):
@@ -388,9 +395,96 @@ def route_query(query: str, index: dict[str, Any], *, limit: int = 5) -> list[di
         score += min(2.0, float(node.get("degree") or 0) * 0.15)
         if score <= 0:
             continue
-        scored.append((score, {**node, "route_score": round(score, 3), "matched_terms": sorted(set(matched))}))
+        linked_context = _linked_context(node, node_by_key, scoring_terms, limit=4)
+        traced_tokens = int(node.get("token_estimate") or 0) + sum(
+            int(item.get("token_estimate") or 0) for item in linked_context
+        )
+        token_saving_ratio = (
+            round(1.0 - (traced_tokens / raw_token_total), 4)
+            if raw_token_total and traced_tokens <= raw_token_total
+            else 0.0
+        )
+        salience_base = max(1.0, float(node.get("token_estimate") or 1) / 100.0)
+        scored.append((
+            score,
+            {
+                **node,
+                "route_score": round(score, 3),
+                "matched_terms": sorted(set(matched)),
+                "query_salience": round(score / salience_base, 3),
+                "linked_context": linked_context,
+                "traversal_edge_count": len(linked_context),
+                "estimated_tokens_if_full_scan": raw_token_total,
+                "estimated_tokens_if_traced": traced_tokens,
+                "estimated_token_saving_ratio": token_saving_ratio,
+            },
+        ))
     scored.sort(key=lambda item: (item[0], int(item[1].get("mtime") or 0)), reverse=True)
     return [node for _, node in scored[:limit]]
+
+
+def _linked_context(
+    node: dict[str, Any],
+    node_by_key: dict[str, dict[str, Any]],
+    scoring_terms: set[str],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Return adjacent notes worth tracing after the primary hit is selected."""
+    neighbor_keys: list[tuple[str, str]] = []
+    for key in node.get("links") or []:
+        neighbor_keys.append((str(key), "out"))
+    for key in node.get("backlinks") or []:
+        neighbor_keys.append((str(key), "back"))
+
+    seen: set[str] = set()
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for key, direction in neighbor_keys:
+        if key in seen:
+            continue
+        seen.add(key)
+        neighbor = node_by_key.get(key)
+        if not neighbor:
+            continue
+        neighbor_score = _adjacent_relevance_score(neighbor, scoring_terms)
+        if neighbor_score <= 0:
+            continue
+        neighbor_score += min(1.0, float(neighbor.get("degree") or 0) * 0.08)
+        scored.append((
+            neighbor_score,
+            {
+                "path": neighbor.get("path"),
+                "key": neighbor.get("key"),
+                "title": neighbor.get("title"),
+                "route": neighbor.get("route"),
+                "summary": neighbor.get("summary"),
+                "edge_direction": direction,
+                "degree": neighbor.get("degree"),
+                "token_estimate": neighbor.get("token_estimate"),
+                "context_score": round(neighbor_score, 3),
+            },
+        ))
+
+    scored.sort(key=lambda item: (item[0], int(item[1].get("degree") or 0)), reverse=True)
+    return [item for _, item in scored[:limit]]
+
+
+def _adjacent_relevance_score(node: dict[str, Any], scoring_terms: set[str]) -> float:
+    keywords = {_normalize_route_term(str(term)) for term in node.get("keywords") or []}
+    title = _normalize_route_term(str(node.get("title") or ""))
+    path = _normalize_route_term(str(node.get("path") or ""))
+    summary = _normalize_route_term(str(node.get("summary") or ""))
+    score = 0.0
+    for term in scoring_terms:
+        if term in keywords:
+            score += 2.0
+        if term and term in title:
+            score += 1.25
+        if term and term in path:
+            score += 0.75
+        if term and term in summary:
+            score += 0.5
+    return score
 
 
 def _normalize_route_term(value: str) -> str:
@@ -434,6 +528,7 @@ def markdown(index: dict[str, Any], *, max_nodes: int = 80) -> str:
         f"- Estimated raw tokens: {summary.get('estimated_raw_tokens', 0)}",
         f"- Estimated index tokens: {summary.get('estimated_index_tokens', 0)}",
         f"- Estimated token reduction ratio: {summary.get('estimated_token_reduction_ratio', 0)}",
+        f"- Retrieval mode: `{summary.get('retrieval_mode', 'graph_preroute')}`",
         f"- Routes: {summary.get('routes', {})}",
         "",
         "## Router",
