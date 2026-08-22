@@ -7029,6 +7029,7 @@ def post_chat(req: ChatRequest):
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
             external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
             from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
+            from api.chat_prompt_cost import log_prompt_composition
             from api.chat_response_pipeline import (
                 build_chat_response_payload,
                 build_prompt_feedback_snapshot,
@@ -7078,9 +7079,24 @@ def post_chat(req: ChatRequest):
                 )
                 else ""
             )
+            base_general_with_pdca = append_optional_block(base_system_prompt, pdca_block)
             effective_system_prompt = _cap_system_prompt(
-                append_optional_block(base_system_prompt, pdca_block),
+                base_general_with_pdca, surface="next_chat_general"
+            )
+            log_prompt_composition(
                 surface="next_chat_general",
+                blocks={
+                    "base_system_root": base_system_root,
+                    "external_research_context": external_research_context,
+                    "memory_recall_context": memory_recall_context,
+                    "experience_loop_context": experience_loop_context,
+                    "chat_history_summary_context": chat_history_summary_context,
+                    "identity_memory_context": identity_memory_context,
+                    "user_personal_memory_context": user_personal_memory_context,
+                    "pdca_block": pdca_block,
+                },
+                final_prompt=effective_system_prompt,
+                base_prompt=base_general_with_pdca,
             )
             obsidian_daily_injected = {}
             if obsidian_daily_context:
@@ -7446,6 +7462,7 @@ def post_chat(req: ChatRequest):
             append_chat_debug_metadata,
         )
         from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
+        from api.chat_prompt_cost import log_prompt_composition
         from api.chat_response_pipeline import (
             build_chat_response_payload,
             build_prompt_feedback_snapshot,
@@ -7506,9 +7523,25 @@ def post_chat(req: ChatRequest):
             )
             else ""
         )
-        effective_prompt = _cap_system_prompt(
-            append_optional_block(base_effective_prompt, pdca_block),
+        base_with_pdca = append_optional_block(base_effective_prompt, pdca_block)
+        effective_prompt = _cap_system_prompt(base_with_pdca, surface="next_chat_rag")
+        # 計測のみ。太りやすいブロックだけ名前を付け、残りは unaccounted_chars に出す。
+        log_prompt_composition(
             surface="next_chat_rag",
+            blocks={
+                "base_prompt_root": base_prompt_root,
+                "rag_context": rag_context,
+                "db_context": db_context,
+                "external_research_context": external_research_context,
+                "improvement_context": improvement_context,
+                "judgment_learning_context": judgment_learning_context,
+                "memory_recall_context": memory_recall_context,
+                "experience_loop_context": experience_loop_context,
+                "chat_history_summary_context": chat_history_summary_context,
+                "pdca_block": pdca_block,
+            },
+            final_prompt=effective_prompt,
+            base_prompt=base_with_pdca,
         )
         obsidian_daily_injected = {}
         if obsidian_daily_context:
