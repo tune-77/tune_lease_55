@@ -24,6 +24,7 @@ from lease_intelligence_tools import (
     search_obsidian_context,
 )
 from api.shion_agentic_skills import AGENTIC_SKILL_TOOLS
+from api.shion_memory_system_audit import SHION_MEMORY_SYSTEM_AUDIT_TOOLS
 from api.shion_obsidian_curator import OBSIDIAN_CURATOR_TOOLS
 from api.shion_system_self_inspection import SHION_SYSTEM_SELF_INSPECTION_TOOLS
 
@@ -45,4 +46,5 @@ READ_ONLY_DB_TOOLS = [
     *OBSIDIAN_CURATOR_TOOLS,   # Obsidian情報健康・検索不調テーマの読み取り専用curation提案
     *AGENTIC_SKILL_TOOLS,      # 判断資産/ソース検証/調査変換/判断フロー/SCQAの副作用なしスキル
     *SHION_SYSTEM_SELF_INSPECTION_TOOLS,  # 紫苑システム全体の安全な自己検索・改善焦点提案
+    *SHION_MEMORY_SYSTEM_AUDIT_TOOLS,  # 記憶索引/鮮度バッチ/改訂履歴/想起評価の整合性監査
 ]

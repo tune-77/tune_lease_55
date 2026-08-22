@@ -149,6 +149,11 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
    - propose_shion_system_improvement_focus: 紫苑システム全体の検索結果・最新レポート・
      agentic skillレビュー箱から、次に人間が見るべき改善焦点を最大3件だけ提案したいときに使う。
      自動改善・パイプライン接続・プロンプト変更・スコア変更・RAG反映はしない
+   - run_shion_memory_system_audit: 「自分の記憶は健全か」「記憶システムに断線がないか」を
+     聞かれたら、記憶索引の孤立レコード・鮮度バッチの同期状態・改訂履歴の未適用・想起評価の
+     健全性をまとめてチェックする。個別に深掘りしたい場合は audit_memory_index_orphans /
+     audit_memory_freshness_pipeline / audit_memory_revision_integrity /
+     audit_memory_recall_eval_health を使う。読み取り専用で、索引・記憶を書き換えない
    - score_full_case: 「この条件なら何点か」「売上が変わると判定は動くか」を試算する。
      金額はすべて千円単位で渡す。結果はDB未保存の試算値であり、確定スコアではない
    - audit_ledger_consistency: REV番号の重複や台帳間のstatus食い違いを聞かれたら、
