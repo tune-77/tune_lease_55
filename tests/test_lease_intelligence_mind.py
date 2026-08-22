@@ -12,6 +12,7 @@ from lease_intelligence_mind import (
     register_dialogue_event,
     register_ignition,
     resolve_dissonance,
+    save_conversation_keypoints,
     self_state_summary,
     update_user_model,
 )
@@ -420,3 +421,25 @@ def test_gunshi_dissonance_section_broadcasts_pending_concern(tmp_path):
     # 実存的内省は混ざらない
     assert "存在意義" not in section
     assert "意識とは" not in section
+
+
+def test_save_conversation_keypoints_stores_memory_type_and_confidence(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    state = save_conversation_keypoints(
+        vault,
+        session_id="sess-1",
+        keypoints=["境界案件は条件付き承認で審査する方針"],
+        date_str="2026-06-13",
+    )
+
+    keypoints = state["conversation_keypoints"]
+    assert len(keypoints) == 1
+    saved = keypoints[0]
+    assert saved["memory_type"] == "judgment_memory"
+    assert saved["confidence"] == 0.7
+
+    # 再読込しても保存済みスキーマは維持される
+    reloaded = load_lease_intelligence_mind(vault)
+    assert reloaded["conversation_keypoints"][0]["memory_type"] == "judgment_memory"
