@@ -830,6 +830,144 @@ graph LR
     style SHION fill:#6b46c1,color:#fff
 ```
 
+### 図4：判断資産のデータフロー（発話 → 検疫 → 昇格 → 索引 → 実戦）
+
+「なんか変」という発話を捨てずに保全し、人間のレビューを通してから判断資産として使う流れ。
+**判断資産の正本はローカルの `data/canonical_judgment_rules.json`** であり、Obsidian Vault は
+材料の供給源かつ内省の置き場として並走する（`scripts/promote_canonical_judgment_rules.py` は
+Obsidian へは書かない）。
+
+```mermaid
+graph TD
+    User["👤 審査担当者\n違和感・判断の言語化"] -->|"① 発話を保全"| LangMat["data/language_judgment_materials.jsonl\napi/main.py:4861\npromotion_policy=review_required"]
+    Vault["📓 Obsidian Vault\nProjects/tune_lease_55/\n（材料の供給源・内省の置き場）"] -->|"材料として読む"| MatPrev
+
+    LangMat -->|"② 日次パイプラインで材料化"| MatPrev["data/judgment_materials_preview.jsonl\nscripts/build_judgment_materials_preview.py"]
+    MatPrev -->|"③ 概念単位に圧縮\nevidence_count を付与"| RulePrev["data/canonical_judgment_rules_preview.json\nscripts/build_canonical_judgment_rules.py\nstatus=accepted_preview 判定"]
+
+    RulePrev -->|"④ 人間がレビューして昇格\naccepted_preview のみ"| Canon["🏛 data/canonical_judgment_rules.json\nscripts/promote_canonical_judgment_rules.py\n★判断資産の正本"]
+    AutoRes["Auto Research 候補\ndata/autoresearch_judgment_asset_candidate_state.json"] -->|"promotion_status=promoted"| Canon
+
+    Canon -->|"⑤ 記憶索引へ取り込み\nsource=canonical_judgment_rules"| MemIdx["data/shion_memory_index.json\nscripts/build_shion_memory_index.py\n★記憶索引の正本"]
+    Vault -->|"source=knowledge_base"| MemIdx
+    MemIdx -.->|"⑥ SHION_MEMORY_HYBRID=1 のときだけ同期\napi/shion_memory_vector.py"| Chroma["ChromaDB collection=shion_memory\napi/chroma_db/\n（同期先キャッシュ・任意）"]
+
+    Canon -->|"⑦ 審査画面で提示"| Screen["審査・チャット画面\napi/routers/feedback_loop.py"]
+    MemIdx -->|"ハイブリッド想起"| Screen
+    Chroma -.->|"ベクトル想起"| Screen
+    Screen --> User
+
+    Screen -->|"⑧ 実戦の使われ方を記録\nused / helped / challenged / rejected / neutral"| Feedback["data/judgment_asset_usage_feedback.jsonl\napi/routers/feedback_loop.py:39"]
+    Feedback -->|"⑨ 表示優先度の学習\njudgment_asset_bandit.py\n※スコア・承認判断は変えない"| Screen
+    Feedback -->|"⑩ 降格・修正判断へ差し戻し\nscripts/build_judgment_asset_field_review.py"| RulePrev
+
+    Canon <-->|"scripts/sync_cloudrun_inputs_from_gcs.py\nローカルが正本・Cloud Run へ配布"| GCS["☁️ GCS Vault / Cloud Run\ntune-lease-55-data"]
+    User -->|"内省・判断変更ログ"| Vault
+
+    style Canon fill:#6b46c1,color:#fff,stroke:#4c1d95,stroke-width:3px
+    style MemIdx fill:#7e22ce,color:#fff,stroke:#581c87
+    style LangMat fill:#b45309,color:#fff,stroke:#78350f
+    style MatPrev fill:#a16207,color:#fff,stroke:#713f12
+    style RulePrev fill:#a16207,color:#fff,stroke:#713f12
+    style Feedback fill:#be185d,color:#fff,stroke:#831843
+    style Vault fill:#2d6a4f,color:#fff,stroke:#14532d
+    style Chroma fill:#9b2226,color:#fff,stroke:#7f1d1d
+    style GCS fill:#1a56db,color:#fff,stroke:#1e3a8a
+    style AutoRes fill:#0e7490,color:#fff,stroke:#164e63
+```
+
+**この図で押さえる点**
+
+| 論点 | 実装上の事実 | 根拠 |
+|---|---|---|
+| 判断資産の正本はどこか | ローカル `data/canonical_judgment_rules.json`。Obsidian ではない | `scripts/promote_canonical_judgment_rules.py:9,25` / `scripts/sync_cloudrun_inputs_from_gcs.py:562` |
+| 検疫は何段あるか | 材料 preview と正規ルール preview の**2段**。別ファイル・別スクリプト | `build_judgment_materials_preview.py:36` / `build_canonical_judgment_rules.py:25` |
+| 昇格の条件 | `status=accepted_preview` のみ。同一 `rule_id` は更新、preview から消えた既存ルールは残す | `scripts/promote_canonical_judgment_rules.py:6-9` |
+| ChromaDB の位置づけ | 正本ではなく `shion_memory_index.json` の同期先。依存が無い環境や `SHION_MEMORY_HYBRID` 未設定では**呼ばれない** | `api/shion_memory_vector.py:4-8,24-27` |
+| フィードバックが変えるもの | 表示優先度と降格・修正の判断材料だけ。スコア・承認判断・プロンプトは変えない | `judgment_asset_bandit.py:1-5,19-26` |
+
+### 図5：判断資産ストアの ER 図
+
+図4がフロー（時間軸）、こちらが構造（実体と多重度）。保存先はコメント欄に記載し、
+属性欄には実データの項目だけを置いている。
+
+```mermaid
+erDiagram
+    OBSIDIAN_NOTE ||--o{ JUDGMENT_MATERIALS_PREVIEW : "vault 由来の材料"
+    OBSIDIAN_NOTE ||--o{ SHION_MEMORY_RECORD : "source=knowledge_base"
+    LANGUAGE_JUDGMENT_MATERIAL ||--o| JUDGMENT_MATERIALS_PREVIEW : "保全した発話を材料化"
+    CANONICAL_RULES_PREVIEW ||--o{ JUDGMENT_MATERIALS_PREVIEW : "evidence_count 件を根拠に圧縮"
+    CANONICAL_RULES_PREVIEW ||--o| CANONICAL_JUDGMENT_RULE : "accepted_preview のみ昇格"
+    AUTORESEARCH_CANDIDATE_STATE ||--o| CANONICAL_JUDGMENT_RULE : "promotion_status=promoted"
+    CANONICAL_JUDGMENT_RULE ||--o{ JUDGMENT_ASSET_USAGE_FEEDBACK : "asset_id で実戦評価を蓄積"
+    CANONICAL_JUDGMENT_RULE ||--o{ SHION_MEMORY_RECORD : "source=canonical_judgment_rules"
+    SHION_MEMORY_RECORD ||--o| CHROMA_MEMORY_VECTOR : "hybrid 有効時のみ同期"
+
+    LANGUAGE_JUDGMENT_MATERIAL {
+        string material_id PK "data/language_judgment_materials.jsonl"
+        string raw_text "違和感・判断の言語化そのもの"
+        string promotion_policy "review_required"
+        string captured_at "保全時刻"
+    }
+
+    JUDGMENT_MATERIALS_PREVIEW {
+        string material_id PK "data/judgment_materials_preview.jsonl"
+        string source "language_material または vault note"
+        string excerpt "抽出した判断材料"
+        string source_path "一次エビデンスの所在"
+    }
+
+    CANONICAL_RULES_PREVIEW {
+        string rule_id PK "data/canonical_judgment_rules_preview.json"
+        string concept "asset_life_and_residual など概念キー"
+        string core_principle "圧縮したルール案"
+        int evidence_count "根拠となった材料数"
+        string status "accepted_preview / それ以外"
+    }
+
+    CANONICAL_JUDGMENT_RULE {
+        string rule_id PK "data/canonical_judgment_rules.json ★正本"
+        string concept "概念キー"
+        string core_principle "確定した判断原則"
+        int evidence_count "根拠数"
+        string promoted_at "昇格時刻"
+    }
+
+    AUTORESEARCH_CANDIDATE_STATE {
+        string candidate_id PK "data/autoresearch_judgment_asset_candidate_state.json"
+        string promotion_status "promoted / held / rejected"
+        string evidence_path "一次エビデンスの所在"
+    }
+
+    JUDGMENT_ASSET_USAGE_FEEDBACK {
+        string feedback_id PK "data/judgment_asset_usage_feedback.jsonl"
+        string asset_id FK "参照した判断資産"
+        string case_id "対象案件"
+        string outcome "used / helped / challenged / rejected / neutral"
+        string recorded_at "記録時刻"
+    }
+
+    SHION_MEMORY_RECORD {
+        string memory_id PK "data/shion_memory_index.json ★記憶索引の正本"
+        string source "canonical_judgment_rules / knowledge_base / mind.* など"
+        string content "想起対象の本文"
+        string memory_type "api/shion_memory_taxonomy.py の分類"
+        float freshness "減衰スコア"
+    }
+
+    CHROMA_MEMORY_VECTOR {
+        string vector_id PK "api/chroma_db/ collection=shion_memory"
+        string memory_id FK "同期元レコード"
+        string embedding "paraphrase-multilingual-MiniLM-L12-v2"
+    }
+
+    OBSIDIAN_NOTE {
+        string note_path PK "Obsidian Vault Projects/tune_lease_55/"
+        string title "ノート表題"
+        string body "内省・判断変更ログ・ナレッジ本文"
+    }
+```
+
 ---
 
 ## まず動かす
