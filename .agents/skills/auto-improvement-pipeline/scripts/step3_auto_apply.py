@@ -422,6 +422,7 @@ class Step3AutoApplier:
             "id": imp_id,
             "file": str(target_file.relative_to(self.workspace_root)),
             "title": title,
+            "description": improvement.get("description", ""),
             "canonical_key": str(improvement.get("canonical_key", "")),
             "_ledger_key": _ledger_key or "",
             "pr_url": None,  # git_commit_and_push 後に更新
@@ -432,8 +433,8 @@ class Step3AutoApplier:
         return (
             str(entry.get("_ledger_key") or "")
             or str(entry.get("canonical_key") or "")
-            or _canonical_key(entry.get("title", ""), entry.get("file", ""))
-            or (_ledger.compute_key(entry.get("title", ""), entry.get("file", "")) if _LEDGER_AVAILABLE else "")
+            or _canonical_key(entry.get("title", ""), entry.get("description", ""))
+            or (_ledger.compute_key(entry.get("title", ""), entry.get("description", "")) if _LEDGER_AVAILABLE else "")
         )
 
     def _demote_pending_to_needs_review(self, reason: str, ledger_status: str = "apply_failed") -> None:

@@ -144,3 +144,32 @@ def test_git_commit_and_push_without_pending_patches_demotes_instead_of_marking_
 
     processed, _status = mod._ledger.is_processed("lk19")
     assert processed is False
+
+
+def test_pending_ledger_key_fallback_uses_description_not_file(tmp_path, monkeypatch):
+    """`_pending_ledger_key` の再計算フォールバックは canonical_key の実際の
+    入力である description を使うべきで、無関係な file パスを渡すと
+    apply_improvement() 側で最初に計算した _ledger_key とズレて同じ改善案が
+    別キーとして台帳に記録されてしまう（needs_review 残留の一因）。
+    """
+    mod = load_step3_module()
+    ledger_path = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(mod._ledger, "LEDGER_PATH", ledger_path)
+
+    applier = mod.Step3AutoApplier(workspace_root=tmp_path)
+    title = "テスト改善タイトル"
+    description = "説明文テキスト"
+    entry = {
+        "id": "REV-100",
+        "file": "completely/unrelated/path.py",
+        "title": title,
+        "description": description,
+        "canonical_key": "",
+        "_ledger_key": "",
+        "pr_url": None,
+    }
+
+    key = applier._pending_ledger_key(entry)
+
+    assert key == mod._canonical_key(title, description)
+    assert key != mod._canonical_key(title, entry["file"])
