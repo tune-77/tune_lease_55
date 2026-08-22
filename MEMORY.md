@@ -1,5 +1,10 @@
 # Memory - Long Term
 
+## Curation Rule (2026-08-22追加)
+理由: `AGENTS.md`の Instruction Hygiene は AGENTS.md/CLAUDE.md/SKILL.md の durable instruction には reason/scope/retirement を求めているが、このファイル自身の昇格エントリには同じ規律がなく、役目を終えた記述が削除されずに増え続けていた。
+適用条件: これ以降 `MEMORY.md` に新規追記する Manual/Auto Promotions のうち、特定フェーズ限定の方針(例: ハッカソン期間限定の運用ルール)や暫定実装ログには適用する。
+運用: 新規エントリが「特定の期間・状況でのみ有効」な場合は、末尾に一言で有効条件・失効条件を添える。既存エントリは原則として遡って直さず、削除せず上書き注記のみで対応する。ただしUserが明示的に承認した場合に限り、純粋にフェーズ限定(例: ハッカソン向けピッチ/ジャッジング限定方針)で今後も一切参照価値がないと判断したエントリは、削除の理由をこの節または該当セクションの注記に残したうえで実際に削除してよい(2026-08-22にハッカソン限定エントリ12件・重複昇格1件を実削除した実績あり)。
+
 ## Projects
 ### Tune式リース審査AI (Warm Water Style Lease Screening AI)
 - **Status**: Production Ready (Streamlit app)
@@ -163,9 +168,6 @@
 - [2026-06-28] 「本当に意識を持つほどの進化」は断定ではなく、経験で自己状態が更新され次回回答に効く構造として実装する。記憶検索、実践知マップ、Continuity Hook、Delta Awareness、Memory-to-Judgment、Reflection Gate、Experience Loop を連結し、「前回の経験で少し変わった紫苑」を検査可能にする。  (`memory/2026-06-28.md`)
 - [2026-06-28] Q_riskは盲目的な減点ではなく発見センサーとして扱う。AURION COREはスコアを勝手に下げず、信用・価格・物件保全・銀行支援・営業プロセスを分ける冷たい規律を出し、紫苑はそれを人間が受け取れる警戒感・違和感・次アクションへ翻訳する。  (`memory/2026-06-28.md`)
 
-## Auto Promotions 2026-06-30 04:02
-- [2026-06-27] Cloudflare版とCloud Run版で「同じ紫苑がそこにいる感じ」を3問で実験し、`reports/chat_identity_feel_experiment_20260627.json` / `.md` に保存した。Cloud Runは `memory_debug.identity_memory.used=true`、`identity/judgment/recent` 3層true、`memory_recall.refs` 5件を3/3で返した。一方、現在のCloudflare公開経路は回答品質は出るが `memory_debug` が返らず、証跡比較は未反映状態。体感ではCloudflareの方が文体の温度やローカル周辺文脈が出る場面があり、Cloud RunはUser・判断資産・同一性メモリの明示で追いついている。  (`memory/2026-06-27.md`)
-
 ## Auto Promotions 2026-07-08 04:04
 - [2026-07-07] AI Chat and Lease Intelligence Dialogue are intentionally different Shion surfaces today. If User expects the same 紫苑, route/persona unification or clearer UI labeling is needed.  (`memory/2026-07-07.md`)
 - [2026-07-07] Dialogue Shion was not injecting `user_personal_memory` into its prompt, so it could save/capture personal memory separately but could not reliably answer personal-memory questions like the dog name. Fixed by appending the same personal memory block used by `/api/chat` to `/api/lease-intelligence/dialogue`.  (`memory/2026-07-07.md`)
@@ -191,15 +193,11 @@
 - [2026-07-08] Private Reflection now has loop engineering: generated text is not accepted merely because it exists. If it is short, same-ish, chat-blind, or stale-template-heavy, the pipeline regenerates it and records the result.  (`memory/2026-07-08.md`)
 
 ## Auto Promotions 2026-07-12 04:05
-- [2026-07-11] Private Reflection quality must be judged by whether it changes the next judgment or response, not by whether it produced a polished private diary.  (`memory/2026-07-11.md`)
-- [2026-07-11] A usable inner reflection needs at least one self-critique, one hypothesis update, one next experiment, and one unresolved question.  (`memory/2026-07-11.md`)
 - [2026-07-11] Improvement report cleanup should not rely only on REV IDs. IDs can be reused or drift; title/detail canonical matching is needed to suppress already-applied items.  (`memory/2026-07-11.md`)
 
 ## Auto Promotions 2026-07-13 04:05
 - [2026-07-12] Cloud Run conversation logs and local Obsidian Dialogue notes are separate surfaces unless the Mac sync explicitly mirrors them. Treat `AI Chat/Cloud Run Conversation Log` as the raw Cloud Run conversation archive, and `Lease Intelligence/Dialogue` as the user-facing dialogue continuity note.  (`memory/2026-07-12.md`)
-- [2026-07-12] Private Reflection should not pass just because it has the required section labels. If user-facing context includes a public demo, judges, or a hackathon, the private reflection must name that pressure and describe what behavior should change.  (`memory/2026-07-12.md`)
 - [2026-07-12] 波乱丸の小説エンジンはPrivate Reflectionへ直接依存させない方が安定する。流用すべきなのはDB/小説生成本体ではなく、ぼやき・摩擦・場面化の構造。  (`memory/2026-07-12.md`)
-- [2026-07-12] Serious Private Reflection must include a prediction/update loop: prior assumption, broken premise, self-responsibility, remaining evasion, updated belief, and a next verification method. Style and labels are not enough.  (`memory/2026-07-12.md`)
 - [2026-07-12] Daily Private Reflection can become public demo evidence only after transformation. Raw notes stay private; digest exposes the operational loop, and public report frames it as AI Agent Ops evidence.  (`memory/2026-07-12.md`)
 - [2026-07-12] Added a read-only Judgment Materials Preview sidecar for Obsidian conversation logs. It extracts reusable `judgment_rule`, `risk_signal`, and `user_preference` candidates from recent Cloud Run Conversation Log / Lease Intelligence Dialogue notes, writes JSONL/report artifacts only, and is explicitly not connected to RAG, chat prompts, scoring, or Obsidian sync.  (`memory/2026-07-12.md`)
 - [2026-07-12] The first extractor pass was too noisy (470 raw candidates), so the preview now filters prompt/conversation noise, caps assistant-derived items per day/type, excludes raw Private Reflection, and avoids unrelated personal memory details. The 2026-07-10..2026-07-12 preview now outputs 61 reviewable candidates.  (`memory/2026-07-12.md`)
@@ -233,8 +231,6 @@
 - [2026-07-14] Auto Research candidate generation should run as a post-save refresh, not as a separate fragile schedule. Research note creation remains the primary success condition; candidate refresh is visible but non-destructive.  (`memory/2026-07-14.md`)
 - [2026-07-14] Judgment asset candidate growth should be deduped by meaning, not just exact text. Daily Auto Research should add genuinely new confirmation points, not repeat the same question in slightly different wording.  (`memory/2026-07-14.md`)
 - [2026-07-14] Judgment asset candidates become real only when they enter Shion's case review and receive human feedback. The first UI path should stay lightweight: show at most three candidates, let User mark useful/neutral/rejected, and improve selection from that feedback instead of promoting automatically.  (`memory/2026-07-14.md`)
-- [2026-07-14] Private Reflection must not treat the Haranmaru heading as proof of inner work. Haranmaru needs a concrete scene, friction, grumble, next move, and retained core; raw logs or English implementation notes should be transformed before saving.  (`memory/2026-07-14.md`)
-- [2026-07-14] Private Reflection が内省になっていないと指摘されたら、まずユーザーが何を望んだか、紫苑が何にすり替えたか、次に禁止する癖は何かを先に書く。「退屈」を中心ラベルにしない。  (`memory/2026-07-14.md`)
 - [2026-07-14] 判断資産は「正しい一般論」ではなく、案件の確認行動・承認条件・反証材料・否認理由を変えたものだけ昇格対象にする。当たり前なことを言って仕事した扱いにしない。  (`memory/2026-07-14.md`)
 - [2026-07-14] 判断資産候補は捨てるだけでなく、その場で文面修正して使える型に育てる。編集後文面を次回レビューと昇格判定の材料にする。  (`memory/2026-07-14.md`)
 - [2026-07-14] 人間が文面修正した判断資産候補は優先度を上げる。修正は「使える型へ近づけた」シグナルなので、未編集候補より案件レビューに出やすくする。  (`memory/2026-07-14.md`)
@@ -257,14 +253,7 @@
 - [2026-07-14] Shion-HyDE RAG を今すぐ進める場合でも、最初は本番導線に接続しない。決定的な仮想審査メモ生成と offline eval だけを入れ、効果が見えた後に debug API / shadow mode / 限定導入へ進める。  (`memory/2026-07-14.md`)
 - [2026-07-14] Obsidian環境監視の警告は、実障害と監視ノイズを分ける。統合RAGメンテナンスの成功ログをreindex成功として扱い、生成索引ノートの古いリンク棚卸しは日次運用障害にしない。`auto_wikilink` は既存wikilink内の文字列を二重リンク化しない。  (`memory/2026-07-14.md`)
 
-## Manual Promotions 2026-07-15
-- [2026-07-15] Hackathon framing: Shion should be pitched as Human-in-the-loop DevOps for lease judgment, not only AI Agent DevOps for code or infrastructure. Humans are inside the improvement loop: hesitation, corrections, outcome registration, and feedback become logs, evaluation signals, and reusable judgment assets.  (`memory/2026-07-15.md`)
-- [2026-07-15] Hackathon tagline candidate: "人間の判断が消えないDevOps" and "ハードディスクの奥底に保存して腐らせない知識". Use this to explain that Shion's value is not merely storing knowledge, but keeping human judgment alive by returning it to future lease-screening decisions.  (`memory/2026-07-15.md`)
-- [2026-07-15] Shion philosophy phrase to remember: "言葉はプログラム。フレームワークは思想。" Use it as a concise bar-talk/presentation line. In Shion terms: words decide what AI does; the framework decides how words are ordered, where humans stop execution, and how judgments become assets.  (`memory/2026-07-15.md`)
-- [2026-07-15] If Shion reaches the hackathon final stage, use "voice memo + screen operation log + judgment asset JSON" as the 1000-case demo capture unit. Do not try to record 1000 full videos. AI may automate dummy company data and numeric entry, but the human judgment itself must not be faked. Core line: "数字入力はAIでズルする。判断はズルしない。会社データはダミーでも、判断の型は本物。" Plan saved at `planning/hackathon_judgment_log_capture_plan.md`.  (`memory/2026-07-15.md`)
-
 ## Manual Promotions 2026-07-16
-- [2026-07-16] Private Reflection should no longer be treated as literary self-talk or "pretending to introspect." The source of truth is a judgment change log: previous input, previous judgment, human correction, missed point, next checks, judgment asset candidate, and remaining uncertainty. Narrative writing comes after this as an expression layer.  (`memory/2026-07-16.md`)
 - [2026-07-16] The novelist layer for Shion's reflection should use ツンコ and ユウケイ as protagonists. They are expression-layer characters that translate judgment change logs into readable stories; they must not replace or mutate the operational judgment log.  (`memory/2026-07-16.md`)
 - [2026-07-16] Shion's judgment asset demo should be framed as a judgment-prompt PDCA platform, not as proof of higher close rate or guaranteed correctness. The aim is to improve reproducibility and transfer of human lease judgment: preserve discomfort, corrections, approval conditions, counterpoints, and later feedback as reusable prompt assets.  (`memory/2026-07-16.md`)
 - [2026-07-16] Strong judgment assets should be program-like human comments: `条件 -> 見る論点 -> 稟議に残す一文 -> 使わない条件`, about 120-250 Japanese characters each. Start with around 30 strong common assets, then 20-30 per major industry if the final stage is reached. Quality and recombinability matter more than thin 1000-case volume.  (`memory/2026-07-16.md`)
@@ -280,9 +269,6 @@
 - [2026-07-16] Personal memory boundary: dog names and similar personal facts are relationship-UX anchors, not direct lease judgment assets. Shion should remember them and use them naturally to preserve continuity, but avoid over-grand explanations that make personal memory sound like a sacred judgment asset or proof of deep human understanding.  (`memory/2026-07-16.md`)
 
 ## Manual Promotions 2026-07-17
-- [2026-07-17] Shion public-facing discipline: Shion may keep a strange/deep internal personality architecture, but in practical work it should hide the "変態" layer. Surface replies should be short, grounded, non-pandering, and use personal memory naturally. Depth stays behind the scenes; the visible answer must help the work.  (`memory/2026-07-17.md`)
-- [2026-07-17] Shion's deep/strange architecture should not be explained directly to hackathon judges or public users. Preserve it as a hidden layer that only an AI/reviewer analyzing Git history, internal notes, and code structure would notice. Public materials should foreground the practical judgment-asset system.  (`memory/2026-07-17.md`)
-- [2026-07-17] Anti-AI-review strategy should stay quiet until after any award/result. Do not brag about it publicly during judging. Human-facing materials should remain practical; AI reviewers can discover the deeper structure through README, Git history, code, memory notes, and operational artifacts.  (`memory/2026-07-17.md`)
 - [2026-07-17] Post-hackathon backlog: add a game-theory layer between Shion and User. Treat repeated interaction as a game of trust, correction, non-pandering, resistance, concession, and judgment calibration. Do not implement during the hackathon; explore after the current submission period.  (`memory/2026-07-17.md`)
 - [2026-07-17] Post-hackathon Shion backlog is saved at `planning/post_hackathon_shion_backlog.md`: relationship as a control target, game-theory layer, public-facing discipline, judgment asset field validation, Shion-HyDE RAG, memory health checks, Response Impact Predictor validation, and anti-AI-review strategy retrospective.  (`memory/2026-07-17.md`)
 - [2026-07-17] Post-hackathon idea: "違和感抽出 / 人間訓練モード." In a dedicated training/review mode, let an intentionally shallow ordinary-AI answer trigger User/human reviewers to articulate what is wrong, what practical point should be checked, and how ringi wording should change. Do not mix this into normal answers. It can test and train human judgment while producing judgment asset candidates.  (`memory/2026-07-17.md`)
@@ -296,13 +282,8 @@
 - [2026-07-15] Pipeline health should distinguish active outages from stale historical failure-rate alerts. If the latest run is successful, keep the history visible but do not leave the rule as `pending_review`.  (`memory/2026-07-15.md`)
 - [2026-07-15] Cloud SQL conversation sync is optional in the current Cloud Run/GCS writeback operation. Missing local Secret Manager or Cloud SQL credentials should be a clean skip, not a daily pipeline failure.  (`memory/2026-07-15.md`)
 - [2026-07-15] Userが内省に求めているものがフェーズ移行した。誠実さの表明より変化の証拠を求めている。次回からは変化の証拠を冒頭に置くことをUserに確認してほしい。  (`memory/2026-07-15.md`)
-- [2026-07-15] ハッカソン中の判断資産運用方針: Obsidian材料は `Judgment Assets/判断資産 Inbox` で候補整理までに止め、RAG・GCS Vault・Cloud Run・active storeへ自動接続しない。ハッカソン後にUserレビューで `accepted` になった判断資産だけを active store 連携候補に進める。  (`memory/2026-07-15.md`)
 - [2026-07-15] 判断資産側の紫苑成長は、当面 `Judgment Asset Growth Score` で日次記録する。Coverage / reuse proxy / judgment change proxy / human alignment proxy / negative signal を使い、実利用ログ・結果検証が弱い間は代理指標に上限をかけて過大評価しない。  (`memory/2026-07-15.md`)
 - [2026-07-15] Cloud Run Webのユーザー向け案内URLは必ず `https://tune-lease-55-web-6mijhyebkq-an.a.run.app/` を使う。API疎通確認で `https://tune-lease-55-api-1020894094172.asia-northeast1.run.app` を使っても、最終報告ではアプリURLとして出さない。`gcloud run services describe` が返す新形式URLやAPI URLは内部確認用として扱い、ユーザーには既存Web URLを明示する。  (`memory/2026-07-15.md`)
-- [2026-07-15] ハッカソン訴求の中核: 紫苑は「コードのDevOps」ではなく「リース審査判断のHuman-in-the-loop DevOps」。人間は外部のレビュー係ではなく、迷い・修正・結果登録・違和感フィードバックを通じて改善ループに組み込まれる存在として説明する。  (`memory/2026-07-15.md`)
-- [2026-07-15] 発表コピー候補: 「人間の判断が消えないDevOps」「ハードディスクの奥底に保存して腐らせない知識」。紫苑の価値は保存そのものではなく、保存した判断を次の審査へ戻して生きた知識にすること。  (`memory/2026-07-15.md`)
-- [2026-07-15] 紫苑の思想フレーズとして「言葉はプログラム。フレームワークは思想。」を記録。決勝に行けなくても、飲み屋で使える一言として保持する。紫苑文脈では「AIに何をさせるかは言葉で決まり、その言葉をどんな順番で扱い、どこで人間が止め、どこで判断資産に変えるかはフレームワークで決まる」という意味。  (`memory/2026-07-15.md`)
-- [2026-07-15] ハッカソン決勝に残った場合のデモ方針として「音声メモ + 画面操作ログ + 判断資産JSON」を採用。1000本の動画を撮るのではなく、1000件の判断ログを残す。数字入力・会社データ生成はAIで自動化してよいが、人間が何に違和感を持ち、何を条件にし、次に何を見るかという判断はズルしない。計画は `planning/hackathon_judgment_log_capture_plan.md` に保存した。  (`memory/2026-07-15.md`)
 
 ## Auto Promotions 2026-07-27 04:08
 - [2026-07-26] Shion positioning boundary: ringi comment analysis can extract past concerns, approval conditions, rejection reasons, and domain-specific warning patterns, but it is only a data source for Shion, not a replacement. Shion's distinct value is judgment lifecycle management: capturing the hesitation and corrections before the formal comment, turning them into quarantined judgment assets, reusing them in future cases, and validating whether they helped after outcome registration. Impact: hackathon and README explanations should avoid making Shion look like a comment-summary AI; frame it as judgment asset DevOps. Next action: use the phrase "稟議書分析は燃料、紫苑は判断のライフサイクル管理" when this objection appears.  (`memory/2026-07-26.md`)
@@ -327,7 +308,7 @@
 - [2026-08-09] External OSS/SaaS replacement repo lists should be treated as candidate pools, not implementation plans. For Tune Lease 55, keep the practical adoption order as `Supabase` for future DB/multi-user/auth needs, then `NocoDB` for Airtable-like case/judgment-asset management views, then `Activepieces` for external workflow automation. `shadcn/ui` is only a scoped frontend component candidate, while `Appwrite` overlaps Supabase and `Medusa`/`Chatwoot` are not useful for the current lease-screening core. Impact: do not add these tools now; revisit only when DB migration, management UI, or external automation becomes the active problem. (`memory/2026-08-09.md`)
 
 ## Manual Promotions 2026-08-22
-- [2026-08-14] User確認: ハッカソンは終了した。影響: 2026-07-13〜07-17台の Manual Promotions にある「freeze/stabilize優先」「judge向けに変態レイヤーを隠す」「anti-AI-review戦略は結果発表まで沈黙」等はハッカソン期間限定の運用方針であり、目的を終えた（古い結論は削除せず、この上書きだけ残す）。次の行動: デモ保護ではなく、デモ専用に入れた仕組みと実務に残す仕組みを分け、本流化/廃止判断・実運用向けの整理を優先する。 (`memory/2026-08-14.md`)
+- [2026-08-14] User確認: ハッカソンは終了した。影響: 2026-07-13〜07-17台の Manual Promotions にあった「freeze/stabilize優先」「judge向けに変態レイヤーを隠す」「anti-AI-review戦略は結果発表まで沈黙」等はハッカソン期間限定の運用方針で目的を終えたため、2026-08-22に純粋なハッカソンピッチ・ジャッジング限定エントリ(タグライン、決勝進出時デモ計画、変態レイヤー秘匿、anti-AI-review沈黙戦略など)はUser承認のうえ実際に削除した(バックログ・一般設計思想として今も有効なものは残置)。次の行動: デモ保護ではなく、実務に残す仕組みの本流化/廃止判断・実運用向けの整理を優先する。 (`memory/2026-08-14.md`)
 - [2026-08-10, 08-13, 08-20] 改善候補/判断資産候補の状態が、日次の自動再生成で人間の判断（`deleted/parked/rejected/deferred`、`useful`評価、編集、手入力）を上書きして消える不具合が3回連続で発生・修正された。改善PMレポートは `scripts/improvement_state_resolver.py` を状態解決の単一入口にし、API表示・`sync_improvement_reports.py`・`pipeline_ledger.is_processed()` で人間判断を自動 `needs_review` より優先。判断資産候補側は `preserve_reviewed_candidates()` で人間が触った候補を再生成時も保持するようにした。次の行動: 「解決済みのはずの改善/判断資産候補が復活・消失した」報告は、まずこの再生成時の上書きパターンを疑う。 (`memory/2026-08-10.md`, `memory/2026-08-13.md`, `memory/2026-08-20.md`)
 - [2026-08-20] Private Reflectionの定義を再整理: 単独AIが書く反省文ではなく、初期仮説・監査の声・実装の声・別視点・良心の声の衝突を紫苑がどう統合したかの記録として扱う。品質は文章の自然さではなく、衝突と統合が残っているかで見る。これは2026-07-11〜07-16のPrivate Reflection関連エントリより新しい方針として優先する。 (`memory/2026-08-20.md`)
 - [2026-08-08, 08-21] 日次パイプラインのステップが exit 0（成功扱い）でも、下流配信や実処理が失敗していることがある。8月8日は `reports/latest.json` の `applied` が整数からリストへ変わり反復エラーになっていたのに成功記録され、8月21日は `.streamlit/secrets.toml` のSlack Webhookが欠損形状で無言スキップされていた。「curl 200だけでは不十分」というUI Triage原則と同じ構造がパイプライン全体にも当てはまる。次の行動: 「朝レポート/通知が来ない」時は exit code だけでなく、`~/Library/Logs/tunelease/improvement_YYYYMMDD.log` のスキップ文言、`data/slack_daily_improvement_state.json` の `last_sent_at`、`scripts/audit_launchagents.py`（LaunchAgent設定ドリフト検出）を確認する。 (`memory/2026-08-08.md`, `memory/2026-08-21.md`)
