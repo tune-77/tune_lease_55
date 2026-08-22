@@ -1266,11 +1266,14 @@ def save_conversation_keypoints(
 ) -> dict[str, Any]:
     """会話から抽出したキーポイントを専用枠へ永続保存する（REV-086）。
 
-    各キーポイントを {"date", "type": "conversation_keypoint", "content", "session_id"}
-    の形式で conversation_keypoints に追記する。月次圧縮バケットを押し出さない。
+    各キーポイントを {"date", "type": "conversation_keypoint", "content", "session_id",
+    "memory_type", "confidence"} の形式で conversation_keypoints に追記する。
+    memory_type は api/shion_memory_taxonomy.classify_memory_text による保存時分類
+    （docs/shion_memory_architecture.md Next Steps）。月次圧縮バケットを押し出さない。
     """
     vault = Path(vault)
     from memory_promotion_policy import should_save_conversation_keypoint
+    from api.shion_memory_taxonomy import classify_memory_text
 
     cleaned = [
         str(point).strip()
@@ -1282,12 +1285,15 @@ def save_conversation_keypoints(
     state = load_lease_intelligence_mind(vault)
     keypoints_store = list(state.get("conversation_keypoints") or [])
     for point in cleaned:
+        content = point[:300]
         keypoints_store.append(
             {
                 "date": str(date_str),
                 "type": "conversation_keypoint",
-                "content": point[:300],
+                "content": content,
                 "session_id": str(session_id),
+                "memory_type": classify_memory_text(content, source="mind.conversation_keypoint"),
+                "confidence": 0.7,
             }
         )
     state["conversation_keypoints"] = _dedupe_conversation_keypoints(keypoints_store)[
