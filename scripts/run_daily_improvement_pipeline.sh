@@ -14,6 +14,9 @@ mkdir -p "${LOG_DIR}/reports"
 LOG_FILE="${LOG_DIR}/improvement_${LOG_DATE}.log"
 RESULT_FILE="${LOG_DIR}/reports/improvement_report_${LOG_DATE}.json"
 EXPORT_FILE="/tmp/obsidian_improvements_export.txt"
+# PROJECT_ROOT/PYTHON と同じ理由（別プロセス起動のため export が無いと子スクリプトへ
+# 渡らない）。値自体は core.sh 側の既定値と同一だが、将来ズレたときに気づけるようにする。
+export EXPORT_FILE
 
 # ログへリダイレクト（stdout + stderr を同一ファイルへ）
 exec >> "${LOG_FILE}" 2>&1
