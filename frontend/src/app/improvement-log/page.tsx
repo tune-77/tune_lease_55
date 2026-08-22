@@ -580,6 +580,7 @@ export default function ImprovementLogPage() {
   const [trustSummary, setTrustSummary] = useState<OperationalTrustSummary | null>(null);
   const [triageRecords, setTriageRecords] = useState<ImprovementTriageRecord[]>([]);
   const [copiedFixKey, setCopiedFixKey] = useState("");
+  const [expandedFixKey, setExpandedFixKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("NEEDS_REVIEW");
@@ -1073,6 +1074,7 @@ export default function ImprovementLogPage() {
                 const title = record.title || item?.title || record.item_id || "修正キュー項目";
                 const reason = record.reason || item?.auto_fix_policy?.reason || item?.reason || "";
                 const copied = copiedFixKey === key;
+                const expanded = expandedFixKey === key;
                 return (
                   <article key={`${key}-${record.approved_at || record.decided_at}`} className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1088,19 +1090,29 @@ export default function ImprovementLogPage() {
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-2">
                         {record.codex_request_draft && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard?.writeText(record.codex_request_draft || "").then(() => {
-                                setCopiedFixKey(key);
-                                window.setTimeout(() => setCopiedFixKey(""), 1600);
-                              }).catch(() => {});
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700"
-                          >
-                            <ClipboardList className="h-4 w-4" />
-                            {copied ? "コピー済み" : "依頼文コピー"}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedFixKey(expanded ? "" : key)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-50"
+                            >
+                              <Eye className="h-4 w-4" />
+                              {expanded ? "内容を閉じる" : "内容を見る"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(record.codex_request_draft || "").then(() => {
+                                  setCopiedFixKey(key);
+                                  window.setTimeout(() => setCopiedFixKey(""), 1600);
+                                }).catch(() => {});
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700"
+                            >
+                              <ClipboardList className="h-4 w-4" />
+                              {copied ? "コピー済み" : "依頼文コピー"}
+                            </button>
+                          </>
                         )}
                         <button
                           type="button"
@@ -1116,6 +1128,11 @@ export default function ImprovementLogPage() {
                         </button>
                       </div>
                     </div>
+                    {expanded && record.codex_request_draft && (
+                      <pre className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-emerald-200 bg-white p-3 text-[11px] leading-5 text-slate-700">
+                        {record.codex_request_draft}
+                      </pre>
+                    )}
                   </article>
                 );
               })}
