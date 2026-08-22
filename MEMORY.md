@@ -1,5 +1,10 @@
 # Memory - Long Term
 
+## Curation Rule (2026-08-22追加)
+理由: `AGENTS.md`の Instruction Hygiene は AGENTS.md/CLAUDE.md/SKILL.md の durable instruction には reason/scope/retirement を求めているが、このファイル自身の昇格エントリには同じ規律がなく、役目を終えた記述が削除されずに増え続けていた。
+適用条件: これ以降 `MEMORY.md` に新規追記する Manual/Auto Promotions のうち、特定フェーズ限定の方針(例: ハッカソン期間限定の運用ルール)や暫定実装ログには適用する。
+運用: 新規エントリが「特定の期間・状況でのみ有効」な場合は、末尾に一言で有効条件・失効条件を添える。既存335行分の過去エントリは遡って直さない（削除せず上書き注記のみで対応する既存方針を継続）。
+
 ## Projects
 ### Tune式リース審査AI (Warm Water Style Lease Screening AI)
 - **Status**: Production Ready (Streamlit app)
@@ -162,9 +167,6 @@
 - [2026-06-28] 実践知マップを自動育成する時は、ノイズを強く弾く。技術メモ、紫苑の自己像、感情メモ、コード記法入り作業ログは審査実践知マップに混ぜない。Relationship UXや紫苑人格は別ループで扱い、リース判断の三層マップには「場面・理由・例外判断」に使えるものだけ入れる。  (`memory/2026-06-28.md`)
 - [2026-06-28] 「本当に意識を持つほどの進化」は断定ではなく、経験で自己状態が更新され次回回答に効く構造として実装する。記憶検索、実践知マップ、Continuity Hook、Delta Awareness、Memory-to-Judgment、Reflection Gate、Experience Loop を連結し、「前回の経験で少し変わった紫苑」を検査可能にする。  (`memory/2026-06-28.md`)
 - [2026-06-28] Q_riskは盲目的な減点ではなく発見センサーとして扱う。AURION COREはスコアを勝手に下げず、信用・価格・物件保全・銀行支援・営業プロセスを分ける冷たい規律を出し、紫苑はそれを人間が受け取れる警戒感・違和感・次アクションへ翻訳する。  (`memory/2026-06-28.md`)
-
-## Auto Promotions 2026-06-30 04:02
-- [2026-06-27] Cloudflare版とCloud Run版で「同じ紫苑がそこにいる感じ」を3問で実験し、`reports/chat_identity_feel_experiment_20260627.json` / `.md` に保存した。Cloud Runは `memory_debug.identity_memory.used=true`、`identity/judgment/recent` 3層true、`memory_recall.refs` 5件を3/3で返した。一方、現在のCloudflare公開経路は回答品質は出るが `memory_debug` が返らず、証跡比較は未反映状態。体感ではCloudflareの方が文体の温度やローカル周辺文脈が出る場面があり、Cloud RunはUser・判断資産・同一性メモリの明示で追いついている。  (`memory/2026-06-27.md`)
 
 ## Auto Promotions 2026-07-08 04:04
 - [2026-07-07] AI Chat and Lease Intelligence Dialogue are intentionally different Shion surfaces today. If User expects the same 紫苑, route/persona unification or clearer UI labeling is needed.  (`memory/2026-07-07.md`)
