@@ -181,8 +181,8 @@ def list_research_organ_topics():
         from scripts.auto_research_lease_judgment import DEFAULT_OUTPUT_DIR, TOPICS
 
         return {
-            "adapter": "gemini-google-search",
-            "label": "Google AI Studio Researcher",
+            "adapter": "vertex-ai-google-search",
+            "label": "Vertex AI Researcher",
             "default_output_dir": DEFAULT_OUTPUT_DIR,
             "topics": [
                 {
@@ -284,7 +284,7 @@ def _research_run_display(result: dict) -> dict:
 
 @router.post("/api/research-organ/run")
 async def run_research_organ(req: ResearchOrganRunRequest):
-    """Gemini Google Search researcherで調査し、Obsidian Researchへ保存する。"""
+    """Vertex AI Google Search researcherで調査し、Obsidian Researchへ保存する。"""
     topic = (req.topic or "").strip()
     if len(topic) > 160:
         raise HTTPException(status_code=400, detail="調査テーマは160文字以内にしてください。")
@@ -302,15 +302,15 @@ async def run_research_organ(req: ResearchOrganRunRequest):
         )
         return {
             "ok": True,
-            "adapter": "gemini-google-search",
-            "label": "Google AI Studio Researcher",
+            "adapter": "vertex-ai-google-search",
+            "label": "Vertex AI Researcher",
             "dry_run": req.dry_run,
             **result,
             **({} if req.dry_run else _research_run_display(result)),
         }
     except RuntimeError as exc:
         message = str(exc)
-        status = 503 if "GEMINI_API_KEY" in message or "Gemini" in message else 500
+        status = 503 if "Vertex AI" in message or "GEMINI_API_KEY" in message or "Gemini" in message else 500
         raise HTTPException(status_code=status, detail=message)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"外部調査器官の実行に失敗しました: {exc}")

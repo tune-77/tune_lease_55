@@ -267,18 +267,24 @@ def research_failed_answer(
     case: dict[str, Any],
     result: dict[str, Any],
 ) -> dict[str, Any]:
-    from google import genai
-    from google.genai import types
+    from api.vertex_agent_search import _access_token, get_config
 
     from scripts.auto_research_lease_judgment import (
         _extract_sources,
-        _get_gemini_key,
         _source_quality,
     )
 
-    api_key = _get_gemini_key()
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is not configured")
+    vertex_config = get_config()
+    if not vertex_config.enabled or not vertex_config.project_id:
+        raise RuntimeError("Vertex AI is not configured (project_id missing)")
+    location = os.environ.get("VERTEX_AI_LOCATION") or os.environ.get("GOOGLE_CLOUD_LOCATION") or "global"
+    sdk_token = _access_token()
+    if not sdk_token:
+        raise RuntimeError("Vertex AI is not configured (no access token; check ADC or gcloud auth)")
+
+    from google import genai
+    from google.genai import types
+    from google.oauth2.credentials import Credentials as OAuthCredentials
 
     missing = [
         " / ".join(str(alias) for alias in item["aliases"])
@@ -302,7 +308,13 @@ def research_failed_answer(
 - 自動承認・自動否決を提案しない。
 - 回答本文だけを日本語で返す。"""
 
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        vertexai=True,
+        project=vertex_config.project_id,
+        location=location,
+        credentials=OAuthCredentials(token=sdk_token),
+        http_options=types.HttpOptions(api_version="v1"),
+    )
     model = os.environ.get("GEMINI_RESEARCH_MODEL") or os.environ.get(
         "GEMINI_MODEL", "gemini-2.5-flash"
     )
