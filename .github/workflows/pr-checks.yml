@@ -206,6 +206,29 @@ jobs:
       - name: Frontend/backend schema consistency check
         run: python scripts/check_frontend_backend_schema.py | tee -a "$GITHUB_STEP_SUMMARY"
 
+  # 日次改善パイプライン(run_daily_improvement_*.sh)のシェルスクリプト静的解析。
+  # REV-DAILY-PIPELINE-PROJECT-ROOT-EXPORT: PROJECT_ROOT を export し忘れて
+  # core.sh/post.sh に渡らず、ハードコード既定値へ常にフォールバックしていた
+  # バグの再発防止として追加。--severity=error のみに絞り、既存のstyle/warning
+  # 指摘（例: EXPORT_FILE未export）でCIを赤くしないようにする。ubuntu-latest には
+  # shellcheck がプリインストールのため追加インストール不要。
+  shellcheck-daily-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck (daily pipeline scripts, error severity only)
+        env:
+          LANG: C.UTF-8
+          LC_ALL: C.UTF-8
+        run: |
+          shellcheck --shell=bash --severity=error -x -P scripts \
+            scripts/run_daily_improvement_pipeline.sh \
+            scripts/run_daily_improvement_core.sh \
+            scripts/run_daily_improvement_post.sh \
+            scripts/pipeline_log_step.sh \
+            scripts/resolve_obsidian_vault.sh
+
   # scripts/*.py の中で、どのパイプライン・ワークフロー・他スクリプトからも
   # 呼ばれていないものを検知する（scripts/check_orphaned_scripts.py 参照）。
   # cron/launchd 等リポジトリ外からの呼び出しは検知できず誤検知しうるため、
