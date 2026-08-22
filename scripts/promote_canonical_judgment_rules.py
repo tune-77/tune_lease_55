@@ -14,11 +14,17 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.build_canonical_judgment_rules import render_l2_details, token_estimate
+
 DATA_DIR = PROJECT_ROOT / "data"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 DEFAULT_INPUT = DATA_DIR / "canonical_judgment_rules_preview.json"
@@ -69,10 +75,41 @@ def _string_list(value: Any) -> list[str]:
     return [normalized] if normalized else []
 
 
+def _promoted_layers(
+    rule: dict[str, Any],
+    previous: dict[str, Any],
+    sample_claims: list[str],
+    evidence_paths: list[str],
+) -> dict[str, Any]:
+    """昇格後の L0/L1/L2 を組む。
+
+    L0/L1 は concept と canonical_statement だけから決まり、その2つは _semantic_key
+    そのものなので、プレビュー側で組んだ値をそのまま引き継いで問題ない。
+    L2 は sample_claims / evidence_paths の描画で、この2つは昇格時に和集合へ
+    マージされるため、マージ後の値から組み直す。
+    """
+    source = dict(rule.get("layers") or previous.get("layers") or {})
+    l0 = str(source.get("l0_abstract") or "")
+    l1 = str(source.get("l1_overview") or "")
+    l2 = render_l2_details(sample_claims, evidence_paths)
+    return {
+        "l0_abstract": l0,
+        "l1_overview": l1,
+        "l2_details": l2,
+        "tokens_estimate": {
+            "l0": token_estimate(l0),
+            "l1": token_estimate(l1),
+            "l2": token_estimate(l2),
+        },
+    }
+
+
 def _promoted_rule(rule: dict[str, Any], *, now: str, previous: dict[str, Any] | None = None) -> dict[str, Any]:
     previous = previous or {}
     parent_ids = _string_list(rule.get("parent_ids")) or _string_list(previous.get("parent_ids"))
     derivation_reason = str(rule.get("derivation_reason") or previous.get("derivation_reason") or "").strip()
+    sample_claims = list(rule.get("sample_claims") or previous.get("sample_claims") or [])[:8]
+    evidence_paths = list(rule.get("evidence_paths") or previous.get("evidence_paths") or [])[:12]
     return {
         "id": str(rule.get("id") or previous.get("id") or ""),
         "status": "active",
@@ -89,8 +126,9 @@ def _promoted_rule(rule: dict[str, Any], *, now: str, previous: dict[str, Any] |
         "risk_axis": list(rule.get("risk_axis") or previous.get("risk_axis") or [])[:5],
         "parent_ids": parent_ids[:8],
         "derivation_reason": derivation_reason,
-        "sample_claims": list(rule.get("sample_claims") or previous.get("sample_claims") or [])[:8],
-        "evidence_paths": list(rule.get("evidence_paths") or previous.get("evidence_paths") or [])[:12],
+        "sample_claims": sample_claims,
+        "evidence_paths": evidence_paths,
+        "layers": _promoted_layers(rule, previous, sample_claims, evidence_paths),
         "created_at": str(previous.get("created_at") or now),
         "updated_at": now,
         "promotion_source": "canonical_judgment_rules_preview",
@@ -179,6 +217,13 @@ def _merge_rule_dicts(base: dict[str, Any], incoming: dict[str, Any]) -> dict[st
         merged["derivation_reason"] = str(incoming.get("derivation_reason") or "").strip()
     if str(incoming.get("updated_at") or "") > str(base.get("updated_at") or ""):
         merged["updated_at"] = incoming.get("updated_at")
+    if base.get("layers") or incoming.get("layers"):
+        merged["layers"] = _promoted_layers(
+            incoming,
+            base,
+            list(merged.get("sample_claims") or []),
+            list(merged.get("evidence_paths") or []),
+        )
     return merged
 
 
@@ -262,15 +307,20 @@ def _markdown(store: dict[str, Any]) -> str:
         "- Only accepted_preview rules are promoted.",
         "- This is a local active store. Obsidian is not modified.",
         "- These rules can be included in the Shion memory index as judgment_memory.",
+        "- L0/L1/L2 layers are carried through promotion; layer selection stays on the context side.",
         "",
         "## Rules",
         "",
     ]
     for rule in store.get("rules") or []:
         axes = ", ".join(rule.get("risk_axis") or [])
+        layers = rule.get("layers") or {}
+        estimate = layers.get("tokens_estimate") or {}
         lines += [
             f"### {rule.get('concept')} / evidence={rule.get('evidence_count')} / user={rule.get('user_evidence_count')}",
             "",
+            f"- L0: {layers.get('l0_abstract') or 'n/a'}",
+            f"- Layer tokens: L0={estimate.get('l0', 0)} / L1={estimate.get('l1', 0)} / L2={estimate.get('l2', 0)}",
             f"- Rule: {rule.get('canonical_statement')}",
             f"- Type: {rule.get('material_type')}",
             f"- Confidence: {rule.get('confidence')}",

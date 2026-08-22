@@ -141,3 +141,92 @@ def test_canonical_markdown_declares_preview_only():
     assert "Preview only" in md
     assert "Not connected to RAG" in md
     assert "compressed into representative rules" in md
+
+
+def test_build_canonical_rules_attaches_three_layers():
+    materials = [
+        {
+            "claim": "リース期間は法定耐用年数だけでなく経済的寿命と再販可能性も確認する。",
+            "material_type": "judgment_rule",
+            "domain": "lease_screening",
+            "source_role": "user",
+            "confidence": 0.8,
+            "risk_axis": ["asset_life"],
+            "evidence_path": "Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-11.md",
+            "private": False,
+        },
+        {
+            "claim": "残価は満了後の再リース先まで見て決める。",
+            "material_type": "judgment_rule",
+            "domain": "lease_screening",
+            "source_role": "assistant",
+            "confidence": 0.75,
+            "risk_axis": ["asset_life"],
+            "evidence_path": "Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-12.md",
+            "private": False,
+        },
+    ]
+
+    rules = canonical.build_canonical_rules(materials)
+    asset_rule = next(item for item in rules if item["concept"] == "asset_life_and_residual")
+    layers = asset_rule["layers"]
+
+    # L0 は関連性判定用の短文。L1/L2 より必ず軽い。
+    assert 0 < len(layers["l0_abstract"]) <= canonical._L0_MAX_CHARS + 1
+    assert layers["tokens_estimate"]["l0"] < layers["tokens_estimate"]["l1"]
+    assert layers["tokens_estimate"]["l1"] < layers["tokens_estimate"]["l2"]
+
+    # L1 は ER 図どおり「適用条件 / 失敗条件 / 質問観点」を持つ。
+    assert "適用条件:" in layers["l1_overview"]
+    assert "失敗条件:" in layers["l1_overview"]
+    assert "質問観点:" in layers["l1_overview"]
+
+    # L2 は一次エビデンスまで含む。
+    assert "Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-11.md" in layers["l2_details"]
+
+
+def test_layers_for_unknown_concept_degrade_without_hints():
+    layers = canonical.build_layers(
+        {
+            "concept": "unmapped_concept",
+            "canonical_statement": "出典のない判断はそのまま使わない。",
+            "risk_axis": [],
+            "sample_claims": [],
+            "evidence_paths": [],
+        }
+    )
+
+    assert layers["l0_abstract"] == "出典のない判断はそのまま使わない。"
+    assert "適用条件:" not in layers["l1_overview"]
+    assert "リスク軸: n/a" in layers["l1_overview"]
+    assert "- (なし)" in layers["l2_details"]
+
+
+def test_l0_abstract_truncates_long_statement():
+    statement = "あ" * 200 + "。"
+    l0 = canonical._l0_abstract(statement)
+
+    assert len(l0) <= canonical._L0_MAX_CHARS
+    assert l0.endswith("…")
+
+
+def test_canonical_markdown_tolerates_rules_without_layers():
+    rules = [
+        {
+            "concept": "support_specificity",
+            "status": "candidate",
+            "evidence_count": 1,
+            "canonical_statement": "銀行支援は対象リースへの直接性を確認する。",
+            "material_type": "judgment_rule",
+            "confidence": 0.8,
+            "user_evidence_count": 0,
+            "risk_axis": [],
+            "sample_claims": [],
+            "evidence_paths": [],
+        }
+    ]
+
+    md = canonical._markdown(rules)
+
+    assert "- L0: n/a" in md
+    assert "Layer tokens (L0/L1/L2 total): 0/0/0" in md

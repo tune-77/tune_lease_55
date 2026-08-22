@@ -195,3 +195,86 @@ def test_promoted_markdown_declares_active_store_not_obsidian():
     assert "judgment_memory" in md
     assert "親判断:" in md
     assert "派生理由:" in md
+
+
+def _layered_preview_rule(*, material_type: str, sample_claim: str, evidence_path: str) -> dict:
+    return {
+        "id": f"rule_asset_{material_type}",
+        "status": "accepted_preview",
+        "preview": True,
+        "private": False,
+        "material_type": material_type,
+        "domain": "lease_screening",
+        "concept": "asset_life_and_residual",
+        "canonical_statement": "リース期間・残価判断では経済的寿命と出口を合わせて確認する。",
+        "evidence_count": 2,
+        "user_evidence_count": 1,
+        "confidence": 0.86,
+        "risk_axis": ["asset_life"],
+        "sample_claims": [sample_claim],
+        "evidence_paths": [evidence_path],
+        "layers": {
+            "l0_abstract": "リース期間・残価判断では経済的寿命と出口を合わせて確認する。",
+            "l1_overview": "判断: リース期間・残価判断では経済的寿命と出口を合わせて確認する。\n適用条件: リース期間・残価・満了後の出口を決める時",
+            "l2_details": f"代表クレーム:\n- {sample_claim}\n一次エビデンス:\n- {evidence_path}",
+            "tokens_estimate": {"l0": 12, "l1": 30, "l2": 40},
+        },
+    }
+
+
+def test_promotion_carries_layers_into_active_store():
+    preview_rules = [
+        _layered_preview_rule(
+            material_type="judgment_rule",
+            sample_claim="経済的寿命は法定耐用年数より短いことがある。",
+            evidence_path="Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-11.md",
+        )
+    ]
+
+    store = promote.promote_rules(preview_rules, {"schema_version": 1, "rules": []})
+    rule = next(item for item in store["rules"] if item["concept"] == "asset_life_and_residual")
+
+    assert rule["layers"]["l0_abstract"].startswith("リース期間・残価判断では")
+    assert "適用条件:" in rule["layers"]["l1_overview"]
+    assert rule["layers"]["tokens_estimate"]["l0"] > 0
+
+
+def test_promotion_rebuilds_l2_from_merged_evidence():
+    """L2 は sample_claims / evidence_paths の描画なので、マージ後の実データと一致させる。"""
+    preview_rules = [
+        _layered_preview_rule(
+            material_type="judgment_rule",
+            sample_claim="経済的寿命は法定耐用年数より短いことがある。",
+            evidence_path="Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-11.md",
+        ),
+        _layered_preview_rule(
+            material_type="risk_signal",
+            sample_claim="満了後の再販先が無い物件は残価を寝かせない。",
+            evidence_path="Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-12.md",
+        ),
+    ]
+
+    store = promote.promote_rules(preview_rules, {"schema_version": 1, "rules": []})
+    rule = next(item for item in store["rules"] if item["concept"] == "asset_life_and_residual")
+
+    # 同じ concept + canonical_statement なので1本にマージされる
+    assert rule["material_types"] == ["judgment_rule", "risk_signal"]
+    for claim in rule["sample_claims"]:
+        assert claim in rule["layers"]["l2_details"]
+    for path in rule["evidence_paths"]:
+        assert path in rule["layers"]["l2_details"]
+
+
+def test_promotion_without_preview_layers_still_builds_l2():
+    preview_rule = _layered_preview_rule(
+        material_type="judgment_rule",
+        sample_claim="経済的寿命は法定耐用年数より短いことがある。",
+        evidence_path="Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-07-11.md",
+    )
+    preview_rule.pop("layers")
+
+    store = promote.promote_rules([preview_rule], {"schema_version": 1, "rules": []})
+    rule = next(item for item in store["rules"] if item["concept"] == "asset_life_and_residual")
+
+    assert rule["layers"]["l0_abstract"] == ""
+    assert "経済的寿命は法定耐用年数より短いことがある。" in rule["layers"]["l2_details"]
