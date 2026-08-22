@@ -197,6 +197,60 @@ def test_investigate_pending_attaches_findings(tmp_path, monkeypatch):
     assert saved["b"]["finding"] == "既存"  # 上書きしない
 
 
+def test_save_countermeasures_writes_new_candidates(tmp_path, monkeypatch):
+    queue_path = tmp_path / "dispatch_queue.jsonl"
+    ledger_path = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(pending, "DISPATCH_QUEUE_PATH", queue_path)
+    monkeypatch.setattr(pending.pipeline_ledger, "LEDGER_PATH", ledger_path)
+
+    reply = "①現状②分析③対応策\n- 在庫回転期間を毎月確認する\n- 主要販売先の与信を再確認する"
+    written = pending.save_countermeasures_to_dispatch("今日のニュースから学べることは?", reply)
+
+    assert written == 2
+    lines = [json.loads(l) for l in queue_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(lines) == 1
+    titles = [c["title"] for c in lines[0]["candidates"]]
+    assert "在庫回転期間を毎月確認する" in titles
+    assert "主要販売先の与信を再確認する" in titles
+
+
+def test_save_countermeasures_skips_already_rejected_title(tmp_path, monkeypatch):
+    queue_path = tmp_path / "dispatch_queue.jsonl"
+    ledger_path = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(pending, "DISPATCH_QUEUE_PATH", queue_path)
+    monkeypatch.setattr(pending.pipeline_ledger, "LEDGER_PATH", ledger_path)
+
+    title = "在庫回転期間を毎月確認する"
+    key = pending.pipeline_ledger.compute_key(title, "")
+    pending.pipeline_ledger.record(key, "rejected", title, reason="見送り")
+
+    reply = f"①現状②分析③対応策\n- {title}\n- 主要販売先の与信を再確認する"
+    written = pending.save_countermeasures_to_dispatch("今日のニュースから学べることは?", reply)
+
+    assert written == 1  # rejected 済みの1件は除外され、新規の1件だけ残る
+    lines = [json.loads(l) for l in queue_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    titles = [c["title"] for c in lines[0]["candidates"]]
+    assert title not in titles
+    assert "主要販売先の与信を再確認する" in titles
+
+
+def test_save_countermeasures_returns_zero_when_all_decided(tmp_path, monkeypatch):
+    queue_path = tmp_path / "dispatch_queue.jsonl"
+    ledger_path = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(pending, "DISPATCH_QUEUE_PATH", queue_path)
+    monkeypatch.setattr(pending.pipeline_ledger, "LEDGER_PATH", ledger_path)
+
+    title = "在庫回転期間を毎月確認する"
+    key = pending.pipeline_ledger.compute_key(title, "")
+    pending.pipeline_ledger.record(key, "applied", title, reason="実装済み")
+
+    reply = f"①現状②分析③対応策\n- {title}"
+    written = pending.save_countermeasures_to_dispatch("今日のニュースから学べることは?", reply)
+
+    assert written == 0
+    assert not queue_path.exists()  # 空の候補リストは書き込まない
+
+
 def test_reconcile_noop_when_clean(tmp_path, monkeypatch):
     now = datetime(2026, 7, 23, 12, 0, 0)
     path = tmp_path / "shion_pending_tasks.json"

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,6 +15,18 @@ from runtime_paths import get_data_path
 
 PENDING_PATH = get_data_path("shion_pending_tasks.json")
 DISPATCH_QUEUE_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "dispatch_queue.jsonl"
+
+# SHION対話発の候補は乱数UUID採番のため、同じ提案が言い回しそのままで再登場しても
+# IDでは重複排除できない。既存のREV改善パイプラインが使っている台帳
+# （~/Library/Logs/tunelease/ledger.jsonl・タイトルのSHA1キー）を流用して、
+# 既に applied/deleted/rejected（クールダウン内）等が確定した候補は再登録しない。
+_PIPELINE_DIR = Path(__file__).resolve().parent / ".agents" / "skills" / "auto-improvement-pipeline"
+sys.path.insert(0, str(_PIPELINE_DIR))
+sys.path.insert(0, str(_PIPELINE_DIR / "scripts"))
+try:
+    import pipeline_ledger  # type: ignore
+except ImportError:
+    pipeline_ledger = None  # type: ignore
 
 # 約束は「調べます」等の丁寧表現でほぼ毎ターン記録される一方、消化（done化）は
 # 同じ対話の次ターン先頭でしか起きない。会話が続かなかった約束は pending のまま
@@ -267,14 +280,33 @@ def _lines_to_candidates(block: str, user_message: str) -> list[dict]:
     return candidates
 
 
+def _filter_unseen_candidates(candidates: list[dict]) -> list[dict]:
+    """台帳(ledger.jsonl)で既に決着済み（applied/deleted/クールダウン内のparked等）の
+    タイトルを除外する。pipeline_ledger が読み込めない環境ではフィルタせず素通しする
+    （fail open — 台帳未整備を理由に候補が消えることは避ける）。
+    """
+    if pipeline_ledger is None:
+        return candidates
+    unseen = []
+    for c in candidates:
+        key = pipeline_ledger.compute_key(c.get("title", ""), "")
+        processed, _status = pipeline_ledger.is_processed(key)
+        if not processed:
+            unseen.append(c)
+    return unseen
+
+
 def save_countermeasures_to_dispatch(user_message: str, shion_reply: str) -> int:
     """If Shion's reply has a ③対応策 section, append it to dispatch_queue.jsonl.
-    Returns the number of candidates written (0 if none found).
+    Returns the number of candidates written (0 if none found, or all already decided).
     """
     block = _extract_countermeasure_block(shion_reply)
     if not block:
         return 0
     candidates = _lines_to_candidates(block, user_message)
+    if not candidates:
+        return 0
+    candidates = _filter_unseen_candidates(candidates)
     if not candidates:
         return 0
     entry = {
