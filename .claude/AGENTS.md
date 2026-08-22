@@ -80,6 +80,10 @@
 [judgment-asset-auditor] → .claude/reports/judgment-asset-audit/latest.md
     起動タイミング: 判断資産候補生成・昇格・レビューUI・Cloud Run同期の変更後、または定期監査時
     reads: file-searcher, code-review（任意）
+
+[shion-memory-auditor] → .claude/reports/shion-memory-auditor/latest.md
+    起動タイミング: 記憶taxonomy/索引/鮮度/改訂ロジック変更後、または定期監査時
+    reads: なし（記憶索引・データファイル直接参照）
 ```
 
 ## 各エージェントの読み書きルール
@@ -102,8 +106,9 @@
 | **migration-validator** | file-searcher, code-review | `migration/latest.md` |
 | **ledger-consistency-auditor** | なし | `ledger-consistency/latest.md` |
 | **judgment-asset-auditor** | file-searcher, code-review（任意） | `judgment-asset-audit/latest.md` |
+| **shion-memory-auditor** | なし | `shion-memory-auditor/latest.md` |
 
-この表は `.claude/agents/` に定義された16エージェントを対象とする。エージェントを追加・削除したら、この表と上の依存関係図を同時に更新すること。
+この表は `.claude/agents/` に定義された17エージェントを対象とする。エージェントを追加・削除したら、この表と上の依存関係図を同時に更新すること。
 
 ### レポートディレクトリについての注意
 
@@ -190,6 +195,7 @@ LLM 無しでは生成できない。2 は「不要な再監査を求めない�
 |---|---|
 | 判断資産候補・昇格・レビューUI・Cloud Run帰還 | judgment-asset-auditor |
 | REV採番・改善台帳・ledger_rules | ledger-consistency-auditor |
+| 記憶taxonomy・記憶索引・鮮度バッチ・改訂履歴 | shion-memory-auditor |
 | scoring・物件評価・カテゴリウェイト | scoring-auditor, rule-validator |
 | DBスキーマ・migration・同期テーブル | migration-validator, data-quality-checker |
 | API・認証・外部入力・secrets・ファイル書き込み | security-checker |

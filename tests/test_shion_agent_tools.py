@@ -34,6 +34,11 @@ EXPECTED_DB_TOOLS = {
     "propose_agentic_skill_next_actions",
     "search_shion_system_context",
     "propose_shion_system_improvement_focus",
+    "run_shion_memory_system_audit",
+    "audit_memory_index_orphans",
+    "audit_memory_freshness_pipeline",
+    "audit_memory_revision_integrity",
+    "audit_memory_recall_eval_health",
 }
 
 EXPECTED_VERTEX_TOOLS = {
