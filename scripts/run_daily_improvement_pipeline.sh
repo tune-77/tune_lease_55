@@ -4,6 +4,10 @@
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${PROJECT_ROOT}/.venv/bin/python"
+# core.sh/post.sh は別プロセス（bash 起動）として呼ぶため、export しないと
+# ここで動的解決した値が渡らず、双方のハードコード既定値に必ずフォールバックしていた。
+export PROJECT_ROOT
+export PYTHON
 LOG_DATE="$(date +%Y%m%d)"
 LOG_DIR="${HOME}/Library/Logs/tunelease"
 mkdir -p "${LOG_DIR}/reports"
