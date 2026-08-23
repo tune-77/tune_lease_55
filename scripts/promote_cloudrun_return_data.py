@@ -66,6 +66,7 @@ def _ensure_quarantine_review_schema(conn: sqlite3.Connection) -> None:
             "return_reviewed_at": "TEXT DEFAULT ''",
             "return_promoted_at": "TEXT DEFAULT ''",
             "return_promotion_id": "INTEGER",
+            "return_registered_case_id": "TEXT DEFAULT ''",
         }
         for col, ddl in additions.items():
             if col not in cols:
