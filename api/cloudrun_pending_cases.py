@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 from typing import Any
 
@@ -146,3 +147,37 @@ def list_cloudrun_score_pending_cases_from_events(events: list[dict[str, Any]], 
             break
     rows.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
     return rows[:limit]
+
+
+def build_score_input_case_payload(row: dict[str, Any], score_input_id: int) -> dict[str, Any]:
+    """`cloudrun_score_inputs`の1行から、`save_case_log`にそのまま渡せる案件payloadを作る。
+
+    company_nameがGCS上でマスキング済み（[REDACTED]）または空の場合は、
+    後で人間が実案件編集画面で補完できるよう、idを含むプレースホルダーに置き換える
+    （マスキングされた実企業名の復元は不可能なため、推測は行わない）。
+    """
+    inputs = loads_dict(row.get("inputs_json"))
+    result = loads_dict(row.get("result_json"))
+    created_at = str(row.get("created_at") or "")
+    raw_company_name = str(inputs.get("company_name") or inputs.get("customer_name") or "").strip()
+    if not raw_company_name or raw_company_name == "[REDACTED]":
+        company_name = f"Cloud Run審査入力（企業名要確認: id={score_input_id}）"
+    else:
+        company_name = raw_company_name
+    return {
+        **inputs,
+        "timestamp": created_at or _dt.datetime.now().isoformat(),
+        "registration_date": created_at[:10] if len(created_at) >= 10 else _dt.datetime.now().strftime("%Y-%m-%d"),
+        "company_no": inputs.get("company_no") or inputs.get("customer_no") or "",
+        "company_name": company_name,
+        "industry_major": row.get("industry_major") or result.get("industry_major") or inputs.get("industry_major") or "",
+        "industry_sub": row.get("industry_sub") or result.get("industry_sub") or inputs.get("industry_sub") or "",
+        "sales_dept": inputs.get("sales_dept") or "未設定",
+        "inputs": inputs,
+        "result": result,
+        "final_status": "未登録",
+        "_source": "cloudrun_score_inputs",
+        "cloudrun_return_id": score_input_id,
+        "cloudrun_event_id": row.get("event_id") or "",
+        "cloudrun_source_case_id": row.get("case_id") or "",
+    }

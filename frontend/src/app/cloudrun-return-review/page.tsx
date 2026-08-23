@@ -146,10 +146,10 @@ export default function CloudRunReturnReviewPage() {
             review_status: nextStatus,
             note:
               nextStatus === "approved"
-                ? "demo.db昇格候補として承認"
+                ? "検疫DBで承認（この画面では案件登録は行われません）"
                 : nextStatus === "held"
                   ? "内容確認のため保留"
-                  : "demo.dbへ昇格しない",
+                  : "昇格対象外として破棄",
           },
         );
         const updated = response.data.item;
@@ -237,7 +237,7 @@ export default function CloudRunReturnReviewPage() {
                   Cloud Run 帰還データ検疫
                 </h1>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  デモ環境で積んだ審査入力・OCR・紫苑レビュー・人間の反応を隔離DBで確認し、demo.dbへ戻す候補だけを承認します。
+                  デモ環境で積んだ審査入力・OCR・紫苑レビュー・人間の反応を隔離DBで確認します。ここでの承認は隔離DB内の印付けのみで、案件登録は行われません（実際の登録は別途の昇格処理で行います）。
                 </p>
               </div>
             </div>

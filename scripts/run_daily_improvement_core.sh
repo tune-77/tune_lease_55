@@ -489,4 +489,14 @@ if [ -f "${LATEST_FILE}" ]; then
     fi
 fi
 
+# Cloud Run検疫DBの承認済みデータをlease_data.dbへ昇格
+# score_inputは対象外（企業名が[REDACTED]のプレースホルダー案件が無人で増えるのを防ぐため、
+# /cloudrun-return-review画面での人間の明示クリック実行のみに限定する。REV-303）
+echo ""
+echo "[反映] Cloud Run検疫データ（shion_review/judgment_asset/ocr_result）を昇格中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/promote_cloudrun_return_data.py" \
+    --kind shion_review --kind judgment_asset --kind ocr_result \
+    --apply --allow-main-db
+log_step "promote_cloudrun_return_data" $? || true
+
 exit "${FINAL_EXIT}"
