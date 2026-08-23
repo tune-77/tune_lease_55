@@ -44,8 +44,13 @@ def _history_blob_name(db_filename: str, ts: str) -> str:
 
 
 def is_snapshot_enabled() -> bool:
-    """demoモードでは自動リセットが仕様なのでスナップショット対象外。"""
-    return os.environ.get("CLOUDRUN_DATA_MODE", "").strip().lower() != "demo"
+    """Cloud Run系の非demo実行だけをスナップショット対象にする。"""
+    mode = os.environ.get("CLOUDRUN_DATA_MODE", "").strip().lower()
+    if mode == "demo":
+        return False
+    if mode:
+        return True
+    return bool(os.environ.get("K_SERVICE", "").strip())
 
 
 def _vacuum_copy(src_path: str, dst_path: str) -> None:
