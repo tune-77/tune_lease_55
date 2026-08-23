@@ -590,6 +590,13 @@ function isTodayLocalDate(value?: string) {
   return parsed.toLocaleDateString("sv-SE") === today;
 }
 
+function actionNeedsUserDecision(entry: ShionActionLedgerEntry) {
+  return Boolean(entry.requires_user_approval) &&
+    entry.user_approved !== true &&
+    !(entry.action === "codex_request_drafted" && entry.requires_user_approval !== true) &&
+    !(entry.action === "implementation_observed" && entry.requires_user_approval !== true);
+}
+
 function screeningInputAssistVerdict(summary?: ScreeningInputAssistSummary["summary"]) {
   const sessionCount = summary?.session_count ?? 0;
   const searchCount = summary?.search_count ?? 0;
@@ -1086,9 +1093,7 @@ export default function ImprovementLogPage() {
     [actionLedgerSummary?.recent]
   );
   const actionLedgerCheckItems = useMemo(
-    () => (actionLedgerSummary?.pending_approval || []).filter(
-      (entry) => !["codex_request_drafted", "implementation_observed"].includes(entry.action || "")
-    ),
+    () => (actionLedgerSummary?.pending_approval || []).filter(actionNeedsUserDecision),
     [actionLedgerSummary?.pending_approval]
   );
 
