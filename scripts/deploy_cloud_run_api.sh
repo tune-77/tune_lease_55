@@ -17,12 +17,18 @@ MAX_INSTANCES="${MAX_INSTANCES:-1}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
 DATABASE_SECRET_NAME="${DATABASE_SECRET_NAME:-DATABASE_URL}"
 CLOUDSQL_INSTANCE="${CLOUDSQL_INSTANCE:-}"
-CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
+CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-production}"
 # 紫苑記憶のハイブリッド想起（キーワード＋埋め込み）。埋め込みモデルは
 # ENABLE_OBSIDIAN_INDEXING の経路で既にロードされるため追加コストは小さい。
 # コレクションは初回起動時にバックグラウンド自動構築される（api/shion_memory_vector.py）。
 SHION_MEMORY_HYBRID="${SHION_MEMORY_HYBRID:-1}"
-REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-0}"
+# 非demoモード（実データ）では API キー検証を既定で必須にする（fail-closed）。
+# demoモードのみ従来通り既定で無効（ローカル検証・公開デモ体験を壊さない）。
+if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
+  REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-0}"
+else
+  REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-1}"
+fi
 # Cloud Run demo でも登録・削除を通常操作として試せるよう、既定では
 # DEMO_READONLY を解除する。公開審査などで削除を塞ぎたい時だけ
 # DEMO_READONLY=1 を明示して上書きする。
@@ -93,6 +99,15 @@ if gcloud secrets describe ESTAT_APP_ID --project "$PROJECT_ID" >/dev/null 2>&1;
   deploy_args+=(--set-secrets "ESTAT_APP_ID=ESTAT_APP_ID:latest")
 else
   echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
+fi
+
+if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
+  deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
+elif [[ "$CLOUDRUN_DATA_MODE" != "demo" ]]; then
+  echo "ERROR: Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy non-demo (real data) without an access key. Register it first: gcloud secrets create API_ACCESS_KEY --replication-policy=automatic --project ${PROJECT_ID}" >&2
+  exit 1
+else
+  echo "Warning: Secret Manager secret API_ACCESS_KEY was not found. Demo mode stays unauthenticated at the app layer." >&2
 fi
 
 if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then

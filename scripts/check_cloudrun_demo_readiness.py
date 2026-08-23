@@ -414,6 +414,41 @@ def check_deploy_scripts(checks: CheckRun) -> None:
             checks.info(f"{rel} runs predeploy checks and protects demo mode from Cloud SQL")
 
 
+def check_access_control(checks: CheckRun) -> None:
+    """非demo（実データ）デプロイがAPI_ACCESS_KEY未設定のまま公開されないことを、
+    デプロイスクリプトのソース内容から静的に確認する（gcloudは呼ばない）。
+    check_deploy_scripts() と同じ「必須文字列が含まれているか」の手法。
+    """
+    api_path = ROOT / "scripts" / "deploy_cloud_run_api.sh"
+    if not api_path.exists():
+        checks.warn("scripts/deploy_cloud_run_api.sh missing (cannot verify access control wiring)")
+        return
+    api_text = api_path.read_text(encoding="utf-8", errors="replace")
+    required = (
+        "API_ACCESS_KEY",
+        "REQUIRE_API_ACCESS_KEY",
+        "Refusing to deploy non-demo (real data) without an access key",
+    )
+    missing = [needle for needle in required if needle not in api_text]
+    if missing:
+        checks.fail(
+            "scripts/deploy_cloud_run_api.sh is missing access-control safeguards: "
+            f"{', '.join(missing)}"
+        )
+    else:
+        checks.info("scripts/deploy_cloud_run_api.sh hard-fails on missing API_ACCESS_KEY in non-demo mode")
+
+    web_path = ROOT / "scripts" / "deploy_cloud_run_web.sh"
+    if not web_path.exists():
+        checks.warn("scripts/deploy_cloud_run_web.sh missing (cannot verify access control wiring)")
+        return
+    web_text = web_path.read_text(encoding="utf-8", errors="replace")
+    if "API_ACCESS_KEY=API_ACCESS_KEY:latest" in web_text:
+        checks.info("scripts/deploy_cloud_run_web.sh wires API_ACCESS_KEY to the Web service")
+    else:
+        checks.fail("scripts/deploy_cloud_run_web.sh does not wire API_ACCESS_KEY as a secret")
+
+
 def http_json(base_url: str, path: str, timeout: float) -> Any:
     url = base_url.rstrip("/") + path
     with urllib.request.urlopen(url, timeout=timeout) as response:
@@ -497,6 +532,7 @@ def main() -> int:
     check_ignore_files(checks)
     check_packaging_script(checks)
     check_deploy_scripts(checks)
+    check_access_control(checks)
     check_recent_pipeline_health(checks)
     check_personal_memory_pack(checks)
     check_shion_memory_index(checks)
