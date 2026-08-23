@@ -8,11 +8,14 @@ st は使わず、保存失敗時は False/None を返す。呼び元で st.erro
 import os
 import sys
 import json
+import logging
 import datetime
 from typing import Optional
 import numpy as np
 import pandas as pd
 from runtime_paths import ensure_cloudrun_demo_db_seeded, get_data_dir, get_db_path
+
+logger = logging.getLogger(__name__)
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -818,6 +821,7 @@ def update_case(case_id: str, updates: dict) -> bool:
             )
             row = cursor.fetchone()
             if row is None:
+                logger.info("update_case: case_id=%s が見つかりません", case_id)
                 return False
             data = json.loads(row[0])
             data.update(updates)
@@ -831,6 +835,7 @@ def update_case(case_id: str, updates: dict) -> bool:
         refresh_stats_caches()
         return True
     except Exception:
+        logger.exception("update_case failed: case_id=%s", case_id)
         return False
 
 

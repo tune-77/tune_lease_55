@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 
+import data_cases
 from scripts.promote_cloudrun_return_data import promote_approved_return_data
 
 
@@ -185,7 +186,7 @@ def test_promote_cloudrun_return_data_dry_run_does_not_write(tmp_path) -> None:
 
     assert result["summary"] == {
         "shion_review:would_insert": 1,
-        "score_input:would_log_only": 1,
+        "score_input:would_insert": 1,
         "judgment_asset:would_insert": 1,
     }
     with sqlite3.connect(target_db) as conn:
@@ -193,11 +194,12 @@ def test_promote_cloudrun_return_data_dry_run_does_not_write(tmp_path) -> None:
         assert conn.execute("SELECT COUNT(*) FROM cloudrun_return_promotions").fetchone()[0] == 0
 
 
-def test_promote_cloudrun_return_data_apply_writes_review_and_log(tmp_path) -> None:
+def test_promote_cloudrun_return_data_apply_writes_review_and_log(tmp_path, monkeypatch) -> None:
     return_db = tmp_path / "return.db"
     target_db = tmp_path / "demo.db"
     _seed_return_db(return_db)
     sqlite3.connect(target_db).close()
+    monkeypatch.setattr(data_cases, "DB_PATH", str(target_db))
 
     result = promote_approved_return_data(
         return_db=return_db,
@@ -210,7 +212,7 @@ def test_promote_cloudrun_return_data_apply_writes_review_and_log(tmp_path) -> N
     assert result["backup_path"]
     assert result["summary"] == {
         "shion_review:inserted": 1,
-        "score_input:logged_only": 1,
+        "score_input:inserted": 1,
         "judgment_asset:inserted": 1,
     }
     with sqlite3.connect(target_db) as conn:
@@ -238,11 +240,12 @@ def test_promote_cloudrun_return_data_apply_writes_review_and_log(tmp_path) -> N
         assert asset["return_promotion_id"]
 
 
-def test_promote_cloudrun_return_data_apply_is_idempotent(tmp_path) -> None:
+def test_promote_cloudrun_return_data_apply_is_idempotent(tmp_path, monkeypatch) -> None:
     return_db = tmp_path / "return.db"
     target_db = tmp_path / "demo.db"
     _seed_return_db(return_db)
     sqlite3.connect(target_db).close()
+    monkeypatch.setattr(data_cases, "DB_PATH", str(target_db))
 
     first = promote_approved_return_data(
         return_db=return_db,
@@ -261,7 +264,7 @@ def test_promote_cloudrun_return_data_apply_is_idempotent(tmp_path) -> None:
 
     assert first["summary"] == {
         "shion_review:inserted": 1,
-        "score_input:logged_only": 1,
+        "score_input:inserted": 1,
         "judgment_asset:inserted": 1,
     }
     assert second["summary"] == {}
