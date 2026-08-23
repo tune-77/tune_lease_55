@@ -382,6 +382,20 @@ type AgenticSkillNextActions = {
   guardrail: string;
 };
 
+type CloudRunDataSafetyAudit = {
+  mode: string;
+  status: "ok" | "warn" | "critical" | string;
+  issue_count: number;
+  critical_issue_count: number;
+  checks: {
+    name: string;
+    status: "ok" | "fail" | string;
+    severity: string;
+    message: string;
+  }[];
+  guardrail: string;
+};
+
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   APPROVED: { label: "承認", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   AUTO_FIX_CANDIDATE: { label: "自動修正候補", className: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -610,6 +624,9 @@ export default function ImprovementLogPage() {
   const [agenticSkillDrafts, setAgenticSkillDrafts] = useState<Record<string, string>>({});
   const [agenticSkillFlowCheck, setAgenticSkillFlowCheck] = useState<AgenticSkillFlowCheck | null>(null);
   const [agenticSkillNextActions, setAgenticSkillNextActions] = useState<AgenticSkillNextActions | null>(null);
+  const [cloudRunSafetyAudit, setCloudRunSafetyAudit] = useState<CloudRunDataSafetyAudit | null>(null);
+  const [cloudRunSafetyLoading, setCloudRunSafetyLoading] = useState(false);
+  const [cloudRunSafetyError, setCloudRunSafetyError] = useState("");
 
   const fetchJudgmentAssetPromotion = useCallback(async () => {
     setJudgmentAssetPromotionLoading(true);
@@ -686,6 +703,20 @@ export default function ImprovementLogPage() {
       setAgenticSkillInboxError("紫苑ADKレビュー箱を取得できませんでした");
     } finally {
       setAgenticSkillInboxLoading(false);
+    }
+  }, []);
+
+  const fetchCloudRunSafetyAudit = useCallback(async () => {
+    setCloudRunSafetyLoading(true);
+    setCloudRunSafetyError("");
+    try {
+      const res = await apiClient.get<CloudRunDataSafetyAudit>("/api/judgment-assets/cloudrun-data-safety-audit");
+      setCloudRunSafetyAudit(res.data);
+    } catch {
+      setCloudRunSafetyAudit(null);
+      setCloudRunSafetyError("Cloud Runデータ安全監査を取得できませんでした");
+    } finally {
+      setCloudRunSafetyLoading(false);
     }
   }, []);
 
@@ -863,6 +894,10 @@ export default function ImprovementLogPage() {
   useEffect(() => {
     fetchAgenticSkillInbox();
   }, [fetchAgenticSkillInbox]);
+
+  useEffect(() => {
+    fetchCloudRunSafetyAudit();
+  }, [fetchCloudRunSafetyAudit]);
 
   useEffect(() => {
     fetchRecipes();
@@ -1248,6 +1283,110 @@ export default function ImprovementLogPage() {
                     </article>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-rose-100 bg-rose-50 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-rose-950">Cloud Runデータ安全監査</h2>
+                <p className="mt-1 text-sm font-bold leading-6 text-rose-800">
+                  実データ登録・API認証・DBスナップショット・復元・score_input昇格の停止線を確認します。
+                </p>
+                <p className="mt-1 text-xs font-bold leading-5 text-rose-700">
+                  読み取り専用です。DB書き込み、GCSアクセス、GitHub設定変更は行いません。
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs font-black">
+              <span className={`rounded-full px-3 py-1 ${
+                cloudRunSafetyAudit?.status === "ok"
+                  ? "bg-emerald-100 text-emerald-800"
+                  : cloudRunSafetyAudit?.status === "critical"
+                    ? "bg-rose-100 text-rose-800"
+                    : "bg-amber-100 text-amber-800"
+              }`}>
+                {cloudRunSafetyAudit?.status === "ok" ? "正常" : cloudRunSafetyAudit ? `要確認 ${cloudRunSafetyAudit.issue_count}件` : "未取得"}
+              </span>
+              <button
+                type="button"
+                onClick={fetchCloudRunSafetyAudit}
+                disabled={cloudRunSafetyLoading}
+                className="inline-flex items-center gap-1 rounded-full bg-rose-700 px-3 py-1 text-white transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${cloudRunSafetyLoading ? "animate-spin" : ""}`} />
+                更新
+              </button>
+            </div>
+          </div>
+          <div className="p-4">
+            {cloudRunSafetyError && (
+              <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">
+                {cloudRunSafetyError}
+              </div>
+            )}
+            {cloudRunSafetyLoading ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
+                Cloud Runデータ安全監査を読み込み中...
+              </div>
+            ) : cloudRunSafetyAudit ? (
+              <div className="grid gap-3">
+                <div className={`rounded-xl border p-3 ${
+                  cloudRunSafetyAudit.status === "ok"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : cloudRunSafetyAudit.status === "critical"
+                      ? "border-rose-200 bg-rose-50 text-rose-800"
+                      : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}>
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-center gap-2 text-sm font-black">
+                      {cloudRunSafetyAudit.status === "ok" ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4" />
+                      )}
+                      監査状態: {cloudRunSafetyAudit.status === "ok" ? "正常" : "要確認"}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 text-[11px] font-black">
+                      <span className="rounded-full bg-white/80 px-2 py-1">指摘 {cloudRunSafetyAudit.issue_count}</span>
+                      <span className="rounded-full bg-white/80 px-2 py-1">重大 {cloudRunSafetyAudit.critical_issue_count}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {cloudRunSafetyAudit.checks.map((check) => (
+                    <div key={check.name} className={`rounded-xl border p-3 ${
+                      check.status === "ok"
+                        ? "border-emerald-100 bg-emerald-50/60"
+                        : check.severity === "critical"
+                          ? "border-rose-200 bg-rose-50"
+                          : "border-amber-200 bg-amber-50"
+                    }`}>
+                      <div className="flex items-start gap-2">
+                        {check.status === "ok" ? (
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                        ) : (
+                          <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="break-all text-[11px] font-black text-slate-700">{check.name}</div>
+                          <p className="mt-1 text-xs font-bold leading-5 text-slate-700">{check.message}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-rose-200 bg-rose-50/40 p-6 text-center">
+                <ShieldCheck className="mx-auto h-7 w-7 text-rose-600" />
+                <p className="mt-2 text-sm font-black text-rose-950">監査結果はまだありません</p>
               </div>
             )}
           </div>
