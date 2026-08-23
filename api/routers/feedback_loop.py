@@ -2103,6 +2103,10 @@ def _promote_cloudrun_return_review_items(req: CloudRunReturnPromotionRequest) -
         result = promote_approved_return_data(
             apply=True,
             kinds=(req.kind,),
+            # DEFAULT_TARGET_DBはlease_data.db（本番DB）。このエンドポイントは
+            # 人間がレビュー画面で明示クリックした昇格操作のみを実行する経路であり、
+            # 意図した本番書き込みであることをここで明示する（REV-303, ユーザー承認済み）。
+            allow_main_db=True,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
