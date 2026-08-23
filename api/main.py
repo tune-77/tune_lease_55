@@ -3436,7 +3436,14 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                 cases = load_all_cases()
                 target_case = next((case for case in cases if case.get("id") == target_case_id), None)
         if not target_case_id or not target_case:
-            raise HTTPException(status_code=404, detail="Case not found")
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Case not found: case_id={req.case_id!r} "
+                    "(tried: id/company_no/company_name exact match, "
+                    "cloudrun_event: prefix, cloudrun_score: prefix)"
+                ),
+            )
         
     import datetime
     now_iso = datetime.datetime.now().isoformat()
@@ -3487,7 +3494,10 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
         patches["lost_reason"] = req.lost_reason
 
     if not update_case(target_case_id, patches):
-        raise HTTPException(status_code=500, detail="Failed to update DB")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update DB: target_case_id={target_case_id!r}",
+        )
     experience_result = {"status": "skipped", "reason": "not_attempted"}
     prediction_error_result = {"status": "skipped", "reason": "not_attempted"}
     if req.status in ("成約", "失注", "検収", "検収完了"):
@@ -5381,29 +5391,10 @@ def _promote_cloudrun_score_input_to_pending_case(score_input_id: int) -> str | 
     if str(row.get("return_review_status") or "candidate") == "rejected":
         return None
 
-    import datetime as _dt
+    from api.cloudrun_pending_cases import build_score_input_case_payload
     from data_cases import save_case_log
 
-    inputs = _loads_dict(row.get("inputs_json"))
-    result = _loads_dict(row.get("result_json"))
-    created_at = str(row.get("created_at") or "")
-    case_payload = {
-        **inputs,
-        "timestamp": created_at or _dt.datetime.now().isoformat(),
-        "registration_date": created_at[:10] if len(created_at) >= 10 else _dt.datetime.now().strftime("%Y-%m-%d"),
-        "company_no": inputs.get("company_no") or inputs.get("customer_no") or "",
-        "company_name": inputs.get("company_name") or inputs.get("customer_name") or "Cloud Run審査入力",
-        "industry_major": row.get("industry_major") or result.get("industry_major") or inputs.get("industry_major") or "",
-        "industry_sub": row.get("industry_sub") or result.get("industry_sub") or inputs.get("industry_sub") or "",
-        "sales_dept": inputs.get("sales_dept") or "未設定",
-        "inputs": inputs,
-        "result": result,
-        "final_status": "未登録",
-        "_source": "cloudrun_score_inputs",
-        "cloudrun_return_id": score_input_id,
-        "cloudrun_event_id": row.get("event_id") or "",
-        "cloudrun_source_case_id": row.get("case_id") or "",
-    }
+    case_payload = build_score_input_case_payload(row, score_input_id)
     new_case_id = save_case_log(case_payload)
     if not new_case_id:
         return None

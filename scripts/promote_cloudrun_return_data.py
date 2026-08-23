@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Promote approved Cloud Run return data from quarantine DB to the local demo DB.
+"""Promote approved Cloud Run return data from quarantine DB to the local lease DB.
 
 Default mode is dry-run. Use --apply only after reviewing /cloudrun-return-review.
 This script intentionally does not infer full case records from demo data.
@@ -23,10 +23,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from data_cases import save_case_log  # noqa: E402
+from api.cloudrun_pending_cases import build_score_input_case_payload  # noqa: E402
 
 DEFAULT_RETURN_DB = PROJECT_ROOT / "data" / "cloudrun_experience_return.db"
 MAIN_LEASE_DB = PROJECT_ROOT / "data" / "lease_data.db"
-DEFAULT_TARGET_DB = PROJECT_ROOT / "data" / "demo.db"
+DEFAULT_TARGET_DB = MAIN_LEASE_DB
 DEFAULT_BACKUP_DIR = PROJECT_ROOT / "data" / "backups"
 JUDGMENT_ASSET_OBSIDIAN_REL_DIR = Path("Projects") / "tune_lease_55" / "Judgment Assets" / "Cloud Run Return"
 SUPPORTED_KINDS = ("shion_review", "score_input", "ocr_result", "judgment_asset")
@@ -66,6 +68,7 @@ def _ensure_quarantine_review_schema(conn: sqlite3.Connection) -> None:
             "return_reviewed_at": "TEXT DEFAULT ''",
             "return_promoted_at": "TEXT DEFAULT ''",
             "return_promotion_id": "INTEGER",
+            "return_registered_case_id": "TEXT DEFAULT ''",
         }
         for col, ddl in additions.items():
             if col not in cols:
@@ -490,6 +493,73 @@ def _promote_judgment_asset(
     }
 
 
+def _promote_score_input(
+    quarantine: sqlite3.Connection,
+    target: sqlite3.Connection,
+    row: sqlite3.Row,
+    *,
+    apply: bool,
+) -> dict[str, Any]:
+    source_id = int(row["id"])
+    if _promotion_exists(target, "score_input", source_id):
+        return {"kind": "score_input", "id": source_id, "action": "skipped_existing"}
+
+    # register_case_result（api/main.py）が既に本物のcaseを登録済みの場合は
+    # ここで二重登録しない。監査ログにのみ記録して既存のcase_idを紐付ける。
+    existing_case_id = str(row["return_registered_case_id"] or "")
+    if existing_case_id:
+        if not apply:
+            return {
+                "kind": "score_input",
+                "id": source_id,
+                "action": "would_skip_already_registered",
+                "case_id": existing_case_id,
+            }
+        payload = _row_payload(row)
+        promotion_id = _insert_promotion_log(
+            target,
+            kind="score_input",
+            source_id=source_id,
+            source_event_id=str(row["event_id"] or ""),
+            target_table="past_cases",
+            target_id=existing_case_id,
+            payload=payload,
+            note="already registered via /api/cases/register",
+        )
+        _mark_promoted(quarantine, table="cloudrun_score_inputs", source_id=source_id, promotion_id=promotion_id)
+        return {"kind": "score_input", "id": source_id, "action": "skipped_already_registered", "case_id": existing_case_id}
+
+    if not apply:
+        return {"kind": "score_input", "id": source_id, "action": "would_insert"}
+
+    payload = _row_payload(row)
+    case_payload = build_score_input_case_payload(payload, source_id)
+    # save_case_log()はlease_data.dbへの別コネクションを開く。targetが未コミットの
+    # 書き込みトランザクションを保持したままだと同一ファイルへのロック競合が起きるため、
+    # ここで一旦コミットして解放してから呼び出す。
+    target.commit()
+    new_case_id = save_case_log(case_payload)
+    if not new_case_id:
+        return {"kind": "score_input", "id": source_id, "action": "failed_insert"}
+
+    promotion_id = _insert_promotion_log(
+        target,
+        kind="score_input",
+        source_id=source_id,
+        source_event_id=str(row["event_id"] or ""),
+        target_table="past_cases",
+        target_id=str(new_case_id),
+        payload=payload,
+        note=str(row["return_review_note"] or ""),
+    )
+    _mark_promoted(quarantine, table="cloudrun_score_inputs", source_id=source_id, promotion_id=promotion_id)
+    quarantine.execute(
+        "UPDATE cloudrun_score_inputs SET return_registered_case_id = ? WHERE id = ?",
+        (str(new_case_id), source_id),
+    )
+    return {"kind": "score_input", "id": source_id, "action": "inserted", "case_id": str(new_case_id)}
+
+
 def promote_approved_return_data(
     *,
     return_db: Path = DEFAULT_RETURN_DB,
@@ -502,10 +572,10 @@ def promote_approved_return_data(
 ) -> dict[str, Any]:
     if not return_db.exists():
         raise FileNotFoundError(f"return db not found: {return_db}")
-    if target_db.resolve() == MAIN_LEASE_DB.resolve() and not allow_main_db:
+    if apply and target_db.resolve() == MAIN_LEASE_DB.resolve() and not allow_main_db:
         raise RuntimeError(
-            "Refusing to promote Cloud Run demo return data into data/lease_data.db. "
-            "Use the default data/demo.db target, or pass allow_main_db=True / --allow-main-db explicitly."
+            "Refusing to promote Cloud Run return data into data/lease_data.db. "
+            "Pass allow_main_db=True / --allow-main-db explicitly to confirm this write is intentional."
         )
     if apply and not target_db.exists():
         raise FileNotFoundError(f"target db not found: {target_db}")
@@ -527,16 +597,7 @@ def promote_approved_return_data(
                 results.append(_promote_shion_review(quarantine, target, row, apply=apply))
         if "score_input" in kinds:
             for row in _approved_rows(quarantine, "cloudrun_score_inputs"):
-                results.append(
-                    _promote_as_log_only(
-                        quarantine,
-                        target,
-                        row,
-                        kind="score_input",
-                        table="cloudrun_score_inputs",
-                        apply=apply,
-                    )
-                )
+                results.append(_promote_score_input(quarantine, target, row, apply=apply))
         if "ocr_result" in kinds:
             for row in _approved_rows(quarantine, "cloudrun_ocr_results"):
                 results.append(
@@ -576,7 +637,7 @@ def promote_approved_return_data(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Promote approved Cloud Run return data from quarantine DB to the local demo DB."
+        description="Promote approved Cloud Run return data from quarantine DB to the local lease DB."
     )
     parser.add_argument("--return-db", type=Path, default=DEFAULT_RETURN_DB)
     parser.add_argument("--target-db", type=Path, default=DEFAULT_TARGET_DB)
