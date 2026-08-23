@@ -41,7 +41,7 @@ def _log_implementation_observed(root: Path, report: dict[str, Any], output_path
             ),
             observed_sources=[str(output_path)],
             risk_level="low",
-            requires_user_approval=True,
+            requires_user_approval=False,
             target=str(output_path),
             result="failed" if report.get("failed") else "succeeded",
         )
