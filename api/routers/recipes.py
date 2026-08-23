@@ -68,6 +68,51 @@ def _recipe_risk_level(recipe: dict) -> str:
     return "low"
 
 
+def _latest_json_file(pattern: str) -> tuple[Path | None, dict]:
+    candidates: list[Path] = []
+    for reports_dir in _candidate_report_dirs():
+        candidates.extend(reports_dir.glob(pattern))
+    candidates = sorted(candidates)
+    if not candidates:
+        return None, {}
+    path = candidates[-1]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    return path, data if isinstance(data, dict) else {}
+
+
+def _queue_status(pattern: str) -> dict:
+    path, data = _latest_json_file(pattern)
+    return {
+        "available": bool(path),
+        "path": str(path or ""),
+        "generated_at": data.get("generated_at", ""),
+        "status": data.get("status", ""),
+        "queued_count": data.get("queued_count", 0),
+        "safe_count": data.get("codex_auto_safe_count", data.get("error_repair_safe_count", 0)),
+        "maybe_count": data.get("codex_auto_maybe_count", 0),
+        "manual_or_blocked_count": data.get("manual_or_blocked_count", 0),
+        "items": (data.get("items") or [])[:5] if isinstance(data.get("items"), list) else [],
+        "manual_or_blocked": (data.get("manual_or_blocked") or [])[:5] if isinstance(data.get("manual_or_blocked"), list) else [],
+    }
+
+
+def _latest_result_status(pattern: str) -> dict:
+    path, data = _latest_json_file(pattern)
+    results = data.get("results") if isinstance(data.get("results"), list) else []
+    return {
+        "available": bool(path),
+        "path": str(path or ""),
+        "generated_at": data.get("executed_at", data.get("generated_at", "")),
+        "total": data.get("total", len(results)),
+        "succeeded": data.get("succeeded", sum(1 for item in results if isinstance(item, dict) and item.get("exit_code") == 0)),
+        "failed": data.get("failed", sum(1 for item in results if isinstance(item, dict) and item.get("exit_code") not in (0, None))),
+        "results": results[:5],
+    }
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/api/recipes/status")
@@ -80,6 +125,9 @@ def get_recipes_status():
         except Exception:
             latest = {}
     codex_queue = latest.get("codex_auto_queue") if isinstance(latest.get("codex_auto_queue"), dict) else {}
+    codex_queue_full = _queue_status("codex_auto_queue_*.json")
+    shion_error_queue = _queue_status("shion_error_repair_queue_*.json")
+    shion_error_result = _latest_result_status("codex_queue_result_*_shion_error_repair.json")
     return {
         "pending_count": _recipe_count("pending"),
         "approved_count": _recipe_count("approved"),
@@ -91,6 +139,17 @@ def get_recipes_status():
             "safe_count": codex_queue.get("safe_count", 0),
             "maybe_count": codex_queue.get("maybe_count", 0),
             "manual_or_blocked_count": codex_queue.get("manual_or_blocked_count", 0),
+        },
+        "codex_auto_queue_detail": codex_queue_full,
+        "shion_error_repair_queue": shion_error_queue,
+        "shion_error_repair_result": shion_error_result,
+        "surfaces": {
+            "recipe_pending": "improvement-log: 今回の修正案タブ",
+            "ledger_pending": "improvement-log: 今後の自動修正ルールタブ",
+            "codex_queue": codex_queue_full.get("path", ""),
+            "shion_error_repair_queue": shion_error_queue.get("path", ""),
+            "shion_error_repair_result": shion_error_result.get("path", ""),
+            "agent_action_ledger": "improvement-log上部の所在カード / lease-intelligenceの紫苑行動ログ",
         },
         "note": "今回の修正案を適用待ちへ送る操作です。実適用は scripts/apply_recipe.py が適用待ちを処理します。",
     }

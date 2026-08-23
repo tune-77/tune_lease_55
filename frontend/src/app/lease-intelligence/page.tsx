@@ -239,12 +239,18 @@ const SHION_ACTION_LABELS: Record<string, string> = {
   daily_report: "日次報告",
   system_watch: "システム監視",
   improvement_classified: "改善候補の分類",
-  codex_request_drafted: "Codex依頼文の生成",
+  codex_request_drafted: "自動修正候補の探索",
   user_approval_requested: "承認依頼",
   user_decision_recorded: "User判断の記録",
   implementation_observed: "実装結果の観測",
   followup_reported: "翌日報告への反映",
 };
+
+const actionNeedsUserDecision = (entry: ShionActionLedgerEntry) =>
+  Boolean(entry.requires_user_approval) &&
+  entry.user_approved !== true &&
+  !(entry.action === "codex_request_drafted" && entry.requires_user_approval !== true) &&
+  !(entry.action === "implementation_observed" && entry.requires_user_approval !== true);
 
 const formatShionActionTimestamp = (value?: string) => {
   if (!value) return "";
@@ -2045,6 +2051,9 @@ export default function LeaseIntelligencePage() {
 
           {actionLedgerSummary && (actionLedgerSummary.total ?? 0) > 0 && (
             <div className="border-b border-violet-100 bg-white px-5 py-2">
+              {(() => {
+                const decisionCount = (actionLedgerSummary.pending_approval || []).filter(actionNeedsUserDecision).length;
+                return (
               <button
                 type="button"
                 onClick={() => setActionLedgerOpen((prev) => !prev)}
@@ -2052,16 +2061,18 @@ export default function LeaseIntelligencePage() {
               >
                 <History className="h-4 w-4" />
                 紫苑の行動ログ（直近{actionLedgerSummary.days ?? 7}日 {actionLedgerSummary.total ?? 0}件
-                {(actionLedgerSummary.pending_approval_count ?? 0) > 0
-                  ? ` / 承認待ち ${actionLedgerSummary.pending_approval_count}件`
+                {decisionCount > 0
+                  ? ` / 要確認 ${decisionCount}件`
                   : ""}
                 ）
                 <span className="text-slate-400">{actionLedgerOpen ? "▲" : "▼"}</span>
               </button>
+                );
+              })()}
               {actionLedgerOpen && (
                 <div className="mt-2 space-y-1.5 pb-1">
                   <p className="text-[11px] text-slate-400">
-                    監査用の記録です。ここに実行権限はありません。実装の実行は従来どおり人間のPRレビューが前提です。
+                    監査用の記録です。「自動修正候補の探索」は0件確認も含む履歴で、承認待ちではありません。
                   </p>
                   {(actionLedgerSummary.recent || []).slice().reverse().slice(0, 10).map((entry, index) => (
                     <div
@@ -2075,9 +2086,9 @@ export default function LeaseIntelligencePage() {
                         <span className="text-[12px] text-slate-700">{entry.summary}</span>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
-                        {entry.requires_user_approval && entry.user_approved !== true && (
+                        {actionNeedsUserDecision(entry) && (
                           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                            承認待ち
+                            要確認
                           </span>
                         )}
                         <span className="text-[10px] text-slate-400">{formatShionActionTimestamp(entry.timestamp)}</span>
