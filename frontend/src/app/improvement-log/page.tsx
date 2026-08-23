@@ -50,7 +50,70 @@ type RecipeStatus = {
     maybe_count?: number;
     manual_or_blocked_count?: number;
   };
+  codex_auto_queue_detail?: QueueStatus;
+  shion_error_repair_queue?: QueueStatus;
+  shion_error_repair_result?: QueueResultStatus;
+  surfaces?: Record<string, string>;
   note?: string;
+};
+
+type QueueStatus = {
+  available?: boolean;
+  path?: string;
+  generated_at?: string;
+  status?: string;
+  queued_count?: number;
+  safe_count?: number;
+  maybe_count?: number;
+  manual_or_blocked_count?: number;
+  items?: {
+    id?: string;
+    title?: string;
+    target_module?: string;
+    execution_status?: string;
+  }[];
+  manual_or_blocked?: {
+    id?: string;
+    title?: string;
+    reason?: string;
+  }[];
+};
+
+type QueueResultStatus = {
+  available?: boolean;
+  path?: string;
+  generated_at?: string;
+  total?: number;
+  succeeded?: number;
+  failed?: number;
+  results?: {
+    id?: string;
+    title?: string;
+    exit_code?: number;
+    backend?: string;
+    stderr?: string;
+  }[];
+};
+
+type ShionActionLedgerEntry = {
+  timestamp?: string;
+  action?: string;
+  summary?: string;
+  risk_level?: string;
+  requires_user_approval?: boolean;
+  user_approved?: boolean | null;
+  target?: string | null;
+  result?: string;
+};
+
+type ShionActionLedgerSummary = {
+  generated_at?: string;
+  days?: number;
+  total?: number;
+  by_action?: Record<string, number>;
+  pending_approval_count?: number;
+  pending_approval?: ShionActionLedgerEntry[];
+  recent?: ShionActionLedgerEntry[];
 };
 
 type ImprovementItem = {
@@ -505,6 +568,14 @@ function formatDurationMs(value?: number | null) {
   return `${Math.floor(seconds / 60)}分${String(seconds % 60).padStart(2, "0")}秒`;
 }
 
+function isTodayLocalDate(value?: string) {
+  if (!value) return false;
+  const today = new Date().toLocaleDateString("sv-SE");
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value.slice(0, 10) === today;
+  return parsed.toLocaleDateString("sv-SE") === today;
+}
+
 function screeningInputAssistVerdict(summary?: ScreeningInputAssistSummary["summary"]) {
   const sessionCount = summary?.session_count ?? 0;
   const searchCount = summary?.search_count ?? 0;
@@ -589,6 +660,8 @@ export default function ImprovementLogPage() {
   const [recipesLoading, setRecipesLoading] = useState(false);
   const [dismissedRecipes, setDismissedRecipes] = useState<Set<string>>(new Set());
   const [recipeStatus, setRecipeStatus] = useState<RecipeStatus | null>(null);
+  const [actionLedgerSummary, setActionLedgerSummary] = useState<ShionActionLedgerSummary | null>(null);
+  const [showCodexRequestDetails, setShowCodexRequestDetails] = useState(true);
   const [recipeError, setRecipeError] = useState("");
   const [ledgerRules, setLedgerRules] = useState<LedgerRule[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
@@ -755,15 +828,20 @@ export default function ImprovementLogPage() {
     setRecipesLoading(true);
     setRecipeError("");
     try {
-      const [res, statusRes] = await Promise.all([
+      const [res, statusRes, actionLedgerRes] = await Promise.all([
         apiClient.get<{ recipes: PendingRecipe[] }>("/api/recipes/pending"),
         apiClient.get<RecipeStatus>("/api/recipes/status"),
+        apiClient.get<ShionActionLedgerSummary>("/api/shion/action-ledger/summary", {
+          params: { days: 7 },
+        }).catch(() => null),
       ]);
       setPendingRecipes(res.data.recipes ?? []);
       setRecipeStatus(statusRes.data ?? null);
+      setActionLedgerSummary(actionLedgerRes?.data ?? null);
     } catch (error) {
       setPendingRecipes([]);
       setRecipeStatus(null);
+      setActionLedgerSummary(null);
       setRecipeError("今回の修正案の状態を取得できませんでした");
     } finally {
       setRecipesLoading(false);
@@ -966,11 +1044,23 @@ export default function ImprovementLogPage() {
   const obsidianViolations = data?.obsidian_compliance?.violations?.length || 0;
 
   const visibleRecipes = pendingRecipes.filter((r) => !dismissedRecipes.has(r.id));
+  const codexRequestDrafts = useMemo(
+    () => (actionLedgerSummary?.recent || [])
+      .filter((entry) => entry.action === "codex_request_drafted")
+      .sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || ""))),
+    [actionLedgerSummary?.recent]
+  );
+  const actionLedgerCheckItems = useMemo(
+    () => (actionLedgerSummary?.pending_approval || []).filter(
+      (entry) => !["codex_request_drafted", "implementation_observed"].includes(entry.action || "")
+    ),
+    [actionLedgerSummary?.pending_approval]
+  );
 
   const todayFixQueue = useMemo(() => {
     const items = data?.items || [];
     return triageRecords
-      .filter((record) => record.decision === "today" && Boolean(record.approved_at))
+      .filter((record) => record.decision === "today" && isTodayLocalDate(record.approved_at))
       .map((record) => {
         const matchedItem = items.find((item) =>
           item.canonical_key === record.canonical_key ||
@@ -1018,10 +1108,12 @@ export default function ImprovementLogPage() {
               if (activeTab === "improvements") {
                 fetchLog();
                 fetchJudgmentAssetPromotion();
+                fetchRecipes();
               } else if (activeTab === "recipes") {
                 fetchRecipes();
               } else {
                 fetchLedgerRules();
+                fetchRecipes();
               }
             }}
             className="ml-auto inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
@@ -1049,6 +1141,161 @@ export default function ImprovementLogPage() {
             </p>
           </div>
         )}
+
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                <ShieldCheck className="h-4 w-4" />
+                自動修復・確認ログの所在
+              </div>
+              <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                件数の出どころをここに集約しています。自動修正候補、紫苑の軽微エラー修復、人間確認が必要な箱を分けて表示します。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                fetchRecipes();
+                fetchLedgerRules();
+              }}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              状態更新
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-black text-blue-900">Codex自動改善キュー</div>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-blue-700">
+                  {recipeStatus?.codex_auto_queue_detail?.status || recipeStatus?.codex_auto_queue?.status || "未生成"}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs font-bold">
+                <div className="rounded bg-white p-2 text-blue-800">
+                  <div className="text-lg font-black">{recipeStatus?.codex_auto_queue_detail?.queued_count ?? recipeStatus?.codex_auto_queue?.queued_count ?? 0}</div>
+                  実行候補
+                </div>
+                <div className="rounded bg-white p-2 text-emerald-700">
+                  <div className="text-lg font-black">{recipeStatus?.codex_auto_queue_detail?.safe_count ?? recipeStatus?.codex_auto_queue?.safe_count ?? 0}</div>
+                  safe
+                </div>
+                <div className="rounded bg-white p-2 text-amber-700">
+                  <div className="text-lg font-black">{recipeStatus?.codex_auto_queue_detail?.manual_or_blocked_count ?? recipeStatus?.codex_auto_queue?.manual_or_blocked_count ?? 0}</div>
+                  保留
+                </div>
+              </div>
+              <p className="mt-2 break-all text-[11px] font-semibold text-blue-700">
+                {recipeStatus?.codex_auto_queue_detail?.path || recipeStatus?.surfaces?.codex_queue || "reports/codex_auto_queue_*.json"}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-black text-emerald-900">紫苑の軽微エラー修復</div>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-emerald-700">
+                  {recipeStatus?.shion_error_repair_queue?.status || "未生成"}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs font-bold">
+                <div className="rounded bg-white p-2 text-emerald-800">
+                  <div className="text-lg font-black">{recipeStatus?.shion_error_repair_queue?.queued_count ?? 0}</div>
+                  実行候補
+                </div>
+                <div className="rounded bg-white p-2 text-emerald-700">
+                  <div className="text-lg font-black">{recipeStatus?.shion_error_repair_queue?.safe_count ?? 0}</div>
+                  safe
+                </div>
+                <div className="rounded bg-white p-2 text-rose-700">
+                  <div className="text-lg font-black">{recipeStatus?.shion_error_repair_result?.failed ?? 0}</div>
+                  失敗
+                </div>
+              </div>
+              <p className="mt-2 break-all text-[11px] font-semibold text-emerald-700">
+                {recipeStatus?.shion_error_repair_queue?.path || "reports/shion_error_repair_queue_*.json"}
+              </p>
+              {recipeStatus?.shion_error_repair_result?.available && (
+                <p className="mt-1 break-all text-[11px] font-semibold text-emerald-700">
+                  結果: {recipeStatus.shion_error_repair_result.path}
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
+              <div className="text-xs font-black text-amber-900">人間確認が必要な箱</div>
+              <div className="mt-3 space-y-2 text-xs font-bold text-amber-800">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("recipes")}
+                  className="flex w-full items-center justify-between rounded bg-white px-3 py-2 text-left hover:bg-amber-100"
+                >
+                  <span>今回の修正案</span>
+                  <span>{recipeStatus?.pending_count ?? visibleRecipes.length}件</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("ledger")}
+                  className="flex w-full items-center justify-between rounded bg-white px-3 py-2 text-left hover:bg-amber-100"
+                >
+                  <span>今後の自動修正ルール</span>
+                  <span>{ledgerRules.filter((r) => ledgerEffectiveStatus(r) === "pending_review").length}件</span>
+                </button>
+                <div className="flex items-center justify-between rounded bg-white px-3 py-2">
+                  <span>紫苑行動ログ（要確認）</span>
+                  <span>{actionLedgerCheckItems.length}件</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="text-xs font-black text-slate-800">自動修正候補の探索履歴</div>
+              <div className="mt-3 flex items-end gap-2">
+                <span className="text-3xl font-black text-slate-900">
+                  {actionLedgerSummary?.by_action?.codex_request_drafted ?? 0}
+                </span>
+                <span className="pb-1 text-xs font-bold text-slate-500">件 / 直近{actionLedgerSummary?.days ?? 7}日</span>
+              </div>
+              <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-500">
+                これは「自動修正できる候補を探した履歴」です。0件の探索も記録されますが、承認待ちの依頼ではありません。
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowCodexRequestDetails((value) => !value)}
+                className="mt-3 inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-black text-slate-700 hover:bg-slate-100"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                  {showCodexRequestDetails ? "探索履歴を閉じる" : `探索履歴を見る (${codexRequestDrafts.length}件)`}
+              </button>
+              {showCodexRequestDetails && (
+                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {codexRequestDrafts.length === 0 ? (
+                    <div className="rounded bg-white p-2 text-[11px] font-semibold text-slate-500">
+                      直近期間の探索履歴はありません。
+                    </div>
+                  ) : (
+                    codexRequestDrafts.map((entry, index) => (
+                      <div key={`${entry.timestamp}-${index}`} className="rounded bg-white p-2 text-[11px] leading-5 text-slate-600">
+                        <div className="flex flex-wrap items-center gap-2 font-black text-slate-800">
+                          <span>{entry.timestamp || "-"}</span>
+                          {entry.result && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{entry.result}</span>}
+                        </div>
+                        <div className="mt-1 font-semibold">{entry.summary || entry.action}</div>
+                        {entry.target && (
+                          <div className="mt-1 break-all font-mono text-[10px] text-slate-400">
+                            {entry.target}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
 
         {todayFixQueue.length > 0 && (
           <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">

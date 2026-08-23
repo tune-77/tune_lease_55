@@ -16,11 +16,13 @@ def _deps(*, category: str = "general", basic_context: str = "") -> ChatContextB
             "use_news": mode != "casual",
             "use_obsidian_daily": mode != "casual",
             "use_experience_loop": False,
+            "use_mid_term_memory": mode != "casual",
         },
         chat_mode_instruction=lambda mode: f"[mode:{mode}]",
         response_mode_instruction=lambda response_mode: f"[response:{response_mode}]",
         build_identity_memory=lambda: ("identity", {"block": "identity", "refs": ["i"], "layers": {"identity": True}}),
         build_user_personal_memory=lambda: ("user-memory", {"block": "user-memory", "refs": ["u"], "line_count": 1}),
+        build_mid_term_memory=lambda: ("mid-term", {"block": "mid-term", "refs": ["m"]}),
         build_continuity_hook=lambda _message: ("hook", {"used": True, "route": "lease"}),
         build_consciousness_ux=lambda: "consciousness",
         build_shion_specificity=lambda _message: "specificity",
@@ -29,6 +31,7 @@ def _deps(*, category: str = "general", basic_context: str = "") -> ChatContextB
         build_shion_non_domain=lambda _message: "non-domain",
         build_human_device_resonance=lambda _message, user_id="", now="": f"human-device:{user_id}:{now}",
         build_judgment_response_shape=lambda _message: "judgment-shape",
+        build_case_screening_pattern=lambda _message: "case-pattern",
         build_grey_judgment=lambda _message: ("grey", {"used": True}),
     )
 
@@ -50,6 +53,7 @@ def test_context_builder_promotes_basic_lease_question_from_general():
     assert state.question_category == "lease_knowledge"
     assert state.context_mode == "screening"
     assert state.basic_lease_question_context == "basic lease"
+    assert state.mid_term_memory_context == "mid-term"
     assert state.grey_judgment_payload == {"used": True}
 
 
@@ -71,6 +75,8 @@ def test_context_builder_general_response_mode_suppresses_shion_memory_blocks():
     assert state.identity_memory_context == ""
     assert state.identity_memory_payload["suppressed_by_response_mode"] == "general"
     assert state.user_personal_memory_context == ""
+    assert state.mid_term_memory_context == ""
+    assert state.mid_term_memory_payload["suppressed_by_response_mode"] == "general"
     assert state.continuity_hook_context == ""
     assert state.consciousness_ux_context == ""
     assert state.vague_information_request_context == ""

@@ -1,6 +1,6 @@
 # 紫苑記憶 昇格候補キュー
 
-- 生成: 2026-08-22T04:14:11
+- 生成: 2026-08-24T04:16:30
 - 候補: 15 件
 - 承認方法: `python3 scripts/apply_shion_memory_promotions.py --ids <ID,...>`
   （承認分だけ knowledge_base/shion_promoted_memories.md へ追記され、

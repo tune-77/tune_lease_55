@@ -162,6 +162,23 @@ if [ ${MEMORY_EVAL_EXIT} -ne 0 ]; then
 fi
 
 echo ""
+echo "[回帰] Cloud Runニュース/記憶レイヤーの回帰テスト..."
+MEMORY_CHAT_REGRESSION_START=$(date +%s)
+"${PYTHON}" -m pytest -q \
+    "${PROJECT_ROOT}/tests/test_lease_news_collection.py::test_find_vault_refreshes_cloudrun_gcs_vault" \
+    "${PROJECT_ROOT}/tests/test_chat_context_builder.py" \
+    "${PROJECT_ROOT}/tests/test_chat_mid_term_memory.py" \
+    "${PROJECT_ROOT}/tests/test_build_cloud_chat_memory_pack.py" \
+    "${PROJECT_ROOT}/tests/test_sync_memory_from_daily_layers.py" \
+    "${PROJECT_ROOT}/tests/test_build_shion_timeline_delta.py"
+MEMORY_CHAT_REGRESSION_EXIT=$?
+MEMORY_CHAT_REGRESSION_DURATION=$(( $(date +%s) - MEMORY_CHAT_REGRESSION_START ))
+log_step "memory_chat_regression_tests" ${MEMORY_CHAT_REGRESSION_EXIT} ${MEMORY_CHAT_REGRESSION_DURATION}
+if [ ${MEMORY_CHAT_REGRESSION_EXIT} -ne 0 ]; then
+    echo "警告: Cloud Runニュース/記憶レイヤーの回帰テストが失敗しました（終了コード ${MEMORY_CHAT_REGRESSION_EXIT}）"
+fi
+
+echo ""
 echo "[記憶] 記憶の矛盾候補を検出中（レポートのみ・自動修正なし）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/detect_shion_memory_contradictions.py"; log_step "detect_shion_memory_contradictions" $?
 
@@ -397,6 +414,32 @@ if [ -f "${RESULT_FILE}" ]; then
         if [ ${EXECUTE_EXIT} -ne 0 ]; then
             echo "警告: Codex 自動実行キューの実行に失敗しました（終了コード ${EXECUTE_EXIT}）"
         fi
+    fi
+fi
+
+# 紫苑の軽微エラー一次対応キュー
+echo ""
+echo "[反映] 紫苑の軽微エラー修復キューを生成中..."
+SHION_ERROR_REPAIR_QUEUE_FILE="${PROJECT_ROOT}/reports/shion_error_repair_queue_${LOG_DATE}.json"
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_error_repair_queue.py" \
+    --output "${SHION_ERROR_REPAIR_QUEUE_FILE}" \
+    --limit 1
+ERROR_REPAIR_QUEUE_EXIT=$?
+log_step "build_shion_error_repair_queue" ${ERROR_REPAIR_QUEUE_EXIT}
+if [ ${ERROR_REPAIR_QUEUE_EXIT} -ne 0 ]; then
+    echo "警告: 紫苑の軽微エラー修復キュー生成に失敗しました（終了コード ${ERROR_REPAIR_QUEUE_EXIT}）"
+fi
+
+if [ -f "${SHION_ERROR_REPAIR_QUEUE_FILE}" ]; then
+    echo ""
+    echo "[反映] 紫苑の軽微エラー修復キューを実行中..."
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/execute_codex_queue.py" \
+        --queue "${SHION_ERROR_REPAIR_QUEUE_FILE}" \
+        --output "${PROJECT_ROOT}/reports/codex_queue_result_${LOG_DATE}_shion_error_repair.json"
+    ERROR_REPAIR_EXECUTE_EXIT=$?
+    log_step "execute_shion_error_repair_queue" ${ERROR_REPAIR_EXECUTE_EXIT}
+    if [ ${ERROR_REPAIR_EXECUTE_EXIT} -ne 0 ]; then
+        echo "警告: 紫苑の軽微エラー修復キュー実行に失敗しました（終了コード ${ERROR_REPAIR_EXECUTE_EXIT}）"
     fi
 fi
 

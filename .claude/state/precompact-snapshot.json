@@ -13,10 +13,10 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 3240 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 885 session age (minutes) exceed threshold 120",
     "reasons": [
       "20 recent edit count exceed threshold 8",
-      "3240 session age (minutes) exceed threshold 120"
+      "885 session age (minutes) exceed threshold 120"
     ],
     "candidates": [
       {
@@ -50,7 +50,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 3240,
+        "actual": 885,
         "threshold": 120,
         "triggered": true
       }
@@ -60,7 +60,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 3240
+      "sessionAgeMinutes": 885
     }
   },
   "continuity": {
@@ -73,28 +73,28 @@
   "metrics": null,
   "recentEdits": [
     ".claude/memory/session-log.md",
+    ".claude/reports/api-health/latest.md",
+    ".claude/reports/build/latest.md",
+    ".claude/reports/data-quality/latest.md",
+    ".claude/reports/log-analysis/latest.md",
+    ".claude/reports/rule-validation/latest.md",
+    ".claude/reports/scoring-audit/latest.md",
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
     ".claude/state/session.events.jsonl",
-    ".claude/state/worktree-info.json",
+    "CLAUDE.md",
+    "api/routers/recipes.py",
+    "api/rule_engine/ledger_rules.json",
     "data/aurion_daily/latest.json",
-    "data/canonical_judgment_rules.json",
     "data/demo.db",
     "data/news_judgment_signals_latest.json",
     "data/pdca_ai_rules.json",
     "data/shion_monitor_report_state.json",
-    "data/shion_pending_tasks.json",
-    "data/user_personal_memory.md",
-    "data/wiki_embedding_cache.json",
-    "frontend/public/lease-grumble/2026-07-17.webp",
-    "frontend/public/lease-grumble/2026-07-18.webp",
-    "frontend/public/lease-grumble/2026-07-19.webp",
-    "frontend/public/lease-grumble/2026-07-20.webp",
-    "reports/agent_action_ledger_latest.md",
-    "reports/agent_sidecar_brief.md"
+    "frontend/.claude/state/instructions-loaded.jsonl",
+    "frontend/src/app/improvement-log/page.tsx"
   ],
   "sessionId": "",
-  "timestamp": "2026-08-20T10:29:39Z",
+  "timestamp": "2026-08-23T09:34:40Z",
   "version": "1.0.0",
   "wipTasks": null
 }

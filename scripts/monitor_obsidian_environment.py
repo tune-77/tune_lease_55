@@ -10,6 +10,7 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 from difflib import SequenceMatcher
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
@@ -94,6 +95,9 @@ WIKILINK_MONITOR_SOURCE_EXCLUDE = (
     "Projects/tune_lease_55/tune_lease_55 Wiki.md",
     "Projects/tune_lease_55/2026-05-13_all_file_ingest_index.md",
     "Projects/tune_lease_55/2026-05-13_リース審査AI_知識分解.md",
+)
+MONITOR_SOURCE_PREFIX_EXCLUDE = (
+    "Claude会話記録/",
 )
 
 
@@ -446,26 +450,49 @@ def check_recent_note_noise(vault: Path) -> MonitorCheck:
     total_lines = 0
     noisy_lines = 0
     noisy_files: list[str] = []
+    ignored_noisy_files: list[str] = []
     for path in notes:
+        try:
+            rel_path = str(path.relative_to(vault))
+        except ValueError:
+            rel_path = str(path)
+        if _source_is_monitor_excluded(rel_path):
+            text = _read_text(path, 80_000)
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            if sum(1 for line in lines if TECH_NOISE_RE.search(line)) >= 3:
+                ignored_noisy_files.append(rel_path)
+            continue
         text = _read_text(path, 80_000)
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         file_noisy = sum(1 for line in lines if TECH_NOISE_RE.search(line))
         total_lines += len(lines)
         noisy_lines += file_noisy
         if file_noisy >= 3:
-            try:
-                noisy_files.append(str(path.relative_to(vault)))
-            except ValueError:
-                noisy_files.append(str(path))
+            noisy_files.append(rel_path)
     ratio = round(noisy_lines / total_lines, 4) if total_lines else 0.0
     warn = ratio > 0.08 or len(noisy_files) >= 5
     msg = f"recent note technical-noise ratio={ratio}, noisy_files={len(noisy_files)}"
-    return MonitorCheck("recent_note_noise", "warn" if warn else "ok", msg, {"ratio": ratio, "noisy_files": noisy_files[:12]})
+    return MonitorCheck(
+        "recent_note_noise",
+        "warn" if warn else "ok",
+        msg,
+        {
+            "ratio": ratio,
+            "noisy_files": noisy_files[:12],
+            "ignored_noisy_files": ignored_noisy_files[:12],
+        },
+    )
 
 
 def _normalize_link_target(value: str) -> str:
-    cleaned = value.strip().replace("\\", "/").strip("/")
+    cleaned = unicodedata.normalize("NFC", value.strip().replace("\\", "/").strip("/"))
     return re.sub(r"/+", "/", cleaned)
+
+
+def _source_is_monitor_excluded(source_rel: str) -> bool:
+    return source_rel in WIKILINK_MONITOR_SOURCE_EXCLUDE or any(
+        source_rel.startswith(prefix) for prefix in MONITOR_SOURCE_PREFIX_EXCLUDE
+    )
 
 
 def _link_candidates(value: str) -> set[str]:
@@ -491,11 +518,11 @@ def _existing_wikilink_targets(vault: Path) -> set[str]:
         if not rel_text:
             continue
         targets.add(rel_text)
-        targets.add(path.name)
+        targets.add(_normalize_link_target(path.name))
         if path.is_dir():
             targets.add(f"{rel_text}/")
             continue
-        targets.add(path.stem)
+        targets.add(_normalize_link_target(path.stem))
         if path.suffix.lower() == ".md":
             targets.add(_normalize_link_target(str(rel.with_suffix(""))))
     return targets
@@ -514,10 +541,16 @@ def _iter_wikilink_targets(text: str) -> list[str]:
             break
         raw = text[start + 2:end]
         target = re.split(r"[#|]", raw, maxsplit=1)[0].strip()
-        if target:
+        if target and not _is_non_obsidian_bracket_token(target):
             targets.append(target)
         pos = end + 2
     return targets
+
+
+def _is_non_obsidian_bracket_token(target: str) -> bool:
+    # POSIX character classes such as [[:space:]] appear inside shell/grep logs
+    # and are not Obsidian wikilinks.
+    return bool(re.fullmatch(r":[A-Za-z_][A-Za-z0-9_]*:", target.strip()))
 
 
 def _wikilink_exists(vault: Path, source_path: Path, target: str, existing_targets: set[str]) -> bool:
@@ -547,7 +580,7 @@ def check_wikilinks(vault: Path) -> MonitorCheck:
             source_rel = str(path.relative_to(vault))
         except ValueError:
             source_rel = str(path)
-        if source_rel in WIKILINK_MONITOR_SOURCE_EXCLUDE:
+        if _source_is_monitor_excluded(source_rel):
             continue
         text = _read_text(path, 80_000)
         for target in _iter_wikilink_targets(text):

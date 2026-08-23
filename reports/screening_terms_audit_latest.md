@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-08-22T04:14:26`
+- generated_at: `2026-08-24T04:16:49`
 - status: `ok`
-- scanned_files: `545`
+- scanned_files: `549`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
-- review: `72`
-- ok: `2301`
+- review: `73`
+- ok: `2331`
 
 ## Glossary
 
@@ -22,17 +22,17 @@
 
 - `review` `actual_pd` `api/chat_memory.py:319` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `ON CONFLICT (user_id) DO UPDATE SET`
-- `review` `actual_pd` `api/chat_reflection_prompts.py:117` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/chat_reflection_prompts.py:120` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `候補重みはPDやスコアではなく、今回情報から見た検討優先度です。合計100%にして、低確率でも当たると重要な見立てを1つ残してください。`
-- `review` `score` `api/chat_reflection_prompts.py:117` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `score` `api/chat_reflection_prompts.py:120` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `候補重みはPDやスコアではなく、今回情報から見た検討優先度です。合計100%にして、低確率でも当たると重要な見立てを1つ残してください。`
 - `review` `actual_pd` `api/game_theory/negotiation.py:46` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `default_prob = max(0.0, 1 - (credit_score / 100) * 0.8 - collateral_ratio * 0.2)`
 - `review` `actual_pd` `api/game_theory/negotiation.py:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `safety_utility = 1.0 - default_prob`
-- `review` `actual_pd` `api/main.py:5340` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:5407` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:5364` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `api/main.py:5431` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
@@ -142,8 +142,10 @@
   - `conn.executemany("UPDATE past_cases SET data = ? WHERE id = ?", updates)`
 - `review` `actual_pd` `scripts/normalize_lost_reasons.py:167` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `mode = "DRY RUN" if args.dry_run else "UPDATED"`
-- `review` `actual_pd` `scripts/promote_cloudrun_return_data.py:322` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/promote_cloudrun_return_data.py:325` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `UPDATE {table}`
+- `review` `actual_pd` `scripts/promote_cloudrun_return_data.py:557` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+  - `"UPDATE cloudrun_score_inputs SET return_registered_case_id = ? WHERE id = ?",`
 - `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:44` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `log "Cloud Run 新リビジョン起動: $CLOUD_RUN_SERVICE (CHROMADB_UPDATED_AT=$TIMESTAMP)"`
 - `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
