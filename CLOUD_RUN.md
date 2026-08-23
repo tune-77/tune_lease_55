@@ -98,38 +98,37 @@ only older, untagged, 0%-traffic revisions beyond that are removed.
 
 ## セキュリティ: アクセス制御（重要）
 
-**デプロイの既定値は認証必須（`ALLOW_UNAUTHENTICATED=0`）です。** これは安全側の
-デフォルトで、`--no-allow-unauthenticated` としてデプロイされます。以前の手順は
-既定で無認証公開であり、FastAPI 側に認証が無いため、**API の URL を知る誰でも
-`DELETE /api/cases/operation/clear-all`（全案件削除）や審査データ・会話履歴の
-読み取り、サーバー側 Gemini キーでの LLM 実行が可能な状態でした。**
+**両サービスとも既定で `--allow-unauthenticated`（Cloud Run IAM レベルでは無認証公開）
+としてデプロイされます。** Web は審査員・来場者に見せる公開デモ用途のため、IAM を
+無効化する変更（後述の方式1）はこのリポジトリでは未導入です。実データを扱う
+非demoモード（`CLOUDRUN_DATA_MODE` が `demo` 以外）では、代わりに**方式2（共有シークレット）
+がアプリ層で既定・必須（fail-closed）**になります——`API_ACCESS_KEY` を Secret Manager に
+登録していない状態で非demoデプロイを実行すると `scripts/deploy_cloud_run_api.sh` が
+`exit 1` でデプロイ自体を止めます。
 
-FastAPI は175の `/api/*` エンドポイントを持ち、それ自体はアプリ層の認証を持ちません。
-以下のいずれか（できれば両方）で保護してください。
+FastAPI は175以上の `/api/*` エンドポイントを持ち、それ自体は Cloud Run IAM の外側では
+無防備です。デモモード（`CLOUDRUN_DATA_MODE=demo`、公開匿名データのみ）では
+方式2は任意（未設定なら無防備公開のまま）ですが、**非demoモードでは必須**です。
 
-### 1. Cloud Run IAM（推奨・主防御）
+### 1. Cloud Run IAM（未導入・追加強化オプション）
 
-API サービスを非公開のまま維持し、Web サービスのサービスアカウントにのみ
-`roles/run.invoker` を付与する。Web → API 呼び出しには ID トークンが必要になるため、
+API サービスを非公開にし、Web サービスのサービスアカウントにのみ
+`roles/run.invoker` を付与する方式。Web → API 呼び出しには ID トークンが必要になるため、
 **Next.js の `rewrites` プロキシ（`next.config.ts`）を Route Handler 化して
-`Authorization: Bearer <ID token>` を server-side で付与する必要があります**
-（`rewrites` はヘッダを追加できません）。
+`Authorization: Bearer <ID token>` を server-side で付与する実装が別途必要です**
+（`rewrites` はヘッダを追加できません）。**この実装は現時点で未着手**であり、
+`--no-allow-unauthenticated` を単純に指定するとWeb→API疎通が壊れます。導入する
+場合は先にRoute Handler化を行ってください。
 
-```bash
-# API は非公開（既定）
-./scripts/deploy_cloud_run_api.sh
-# Web だけ公開する場合
-ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_web.sh
-```
-
-### 2. 共有シークレット（多層防御 / IAM が難しい場合）
+### 2. 共有シークレット（既定の保護方式）
 
 同じ値の `API_ACCESS_KEY` を **API サービスと Web サービスの両方**に設定します。
 
 - **API 側**: FastAPI の `ApiKeyAuthMiddleware`（`api/api_key_auth.py`）が有効化され、
   `/api/*` へのリクエストに一致する `X-API-Key`（または `Authorization: Bearer <key>`）を
   要求します（`/`, `/healthz`, `/docs` は免除）。未設定時は無効なので、ローカル開発・
-  テスト・既存構成は一切壊れません。
+  テスト・既存構成は一切壊れません。`REQUIRE_API_ACCESS_KEY`（既定: demoモードは`0`、
+  非demoモードは`1`）が`1`かつキー未設定の場合、`/api/*` は503を返します。
 - **Web 側**: `frontend/src/proxy.ts`（Next.js 16 の proxy 規約）が `/api/*` に
   `X-API-Key` を server-side で自動注入し、`next.config.ts` の `rewrites` が
   FastAPI へ転送します（`rewrites` はヘッダを付与できないため proxy で足す。
@@ -142,15 +141,25 @@ ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_web.sh
 **キーはブラウザへ露出させないこと**: `API_ACCESS_KEY` は server-only 環境変数として
 設定し、`NEXT_PUBLIC_` を付けないでください（付けるとバンドルに焼き込まれ意味を失う）。
 
+デプロイスクリプトは Secret Manager の `API_ACCESS_KEY` シークレットを両サービスへ
+自動配線します。事前に一度だけ登録してください。
+
 ```bash
-# 例: API と Web の両サービスに同じキーを設定して公開する場合
-API_KEY="$(openssl rand -hex 32)"
-API_ACCESS_KEY="$API_KEY" ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_api.sh
-API_ACCESS_KEY="$API_KEY" ALLOW_UNAUTHENTICATED=1 ./scripts/deploy_cloud_run_web.sh
+gcloud secrets create API_ACCESS_KEY \
+  --replication-policy=automatic \
+  --project gen-lang-client-0420497423
+
+openssl rand -hex 32 | gcloud secrets versions add API_ACCESS_KEY \
+  --data-file=- \
+  --project gen-lang-client-0420497423
+
+# 登録後は通常通りデプロイするだけでよい
+./scripts/deploy_cloud_run_api.sh   # 非demoモードでは未登録だと exit 1 で止まる
+./scripts/deploy_cloud_run_web.sh
 ```
 
-いずれの手段も未適用のまま `ALLOW_UNAUTHENTICATED=1` で公開すると、上記の
-無防備な状態に戻ります。公開が本当に必要な場合のみ明示的に指定してください。
+`CLOUDRUN_DATA_MODE=demo` を明示すれば、`API_ACCESS_KEY` 未登録でも従来通り
+無防備な公開デモとしてデプロイできます（意図的な選択のみ許可）。
 
 ### 公開デモの削除保護（DEMO_READONLY）
 

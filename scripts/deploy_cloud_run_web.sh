@@ -30,6 +30,7 @@ gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
   artifactregistry.googleapis.com \
+  secretmanager.googleapis.com \
   --project "$PROJECT_ID"
 
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}/${SERVICE_NAME}:${SHORT_SHA}"
@@ -56,6 +57,17 @@ deploy_args=(
   --max-instances "$MAX_INSTANCES"
   --set-env-vars "FASTAPI_URL=$API_URL"
 )
+
+# API側のApiKeyAuthMiddlewareと同じ値をWeb側にも配線する（frontend/src/proxy.tsが
+# process.env.API_ACCESS_KEYを読んでX-API-Keyを自動注入する）。CLOUDRUN_DATA_MODEは
+# API側スクリプトの概念でありWeb単体では判定できないため、未登録でも常にsoft-warn
+# に留める（ここでexit 1すると、API側は非demoで正しく起動していてもWebだけデプロイ
+# 不能になり、デモ公開中の事故につながる）。
+if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
+  deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
+else
+  echo "Warning: Secret Manager secret API_ACCESS_KEY was not found. Web will not send X-API-Key." >&2
+fi
 
 deploy_args+=(--allow-unauthenticated)
 
