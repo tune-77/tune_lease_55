@@ -1,18 +1,19 @@
 # Obsidian Taxonomy Audit
 
-- Generated at: `2026-08-22T04:15:05`
-- Distinct tags: 206
+- Generated at: `2026-08-24T04:17:32`
+- Distinct tags: 209
 - Distinct folders: 84
 
 ## Tag Duplicate Clusters (normalized match)
-- cloud-run(1), cloud_run(61), cloudrun(131)
+- cloud-run(1), cloud_run(63), cloudrun(139)
 - GCS(1), gcs(1)
-- RAG(1), rag(7)
+- RAG(1), rag(8)
 
 ## Tag Fuzzy Duplicate Pairs
 - phase1 / phase1-3 (similarity=0.923)
 - phase1-3 / phase3 (similarity=0.923)
 - chroma / chromadb (similarity=0.857)
+- research / search (similarity=0.857)
 - スコアリング / 審査スコアリング (similarity=0.857)
 - category:地域市場 / category:市場分析 (similarity=0.846)
 - category:市場分析 / category:業種分析 (similarity=0.846)
@@ -26,23 +27,23 @@
 - 新しいタグを作る前に既存タグ一覧を検索し、近い意味のタグがあれば使い回す
 
 ## Top Tags
-- その他: 212
-- 紫苑: 193
-- 設備投資: 176
-- 建設/不動産: 163
-- AURION: 154
-- 製造/DX: 146
-- cloudrun: 131
+- その他: 215
+- 紫苑: 203
+- 設備投資: 186
+- 建設/不動産: 169
+- AURION: 158
+- 製造/DX: 153
+- cloudrun: 139
 - 物流/車両: 129
-- リース審査: 100
-- autoresearch: 81
-- 判断資産: 80
-- 帰還データ: 80
-- 日次レポート: 77
-- AI洞察: 77
-- cloud_run: 61
-- chat_memory: 61
-- public_knowledge: 61
-- past_cases: 58
-- obsidian_sync: 51
-- 入力ログ: 51
+- リース審査: 102
+- 判断資産: 86
+- 帰還データ: 86
+- autoresearch: 83
+- 日次レポート: 79
+- AI洞察: 79
+- cloud_run: 63
+- chat_memory: 63
+- public_knowledge: 63
+- past_cases: 60
+- obsidian_sync: 53
+- 入力ログ: 53

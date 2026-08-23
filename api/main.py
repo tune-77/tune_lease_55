@@ -4972,6 +4972,12 @@ def _build_user_personal_memory_prompt_block() -> tuple[str, dict]:
     )
 
 
+def _build_mid_term_memory_prompt_block() -> tuple[str, dict]:
+    from api.chat_mid_term_memory import build_chat_mid_term_memory_prompt_block
+
+    return build_chat_mid_term_memory_prompt_block(_OBSIDIAN_VAULT_PATH)
+
+
 def _chat_response_mode_instruction(response_mode: str) -> str:
     from api.chat_routing import chat_response_mode_instruction
 
@@ -6830,6 +6836,7 @@ def post_chat(req: ChatRequest):
                 response_mode_instruction=_chat_response_mode_instruction,
                 build_identity_memory=_build_chat_identity_memory_prompt_block,
                 build_user_personal_memory=_build_user_personal_memory_prompt_block,
+                build_mid_term_memory=_build_mid_term_memory_prompt_block,
                 build_continuity_hook=_build_continuity_hook_prompt_block,
                 build_consciousness_ux=_build_consciousness_ux_prompt_block,
                 build_shion_specificity=_build_shion_specificity_prompt_block,
@@ -6857,6 +6864,8 @@ def post_chat(req: ChatRequest):
         identity_memory_payload = context_state.identity_memory_payload
         user_personal_memory_context = context_state.user_personal_memory_context
         user_personal_memory_payload = context_state.user_personal_memory_payload
+        mid_term_memory_context = context_state.mid_term_memory_context
+        mid_term_memory_payload = context_state.mid_term_memory_payload
         continuity_hook_context = context_state.continuity_hook_context
         continuity_hook_payload = context_state.continuity_hook_payload
         consciousness_ux_context = context_state.consciousness_ux_context
@@ -7062,6 +7071,7 @@ def post_chat(req: ChatRequest):
                 obsidian_daily_context,
                 identity_memory_context,
                 user_personal_memory_context,
+                mid_term_memory_context,
                 experience_loop_context,
                 grey_judgment_context,
                 business_plan_consult_context,
@@ -7104,6 +7114,7 @@ def post_chat(req: ChatRequest):
                     "external_research_context": external_research_context,
                     "memory_recall_context": memory_recall_context,
                     "experience_loop_context": experience_loop_context,
+                    "mid_term_memory_context": mid_term_memory_context,
                     "chat_history_summary_context": chat_history_summary_context,
                     "identity_memory_context": identity_memory_context,
                     "user_personal_memory_context": user_personal_memory_context,
@@ -7501,6 +7512,7 @@ def post_chat(req: ChatRequest):
             obsidian_daily_context,
             identity_memory_context,
             user_personal_memory_context,
+            mid_term_memory_context,
             experience_loop_context,
             grey_judgment_context,
             business_plan_consult_context,
@@ -7551,6 +7563,7 @@ def post_chat(req: ChatRequest):
                 "judgment_learning_context": judgment_learning_context,
                 "memory_recall_context": memory_recall_context,
                 "experience_loop_context": experience_loop_context,
+                "mid_term_memory_context": mid_term_memory_context,
                 "chat_history_summary_context": chat_history_summary_context,
                 "pdca_block": pdca_block,
             },

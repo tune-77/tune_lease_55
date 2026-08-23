@@ -41,14 +41,6 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 適用条件: ローカル開発・コード調査・ブランチ作成・PR作成、およびスコアリング/審査ロジック/業種データ/主要UIの変更提案を行う時。
 削除条件: ツール規約・出典検査・計画確認・矛盾検査が別の自動ガードまたはリポジトリ設定で担保された時。
 
-```
-frontend/src/app/     # UI（25+ ページ）
-api/main.py           # FastAPI エンドポイント（全API）
-api/schemas.py        # Pydantic モデル
-scoring_core.py       # スコアリング（RandomForest主モデル + 量子干渉）
-data/lease_data.db    # SQLite（コミット禁止）
-```
-
 - **TS/Next.js**: strict mode厳守・`apiClient`（`src/lib/api.ts`）経由でAPI呼び出し。詳細: @.claude/rules/frontend.md
 - **Serena MCP**: `get_symbols_overview` / `find_symbol` / `replace_symbol_body` をReadより優先
 - **ブランチ/PR**: `feature/rev-<番号>-<説明>` / `fix/...` / `chore/...`。一括shipは `/git-ship`

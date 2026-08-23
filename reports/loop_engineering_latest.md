@@ -1,6 +1,6 @@
 # Loop Engineering Health
 
-- Generated at: `2026-08-22T04:15:02`
+- Generated at: `2026-08-24T04:17:29`
 - Status: `warn`
 - Source coverage: 100.0%
 
@@ -35,16 +35,16 @@
 ## Guard / Safety
 - Status: `warn`
 - Codex queue: failed 0/1, carried over 0, aborted=False
-- Preflight retries: over-budget 5 (max count 7 / limit 2)
-- [warn] プリフライトのリトライ枠超過が 5 箇所（上限 2）— 人間へのバトンタッチを検討
+- Preflight retries: over-budget 6 (max count 7 / limit 2)
+- [warn] プリフライトのリトライ枠超過が 6 箇所（上限 2）— 人間へのバトンタッチを検討
 
 ## Outcome Loops
 - Status: `ok`
 - outcome_drift: 0 proposals (latest n/a)
-- feedback_pattern: 62 proposals (latest 2026-08-22T03:00:28)
+- feedback_pattern: 68 proposals (latest 2026-08-24T03:00:23)
 - judgment_divergence: 3 proposals (latest 2026-08-01T07:42:08)
 - knowledge_gap: 3 proposals (latest 2026-07-03T07:21:31)
-- PDCA effect: measured 1392, improved 1392, worsened 0, avg delta -0.161
+- PDCA effect: measured 1687, improved 1583, worsened 104, avg delta -0.143
 
 ## Recommendations
 - 抑制の滞留(churn)が高いため、needs_review/suppressed のクールダウン固着や台帳の suppressed 再記録を確認する（健全な重複排除は含めない）

@@ -27,6 +27,15 @@ Things like:
 - Default speaker: Kitchen HomePod
 ```
 
+## External Helper Tools
+
+Use these as narrow checks, not as permanent dependencies.
+
+- `context7`: only when I need the current official docs or API usage for Cloud Run, Next.js, FastAPI, or a library update.
+- `taste-skill`: only when I am reviewing or redesigning `frontend` screens.
+- If existing repo docs, RAG, or local code already answer the question, skip them.
+- Do not use either one to replace the project’s own judgment, memory, or UI conventions.
+
 ## Why Separate?
 
 Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.

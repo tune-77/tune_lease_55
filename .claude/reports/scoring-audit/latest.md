@@ -1,19 +1,19 @@
 ---
 agent: scoring-audit
 task: 自動監査
-timestamp: 2026-08-22 04:12
+timestamp: 2026-08-24 04:15
 status: failure
 reads_from: []
 ---
 
 ## サマリー
-監査を完了できなかった: 想定外の例外: '<' not supported between instances of 'NoneType' and 'str'
+監査を完了できなかった: 想定外の例外: '<' not supported between instances of 'str' and 'NoneType'
 
 ## 詳細
 - （詳細なし）
 
 ## 課題・リスク
-- 想定外の例外: '<' not supported between instances of 'NoneType' and 'str'
+- 想定外の例外: '<' not supported between instances of 'str' and 'NoneType'
 
 ## 後続エージェントへの申し送り
 なし

@@ -85,6 +85,7 @@ CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {
         "use_judgment_learning": False,
         "use_pdca": False,
         "use_experience_loop": True,
+        "use_mid_term_memory": False,
     },
     "normal": {
         "history_limit": 32,
@@ -99,6 +100,7 @@ CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {
         "use_judgment_learning": False,
         "use_pdca": True,
         "use_experience_loop": True,
+        "use_mid_term_memory": True,
     },
     "deep": {
         "history_limit": 60,
@@ -113,6 +115,7 @@ CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {
         "use_judgment_learning": True,
         "use_pdca": True,
         "use_experience_loop": True,
+        "use_mid_term_memory": True,
     },
     "screening": {
         "history_limit": 48,
@@ -127,6 +130,7 @@ CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {
         "use_judgment_learning": True,
         "use_pdca": True,
         "use_experience_loop": True,
+        "use_mid_term_memory": True,
     },
     "long": {
         "history_limit": 24,
@@ -141,6 +145,7 @@ CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {
         "use_judgment_learning": False,
         "use_pdca": True,
         "use_experience_loop": True,
+        "use_mid_term_memory": True,
     },
 }
 

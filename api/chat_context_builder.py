@@ -26,6 +26,7 @@ class ChatContextBuilderDeps:
     response_mode_instruction: Callable[[str], str]
     build_identity_memory: PromptBuilder
     build_user_personal_memory: PromptBuilder
+    build_mid_term_memory: PromptBuilder
     build_continuity_hook: MessagePayloadBuilder
     build_consciousness_ux: Callable[[], str]
     build_shion_specificity: MessagePromptBuilder
@@ -56,6 +57,8 @@ class ChatContextState:
     identity_memory_payload: dict[str, Any]
     user_personal_memory_context: str
     user_personal_memory_payload: dict[str, Any]
+    mid_term_memory_context: str
+    mid_term_memory_payload: dict[str, Any]
     continuity_hook_context: str
     continuity_hook_payload: dict[str, Any]
     consciousness_ux_context: str
@@ -80,6 +83,10 @@ def _suppressed_identity_payload() -> dict[str, Any]:
 
 def _suppressed_user_memory_payload() -> dict[str, Any]:
     return {"block": "", "refs": [], "line_count": 0, "suppressed_by_response_mode": "general"}
+
+
+def _suppressed_mid_term_payload() -> dict[str, Any]:
+    return {"block": "", "refs": [], "suppressed_by_response_mode": "general"}
 
 
 def _suppressed_used_payload() -> dict[str, Any]:
@@ -113,9 +120,12 @@ def build_chat_context_state(
         news_actions_context = ""
     if not context_budget.get("use_obsidian_daily"):
         obsidian_daily_context = ""
-
     identity_memory_context, identity_memory_payload = deps.build_identity_memory()
     user_personal_memory_context, user_personal_memory_payload = deps.build_user_personal_memory()
+    mid_term_memory_context = ""
+    mid_term_memory_payload: dict[str, Any] = {"block": "", "refs": []}
+    if context_budget.get("use_mid_term_memory"):
+        mid_term_memory_context, mid_term_memory_payload = deps.build_mid_term_memory()
     response_mode_context = deps.response_mode_instruction(response_mode)
     response_mode_key = (response_mode or "shion").strip().lower()
     is_general_response_mode = response_mode_key == "general"
@@ -142,6 +152,8 @@ def build_chat_context_state(
         identity_memory_payload = _suppressed_identity_payload()
         user_personal_memory_context = ""
         user_personal_memory_payload = _suppressed_user_memory_payload()
+        mid_term_memory_context = ""
+        mid_term_memory_payload = _suppressed_mid_term_payload()
         continuity_hook_context = ""
         continuity_hook_payload = _suppressed_used_payload()
         consciousness_ux_context = ""
@@ -192,6 +204,8 @@ def build_chat_context_state(
         identity_memory_payload=identity_memory_payload,
         user_personal_memory_context=user_personal_memory_context,
         user_personal_memory_payload=user_personal_memory_payload,
+        mid_term_memory_context=mid_term_memory_context,
+        mid_term_memory_payload=mid_term_memory_payload,
         continuity_hook_context=continuity_hook_context,
         continuity_hook_payload=continuity_hook_payload,
         consciousness_ux_context=consciousness_ux_context,

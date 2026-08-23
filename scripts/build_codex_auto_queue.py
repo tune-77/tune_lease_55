@@ -488,7 +488,7 @@ def _log_codex_request_drafted(root: Path, queue: dict[str, Any], output_path: P
             ),
             observed_sources=["reports/latest.json"],
             risk_level="low",
-            requires_user_approval=True,
+            requires_user_approval=bool(queue.get("queued_count", 0)),
             target=str(output_path),
             result="drafted",
         )

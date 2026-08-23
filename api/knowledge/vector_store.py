@@ -89,6 +89,11 @@ _SUPPLEMENTAL_QUERY_TERMS = (
     "稼働時間",
     "制御装置",
     "搬出費",
+    "建機",
+    "油圧ショベル",
+    "pc200",
+    "アワーメーター",
+    "油圧系",
     "補助金",
     "交付決定",
     "不採択",
@@ -605,6 +610,11 @@ class KnowledgeVectorStore:
             score += 0.08
         if "再リース" in low_query and any(term in file_name for term in ("リース満了後", "再リース")):
             score += 0.10
+        if any(term in low_query for term in ("建機", "油圧ショベル", "pc200", "アワーメーター", "油圧系")):
+            if path.startswith("Projects/tune_lease_55/Asset Knowledge/建機/"):
+                score += 0.16
+            elif "Asset Knowledge/建設・重機/" in path:
+                score += 0.10
         return score
 
     def _term_coverage(self, query: str, hit: dict) -> tuple[float, int, int]:
