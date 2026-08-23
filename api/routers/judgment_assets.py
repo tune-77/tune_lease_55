@@ -28,6 +28,7 @@ from api.agentic_skill_usage import (
     load_agentic_skill_review_inbox,
     review_agentic_skill_inbox_item,
 )
+from api.cloudrun_data_safety_audit import audit_cloudrun_data_safety
 from api.shion_agentic_skills import propose_agentic_skill_next_actions
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -349,6 +350,12 @@ def get_agentic_skill_flow_check():
 def get_agentic_skill_next_actions(limit: int = 3):
     """agentic skill の見える状態から、紫苑が次の人間アクションを提案する。"""
     return propose_agentic_skill_next_actions(limit=limit)
+
+
+@router.get("/api/judgment-assets/cloudrun-data-safety-audit")
+def get_cloudrun_data_safety_audit():
+    """Cloud Run実データ登録・認証・DB永続化ガードの読み取り専用監査を返す。"""
+    return audit_cloudrun_data_safety()
 
 
 @router.get("/api/judgment-assets/agentic-skill-inbox")
