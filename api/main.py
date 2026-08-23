@@ -421,6 +421,23 @@ async def lifespan(app: FastAPI):
         print(f"[API] crystallization scheduler start failed (non-fatal): {e}")
     # startup: sync_log テーブル初期化（Cloud Run git push 記録用）
     _init_sync_log_table()
+    # startup: lease_data.db のGCS定期スナップショット（非demoモードのみ。REV-310）
+    # Cloud Runのローカルディスクはコンテナ再起動のたびに消え、非demoモードで
+    # ephemeral SQLiteに書いた審査結果登録が失われる問題への対策（api/cloudrun_db_snapshot.py）。
+    def _periodic_db_snapshot():
+        try:
+            from api.cloudrun_db_snapshot import is_snapshot_enabled, snapshot_and_upload
+        except Exception as e:
+            print(f"[API] db snapshot module unavailable (non-fatal): {e}")
+            return
+        if not is_snapshot_enabled():
+            return
+        interval = int(os.environ.get("GCS_DB_SNAPSHOT_INTERVAL_SECONDS", "300"))
+        import time as _t
+        while True:
+            _t.sleep(interval)
+            snapshot_and_upload()
+    _th.Thread(target=_periodic_db_snapshot, daemon=True, name="db-snapshot").start()
     yield
     # shutdown: 結晶化スケジューラー停止
     try:
@@ -428,6 +445,12 @@ async def lifespan(app: FastAPI):
         stop_scheduler()
     except Exception:
         pass
+    # shutdown: lease_data.db の最終スナップショット（定期スナップショットの合間の変更を確実に反映）
+    try:
+        from api.cloudrun_db_snapshot import snapshot_and_upload
+        snapshot_and_upload()
+    except Exception as e:
+        print(f"[API] shutdown db snapshot failed (non-fatal): {e}")
     # shutdown: 最終 git push（コンテナ停止前にデータを永続化）
     if os.path.isdir(os.path.join(_DATA_GIT_DIR, ".git")):
         try:

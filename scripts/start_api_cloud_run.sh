@@ -10,6 +10,12 @@ BUNDLE_ROOT="${CLOUDRUN_BUNDLE_DIR:-$(pwd)/.cloudrun_bundle}"
 
 mkdir -p "$DATA_DIR"
 
+# バンドル復元（非破壊のcp -Rn）より前にGCSスナップショットを復元する。
+# これにより「GCSに前回稼働時のスナップショットがあればそれを優先し、無ければ
+# バンドル初期値にフォールバックする」という優先順位が自然に成立する
+# （demoモードはスキップされ、後段のdemoモード強制上書きでバンドル値に戻る）。
+python "$(dirname "$0")/restore_lease_db_snapshot.py" || true
+
 seed_dir() {
   local src="$1"
   local dst="$2"
