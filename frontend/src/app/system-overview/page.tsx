@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Brain, Database, GitMerge, Zap, Activity, Shield, Eye, Code2, ExternalLink, Clock, RefreshCw, FileText, HardDrive, Newspaper, Search, BarChart2 } from "lucide-react";
+import { Brain, Database, GitMerge, GitBranch, Zap, Activity, Shield, Eye, Code2, ExternalLink, Clock, RefreshCw, FileText, HardDrive, Newspaper, Search, BarChart2 } from "lucide-react";
 
 type PipelineEvent = {
   time: string;
@@ -83,13 +83,24 @@ const pipelineEvents: PipelineEvent[] = [
   {
     time: "03:00",
     label: "RAG日次見直し",
-    desc: "ChromaDB インデックス再構築・検索精度テスト・メタデータ統計・改善候補TOP3",
-    script: "morning_rag_review_v2.py / reindex_obsidian.py --full",
+    desc: "検索精度テスト・メタデータ統計・改善候補TOP3",
+    script: "morning_rag_review_v2.py",
     color: "#818cf8",
     bg: "rgba(49,46,129,0.25)",
     border: "rgba(99,102,241,0.35)",
     iconColor: "#818cf8",
     icon: RefreshCw,
+  },
+  {
+    time: "03:00",
+    label: "Obsidianインデックス再構築",
+    desc: "ChromaDBインデックス再構築 → GCS同期 → Cloud Run再起動",
+    script: "run_obsidian_reindex.sh",
+    color: "#a5b4fc",
+    bg: "rgba(49,46,129,0.2)",
+    border: "rgba(165,180,252,0.3)",
+    iconColor: "#a5b4fc",
+    icon: Database,
   },
   {
     time: "03:30",
@@ -107,7 +118,7 @@ const pipelineEvents: PipelineEvent[] = [
   {
     time: "04:00",
     label: "日次改善パイプライン",
-    desc: "Obsidian改善インデックス抽出 → 紫苑チェック → 改善PMレポート → 再帰的自己改善レポート",
+    desc: "入力同期 → 判断記憶preview → 記憶メンテ(索引/鮮度/ベクトル/健全性) → 診断 → 改善候補生成 → 反映(Codex/Wiki/RAG/Slack通知) → 品質評価 → 最適化・学習 → Gist配布（全約40ステップ）",
     script: "run_daily_improvement_pipeline.sh（core + post）",
     color: "#34d399",
     bg: "rgba(6,78,59,0.25)",
@@ -149,6 +160,18 @@ const pipelineEvents: PipelineEvent[] = [
     border: "rgba(251,191,36,0.3)",
     iconColor: "#fbbf24",
     icon: Shield,
+    repeat: "毎週月曜",
+  },
+  {
+    time: "05:00",
+    label: "古いブランチ自動削除",
+    desc: "マージ済み・stale な feature ブランチを自動クリーンアップ",
+    script: "cleanup_old_branches.sh",
+    color: "#fdba74",
+    bg: "rgba(120,53,15,0.18)",
+    border: "rgba(253,186,116,0.28)",
+    iconColor: "#fdba74",
+    icon: GitBranch,
     repeat: "毎週月曜",
   },
   {

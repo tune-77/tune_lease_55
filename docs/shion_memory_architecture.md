@@ -125,6 +125,9 @@ Mana は妹さん本人の再現や代弁ではない。紫苑が守る価値の
   - 討論結果から昇格する判断基準に `memory_type=judgment_memory` などのメタデータを付ける。
 - `/api/chat`
   - general / RAG の両経路で「紫苑の想起メモ」と「実践知マップ」をシステムプロンプトへ追加し、監査ログに `memory_recall.route`、`memory_recall.refs`、`memory_recall.practical_scene` を残す。
+- `api/shion_memory_system_audit.py`
+  - 記憶索引の孤立レコード（source_path消失）、鮮度バッチ（`api/shion_memory_decay.py`）との同期状態、改訂宣言（`scripts/revise_shion_memory.py`）の未適用、想起評価セットの健全性を読み取り専用で横断チェックする。
+  - `api/shion_agent_tools.py` 経由で紫苑 ADK エージェントのツールとしても登録され、紫苑自身が「自分の記憶は健全か」を自律的に調査できる。人間側は `.claude/agents/shion-memory-auditor.md`（定期監査・大規模変更後レビュー用）から同じチェックを深掘りできる。
 
 ## Practical Knowledge Loop
 
