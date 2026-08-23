@@ -61,6 +61,31 @@ def test_classify_error_entry_rejects_ambiguous_or_risky_entries(tmp_path: Path)
     assert repair_queue.classify_error_entry(dangerous, tmp_path)["is_safe"] is False
 
 
+def test_classify_error_entry_rejects_traversal_and_non_code_targets(tmp_path: Path) -> None:
+    (tmp_path / "api").mkdir()
+    (tmp_path / "api" / "example.py").write_text("", encoding="utf-8")
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "latest.json").write_text("{}", encoding="utf-8")
+
+    traversal = {
+        "rev_id": "REV-906e",
+        "category": "error_log_fix",
+        "source": "analyze_error_logs",
+        "error_pattern": "NameError: missing symbol",
+        "affected_files": ["../api/example.py"],
+    }
+    non_code = {
+        "rev_id": "REV-907e",
+        "category": "error_log_fix",
+        "source": "analyze_error_logs",
+        "error_pattern": "SyntaxError: malformed JSON at reports/latest.json",
+        "affected_files": ["reports/latest.json"],
+    }
+
+    assert repair_queue.classify_error_entry(traversal, tmp_path)["is_safe"] is False
+    assert repair_queue.classify_error_entry(non_code, tmp_path)["is_safe"] is False
+
+
 def test_build_queue_skips_already_queued_ids(tmp_path: Path) -> None:
     target = tmp_path / "api" / "example.py"
     target.parent.mkdir(parents=True)

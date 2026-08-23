@@ -55,3 +55,23 @@ def test_build_chat_mid_term_memory_prompt_block_returns_prefixed_block(tmp_path
 
     assert block.startswith("\n\n【中期継続メモリ】")
     assert payload["refs"] == [str(memory_dir / "mid-term-continuity.md")]
+
+
+def test_load_chat_mid_term_memory_cache_is_scoped_by_vault_path(tmp_path, monkeypatch):
+    monkeypatch.delenv("GCS_VAULT_LOCAL_DIR", raising=False)
+    monkeypatch.delenv("OBSIDIAN_VAULT_PATH", raising=False)
+    monkeypatch.delenv("OBSIDIAN_VAULT", raising=False)
+    invalidate_chat_mid_term_memory_cache()
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first_memory = _memory_dir(first)
+    second_memory = _memory_dir(second)
+    (first_memory / "mid-term-continuity.md").write_text("first vault memory", encoding="utf-8")
+    (second_memory / "mid-term-continuity.md").write_text("second vault memory", encoding="utf-8")
+
+    first_payload = load_chat_mid_term_memory_payload(str(first))
+    second_payload = load_chat_mid_term_memory_payload(str(second))
+
+    assert "first vault memory" in first_payload["block"]
+    assert "second vault memory" in second_payload["block"]
+    assert "first vault memory" not in second_payload["block"]

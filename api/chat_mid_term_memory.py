@@ -17,7 +17,7 @@ CHAT_MEMORY_FALLBACK_SECTIONS = (
     "中期の継続論点",
     "中期記憶",
 )
-CHAT_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
+CHAT_MEMORY_CACHE: dict[str, Any] = {}
 CHAT_MEMORY_CACHE_TTL_SEC = 300
 
 
@@ -25,9 +25,14 @@ def load_chat_mid_term_memory_payload(obsidian_vault_path: str = "") -> dict[str
     import time as _time
 
     now = _time.time()
-    cached = CHAT_MEMORY_CACHE.get("payload")
-    if cached is not None and now - float(CHAT_MEMORY_CACHE.get("loaded_at") or 0) < CHAT_MEMORY_CACHE_TTL_SEC:
-        return cached
+    cache_key = str(Path(obsidian_vault_path or "").expanduser())
+    cached_entry = CHAT_MEMORY_CACHE.get(cache_key)
+    if (
+        isinstance(cached_entry, dict)
+        and cached_entry.get("payload") is not None
+        and now - float(cached_entry.get("loaded_at") or 0) < CHAT_MEMORY_CACHE_TTL_SEC
+    ):
+        return cached_entry["payload"]
 
     block = ""
     refs: list[str] = []
@@ -72,7 +77,7 @@ def load_chat_mid_term_memory_payload(obsidian_vault_path: str = "") -> dict[str
         ).strip()
 
     payload = {"block": prompt_block, "refs": refs[:4]}
-    CHAT_MEMORY_CACHE.update(loaded_at=now, payload=payload)
+    CHAT_MEMORY_CACHE[cache_key] = {"loaded_at": now, "payload": payload}
     return payload
 
 
@@ -87,4 +92,4 @@ def build_chat_mid_term_memory_prompt_block(obsidian_vault_path: str = "") -> tu
 
 
 def invalidate_chat_mid_term_memory_cache() -> None:
-    CHAT_MEMORY_CACHE.update(loaded_at=0.0, payload=None)
+    CHAT_MEMORY_CACHE.clear()

@@ -431,16 +431,8 @@ if [ ${ERROR_REPAIR_QUEUE_EXIT} -ne 0 ]; then
 fi
 
 if [ -f "${SHION_ERROR_REPAIR_QUEUE_FILE}" ]; then
-    echo ""
-    echo "[反映] 紫苑の軽微エラー修復キューを実行中..."
-    "${PYTHON}" "${PROJECT_ROOT}/scripts/execute_codex_queue.py" \
-        --queue "${SHION_ERROR_REPAIR_QUEUE_FILE}" \
-        --output "${PROJECT_ROOT}/reports/codex_queue_result_${LOG_DATE}_shion_error_repair.json"
-    ERROR_REPAIR_EXECUTE_EXIT=$?
-    log_step "execute_shion_error_repair_queue" ${ERROR_REPAIR_EXECUTE_EXIT}
-    if [ ${ERROR_REPAIR_EXECUTE_EXIT} -ne 0 ]; then
-        echo "警告: 紫苑の軽微エラー修復キュー実行に失敗しました（終了コード ${ERROR_REPAIR_EXECUTE_EXIT}）"
-    fi
+    echo "紫苑の軽微エラー修復キューは生成のみ実施します（実行は人間レビュー後に手動実行）。"
+    log_step "execute_shion_error_repair_queue_skipped_for_review" 0
 fi
 
 # 改善レポート品質評価
