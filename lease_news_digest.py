@@ -7,6 +7,8 @@ import hashlib
 import json
 import os
 import re
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +24,10 @@ DEFAULT_NEWS_REL_DIRS = (
 METRICS_PATH = Path(__file__).resolve().parent / "data" / "lease_news_metrics.json"
 NEWS_JUDGMENT_SIGNALS_JSONL = Path(__file__).resolve().parent / "data" / "news_judgment_signals.jsonl"
 NEWS_JUDGMENT_SIGNALS_LATEST_JSON = Path(__file__).resolve().parent / "data" / "news_judgment_signals_latest.json"
+_GCS_VAULT_LOCAL_DIR = Path(os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vault"))
+_GCS_VAULT_RESYNC_INTERVAL = int(os.environ.get("GCS_VAULT_RESYNC_INTERVAL", "3600"))
+_GCS_VAULT_LAST_SYNC = 0.0
+_GCS_VAULT_LOCK = threading.Lock()
 
 _NEWS_SIGNAL_REQUIRED_FIELDS = (
     "claim",
@@ -511,7 +517,34 @@ def _vault_candidates() -> list[Path]:
     return out
 
 
+def _refresh_cloudrun_gcs_vault_if_needed() -> None:
+    """Cloud Run では GCS の Vault を間隔付きで再同期する。"""
+    if os.environ.get("USE_GCS_VAULT", "").lower() not in ("1", "true"):
+        return
+
+    global _GCS_VAULT_LAST_SYNC
+    now = time.monotonic()
+    if _GCS_VAULT_LAST_SYNC > 0 and now - _GCS_VAULT_LAST_SYNC < _GCS_VAULT_RESYNC_INTERVAL:
+        return
+
+    with _GCS_VAULT_LOCK:
+        now = time.monotonic()
+        if _GCS_VAULT_LAST_SYNC > 0 and now - _GCS_VAULT_LAST_SYNC < _GCS_VAULT_RESYNC_INTERVAL:
+            return
+
+        try:
+            from scripts.gcs_vault_loader import download_vault
+
+            vault_dir = download_vault(dest_dir=_GCS_VAULT_LOCAL_DIR)
+            os.environ["OBSIDIAN_VAULT"] = str(vault_dir)
+            os.environ["OBSIDIAN_VAULT_PATH"] = str(vault_dir)
+            _GCS_VAULT_LAST_SYNC = time.monotonic()
+        except Exception as exc:
+            print(f"[lease_news_digest] GCS vault refresh failed: {exc}")
+
+
 def find_vault() -> Path | None:
+    _refresh_cloudrun_gcs_vault_if_needed()
     candidates = _vault_candidates()
     return candidates[0] if candidates else None
 

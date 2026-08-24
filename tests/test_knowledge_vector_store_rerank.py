@@ -79,6 +79,40 @@ def test_query_terms_adds_domain_subterms_for_compound_japanese_queries():
     assert "残価" in terms
 
 
+def test_query_terms_adds_construction_asset_subterms():
+    terms = KnowledgeVectorStore._query_terms(
+        "油圧ショベルPC200のアワーメーターと油圧系から再販リスクを判断したい"
+    )
+
+    assert "油圧ショベル" in terms
+    assert "pc200" in terms
+    assert "アワーメーター" in terms
+    assert "油圧系" in terms
+
+
+def test_rerank_prefers_matching_construction_asset_note():
+    store = KnowledgeVectorStore(chroma_dir="/tmp/unused-rag-test")
+    query = "油圧ショベルPC200のアワーメーターと油圧系から再販リスクを判断したい"
+    hits = [
+        _hit(
+            "Projects/tune_lease_55/Asset Knowledge/高所作業車/高所作業車 点検記録・安全装置・再販リスク.md",
+            text="再販リスク アワーメーター 油圧系",
+            distance=None,
+        )
+        | {"score": 16},
+        _hit(
+            "Projects/tune_lease_55/Asset Knowledge/建機/コマツ PC200 油圧ショベル 残価・再販リスク.md",
+            text="PC200 油圧ショベル アワーメーター 油圧系 再販リスク",
+            distance=None,
+        )
+        | {"score": 16},
+    ]
+
+    ranked = store._rerank_hits(query, hits, top_k=2)
+
+    assert ranked[0]["file_path"].startswith("Projects/tune_lease_55/Asset Knowledge/建機/")
+
+
 def test_rerank_pushes_chat_logs_below_curated_knowledge_for_domain_queries():
     store = KnowledgeVectorStore(chroma_dir="/tmp/unused-rag-test")
     query = "競合の低い料率に対して営業が説明すべき条件差と見積比較の観点は？"

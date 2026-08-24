@@ -1,18 +1,18 @@
 # Shion Obsidian Curator Daily
 
-- Date: `2026-08-22`
+- Date: `2026-08-24`
 - Mode: `read_only_daily_obsidian_curator`
 - Guardrail: `read_only_no_vault_write_no_chroma_reindex_no_prompt_change`
-- Graph buckets: {'bridge_candidate': 4, 'complex_but_unproven': 361, 'dormant_isolate': 139, 'effective_hub': 154, 'isolated_but_used': 3, 'noisy': 2, 'ordinary': 1378}
-- Degree 0 count: 169
-- Top degree 0 dirs: {'Generated': 46, 'Projects': 40, 'Claude会話記録': 18, '05-クリップ_記事': 15, '07-アーカイブ': 13, 'lease-wiki-vault': 13, '06-日記_作業ログ': 10, '改善ログ': 7}
+- Graph buckets: {'bridge_candidate': 3, 'complex_but_unproven': 356, 'dormant_isolate': 150, 'effective_hub': 165, 'isolated_but_used': 7, 'noisy': 2, 'ordinary': 1404}
+- Degree 0 count: 185
+- Top degree 0 dirs: {'Projects': 54, 'Generated': 47, 'Claude会話記録': 19, '05-クリップ_記事': 15, '07-アーカイブ': 13, 'lease-wiki-vault': 13, '06-日記_作業ログ': 10, '改善ログ': 7}
 
 ## Top Actions
 - `Projects/tune_lease_55/Research/Auto Research/2026-08-14_subsidy-timing.md`: 使用シグナルがあるのにリンクが薄い
-- `Generated`: degree 0 が残っているフォルダ
+- `Projects/tune_lease_55/Lease Intelligence/Knowledge/オイル価格高騰とメンテナンスリース_2026-06-29.md`: 使用シグナルがあるのにリンクが薄い
+- `Asset Knowledge/建設・重機/建機_油圧ショベル.md`: 使用シグナルがあるのにリンクが薄い
+- `Projects/tune_lease_55/Asset Knowledge/発電機・コンプレッサー/発電機・コンプレッサー 稼働時間・排ガス規制・中古需要.md`: 使用シグナルがあるのにリンクが薄い
 - `Projects`: degree 0 が残っているフォルダ
-- `Claude会話記録`: degree 0 が残っているフォルダ
-- `05-クリップ_記事`: degree 0 が残っているフォルダ
 
 ## Theme Checks
 ### 補助金 未採択

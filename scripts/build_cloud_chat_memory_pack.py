@@ -36,6 +36,7 @@ VAULT_PATH = resolve_obsidian_vault()
 OUTPUT_DIR = Path("Projects/tune_lease_55/Lease Intelligence/Public/Chat Memory")
 STATE_DIR = PROJECT_ROOT / "memory"
 LONG_TERM_MEMORY = PROJECT_ROOT / "MEMORY.md"
+PERSISTENT_MEMORY = PROJECT_ROOT / "PERSISTENT_MEMORY.md"
 
 CORE_IDENTITY_MEMORIES = [
     "紫苑は、Userのリース審査の経験・違和感・判断基準を、再利用できる判断資産として育てるAI。",
@@ -79,6 +80,8 @@ LONG_TERM_MEMORY_KEYWORDS = (
     "Obsidian Default",
     "Memory Hygiene",
     "Dependency Triage",
+    "長期記憶",
+    "判断軸",
     "Cloud Run",
     "GCS",
     "RAG",
@@ -87,6 +90,17 @@ LONG_TERM_MEMORY_KEYWORDS = (
     "判断資産",
     "知識",
     "正本",
+)
+PERSISTENT_MEMORY_KEYWORDS = (
+    "永続記憶",
+    "人格",
+    "運用原則",
+    "安全境界",
+    "判断資産",
+    "設計思想",
+    "内政モード",
+    "短期・中期・長期",
+    "継続する",
 )
 PRIVATE_MEMORY_KEYWORDS = (
     "Private Reflection",
@@ -188,37 +202,80 @@ def collect_decisions(days: int) -> list[str]:
 
 def collect_long_term_memory(limit: int = 8) -> list[str]:
     """Cloud Runチャットに持たせる公開可能な長期記憶を抽出する。"""
-    curated = [_redact(item, 240) for item in CURATED_LONG_TERM_MEMORIES[:limit]]
+    curated_limit = min(len(CURATED_LONG_TERM_MEMORIES), max(0, limit - 2))
+    curated = [_redact(item, 240) for item in CURATED_LONG_TERM_MEMORIES[:curated_limit]]
     if len(curated) >= limit:
-        return curated
-    if not LONG_TERM_MEMORY.exists():
         return curated
     memories: list[str] = list(curated)
     seen: set[str] = set(curated)
-    current_heading = ""
-    for raw in LONG_TERM_MEMORY.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if line.startswith("#"):
-            current_heading = line.strip("# ").strip()
+    for path, keywords in (
+        (PERSISTENT_MEMORY, PERSISTENT_MEMORY_KEYWORDS),
+        (LONG_TERM_MEMORY, LONG_TERM_MEMORY_KEYWORDS),
+    ):
+        if len(memories) >= limit or not path.exists():
             continue
-        if not line.startswith("-"):
-            continue
-        text = line.lstrip("- ").strip()
-        if len(text) < 20:
-            continue
-        combined = f"{current_heading}: {text}" if current_heading else text
-        if any(keyword in combined for keyword in PRIVATE_MEMORY_KEYWORDS):
-            continue
-        if not any(keyword in combined for keyword in LONG_TERM_MEMORY_KEYWORDS):
-            continue
-        item = _redact(combined, 240)
-        if item in seen:
-            continue
-        seen.add(item)
-        memories.append(item)
-        if len(memories) >= limit:
-            break
+        current_heading = ""
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith("#"):
+                current_heading = line.strip("# ").strip()
+                continue
+            if not line.startswith("-"):
+                continue
+            text = line.lstrip("- ").strip()
+            if len(text) < 20:
+                continue
+            combined = f"{current_heading}: {text}" if current_heading else text
+            if any(keyword in combined for keyword in PRIVATE_MEMORY_KEYWORDS):
+                continue
+            if not any(keyword in combined for keyword in keywords):
+                continue
+            item = _redact(combined, 240)
+            if item in seen:
+                continue
+            seen.add(item)
+            memories.append(item)
+            if len(memories) >= limit:
+                break
     return memories
+
+
+def collect_mid_term_memory(limit: int = 6, days: int = 5) -> list[str]:
+    """Cloud Runチャットに持たせる最近数日の継続論点を抽出する。"""
+    try:
+        from scripts.build_shion_timeline_delta import build_timeline_delta
+    except Exception:
+        return []
+
+    try:
+        payload = build_timeline_delta(STATE_DIR, datetime.now().date(), days=days)
+    except Exception:
+        return []
+
+    layer = payload.get("memory_layers") or {}
+    mid_term = layer.get("mid_term") if isinstance(layer, dict) else {}
+    if not isinstance(mid_term, dict):
+        return []
+
+    items: list[str] = []
+    signals = mid_term.get("signals") if isinstance(mid_term.get("signals"), dict) else {}
+    repeated = [str(item).strip() for item in signals.get("repeated_terms") or [] if str(item).strip()]
+    continued = [str(item).strip() for item in signals.get("continued_terms") or [] if str(item).strip()]
+    if repeated or continued:
+        summary_bits: list[str] = []
+        if repeated:
+            summary_bits.append(f"反復語={_redact('、'.join(repeated[:6]), 120)}")
+        if continued:
+            summary_bits.append(f"継続語={_redact('、'.join(continued[:6]), 120)}")
+        items.append(_redact("最近の継続論点: " + " / ".join(summary_bits), 220))
+
+    for item in mid_term.get("items") or []:
+        text = _redact(item, 220)
+        if text and text not in items:
+            items.append(text)
+        if len(items) >= limit:
+            break
+    return items[:limit]
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -357,6 +414,7 @@ def _asset_hint_for_industry(industry: str) -> str:
 def build_markdown(
     target_date: str,
     decisions: list[str],
+    mid_term_memories: list[str],
     long_term_memories: list[str],
     cases: list[dict[str, str]],
 ) -> str:
@@ -393,6 +451,12 @@ def build_markdown(
     else:
         lines.append("- Obsidianはローカル/iCloud Vaultを正本にし、Cloud Runは入力受付とデモ実行を担当する。")
         lines.append("- Cloud Runが読む知識は、選抜済みの公開可能なMarkdownに限定する。")
+
+    lines += ["", "## 中期継続論点"]
+    if mid_term_memories:
+        lines.extend(f"- {item}" for item in mid_term_memories)
+    else:
+        lines.append("- 直近数日で繰り返した論点は、短期の会話運びではなく中期継続論点としてまとめる。")
 
     lines += ["", "## 匿名過去事例", ""]
     if cases:
@@ -449,6 +513,7 @@ def build_layer_markdown(title: str, target_date: str, items: list[str], descrip
         "## 運用",
         "- このファイルはCloud Run版の /api/chat にRAGとは別枠で常時注入する。",
         "- 顧客名、会社名、Private Reflection、Daily全文、生チャットは含めない。",
+        "- 中期メモリは短期の会話運びと長期の判断原則の中間として使い、長期原則へは自動昇格しない。",
         "",
     ]
     return "\n".join(lines)
@@ -469,7 +534,12 @@ def write_pack(markdown: str, target_date: str, dry_run: bool) -> Path:
     return out_path
 
 
-def write_layer_packs(target_date: str, decisions: list[str], dry_run: bool) -> list[Path]:
+def write_layer_packs(
+    target_date: str,
+    decisions: list[str],
+    mid_term_memories: list[str],
+    dry_run: bool,
+) -> list[Path]:
     layers = [
         (
             "identity.md",
@@ -487,6 +557,18 @@ def write_layer_packs(target_date: str, decisions: list[str], dry_run: bool) -> 
                 target_date,
                 judgment_principle_memories(),
                 "Userのリース判断資産として回答を返すための、常時参照する判断原則。",
+            ),
+        ),
+        (
+            "mid-term-continuity.md",
+            build_layer_markdown(
+                "Mid-term Continuity Memory",
+                target_date,
+                mid_term_memories
+                or [
+                    "直近数日で繰り返した論点は、短期の会話運びではなく中期継続論点としてまとめる。",
+                ],
+                "直近数日から1週間程度の継続論点をまとめた公開安全な中期メモリ。",
             ),
         ),
         (
@@ -527,11 +609,12 @@ def main() -> None:
     args = parser.parse_args()
 
     decisions = collect_decisions(args.days)
+    mid_term_memories = collect_mid_term_memory()
     long_term_memories = collect_long_term_memory()
     cases = collect_case_examples(args.case_limit)
-    markdown = build_markdown(args.date, decisions, long_term_memories, cases)
+    markdown = build_markdown(args.date, decisions, mid_term_memories, long_term_memories, cases)
     path = write_pack(markdown, args.date, args.dry_run)
-    layer_paths = write_layer_packs(args.date, decisions, args.dry_run)
+    layer_paths = write_layer_packs(args.date, decisions, mid_term_memories, args.dry_run)
     print(f"memory_pack: {path}")
     for layer_path in layer_paths:
         print(f"memory_layer: {layer_path}")

@@ -1055,15 +1055,17 @@
   {
     "rev_id": "REV-303a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] check_obsidian_ops_consistency が過去7日で失敗率50%（4/8件, 4日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-08-20T19:04:10Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-08-22T19:06:00Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
   },
   {
     "rev_id": "RAG-UNRATED-2026_05_23",
@@ -1076,5 +1078,41 @@
     "action": "review_content",
     "penalty_strength": "weak",
     "generated_at": "2026-08-21T19:04:09.504116+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-03_________________________md",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 03-知識_業界/リース審査実務/スコアリングモデル.md が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "03-知識_業界/リース審査実務/スコアリングモデル.md",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-08-22T19:05:55.474001+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-07_______tune_lease_55_archived_2026_06_",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 07-アーカイブ/tune_lease_55_archived_2026-06-12/取り込み完了_Phase1-3/LightGBMスコアリング.md が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "07-アーカイブ/tune_lease_55_archived_2026-06-12/取り込み完了_Phase1-3/LightGBMスコアリング.md",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-08-22T19:05:55.474001+00:00"
+  },
+  {
+    "rev_id": "RAG-UNRATED-05_________________2026_07_09___________",
+    "type": "rag_boost_adjust",
+    "pending_review": true,
+    "description": "RAGヒット済み未評価: 05-クリップ_記事/リースニュース/2026-07-09_リースニュース_株式会社みずほフィナンシャルグループがみずほリース(株)_8.md が直近30日で検索ヒットしたが評価なし（要内容確認）",
+    "source": "analyze_rag_feedback.py",
+    "target": "config/rag_ranking.json",
+    "path": "05-クリップ_記事/リースニュース/2026-07-09_リースニュース_株式会社みずほフィナンシャルグループがみずほリース(株)_8.md",
+    "action": "review_content",
+    "penalty_strength": "weak",
+    "generated_at": "2026-08-23T19:06:16.945712+00:00"
   }
 ]

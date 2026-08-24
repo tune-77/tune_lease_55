@@ -1,55 +1,55 @@
 # Memory Engineering Report
 
-- Generated: 2026-08-22T04:01:02
+- Generated: 2026-08-24T04:01:04
 - Mode: `read_only_memory_engineering_observation`
 - Guardrail: `no_memory_delete_no_promotion_no_prompt_or_scoring_change`
 
 ## Summary
 
-- Write path records: 247
-- Active canonical rules: 11
-- Write amplification / active rule: 22.45
-- Open human review records: 31
-- Memory records: 765
-- Recent memory usage: 529 events / 170 refs
-- Maintenance status records: 144
+- Write path records: 234
+- Active canonical rules: 10
+- Write amplification / active rule: 23.4
+- Open human review records: 231
+- Memory records: 768
+- Recent memory usage: 515 events / 159 refs
+- Maintenance status records: 152
 - Contradiction candidates: 0
 - Write policy metadata completion: 0.0
-- Candidate / active pressure: 0.528
-- Quarantine records: 147
-- Sleeping active rules: 9
+- Candidate / active pressure: 0.853
+- Quarantine records: 153
+- Sleeping active rules: 8
 
 ## Stanford Lens: Write Cost
 
-- `judgment_materials_preview`: 22 records, 14 open review, ~22 tokens
-- `autoresearch_candidates`: 83 records, 17 open review, ~83 tokens
-- `reflection_action_candidates`: 10 records, 0 open review, ~1432 tokens
-- `prediction_error_candidates`: 1 records, 0 open review, ~1 tokens
-- `obsidian_memory_insight_candidates`: 123 records, 0 open review, ~123 tokens
-- `canonical_preview`: 8 records
+- `judgment_materials_preview`: 12 records, 12 open review, ~12 tokens
+- `autoresearch_candidates`: 83 records, 83 open review, ~83 tokens
+- `reflection_action_candidates`: 12 records, 12 open review, ~1775 tokens
+- `prediction_error_candidates`: 1 records, 1 open review, ~1 tokens
+- `obsidian_memory_insight_candidates`: 123 records, 123 open review, ~123 tokens
+- `canonical_preview`: 3 records
 - Write policy required fields: `['importance', 'confidence', 'trust_level', 'provenance']`
-- Write policy missing fields: `{'confidence': 217, 'importance': 239, 'provenance': 239, 'trust_level': 239}`
+- Write policy missing fields: `{'confidence': 219, 'importance': 231, 'provenance': 231, 'trust_level': 231}`
 
 ## Microsoft Lens: Utility Density
 
-- Latest accepted preview: 1
-- Promoted to active rules: 1
-- Promotion rate: 1.0
+- Latest accepted preview: 0
+- Promoted to active rules: 0
+- Promotion rate: None
 
 ## Anthropic Lens: Control
 
-- Lifecycle inventory: `{'active': 608, 'candidate_or_review': 321, 'quarantine': 147, 'rejected_or_dismissed': 158, 'maintenance_or_forgetting_review': 153}`
-- Utility KPIs: `{'checklist_review_rate': 0.0, 'field_feedback_coverage': 0.0, 'candidate_to_active_pressure': 0.528, 'quarantine_rate_in_experience_flywheel': 0.327}`
-- Status counts: `{'active': 597, 'private': 24, 'stale': 144}`
-- Type counts: `{'dialogue_memory': 41, 'factual_memory': 257, 'judgment_memory': 146, 'reflection_memory': 43, 'technical_memory': 262, 'value_memory': 16}`
+- Lifecycle inventory: `{'active': 607, 'candidate_or_review': 518, 'quarantine': 153, 'rejected_or_dismissed': 0, 'maintenance_or_forgetting_review': 160}`
+- Utility KPIs: `{'checklist_review_rate': 0.0, 'field_feedback_coverage': 0.0, 'candidate_to_active_pressure': 0.853, 'quarantine_rate_in_experience_flywheel': 0.334}`
+- Status counts: `{'active': 597, 'private': 19, 'stale': 152}`
+- Type counts: `{'dialogue_memory': 40, 'factual_memory': 258, 'judgment_memory': 144, 'reflection_memory': 34, 'technical_memory': 277, 'value_memory': 15}`
 
 ### Forgetting Review Sample
 
-- `mem_4de5f04f517736a1` technical_memory last_used=none source=MEMORY.md: [2026-07-07] AIチャット履歴が画面遷移で消える問題に対応。Cloud Run demo/readonly ではDB保存が失敗するため、`frontend/src/lib/chatLocalHistory.ts` を追加し、通常 `/chat` と右下 `Floati
-- `mem_53df17aaa3f14f36` technical_memory last_used=none source=MEMORY.md: [2026-07-07] Cloud Run input sync was downloading events and writing summary notes, but `improvement_note` events were not materialized into
-- `mem_5734bba9e52b2bb8` technical_memory last_used=none source=MEMORY.md: [2026-07-07] 結果登録画面の未登録一覧が Cloud Run版の審査入力を拾えていなかった。原因は `/api/cases/pending` が `past_cases.final_status='未登録'` だけを見ており、Cloud Run demo/readon
-- `mem_a969441d5de90bf9` technical_memory last_used=none source=MEMORY.md: [2026-07-07] Audited all existing `data/cloudrun_inputs/*.jsonl` event types: `shion_memory_usage` 155, `improvement_note` 27, `rag_feedback
-- `mem_ab1867025d0e2b55` factual_memory last_used=none source=MEMORY.md: [2026-07-07] The personal-memory extractor had incorrectly stored incomplete dog-name text as `Dog name: は`. Removed the bad confirmed fact 
+- `mem_f1ccd2dde7b2d455` factual_memory last_used=none source=MEMORY.md: [2026-07-11] Improvement report cleanup should not rely only on REV IDs. IDs can be reused or drift; title/detail canonical matching is need
+- `mem_13141ccd88433551` technical_memory last_used=none source=MEMORY.md: [2026-07-12] Updated `scripts/build_shion_memory_index.py` so active canonical judgment rules are included as `judgment_memory` records. Reg
+- `mem_43f592eb7051c9dc` technical_memory last_used=none source=MEMORY.md: [2026-07-12] Added a read-only Judgment Materials Preview sidecar for Obsidian conversation logs. It extracts reusable `judgment_rule`, `ris
+- `mem_5176fbd9f06fa298` technical_memory last_used=none source=MEMORY.md: [2026-07-12] Cloud Run conversation logs and local Obsidian Dialogue notes are separate surfaces unless the Mac sync explicitly mirrors them
+- `mem_6eaf54cccf8bad23` technical_memory last_used=none source=MEMORY.md: [2026-07-12] Added `scripts/promote_canonical_judgment_rules.py` to promote only `accepted_preview` canonical rules into `data/canonical_jud
 
 ## Forgetting Policy
 
@@ -58,7 +58,7 @@
 - `active_but_sleeping`: Do not delete immediately; ask for real-case feedback or move to hold if it stays unused.
 - `quarantine`: Keep out of memory and prompts; review only as a failure/poisoning/noise signal.
 - `contradiction`: Surface with dates and applicability; never auto-merge contradictory memories.
-- Current pressure: `{'active_non_value_without_top_usage': 439, 'sleeping_active_rules': 9, 'review_active_rules': 0, 'experience_quarantine': 147}`
+- Current pressure: `{'active_non_value_without_top_usage': 442, 'sleeping_active_rules': 8, 'review_active_rules': 0, 'experience_quarantine': 153}`
 
 ### Sleeping Rule Sample
 
@@ -66,23 +66,23 @@
 - `b259411afb954d6d` business_plan_specificity: 事業計画は売上見込みだけでなく、受注根拠、稼働計画、資金繰り、返済原資の説明可能性で確認する。
 - `a61f3a316a651126` conditional_approval_checks: 条件付き承認では、未確認リスクを追加資料・実行条件・撤退条件に分けて明文化する。
 - `64e054542be673e4` demo_renewal_asset: 更新設備の増額申込は、既存設備の稼働率、粗利改善見込み、旧設備の処分予定が説明と整合する時だけ前向きに見る。
-- `a34492fe19a18e3a` demo_renewal_asset: 更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。
+- `0d0f11e77fba045d` demo_subsidy_machinery: 工作機械を補助金前提で導入する案件は、採択前の返済原資と未採択時の代替資金を分けて確認する。
 
 ## Daily Review Focus
 
 ### 候補を少し採否する
 
 - Why: 候補圧を下げ、active memory へ進めるものと捨てるものを分ける。
-- `judgment_materials_preview::f07dcd715dadb336` judgment_rule: 物件の保全性と残価: 医療機器は技術陳腐化が早いため、中古市場での流通性、保守契約の有無、撤去・搬出費用を含めた残価設定の妥当性を確認します
-- `judgment_materials_preview::ea6f87a2b966080f` risk_signal: ・根拠が薄い違和感は断定せず、「確認論点」「仮説」「稟議で聞くべきこと」として表現してください
-- `judgment_materials_preview::e96b470222df47ed` risk_signal: 返済原資の確実性: 導入目的と連動した収益改善計画、または既存事業からの安定したキャッシュフローでリース料を賄えるか
-- `judgment_materials_preview::d2bc70f15cdab5e4` judgment_rule: 稟議で残すべき一文 Qriskは低いが、導入目的が不明瞭なため、物件の必要性、返済原資の確実性、および医療機器特有の技術陳腐化リスクと残価設定の妥当性を、銀行紹介元と連携して確認することを条件に承認を検討する
-- `judgment_materials_preview::c5da5e67676b6cf2` risk_signal: 過去事例の「ダックス物流」と比較すると、あちらもスコア帯が近く、銀行支援が弱い中で資料不足で見送りとなりました
+- `judgment_materials_preview::afcfca8390ce5061` judgment_rule: 「文明年代機」という要素の表示について - リース審査 はい、承知いたしました
+- `judgment_materials_preview::7e52be1479a28abd` judgment_rule: 過去案件数: 2192件 - 審査記録数: 2109件 - モデル精度 (AUC): アンサンブルモデルで 0.82、最新の単一モデルで 0.74 です
+- `judgment_materials_preview::67d4eb6ecaf86a0e` judgment_rule: 「文明年代機」という要素の表示について リース審査で参照していた「文明年代記」の情報源が削除され、利用不可になった件について スコア80-100帯の成約率逆転：モデルキャリブレーションの見直しについて これらの候補について、さらに詳しい情報が必要でしたら、お申し付けください
+- `reflection_action_candidates::reflection_action:de5c0b52edf6fd80` 内省アクション: リース審査業務の改善候補として、紫苑の統合: 私は、直近3日で一番繰り返している論点: リース審査業務の改善候補として、紫苑の統合: 私は、直近3日で一番繰り返している論点を1つ選び、次回の判断基準に昇格するという形で統合し、次回は一つの反省文ではなく声ごとの採用・保留・棄却を残す。
+- `reflection_action_candidates::reflection_action:7acf38cd98252ece` 内省アクション: リース審査業務の改善候補として、紫苑の統合: 私は、ハッカソンでは、派手さよりも実務: リース審査業務の改善候補として、紫苑の統合: 私は、ハッカソンでは、派手さよりも実務判断がどう変わるかを内省に戻すという形で統合し、次回は一つの反省文ではなく声ごとの採用・保留・棄却を残す。
 
 ### quarantine が多い抽出元を弱める
 
 - Why: 隔離候補は学習材料ではなく、抽出条件のノイズを示す。
-- Count: 147
+- Count: 153
 - Sample count: 30
 - Sample by source: `{'shion_experience': 30}`
 - Review hint: Do not promote these. Use samples to tighten extraction gates or leave as evidence.
@@ -99,15 +99,15 @@
 - `b259411afb954d6d` business_plan_specificity: 事業計画は売上見込みだけでなく、受注根拠、稼働計画、資金繰り、返済原資の説明可能性で確認する。
 - `a61f3a316a651126` conditional_approval_checks: 条件付き承認では、未確認リスクを追加資料・実行条件・撤退条件に分けて明文化する。
 - `64e054542be673e4` demo_renewal_asset: 更新設備の増額申込は、既存設備の稼働率、粗利改善見込み、旧設備の処分予定が説明と整合する時だけ前向きに見る。
-- `a34492fe19a18e3a` demo_renewal_asset: 更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べ、増額後も返済原資が説明できるかを確認する。
+- `0d0f11e77fba045d` demo_subsidy_machinery: 工作機械を補助金前提で導入する案件は、採択前の返済原資と未採択時の代替資金を分けて確認する。
 
 
 ## Nvidia Lens: Retrieval Pressure
 
-- Notes: 2536 / Edges: 5463
-- Estimated raw tokens: 2691696
-- Estimated index tokens: 238763
-- Estimated token reduction: 0.9113
+- Notes: 2592 / Edges: 5513
+- Estimated raw tokens: 2766695
+- Estimated index tokens: 243783
+- Estimated token reduction: 0.9119
 
 ## Recommended Next Checks
 

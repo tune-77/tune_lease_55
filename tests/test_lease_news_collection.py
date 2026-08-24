@@ -351,3 +351,25 @@ def test_latest_news_note_prefers_frontmatter_date_over_filename(tmp_path):
     assert lease_news_digest._note_frontmatter_date(latest) == "2026-06-03"
     focus = lease_news_digest.get_latest_lease_news_focus(vault=vault)
     assert focus.note_date == "2026-06-03", "注目論点が当日更新されたノートを掴むべき"
+
+
+def test_find_vault_refreshes_cloudrun_gcs_vault(monkeypatch, tmp_path):
+    vault = tmp_path / "gcs_vault"
+    vault.mkdir()
+    calls: list[Path] = []
+
+    def fake_download_vault(*, dest_dir):
+        calls.append(dest_dir)
+        return vault
+
+    monkeypatch.setenv("USE_GCS_VAULT", "true")
+    monkeypatch.delenv("OBSIDIAN_VAULT", raising=False)
+    monkeypatch.delenv("OBSIDIAN_VAULT_PATH", raising=False)
+    monkeypatch.setattr(lease_news_digest, "_GCS_VAULT_LAST_SYNC", 0.0)
+    monkeypatch.setattr("scripts.gcs_vault_loader.download_vault", fake_download_vault)
+
+    result = lease_news_digest.find_vault()
+
+    assert result == vault
+    assert calls == [lease_news_digest._GCS_VAULT_LOCAL_DIR]
+    assert lease_news_digest.find_vault() == vault

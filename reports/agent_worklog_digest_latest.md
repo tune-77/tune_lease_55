@@ -1,7 +1,7 @@
 # Codex/Claude 作業録ダイジェスト
 
-- generated_at: 2026-08-22T04:04:15
-- source_count: 30
+- generated_at: 2026-08-24T04:06:16
+- source_count: 24
 - displayed: 12
 
 ## Shion Use Policy
@@ -9,6 +9,14 @@
 - 禁止: 顧客情報の推測、Private Reflection原文の引用、人間承認なしの判断資産昇格
 
 ## Items
+
+### 2026-08-23 13:47 Codex
+- Summary: Cloud Run DBスナップショットの実行環境ガードを修正してPR #866でship
+- Chat Summary: Userから#863 #864 #865のレビューと修正、続けてgitship依頼。マージ済みPR群をレビューし、ローカル未設定環境でGCS DBスナップショットが有効になるリスクだけを修正した。
+- Decisions: CLOUDRUN_DATA_MODE未設定時はK_SERVICEがあるCloud Run実行環境だけスナップショット有効にする。既存の大量未コミット変更は巻き込まず対象2ファイルだけshipした。
+- Changes: api/cloudrun_db_snapshot.py / tests/test_cloudrun_db_snapshot.py
+- Verification: 22 passed: tests/test_cloudrun_db_snapshot.py tests/test_api_key_auth.py tests/test_promote_cloudrun_return_data.py tests/test_cloudrun_shion_memory_readiness.py / Cloud Run demo readiness: PASS
+- Open Items: -
 
 ### 2026-08-21 08:25 Codex
 - Summary: #835 Codexレビュー修正をPR #841でship
@@ -96,12 +104,4 @@
 - Decisions: masterは保護ブランチのためPR #760で取り込む
 - Changes: frontend/src/app/improvement-log/page.tsx: 入力補助の効果測定と採用/保留/却下候補判定 / frontend/src/app/screening/page.tsx: 効果測定への導線 / tests/test_screening_input_assist_summary.py: 集計ロジックテスト
 - Verification: pytest tests/test_screening_input_assist_summary.py; python -m py_compile api/routers/feedback_loop.py; npm run typecheck; eslint対象ページ; npm run build
-- Open Items: -
-
-### 2026-08-15 07:24 Codex
-- Summary: 審査入力補助と判断資産レビュー導線を実装し、PR #759 を作成
-- Chat Summary: ユーザーの『git ship』依頼に対し、今回実装した審査入力補助・判断資産Promotionレビュー・入力中確認観点を3ファイルに絞ってコミット。masterは保護されていたためPR経由に切り替えた。
-- Decisions: master直pushは禁止されているため、PR #759でrequired checks後に取り込む
-- Changes: api/routers/feedback_loop.py: screening input assist event API / frontend/src/app/screening/page.tsx: 過去案件コピー、入力中確認観点、計測イベント / frontend/src/app/judgment-review/page.tsx: 判断資産Promotion候補レビュー
-- Verification: python -m py_compile api/main.py api/routers/feedback_loop.py; npm run typecheck; eslint対象ページ; npm run build
 - Open Items: -

@@ -242,3 +242,58 @@ def test_monitor_extracts_wikilink_targets_with_brackets_in_filename(tmp_path):
 
     assert check.status == "ok"
     assert check.details["unresolved_sample"] == []
+
+
+def test_monitor_ignores_claude_logs_for_recent_note_noise(tmp_path):
+    import scripts.monitor_obsidian_environment as monitor
+
+    vault = tmp_path / "Obsidian Vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    noisy_log = "\n".join(
+        [
+            "pytest tests/test_example.py -q",
+            "python -m py_compile app.py",
+            "npm run typecheck",
+            "git status --short",
+        ]
+    )
+    _write(vault / "Claude会話記録" / "2026-08-22_Claude会話セッション.md", noisy_log)
+    _write(vault / "Daily" / "2026-08-22.md", "- 今日の記録\n")
+
+    check = monitor.check_recent_note_noise(vault)
+
+    assert check.status == "ok"
+    assert check.details["noisy_files"] == []
+    assert check.details["ignored_noisy_files"] == ["Claude会話記録/2026-08-22_Claude会話セッション.md"]
+
+
+def test_monitor_ignores_posix_character_classes_in_logs_as_wikilinks(tmp_path):
+    import scripts.monitor_obsidian_environment as monitor
+
+    vault = tmp_path / "Obsidian Vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    _write(
+        vault / "Claude会話記録" / "2026-08-22_Claude会話セッション.md",
+        'grep -q "\\"name\\"[[:space:]]*:[[:space:]]*\\"tool\\"" plugin.json\n',
+    )
+    _write(vault / "Daily" / "2026-08-22.md", "[[Existing Note]]")
+    _write(vault / "Existing Note.md", "exists")
+
+    check = monitor.check_wikilinks(vault)
+
+    assert check.status == "ok"
+    assert check.details["unresolved_sample"] == []
+
+
+def test_monitor_resolves_unicode_normalized_wikilinks(tmp_path):
+    import scripts.monitor_obsidian_environment as monitor
+
+    vault = tmp_path / "Obsidian Vault"
+    (vault / ".obsidian").mkdir(parents=True)
+    _write(vault / "Daily" / "2026-08-22.md", "[[LightGBM スコアリング]]")
+    _write(vault / "lease-wiki-vault" / "02_統計モデル" / "LightGBM スコアリング.md", "exists")
+
+    check = monitor.check_wikilinks(vault)
+
+    assert check.status == "ok"
+    assert check.details["unresolved_sample"] == []

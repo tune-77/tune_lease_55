@@ -70,12 +70,14 @@ const hashValue = (text: string) => {
   return Math.abs(hash >>> 0);
 };
 
-const buildObsidianPositions = (nodes: GraphNode[]) => {
+const DEFAULT_CATEGORY_ORDER = ["asset", "research", "knowledge", "case", "feedback", "wiki", "daily", "external"];
+
+const buildObsidianPositions = (nodes: GraphNode[], categoryOrder: string[] = DEFAULT_CATEGORY_ORDER) => {
   const positions = new Map<string, THREE.Vector3>();
-  const categoryOrder = ["asset", "research", "knowledge", "case", "feedback", "wiki", "daily", "external"];
+  const orderedCategories = categoryOrder.length ? categoryOrder : DEFAULT_CATEGORY_ORDER;
   const noteGroups = new Map<string, GraphNode[]>();
   nodes.filter((n) => n.type !== "cluster").forEach((n) => {
-    const cat = n.type === "external" ? "external" : n.category;
+    const cat = orderedCategories.includes(n.category) ? n.category : (n.type === "external" ? "external" : n.category);
     const arr = noteGroups.get(cat) || [];
     arr.push(n);
     noteGroups.set(cat, arr);
@@ -83,8 +85,8 @@ const buildObsidianPositions = (nodes: GraphNode[]) => {
   const clusterCenters = new Map<string, THREE.Vector3>();
   nodes.filter((n) => n.type === "cluster").forEach((n) => {
     const cat = n.id.replace("cluster:", "");
-    const arm = Math.max(0, categoryOrder.indexOf(cat));
-    const angle = (arm / Math.max(1, categoryOrder.length)) * Math.PI * 2;
+    const arm = Math.max(0, orderedCategories.indexOf(cat));
+    const angle = (arm / Math.max(1, orderedCategories.length)) * Math.PI * 2;
     const r = 20 + arm * 2;
     const pos = new THREE.Vector3(Math.cos(angle) * r, (arm % 3 - 1) * 5, Math.sin(angle) * r);
     positions.set(n.id, pos);
@@ -93,15 +95,16 @@ const buildObsidianPositions = (nodes: GraphNode[]) => {
   nodes.forEach((n) => {
     if (positions.has(n.id)) return;
     const seed = hashValue(n.id);
-    if (n.type === "external") {
+    const isExternal = n.category === "external";
+    if (isExternal) {
       const r = 80 + (seed % 35);
       const a = (seed % 1000) / 1000 * Math.PI * 2;
       positions.set(n.id, new THREE.Vector3(Math.cos(a) * r, ((seed >> 8) % 20) - 10, Math.sin(a) * r));
       return;
     }
-    const cat = n.category;
-    const arm = Math.max(0, categoryOrder.indexOf(cat));
-    const baseAngle = (arm / Math.max(1, categoryOrder.length)) * Math.PI * 2;
+    const cat = orderedCategories.includes(n.category) ? n.category : (orderedCategories[orderedCategories.length - 1] || n.category);
+    const arm = Math.max(0, orderedCategories.indexOf(cat));
+    const baseAngle = (arm / Math.max(1, orderedCategories.length)) * Math.PI * 2;
     const center = clusterCenters.get(cat) || new THREE.Vector3();
     const group = noteGroups.get(cat) || [n];
     const idx = Math.max(0, group.findIndex((x) => x.id === n.id));
@@ -113,13 +116,13 @@ const buildObsidianPositions = (nodes: GraphNode[]) => {
   return positions;
 };
 
-const buildPositions = (nodes: GraphNode[]) => {
+const buildPositions = (nodes: GraphNode[], categoryOrder: string[] = DEFAULT_CATEGORY_ORDER) => {
   const positions = new Map<string, THREE.Vector3>();
   const clusterNodes = nodes.filter((node) => node.type === "cluster");
-  const categoryOrder = ["asset", "research", "knowledge", "case", "feedback", "wiki", "daily", "external"];
+  const orderedCategories = categoryOrder.length ? categoryOrder : DEFAULT_CATEGORY_ORDER;
   const noteGroups = new Map<string, GraphNode[]>();
   nodes.filter((node) => node.type !== "cluster").forEach((node) => {
-    const category = node.type === "external" ? "external" : node.category;
+    const category = orderedCategories.includes(node.category) ? node.category : (orderedCategories[orderedCategories.length - 1] || node.category);
     const arr = noteGroups.get(category) || [];
     arr.push(node);
     noteGroups.set(category, arr);
@@ -127,8 +130,8 @@ const buildPositions = (nodes: GraphNode[]) => {
 
   clusterNodes.forEach((node) => {
     const category = node.id.replace("cluster:", "");
-    const arm = Math.max(0, categoryOrder.indexOf(category));
-    const angle = (arm / Math.max(1, categoryOrder.length)) * Math.PI * 2;
+    const arm = Math.max(0, orderedCategories.indexOf(category));
+    const angle = (arm / Math.max(1, orderedCategories.length)) * Math.PI * 2;
     const radius = 12 + arm * 2.5;
     positions.set(node.id, new THREE.Vector3(Math.cos(angle) * radius, (arm % 2 ? 2 : -2), Math.sin(angle) * radius));
   });
@@ -136,21 +139,22 @@ const buildPositions = (nodes: GraphNode[]) => {
   nodes.forEach((node) => {
     if (positions.has(node.id)) return;
     const seed = hashValue(node.id);
-    const category = node.type === "external" ? "external" : node.category;
+    const category = orderedCategories.includes(node.category) ? node.category : (orderedCategories[orderedCategories.length - 1] || node.category);
     const group = noteGroups.get(category) || [node];
     const index = Math.max(0, group.findIndex((item) => item.id === node.id));
-    const arm = Math.max(0, categoryOrder.indexOf(category));
-    const baseAngle = (arm / Math.max(1, categoryOrder.length)) * Math.PI * 2;
+    const arm = Math.max(0, orderedCategories.indexOf(category));
+    const baseAngle = (arm / Math.max(1, orderedCategories.length)) * Math.PI * 2;
     const normalized = index / Math.max(1, group.length - 1);
-    const radius = node.type === "external"
+    const isExternal = node.category === "external";
+    const radius = isExternal
       ? 185 + (seed % 115)
       : 38 + Math.sqrt(index + 1) * 16 + normalized * 96;
     const spiral = baseAngle + radius * 0.047 + ((seed % 100) / 100 - 0.5) * 0.30;
     const jitter = ((seed >> 8) % 100) / 100 - 0.5;
-    const vertical = node.type === "external"
+    const vertical = isExternal
       ? jitter * 42
       : jitter * (5 + normalized * 12);
-    const armWidth = node.type === "external" ? 24 : 4 + normalized * 10;
+    const armWidth = isExternal ? 24 : 4 + normalized * 10;
     const tangent = new THREE.Vector3(-Math.sin(spiral), 0, Math.cos(spiral)).multiplyScalar((((seed >> 16) % 100) / 100 - 0.5) * armWidth);
     const position = new THREE.Vector3(
       Math.cos(spiral) * radius,
@@ -163,10 +167,10 @@ const buildPositions = (nodes: GraphNode[]) => {
   return positions;
 };
 
-const buildGalaxyDust = (nodes: GraphNode[]) => {
+const buildGalaxyDust = (nodes: GraphNode[], categoryOrder: string[] = DEFAULT_CATEGORY_ORDER) => {
   const positions: number[] = [];
   const colors: number[] = [];
-  const categories = ["asset", "research", "knowledge", "case", "feedback", "wiki", "daily"];
+  const categories = categoryOrder.length ? categoryOrder.filter((category) => category !== "external") : ["asset", "research", "knowledge", "case", "feedback", "wiki", "daily"];
   const palette = new Map(nodes.map((node) => [node.category, node.color]));
   const dustCount = Math.min(2600, Math.max(1100, nodes.length * 14));
 
@@ -330,6 +334,7 @@ function KnowledgeSpaceScene({
   visualMode,
   categoryFilter,
   flightMode,
+  categoryOrder,
 }: {
   graph: KnowledgeGraph;
   onSelect: (node: GraphNode | null) => void;
@@ -341,6 +346,7 @@ function KnowledgeSpaceScene({
   visualMode: VisualMode;
   categoryFilter: string | null;
   flightMode: boolean;
+  categoryOrder: string[];
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   // 選択・検索・モード変更でシーンを作り直してもカメラ視点を引き継ぐ
@@ -431,7 +437,7 @@ function KnowledgeSpaceScene({
     }
     scene.add(root);
 
-    const positions = isGalaxy ? buildPositions(graph.nodes) : buildObsidianPositions(graph.nodes);
+    const positions = isGalaxy ? buildPositions(graph.nodes, categoryOrder) : buildObsidianPositions(graph.nodes, categoryOrder);
     const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
     const starById = new Map<string, THREE.Sprite>();
     const rayTargets: THREE.Object3D[] = [];
@@ -469,7 +475,7 @@ function KnowledgeSpaceScene({
       }
     });
 
-    const dust = isGalaxy ? buildGalaxyDust(graph.nodes) : { positions: [], colors: [] };
+    const dust = isGalaxy ? buildGalaxyDust(graph.nodes, categoryOrder) : { positions: [], colors: [] };
     const dustGeometry = new THREE.BufferGeometry();
     dustGeometry.setAttribute("position", new THREE.Float32BufferAttribute(dust.positions, 3));
     dustGeometry.setAttribute("color", new THREE.Float32BufferAttribute(dust.colors, 3));
@@ -927,10 +933,10 @@ function KnowledgeSpaceScene({
 }
 
 export default function KnowledgeSpacePage() {
-  const [graph, setGraph] = useState<KnowledgeGraph | null>(null);
+  const [knowledgeGraph, setKnowledgeGraph] = useState<KnowledgeGraph | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [knowledgeLoading, setKnowledgeLoading] = useState(true);
+  const [knowledgeError, setKnowledgeError] = useState("");
   const [limit, setLimit] = useState(180);
   const [searchTerm, setSearchTerm] = useState("");
   const [timePercent, setTimePercent] = useState(100);
@@ -959,23 +965,23 @@ export default function KnowledgeSpacePage() {
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [categoryFilter, setCategoryFilter] = useState<string | null>("wiki");
 
-  const fetchGraph = async (nextLimit = limit) => {
-    setLoading(true);
-    setError("");
+  const fetchKnowledgeGraph = useCallback(async (nextLimit = 180) => {
+    setKnowledgeLoading(true);
+    setKnowledgeError("");
     try {
       const res = await apiClient.get<KnowledgeGraph>("/api/knowledge/graph", { params: { limit: nextLimit } });
-      setGraph(res.data);
+      setKnowledgeGraph(res.data);
       setSelected(null);
     } catch (err) {
       console.error(err);
-      setError("現在ナレッジ機能を準備中です。しばらくしてから更新してください。");
+      setKnowledgeError("現在ナレッジ機能を準備中です。しばらくしてから更新してください。");
     } finally {
-      setLoading(false);
+      setKnowledgeLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchGraph(180);
+    void fetchKnowledgeGraph(180);
     const params = new URLSearchParams(window.location.search);
     const focus = params.get("focus") || params.get("q") || "";
     const savedEvidence = window.localStorage.getItem("knowledge-space-evidence") || "";
@@ -986,8 +992,12 @@ export default function KnowledgeSpacePage() {
       setMode("evidence");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchKnowledgeGraph]);
 
+  const graph = knowledgeGraph;
+  const loading = knowledgeLoading;
+  const error = knowledgeError;
+  const categoryOrder = useMemo(() => graph?.legend?.map((item) => item.category).filter(Boolean) || DEFAULT_CATEGORY_ORDER, [graph]);
   const visibleLegend = useMemo(() => graph?.legend?.filter((item) => graph.nodes.some((node) => node.category === item.category)) || [], [graph]);
   const noteTimes = useMemo(() => graph?.nodes.filter((node) => node.type === "note" && node.mtime).map((node) => Number(node.mtime)) || [], [graph]);
   const latestLabel = useMemo(() => {
@@ -997,13 +1007,14 @@ export default function KnowledgeSpacePage() {
     const cutoff = min + (max - min) * (timePercent / 100);
     return new Date(cutoff * 1000).toLocaleDateString("ja-JP");
   }, [noteTimes, timePercent]);
-  const topStars = useMemo(() => (
-    graph?.nodes
+  const topStars = useMemo(() => {
+    if (!graph) return [];
+    return graph.nodes
       .filter((node) => node.type === "note")
       .slice()
       .sort((a, b) => (b.link_count || 0) - (a.link_count || 0))
-      .slice(0, 3) || []
-  ), [graph]);
+      .slice(0, 3);
+  }, [graph]);
   const sourceStats = useMemo(() => {
     if (!graph) return [];
     const map = new Map<string, { label: string; kind: string; count: number; highlighted: number; color: string }>();
@@ -1028,6 +1039,7 @@ export default function KnowledgeSpacePage() {
       .slice(0, 4) || []
   ), [graph]);
   const evidenceRoutes = useMemo(() => buildEvidenceRoutes(graph, selected), [graph, selected]);
+  const nodeById = useMemo(() => new Map((graph?.nodes || []).map((node) => [node.id, node])), [graph]);
 
   const visibleNodeCount = useMemo(() => {
     if (!graph) return 0;
@@ -1155,7 +1167,7 @@ export default function KnowledgeSpacePage() {
                 onChange={(e) => {
                   const next = Number(e.target.value);
                   setLimit(next);
-                  fetchGraph(next);
+                  void fetchKnowledgeGraph(next);
                 }}
                 className="bg-transparent text-white outline-none"
               >
@@ -1166,7 +1178,7 @@ export default function KnowledgeSpacePage() {
               </select>
             </label>
             <button
-              onClick={() => fetchGraph(limit)}
+              onClick={() => fetchKnowledgeGraph(limit)}
               disabled={loading}
               className="flex h-10 items-center gap-2 rounded-md bg-cyan-500 px-3 text-sm font-black text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50"
             >
@@ -1190,6 +1202,7 @@ export default function KnowledgeSpacePage() {
             visualMode={visualMode}
             categoryFilter={categoryFilter}
             flightMode={flightMode}
+            categoryOrder={categoryOrder}
           />
         )}
 
@@ -1343,9 +1356,7 @@ export default function KnowledgeSpacePage() {
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color || "#fbbf24" }} />
                     <span className="min-w-0 truncate text-[11px] font-black text-amber-100">{item.label}</span>
                   </div>
-                  <div className="mt-0.5 text-[10px] font-bold text-slate-500">
-                    {item.count} notes / 強調 {item.highlighted}
-                  </div>
+                  <div className="mt-0.5 text-[10px] font-bold text-slate-500">{item.count} notes / 強調 {item.highlighted}</div>
                 </button>
               ))}
             </div>
@@ -1410,7 +1421,13 @@ export default function KnowledgeSpacePage() {
                     : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
                 }`}
               >
-                {item === "all" ? "全体" : item === "recent" ? "時系列" : item === "search" ? "検索星座" : "AI根拠"}
+                {item === "all"
+                  ? "全体"
+                  : item === "recent"
+                    ? "時系列"
+                    : item === "search"
+                      ? "検索星座"
+                      : "AI根拠"}
               </button>
             ))}
           </div>
@@ -1464,7 +1481,11 @@ export default function KnowledgeSpacePage() {
           <div>
             <div className="flex items-start gap-3">
               <div className="mt-1 rounded-md bg-white/8 p-2">
-                {selected.type === "cluster" ? <Network className="h-5 w-5 text-cyan-200" /> : <FileText className="h-5 w-5 text-cyan-200" />}
+                {selected.type === "cluster" ? (
+                  <Network className="h-5 w-5 text-cyan-200" />
+                ) : (
+                  <FileText className="h-5 w-5 text-cyan-200" />
+                )}
               </div>
               <div className="min-w-0">
                 <div className="break-words text-base font-black text-white">{selected.label}</div>
@@ -1476,12 +1497,13 @@ export default function KnowledgeSpacePage() {
                 )}
                 {selected.source_label && (
                   <div className="mt-1 inline-flex items-center rounded-md border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[11px] font-black text-amber-100">
-                    引用元: {selected.source_label}
+                    {`引用元: ${selected.source_label}`}
                   </div>
                 )}
                 {selected.path && <div className="mt-1 break-words text-xs font-bold text-slate-400">{selected.path}</div>}
               </div>
             </div>
+
             <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
               <div className="rounded-md bg-white/5 px-2 py-2">
                 <div className="font-bold text-slate-400">種別</div>
@@ -1496,16 +1518,20 @@ export default function KnowledgeSpacePage() {
                 <div className="mt-1 font-black text-cyan-100">{selected.link_count ?? "-"}</div>
               </div>
             </div>
+
             {selected.sections?.length ? (
               <div className="mt-3">
                 <div className="mb-1 text-xs font-black text-slate-400">主な見出し</div>
                 <div className="flex flex-wrap gap-1.5">
                   {selected.sections.slice(0, 6).map((section) => (
-                    <span key={section} className="rounded-md bg-cyan-400/10 px-2 py-1 text-[11px] font-bold text-cyan-100">{section}</span>
+                    <span key={section} className="rounded-md bg-cyan-400/10 px-2 py-1 text-[11px] font-bold text-cyan-100">
+                      {section}
+                    </span>
                   ))}
                 </div>
               </div>
             ) : null}
+
             <div className="mt-3 border-t border-white/10 pt-3">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="text-xs font-black text-amber-100">根拠ルート</div>

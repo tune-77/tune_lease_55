@@ -593,8 +593,7 @@ function isTodayLocalDate(value?: string) {
 function actionNeedsUserDecision(entry: ShionActionLedgerEntry) {
   return Boolean(entry.requires_user_approval) &&
     entry.user_approved !== true &&
-    !(entry.action === "codex_request_drafted" && entry.requires_user_approval !== true) &&
-    !(entry.action === "implementation_observed" && entry.requires_user_approval !== true);
+    !["codex_request_drafted", "implementation_observed"].includes(entry.action || "");
 }
 
 function screeningInputAssistVerdict(summary?: ScreeningInputAssistSummary["summary"]) {

@@ -1,0 +1,940 @@
+# Auto Research Judgment Asset Candidates (2026-08-10 to 2026-08-23)
+
+## Summary
+
+- Candidates: 83
+- Deduped similar candidates: 63
+- application_rule: 20
+- confirmation_question: 25
+- condition_signal: 19
+- caution: 19
+- used: 0
+- edited: 0
+- ready_for_promotion: 0
+- rejected_or_deprioritized: 0
+- textbook_general: 62
+
+## Promotion Policy
+
+- Auto Research is material, not memory.
+- Candidates stay `not_promoted` until a human uses them in a case and confirms they changed or improved judgment.
+- Do not promote textbook generalities. A candidate must change a case action, approval condition, rebuttal, or rejection reason.
+- Rule: `当たり前なこと言ってやった気になるな`.
+- Edited candidates are prioritized because a human has already shaped them into a usable judgment.
+- Weak notes that fail the substantive section gate are excluded.
+- `ready_for_promotion` requires useful human feedback and `verified_status=supported`.
+
+## Candidates
+
+### 2026-08-22 / confirmation_question / contract-ownership
+
+- Claim: 顧客はリース物件の所有権がリース会社にあり、リース期間中および期間満了後の物件の取り扱いを理解しているか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / confirmation_question / contract-ownership
+
+- Claim: 顧客の検収体制は適切か、検収書には物件の特定情報（メーカー、型番、シリアルナンバー等）が詳細に記載されているか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / confirmation_question / contract-ownership
+
+- Claim: 顧客の事業内容とリース物件の導入目的は整合しているか、不自然な点はないか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / confirmation_question / contract-ownership
+
+- Claim: 提案されているリース契約は、ファイナンス・リース（所有権移転/移転外）かオペレーティング・リースか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / confirmation_question / contract-ownership
+
+- Claim: サプライヤーの事業実態、過去の取引実績、評判は十分か、特に新規サプライヤーの場合はどうか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / condition_signal / contract-ownership
+
+- Claim: 高額物件、新規顧客、またはサプライヤーの信用度が低いと判断される案件の場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / condition_signal / contract-ownership
+
+- Claim: 顧客の財務状況や資金使途に不自然な点が見られ、二重譲渡リスクが疑われる場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / condition_signal / contract-ownership
+
+- Claim: 顧客の検収体制が不十分である、または検収書の内容に不備がある場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / condition_signal / contract-ownership
+
+- Claim: 顧客がリース契約の重要事項（中途解約不可、リース料総額、所有権帰属など）を十分に理解していない場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / condition_signal / contract-ownership
+
+- Claim: ウェブサイト制作など無形サービスをリース物件とする案件で、実体のある物件の価値がリース料総額に見合わない場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / caution / contract-ownership
+
+- Claim: 販売業者の説明のみを鵜呑みにせず、リース会社が直接顧客に契約内容を確認するプロセスを徹底する必要があります。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / caution / contract-ownership
+
+- Claim: 動産譲渡登記はリース物件自体に直接適用されませんが、顧客が保有する他の動産を担保とする場合や、二重譲渡リスク軽減のために確認することは有効です。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / caution / contract-ownership
+
+- Claim: 事業者間取引には原則クーリングオフ制度は適用されませんが、顧客保護の観点から一定期間の確認期間を設けることは有効です。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / caution / contract-ownership
+
+- Claim: 中小企業会計指針を適用する中小企業は、所有権移転外ファイナンス・リースを賃貸借処理（オフバランス）できますが、実質的な所有権はリース会社にあります。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / caution / contract-ownership
+
+- Claim: リース契約では所有権がリース会社にあるため、別途所有権留保を設定する必要はありません。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / application_rule / contract-ownership
+
+- Claim: 高額物件や新規取引では、リース会社自身または独立した第三者による物件の実在確認を検討します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / application_rule / contract-ownership
+
+- Claim: 顧客の検収体制と検収書の内容を厳格に確認し、物件の特定情報（シリアルナンバー等）を照合します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / application_rule / contract-ownership
+
+- Claim: 顧客がリース物件の所有権帰属と、売却・担保供与権限がないことを理解しているかを確認します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / application_rule / contract-ownership
+
+- Claim: 提案されているリース契約がファイナンス・リースかオペレーティング・リースかを明確に確認します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-22 / application_rule / contract-ownership
+
+- Claim: サプライヤーの信用調査と、顧客の事業目的・物件導入目的の整合性を詳細に確認します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-22_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / confirmation_question / lease-accounting-tax
+
+- Claim: 既存の金融機関との借入契約における財務制限条項への影響はありますか。また、その対応状況はどうなっていますか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / confirmation_question / lease-accounting-tax
+
+- Claim: 新基準適用後の自己資本比率や負債比率など、主要財務指標のシミュレーション結果を提示できますか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / confirmation_question / lease-accounting-tax
+
+- Claim: 新基準適用に向けて、リース契約の洗い出しや管理体制、会計システム改修の進捗状況はどうなっていますか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / confirmation_question / lease-accounting-tax
+
+- Claim: 新リース会計基準の適用予定時期はいつですか（強制適用か早期適用か）。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / confirmation_question / lease-accounting-tax
+
+- Claim: リース期間の判定根拠（特に延長オプションの取り扱い）と、リース負債計算に用いる割引率の妥当性について説明してください。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / condition_signal / lease-accounting-tax
+
+- Claim: 既存借入契約の財務制限条項に抵触する可能性が高く、金融機関との協議や対応が不十分な場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / condition_signal / lease-accounting-tax
+
+- Claim: 新基準適用による財務指標の悪化が、会計処理上の見かけだけでなく、実質的なキャッシュフロー創出能力の低下を示唆する場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / condition_signal / lease-accounting-tax
+
+- Claim: 新基準への対応準備が著しく遅れており、適用時期までに適切な体制が整わないと判断される場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / condition_signal / lease-accounting-tax
+
+- Claim: リース期間の判定や割引率の算定に不合理な点が見られ、監査法人との見解の相違がある場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / caution / lease-accounting-tax
+
+- Claim: 財務指標の悪化は、会計処理の変更による見かけ上のものか、実質的な信用力の低下かを慎重に判断する必要があります。会計上の変化のみで過度に信用力を低く評価すべきではありません。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=textbook_general_marker, no_specific_case_marker, no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / caution / lease-accounting-tax
+
+- Claim: 新基準適用による影響は企業規模や業種、リース利用状況によって大きく異なります。一律の判断基準を適用せず、個別案件ごとに詳細な分析が必要です。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / caution / lease-accounting-tax
+
+- Claim: 中小企業は原則として新基準の強制適用対象外ですが、将来的な上場やグループ会社の方針により適用を検討する可能性も考慮すべきです。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / application_rule / lease-accounting-tax
+
+- Claim: 既存の金融機関との借入契約における財務制限条項（コベナンツ）への影響有無と、その対応状況を確認します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / application_rule / lease-accounting-tax
+
+- Claim: 新基準適用後の自己資本比率や負債比率などの主要財務指標の変化を把握し、実質的な信用力への影響を評価します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / application_rule / lease-accounting-tax
+
+- Claim: 新基準適用に向けたリース契約の管理体制や会計システム改修状況も、借手の対応能力として評価します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / application_rule / lease-accounting-tax
+
+- Claim: 借手によるリース期間の判定根拠や、リース負債計算に用いる割引率の妥当性を審査項目に加えます。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-21 / application_rule / lease-accounting-tax
+
+- Claim: 上場企業や会社法上の大会社、または早期適用を表明している借手からのリース案件は、新基準の影響を重点的に確認します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-21_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / confirmation_question / cash-flow
+
+- Claim: 過去の審査事例で、資金繰り悪化の兆候を見逃したケースとその教訓は何ですか？
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / confirmation_question / cash-flow
+
+- Claim: 資金繰り悪化の具体的な前兆として、どのような財務的・経営的・定性的な兆候が考えられますか？
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / confirmation_question / cash-flow
+
+- Claim: 中小企業の資金繰りに関する最新の専門機関のレポートやガイドラインはありますか？
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / confirmation_question / cash-flow
+
+- Claim: リース審査において、これらの兆候をどのように評価し、判断に結びつけるべきですか？
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / confirmation_question / cash-flow
+
+- Claim: これらの兆候を早期に把握するための具体的なデータや情報源は何ですか？
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / condition_signal / cash-flow
+
+- Claim: 現時点では具体的な異常兆候が特定されていないため、承認条件を変更する具体的な兆候は提示できません。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / condition_signal / cash-flow
+
+- Claim: 今後の調査で特定される具体的な異常兆候（例：売上急減、支払遅延、借入依存度上昇など）が確認された場合、承認条件の見直しが必要です。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / caution / cash-flow
+
+- Claim: 提供された情報は導入部分であり、具体的な異常兆候のリストや詳細な分析は含まれていません。この情報のみでリース審査の判断を行うことはできません。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / caution / cash-flow
+
+- Claim: 個別の企業状況は多岐にわたるため、画一的な基準のみで判断せず、定性的な情報も総合的に評価する必要があります。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / caution / cash-flow
+
+- Claim: Web検索結果は常に最新とは限らず、また一次情報ではない可能性があるため、専門機関の情報を優先すべきです。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / application_rule / cash-flow
+
+- Claim: 現時点では具体的な異常兆候が特定されていないため、直接的な審査基準への適用は困難です。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-15 / application_rule / cash-flow
+
+- Claim: 今後の調査で得られる具体的な兆候に基づき、審査項目や承認条件の見直しを検討する必要があります。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-15_cash-flow.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-12 / confirmation_question / industry-risk
+
+- Claim: 顧客の資金繰り、物件稼働、契約条件、銀行支援のどれに影響するか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-12_industry-risk.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 7
+
+### 2026-08-12 / confirmation_question / industry-risk
+
+- Claim: 参照元が一次情報か、専門機関か、補助情報か。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-12_industry-risk.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 7
+
+### 2026-08-12 / confirmation_question / industry-risk
+
+- Claim: この情報は対象業種・対象設備・対象時期に本当に該当するか。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-12_industry-risk.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 7
+
+### 2026-08-12 / condition_signal / industry-risk
+
+- Claim: 返済原資、物件価値、稼働率、制度変更、補助金入金時期に直接影響する事実が確認できた場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-12_industry-risk.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 7
+
+### 2026-08-12 / condition_signal / industry-risk
+
+- Claim: 補助情報だけでなく、一次情報または専門機関の根拠で裏取りできた場合。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-12_industry-risk.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 7
+
+### 2026-08-12 / caution / industry-risk
+
+- Claim: ニュースや民間記事だけを根拠に、スコアや承認可否を直接変更しないでください。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-12_industry-risk.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 7
+
+### 2026-08-12 / caution / industry-risk
+
+- Claim: Geminiの要約は誤読や過剰一般化を含む可能性があります。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-12_industry-risk.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 7
+
+### 2026-08-12 / application_rule / industry-risk
+
+- Claim: 財務数値、契約条件、物件稼働、保全可能性に影響する点だけを案件判断へ変換します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-12_industry-risk.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 7
+
+### 2026-08-12 / application_rule / industry-risk
+
+- Claim: 審査では、自動否決・自動承認ではなく、確認質問、承認条件、保全条件の検討材料として使います。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-12_industry-risk.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 7
+
+### 2026-08-11 / confirmation_question / contract-ownership
+
+- Claim: 会計基準に関する数値基準について、専門機関の一次情報で直接確認できないため、担当者はその具体的な内容と、金融庁や企業会計基準委員会(ASBJ)などの公式発表による裏付けがあるかを再確認する必要があります。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-11_contract-ownership.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-11 / confirmation_question / contract-ownership
+
+- Claim: また、詐欺リスクに関する具体的な手口や事例については、原文が途中で途切れており情報が不足しているため、担当者は警察庁、金融庁、リース事業協会、または信用調査機関が発行する詐欺事例集や注意喚起情報、および社内データベースから、具体的な手口や過去の事例を確認する必要があります。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-11_contract-ownership.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-11 / condition_signal / contract-ownership
+
+- Claim: 提供された原文には、リース審査の承認条件を変更する必要があるような特定の兆候やトリガーに関する記述がないため、判断できません。この点については、リース契約の与信審査ガイドライン、リスク管理規定、過去の審査事例データベース、または法改正や市場環境の変化に関する情報源（例：金融庁の通達、業界団体の発表）を参照し、どのような状況が承認条件の見直しを促すかを確認する必要があります。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-11_contract-ownership.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-11 / caution / contract-ownership
+
+- Claim: 提供された原文には、特定の事実や前提を過信してはならない、あるいは反証すべき点に関する記述がないため、判断できません。この点については、リース契約における過去のトラブル事例、判例、業界のベストプラクティス、またはリスク管理部門からの注意喚起を参照し、例えばサプライヤーやユーザーの信頼性評価が絶対ではないこと、動産譲渡登記や実地検収にも限界があることなどを確認する必要があります。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-11_contract-ownership.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-11 / application_rule / contract-ownership
+
+- Claim: リース審査においては、契約の法的性質、所有権の対抗要件、検収の確実性、詐欺リスクを深く理解した上で、動産譲渡登記の活用、実地検収の徹底、サプライヤー・ユーザーの信頼性評価を具体的なリスク低減策として適用します。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-11_contract-ownership.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / confirmation_question / lease-accounting-tax
+
+- Claim: 短期リースや少額リースに対する簡便法の適用方針についてヒアリングしてください。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / confirmation_question / lease-accounting-tax
+
+- Claim: 新基準適用後の財務諸表（試算表を含む）の入手が可能か確認し、入手を検討してください。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / confirmation_question / lease-accounting-tax
+
+- Claim: 新基準の早期適用の有無、および適用準備の進捗状況または既に適用済かを確認してください。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / confirmation_question / lease-accounting-tax
+
+- Claim: 借手の決算期と、新リース会計基準の強制適用時期（2027年4月以降）を確認してください。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / confirmation_question / lease-accounting-tax
+
+- Claim: これまでオフバランス処理されていた不動産賃貸借契約や長期レンタル契約の規模と、新基準適用による影響度を把握してください。
+- Edited claim: none
+- Source section: 担当者が確認する質問
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / condition_signal / lease-accounting-tax
+
+- Claim: **（推論）借手のリース利用意欲の変化:** オンバランス化による財務指標悪化を嫌い、リース以外の資金調達手段を検討する企業が増える可能性があります。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / condition_signal / lease-accounting-tax
+
+- Claim: **（推論）中小企業への適用拡大の動き:** 現時点では中小企業は原則対象外ですが、将来的に適用が拡大される兆候があれば、[[審査方針]]の見直しが必要になります。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / condition_signal / lease-accounting-tax
+
+- Claim: **財務制限条項への抵触リスク:** 負債比率やD/Eレシオの悪化により、既存の借入契約における財務制限条項に抵触する可能性があります。これは新たなリース契約の承認に影響を与え得ます。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / condition_signal / lease-accounting-tax
+
+- Claim: **格付けへの影響:** 財務指標の悪化が、信用格付け機関による評価に悪影響を及ぼす可能性があります。格付けの低下は資金調達コストの上昇につながります。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / condition_signal / lease-accounting-tax
+
+- Claim: **利益水準の低下:** リース期間前半の費用増加により、一時的に利益水準が低下する可能性があります。これにより、収益性に関する承認基準に影響が出るかもしれません。
+- Edited claim: none
+- Source section: 承認条件を変える兆候
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / caution / lease-accounting-tax
+
+- Claim: **（推論）税務上の取り扱い:** 会計基準の変更が直ちに税務上の取り扱いに影響を与えるわけではありません。税務上のリース取引の区分は別途確認が必要です。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / caution / lease-accounting-tax
+
+- Claim: **（推論）会計基準の解釈:** 新基準の解釈や適用実務は、今後もASBJのQ&Aや業界団体からのガイダンスによって明確化される可能性があります。現時点での理解が全てではないことを認識してください。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / caution / lease-accounting-tax
+
+- Claim: **簡便法の活用:** 短期・少額リースに対する簡便法を適用することで、オンバランス化の影響を大幅に軽減できる場合があります。全てのリースがオンバランス化されるわけではないと理解してください。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / caution / lease-accounting-tax
+
+- Claim: **実質的な信用リスク:** 会計処理の変更は、企業のキャッシュフローや実質的な返済能力を直接的に変えるものではありません。表面的な財務指標の悪化だけで信用リスクを過大評価しないよう注意が必要です。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / caution / lease-accounting-tax
+
+- Claim: **中小企業への影響:** 中小企業は原則として新基準の強制適用対象外ですが、今後の会計基準の動向には常に注意が必要です。取引先や親会社からの要請で適用するケースも考えられます。
+- Edited claim: none
+- Source section: 反証・過信してはいけない点
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / application_rule / lease-accounting-tax
+
+- Claim: **（推論）信用リスク評価への影響:** 会計処理の変更自体が実質的な信用リスクを変えるわけではありませんが、財務指標の悪化が表面化することで、外部からの評価に影響を与える可能性があります。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / application_rule / lease-accounting-tax
+
+- Claim: **財務指標への影響評価:** オンバランス化により、負債比率やD/Eレシオが悪化する可能性があります。ROAなどの資産効率性指標にも影響が出ることが予想されます。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / application_rule / lease-accounting-tax
+
+- Claim: **簡便法の適用確認:** 借手が簡便法を適用している場合、オンバランス化の影響は限定的になります。適用条件と適用方針を確認することが重要です。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / application_rule / lease-accounting-tax
+
+- Claim: **損益計算書への影響評価:** リース期間の前半に支払利息が多く計上されるため、利益が圧迫される可能性があります。キャッシュフロー計算書への影響も考慮が必要です。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted
+- Asset quality: actionable / reasons=none
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0
+
+### 2026-08-10 / application_rule / lease-accounting-tax
+
+- Claim: **対象案件の特定:** 上場企業や大会社、または早期適用を検討・実施している企業からのリース案件全般で確認が必要です。特に、これまでオフバランス処理されていた不動産賃貸借契約や長期レンタル契約が多い企業は影響が大きいです。
+- Edited claim: none
+- Source section: リース審査への適用
+- Evidence: `Projects/tune_lease_55/Research/Auto Research/2026-08-10_lease-accounting-tax.md`
+- Status: candidate / not_promoted_textbook_general
+- Asset quality: textbook_general / reasons=no_case_action_or_condition
+- Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
+- Deduped similar: 0

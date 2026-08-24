@@ -96,6 +96,10 @@ echo "[記録] DAILY-BRIEF.md を Obsidian Vault に書き出し..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/write_daily_brief.py"; log_step "write_daily_brief" $?
 
 echo ""
+echo "[記憶] Obsidian memory insight sidecar を再生成（読み取り専用・自動昇格なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_obsidian_memory_insight_report.py"; log_step "build_obsidian_memory_insight_report" $?
+
+echo ""
 echo "[監視] Obsidian環境モニターを生成（読み取り専用）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/monitor_obsidian_environment.py" \
   --date "${PIPELINE_DATE}"

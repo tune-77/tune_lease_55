@@ -33,7 +33,7 @@ STATE_FILE_NAME = "shion_error_repair_queue_state.json"
 _SAFE_ERROR_RE = re.compile(
     r"\b(NameError|ImportError|ModuleNotFoundError|AttributeError|SyntaxError|IndentationError)\b"
 )
-_FILE_RE = re.compile(r"[\w./-]+\.(?:py|tsx|ts|jsx|js|md|json)")
+_FILE_RE = re.compile(r"[\w./-]+\.(?:py|tsx|ts|jsx|js)")
 _DANGEROUS_PARTS = {"data", "models", "migrations", "alembic", ".github", "launchd"}
 _SAFE_REPAIR_PREFIXES = (
     "frontend/src/app/",
@@ -78,6 +78,7 @@ def _error_text(entry: dict[str, Any]) -> str:
 
 
 def _single_safe_file(entry: dict[str, Any], root: Path) -> tuple[str | None, str]:
+    root_resolved = root.resolve()
     candidates: list[str] = []
     for value in entry.get("affected_files") or []:
         if isinstance(value, str):
@@ -89,10 +90,13 @@ def _single_safe_file(entry: dict[str, Any], root: Path) -> tuple[str | None, st
         path = Path(raw)
         if path.is_absolute():
             try:
-                path = path.relative_to(root)
+                path = path.resolve().relative_to(root_resolved)
             except ValueError:
                 return None, f"workspace外のファイル参照: {raw}"
-        rel = path.as_posix().lstrip("./")
+        rel = path.as_posix()
+        if rel.startswith("../") or rel == "..":
+            return None, f"workspace外への相対パス参照: {raw}"
+        rel = rel[2:] if rel.startswith("./") else rel
         if not rel:
             continue
         if any(part in _DANGEROUS_PARTS for part in Path(rel).parts):
@@ -108,7 +112,12 @@ def _single_safe_file(entry: dict[str, Any], root: Path) -> tuple[str | None, st
         return None, "対象ファイル未特定"
     if len(normalized) > 1:
         return None, f"複数ファイル参照のため手動確認: {len(normalized)} files"
-    if not (root / normalized[0]).exists():
+    target = (root_resolved / normalized[0]).resolve()
+    try:
+        target.relative_to(root_resolved)
+    except ValueError:
+        return None, f"workspace外への解決パス参照: {normalized[0]}"
+    if not target.exists():
         return None, f"対象ファイルが存在しない: {normalized[0]}"
     return normalized[0], ""
 
