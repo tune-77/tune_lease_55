@@ -66,6 +66,33 @@ def record_status(root: Path, rev_id: str, status: str, detail: str = "") -> Non
     )
 
 
+def record_successful_id(root: Path, queue: dict[str, Any], rev_id: str) -> bool:
+    """Persist a successfully handed-off Shion repair ID for future deduplication."""
+    state_ref = str(queue.get("success_state_file") or "").strip()
+    if not state_ref or not rev_id:
+        return True
+
+    expected = (root / "reports" / "shion_error_repair_queue_state.json").resolve()
+    state_path = (root / state_ref).resolve()
+    if state_path != expected:
+        raise ValueError(f"unsupported success_state_file: {state_ref}")
+
+    state: dict[str, Any] = {"queued_ids": []}
+    if state_path.exists():
+        try:
+            loaded = load_json(state_path)
+            if isinstance(loaded, dict):
+                state = loaded
+        except Exception:
+            state = {"queued_ids": []}
+
+    queued_ids = {str(value) for value in state.get("queued_ids") or [] if value}
+    queued_ids.add(rev_id)
+    state["queued_ids"] = sorted(queued_ids)
+    dump_json(state_path, state)
+    return True
+
+
 def _get_gemini_api_key(root: Path) -> str:
     """環境変数 → .streamlit/secrets.toml の順で GEMINI_API_KEY を取得する."""
     key = os.environ.get("GEMINI_API_KEY", "")
@@ -262,6 +289,14 @@ def main() -> None:
         if entry["exit_code"] == 0:
             print(f"  -> OK (backend={entry['backend']})")
             record_status(root, rev_id, "completed_pending_review", detail=entry["stdout"][:200])
+            try:
+                record_successful_id(root, queue, rev_id)
+                entry["success_state_recorded"] = bool(queue.get("success_state_file"))
+            except Exception as exc:
+                entry["success_state_recorded"] = False
+                entry["success_state_error"] = str(exc)[:200]
+                print(f"  -> WARNING: 成功IDの状態保存に失敗しました: {exc}")
+                any_failure = True
             consecutive_failures = 0
         else:
             print(f"  -> FAILED (backend={entry['backend']}, exit={entry['exit_code']}): {entry['stderr'][:100]}")

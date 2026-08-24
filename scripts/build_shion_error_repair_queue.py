@@ -212,6 +212,11 @@ def main() -> None:
         print(json.dumps(queue, ensure_ascii=False, indent=2))
         return
 
+    try:
+        queue["success_state_file"] = args.state_file.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        raise SystemExit("state file must be inside the repository")
+
     dump_json(output_path, queue)
     print(
         "Shion error repair queue: "
