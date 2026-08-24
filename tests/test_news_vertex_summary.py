@@ -62,6 +62,10 @@ def test_vertex_trend_summary_falls_back_without_vertex():
     assert result["caution_points"]
     assert result["screening_actions"]
     assert result["watch_categories"]
+    assert result["daily_focus"]
+    assert result["daily_focus"]["title"] in result["overall_summary"]
+    assert result["daily_focus"]["quoted_summary"]
+    assert result["daily_focus"]["screening_note"]
 
 
 def test_vertex_trend_summary_uses_vertex_answer_when_available():

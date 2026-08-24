@@ -102,6 +102,18 @@ type VertexTrendSummary = {
     count?: number;
     reason?: string;
   }>;
+  daily_focus?: {
+    label?: string;
+    date?: string;
+    title?: string;
+    source?: string;
+    article_url?: string;
+    quoted_summary?: string;
+    credit_risk?: string;
+    explanation?: string;
+    screening_note?: string;
+    recommended_check?: string;
+  } | null;
   source_articles?: Array<{
     date?: string;
     title?: string;
@@ -262,6 +274,56 @@ export default function NewsDashboardPage() {
               ) : (
                 <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[1.25fr_0.75fr]">
                   <div className="space-y-4">
+                    {trendSummary.daily_focus && (
+                      <div className="rounded-lg border border-sky-200 bg-sky-50 p-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">今日の1項目</p>
+                            <h3 className="mt-1 text-base font-black leading-relaxed text-slate-950">
+                              {trendSummary.daily_focus.label}
+                            </h3>
+                          </div>
+                          {trendSummary.daily_focus.article_url && (
+                            <a
+                              href={trendSummary.daily_focus.article_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-black text-sky-700 hover:text-sky-900"
+                            >
+                              元記事
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                        <div className="mt-3 rounded-lg bg-white p-3">
+                          <p className="text-xs font-black leading-relaxed text-slate-900">
+                            {trendSummary.daily_focus.title}
+                          </p>
+                          <p className="mt-1 text-[10px] font-bold text-slate-500">
+                            {[trendSummary.daily_focus.source, formatDate(trendSummary.daily_focus.date)].filter(Boolean).join(" / ")}
+                          </p>
+                          {trendSummary.daily_focus.quoted_summary && (
+                            <p className="mt-2 border-l-2 border-sky-300 pl-3 text-xs font-bold leading-relaxed text-slate-700">
+                              {trendSummary.daily_focus.quoted_summary}
+                            </p>
+                          )}
+                        </div>
+                        <p className="mt-3 text-xs leading-relaxed text-slate-700">
+                          {trendSummary.daily_focus.explanation}
+                        </p>
+                        {trendSummary.daily_focus.credit_risk && (
+                          <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs leading-relaxed text-slate-700">
+                            信用リスク: {trendSummary.daily_focus.credit_risk}
+                          </p>
+                        )}
+                        {trendSummary.daily_focus.screening_note && (
+                          <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black leading-relaxed text-slate-800">
+                            {trendSummary.daily_focus.screening_note}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     <div className="rounded-lg bg-slate-50 p-4">
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">要約</p>
                       <p className="mt-2 text-sm font-bold leading-relaxed text-slate-800">
