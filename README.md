@@ -984,8 +984,11 @@ erDiagram
 
 ```bash
 cd /Users/kobayashiisaoryou/clawd/tune_lease_55
+python scripts/local_deploy_doctor.py --public-tunnel
 bash run_next_stable.sh
 ```
+
+`local_deploy_doctor.py` は、LaunchAgent、FastAPI、Next.js、Cloudflare Tunnel の状態を見て、`install_launchagent` / `restart_api` / `restart_next` / `restart_tunnel` / `start_all` のどれで進めるべきかを先に出します。ローカル起動で迷ったら、まずこの診断結果の `command` を使ってください。
 
 起動後:
 
