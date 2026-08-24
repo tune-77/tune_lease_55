@@ -263,7 +263,6 @@ def _utility_summary(
 
     score = 0.0
     score += min(35.0, used * 4.0)
-    score += min(30.0, impact * 10.0)
     score += min(12.0, route_count * 3.0)
     score += min(12.0, question_count * 2.0)
     score += min(30.0, helped * 15.0)
@@ -281,8 +280,6 @@ def _utility_summary(
         state = "needs_review"
     elif helped:
         state = "validated"
-    elif impact >= 2 or (impact >= 1 and used >= 2):
-        state = "likely_helpful"
     elif used >= 3 and impact == 0:
         state = "needs_feedback"
     elif used > 0:
@@ -320,7 +317,7 @@ def _utility_reason(state: str, *, used: int, impact: int, status: str, challeng
     if state == "validated":
         return "明示的な helped フィードバックがある"
     if state == "likely_helpful":
-        return f"想起 {used} 回、impact_hints {impact} 回で回答への効き方が記録されている"
+        return "回答後の実績シグナルで有用性が示されている"
     if state == "needs_feedback":
         return f"想起 {used} 回だが impact_hints が無く、効いたか不明"
     if state == "observed_no_impact":

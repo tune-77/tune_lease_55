@@ -761,6 +761,11 @@ export default function ChatPage() {
         user_id: userId,
       });
     } catch {
+      setMemoryFeedbackGiven((prev) => {
+        const next = { ...prev };
+        delete next[assistantMessage.id];
+        return next;
+      });
       // 記憶フィードバック送信の失敗はチャット体験をブロックしない
     }
   };

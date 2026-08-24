@@ -84,15 +84,14 @@ def test_build_memory_effect_report_scores_answer_utility():
 
     payload = report.build_report(index, usage, [])
 
-    assert payload["summary"]["utility_by_state"]["likely_helpful"] == 1
+    assert payload["summary"]["utility_by_state"]["observed_no_impact"] == 1
     assert payload["summary"]["utility_by_state"]["needs_feedback"] == 1
     assert payload["summary"]["utility_by_state"]["needs_review"] == 1
-    assert payload["likely_helpful"][0]["id"] == "mem_helpful"
-    assert payload["likely_helpful"][0]["domain"] == "lease_screening"
     assert payload["needs_feedback"][0]["id"] == "mem_needs_feedback"
+    assert any(item["id"] == "mem_helpful" for item in payload["needs_feedback"])
     assert payload["possible_noise"][0]["id"] == "mem_stale_used"
-    assert payload["needs_feedback_triage"]["record_count"] == 1
-    assert payload["needs_feedback_triage"]["batch_count"] == 1
+    assert payload["needs_feedback_triage"]["record_count"] == 2
+    assert payload["needs_feedback_triage"]["batch_count"] == 2
 
 
 def test_build_memory_effect_report_uses_explicit_memory_feedback():
