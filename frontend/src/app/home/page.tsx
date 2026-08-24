@@ -186,6 +186,7 @@ type DashboardStats = {
     note_date?: string;
     note_path?: string;
   };
+  lease_news_classified_summary?: NewsClassifiedSummary;
 };
 
 const HOME_SHION_CHAT_DRAFT_KEY = "home-shion-chat-draft";
@@ -216,6 +217,57 @@ type NewsSummaryItem = {
   file_path: string;
   week: string;
   month: string;
+};
+
+type NewsClassifiedArticle = {
+  date?: string;
+  title?: string;
+  summary_lines?: string[];
+  usage_memo?: string;
+  source?: string;
+  article_url?: string;
+  file_path?: string;
+  importance?: string;
+  impact_direction?: string;
+  source_reliability?: string;
+};
+
+type NewsClassifiedCategory = {
+  axis: string;
+  axis_label: string;
+  category: string;
+  article_count: number;
+  trend: string;
+  key_points: string[];
+  lease_implications: {
+    direction?: string;
+    repayment_capacity?: string;
+    residual_value?: string;
+    business_opportunity?: string;
+  };
+  recommended_checks: string[];
+  articles: NewsClassifiedArticle[];
+};
+
+type NewsClassifiedAxis = {
+  axis: string;
+  label: string;
+  category_count: number;
+  article_count: number;
+  categories: NewsClassifiedCategory[];
+};
+
+type NewsClassifiedSummary = {
+  available?: boolean;
+  generated_at?: string;
+  source?: string;
+  article_count?: number;
+  axes?: NewsClassifiedAxis[];
+  top_insights?: Array<{
+    label?: string;
+    trend?: string;
+    repayment_capacity?: string;
+  }>;
 };
 
 type HomePanelSettings = {
@@ -253,6 +305,9 @@ export default function HomeDashboard() {
   const briefRequestSeqRef = useRef(0);
 
   const [recentNews, setRecentNews] = useState<NewsSummaryItem[]>([]);
+  const [classifiedNews, setClassifiedNews] = useState<NewsClassifiedSummary | null>(null);
+  const [selectedNewsAxis, setSelectedNewsAxis] = useState("industry");
+  const [selectedNewsCategory, setSelectedNewsCategory] = useState("");
   const [newsFormOpen, setNewsFormOpen] = useState(false);
   const [newsUrl, setNewsUrl] = useState("");
   const [newsBody, setNewsBody] = useState("");
@@ -304,6 +359,10 @@ export default function HomeDashboard() {
       try {
         const res = await apiClient.get(`/api/dashboard/stats`);
         setStats(res.data);
+        if (res.data?.lease_news_classified_summary) {
+          const summary = res.data.lease_news_classified_summary;
+          setClassifiedNews((prev) => (summary.available || !prev?.available ? summary : prev));
+        }
       } catch (err) {
         console.error("Failed to load dashboard stats", err);
       } finally {
@@ -322,6 +381,14 @@ export default function HomeDashboard() {
       try {
         const res = await apiClient.get(`/api/lease-news/focus`);
         setLeaseNewsFocus(res.data || null);
+      } catch {
+        // ignore
+      }
+    };
+    const fetchClassifiedNews = async () => {
+      try {
+        const res = await apiClient.get(`/api/lease-news/classified-summary`);
+        setClassifiedNews(res.data || null);
       } catch {
         // ignore
       }
@@ -356,6 +423,7 @@ export default function HomeDashboard() {
     fetchStats();
     fetchRecentNews();
     fetchLeaseNewsFocus();
+    fetchClassifiedNews();
     fetchDailyGreeting();
     fetchRelatedSuggestion();
     const activityKey = `lease-intelligence-activity:home:${formatLocalDateKey(new Date())}`;
@@ -376,6 +444,19 @@ export default function HomeDashboard() {
       // ignore
     }
   }, [panelSettings]);
+
+  useEffect(() => {
+    const axis = (classifiedNews?.axes || []).find((item) => item.axis === selectedNewsAxis) || (classifiedNews?.axes || [])[0];
+    const firstCategory = axis?.categories?.[0]?.category || "";
+    if (axis && axis.axis !== selectedNewsAxis) {
+      setSelectedNewsAxis(axis.axis);
+      setSelectedNewsCategory(firstCategory);
+      return;
+    }
+    if (firstCategory && !axis?.categories?.some((item) => item.category === selectedNewsCategory)) {
+      setSelectedNewsCategory(firstCategory);
+    }
+  }, [classifiedNews, selectedNewsAxis, selectedNewsCategory]);
 
   useEffect(() => {
     if (!newsPrefectureReadyRef.current) return;
@@ -408,6 +489,11 @@ export default function HomeDashboard() {
   const gapHighlights = stats?.lease_system_gaps?.items || [];
   const gapCounts = stats?.lease_system_gaps?.counts || {};
   const newsFocus = leaseNewsFocus ?? stats?.lease_news_focus;
+  const classifiedAxes = classifiedNews?.axes || [];
+  const activeNewsAxis = classifiedAxes.find((axis) => axis.axis === selectedNewsAxis) || classifiedAxes[0];
+  const activeNewsCategory =
+    activeNewsAxis?.categories?.find((category) => category.category === selectedNewsCategory) ||
+    activeNewsAxis?.categories?.[0];
 
   const avgScoreBorrower = analysis?.avg_score_borrower ?? null;
 
@@ -879,6 +965,185 @@ export default function HomeDashboard() {
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {panelSettings.showNews && (
+              <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                      <Brain className="text-emerald-500 w-5 h-5" />
+                      ニュースサマリーダッシュボード
+                    </h3>
+                    <p className="text-xs text-slate-500 font-bold mt-1">
+                      業種別・社会情勢・金融情報に分類し、審査への影響示唆を表示
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-black text-slate-500">
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                      {classifiedNews?.article_count || 0}件
+                    </span>
+                    {classifiedNews?.generated_at && (
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                        {classifiedNews.generated_at.slice(0, 10)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {!classifiedNews?.available || classifiedAxes.length === 0 ? (
+                  <p className="text-sm text-slate-500">分類済みニュースサマリーがまだありません。</p>
+                ) : (
+                  <div className="space-y-4">
+                    {(classifiedNews.top_insights || []).length > 0 && (
+                      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                        {(classifiedNews.top_insights || []).slice(0, 4).map((item, index) => (
+                          <div key={`${item.label}-${index}`} className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                            <p className="text-[10px] font-black text-emerald-700">{item.label}</p>
+                            <p className="mt-1 text-xs font-bold leading-relaxed text-slate-800">{item.trend}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      {classifiedAxes.map((axis) => (
+                        <button
+                          key={axis.axis}
+                          onClick={() => {
+                            setSelectedNewsAxis(axis.axis);
+                            setSelectedNewsCategory(axis.categories?.[0]?.category || "");
+                          }}
+                          className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black transition-colors ${
+                            activeNewsAxis?.axis === axis.axis
+                              ? "bg-slate-900 text-white"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                        >
+                          {axis.label}
+                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                            activeNewsAxis?.axis === axis.axis ? "bg-white/20 text-white" : "bg-white text-slate-500"
+                          }`}>
+                            {axis.category_count}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {activeNewsAxis && (
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {activeNewsAxis.categories.map((category) => (
+                          <button
+                            key={category.category}
+                            onClick={() => setSelectedNewsCategory(category.category)}
+                            className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-black transition-colors ${
+                              activeNewsCategory?.category === category.category
+                                ? "bg-emerald-600 text-white"
+                                : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            }`}
+                          >
+                            {category.category} {category.article_count}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {activeNewsCategory && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                              {activeNewsCategory.axis_label}
+                            </p>
+                            <h4 className="mt-1 text-base font-black text-slate-800">{activeNewsCategory.category}</h4>
+                          </div>
+                          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-slate-500">
+                            {activeNewsCategory.article_count}件
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm font-bold leading-relaxed text-slate-700">
+                          {activeNewsCategory.trend}
+                        </p>
+
+                        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                          <div className="rounded-lg bg-white p-3">
+                            <p className="text-[10px] font-black text-slate-400">返済能力</p>
+                            <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                              {activeNewsCategory.lease_implications.repayment_capacity}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-white p-3">
+                            <p className="text-[10px] font-black text-slate-400">残価リスク</p>
+                            <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                              {activeNewsCategory.lease_implications.residual_value}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-white p-3">
+                            <p className="text-[10px] font-black text-slate-400">事業機会</p>
+                            <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                              {activeNewsCategory.lease_implications.business_opportunity}
+                            </p>
+                          </div>
+                        </div>
+
+                        {(activeNewsCategory.recommended_checks || []).length > 0 && (
+                          <div className="mt-4 rounded-lg border border-amber-100 bg-amber-50 p-3">
+                            <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-amber-600">審査確認</p>
+                            <div className="space-y-1.5">
+                              {activeNewsCategory.recommended_checks.slice(0, 3).map((line, index) => (
+                                <p key={index} className="text-xs leading-relaxed text-amber-900">{line}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {(activeNewsCategory.articles || []).length > 0 && (
+                          <details className="mt-4 group">
+                            <summary className="cursor-pointer text-xs font-black text-sky-700 group-open:text-sky-900">
+                              関連記事を開く
+                            </summary>
+                            <div className="mt-3 space-y-2">
+                              {activeNewsCategory.articles.slice(0, 6).map((article, index) => (
+                                <div key={`${article.file_path || article.title}-${index}`} className="rounded-lg bg-white p-3">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {article.date && <span className="text-[10px] font-bold text-slate-400">{article.date}</span>}
+                                    {article.importance && (
+                                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">
+                                        {article.importance}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mt-1 text-xs font-black leading-relaxed text-slate-800">{article.title}</p>
+                                  {(article.summary_lines || []).slice(0, 2).map((line, lineIndex) => (
+                                    <p key={lineIndex} className="mt-1 text-[11px] leading-relaxed text-slate-600">{line}</p>
+                                  ))}
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    {article.source && <span className="text-[10px] font-bold text-slate-400">{article.source}</span>}
+                                    {article.article_url && (
+                                      <a
+                                        href={article.article_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 hover:text-sky-800"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                        元記事
+                                      </a>
+                                    )}
+                                    {article.file_path && (
+                                      <span className="break-all text-[10px] text-slate-400">{article.file_path}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
                       </div>
                     )}
                   </div>
