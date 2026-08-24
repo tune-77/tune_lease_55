@@ -590,6 +590,12 @@ function isTodayLocalDate(value?: string) {
   return parsed.toLocaleDateString("sv-SE") === today;
 }
 
+function actionNeedsUserDecision(entry: ShionActionLedgerEntry) {
+  return Boolean(entry.requires_user_approval) &&
+    entry.user_approved !== true &&
+    !["codex_request_drafted", "implementation_observed"].includes(entry.action || "");
+}
+
 function screeningInputAssistVerdict(summary?: ScreeningInputAssistSummary["summary"]) {
   const sessionCount = summary?.session_count ?? 0;
   const searchCount = summary?.search_count ?? 0;
@@ -1086,9 +1092,7 @@ export default function ImprovementLogPage() {
     [actionLedgerSummary?.recent]
   );
   const actionLedgerCheckItems = useMemo(
-    () => (actionLedgerSummary?.pending_approval || []).filter(
-      (entry) => !["codex_request_drafted", "implementation_observed"].includes(entry.action || "")
-    ),
+    () => (actionLedgerSummary?.pending_approval || []).filter(actionNeedsUserDecision),
     [actionLedgerSummary?.pending_approval]
   );
 
@@ -1302,7 +1306,7 @@ export default function ImprovementLogPage() {
                 className="mt-3 inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-black text-slate-700 hover:bg-slate-100"
               >
                 <Eye className="h-3.5 w-3.5" />
-                  {showCodexRequestDetails ? "探索履歴を閉じる" : `探索履歴を見る (${codexRequestDrafts.length}件)`}
+                {showCodexRequestDetails ? "探索履歴を閉じる" : `探索履歴を見る (${codexRequestDrafts.length}件)`}
               </button>
               {showCodexRequestDetails && (
                 <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">

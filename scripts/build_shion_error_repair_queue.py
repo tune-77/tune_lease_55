@@ -33,8 +33,18 @@ STATE_FILE_NAME = "shion_error_repair_queue_state.json"
 _SAFE_ERROR_RE = re.compile(
     r"\b(NameError|ImportError|ModuleNotFoundError|AttributeError|SyntaxError|IndentationError)\b"
 )
-_FILE_RE = re.compile(r"[\w./-]+\.(?:py|tsx|ts|jsx|js|md|json)")
+_FILE_RE = re.compile(r"[\w./-]+\.(?:py|tsx|ts|jsx|js)")
 _DANGEROUS_PARTS = {"data", "models", "migrations", "alembic", ".github", "launchd"}
+_SAFE_REPAIR_PREFIXES = (
+    "frontend/src/app/",
+    "frontend/src/components/",
+    "frontend/src/lib/",
+)
+_DANGEROUS_NAME_RE = re.compile(
+    r"(score|scoring|auth|security|credential|secret|db|database|migration|"
+    r"lease_logic|category_config|coefficient|model)",
+    re.IGNORECASE,
+)
 
 
 def load_json(path: Path) -> Any:
@@ -68,6 +78,7 @@ def _error_text(entry: dict[str, Any]) -> str:
 
 
 def _single_safe_file(entry: dict[str, Any], root: Path) -> tuple[str | None, str]:
+    root_resolved = root.resolve()
     candidates: list[str] = []
     for value in entry.get("affected_files") or []:
         if isinstance(value, str):
@@ -79,14 +90,21 @@ def _single_safe_file(entry: dict[str, Any], root: Path) -> tuple[str | None, st
         path = Path(raw)
         if path.is_absolute():
             try:
-                path = path.relative_to(root)
+                path = path.resolve().relative_to(root_resolved)
             except ValueError:
                 return None, f"workspace外のファイル参照: {raw}"
-        rel = path.as_posix().lstrip("./")
+        rel = path.as_posix()
+        if rel.startswith("../") or rel == "..":
+            return None, f"workspace外への相対パス参照: {raw}"
+        rel = rel[2:] if rel.startswith("./") else rel
         if not rel:
             continue
         if any(part in _DANGEROUS_PARTS for part in Path(rel).parts):
             return None, f"重要パス配下のため手動確認: {rel}"
+        if _DANGEROUS_NAME_RE.search(rel):
+            return None, f"審査ロジック/認証/DB/モデル系のため手動確認: {rel}"
+        if not rel.startswith(_SAFE_REPAIR_PREFIXES):
+            return None, f"UI表示系の許可パス外のため手動確認: {rel}"
         if rel not in normalized:
             normalized.append(rel)
 
@@ -94,7 +112,12 @@ def _single_safe_file(entry: dict[str, Any], root: Path) -> tuple[str | None, st
         return None, "対象ファイル未特定"
     if len(normalized) > 1:
         return None, f"複数ファイル参照のため手動確認: {len(normalized)} files"
-    if not (root / normalized[0]).exists():
+    target = (root_resolved / normalized[0]).resolve()
+    try:
+        target.relative_to(root_resolved)
+    except ValueError:
+        return None, f"workspace外への解決パス参照: {normalized[0]}"
+    if not target.exists():
         return None, f"対象ファイルが存在しない: {normalized[0]}"
     return normalized[0], ""
 
@@ -118,12 +141,13 @@ def classify_error_entry(entry: dict[str, Any], root: Path) -> dict[str, Any]:
         "id": rev_id,
         "title": "表示/実行時の軽微エラー修復",
         "description": pattern,
+        "detail": f"検出エラー: {pattern}" if pattern else "",
         "reason": (
             "紫苑の軽微エラー一次対応。import漏れ・名前解決・構文崩れなど、"
             "単一ファイル内で直せる範囲だけを確認する。"
         ),
         "target_module": target,
-        "implementation": {"category": "quick_ui"},
+        "implementation": {"category": "runtime_error_repair"},
     }
     item = refresh_auto_fix_policy(item, root)
     blocked, block_reason = is_blocked(item)
@@ -197,11 +221,12 @@ def main() -> None:
         print(json.dumps(queue, ensure_ascii=False, indent=2))
         return
 
+    try:
+        queue["success_state_file"] = args.state_file.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        raise SystemExit("state file must be inside the repository")
+
     dump_json(output_path, queue)
-    newly_queued = [str(item.get("id") or "") for item in queue["items"] if item.get("id")]
-    if newly_queued:
-        state["queued_ids"] = sorted(already_queued_ids | set(newly_queued))
-        dump_json(args.state_file, state)
     print(
         "Shion error repair queue: "
         f"{queue['queued_count']} queued / {queue['error_repair_safe_count']} safe "
