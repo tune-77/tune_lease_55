@@ -32,6 +32,7 @@ data/*.backup_*
 data/.fuse_hidden*
 data/dashboard_stats_cache.json
 data/department_stats_cache.json
+data/runtime_cache
 
 !.cloudrun_bundle/
 !.cloudrun_bundle/**

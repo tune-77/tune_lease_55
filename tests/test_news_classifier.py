@@ -27,6 +27,45 @@ def test_classify_note_axes_matches_required_news_dimensions():
     assert "金利動向" in axes["finance"]
 
 
+def test_finance_classification_ignores_generic_market_and_count_words():
+    note = {
+        "title": "中古設備市場で申込件数が増加",
+        "summary_lines": ["中古設備の需要が底堅く、申込件数が増えている。"],
+        "usage_memo": "物件の流通動向を確認する。",
+        "text": "中古設備 市場 申込 件数 需要",
+    }
+
+    axes = classify_note_axes(note)
+
+    assert "株価" not in axes["finance"]
+    assert "倒産件数" not in axes["finance"]
+
+
+def test_impact_profile_honors_explicit_positive_direction():
+    summary = build_classified_news_summary(
+        [
+            {
+                "date": "2026-08-24",
+                "title": "日銀が利下げ、企業の資金繰り改善へ",
+                "summary_lines": ["金利低下で中小企業の資金繰り改善が期待される。"],
+                "usage_memo": "返済余力の改善時期を確認する。",
+                "source": "Example",
+                "article_url": "https://example.com/rate-cut",
+                "file_path": "news.md",
+                "importance": "中",
+                "impact_direction": "positive",
+                "source_reliability": "medium",
+                "text": "日銀 利下げ 金利 資金繰り改善 融資",
+            }
+        ],
+        generated_at="2026-08-24T00:00:00+00:00",
+    )
+
+    finance = next(axis for axis in summary["axes"] if axis["axis"] == "finance")
+    credit = next(category for category in finance["categories"] if category["category"] == "信用市場")
+    assert credit["lease_implications"]["direction"] == "positive"
+
+
 def test_build_classified_news_summary_generates_lease_implications():
     notes = [
         {

@@ -15,7 +15,7 @@ NEWS_DIRS = (
     Path("リースニュース"),
 )
 
-LATEST_SUMMARY_PATH = Path(__file__).resolve().parents[2] / "data" / "news_classified_summary_latest.json"
+LATEST_SUMMARY_PATH = Path(__file__).resolve().parents[2] / "data" / "runtime_cache" / "news_classified_summary_latest.json"
 
 INDUSTRY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "建設業": ("建設", "工事", "建機", "建設機械", "資材", "公共工事", "不動産", "住宅"),
@@ -36,9 +36,9 @@ SOCIAL_KEYWORDS: dict[str, tuple[str, ...]] = {
 FINANCE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "金利動向": ("金利", "日銀", "利上げ", "利下げ", "政策金利", "長期金利", "基準金利"),
     "為替変動": ("為替", "円安", "円高", "ドル", "ユーロ", "輸入価格"),
-    "株価": ("株価", "日経平均", "TOPIX", "市場", "上場", "投資家"),
+    "株価": ("株価", "日経平均", "TOPIX", "株式市場", "上場株", "投資家心理"),
     "信用市場": ("信用", "与信", "融資", "貸出", "資金繰り", "社債", "延滞"),
-    "倒産件数": ("倒産", "破産", "廃業", "民事再生", "資金ショート", "件数"),
+    "倒産件数": ("倒産", "破産", "廃業", "民事再生", "資金ショート", "倒産件数", "破産件数"),
 }
 
 AXIS_DEFINITIONS = {
@@ -176,15 +176,32 @@ def classify_note_axes(note: dict[str, Any]) -> dict[str, list[str]]:
 
 
 def _impact_profile(items: list[dict[str, Any]]) -> dict[str, Any]:
+    explicit_directions = [str(item.get("impact_direction") or "").lower() for item in items]
+    explicit_negative = sum(direction in {"negative", "risk", "悪化", "マイナス"} for direction in explicit_directions)
+    explicit_positive = sum(direction in {"positive", "opportunity", "改善", "プラス"} for direction in explicit_directions)
+    if explicit_negative or explicit_positive:
+        direction = (
+            "negative"
+            if explicit_negative > explicit_positive
+            else "positive"
+            if explicit_positive > explicit_negative
+            else "mixed"
+        )
+        return _lease_implication_text(direction)
+
     joined = " ".join(
         " ".join([item.get("title", ""), item.get("usage_memo", ""), *item.get("summary_lines", [])])
         for item in items
     )
-    negative_terms = ("倒産", "破産", "減益", "資金繰り", "価格高騰", "人手不足", "納期", "円安", "金利")
-    positive_terms = ("補助金", "助成金", "省力化", "効率化", "回復", "増益", "投資", "需要")
+    negative_terms = ("倒産", "破産", "減益", "資金繰り悪化", "価格高騰", "人手不足", "納期遅延", "円安", "利上げ", "金利上昇")
+    positive_terms = ("補助金", "助成金", "省力化", "効率化", "回復", "増益", "投資", "需要", "利下げ", "資金繰り改善")
     negative = sum(term in joined for term in negative_terms)
     positive = sum(term in joined for term in positive_terms)
     direction = "negative" if negative > positive else "positive" if positive > negative else "mixed"
+    return _lease_implication_text(direction)
+
+
+def _lease_implication_text(direction: str) -> dict[str, Any]:
     repayment = "返済能力は中立材料として扱い、個社の受注・粗利・資金繰りで確認する。"
     residual = "残価リスクは物件種別と中古流通の変化を個別に確認する。"
     opportunity = "事業機会は投資回収時期と補助金・省力化効果を確認する。"
