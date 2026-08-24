@@ -2342,23 +2342,24 @@ def get_lease_news_daily_digest_api(limit: int = 3):
 def get_lease_news_classified_summary_api(limit: int = 30, days: int = 14, refresh: bool = False):
     """ニュースを業種別・社会情勢・金融情報の軸で束ね、審査示唆つきで返す。"""
     try:
-        if refresh:
-            vault = find_vault()
-            return build_classified_news_summary_from_vault(
-                vault,
-                limit=max(1, min(int(limit), 80)),
-                days=max(1, min(int(days), 60)),
-            )
-        latest = load_latest_classified_news_summary()
-        if latest.get("available"):
-            return latest
         vault = find_vault()
-        return build_classified_news_summary_from_vault(
+        summary = build_classified_news_summary_from_vault(
             vault,
             limit=max(1, min(int(limit), 80)),
             days=max(1, min(int(days), 60)),
         )
+        if summary.get("available") or refresh:
+            return summary
+        latest = load_latest_classified_news_summary()
+        if latest.get("available"):
+            return latest
+        return summary
     except Exception as e:
+        if refresh:
+            raise HTTPException(status_code=500, detail=str(e))
+        latest = load_latest_classified_news_summary()
+        if latest.get("available"):
+            return latest
         raise HTTPException(status_code=500, detail=str(e))
 
 
