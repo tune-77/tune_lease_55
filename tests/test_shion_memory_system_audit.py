@@ -8,6 +8,7 @@ from api.shion_memory_system_audit import (
     audit_memory_index_orphans,
     audit_memory_recall_eval_health,
     audit_memory_revision_integrity,
+    run_shion_memory_sentinel,
     run_shion_memory_system_audit,
 )
 
@@ -171,9 +172,151 @@ def test_run_shion_memory_system_audit_aggregates_all_checks(tmp_path, monkeypat
     assert isinstance(result["issue_count"], int)
 
 
+def test_run_shion_memory_sentinel_consolidates_memory_reports(tmp_path, monkeypatch):
+    index_path = tmp_path / "shion_memory_index.json"
+    _write_index(
+        index_path,
+        [
+            {
+                "id": "lt_1",
+                "memory_layer": "long_term",
+                "status": "active",
+                "domain": "credit",
+                "use_when": "信用判断を見るとき",
+            },
+            {
+                "id": "lt_2",
+                "memory_layer": "long_term",
+                "status": "active",
+                "domain": "contract",
+                "use_when": "",
+            },
+        ],
+    )
+    effect_path = tmp_path / "shion_memory_effect_latest.json"
+    effect_path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-08-25T01:00:00",
+                "summary": {
+                    "usage_events": 10,
+                    "used_memory_ids": 3,
+                    "likely_helpful_memory_ids": 2,
+                    "needs_feedback_memory_ids": 1,
+                    "possible_noise_memory_ids": 0,
+                },
+                "needs_feedback": [
+                    {
+                        "id": "mem_nf_1",
+                        "domain": "credit",
+                        "memory_layer": "long_term",
+                        "memory_type": "judgment_memory",
+                        "used_count": 4,
+                        "content": "信用判断の確認記憶",
+                    },
+                    {
+                        "id": "mem_nf_2",
+                        "domain": "credit",
+                        "memory_layer": "long_term",
+                        "memory_type": "judgment_memory",
+                        "used_count": 2,
+                        "content": "銀行支援の確認記憶",
+                    },
+                ],
+                "needs_feedback_triage": {
+                    "record_count": 99,
+                    "batch_count": 12,
+                    "top_batches": [
+                        {
+                            "domain": "credit",
+                            "memory_layer": "long_term",
+                            "memory_type": "judgment_memory",
+                            "count": 99,
+                            "used_count": 200,
+                            "samples": [],
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    engineering_path = tmp_path / "memory_engineering_latest.json"
+    engineering_path.write_text(
+        json.dumps(
+            {
+                "summary": {
+                    "open_human_review_records": 120,
+                    "open_human_review_batches": 7,
+                    "candidate_to_active_pressure": 0.8,
+                    "write_policy_metadata_completion_rate": 0.5,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    contradictions_path = tmp_path / "shion_memory_contradictions_latest.json"
+    contradictions_path.write_text(json.dumps({"candidates": []}), encoding="utf-8")
+    persistent_path = tmp_path / "persistent_memory_audit_latest.json"
+    persistent_path.write_text(json.dumps({"summary": {"findings": 0, "high": 0}}), encoding="utf-8")
+    obsidian_path = tmp_path / "obsidian_memory_effectiveness_latest.json"
+    obsidian_path.write_text(json.dumps({"summary": {"used": 4, "validated": 1}}), encoding="utf-8")
+
+    monkeypatch.setattr(audit_module, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(audit_module, "_INDEX_PATH", index_path)
+    monkeypatch.setattr(audit_module, "_MEMORY_EFFECT_PATH", effect_path)
+    monkeypatch.setattr(audit_module, "_MEMORY_ENGINEERING_PATH", engineering_path)
+    monkeypatch.setattr(audit_module, "_MEMORY_CONTRADICTIONS_PATH", contradictions_path)
+    monkeypatch.setattr(audit_module, "_PERSISTENT_MEMORY_AUDIT_PATH", persistent_path)
+    monkeypatch.setattr(audit_module, "_OBSIDIAN_MEMORY_EFFECTIVENESS_PATH", obsidian_path)
+
+    result = run_shion_memory_sentinel(limit=10)
+
+    assert result["mode"] == "shion_memory_sentinel"
+    assert result["status"] == "watch"
+    assert result["summary"]["memory_records"] == 2
+    assert result["summary"]["long_term_domain_coverage"] == 1.0
+    assert result["summary"]["long_term_use_when_coverage"] == 0.5
+    assert result["summary"]["needs_feedback_memory_ids"] == 1
+    assert result["summary"]["open_human_review_records"] == 120
+    assert result["summary"]["open_human_review_batches"] == 7
+    assert result["feedback_triage"]["record_count"] == 99
+    assert result["feedback_triage"]["batch_count"] == 12
+    assert result["feedback_triage"]["top_batches"][0]["domain"] == "credit"
+    assert result["feedback_triage"]["top_batches"][0]["used_count"] == 200
+    assert {signal["area"] for signal in result["signals"]} >= {
+        "memory_metadata",
+        "usage_effect",
+        "memory_engineering",
+    }
+
+
+def test_run_shion_memory_sentinel_flags_noise_as_action_required(tmp_path, monkeypatch):
+    index_path = tmp_path / "shion_memory_index.json"
+    _write_index(index_path, [])
+    effect_path = tmp_path / "shion_memory_effect_latest.json"
+    effect_path.write_text(
+        json.dumps({"summary": {"possible_noise_memory_ids": 1}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(audit_module, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(audit_module, "_INDEX_PATH", index_path)
+    monkeypatch.setattr(audit_module, "_MEMORY_EFFECT_PATH", effect_path)
+    monkeypatch.setattr(audit_module, "_MEMORY_ENGINEERING_PATH", tmp_path / "missing_engineering.json")
+    monkeypatch.setattr(audit_module, "_MEMORY_CONTRADICTIONS_PATH", tmp_path / "missing_contradictions.json")
+    monkeypatch.setattr(audit_module, "_PERSISTENT_MEMORY_AUDIT_PATH", tmp_path / "missing_persistent.json")
+    monkeypatch.setattr(audit_module, "_OBSIDIAN_MEMORY_EFFECTIVENESS_PATH", tmp_path / "missing_obsidian.json")
+
+    result = run_shion_memory_sentinel()
+
+    assert result["status"] == "action_required"
+    assert any(signal["area"] == "usage_effect" and signal["level"] == "action_required" for signal in result["signals"])
+
+
 def test_tools_are_plain_functions_importable_without_adk():
     # api/shion_agent_tools.py が google.adk 未導入環境でも import できるための前提条件
-    assert len(SHION_MEMORY_SYSTEM_AUDIT_TOOLS) == 5
+    assert len(SHION_MEMORY_SYSTEM_AUDIT_TOOLS) == 6
     assert run_shion_memory_system_audit in SHION_MEMORY_SYSTEM_AUDIT_TOOLS
+    assert run_shion_memory_sentinel in SHION_MEMORY_SYSTEM_AUDIT_TOOLS
     for tool in SHION_MEMORY_SYSTEM_AUDIT_TOOLS:
         assert callable(tool)

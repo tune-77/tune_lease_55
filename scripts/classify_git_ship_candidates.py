@@ -33,12 +33,20 @@ INCLUDE_PATTERNS = (
 )
 
 AVOID_PATTERNS = (
+    ".claude/reports/**/*",
+    ".claude/reports/*",
     "reports/*_latest.*",
     "reports/*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].*",
     "reports/*.json",
+    "reports/*.md",
+    "reports/*.html",
     "static_data/*.json",
     "data/*.json",
     "data/*.jsonl",
+    "data/*.db",
+    "data/*.sqlite",
+    "data/*.sqlite3",
+    "data/*.md",
     "data/**/*.jsonl",
     "frontend/public/**/*.png",
     "frontend/public/**/*.jpg",
@@ -47,6 +55,8 @@ AVOID_PATTERNS = (
     "frontend/public/**/*.gif",
     "frontend/public/judgment-asset-graph/*",
     "memory/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md",
+    "*_wt_*",
+    "*_wt_*/**",
 )
 
 REVIEW_PATTERNS = (

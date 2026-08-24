@@ -5,7 +5,39 @@ description: git add・commit・push・merge・ブランチ削除を一気に実
 
 # git-ship スキル
 
-ユーザーの指示でgit操作をまとめて実行する。変更内容を読んでコミットメッセージを自動生成し、add→commit→push→(merge→ブランチ削除)まで一気に行う。
+ユーザーの指示でgit操作をまとめて実行する。変更内容を読んでコミットメッセージを自動生成し、add→commit→push→PR作成まで一気に行う。master/main が保護ブランチの場合は、直接pushや無人auto-mergeを試行錯誤せず PR URL と状態を返す。
+
+## tune_lease_55 Fast Path（過去ログからの効率化）
+
+理由: このリポジトリでは `master` が保護ブランチで、直接pushは `GH006: Protected branch update failed` になりやすい。また `master` が別worktreeに占有されていることがあり、`git checkout master` で詰まりやすい。さらに日次生成物・`data/`・画像がdirtyに混ざり、手作業のステージング確認が長くなりやすい。
+適用条件: `tune_lease_55` で `Gitship` / `ship` / `add commit push merge` を依頼された時。
+削除条件: ship 用CLIが dirty分類、PR作成、保護ブランチ判定、CI待ち、マージ可否確認、Obsidianログ保存まで一括で安全に担保する時。
+
+最初にこの順で確認する:
+
+```bash
+python scripts/classify_git_ship_candidates.py
+git branch --show-current
+git status -sb
+git worktree list
+git log --oneline --left-right --graph --cherry-pick HEAD...origin/master | head -40
+```
+
+判断:
+- `include` だけを基本ステージング対象にする。`review` は必要性を説明できるものだけ入れる。
+- `avoid` は原則入れない。特に `data/`、`reports/*_latest.*`、`static_data/*.json`、`frontend/public/**/*.webp` は日次生成物・実行時成果物として扱う。
+- `master/main` へ直接pushしない。保護ブランチ前提で、フィーチャーブランチpush → GitHub PR作成を標準にする。
+- `master` が別worktreeで使用中でも、無理にcheckoutしない。現在ブランチに `origin/master` をmergeしてリモートへpushし、PRで統合する。
+- `gh auth status` が無効なら `gh pr create` へ固執しない。GitHubコネクタが使える場合はそれでPR作成し、使えない場合はpush後のPR作成URLを返す。
+- required checks があるPRで auto-merge を有効化するのは、ユーザーの明示承認がある時だけ。無人マージの迂回はしない。
+
+コミット前の追加ガード:
+
+```bash
+python scripts/check_pr_change_risk.py --base origin/master...HEAD || true
+```
+
+これは警告用。generated/runtime artifacts が混ざっていないか、PRが過大でないかを早めに見る。
 
 ## フロー判定
 
@@ -19,7 +51,7 @@ description: git add・commit・push・merge・ブランチ削除を一気に実
 git branch --show-current
 ```
 
-- **master / main ブランチ** → [Bフロー: 直接push](#b-フロー直接push)
+- **master / main ブランチ** → 原則、新規フィーチャーブランチを切って [Aフロー: PR作成](#a-フローフィーチャーブランチ)
 - **フィーチャーブランチ** → [Aフロー: merge＋ブランチ削除](#a-フローフィーチャーブランチ)
 
 ---
@@ -30,6 +62,7 @@ git branch --show-current
 git status
 git diff --stat
 git log --oneline -3
+python scripts/classify_git_ship_candidates.py
 ```
 
 これらを読んでコミットメッセージを生成する。
@@ -67,26 +100,26 @@ git commit -m "<自動生成メッセージ>"
 # 2.5 プリフライト検証ガード（警告のみ・push は止めない）
 #     構文崩れ／幻覚import／同一箇所への繰り返し修正を最後の一線で検知する。
 python3 scripts/preflight_pr_guard.py || true
+python scripts/check_pr_change_risk.py --base origin/master...HEAD || true
 
 # 3. リモートへpush
 git push origin <branch>
 
-# 4. masterへマージ
-git checkout master
-git pull origin master
-git merge --no-ff <branch> -m "Merge branch '<branch>'"
-git push origin master
+# 4. PR作成（master/main保護を前提にする）
+# gh が使える場合:
+gh pr create --base master --head <branch> --title "<title>" --body "<summary>"
+# gh が無効なら GitHubコネクタ、または push 出力のPR URLを使う
 
-# 5. ブランチ削除（ローカル＋リモート）
+# 5. PRマージ後だけブランチ削除（ローカル＋リモート）
 git branch -d <branch>
 git push origin --delete <branch>
 git worktree prune 2>/dev/null || true
 ```
 
-マージ後に確認：
+PR作成後に確認：
 ```bash
 git log --oneline -3
-git branch -a | grep <branch>  # 削除されていればOK
+git ls-remote origin refs/heads/<branch> refs/heads/master
 ```
 
 最後にObsidianへ作業ログを残す。Codex作業なら `codex-work-log`、Claude作業なら `claude-work-log` を使う：

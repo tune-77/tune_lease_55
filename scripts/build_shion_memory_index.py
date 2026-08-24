@@ -21,6 +21,107 @@ from obsidian_query import list_vault_md_files
 
 DEFAULT_OUTPUT = REPO_ROOT / "data" / "shion_memory_index.json"
 
+_DOMAIN_RULES: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    (
+        "scoring_model",
+        (
+            "AUC",
+            "OOF",
+            "RandomForest",
+            "LightGBM",
+            "LGBM",
+            "LogisticRegression",
+            "MLP",
+            "QCL",
+            "PD",
+            "score_borrower",
+            "bench_score",
+            "ind_score",
+            "モデル",
+            "再学習",
+        ),
+        "モデル性能、スコア差分、再学習方針、PD表示を確認する時",
+    ),
+    (
+        "lease_screening",
+        (
+            "審査",
+            "承認",
+            "否決",
+            "条件付き",
+            "条件付",
+            "与信",
+            "リスク",
+            "稟議",
+            "案件",
+            "保証",
+        ),
+        "案件審査、承認条件、否決理由、稟議コメントを作る時",
+    ),
+    (
+        "lease_contract",
+        ("購入選択権", "買取", "残価", "契約", "満了", "再リース"),
+        "契約条件、満了後対応、残価・買取可否を説明する時",
+    ),
+    (
+        "asset_life",
+        ("耐用年数", "期待使用期間", "リース期間", "厨房機器", "建機", "フォークリフト", "トラック", "医療機器"),
+        "物件の期間妥当性、耐用年数、再リース可否を見る時",
+    ),
+    (
+        "rag_memory_ops",
+        ("RAG", "ChromaDB", "Obsidian", "Vault", "記憶", "想起", "インデックス", "昇格"),
+        "記憶検索、RAG接続、Obsidian同期、記憶昇格の挙動を確認する時",
+    ),
+    (
+        "system_ops",
+        (
+            "Cloud Run",
+            "Cloudflare",
+            "api/",
+            "frontend/",
+            "script",
+            "scripts/",
+            "pytest",
+            "テスト",
+            "デプロイ",
+            "LaunchAgent",
+            "Streamlit",
+            "FastAPI",
+        ),
+        "実装、テスト、デプロイ、運用手順を決める時",
+    ),
+    (
+        "data_quality",
+        ("CSV", "OCR", "DB", "past_cases", "欠損", "データ", "json", "ログ", "バックフィル"),
+        "入力データ、OCR、CSV、DB、ログ品質を確認する時",
+    ),
+    (
+        "market_news",
+        ("ニュース", "金利", "景気", "倒産", "補助金", "業界", "市場", "サプライヤー"),
+        "外部環境や業界ニュースを審査観点へ落とす時",
+    ),
+    (
+        "shion_identity",
+        ("Mana", "良心", "紫苑", "内省", "Private Reflection", "上位規範", "価値観"),
+        "紫苑の振る舞い、境界線、内省、人格的一貫性を確認する時",
+    ),
+    (
+        "user_preference",
+        ("User", "ユーザー", "好み", "方針", "覚えて", "Kobayashi"),
+        "ユーザーの継続的な好み、依頼方針、会話上の前提を反映する時",
+    ),
+)
+
+_TYPE_DOMAIN_DEFAULTS: dict[str, tuple[str, str]] = {
+    "judgment_memory": ("lease_screening", "判断基準、確認質問、条件設定へ落とす時"),
+    "technical_memory": ("system_ops", "実装、運用、検証手順を決める時"),
+    "value_memory": ("shion_identity", "判断の優先順位や振る舞いの境界を確認する時"),
+    "dialogue_memory": ("user_preference", "ユーザーの継続的な好みや依頼背景を反映する時"),
+    "reflection_memory": ("shion_identity", "紫苑の内省や回答姿勢を整える時"),
+    "factual_memory": ("general_knowledge", "関連する事実前提として回答や確認に使う時"),
+}
+
 
 def _read_text(path: Path) -> str:
     try:
@@ -129,6 +230,32 @@ def _promoted_memory_records(path: Path) -> list[dict[str, Any]]:
 
 def _strip_legacy_promotion_suffix(content: str) -> str:
     return content.split("（昇格 ", 1)[0].strip()
+
+
+def _infer_domain_use_when(record: dict[str, Any]) -> tuple[str, str]:
+    content = str(record.get("content") or "")
+    source_path = str(record.get("source_path") or "")
+    hay = f"{source_path}\n{content}".lower()
+    for domain, terms, use_when in _DOMAIN_RULES:
+        if any(term.lower() in hay for term in terms):
+            return domain, use_when
+    memory_type = str(record.get("memory_type") or "")
+    return _TYPE_DOMAIN_DEFAULTS.get(
+        memory_type,
+        ("general_knowledge", "関連する前提知識として回答や確認に使う時"),
+    )
+
+
+def _enrich_long_term_metadata(records: list[dict[str, Any]]) -> None:
+    """Fill domain/use_when for all long-term memories without overwriting curated values."""
+    for record in records:
+        if str(record.get("memory_layer") or "") != "long_term":
+            continue
+        domain, use_when = _infer_domain_use_when(record)
+        if not str(record.get("domain") or "").strip():
+            record["domain"] = domain
+        if not str(record.get("use_when") or "").strip():
+            record["use_when"] = use_when
 
 
 def _skip_structured_promoted_content(content: str) -> bool:
@@ -421,6 +548,8 @@ def build_index(
         holder: dict[str, Any] = {"records": final_records}
         apply_revisions(holder, revisions)
         final_records = holder["records"]
+
+    _enrich_long_term_metadata(final_records)
 
     if demo_safe:
         # 公開デモ環境には対話・内省・private の記憶を載せない
