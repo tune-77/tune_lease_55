@@ -130,6 +130,103 @@ def _status(row: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _candidate_kind(row: dict[str, Any]) -> str:
+    for key in ("candidate_type", "material_type", "action_schema", "kind", "error_type"):
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
+    return "unknown"
+
+
+def _candidate_topic(row: dict[str, Any]) -> str:
+    for key in ("research_topic", "concept", "target", "domain", "risk_axis"):
+        value = row.get(key)
+        if isinstance(value, list):
+            text = ",".join(str(item) for item in value if str(item).strip())
+        else:
+            text = str(value or "").strip()
+        if text:
+            return text[:80]
+    evidence = str(row.get("evidence_path") or row.get("source_path") or "").strip()
+    if evidence:
+        return Path(evidence).stem[:80]
+    return "unknown"
+
+
+def _inferred_importance(row: dict[str, Any]) -> Any:
+    explicit = row.get("importance")
+    if explicit not in (None, "", {}):
+        return explicit
+    quality = str(row.get("asset_quality") or row.get("quality") or "").lower()
+    if "action" in quality or "specific" in quality:
+        return "high"
+    if str(row.get("requires_result_verification") or "").lower() == "true":
+        return "medium"
+    kind = _candidate_kind(row)
+    if kind in {"judgment_rule", "risk_signal", "confirmation_question"}:
+        return "medium"
+    return None
+
+
+def _inferred_confidence(row: dict[str, Any]) -> Any:
+    explicit = row.get("confidence")
+    if explicit not in (None, "", {}):
+        return explicit
+    verified = str(row.get("verified_status") or row.get("validation_status") or "").lower()
+    if verified in {"verified", "validated", "accepted"}:
+        return "high"
+    if verified in {"unverified", "needs_human_review"}:
+        return "low"
+    if row.get("evidence_path") or row.get("evidence_paths"):
+        return "medium"
+    return None
+
+
+def _inferred_trust_level(row: dict[str, Any]) -> Any:
+    explicit = row.get("trust_level")
+    if explicit not in (None, "", {}):
+        return explicit
+    role = str(row.get("source_role") or "").lower()
+    if role == "user":
+        return "high"
+    if role == "assistant":
+        return "medium"
+    if row.get("evidence_path") or row.get("evidence_paths"):
+        return "medium"
+    return None
+
+
+def _inferred_provenance(row: dict[str, Any]) -> Any:
+    explicit = row.get("provenance")
+    if explicit not in (None, "", {}):
+        return explicit
+    evidence_paths = row.get("evidence_paths")
+    if not isinstance(evidence_paths, list):
+        evidence_paths = []
+    evidence_path = str(row.get("evidence_path") or row.get("source_path") or "").strip()
+    paths = [str(path) for path in evidence_paths if str(path).strip()]
+    if evidence_path:
+        paths.insert(0, evidence_path)
+    paths = list(dict.fromkeys(paths))
+    if not paths and not row.get("source"):
+        return None
+    return {
+        "source": str(row.get("source") or row.get("source_section") or "candidate_source"),
+        "paths": paths,
+        "date": str(row.get("research_date") or row.get("date") or row.get("created_at") or ""),
+        "inferred": True,
+    }
+
+
+def _write_policy_metadata(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "importance": _inferred_importance(row),
+        "confidence": _inferred_confidence(row),
+        "trust_level": _inferred_trust_level(row),
+        "provenance": _inferred_provenance(row),
+    }
+
+
 def _source_item_id(row: dict[str, Any]) -> str:
     for key in ("id", "candidate_id", "canonical_key", "event_id"):
         value = str(row.get(key) or "").strip()
@@ -173,10 +270,14 @@ def summarize_jsonl_source(name: str, path: Path, review_state: dict[str, Any] |
         )
         for row in rows
     )
+    policy_rows = [_write_policy_metadata(row) for row in rows]
     missing_policy_fields = Counter(
-        field for row in rows for field in WRITE_POLICY_FIELDS if row.get(field) in (None, "", {})
+        field for metadata in policy_rows for field in WRITE_POLICY_FIELDS if metadata.get(field) in (None, "", {})
     )
     rows_with_full_policy_metadata = sum(
+        1 for metadata in policy_rows if all(metadata.get(field) not in (None, "", {}) for field in WRITE_POLICY_FIELDS)
+    )
+    rows_with_explicit_policy_metadata = sum(
         1 for row in rows if all(row.get(field) not in (None, "", {}) for field in WRITE_POLICY_FIELDS)
     )
     return {
@@ -189,6 +290,8 @@ def summarize_jsonl_source(name: str, path: Path, review_state: dict[str, Any] |
         "write_policy_metadata": {
             "required_fields": list(WRITE_POLICY_FIELDS),
             "complete_records": rows_with_full_policy_metadata,
+            "explicit_complete_records": rows_with_explicit_policy_metadata,
+            "inferred_complete_records": max(0, rows_with_full_policy_metadata - rows_with_explicit_policy_metadata),
             "missing_by_field": dict(sorted(missing_policy_fields.items())),
         },
     }
@@ -583,6 +686,76 @@ def _open_candidate_samples(
     return samples[:limit]
 
 
+def summarize_open_review_batches(
+    jsonl_sources: list[tuple[str, Path]],
+    review_state: dict[str, Any],
+    *,
+    limit: int = 12,
+    sample_limit: int = 3,
+) -> dict[str, Any]:
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for source_name, path in jsonl_sources:
+        for row in _read_jsonl(path):
+            status = _review_status_for(source_name, row, review_state) or _status(row)
+            if not _is_review_open(status):
+                continue
+            topic = _candidate_topic(row)
+            kind = _candidate_kind(row)
+            key = (source_name, topic, kind)
+            group = groups.setdefault(
+                key,
+                {
+                    "source": source_name,
+                    "topic": topic,
+                    "candidate_type": kind,
+                    "count": 0,
+                    "by_status": Counter(),
+                    "sample_ids": [],
+                    "samples": [],
+                    "review_batch_hint": (
+                        f"memory_review_batch source={source_name} "
+                        f"topic={topic} type={kind}"
+                    ),
+                },
+            )
+            group["count"] += 1
+            group["by_status"][status] += 1
+            if len(group["samples"]) < sample_limit:
+                item_id = _source_item_id(row)
+                group["sample_ids"].append(item_id)
+                group["samples"].append(
+                    {
+                        "source_item_id": item_id,
+                        "title": _candidate_title(row),
+                        "claim": _candidate_claim(row),
+                        "status": status,
+                        "date_hint": _brief_text(
+                            row.get("research_date")
+                            or row.get("date")
+                            or row.get("target_date")
+                            or row.get("created_at")
+                            or row.get("generated_at"),
+                            40,
+                        ),
+                    }
+                )
+
+    batches = []
+    for group in groups.values():
+        batches.append(
+            {
+                **{k: v for k, v in group.items() if k != "by_status"},
+                "by_status": dict(sorted(group["by_status"].items())),
+            }
+        )
+    batches.sort(key=lambda item: (-int(item["count"]), str(item["source"]), str(item["topic"])))
+    return {
+        "total_batches": len(batches),
+        "top_batches": batches[: max(1, min(limit, 50))],
+        "policy": "review_batches_group_similar_open_candidates_no_auto_decision",
+    }
+
+
 def _quarantine_focus(experience_flywheel: Any, *, limit: int = 5) -> dict[str, Any]:
     items = []
     if isinstance(experience_flywheel, dict) and isinstance(experience_flywheel.get("quarantined_candidates"), list):
@@ -704,6 +877,7 @@ def build_report(
     source_candidate_total = sum(item["records"] for item in source_summaries)
     open_review_total = sum(item["open_review_records"] for item in source_summaries)
     write_policy_summary = summarize_write_policy(source_summaries)
+    review_batches = summarize_open_review_batches(jsonl_sources, review_state or {})
 
     usage_summary = summarize_usage(memory_usage_rows, today=today, recent_days=recent_days)
     memory_records = _records_from_index(memory_index)
@@ -760,6 +934,7 @@ def build_report(
             "latest_preview_promoted_to_active": promoted_from_latest_preview,
             "latest_preview_promotion_rate": promotion_rate,
             "open_human_review_records": open_review_total,
+            "open_human_review_batches": review_batches["total_batches"],
             "memory_records": memory_summary["total_records"],
             "recent_memory_usage_events": usage_summary["recent_events"],
             "recent_unique_memory_refs": usage_summary["recent_unique_refs"],
@@ -777,6 +952,7 @@ def build_report(
                 "by_status": dict(sorted(preview_statuses.items())),
             },
             "write_policy": write_policy_summary,
+            "review_batches": review_batches,
         },
         "promotion_path": {
             "active_rule_ids": sorted(active_ids),
@@ -913,6 +1089,7 @@ def build_markdown(payload: dict[str, Any]) -> str:
         f"- Active canonical rules: {summary['active_canonical_rules']}",
         f"- Write amplification / active rule: {summary['write_amplification_per_active_rule']}",
         f"- Open human review records: {summary['open_human_review_records']}",
+        f"- Open human review batches: {summary.get('open_human_review_batches', 0)}",
         f"- Memory records: {summary['memory_records']}",
         f"- Recent memory usage: {summary['recent_memory_usage_events']} events / {summary['recent_unique_memory_refs']} refs",
         f"- Maintenance status records: {summary['maintenance_status_records']}",
@@ -935,6 +1112,22 @@ def build_markdown(payload: dict[str, Any]) -> str:
         f"- `canonical_preview`: {payload['write_path']['canonical_preview']['records']} records",
         f"- Write policy required fields: `{write_policy.get('required_fields', [])}`",
         f"- Write policy missing fields: `{write_policy.get('missing_by_field', {})}`",
+        "",
+        "## Review Batches",
+        "",
+    ]
+    review_batches = ((payload.get("write_path") or {}).get("review_batches") or {}).get("top_batches") or []
+    if review_batches:
+        for batch in review_batches[:10]:
+            lines.append(
+                f"- `{batch.get('source')}` {batch.get('topic')} / {batch.get('candidate_type')}: "
+                f"{batch.get('count')} open"
+            )
+            for sample in batch.get("samples") or []:
+                lines.append(f"  - `{sample.get('source_item_id')}` {sample.get('claim')}")
+    else:
+        lines.append("- No open review batches.")
+    lines += [
         "",
         "## Microsoft Lens: Utility Density",
         "",

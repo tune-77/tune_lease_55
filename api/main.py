@@ -603,6 +603,8 @@ app.include_router(screening_misc_router)
 
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
+from api.routers.shion_memory_feedback import router as shion_memory_feedback_router
+app.include_router(shion_memory_feedback_router)
 from api.routers.feedback_loop import JudgmentAssetCandidateManualRequest, ScreeningExperienceCaseRequest  # used by chat/improvement endpoints
 from api.routers.feedback_loop import (  # noqa: F401 - re-exported for tests/back-compat
     _CLOUDRUN_INPUT_EVENTS_CACHE,
@@ -5812,6 +5814,27 @@ def _chat_memory_debug_payload(
     )
 
 
+def _public_memory_recall_payload(memory_recall: dict | None) -> dict:
+    if not isinstance(memory_recall, dict):
+        return {"route": "", "refs": [], "impact_hints": []}
+    refs = []
+    for ref in memory_recall.get("refs") or []:
+        if ref is None:
+            continue
+        text = str(ref).strip()
+        if text:
+            refs.append(text)
+    return {
+        "route": str(memory_recall.get("route") or ""),
+        "refs": refs[:8],
+        "impact_hints": [
+            hint
+            for hint in (memory_recall.get("impact_hints") or [])
+            if isinstance(hint, dict)
+        ][:3],
+    }
+
+
 def _build_shared_shion_dialogue_memory_context(
     message: str,
     history_for_gemini: list[dict[str, str]] | None,
@@ -7303,6 +7326,7 @@ def post_chat(req: ChatRequest):
                     injected=obsidian_daily_injected,
                     effect=obsidian_daily_effect,
                 ),
+                extra={"memory_recall": _public_memory_recall_payload(memory_recall)},
             )
             if req.debug_memory:
                 response_payload["memory_debug"] = _chat_memory_debug_payload(
@@ -7814,7 +7838,8 @@ def post_chat(req: ChatRequest):
                 vertex_ai_search=vertex_agent_search,
                 vertex_answer_api=vertex_answer_api,
                 vertex_distillation_capture=vertex_distillation_capture,
-            ),
+            )
+            | {"memory_recall": _public_memory_recall_payload(memory_recall)},
         )
         if req.debug_memory:
             response_payload["memory_debug"] = _chat_memory_debug_payload(

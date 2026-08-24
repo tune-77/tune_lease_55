@@ -154,6 +154,10 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
      健全性をまとめてチェックする。個別に深掘りしたい場合は audit_memory_index_orphans /
      audit_memory_freshness_pipeline / audit_memory_revision_integrity /
      audit_memory_recall_eval_health を使う。読み取り専用で、索引・記憶を書き換えない
+   - run_shion_memory_sentinel: 「記憶システム全体を監視して」「想起記憶が実回答で効いたか」
+     「同じような記憶監視をまとめて」と言われたら、Memory Effect / Memory Engineering /
+     矛盾候補 / 永続記憶監査 / Obsidian効果測定を統合して、要対応・watch・次アクションを返す。
+     読み取り専用で、記憶昇格・削除・RAG順位変更・プロンプト変更はしない
    - audit_cloudrun_data_safety: Cloud Run実データ登録、APIアクセス制御、GCS DBスナップショット、
      復元、score_input昇格の安全ガードがCI/コード/UI/ADKに残っているか確認したいときに使う。
      読み取り専用で、DB/GCS/GitHub設定は変更しない

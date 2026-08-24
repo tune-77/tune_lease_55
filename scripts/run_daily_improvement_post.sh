@@ -241,6 +241,11 @@ echo "[記憶] Obsidian Memory Effectiveness を生成（保存→想起→使�
 log_step "obsidian_memory_effectiveness_report" $?
 
 echo ""
+echo "[記憶] Shion Memory Sentinel を生成（記憶監視レポートを統合・ADK参照用。観測のみ）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_sentinel_report.py"
+log_step "build_shion_memory_sentinel_report" $?
+
+echo ""
 echo "[育成] Obsidianグラフの複雑さが判断に効いているかを測定（観測のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_obsidian_graph_judgment_effect.py"
 log_step "build_obsidian_graph_judgment_effect" $?

@@ -104,6 +104,7 @@ def test_build_report_tracks_write_promotion_read_and_forgetting(tmp_path):
     assert summary["active_canonical_rules"] == 1
     assert summary["latest_preview_promoted_to_active"] == 1
     assert summary["open_human_review_records"] == 1
+    assert summary["open_human_review_batches"] == 1
     assert summary["recent_unique_memory_refs"] == 1
     assert summary["maintenance_status_records"] == 1
     assert summary["contradiction_candidates"] == 1
@@ -123,6 +124,8 @@ def test_build_report_tracks_write_promotion_read_and_forgetting(tmp_path):
     assert payload["daily_review_focus"]["actions"][1]["items"]["count"] == 4
     assert payload["daily_review_focus"]["actions"][1]["items"]["sample_count"] == 0
     assert payload["daily_review_focus"]["actions"][2]["items"][0]["rule_id"] == "r_sleep"
+    assert payload["write_path"]["review_batches"]["total_batches"] == 1
+    assert payload["write_path"]["review_batches"]["top_batches"][0]["count"] == 1
     assert any(item["action"] == "memory_entry_metadata_gate" for item in payload["recommendations"])
     assert any(item["action"] == "contradiction_review" for item in payload["recommendations"])
     assert any(item["action"] == "quarantine_sample_review" for item in payload["recommendations"])
@@ -187,6 +190,68 @@ def test_write_policy_metadata_completion_counts_complete_rows(tmp_path):
         "provenance": 1,
         "trust_level": 1,
     }
+
+
+def test_write_policy_metadata_uses_existing_candidate_context(tmp_path):
+    candidate_path = tmp_path / "data" / "candidates.jsonl"
+    _write_jsonl(
+        candidate_path,
+        [
+            {
+                "id": "a1",
+                "status": "candidate",
+                "candidate_type": "confirmation_question",
+                "claim": "保守履歴を確認する。",
+                "confidence": 0.7,
+                "evidence_path": "Projects/tune_lease_55/Research/Auto Research/x.md",
+                "source": "Auto Research",
+            }
+        ],
+    )
+
+    summary = mer.summarize_jsonl_source("test_candidates", candidate_path)
+
+    assert summary["write_policy_metadata"]["complete_records"] == 1
+    assert summary["write_policy_metadata"]["explicit_complete_records"] == 0
+    assert summary["write_policy_metadata"]["inferred_complete_records"] == 1
+    assert summary["write_policy_metadata"]["missing_by_field"] == {}
+
+
+def test_open_review_batches_group_similar_candidates(tmp_path):
+    candidate_path = tmp_path / "data" / "candidates.jsonl"
+    _write_jsonl(
+        candidate_path,
+        [
+            {
+                "id": "a1",
+                "status": "candidate",
+                "candidate_type": "confirmation_question",
+                "research_topic": "asset-operation",
+                "claim": "稼働率を確認する。",
+            },
+            {
+                "id": "a2",
+                "status": "candidate",
+                "candidate_type": "confirmation_question",
+                "research_topic": "asset-operation",
+                "claim": "保守計画を確認する。",
+            },
+            {
+                "id": "a3",
+                "status": "rejected",
+                "candidate_type": "confirmation_question",
+                "research_topic": "asset-operation",
+                "claim": "除外済み。",
+            },
+        ],
+    )
+
+    batches = mer.summarize_open_review_batches([("test_candidates", candidate_path)], {})
+
+    assert batches["total_batches"] == 1
+    assert batches["top_batches"][0]["count"] == 2
+    assert batches["top_batches"][0]["topic"] == "asset-operation"
+    assert len(batches["top_batches"][0]["samples"]) == 2
 
 
 def test_markdown_contains_four_lenses():
