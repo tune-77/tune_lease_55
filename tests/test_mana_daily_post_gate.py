@@ -58,6 +58,18 @@ def test_daily_post_pipeline_repairs_private_reflection_before_stopping():
     assert loop_pos < repair_pos < reflection_pos < delta_pos < stop_pos
 
 
+def test_daily_post_pipeline_auto_applies_safe_memory_promotions_before_mana():
+    script = Path("scripts/run_daily_improvement_post.sh").read_text(encoding="utf-8")
+
+    queue_pos = script.index("scripts/build_shion_memory_promotion_queue.py")
+    apply_pos = script.index("scripts/apply_shion_memory_promotions.py")
+    index_pos = script.index("build_shion_memory_index_after_auto_promotions")
+    mana_pos = script.index("[番人] Mana Obsidian Curator", index_pos)
+
+    assert queue_pos < apply_pos < index_pos < mana_pos
+    assert "--auto-safe" in script[apply_pos:index_pos]
+
+
 def test_daily_post_pipeline_refreshes_reports_after_ledger_sync_before_slack():
     script = Path("scripts/run_daily_improvement_post.sh").read_text(encoding="utf-8")
 

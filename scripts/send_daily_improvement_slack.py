@@ -377,8 +377,15 @@ def _reflection_journal_lines(report: dict[str, Any] | None) -> list[str]:
             "skipped_no_theme_radar_report": "テーマレーダー未生成",
             "skipped_no_selected_theme": "Vaultにテーマ材料なし",
             "skipped_already_exists": "本日分は生成済み（下記は前回実行分）",
+            "skipped_mana_hold": "Mana判定がholdのためVault書き込みを伴う内省ノート生成をスキップ",
+            "skipped_mana_block": "Mana判定がblockのためVault書き込みを伴う内省ノート生成をスキップ",
+            "skipped_mana_missing": "Mana判定レポート未生成のためVault書き込みを伴う内省ノート生成をスキップ",
         }
-        return [f"• status: `{status}` / {labels.get(status, '内省ノート未生成')}"]
+        lines = [f"• status: `{status}` / {labels.get(status, '内省ノート未生成')}"]
+        action = _clean_text(report.get("mana_action_summary") or report.get("reason") or "", 160)
+        if action:
+            lines.append(f"• reason: {action}")
+        return lines
 
     theme = _clean_text(report.get("theme") or "", 60)
     angle = _clean_text(report.get("angle") or "", 160)
