@@ -844,6 +844,37 @@ def _shion_memory_usage_from_event(event: dict) -> dict | None:
     }
 
 
+def _shion_memory_feedback_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "shion_memory_feedback":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    refs = payload.get("refs") if isinstance(payload.get("refs"), list) else []
+    if not refs and isinstance(payload.get("memory_ids"), list):
+        refs = payload.get("memory_ids") or []
+    feedback = str(payload.get("memory_feedback") or payload.get("outcome") or "").strip().lower()
+    if feedback not in {"helped", "neutral", "challenged"}:
+        return None
+    cleaned_refs = [str(ref) for ref in refs[:20] if ref]
+    if not cleaned_refs:
+        return None
+    return {
+        "event_id": event.get("event_id"),
+        "feedback_event_id": payload.get("event_id"),
+        "ts": payload.get("ts") or event.get("ts"),
+        "route": str(payload.get("route") or ""),
+        "refs": cleaned_refs,
+        "ref_count": len(cleaned_refs),
+        "question": str(payload.get("question") or "")[:160],
+        "surface": event.get("surface") or payload.get("surface") or "next_chat",
+        "source": "cloudrun_input_writeback",
+        "feedback_source": "explicit_memory_feedback",
+        "memory_feedback": feedback,
+        "response_hash": str(payload.get("response_hash") or "")[:96],
+        "comment": str(payload.get("comment") or "")[:300],
+        "user_id": str(payload.get("user_id") or "default")[:80],
+    }
+
+
 def _shion_agent_consultation_request_from_event(event: dict) -> dict | None:
     if event.get("event_type") != "shion_agent_consultation_requested":
         return None
@@ -1082,6 +1113,9 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     prompt_feedback_rows = [row for event in events if (row := _prompt_feedback_entry_from_event(event))]
     hypothesis_collision_rows = _build_hypothesis_collision_rows(chat_rows)
     shion_memory_usage_rows = [row for event in events if (row := _shion_memory_usage_from_event(event))]
+    shion_memory_usage_rows.extend(
+        row for event in events if (row := _shion_memory_feedback_from_event(event))
+    )
     shion_agent_consultation_rows = [
         row for event in events if (row := _shion_agent_consultation_request_from_event(event))
     ]

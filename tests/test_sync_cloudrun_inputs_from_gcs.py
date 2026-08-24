@@ -626,6 +626,20 @@ def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, 
                 "refs": ["memory/a.md", "memory/b.md"],
             },
         },
+        {
+            "event_id": "memory-feedback-1",
+            "ts": "2026-07-01T00:05:00Z",
+            "event_type": "shion_memory_feedback",
+            "surface": "next_chat",
+            "payload": {
+                "event_id": "local-feedback-1",
+                "ts": "2026-07-01T00:05:00Z",
+                "route": "next_chat",
+                "refs": ["memory/a.md"],
+                "memory_feedback": "helped",
+                "question": "補助金について教えて",
+            },
+        },
     ])
 
     improvement_rows = [json.loads(line) for line in improvement_log.read_text(encoding="utf-8").splitlines()]
@@ -634,12 +648,14 @@ def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, 
     assert result["improvement_new"] == 1
     assert result["chat_new"] == 1
     assert result["hypothesis_collision_new"] == 0
-    assert result["shion_memory_usage_new"] == 1
+    assert result["shion_memory_usage_new"] == 2
     assert improvement_rows[0]["source"] == "cloudrun_input_writeback"
     assert "Cloud Run入力" in improvement_rows[0]["body"]
     assert chat_rows[0]["category"] == "lease"
     assert chat_rows[0]["metadata"]["knowledge_refs"] == 2
     assert memory_rows[0]["ref_count"] == 2
+    assert memory_rows[1]["memory_feedback"] == "helped"
+    assert memory_rows[1]["feedback_source"] == "explicit_memory_feedback"
 
 
 def test_materialize_events_appends_hypothesis_collision_when_next_user_corrects(tmp_path, monkeypatch) -> None:
