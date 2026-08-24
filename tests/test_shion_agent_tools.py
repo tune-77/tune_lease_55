@@ -39,6 +39,7 @@ EXPECTED_DB_TOOLS = {
     "audit_memory_freshness_pipeline",
     "audit_memory_revision_integrity",
     "audit_memory_recall_eval_health",
+    "audit_cloudrun_data_safety",
 }
 
 EXPECTED_VERTEX_TOOLS = {

@@ -35,6 +35,16 @@ _SAFE_ERROR_RE = re.compile(
 )
 _FILE_RE = re.compile(r"[\w./-]+\.(?:py|tsx|ts|jsx|js)")
 _DANGEROUS_PARTS = {"data", "models", "migrations", "alembic", ".github", "launchd"}
+_SAFE_REPAIR_PREFIXES = (
+    "frontend/src/app/",
+    "frontend/src/components/",
+    "frontend/src/lib/",
+)
+_DANGEROUS_NAME_RE = re.compile(
+    r"(score|scoring|auth|security|credential|secret|db|database|migration|"
+    r"lease_logic|category_config|coefficient|model)",
+    re.IGNORECASE,
+)
 
 
 def load_json(path: Path) -> Any:
@@ -91,6 +101,10 @@ def _single_safe_file(entry: dict[str, Any], root: Path) -> tuple[str | None, st
             continue
         if any(part in _DANGEROUS_PARTS for part in Path(rel).parts):
             return None, f"重要パス配下のため手動確認: {rel}"
+        if _DANGEROUS_NAME_RE.search(rel):
+            return None, f"審査ロジック/認証/DB/モデル系のため手動確認: {rel}"
+        if not rel.startswith(_SAFE_REPAIR_PREFIXES):
+            return None, f"UI表示系の許可パス外のため手動確認: {rel}"
         if rel not in normalized:
             normalized.append(rel)
 
@@ -127,12 +141,13 @@ def classify_error_entry(entry: dict[str, Any], root: Path) -> dict[str, Any]:
         "id": rev_id,
         "title": "表示/実行時の軽微エラー修復",
         "description": pattern,
+        "detail": f"検出エラー: {pattern}" if pattern else "",
         "reason": (
             "紫苑の軽微エラー一次対応。import漏れ・名前解決・構文崩れなど、"
             "単一ファイル内で直せる範囲だけを確認する。"
         ),
         "target_module": target,
-        "implementation": {"category": "quick_ui"},
+        "implementation": {"category": "runtime_error_repair"},
     }
     item = refresh_auto_fix_policy(item, root)
     blocked, block_reason = is_blocked(item)
@@ -206,11 +221,12 @@ def main() -> None:
         print(json.dumps(queue, ensure_ascii=False, indent=2))
         return
 
+    try:
+        queue["success_state_file"] = args.state_file.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        raise SystemExit("state file must be inside the repository")
+
     dump_json(output_path, queue)
-    newly_queued = [str(item.get("id") or "") for item in queue["items"] if item.get("id")]
-    if newly_queued:
-        state["queued_ids"] = sorted(already_queued_ids | set(newly_queued))
-        dump_json(args.state_file, state)
     print(
         "Shion error repair queue: "
         f"{queue['queued_count']} queued / {queue['error_repair_safe_count']} safe "

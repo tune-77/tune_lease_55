@@ -27,16 +27,19 @@ def env(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _write_queue(tmp_path, n_items: int):
+def _write_queue(tmp_path, n_items: int, *, success_state: bool = False):
     queue_path = tmp_path / "queue.json"
+    queue = {
+        "items": [
+            {"id": f"REV-{500 + i}", "title": f"候補{i}", "prompt": f"p{i}"}
+            for i in range(n_items)
+        ]
+    }
+    if success_state:
+        queue["success_state_file"] = "reports/shion_error_repair_queue_state.json"
     queue_path.write_text(
         json.dumps(
-            {
-                "items": [
-                    {"id": f"REV-{500 + i}", "title": f"候補{i}", "prompt": f"p{i}"}
-                    for i in range(n_items)
-                ]
-            },
+            queue,
             ensure_ascii=False,
         ),
         encoding="utf-8",
@@ -116,3 +119,45 @@ def test_consecutive_failures_abort_remaining(env, monkeypatch):
     report = json.loads((env / "reports" / "out.json").read_text(encoding="utf-8"))
     assert report["guards"]["aborted_by_consecutive_failures"] is True
     assert report["total"] == 2
+
+
+def test_success_state_records_only_successful_ids(env, monkeypatch):
+    queue_path = _write_queue(env, 2, success_state=True)
+    monkeypatch.setenv("CODEX_QUEUE_DAILY_LIMIT", "10")
+    outcomes = iter([0, 1])
+
+    def run_item(item, **kwargs):
+        exit_code = next(outcomes)
+        return {
+            "id": item["id"], "title": item["title"], "exit_code": exit_code,
+            "stdout": "done" if exit_code == 0 else "",
+            "stderr": "" if exit_code == 0 else "boom",
+            "backend": "claude" if exit_code == 0 else "none",
+            "started_at": "", "finished_at": "",
+        }
+
+    monkeypatch.setattr(executor, "run_item", run_item)
+
+    with pytest.raises(SystemExit):
+        _run_main(monkeypatch, queue_path, env / "reports" / "out.json")
+
+    state = json.loads(
+        (env / "reports" / "shion_error_repair_queue_state.json").read_text(encoding="utf-8")
+    )
+    assert state["queued_ids"] == ["REV-500"]
+
+    report = json.loads((env / "reports" / "out.json").read_text(encoding="utf-8"))
+    assert report["results"][0]["success_state_recorded"] is True
+    assert "success_state_recorded" not in report["results"][1]
+
+
+def test_dry_run_does_not_record_success_state(env, monkeypatch):
+    queue_path = _write_queue(env, 1, success_state=True)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["execute_codex_queue.py", "--queue", str(queue_path), "--dry-run"],
+    )
+
+    executor.main()
+
+    assert not (env / "reports" / "shion_error_repair_queue_state.json").exists()
