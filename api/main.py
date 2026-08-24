@@ -154,6 +154,7 @@ from api.knowledge.news_classifier import (
     build_classified_news_summary_from_vault,
     load_latest_classified_news_summary,
 )
+from api.knowledge.news_vertex_summary import build_vertex_assisted_news_trend_summary
 from obsidian_daily_intelligence import (
     obsidian_daily_intelligence_as_text,
     record_obsidian_daily_intelligence_event,
@@ -2361,6 +2362,33 @@ def get_lease_news_classified_summary_api(limit: int = 30, days: int = 14, refre
         if latest.get("available"):
             return latest
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/lease-news/trend-summary")
+def get_lease_news_trend_summary_api(
+    limit: int = 30,
+    days: int = 14,
+    refresh: bool = False,
+    use_vertex: bool = True,
+):
+    """分類済みニュースから、Vertex補助つきの傾向・要約・注意点を返す。"""
+    try:
+        vault = find_vault()
+        summary = build_classified_news_summary_from_vault(
+            vault,
+            limit=max(1, min(int(limit), 80)),
+            days=max(1, min(int(days), 60)),
+        )
+        if not summary.get("available") and not refresh:
+            latest = load_latest_classified_news_summary()
+            if latest.get("available"):
+                summary = latest
+        return build_vertex_assisted_news_trend_summary(summary, use_vertex=use_vertex)
+    except Exception as e:
+        if refresh:
+            raise HTTPException(status_code=500, detail=str(e))
+        latest = load_latest_classified_news_summary()
+        return build_vertex_assisted_news_trend_summary(latest, use_vertex=use_vertex)
 
 
 def _candidate_report_dirs() -> list[Path]:

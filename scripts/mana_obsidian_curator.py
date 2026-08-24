@@ -156,11 +156,34 @@ def evaluate_monitor(monitor_report: dict[str, Any] | None) -> list[Finding]:
 
     reflection = _check_by_name(monitor_report, "private_reflection_meaning")
     if reflection and reflection.get("status") != "ok":
+        message = str(reflection.get("message") or "")
+        details = reflection.get("details") if isinstance(reflection.get("details"), dict) else {}
+        missing_categories = details.get("missing_categories") or []
+        hard_quality_problems = (
+            "today Private Reflection missing",
+            "too_short",
+            "missing_meaning_categories",
+            "reflection_protocol_labels_missing",
+            "voice_collision_log_missing",
+        )
+        similarity_only = (
+            "too_similar_to_yesterday" in message
+            and not missing_categories
+            and not any(problem in message for problem in hard_quality_problems)
+        )
+        level = "watch" if similarity_only else "hold"
+        code = "private_reflection_similarity_watch" if similarity_only else "private_reflection_not_meaningful"
+        action = (
+            "Private Reflectionは前日と似ているが、必要カテゴリは揃っている。記憶材料化は慎重にしつつ、"
+            "説明用の観測・内省レポート生成は止めない。"
+            if similarity_only
+            else "Private Reflectionの意味更新が弱い。記憶昇格やRAG接続は保留する。"
+        )
         findings.append(
             _finding(
-                "hold",
-                "private_reflection_not_meaningful",
-                "Private Reflectionの意味更新が弱い。記憶昇格やRAG接続は保留する。",
+                level,
+                code,
+                action,
                 status=reflection.get("status"),
                 check_message=reflection.get("message"),
                 details=reflection.get("details"),
@@ -462,6 +485,7 @@ def build_mana_report(
             "useful_candidate_count": useful_count,
         },
         "findings": [finding.__dict__ for finding in findings],
+        "strictness_explanation": _strictness_explanation(status, findings),
         "action_summary": _action_summary(status, findings),
         "blocked_actions": _blocked_actions(status),
         "allowed_actions": _allowed_actions(status),
@@ -515,6 +539,8 @@ def _action_for_finding(finding: Finding) -> str:
         return "scripts/build_shion_reflection_delta.py を再実行して内省差分JSONを更新する。"
     if finding.code in {"private_reflection_not_meaningful", "reflection_handoff_incomplete"}:
         return "Private Reflection を User要求・誤読・次回行動が分かる形で再生成する。"
+    if finding.code == "private_reflection_similarity_watch":
+        return "昨日との差分が薄い理由を確認する。説明用レポート生成は継続し、記憶昇格だけ慎重に扱う。"
     if finding.code == "reflection_too_similar":
         return "前日との差分が出るよう、当日の具体的な違和感・判断変更・次回行動を1つ追加する。"
     if finding.code == "useful_candidate_missing":
@@ -536,6 +562,26 @@ def _action_summary(status: str, findings: list[Finding]) -> str:
     priority = sorted(findings, key=lambda finding: LEVEL_RANK[finding.level], reverse=True)
     top = priority[0]
     return f"{top.code}: {_action_for_finding(top)}"
+
+
+def _strictness_explanation(status: str, findings: list[Finding]) -> list[str]:
+    if not findings:
+        return ["ALLOW: 危険・品質劣化・自己参照ループの強い兆候がないため、観察継続だけでよい。"]
+
+    lines = [f"最終判定は最も重いfindingで決まる: {status}"]
+    for finding in sorted(findings, key=lambda item: LEVEL_RANK[item.level], reverse=True)[:5]:
+        evidence = finding.evidence or {}
+        detail = ""
+        details = evidence.get("details") if isinstance(evidence.get("details"), dict) else {}
+        if "similarity_to_yesterday" in details:
+            detail = f" similarity_to_yesterday={details.get('similarity_to_yesterday')}"
+        elif "flags" in evidence:
+            detail = f" flags={','.join(map(str, evidence.get('flags') or []))}"
+        elif "noise_ratio" in evidence:
+            detail = f" noise_ratio={evidence.get('noise_ratio')}"
+        lines.append(f"{finding.level}: {finding.code} - {finding.message}{detail}")
+    lines.append("hold/stopでも、原則として止める対象は記憶昇格・RAG接続・プロンプト注入・本番配布。観測レポートまで止める必要があるかは別に扱う。")
+    return lines
 
 
 def _user_requests(status: str, findings: list[Finding]) -> list[str]:
@@ -585,6 +631,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- status: `{report['status']}`",
         f"- action_summary: {report.get('action_summary') or 'なし'}",
         f"- guardrail: `{report['guardrail']}`",
+        "",
+        "## Why This Strictness",
+        *_list_lines(report.get("strictness_explanation") or []),
         "",
         "## Inputs",
         *[f"- {key}: `{value}`" for key, value in report.get("inputs", {}).items()],

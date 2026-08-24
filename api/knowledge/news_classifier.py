@@ -257,6 +257,7 @@ def _category_summary(axis: str, category: str, items: list[dict[str, Any]]) -> 
                     "source",
                     "article_url",
                     "file_path",
+                    "screening_checks",
                     "importance",
                     "impact_direction",
                     "source_reliability",

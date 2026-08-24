@@ -10,7 +10,7 @@ import {
   X, Menu, Table2, Swords, MessageCircle,
   BarChart2, BookOpen, Gift, HelpCircle, Megaphone, Calculator,
   ClipboardList, Brain, Database,
-  Orbit, ShieldCheck, Search, GitBranch, FileCheck2, Stethoscope, Settings2
+  Orbit, ShieldCheck, Search, GitBranch, FileCheck2, Stethoscope, Settings2, Newspaper
 } from 'lucide-react';
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
@@ -51,6 +51,7 @@ export default function Sidebar() {
         { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
         { name: '1000本判断ドリル', href: '/judgment-drill', icon: ClipboardList, color: 'text-lime-300' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
+        { name: 'ニュース審査', href: '/news', icon: Newspaper, color: 'text-sky-300' },
         { name: '結果登録', href: '/register', icon: PenTool, color: 'text-rose-400' },
         { name: '改善PMレポート', href: '/improvement-log', icon: ClipboardList, color: 'text-orange-300' },
         { name: 'ループが閉じた証拠', href: '/loop-proof', icon: GitBranch, color: 'text-violet-300' },

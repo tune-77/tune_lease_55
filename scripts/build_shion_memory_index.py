@@ -52,6 +52,91 @@ def _memory_bullets_from_markdown(path: Path, source: str, *, memory_layer: str 
     return records
 
 
+def _promoted_memory_records(path: Path) -> list[dict[str, Any]]:
+    """Read structured promoted memories, with legacy bullet fallback.
+
+    Preferred format:
+    - content: ...
+      type: factual_memory
+      domain: lease_contract
+      confidence: user_taught
+      use_when: ...
+      judgment_asset_candidate: true
+      source: promo_xxx
+    """
+    text = _read_text(path)
+    records: list[dict[str, Any]] = []
+    current: dict[str, str] | None = None
+
+    def flush() -> None:
+        nonlocal current
+        if not current:
+            return
+        content = str(current.get("content") or "").strip()
+        if content and not _skip_structured_promoted_content(content):
+            confidence_label = str(current.get("confidence") or "")
+            confidence = 0.9 if confidence_label == "user_taught" else 0.75
+            record = make_memory_record(
+                content,
+                source="promoted_memory",
+                source_path=str(path.relative_to(REPO_ROOT)),
+                memory_layer="long_term",
+                memory_type=current.get("type") or None,  # type: ignore[arg-type]
+                confidence=confidence,
+            ).to_dict()
+            for key, out_key in (
+                ("domain", "domain"),
+                ("use_when", "use_when"),
+                ("source", "promotion_source_id"),
+                ("kind", "promotion_kind"),
+                ("promoted_at", "promoted_at"),
+            ):
+                if current.get(key):
+                    record[out_key] = current[key]
+            if current.get("confidence"):
+                record["confidence_label"] = current["confidence"]
+            if current.get("judgment_asset_candidate"):
+                record["judgment_asset_candidate"] = current["judgment_asset_candidate"].lower() == "true"
+            records.append(record)
+        current = None
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- content:"):
+            flush()
+            current = {"content": stripped.split(":", 1)[1].strip()}
+            continue
+        if current is not None and line.startswith("  ") and ":" in stripped:
+            key, value = stripped.split(":", 1)
+            current[key.strip()] = value.strip()
+            continue
+        if stripped.startswith("- "):
+            flush()
+            content = _strip_legacy_promotion_suffix(stripped[2:].strip())
+            if _skip_markdown_bullet(content):
+                continue
+            records.append(
+                make_memory_record(
+                    content,
+                    source="promoted_memory",
+                    source_path=str(path.relative_to(REPO_ROOT)),
+                    memory_layer="long_term",
+                ).to_dict()
+            )
+    flush()
+    return records
+
+
+def _strip_legacy_promotion_suffix(content: str) -> str:
+    return content.split("（昇格 ", 1)[0].strip()
+
+
+def _skip_structured_promoted_content(content: str) -> bool:
+    if "自動生成プレースホルダー" in content:
+        return True
+    return False
+
+
 def _skip_markdown_bullet(content: str) -> bool:
     if len(content) < 12:
         return True
@@ -295,7 +380,7 @@ def build_index(
     # 会話から承認を経て昇格した長期記憶（apply_shion_memory_promotions.py が追記）
     promoted_path = REPO_ROOT / "knowledge_base" / "shion_promoted_memories.md"
     if promoted_path.exists():
-        records.extend(_memory_bullets_from_markdown(promoted_path, "promoted_memory", memory_layer="long_term"))
+        records.extend(_promoted_memory_records(promoted_path))
 
     records.extend(_knowledge_markdown_records())
 

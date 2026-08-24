@@ -147,3 +147,72 @@ def test_build_index_reads_memory_and_mind(tmp_path, monkeypatch):
     assert index["summary"]["by_layer"]["long_term"] == 1
     assert index["summary"]["by_layer"]["mid_term"] == 1
     assert any(r["source"] == "mind.upper_authority" for r in index["records"])
+
+
+def test_build_index_reads_structured_promoted_memories(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "knowledge_base").mkdir()
+    (repo / "data").mkdir()
+    (repo / "knowledge_base" / "shion_promoted_memories.md").write_text(
+        "\n".join(
+            [
+                "# 紫苑 昇格済み長期記憶",
+                "",
+                "- content: リースに必要なものは何よりもスピードだ",
+                "  type: value_memory",
+                "  domain: lease_sales",
+                "  confidence: user_taught",
+                "  use_when: 初回回答で優先順位を決める時",
+                "  judgment_asset_candidate: true",
+                "  source: promo_speed",
+                "  kind: teaching",
+                "  promoted_at: 2026-08-25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder, "REPO_ROOT", repo)
+
+    index = builder.build_index()
+
+    record = next(r for r in index["records"] if r["source"] == "promoted_memory")
+    assert record["content"] == "リースに必要なものは何よりもスピードだ"
+    assert record["memory_type"] == "value_memory"
+    assert record["domain"] == "lease_sales"
+    assert record["confidence_label"] == "user_taught"
+    assert record["judgment_asset_candidate"] is True
+    assert record["promotion_source_id"] == "promo_speed"
+
+
+def test_build_index_keeps_short_structured_promoted_memory(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "knowledge_base").mkdir()
+    (repo / "data").mkdir()
+    (repo / "knowledge_base" / "shion_promoted_memories.md").write_text(
+        "\n".join(
+            [
+                "# 紫苑 昇格済み長期記憶",
+                "",
+                "- content: 情報はすべて判断資産だ",
+                "  type: value_memory",
+                "  domain: judgment_asset_ops",
+                "  confidence: user_taught",
+                "  use_when: 判断資産化するか迷う情報を扱う時",
+                "  judgment_asset_candidate: false",
+                "  source: promo_asset",
+                "  kind: teaching",
+                "  promoted_at: 2026-08-25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder, "REPO_ROOT", repo)
+
+    index = builder.build_index()
+
+    record = next(r for r in index["records"] if r["source"] == "promoted_memory")
+    assert record["content"] == "情報はすべて判断資産だ"
+    assert record["memory_type"] == "value_memory"
+    assert record["domain"] == "judgment_asset_ops"
