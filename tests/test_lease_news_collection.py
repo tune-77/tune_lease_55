@@ -166,6 +166,54 @@ def test_daily_digest_shows_fresh_content_after_related_report_merge(tmp_path):
     assert not any("円安" in line for line in item["summary_lines"])
 
 
+def test_daily_digest_prefers_note_date_over_gcs_download_mtime(tmp_path):
+    """GCS一括同期で古いファイルのmtimeが新しくなっても、日付で今日分を選ぶ。"""
+    vault = tmp_path / "vault"
+    news_dir = vault / "05-クリップ_記事" / "業界リスクニュース"
+    news_dir.mkdir(parents=True)
+
+    fresh = news_dir / "2026-08-24_業界リスクニュース_今日の設備投資.md"
+    fresh.write_text(
+        "\n".join(
+            [
+                "---",
+                "date: 2026-08-24",
+                "title: 今日の設備投資",
+                "source: 日刊工業新聞",
+                "tags: [設備投資]",
+                "---",
+                "## 3行要約",
+                "- 今日分の設備投資ニュース。",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    for idx in range(50):
+        old = news_dir / f"2026-06-06_業界リスクニュース_古いニュース{idx:02d}.md"
+        old.write_text(
+            "\n".join(
+                [
+                    "---",
+                    "date: 2026-06-06",
+                    f"title: 古いニュース{idx:02d}",
+                    "source: 古い媒体",
+                    "---",
+                    "## 3行要約",
+                    "- 古いニュース。",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    digest = lease_news_digest.build_daily_news_digest(date_str="2026-08-24", vault=vault, limit=3)
+
+    assert digest["available"] is True
+    assert digest["is_stale"] is False
+    assert digest["date"] == "2026-08-24"
+    assert "今日の設備投資" in digest["items"][0]["title"]
+
+
 def test_news_action_reflects_escalated_risk_after_related_report_merge(tmp_path):
     """続報でトピックの実質的なリスク種別が変わったら、region/importance/tags/活用メモ/
     リンクも当日内容へ更新され、審査アクション推論(_infer_news_action)が新しいリスクを

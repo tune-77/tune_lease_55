@@ -5,6 +5,7 @@ def test_daily_pipeline_runs_cloudrun_memory_regression_tests():
     script = Path("scripts/run_daily_improvement_core.sh").read_text(encoding="utf-8")
 
     assert "test_find_vault_refreshes_cloudrun_gcs_vault" in script
+    assert "test_daily_digest_prefers_note_date_over_gcs_download_mtime" in script
     assert "tests/test_chat_context_builder.py" in script
     assert "tests/test_chat_mid_term_memory.py" in script
     assert "tests/test_build_cloud_chat_memory_pack.py" in script
