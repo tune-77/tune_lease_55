@@ -150,6 +150,10 @@ from lease_news_digest import (
     record_lease_news_judgment_change,
     lease_news_focus_as_text,
 )
+from api.knowledge.news_classifier import (
+    build_classified_news_summary_from_vault,
+    load_latest_classified_news_summary,
+)
 from obsidian_daily_intelligence import (
     obsidian_daily_intelligence_as_text,
     record_obsidian_daily_intelligence_event,
@@ -2067,6 +2071,7 @@ def get_dashboard_stats():
         payload["lease_news_focus"] = _lease_news_focus_to_dict(get_latest_lease_news_focus())
         payload["lease_news_reflection"] = _lease_news_reflection_to_dict(get_latest_lease_news_reflection())
         payload["lease_news_actions"] = _lease_news_actions_to_dict(get_latest_lease_news_actions())
+        payload["lease_news_classified_summary"] = load_latest_classified_news_summary()
         payload["improvement_highlights"] = _load_latest_improvement_highlights(limit=3)
         payload["lease_system_gaps"] = _load_lease_system_gap_analysis(limit=3)
         return payload
@@ -2329,6 +2334,30 @@ def get_lease_news_daily_digest_api(limit: int = 3):
     """Obsidianの日次ニュースを、対話室の朝報向けに短く返す。"""
     try:
         return build_daily_news_digest(limit=max(1, min(int(limit), 5)))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/lease-news/classified-summary")
+def get_lease_news_classified_summary_api(limit: int = 30, days: int = 14, refresh: bool = False):
+    """ニュースを業種別・社会情勢・金融情報の軸で束ね、審査示唆つきで返す。"""
+    try:
+        if refresh:
+            vault = find_vault()
+            return build_classified_news_summary_from_vault(
+                vault,
+                limit=max(1, min(int(limit), 80)),
+                days=max(1, min(int(days), 60)),
+            )
+        latest = load_latest_classified_news_summary()
+        if latest.get("available"):
+            return latest
+        vault = find_vault()
+        return build_classified_news_summary_from_vault(
+            vault,
+            limit=max(1, min(int(limit), 80)),
+            days=max(1, min(int(days), 60)),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -8222,6 +8251,13 @@ def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
             source_summary=source[:100],
             tag_summary=", ".join(summary.get("tags", [])),
         )
+    except Exception:
+        pass
+
+    try:
+        from api.knowledge.news_classifier import write_classified_news_summary
+
+        _background_executor.submit(lambda: write_classified_news_summary(vault, limit=30, days=14))
     except Exception:
         pass
 

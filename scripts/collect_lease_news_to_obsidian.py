@@ -40,6 +40,7 @@ from lease_news_digest import (
     write_lease_news_focus_note,
     write_lease_news_reflection_note,
 )
+from api.knowledge.news_classifier import write_classified_news_summary
 from runtime_paths import ICLOUD_OBSIDIAN_DOCS, resolve_obsidian_vault
 
 
@@ -1144,6 +1145,7 @@ def main(argv: list[str] | None = None) -> int:
     focus_result = write_lease_news_focus_note(date_str=date_str, vault=vault)
     actions_result = write_lease_news_actions_note(date_str=date_str, vault=vault)
     signal_result = write_news_judgment_signals(date_str=date_str, vault=vault)
+    classified_summary = write_classified_news_summary(vault=vault, limit=max(30, int(args.limit)), days=14)
     reflection_result = write_lease_news_reflection_note(date_str=date_str, vault=vault, focus=None)
     if reflection_result:
         try:
@@ -1181,6 +1183,8 @@ def main(argv: list[str] | None = None) -> int:
     if signal_result:
         print(f"news_judgment_signals={signal_result['path']}")
         print(f"news_judgment_signals_count={signal_result['count']}")
+    if classified_summary:
+        print(f"news_classified_summary_count={classified_summary.get('article_count', 0)}")
     if reflection_result:
         reflection_path = Path(reflection_result.note_path)
         focus_paths.append(reflection_path)
@@ -1196,6 +1200,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"actions_saved=1")
     if signal_result:
         print(f"news_judgment_signals_saved=1")
+    if classified_summary:
+        print(f"news_classified_summary_saved=1")
     if reflection_result:
         print(f"reflection_saved=1")
     print(f"news_dir={vault / news_dir}")
