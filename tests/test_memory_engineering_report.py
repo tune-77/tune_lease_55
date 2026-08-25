@@ -96,7 +96,7 @@ def test_build_report_tracks_write_promotion_read_and_forgetting(tmp_path):
                 ]
             },
         },
-        target_date="2026-08-09",
+        target_date="2026-08-10",
     )
 
     summary = payload["summary"]
@@ -119,16 +119,40 @@ def test_build_report_tracks_write_promotion_read_and_forgetting(tmp_path):
     assert payload["state_inventory"]["utility_kpis"]["checklist_review_rate"] == 0.4
     assert payload["forgetting_policy"]["current_pressure"]["sleeping_active_rules"] == 1
     assert payload["forgetting_policy"]["next_review_samples"]["sleeping_rules"][0]["rule_id"] == "r_sleep"
-    assert payload["daily_review_focus"]["actions"][0]["id"] == "review_open_candidates"
-    assert payload["daily_review_focus"]["actions"][0]["items"][0]["title"] == "候補A"
-    assert payload["daily_review_focus"]["actions"][1]["items"]["count"] == 4
-    assert payload["daily_review_focus"]["actions"][1]["items"]["sample_count"] == 0
-    assert payload["daily_review_focus"]["actions"][2]["items"][0]["rule_id"] == "r_sleep"
+    assert payload["weekly_review_focus"]["is_review_due"] is True
+    assert payload["weekly_review_focus"]["actions"][0]["id"] == "review_open_candidates"
+    assert payload["weekly_review_focus"]["actions"][0]["items"][0]["title"] == "候補A"
+    assert payload["weekly_review_focus"]["actions"][1]["items"]["count"] == 4
+    assert payload["weekly_review_focus"]["actions"][1]["items"]["sample_count"] == 0
+    assert payload["weekly_review_focus"]["actions"][2]["items"][0]["rule_id"] == "r_sleep"
     assert payload["write_path"]["review_batches"]["total_batches"] == 1
     assert payload["write_path"]["review_batches"]["top_batches"][0]["count"] == 1
     assert any(item["action"] == "memory_entry_metadata_gate" for item in payload["recommendations"])
     assert any(item["action"] == "contradiction_review" for item in payload["recommendations"])
     assert any(item["action"] == "quarantine_sample_review" for item in payload["recommendations"])
+
+
+def test_weekly_review_focus_suppresses_actions_when_not_due(tmp_path):
+    candidate_path = tmp_path / "data" / "candidates.jsonl"
+    _write_jsonl(candidate_path, [{"id": "a1", "status": "candidate", "title": "候補A"}])
+
+    payload = mer.build_report(
+        canonical_preview={"canonical_rules": []},
+        canonical_active={"rules": []},
+        memory_index={"records": []},
+        memory_usage_rows=[],
+        jsonl_sources=[("test_candidates", candidate_path)],
+        review_state={"rejection_patterns": [{"inbox_id": "old"}]},
+        contradictions={},
+        retrieval_graph={},
+        target_date="2026-08-11",
+    )
+
+    focus = payload["weekly_review_focus"]
+    assert focus["is_review_due"] is False
+    assert focus["next_review_date"] == "2026-08-17"
+    assert focus["auto_reject_pattern_count"] == 1
+    assert focus["actions"] == []
 
 
 def test_review_state_reduces_open_review_count(tmp_path):
@@ -308,7 +332,11 @@ def test_markdown_contains_four_lenses():
             "current_pressure": {"sleeping_active_rules": 0},
             "next_review_samples": {},
         },
-        "daily_review_focus": {
+        "weekly_review_focus": {
+            "cadence": "weekly",
+            "is_review_due": True,
+            "next_review_date": "2026-08-17",
+            "auto_reject_pattern_count": 0,
             "actions": [
                 {
                     "id": "review_open_candidates",
@@ -326,7 +354,7 @@ def test_markdown_contains_four_lenses():
     assert "## Microsoft Lens: Utility Density" in markdown
     assert "## Anthropic Lens: Control" in markdown
     assert "## Forgetting Policy" in markdown
-    assert "## Daily Review Focus" in markdown
+    assert "## Weekly Review Focus" in markdown
     assert "## Nvidia Lens: Retrieval Pressure" in markdown
 
 
@@ -356,7 +384,7 @@ def test_write_outputs_creates_json_and_markdown(tmp_path):
         "maintenance_path": {"by_status": {}, "by_type": {}, "forgetting_review_sample": []},
         "state_inventory": {},
         "forgetting_policy": {},
-        "daily_review_focus": {},
+        "weekly_review_focus": {},
         "hardware_pressure_proxy": {},
         "recommendations": [],
     }
