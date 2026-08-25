@@ -131,14 +131,19 @@ def main():
         if rate >= FAILURE_RATE_THRESHOLD:
             penalty_steps.append((step, c["bad"], total, rate, len(c["bad_days"])))
 
-    if not penalty_steps:
-        print(f"直近{LOOKBACK_DAYS}日間で失敗率閾値({FAILURE_RATE_THRESHOLD*100:.0f}%)超のステップはありません。", flush=True)
-        return
-
     ledger = load_ledger()
     base_rev = max_rev_number(load_all_rev_sources())
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     resolved = resolve_recovered_entries(ledger, counts, now_iso)
+
+    if not penalty_steps:
+        if resolved > 0:
+            with LEDGER_FILE.open("w") as f:
+                json.dump(ledger, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+            print(f"復旧済みパイプライン障害を自動整理: {resolved} 件: {LEDGER_FILE}", flush=True)
+        print(f"直近{LOOKBACK_DAYS}日間で失敗率閾値({FAILURE_RATE_THRESHOLD*100:.0f}%)超のステップはありません。", flush=True)
+        return
 
     added = 0
     for step, bad, total, rate, bad_days in sorted(penalty_steps, key=lambda x: -x[3]):
