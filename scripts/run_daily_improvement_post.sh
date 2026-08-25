@@ -246,6 +246,14 @@ echo "[記憶] Shion Memory Sentinel を生成（記憶監視レポートを統�
 log_step "build_shion_memory_sentinel_report" $?
 
 echo ""
+echo "[運用] Ops Friction Doctor を生成し、低リスクな再生成/同期だけ自動適用..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/ops_friction_doctor.py" \
+  --apply-safe \
+  --output-json "${PROJECT_ROOT}/reports/ops_friction_latest.json" \
+  --output-md "${PROJECT_ROOT}/reports/ops_friction_latest.md"
+log_step "ops_friction_doctor" $?
+
+echo ""
 echo "[育成] Obsidianグラフの複雑さが判断に効いているかを測定（観測のみ）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_obsidian_graph_judgment_effect.py"
 log_step "build_obsidian_graph_judgment_effect" $?
