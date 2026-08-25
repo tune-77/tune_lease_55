@@ -46,6 +46,105 @@ def test_list_inbox_overlays_review_state(tmp_path, monkeypatch):
     assert payload["items"][0]["note"] == "使う"
 
 
+def test_list_inbox_auto_rejects_similar_unreviewed_candidates(tmp_path, monkeypatch):
+    source = tmp_path / "candidates.jsonl"
+    _write_jsonl(
+        source,
+        [
+            {
+                "id": "old",
+                "claim": "雑談の相槌だけで審査行動を変えないため判断資産にしない",
+                "candidate_type": "judgment_rule",
+                "topic": "memory_health",
+            },
+            {
+                "id": "new",
+                "claim": "雑談の相槌だけで審査行動を変えないため判断資産にしない。",
+                "candidate_type": "judgment_rule",
+                "topic": "memory_health",
+            },
+        ],
+    )
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "reviews": {
+                    "test_source__old": {
+                        "status": "rejected",
+                        "note": "ノイズ",
+                        "edited_claim": "",
+                        "reviewed_at": "2026-08-25T10:00:00",
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(inbox, "SOURCE_PATHS", {"test_source": source})
+    monkeypatch.setattr(inbox, "REVIEW_STATE_PATH", state_path)
+
+    payload = inbox.list_inbox(status="candidate")
+
+    assert payload["summary"]["by_status"]["rejected"] == 2
+    assert payload["summary"]["open"] == 0
+    assert payload["filtered_total"] == 0
+
+    rejected_payload = inbox.list_inbox(status="rejected")
+    auto_rejected = next(item for item in rejected_payload["items"] if item["source_item_id"] == "new")
+    assert auto_rejected["auto_rejected"] is True
+    assert auto_rejected["auto_reject_matched_inbox_id"] == "test_source__old"
+
+
+def test_review_candidate_persists_rejection_pattern_and_forgets_on_override(tmp_path, monkeypatch):
+    source = tmp_path / "candidates.jsonl"
+    _write_jsonl(source, [{"id": "a1", "claim": "同じノイズ候補を次回から隠す", "candidate_type": "noise"}])
+    state_path = tmp_path / "state.json"
+    audit_path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(inbox, "SOURCE_PATHS", {"test_source": source})
+    monkeypatch.setattr(inbox, "REVIEW_STATE_PATH", state_path)
+    monkeypatch.setattr(inbox, "REVIEW_AUDIT_PATH", audit_path)
+
+    inbox.review_candidate("test_source__a1", decision="rejected")
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["rejection_patterns"][0]["inbox_id"] == "test_source__a1"
+
+    inbox.review_candidate("test_source__a1", decision="held")
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["rejection_patterns"] == []
+
+
+def test_list_inbox_reports_weekly_auto_reject_review_policy(tmp_path, monkeypatch):
+    source = tmp_path / "candidates.jsonl"
+    _write_jsonl(source, [{"id": "a1", "claim": "候補"}])
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "reviews": {"test_source__old": {"status": "rejected"}},
+                "rejection_patterns": [{"inbox_id": "pattern_old", "text_hash": "abc"}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(inbox, "SOURCE_PATHS", {"test_source": source})
+    monkeypatch.setattr(inbox, "REVIEW_STATE_PATH", state_path)
+
+    policy = inbox.list_inbox(status="all")["auto_reject_review_policy"]
+
+    assert policy["cadence"] == "weekly"
+    assert policy["review_weekday"] == "Monday"
+    assert policy["pattern_count"] == 2
+    assert policy["persisted_pattern_count"] == 1
+    assert policy["rejected_review_count"] == 1
+
+
 def test_review_candidate_writes_state_and_audit(tmp_path, monkeypatch):
     source = tmp_path / "candidates.jsonl"
     _write_jsonl(source, [{"id": "a1", "claim": "修正したい記憶候補"}])

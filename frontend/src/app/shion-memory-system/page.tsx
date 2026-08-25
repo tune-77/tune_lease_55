@@ -76,6 +76,10 @@ type MemoryReviewItem = {
   date_hint: string;
   evidence_path: string;
   raw_status: string;
+  auto_rejected?: boolean;
+  auto_reject_reason?: string;
+  auto_reject_matched_inbox_id?: string;
+  auto_reject_score?: number;
 };
 
 type MemoryReviewInboxResponse = {
@@ -90,6 +94,14 @@ type MemoryReviewInboxResponse = {
   offset: number;
   items: MemoryReviewItem[];
   review_policy: string;
+  auto_reject_review_policy?: {
+    cadence: string;
+    review_weekday: string;
+    next_review_date: string;
+    pattern_count: number;
+    policy: string;
+    reason: string;
+  };
   state_path: string;
 };
 
@@ -437,6 +449,14 @@ function MemoryReviewInbox() {
           </span>
           <span>{data?.state_path || "data/memory_review_inbox_state.json"}</span>
         </div>
+        {data?.auto_reject_review_policy && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs font-bold leading-6 text-slate-600">
+            自動却下ルール: {formatNumber(data.auto_reject_review_policy.pattern_count)}件 / 見直しは週次
+            {data.auto_reject_review_policy.next_review_date
+              ? `（次回 ${data.auto_reject_review_policy.next_review_date}）`
+              : ""}
+          </div>
+        )}
 
         <div className="mt-3 space-y-3">
           {(data?.items || []).map((item) => (
@@ -453,9 +473,20 @@ function MemoryReviewInbox() {
                     <span className="rounded bg-white px-2 py-1 text-[11px] font-black text-slate-600">
                       {REVIEW_STATUS_LABEL[item.status] || item.status}
                     </span>
+                    {item.auto_rejected && (
+                      <span className="rounded bg-rose-100 px-2 py-1 text-[11px] font-black text-rose-700">
+                        自動却下
+                      </span>
+                    )}
                   </div>
                   <h3 className="mt-3 text-base font-black text-slate-950">{item.title}</h3>
                   <p className="mt-2 text-sm font-bold leading-7 text-slate-700">{item.claim}</p>
+                  {item.auto_rejected && (
+                    <p className="mt-2 text-xs font-bold leading-6 text-rose-700">
+                      {item.auto_reject_reason}
+                      {item.auto_reject_score ? ` / 一致度 ${item.auto_reject_score}` : ""}
+                    </p>
+                  )}
                   <p className="mt-2 text-xs font-bold text-slate-500">{item.evidence_path}</p>
                 </div>
               </div>
