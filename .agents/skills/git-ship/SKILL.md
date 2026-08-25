@@ -16,6 +16,7 @@ description: git add・commit・push・merge・ブランチ削除を一気に実
 最初にこの順で確認する:
 
 ```bash
+python scripts/ops_friction_doctor.py
 python scripts/classify_git_ship_candidates.py
 git branch --show-current
 git status -sb
@@ -25,6 +26,7 @@ git log --oneline --left-right --graph --cherry-pick HEAD...origin/master | head
 
 判断:
 - `include` だけを基本ステージング対象にする。`review` は必要性を説明できるものだけ入れる。
+- `ops_friction_doctor.py` が Gitship dirty noise / PR review follow-up を出した場合は、先に分類器とPR状態確認で対象を絞る。
 - `avoid` は原則入れない。特に `data/`、`reports/*_latest.*`、`static_data/*.json`、`frontend/public/**/*.webp` は日次生成物・実行時成果物として扱う。
 - `master/main` へ直接pushしない。保護ブランチ前提で、フィーチャーブランチpush → GitHub PR作成を標準にする。
 - `master` が別worktreeで使用中でも、無理にcheckoutしない。現在ブランチに `origin/master` をmergeしてリモートへpushし、PRで統合する。

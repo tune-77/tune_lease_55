@@ -12,6 +12,7 @@ Use this skill to keep the current app stack available and publish the Next UI t
 Run from the repository root:
 
 ```bash
+python scripts/ops_friction_doctor.py
 python scripts/local_deploy_doctor.py --public-tunnel
 ```
 
@@ -71,20 +72,21 @@ Reason: the app stack has separate API, Next, and tunnel processes, and a full f
 Scope: use when restoring local Next/FastAPI availability or refreshing the public Cloudflare quick tunnel.
 Retirement: remove this workflow if the LaunchAgent exposes a reliable health-and-restart command that handles API, Next, and tunnel checks end to end.
 
-1. Run `python scripts/local_deploy_doctor.py --public-tunnel` first.
-2. If the doctor recommends `install_launchagent`, run `bash scripts/install_next_launchagent.sh`.
-3. If it recommends `restart_api`, `restart_next`, or `restart_tunnel`, run that targeted `RESTART_SCOPE` instead of a full restart.
-4. If it recommends `kickstart_launchagent`, use `launchctl kickstart -k gui/$(id -u)/com.tunelease.next`.
-5. If it recommends `start_all`, use `run_next_stable.sh` with `PUBLIC_TUNNEL=1`.
-6. Use the foreground full restart only if launchd is unavailable or the user explicitly asks for it.
-7. Verify health:
+1. Run `python scripts/ops_friction_doctor.py` to catch repeated operational traps from recent logs.
+2. Run `python scripts/local_deploy_doctor.py --public-tunnel` first.
+3. If the local doctor recommends `install_launchagent`, run `bash scripts/install_next_launchagent.sh`.
+4. If it recommends `restart_api`, `restart_next`, or `restart_tunnel`, run that targeted `RESTART_SCOPE` instead of a full restart.
+5. If it recommends `kickstart_launchagent`, use `launchctl kickstart -k gui/$(id -u)/com.tunelease.next`.
+6. If it recommends `start_all`, use `run_next_stable.sh` with `PUBLIC_TUNNEL=1`.
+7. Use the foreground full restart only if launchd is unavailable or the user explicitly asks for it.
+8. Verify health:
 
 ```bash
 curl --max-time 10 -sS http://127.0.0.1:8000/docs >/dev/null
 curl --max-time 10 -sS http://127.0.0.1:3000/ >/dev/null
 ```
 
-8. Report the local Next URL and the newest Cloudflare URL.
+9. Report the local Next URL and the newest Cloudflare URL.
 
 ## Notes
 

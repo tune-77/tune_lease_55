@@ -1,5 +1,7 @@
 import importlib.util
 import sys
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "analyze_pipeline_health.py"
@@ -70,3 +72,48 @@ def test_resolve_recovered_entries_marks_active_alert_stale_resolved():
     assert resolved == 1
     assert ledger[0]["status"] == "stale_resolved"
     assert ledger[0]["pending_review"] is False
+
+
+def test_main_persists_recovered_entries_even_without_new_penalties(tmp_path, monkeypatch):
+    """復旧済み整理は、新規の失敗率超過がない日にも保存される。"""
+    log_path = tmp_path / "pipeline_step_log.jsonl"
+    ledger_path = tmp_path / "ledger_rules.json"
+    now = datetime.now(timezone.utc)
+    run_date = now.strftime("%Y%m%d")
+    step = "check_obsidian_ops_consistency"
+
+    entries = [
+        {"ts": "2026-08-24T19:00:00Z", "run_date": run_date, "step": step, "exit_code": 1},
+        {"ts": "2026-08-24T19:05:00Z", "run_date": run_date, "step": step, "exit_code": 0},
+        {"ts": "2026-08-24T19:10:00Z", "run_date": run_date, "step": step, "exit_code": 0},
+    ]
+    log_path.write_text(
+        "\n".join(json.dumps(entry, ensure_ascii=False) for entry in entries) + "\n",
+        encoding="utf-8",
+    )
+    ledger_path.write_text(
+        json.dumps(
+            [
+                {
+                    "rev_id": "REV-303a",
+                    "status": "pending_review",
+                    "pending_review": True,
+                    "source": "analyze_pipeline_health",
+                    "description": f"[パイプライン自動検出] {step} が過去7日で失敗率50%",
+                }
+            ],
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(health_mod, "LOG_FILE", log_path)
+    monkeypatch.setattr(health_mod, "LEDGER_FILE", ledger_path)
+
+    health_mod.main()
+
+    [updated] = json.loads(ledger_path.read_text(encoding="utf-8"))
+    assert updated["status"] == "stale_resolved"
+    assert updated["pending_review"] is False
+    assert updated["resolved_at"]
