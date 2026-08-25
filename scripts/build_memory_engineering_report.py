@@ -62,6 +62,7 @@ TERMINAL_REVIEW_STATUSES = {
 }
 
 MAINTENANCE_STATUSES = {"stale", "deprecated", "revised", "superseded"}
+WEEKLY_REVIEW_WEEKDAY = 0  # Monday
 
 
 def _read_json(path: Path) -> Any:
@@ -166,6 +167,13 @@ def _inferred_importance(row: dict[str, Any]) -> Any:
     if kind in {"judgment_rule", "risk_signal", "confirmation_question"}:
         return "medium"
     return None
+
+
+def _next_weekday(today: date, weekday: int) -> date:
+    days_until = (weekday - today.weekday()) % 7
+    if days_until == 0:
+        days_until = 7
+    return today + timedelta(days=days_until)
 
 
 def _inferred_confidence(row: dict[str, Any]) -> Any:
@@ -803,20 +811,39 @@ def _quarantine_focus(experience_flywheel: Any, *, limit: int = 5) -> dict[str, 
     }
 
 
-def build_daily_review_focus(
+def build_weekly_review_focus(
     *,
     jsonl_sources: list[tuple[str, Path]],
     review_state: dict[str, Any],
     experience_flywheel: Any,
     forgetting_policy: dict[str, Any],
+    today: date,
 ) -> dict[str, Any]:
+    review_due = today.weekday() == WEEKLY_REVIEW_WEEKDAY
+    rejection_patterns = review_state.get("rejection_patterns")
+    pattern_count = len(rejection_patterns) if isinstance(rejection_patterns, list) else 0
+    base = {
+        "mode": "read_only_weekly_memory_engineering_focus",
+        "cadence": "weekly",
+        "review_weekday": "Monday",
+        "is_review_due": review_due,
+        "next_review_date": _next_weekday(today, WEEKLY_REVIEW_WEEKDAY).isoformat(),
+        "auto_reject_pattern_count": pattern_count,
+        "policy": "show_review_actions_weekly_or_when_user_reports_false_positive",
+    }
+    if not review_due:
+        return {
+            **base,
+            "actions": [],
+            "secondary_samples": {},
+        }
     samples = forgetting_policy.get("next_review_samples") if isinstance(forgetting_policy, dict) else {}
     if not isinstance(samples, dict):
         samples = {}
     sleeping_rules = samples.get("sleeping_rules") if isinstance(samples.get("sleeping_rules"), list) else []
     unused_memory = samples.get("unused_memory") if isinstance(samples.get("unused_memory"), list) else []
     return {
-        "mode": "read_only_daily_memory_engineering_focus",
+        **base,
         "actions": [
             {
                 "id": "review_open_candidates",
@@ -897,11 +924,12 @@ def build_report(
         experience_flywheel=experience_flywheel or {},
         field_review=field_review or {},
     )
-    daily_review_focus = build_daily_review_focus(
+    weekly_review_focus = build_weekly_review_focus(
         jsonl_sources=jsonl_sources,
         review_state=review_state or {},
         experience_flywheel=experience_flywheel or {},
         forgetting_policy=forgetting_policy,
+        today=today,
     )
 
     contradiction_candidates = []
@@ -967,7 +995,7 @@ def build_report(
         },
         "state_inventory": state_inventory,
         "forgetting_policy": forgetting_policy,
-        "daily_review_focus": daily_review_focus,
+        "weekly_review_focus": weekly_review_focus,
         "hardware_pressure_proxy": summarize_retrieval_graph(retrieval_graph),
         "recommendations": build_recommendations(
             write_path_records=write_path_records,
@@ -1178,46 +1206,52 @@ def build_markdown(payload: dict[str, Any]) -> str:
                     f"- `{item.get('rule_id')}` {item.get('concept')}: "
                     f"{item.get('statement')}"
                 )
-    focus = payload.get("daily_review_focus") or {}
+    focus = payload.get("weekly_review_focus") or {}
     if focus:
         lines += [
             "",
-            "## Daily Review Focus",
+            "## Weekly Review Focus",
+            "",
+            f"- Cadence: {focus.get('cadence', 'weekly')} / due: {focus.get('is_review_due', False)} / next: {focus.get('next_review_date', '')}",
+            f"- Auto reject patterns: {focus.get('auto_reject_pattern_count', 0)}",
             "",
         ]
-        for action in focus.get("actions") or []:
-            lines.append(f"### {action.get('label')}")
-            lines.append("")
-            lines.append(f"- Why: {action.get('why')}")
-            items = action.get("items")
-            if isinstance(items, list):
-                if items:
-                    for item in items[:5]:
-                        if action.get("id") == "review_open_candidates":
-                            lines.append(
-                                f"- `{item.get('source')}::{item.get('source_item_id')}` "
-                                f"{item.get('title')}: {item.get('claim')}"
-                            )
-                        elif action.get("id") == "exercise_sleeping_active_rules":
-                            lines.append(
-                                f"- `{item.get('rule_id')}` {item.get('concept')}: "
-                                f"{item.get('statement')}"
-                            )
-                        else:
-                            lines.append(f"- `{item.get('id', '')}` {item}")
-                else:
-                    lines.append("- No items.")
-            elif isinstance(items, dict):
-                lines.append(f"- Count: {items.get('count', 0)}")
-                lines.append(f"- Sample count: {items.get('sample_count', 0)}")
-                lines.append(f"- Sample by source: `{items.get('sample_by_source', {})}`")
-                lines.append(f"- Review hint: {items.get('review_hint', '')}")
-                for item in items.get("samples") or []:
-                    lines.append(
-                        f"- `{item.get('id')}` {item.get('source')} "
-                        f"{item.get('reason')}: {item.get('question') or item.get('decision_preview')}"
-                    )
-            lines.append("")
+        if not focus.get("is_review_due"):
+            lines.append("- Review actions are suppressed today.")
+        else:
+            for action in focus.get("actions") or []:
+                lines.append(f"### {action.get('label')}")
+                lines.append("")
+                lines.append(f"- Why: {action.get('why')}")
+                items = action.get("items")
+                if isinstance(items, list):
+                    if items:
+                        for item in items[:5]:
+                            if action.get("id") == "review_open_candidates":
+                                lines.append(
+                                    f"- `{item.get('source')}::{item.get('source_item_id')}` "
+                                    f"{item.get('title')}: {item.get('claim')}"
+                                )
+                            elif action.get("id") == "exercise_sleeping_active_rules":
+                                lines.append(
+                                    f"- `{item.get('rule_id')}` {item.get('concept')}: "
+                                    f"{item.get('statement')}"
+                                )
+                            else:
+                                lines.append(f"- `{item.get('id', '')}` {item}")
+                    else:
+                        lines.append("- No items.")
+                elif isinstance(items, dict):
+                    lines.append(f"- Count: {items.get('count', 0)}")
+                    lines.append(f"- Sample count: {items.get('sample_count', 0)}")
+                    lines.append(f"- Sample by source: `{items.get('sample_by_source', {})}`")
+                    lines.append(f"- Review hint: {items.get('review_hint', '')}")
+                    for item in items.get("samples") or []:
+                        lines.append(
+                            f"- `{item.get('id')}` {item.get('source')} "
+                            f"{item.get('reason')}: {item.get('question') or item.get('decision_preview')}"
+                        )
+                lines.append("")
     graph = payload.get("hardware_pressure_proxy") or {}
     lines += [
         "",
