@@ -9,7 +9,8 @@ DM チャンネルを定期的にポーリングして新着メッセージに�
 Event Subscriptions 不要。既存の Bot Token Scopes だけで動作。
 
 必要スコープ: chat:write, im:read, im:history
-（channels:history, app_mentions:read もあれば公開チャンネル対応可）
+（Socket Mode + app_mentions:read があれば、公開/プライベートチャンネルで
+ ボットを @メンションした際にスレッド内で応答する。channels:history は不要）
 
 起動方法:
     python slack_bot.py
@@ -270,8 +271,27 @@ def _parse_command(text: str) -> tuple[str, str]:
 # メッセージ処理
 # ══════════════════════════════════════════════════════════════════════════════
 
-def handle_message(client: WebClient, channel: str, text: str, user: str) -> None:
-    """メッセージを処理してSlackに返答。"""
+class _ThreadReplyClient:
+    """WebClientの薄いラッパー。chat_postMessage呼び出しに thread_ts を自動付与する
+    （チャンネルメンションへの応答をスレッド内に収め、チャンネルを荒らさないため）。
+    handle_message内の全chat_postMessage呼び出し箇所を書き換えずに済む。"""
+
+    def __init__(self, client: WebClient, thread_ts: str) -> None:
+        self._client = client
+        self._thread_ts = thread_ts
+
+    def chat_postMessage(self, **kwargs):  # noqa: N802 - Slack SDKの命名に合わせる
+        kwargs.setdefault("thread_ts", self._thread_ts)
+        return self._client.chat_postMessage(**kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+def handle_message(client: WebClient, channel: str, text: str, user: str, thread_ts: str | None = None) -> None:
+    """メッセージを処理してSlackに返答。thread_ts指定時はスレッド内に返信する（チャンネルメンション用）。"""
+    if thread_ts:
+        client = _ThreadReplyClient(client, thread_ts)
 
     # ── 審査セッション進行中は審査入力のみ受け付ける（AIチャット完全抑制）──
     if is_screening_active(channel):
@@ -484,9 +504,28 @@ def _socket_mode_main(bot_token: str, app_token: str) -> None:
         # ボット自身のメッセージや subtype はスキップ
         if not user or event.get("subtype") or event.get("bot_id"):
             return
+        # 公開チャンネル等のメッセージは on_app_mention 側に一本化する（二重応答防止）。
+        # channel_type が取得できない古いイベント形もあるため、DM(im)以外は明示的に除外する。
+        channel_type = event.get("channel_type")
+        if channel_type and channel_type != "im":
+            return
         logger.info(f"📩 Socket Mode メッセージ: user={user}, text={text[:80]}")
         try:
             handle_message(client, channel, text, user)
+        except Exception as e:
+            logger.error(f"メッセージ処理エラー: {e}")
+
+    @app.event("app_mention")
+    def on_app_mention(event, say):  # type: ignore[no-untyped-def]
+        channel = event.get("channel", "")
+        text = event.get("text", "")
+        user = event.get("user", "")
+        if not user or event.get("bot_id"):
+            return
+        thread_ts = event.get("thread_ts") or event.get("ts", "")
+        logger.info(f"📩 Socket Mode チャンネルメンション: user={user}, channel={channel}, text={text[:80]}")
+        try:
+            handle_message(client, channel, text, user, thread_ts=thread_ts)
         except Exception as e:
             logger.error(f"メッセージ処理エラー: {e}")
 
