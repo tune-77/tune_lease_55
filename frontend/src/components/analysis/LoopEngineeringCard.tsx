@@ -47,6 +47,12 @@ type LoopEngineeringCardProps = {
   enableRequestDraft?: boolean;
 };
 
+function proposalKey(proposal: GenericProposal, index: number): string {
+  const generatedAt = String(proposal.generated_at || "").trim();
+  const title = String(proposal.title || "").trim();
+  return generatedAt || title ? `${generatedAt}::${title}` : `index:${index}`;
+}
+
 function buildShionRequestDraft(proposal: GenericProposal): string {
   const title = String(proposal.title || "").trim();
   const targetPage = String(proposal.target_page || "").trim();
@@ -94,14 +100,14 @@ export default function LoopEngineeringCard({
   const [proposals, setProposals] = useState<GenericProposal[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [openDraftIndex, setOpenDraftIndex] = useState<number | null>(null);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [openDraftKey, setOpenDraftKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const copyDraft = async (index: number, text: string) => {
+  const copyDraft = async (key: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedIndex(index);
-      setTimeout(() => setCopiedIndex((current) => (current === index ? null : current)), 1500);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1500);
     } catch {
       // クリップボードが使えない環境では無視（テキストエリアから手動コピー可能）
     }
@@ -170,8 +176,10 @@ export default function LoopEngineeringCard({
         {proposals.length === 0 ? (
           <p className="text-xs text-slate-400">まだ{proposalKindLabel}はありません。ボタンを押すと生成されます。</p>
         ) : (
-          proposals.map((proposal, index) => (
-            <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          proposals.map((proposal, index) => {
+            const key = proposalKey(proposal, index);
+            return (
+            <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -245,13 +253,13 @@ export default function LoopEngineeringCard({
                 <div className="mt-2 border-t border-slate-200 pt-2">
                   <button
                     type="button"
-                    onClick={() => setOpenDraftIndex((current) => (current === index ? null : index))}
+                    onClick={() => setOpenDraftKey((current) => (current === key ? null : key))}
                     className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100"
                   >
                     <FileText className="h-3 w-3" />
                     採用したい: 紫苑依頼文を作る
                   </button>
-                  {openDraftIndex === index && (
+                  {openDraftKey === key && (
                     <div className="mt-2">
                       <textarea
                         readOnly
@@ -261,18 +269,19 @@ export default function LoopEngineeringCard({
                       />
                       <button
                         type="button"
-                        onClick={() => copyDraft(index, buildShionRequestDraft(proposal))}
+                        onClick={() => copyDraft(key, buildShionRequestDraft(proposal))}
                         className="mt-1 inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-700"
                       >
-                        {copiedIndex === index ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                        {copiedIndex === index ? "コピーしました" : "コピー"}
+                        {copiedKey === key ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        {copiedKey === key ? "コピーしました" : "コピー"}
                       </button>
                     </div>
                   )}
                 </div>
               )}
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
