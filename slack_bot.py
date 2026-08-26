@@ -60,16 +60,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# `claude:` コマンドを実行できる Slack User ID のホワイトリスト。
+# 状態を変更するコマンド（claude:、採用/修正/保留/却下、承認）を実行できる
+# Slack User ID のホワイトリスト。
 # 環境変数 SLACK_ALLOWED_USERS にカンマ区切りで設定（例: "U012AB3CD,U056EF7GH"）。
 # 未設定の場合は全ユーザーを拒否（安全側に倒す）。
-_ALLOWED_CLAUDE_USERS: set[str] = {
+_ALLOWED_ACTION_USERS: set[str] = {
     u.strip() for u in os.environ.get("SLACK_ALLOWED_USERS", "").split(",") if u.strip()
 }
-if not _ALLOWED_CLAUDE_USERS:
+if not _ALLOWED_ACTION_USERS:
     logger.warning(
         "⚠️ SLACK_ALLOWED_USERS が未設定です。"
-        " `claude:` コマンドは全ユーザーに対して無効になります。"
+        " `claude:`・採用/修正/保留/却下・承認コマンドは全ユーザーに対して無効になります。"
         " 有効化するには環境変数 SLACK_ALLOWED_USERS にユーザーIDをカンマ区切りで設定してください。"
     )
 
@@ -113,6 +114,38 @@ def _get_shion_reply(message: str, *, user_id: str, timeout_seconds: int = 45) -
     except Exception as e:
         logger.error(f"紫苑チャット呼び出しエラー: {e}")
         return ""
+
+
+def _post_agentic_skill_review(inbox_id: str, *, decision: str, note: str, timeout_seconds: int = 30) -> tuple[bool, str]:
+    """判断資産候補（agentic-skill-inbox）に採用/修正/保留/却下を記録する。"""
+    try:
+        resp = requests.post(
+            f"{_FASTAPI_BASE_URL}/api/judgment-assets/agentic-skill-inbox/{quote(inbox_id, safe='')}/review",
+            json={"decision": decision, "note": note},
+            headers=_fastapi_headers(),
+            timeout=timeout_seconds,
+        )
+        if resp.status_code >= 400:
+            return False, resp.text[:200]
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def _post_triage_approve(canonical_key: str, timeout_seconds: int = 30) -> tuple[bool, str]:
+    """「今日やる」確定済みの改善候補に実装承認を記録する（紫苑依頼文が生成される）。"""
+    try:
+        resp = requests.post(
+            f"{_FASTAPI_BASE_URL}/api/improvement/triage/approve",
+            json={"canonical_key": canonical_key},
+            headers=_fastapi_headers(),
+            timeout=timeout_seconds,
+        )
+        if resp.status_code >= 400:
+            return False, resp.text[:200]
+        return True, ""
+    except Exception as e:
+        return False, str(e)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -228,6 +261,13 @@ HELP_TEXT = """🤝 *リース審査AIボット — コマンド一覧*
 
 • *`改善レポート`* — 最新の改善提案レポートを表示
 
+• *`採用 <ID>`* / *`修正 <ID> <メモ>`* / *`保留 <ID>`* / *`却下 <ID> [理由]`*
+  — 紫苑の改善提案（判断資産候補）に判断を記録します（実行権限が必要）
+  例: `採用 skill-042`
+
+• *`承認 <canonical_key>`* — 「今日やる」確定済みの改善候補に実装承認を記録し、
+  紫苑依頼文を生成します（実行権限が必要）
+
 • *`ヘルプ`* — このメッセージを表示"""
 
 
@@ -264,6 +304,16 @@ def _parse_command(text: str) -> tuple[str, str]:
     for kw in ["claude:", "claude："]:
         if clean.lower().startswith(kw):
             return "claude", clean[len(kw):].strip()
+    if clean.startswith("採用"):
+        return "adopt", clean[len("採用"):].strip()
+    if clean.startswith("修正"):
+        return "revise", clean[len("修正"):].strip()
+    if clean.startswith("保留"):
+        return "hold", clean[len("保留"):].strip()
+    if clean.startswith("却下"):
+        return "reject", clean[len("却下"):].strip()
+    if clean.startswith("承認"):
+        return "approve_triage", clean[len("承認"):].strip()
     return "chat", clean
 
 
@@ -342,10 +392,10 @@ def handle_message(client: WebClient, channel: str, text: str, user: str, thread
         return
 
     if command == "claude":
-        if not _ALLOWED_CLAUDE_USERS:
+        if not _ALLOWED_ACTION_USERS:
             client.chat_postMessage(channel=channel, text="⚠️ `claude:` コマンドは現在無効です（SLACK_ALLOWED_USERS 未設定）。")
             return
-        if user not in _ALLOWED_CLAUDE_USERS:
+        if user not in _ALLOWED_ACTION_USERS:
             client.chat_postMessage(channel=channel, text="⚠️ このコマンドの実行権限がありません。")
             return
         # CLIフラグインジェクション防止: shlex でトークン化しフラグ形式（- 始まり）を除去
@@ -375,6 +425,43 @@ def handle_message(client: WebClient, channel: str, text: str, user: str, thread
         # Slackの文字数制限(3000文字)に合わせて分割送信
         for i in range(0, len(answer), 3000):
             client.chat_postMessage(channel=channel, text=f"🤖 *Claude:*\n{answer[i:i+3000]}")
+        return
+
+    if command in ("adopt", "revise", "hold", "reject"):
+        decision_by_command = {"adopt": "adopted", "revise": "revised", "hold": "held", "reject": "rejected"}
+        if not _ALLOWED_ACTION_USERS or user not in _ALLOWED_ACTION_USERS:
+            client.chat_postMessage(channel=channel, text="⚠️ このコマンドの実行権限がありません。")
+            return
+        inbox_id, _, note = argument.partition(" ")
+        inbox_id = inbox_id.strip()
+        note = note.strip()
+        if not inbox_id:
+            client.chat_postMessage(channel=channel, text="⚠️ 対象IDを指定してください（例: `採用 skill-042`）。")
+            return
+        if command == "revise" and not note:
+            client.chat_postMessage(channel=channel, text="⚠️ 修正内容をメモとして指定してください（例: `修正 skill-042 ここを直す`）。")
+            return
+        decision = decision_by_command[command]
+        ok, detail = _post_agentic_skill_review(inbox_id, decision=decision, note=note)
+        if ok:
+            client.chat_postMessage(channel=channel, text=f"✅ {inbox_id} を「{decision}」にしました。")
+        else:
+            client.chat_postMessage(channel=channel, text=f"⚠️ 更新に失敗しました: {detail}")
+        return
+
+    if command == "approve_triage":
+        if not _ALLOWED_ACTION_USERS or user not in _ALLOWED_ACTION_USERS:
+            client.chat_postMessage(channel=channel, text="⚠️ このコマンドの実行権限がありません。")
+            return
+        canonical_key = argument.strip()
+        if not canonical_key:
+            client.chat_postMessage(channel=channel, text="⚠️ canonical_key を指定してください（例: `承認 add-xxx-yyy`）。")
+            return
+        ok, detail = _post_triage_approve(canonical_key)
+        if ok:
+            client.chat_postMessage(channel=channel, text=f"✅ {canonical_key} の実装承認を記録しました（紫苑依頼文を生成済み）。")
+        else:
+            client.chat_postMessage(channel=channel, text=f"⚠️ 承認に失敗しました: {detail}")
         return
 
     if command == "discuss":
