@@ -1851,6 +1851,7 @@ export default function ImprovementLogPage() {
             proposalsEndpoint="/api/usage-loop/proposals"
             buttonLabel="紫苑に自己提案させる"
             proposalKindLabel="紫苑の自己提案"
+            enableRequestDraft
             fields={[
               { key: "target_page", label: "対象" },
               { key: "reason", label: "理由" },
