@@ -143,7 +143,7 @@ def test_revise_command_requires_note(slack_bot, monkeypatch):
     assert "メモ" in posted_text
 
 
-def test_revise_command_sends_edited_claim_after_confirmation(slack_bot, monkeypatch):
+def test_revise_command_keeps_note_out_of_edited_claim_after_confirmation(slack_bot, monkeypatch):
     monkeypatch.setattr(slack_bot, "_ENABLE_ACTION_COMMANDS", True)
     monkeypatch.setattr(slack_bot, "_ALLOWED_ACTION_USERS", {"U_ALLOWED"})
     review_mock = MagicMock(return_value=(True, ""))
@@ -158,7 +158,7 @@ def test_revise_command_sends_edited_claim_after_confirmation(slack_bot, monkeyp
         "skill-042",
         decision="revised",
         note="ここを直して",
-        edited_claim="ここを直して",
+        edited_claim="",
     )
 
 
@@ -190,6 +190,36 @@ def test_action_confirmation_can_be_cancelled(slack_bot, monkeypatch):
 
     review_mock.assert_not_called()
     assert "キャンセル" in client.chat_postMessage.call_args.kwargs["text"]
+
+
+def test_thread_confirmation_reply_can_be_detected_for_channel_message(slack_bot, monkeypatch):
+    monkeypatch.setattr(slack_bot, "_ENABLE_ACTION_COMMANDS", True)
+    monkeypatch.setattr(slack_bot, "_ALLOWED_ACTION_USERS", {"U_ALLOWED"})
+    review_mock = MagicMock(return_value=(True, ""))
+    monkeypatch.setattr(slack_bot, "_post_agentic_skill_review", review_mock)
+
+    client = MagicMock()
+    slack_bot.handle_message(
+        client,
+        "C123",
+        "<@BOT> 採用 skill-042",
+        "U_ALLOWED",
+        thread_ts="1700000000.000100",
+    )
+
+    assert slack_bot._has_pending_action_confirmation("C123", "U_ALLOWED", "1700000000.000100", "はい")
+    assert not slack_bot._has_pending_action_confirmation("C123", "U_ALLOWED", "", "はい")
+
+    slack_bot.handle_message(
+        client,
+        "C123",
+        "はい",
+        "U_ALLOWED",
+        thread_ts="1700000000.000100",
+        event_key="thread-yes-1",
+    )
+
+    review_mock.assert_called_once_with("skill-042", decision="adopted", note="", edited_claim="")
 
 
 def test_duplicate_confirmation_event_is_ignored(slack_bot, monkeypatch):

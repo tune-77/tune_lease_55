@@ -226,7 +226,7 @@ def _build_action_payload(command: str, argument: str) -> tuple[dict | None, str
             "target": inbox_id,
             "decision": decision_by_command[command],
             "note": note,
-            "edited_claim": note if command == "revise" else "",
+            "edited_claim": "",
         }, ""
     if command == "approve_triage":
         canonical_key = argument.strip()
@@ -258,6 +258,13 @@ def _store_pending_action(channel: str, user: str, thread_ts: str | None, payloa
         "payload": payload,
         "expires_at": time.monotonic() + _ACTION_CONFIRMATION_TTL_SECONDS,
     }
+
+
+def _has_pending_action_confirmation(channel: str, user: str, thread_ts: str | None, text: str) -> bool:
+    if not _confirmation_intent(text):
+        return False
+    _prune_action_state()
+    return _pending_action_key(channel, user, thread_ts) in _PENDING_ACTION_CONFIRMATIONS
 
 
 def _execute_confirmed_action(client: WebClient, channel: str, payload: dict) -> None:
@@ -745,8 +752,22 @@ def _socket_mode_main(bot_token: str, app_token: str) -> None:
         # ボット自身のメッセージや subtype はスキップ
         if not user or event.get("subtype") or event.get("bot_id"):
             return
-        # 公開チャンネル等のメッセージは on_app_mention 側に一本化する（二重応答防止）。
+        # 公開チャンネル等の通常メッセージは on_app_mention 側に一本化する（二重応答防止）。
+        # ただし、同じスレッドに確認待ちアクションがある確認返信はここで処理する。
+        thread_ts = event.get("thread_ts") or ""
         if not _is_direct_message_event(event):
+            if _has_pending_action_confirmation(channel, user, thread_ts, text):
+                try:
+                    handle_message(
+                        client,
+                        channel,
+                        text,
+                        user,
+                        thread_ts=thread_ts,
+                        event_key=f"socket-message:{event.get('client_msg_id') or event.get('ts') or ''}",
+                    )
+                except Exception as e:
+                    logger.error(f"メッセージ処理エラー: {e}")
             return
         logger.info(f"📩 Socket Mode メッセージ: user={user}, text={text[:80]}")
         try:
