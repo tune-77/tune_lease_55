@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -391,19 +392,33 @@ def _build_gemini_prompt(
 
 # ── 将来予測フェーズ プレースホルダ ──────────────────────────────────────────
 
-def forecast_placeholder(df: pd.DataFrame) -> None:
+def forecast_placeholder(df: pd.DataFrame) -> Optional[dict[str, float]]:
     """
-    将来予測フェーズのプレースホルダ（TimesFM 等の高度なモデル組み込み用）。
+    将来予測フェーズの簡易実装（TimesFM 等の高度なモデル組み込み用の土台）。
 
-    TODO:
-        - Google TimesFM / Prophet / N-BEATS 等を直接組み込む場合はここに実装
-        - df から時系列データを構築し、次期以降の予測値を返す形に変更する
-        - 現在は backend.py の /forecast エンドポイントが同等の処理を担当している
+    df の実績（"期"以外の数値列）から単純な線形トレンドで次期の参考値を算出する。
+    Google TimesFM / Prophet / N-BEATS 等の本格導入時はこの関数内を差し替える。
+    メインの予測は backend.py の /forecast エンドポイントが担当しており、
+    ここで返す値はあくまで参考の簡易予測。
 
     Args:
         df: 3期分の財務データ（pandas DataFrame）
+
+    Returns:
+        列名 → 次期の線形トレンド予測値 の dict。データが2期未満なら None。
     """
-    pass  # 将来実装予定
+    numeric_cols = [c for c in df.columns if c != "期"]
+    if len(df) < 2 or not numeric_cols:
+        return None
+
+    x = np.arange(len(df))
+    next_x = len(df)
+    forecast: dict[str, float] = {}
+    for col in numeric_cols:
+        y = df[col].to_numpy(dtype=float)
+        slope, intercept = np.polyfit(x, y, 1)
+        forecast[col] = float(slope * next_x + intercept)
+    return forecast
 
 
 # ── メインレンダリング関数 ────────────────────────────────────────────────────
