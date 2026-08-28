@@ -89,6 +89,18 @@ POLL_INTERVAL = 3  # 秒
 # mobile_app/api.py の _FASTAPI_BASE と同じ規約（環境変数 FASTAPI_URL、既定はローカル）。
 _FASTAPI_BASE_URL = os.environ.get("FASTAPI_URL", "http://localhost:8000").rstrip("/")
 _API_ACCESS_KEY = os.environ.get("API_ACCESS_KEY", "").strip()
+_ENABLE_ACTION_COMMANDS = os.environ.get("SLACK_ENABLE_ACTION_COMMANDS", "").strip().lower() in {"1", "true", "yes", "on"}
+_ACTION_CONFIRMATION_TTL_SECONDS = 300
+_ACTION_EVENT_DEDUPE_TTL_SECONDS = 600
+_PENDING_ACTION_CONFIRMATIONS: dict[tuple[str, str, str], dict] = {}
+_PROCESSED_ACTION_EVENT_KEYS: dict[str, float] = {}
+
+
+def _action_commands_disabled_message() -> str:
+    return (
+        "Slackからの採用/修正/保留/却下/承認は無効です。"
+        "判断資産や改善候補の確定はローカル画面またはCloud Run画面で行ってください。"
+    )
 
 
 def _fastapi_headers() -> dict[str, str]:
@@ -116,12 +128,19 @@ def _get_shion_reply(message: str, *, user_id: str, timeout_seconds: int = 45) -
         return ""
 
 
-def _post_agentic_skill_review(inbox_id: str, *, decision: str, note: str, timeout_seconds: int = 30) -> tuple[bool, str]:
+def _post_agentic_skill_review(
+    inbox_id: str,
+    *,
+    decision: str,
+    note: str,
+    edited_claim: str = "",
+    timeout_seconds: int = 30,
+) -> tuple[bool, str]:
     """判断資産候補（agentic-skill-inbox）に採用/修正/保留/却下を記録する。"""
     try:
         resp = requests.post(
             f"{_FASTAPI_BASE_URL}/api/judgment-assets/agentic-skill-inbox/{quote(inbox_id, safe='')}/review",
-            json={"decision": decision, "note": note},
+            json={"decision": decision, "note": note, "edited_claim": edited_claim},
             headers=_fastapi_headers(),
             timeout=timeout_seconds,
         )
@@ -146,6 +165,130 @@ def _post_triage_approve(canonical_key: str, timeout_seconds: int = 30) -> tuple
         return True, ""
     except Exception as e:
         return False, str(e)
+
+
+def _valid_slack_action_id(value: str) -> bool:
+    """Slackコマンドから受けるID/キーを、空白なしの短い識別子に限定する。"""
+    return bool(re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", value or ""))
+
+
+def _pending_action_key(channel: str, user: str, thread_ts: str | None = None) -> tuple[str, str, str]:
+    return (channel, user, thread_ts or "")
+
+
+def _prune_action_state(now: float | None = None) -> None:
+    now = time.monotonic() if now is None else now
+    for key, pending in list(_PENDING_ACTION_CONFIRMATIONS.items()):
+        if float(pending.get("expires_at") or 0) <= now:
+            _PENDING_ACTION_CONFIRMATIONS.pop(key, None)
+    for key, recorded_at in list(_PROCESSED_ACTION_EVENT_KEYS.items()):
+        if now - recorded_at > _ACTION_EVENT_DEDUPE_TTL_SECONDS:
+            _PROCESSED_ACTION_EVENT_KEYS.pop(key, None)
+
+
+def _confirmation_intent(text: str) -> str:
+    clean = re.sub(r"<@[A-Z0-9]+>", "", text or "").strip().lower()
+    if clean in {"はい", "yes", "y", "ok", "実行"}:
+        return "confirm"
+    if clean in {"キャンセル", "cancel", "no", "n", "やめる"}:
+        return "cancel"
+    return ""
+
+
+def _mark_action_event_processed(event_key: str | None, now: float | None = None) -> bool:
+    if not event_key:
+        return False
+    now = time.monotonic() if now is None else now
+    _prune_action_state(now)
+    if event_key in _PROCESSED_ACTION_EVENT_KEYS:
+        return True
+    _PROCESSED_ACTION_EVENT_KEYS[event_key] = now
+    return False
+
+
+def _build_action_payload(command: str, argument: str) -> tuple[dict | None, str]:
+    if command in ("adopt", "revise", "hold", "reject"):
+        decision_by_command = {"adopt": "adopted", "revise": "revised", "hold": "held", "reject": "rejected"}
+        label_by_command = {"adopt": "採用", "revise": "修正", "hold": "保留", "reject": "却下"}
+        inbox_id, _, note = argument.partition(" ")
+        inbox_id = inbox_id.strip()
+        note = note.strip()
+        if not inbox_id:
+            return None, "⚠️ 対象IDを指定してください（例: `採用 skill-042`）。"
+        if not _valid_slack_action_id(inbox_id):
+            return None, "⚠️ 対象IDは空白を含まない120文字以内のIDで指定してください。"
+        if command == "revise" and not note:
+            return None, "⚠️ 修正内容をメモとして指定してください（例: `修正 skill-042 ここを直す`）。"
+        return {
+            "kind": "agentic_skill_review",
+            "command": command,
+            "label": label_by_command[command],
+            "target": inbox_id,
+            "decision": decision_by_command[command],
+            "note": note,
+            "edited_claim": "",
+        }, ""
+    if command == "approve_triage":
+        canonical_key = argument.strip()
+        if not canonical_key:
+            return None, "⚠️ canonical_key を指定してください（例: `承認 add-xxx-yyy`）。"
+        if not _valid_slack_action_id(canonical_key):
+            return None, "⚠️ canonical_key は空白を含まない120文字以内のキーで指定してください。"
+        return {
+            "kind": "triage_approve",
+            "command": command,
+            "label": "承認",
+            "target": canonical_key,
+        }, ""
+    return None, "⚠️ 未対応のコマンドです。"
+
+
+def _confirmation_message(payload: dict) -> str:
+    note = str(payload.get("note") or "").strip()
+    note_line = f"\n内容: {note[:300]}" if note else ""
+    return (
+        f"確認: `{payload.get('label')} {payload.get('target')}` を実行します。{note_line}\n"
+        "5分以内に `はい` で実行、`キャンセル` で中止してください。"
+    )
+
+
+def _store_pending_action(channel: str, user: str, thread_ts: str | None, payload: dict) -> None:
+    _prune_action_state()
+    _PENDING_ACTION_CONFIRMATIONS[_pending_action_key(channel, user, thread_ts)] = {
+        "payload": payload,
+        "expires_at": time.monotonic() + _ACTION_CONFIRMATION_TTL_SECONDS,
+    }
+
+
+def _has_pending_action_confirmation(channel: str, user: str, thread_ts: str | None, text: str) -> bool:
+    if not _confirmation_intent(text):
+        return False
+    _prune_action_state()
+    return _pending_action_key(channel, user, thread_ts) in _PENDING_ACTION_CONFIRMATIONS
+
+
+def _execute_confirmed_action(client: WebClient, channel: str, payload: dict) -> None:
+    if payload.get("kind") == "agentic_skill_review":
+        ok, detail = _post_agentic_skill_review(
+            str(payload.get("target") or ""),
+            decision=str(payload.get("decision") or ""),
+            note=str(payload.get("note") or ""),
+            edited_claim=str(payload.get("edited_claim") or ""),
+        )
+        if ok:
+            client.chat_postMessage(channel=channel, text=f"✅ {payload.get('target')} を「{payload.get('decision')}」にしました。")
+        else:
+            client.chat_postMessage(channel=channel, text=f"⚠️ 更新に失敗しました: {detail}")
+        return
+    if payload.get("kind") == "triage_approve":
+        target = str(payload.get("target") or "")
+        ok, detail = _post_triage_approve(target)
+        if ok:
+            client.chat_postMessage(channel=channel, text=f"✅ {target} の実装承認を記録しました（紫苑依頼文を生成済み）。")
+        else:
+            client.chat_postMessage(channel=channel, text=f"⚠️ 承認に失敗しました: {detail}")
+        return
+    client.chat_postMessage(channel=channel, text="⚠️ 確認待ちコマンドの形式が不正です。")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -261,12 +404,7 @@ HELP_TEXT = """🤝 *リース審査AIボット — コマンド一覧*
 
 • *`改善レポート`* — 最新の改善提案レポートを表示
 
-• *`採用 <ID>`* / *`修正 <ID> <メモ>`* / *`保留 <ID>`* / *`却下 <ID> [理由]`*
-  — 紫苑の改善提案（判断資産候補）に判断を記録します（実行権限が必要）
-  例: `採用 skill-042`
-
-• *`承認 <canonical_key>`* — 「今日やる」確定済みの改善候補に実装承認を記録し、
-  紫苑依頼文を生成します（実行権限が必要）
+• Slackでは通知・相談・レポート確認まで。判断資産や改善候補の採用/承認は画面で確定してください
 
 • *`ヘルプ`* — このメッセージを表示"""
 
@@ -304,16 +442,17 @@ def _parse_command(text: str) -> tuple[str, str]:
     for kw in ["claude:", "claude："]:
         if clean.lower().startswith(kw):
             return "claude", clean[len(kw):].strip()
-    if clean.startswith("採用"):
-        return "adopt", clean[len("採用"):].strip()
-    if clean.startswith("修正"):
-        return "revise", clean[len("修正"):].strip()
-    if clean.startswith("保留"):
-        return "hold", clean[len("保留"):].strip()
-    if clean.startswith("却下"):
-        return "reject", clean[len("却下"):].strip()
-    if clean.startswith("承認"):
-        return "approve_triage", clean[len("承認"):].strip()
+    action_commands = {
+        "採用": "adopt",
+        "修正": "revise",
+        "保留": "hold",
+        "却下": "reject",
+        "承認": "approve_triage",
+    }
+    for kw, command in action_commands.items():
+        match = re.match(rf"^{re.escape(kw)}(?:\s+(.+))?$", clean)
+        if match:
+            return command, (match.group(1) or "").strip()
     return "chat", clean
 
 
@@ -338,7 +477,14 @@ class _ThreadReplyClient:
         return getattr(self._client, name)
 
 
-def handle_message(client: WebClient, channel: str, text: str, user: str, thread_ts: str | None = None) -> None:
+def handle_message(
+    client: WebClient,
+    channel: str,
+    text: str,
+    user: str,
+    thread_ts: str | None = None,
+    event_key: str | None = None,
+) -> None:
     """メッセージを処理してSlackに返答。thread_ts指定時はスレッド内に返信する（チャンネルメンション用）。"""
     if thread_ts:
         client = _ThreadReplyClient(client, thread_ts)
@@ -361,6 +507,23 @@ def handle_message(client: WebClient, channel: str, text: str, user: str, thread
             else:
                 client.chat_postMessage(channel=channel, text=reply)
         return  # 審査中は何があっても必ずここで終了
+
+    confirmation = _confirmation_intent(text)
+    if confirmation:
+        _prune_action_state()
+        pending_key = _pending_action_key(channel, user, thread_ts)
+        pending = _PENDING_ACTION_CONFIRMATIONS.get(pending_key)
+        if pending:
+            if confirmation == "cancel":
+                _PENDING_ACTION_CONFIRMATIONS.pop(pending_key, None)
+                client.chat_postMessage(channel=channel, text="キャンセルしました。")
+                return
+            if _mark_action_event_processed(event_key):
+                return
+            payload = dict(pending.get("payload") or {})
+            _PENDING_ACTION_CONFIRMATIONS.pop(pending_key, None)
+            _execute_confirmed_action(client, channel, payload)
+            return
 
     command, argument = _parse_command(text)
     argument = _sanitize_input(argument)
@@ -428,40 +591,33 @@ def handle_message(client: WebClient, channel: str, text: str, user: str, thread
         return
 
     if command in ("adopt", "revise", "hold", "reject"):
-        decision_by_command = {"adopt": "adopted", "revise": "revised", "hold": "held", "reject": "rejected"}
+        if not _ENABLE_ACTION_COMMANDS:
+            client.chat_postMessage(channel=channel, text=_action_commands_disabled_message())
+            return
         if not _ALLOWED_ACTION_USERS or user not in _ALLOWED_ACTION_USERS:
             client.chat_postMessage(channel=channel, text="⚠️ このコマンドの実行権限がありません。")
             return
-        inbox_id, _, note = argument.partition(" ")
-        inbox_id = inbox_id.strip()
-        note = note.strip()
-        if not inbox_id:
-            client.chat_postMessage(channel=channel, text="⚠️ 対象IDを指定してください（例: `採用 skill-042`）。")
+        payload, error = _build_action_payload(command, argument)
+        if not payload:
+            client.chat_postMessage(channel=channel, text=error)
             return
-        if command == "revise" and not note:
-            client.chat_postMessage(channel=channel, text="⚠️ 修正内容をメモとして指定してください（例: `修正 skill-042 ここを直す`）。")
-            return
-        decision = decision_by_command[command]
-        ok, detail = _post_agentic_skill_review(inbox_id, decision=decision, note=note)
-        if ok:
-            client.chat_postMessage(channel=channel, text=f"✅ {inbox_id} を「{decision}」にしました。")
-        else:
-            client.chat_postMessage(channel=channel, text=f"⚠️ 更新に失敗しました: {detail}")
+        _store_pending_action(channel, user, thread_ts, payload)
+        client.chat_postMessage(channel=channel, text=_confirmation_message(payload))
         return
 
     if command == "approve_triage":
+        if not _ENABLE_ACTION_COMMANDS:
+            client.chat_postMessage(channel=channel, text=_action_commands_disabled_message())
+            return
         if not _ALLOWED_ACTION_USERS or user not in _ALLOWED_ACTION_USERS:
             client.chat_postMessage(channel=channel, text="⚠️ このコマンドの実行権限がありません。")
             return
-        canonical_key = argument.strip()
-        if not canonical_key:
-            client.chat_postMessage(channel=channel, text="⚠️ canonical_key を指定してください（例: `承認 add-xxx-yyy`）。")
+        payload, error = _build_action_payload(command, argument)
+        if not payload:
+            client.chat_postMessage(channel=channel, text=error)
             return
-        ok, detail = _post_triage_approve(canonical_key)
-        if ok:
-            client.chat_postMessage(channel=channel, text=f"✅ {canonical_key} の実装承認を記録しました（紫苑依頼文を生成済み）。")
-        else:
-            client.chat_postMessage(channel=channel, text=f"⚠️ 承認に失敗しました: {detail}")
+        _store_pending_action(channel, user, thread_ts, payload)
+        client.chat_postMessage(channel=channel, text=_confirmation_message(payload))
         return
 
     if command == "discuss":
@@ -543,7 +699,7 @@ def poll_loop(client: WebClient, bot_user_id: str) -> None:
                     logger.info(f"📩 新着DM: user={user}, text={text[:80]}")
 
                     try:
-                        handle_message(client, ch_id, text, user)
+                        handle_message(client, ch_id, text, user, event_key=f"poll:{ch_id}:{msg.get('ts', '')}")
                     except Exception as e:
                         logger.error(f"メッセージ処理エラー: {e}", exc_info=True)
                         try:
@@ -571,6 +727,11 @@ def poll_loop(client: WebClient, bot_user_id: str) -> None:
 # エントリポイント
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _is_direct_message_event(event: dict) -> bool:
+    """Socket Mode の message event が DM 由来かを判定する。"""
+    return event.get("channel_type") == "im"
+
+
 def _socket_mode_main(bot_token: str, app_token: str) -> None:
     """Socket Mode でリアルタイムイベントを処理する（SLACK_APP_TOKEN が必要）。"""
     try:
@@ -591,14 +752,32 @@ def _socket_mode_main(bot_token: str, app_token: str) -> None:
         # ボット自身のメッセージや subtype はスキップ
         if not user or event.get("subtype") or event.get("bot_id"):
             return
-        # 公開チャンネル等のメッセージは on_app_mention 側に一本化する（二重応答防止）。
-        # channel_type が取得できない古いイベント形もあるため、DM(im)以外は明示的に除外する。
-        channel_type = event.get("channel_type")
-        if channel_type and channel_type != "im":
+        # 公開チャンネル等の通常メッセージは on_app_mention 側に一本化する（二重応答防止）。
+        # ただし、同じスレッドに確認待ちアクションがある確認返信はここで処理する。
+        thread_ts = event.get("thread_ts") or ""
+        if not _is_direct_message_event(event):
+            if _has_pending_action_confirmation(channel, user, thread_ts, text):
+                try:
+                    handle_message(
+                        client,
+                        channel,
+                        text,
+                        user,
+                        thread_ts=thread_ts,
+                        event_key=f"socket-message:{event.get('client_msg_id') or event.get('ts') or ''}",
+                    )
+                except Exception as e:
+                    logger.error(f"メッセージ処理エラー: {e}")
             return
         logger.info(f"📩 Socket Mode メッセージ: user={user}, text={text[:80]}")
         try:
-            handle_message(client, channel, text, user)
+            handle_message(
+                client,
+                channel,
+                text,
+                user,
+                event_key=f"socket-message:{event.get('client_msg_id') or event.get('ts') or ''}",
+            )
         except Exception as e:
             logger.error(f"メッセージ処理エラー: {e}")
 
@@ -612,7 +791,14 @@ def _socket_mode_main(bot_token: str, app_token: str) -> None:
         thread_ts = event.get("thread_ts") or event.get("ts", "")
         logger.info(f"📩 Socket Mode チャンネルメンション: user={user}, channel={channel}, text={text[:80]}")
         try:
-            handle_message(client, channel, text, user, thread_ts=thread_ts)
+            handle_message(
+                client,
+                channel,
+                text,
+                user,
+                thread_ts=thread_ts,
+                event_key=f"socket-mention:{event.get('client_msg_id') or event.get('ts') or ''}",
+            )
         except Exception as e:
             logger.error(f"メッセージ処理エラー: {e}")
 
