@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,15 @@ def _text(value: Any, *, maximum: int = 1000) -> str:
 def _short_hash(payload: Any) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _term_tokens(text: str) -> set[str]:
+    """英数字トークンと和文の漢字/カタカナ連を抽出する（過去レビューとの類似判定用）。"""
+    raw = re.findall(r"[A-Za-z0-9_./-]{2,}|[一-龥ぁ-んァ-ヶー]{2,}", text or "")
+    terms: set[str] = set(raw)
+    for token in raw:
+        terms.update(re.findall(r"[一-龥]{2,}|[ァ-ヶー]{2,}", token))
+    return terms
 
 
 def _safe_payload(value: Any, *, max_chars: int = 5000) -> Any:
@@ -144,6 +154,53 @@ def _review_type(tool_name: str) -> str:
     }.get(tool_name, "agentic_skill_candidate")
 
 
+def find_prior_review_decisions(
+    *,
+    candidate_type: str,
+    claim: str,
+    decisions: tuple[str, ...] = ("rejected", "held"),
+    limit: int = 3,
+    review_inbox_path: Path = REVIEW_INBOX_PATH,
+    review_log_path: Path = REVIEW_LOG_PATH,
+) -> list[dict[str, Any]]:
+    """似た主張を持つ過去のrejected/held決定を探す（読み取り専用）。
+
+    review_decisions.jsonlは追記のみで書き換えない不変ログなので、ここでは
+    「知見」として参照するだけで候補の作成・採否そのものは変えない
+    （WikiSkill論文のWiki層＝ロールバックされない知識、に相当する参照）。
+    """
+    claim_terms = _term_tokens(claim)
+    if not claim_terms:
+        return []
+    inbox_by_id = {
+        str(row.get("id") or ""): row
+        for row in load_jsonl(review_inbox_path, newest_first=False)
+        if row.get("id")
+    }
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for review in load_jsonl(review_log_path, newest_first=False):
+        decision = _text(review.get("decision"))
+        if decision not in decisions:
+            continue
+        source = inbox_by_id.get(_text(review.get("inbox_id")), {})
+        if candidate_type and _text(source.get("candidate_type")) != candidate_type:
+            continue
+        past_claim = _text(source.get("claim"), maximum=500)
+        overlap = len(claim_terms & _term_tokens(past_claim))
+        if overlap == 0:
+            continue
+        scored.append((overlap, {
+            "inbox_id": review.get("inbox_id", ""),
+            "decision": decision,
+            "note": _text(review.get("note"), maximum=300),
+            "reviewed_at": review.get("reviewed_at", ""),
+            "past_claim": past_claim,
+        }))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    max_items = max(1, min(int(limit or 3), 8))
+    return [item for _, item in scored[:max_items]]
+
+
 def record_agentic_skill_result(
     *,
     tool_name: str,
@@ -152,6 +209,7 @@ def record_agentic_skill_result(
     case_context: dict[str, Any] | None = None,
     usage_log_path: Path = USAGE_LOG_PATH,
     review_inbox_path: Path = REVIEW_INBOX_PATH,
+    review_log_path: Path = REVIEW_LOG_PATH,
 ) -> dict[str, Any] | None:
     """Record an agentic skill result and mirror reviewable items to the inbox."""
     if tool_name not in AGENTIC_SKILL_TOOL_NAMES:
@@ -170,17 +228,25 @@ def record_agentic_skill_result(
     if tool_name in REVIEWABLE_TOOL_NAMES:
         claim = _review_claim(tool_name, payload)
         if claim:
+            candidate_type = _review_type(tool_name)
+            prior_review_context = find_prior_review_decisions(
+                candidate_type=candidate_type,
+                claim=claim,
+                review_inbox_path=review_inbox_path,
+                review_log_path=review_log_path,
+            )
             inbox_item = {
                 "id": _short_hash(["review", tool_name, session_id, claim, payload]),
                 "source_event_id": event["id"],
                 "tool_name": tool_name,
-                "candidate_type": _review_type(tool_name),
+                "candidate_type": candidate_type,
                 "claim": claim,
                 "payload": payload,
                 "case_context": _safe_payload(case_context or {}, max_chars=1800),
                 "status": "candidate",
                 "review_decision": "",
                 "review_note": "",
+                "prior_review_context": prior_review_context,
                 "created_at": event["recorded_at"],
                 "promotion_policy": "human_review_required_no_automatic_scoring_or_rag_change",
             }
