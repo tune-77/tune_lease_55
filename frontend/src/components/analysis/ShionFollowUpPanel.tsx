@@ -21,7 +21,7 @@ type FollowupAnswer = {
   note: string;
 };
 
-type ImpactLabel = "decision_changed" | "risk_prevented" | "evidence_strengthened" | "not_helpful";
+type ImpactLabel = "decision_changed" | "risk_prevented" | "outcome_matched" | "evidence_strengthened" | "not_helpful";
 
 type ImpactFeedback = {
   question_id: string;
@@ -82,6 +82,7 @@ const ANSWER_OPTIONS: { value: AnswerStatus; label: string; tone: string }[] = [
 const IMPACT_OPTIONS: { value: ImpactLabel; label: string; selectedTone: string }[] = [
   { value: "decision_changed", label: "判断・条件を変えた", selectedTone: "border-indigo-400 bg-indigo-100 text-indigo-800" },
   { value: "risk_prevented", label: "事故・見落とし防止", selectedTone: "border-rose-400 bg-rose-100 text-rose-800" },
+  { value: "outcome_matched", label: "懸念が結果に表れた", selectedTone: "border-amber-400 bg-amber-100 text-amber-800" },
   { value: "evidence_strengthened", label: "根拠を補強", selectedTone: "border-emerald-400 bg-emerald-100 text-emerald-800" },
   { value: "not_helpful", label: "役立たなかった", selectedTone: "border-slate-400 bg-slate-200 text-slate-700" },
 ];
