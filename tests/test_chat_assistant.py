@@ -414,6 +414,75 @@ def test_fallback_chat_packet_builds_review_and_wiki():
     assert packet["improvement_items"][0]["decision"] == "accept"
 
 
+def test_build_chat_reply_queues_judgment_asset_candidate(monkeypatch):
+    from mobile_app import chat_assistant
+
+    monkeypatch.setattr(chat_assistant, "_get_gemini_key", lambda: "dummy-key")
+    monkeypatch.setattr(chat_assistant, "_load_shion_state", lambda: {})
+    monkeypatch.setattr(chat_assistant, "_build_shion_context", lambda state: "")
+    monkeypatch.setattr(chat_assistant, "_detect_shion_intent", lambda message: False)
+    monkeypatch.setattr(chat_assistant, "record_prompt_feedback", lambda **kwargs: None)
+
+    structured_calls = []
+    recorded_calls = []
+
+    def fake_structure(*, note, source_type, title=""):
+        structured_calls.append({"note": note, "source_type": source_type, "title": title})
+        return {"mode": "candidate", "status": "candidate", "candidate": {"core_judgment": note}}
+
+    def fake_record(*, tool_name, result, session_id="", case_context=None):
+        recorded_calls.append({"tool_name": tool_name, "result": result, "session_id": session_id})
+        return {"review_inbox_id": "fake-inbox-id"}
+
+    monkeypatch.setattr(chat_assistant, "structure_judgment_asset_candidate", fake_structure)
+    monkeypatch.setattr(chat_assistant, "record_agentic_skill_result", fake_record)
+
+    parsed_payload = {
+        "reply": "承知しました。",
+        "should_save": False, "save_title": "", "save_body": "", "save_reason": "",
+        "improvement_items": [],
+        "web_used": False, "web_reason": "",
+        "web_should_save": False, "web_save_title": "", "web_save_body": "", "web_save_reason": "",
+        "wiki_should_save": False, "wiki_save_title": "", "wiki_save_body": "", "wiki_save_reason": "",
+        "weekly_should_save": False, "weekly_save_title": "", "weekly_save_body": "", "weekly_save_reason": "",
+        "should_structure_judgment_asset": True,
+        "judgment_asset_note": "担保評価は築年数より稼働率を優先する",
+        "judgment_asset_source_type": "user_judgment",
+        "judgment_asset_title": "担保評価の優先順位",
+    }
+
+    class FakeResponse:
+        text = json.dumps(parsed_payload, ensure_ascii=False)
+        candidates: list = []
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            return FakeResponse()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.models = FakeModels()
+
+    from google import genai
+    monkeypatch.setattr(genai, "Client", FakeClient)
+
+    result = chat_assistant.build_chat_reply(
+        "実は担保評価は築年数より稼働率を優先すべきでした",
+        use_obsidian=False,
+        use_web=False,
+    )
+
+    assert result["judgment_asset_queued"] is True
+    assert result["judgment_asset_result"]["review_inbox_id"] == "fake-inbox-id"
+    assert structured_calls == [{
+        "note": "担保評価は築年数より稼働率を優先する",
+        "source_type": "user_judgment",
+        "title": "担保評価の優先順位",
+    }]
+    assert recorded_calls[0]["tool_name"] == "structure_judgment_asset_candidate"
+    assert recorded_calls[0]["session_id"] == "mebuki_chat"
+
+
 def test_build_strategy_advice_includes_indicator_takeaways():
     from mobile_app import advisor_strategy
 

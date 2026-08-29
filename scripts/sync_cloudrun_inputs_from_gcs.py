@@ -591,11 +591,12 @@ def _apply_judgment_asset_promotion_from_event(conn: sqlite3.Connection, event: 
         rules[existing_index] = rule
     else:
         rules.append(rule)
+    active_rule_count = sum(1 for r in rules if str(r.get("status") or "") == "active")
     store["schema_version"] = int(store.get("schema_version") or 1)
     store["generated_at"] = str(event.get("ts") or datetime.now(timezone.utc).isoformat())
     store["source"] = "canonical_judgment_rules"
     store["summary"] = {
-        "active_rules": len(rules),
+        "active_rules": active_rule_count,
         "promoted": 1 if payload.get("status") == "promoted" else 0,
         "updated": 1 if payload.get("status") == "updated" else 0,
         "skipped": 0,
