@@ -15,15 +15,6 @@ import {
 import { useSidebar } from '@/context/SidebarContext';
 import ThemeSelector from '@/components/layout/ThemeSelector';
 
-const ACTIVITY_KEY = "shion-concierge-activity-v1";
-
-type ActivityItem = {
-  path: string;
-  title?: string;
-  ts?: number;
-  count?: number;
-};
-
 type SidebarItem = {
   name: string;
   href: string;
@@ -35,64 +26,66 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggleSidebar, isMobileOpen, toggleMobile } = useSidebar();
   const [isCloudRunHost, setIsCloudRunHost] = useState(true);
-  const [frequentItems, setFrequentItems] = useState<Array<SidebarItem & { count: number }>>([]);
   const hideResearchOrgan =
     process.env.NEXT_PUBLIC_HIDE_RESEARCH_ORGAN === "1" || isCloudRunHost;
 
   useEffect(() => {
-    setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
+    const timer = window.setTimeout(() => {
+      setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const menuGroups: Array<{ title: string; defaultOpen: boolean; items: SidebarItem[] }> = [
     {
-      title: 'メイン導線',
+      title: '通常メニュー',
       defaultOpen: true,
       items: [
-        { name: '審査・分析', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
+        { name: '審査する', href: '/screening', icon: ClipboardCheck, color: 'text-emerald-400' },
+        { name: '紫苑に相談', href: '/chat', icon: MessageCircle, color: 'text-violet-400' },
+        { name: '案件を見る', href: '/cases', icon: Table2, color: 'text-cyan-400' },
+        { name: '結果を登録', href: '/register', icon: PenTool, color: 'text-rose-400' },
+        { name: '運用・その他', href: '/operations', icon: Settings2, color: 'text-fuchsia-300' },
+      ]
+    },
+    {
+      title: '審査・学習ツール',
+      defaultOpen: false,
+      items: [
         { name: '1000本判断ドリル', href: '/judgment-drill', icon: ClipboardList, color: 'text-lime-300' },
         { name: 'リース知性体との対話', href: '/lease-intelligence', icon: Brain, color: 'text-violet-400' },
         { name: 'ニュース審査', href: '/news', icon: Newspaper, color: 'text-sky-300' },
-        { name: '結果登録', href: '/register', icon: PenTool, color: 'text-rose-400' },
+        ...(!hideResearchOrgan
+          ? [{ name: '外部調査器官', href: '/research-organ', icon: Search, color: 'text-sky-300' }]
+          : []),
+        { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
+        { name: '事業計画チェック（簡易版）', href: '/business-plan-check', icon: FileCheck2, color: 'text-teal-400' },
+        { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
+        { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
+      ]
+    },
+    {
+      title: '改善・システム検証',
+      defaultOpen: false,
+      items: [
         { name: '改善PMレポート', href: '/improvement-log', icon: ClipboardList, color: 'text-orange-300' },
         { name: 'ループが閉じた証拠', href: '/loop-proof', icon: GitBranch, color: 'text-violet-300' },
         { name: '判断資産系統樹', href: '/judgment-asset-graph', icon: Network, color: 'text-emerald-400' },
-        { name: '運用情報', href: '/operations', icon: Settings2, color: 'text-fuchsia-300' },
         { name: '紫苑の記憶システム', href: '/shion-memory-system', icon: Database, color: 'text-sky-300' },
         ...(!isCloudRunHost
           ? [{ name: '帰還データ検疫', href: '/cloudrun-return-review', icon: ShieldCheck, color: 'text-teal-300' }]
           : []),
-      ]
-    },
-    {
-      title: '業務画面',
-      defaultOpen: false,
-      items: [
-        { name: 'リース知性体 紫苑システム', href: '/', icon: Home, color: 'text-violet-400' },
-        { name: '💬 AIチャット', href: '/chat', icon: MessageCircle, color: 'text-cyan-400' },
-        ...(!hideResearchOrgan
-          ? [{ name: '外部調査器官', href: '/research-organ', icon: Search, color: 'text-sky-300' }]
-          : []),
-        { name: '過去案件一覧', href: '/cases', icon: Table2, color: 'text-cyan-400' },
-        { name: 'バッチ審査', href: '/batch', icon: Zap, color: 'text-yellow-400' },
-        { name: '事業計画チェック（簡易版）', href: '/business-plan-check', icon: FileCheck2, color: 'text-teal-400' },
-      ]
-    },
-    {
-      title: '検証・補助',
-      defaultOpen: false,
-      items: [
         { name: '紫苑/一般 比較', href: '/chat-compare', icon: MessageSquare, color: 'text-indigo-300' },
         { name: '紫苑 評価GUI', href: '/shion-eval-health', icon: Stethoscope, color: 'text-teal-300' },
         { name: '自己同一性検査', href: '/shion-identity-check', icon: ShieldCheck, color: 'text-cyan-300' },
-        { name: 'リースくん (スマホUI)', href: '/lease-kun', icon: MessageSquare, color: 'text-amber-400' },
-        { name: 'マルチエージェント討論', href: '/debate', icon: Swords, color: 'text-violet-500' },
         { name: '知性体コア', href: '/shion-core', icon: Brain, color: 'text-violet-300' },
         { name: 'システム概要', href: '/system-overview', icon: Orbit, color: 'text-fuchsia-400' },
         { name: 'DevOpsサイクル', href: '/devops', icon: GitBranch, color: 'text-emerald-300' },
+        { name: '紫苑システム入口', href: '/', icon: Home, color: 'text-violet-400' },
       ]
     },
     {
-      title: '分析・グラフ',
+      title: '分析・ナレッジ',
       defaultOpen: false,
       items: [
         { name: '営業部別分析', href: '/department', icon: Users, color: 'text-emerald-400' },
@@ -100,61 +93,24 @@ export default function Sidebar() {
         { name: '競合関係グラフ', href: '/competitor', icon: Share2, color: 'text-orange-400' },
         { name: '知識宇宙マップ', href: '/knowledge-space', icon: Network, color: 'text-cyan-300' },
         { name: 'ビジュアルインサイト', href: '/visual', icon: Eye, color: 'text-blue-300' },
-      ]
-    },
-    {
-      title: '参照・ナレッジ',
-      defaultOpen: false,
-      items: [
         { name: '法定耐用年数一覧', href: '/useful-life', icon: BookOpen, color: 'text-blue-400' },
         { name: '業種別リース物件例', href: '/industry-assets', icon: Factory, color: 'text-slate-500' },
         { name: '残価設定ガイドライン', href: '/residual-guide', icon: Calculator, color: 'text-purple-400' },
         { name: '営業向け説明ガイド', href: '/sales-guide', icon: Megaphone, color: 'text-blue-500' },
         { name: 'リース/融資/現金 比較', href: '/simulator', icon: Calculator, color: 'text-blue-400' },
-        { name: 'サポートハブ', href: '/help', icon: HelpCircle, color: 'text-emerald-400' },
-        { name: 'リース知識FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
       ]
     },
     {
-      title: '設定・マスタ',
+      title: '設定・マスタ・ヘルプ',
       defaultOpen: false,
       items: [
         { name: '基準金利マスタ', href: '/interest', icon: Calendar, color: 'text-slate-300' },
         { name: '補助金情報', href: '/subsidy', icon: Gift, color: 'text-emerald-300' },
+        { name: 'サポートハブ', href: '/help', icon: HelpCircle, color: 'text-emerald-400' },
+        { name: 'リース知識FAQ', href: '/faq', icon: HelpCircle, color: 'text-slate-400' },
       ]
     }
   ];
-
-  const flatMenuItems = menuGroups.flatMap((group) => group.items);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const timer = window.setTimeout(() => {
-      try {
-        const raw = window.localStorage.getItem(ACTIVITY_KEY);
-        const activity = raw ? (JSON.parse(raw) as ActivityItem[]) : [];
-        const itemByHref = new Map(flatMenuItems.map((item) => [item.href, item]));
-        const next = activity
-          .map((entry) => {
-            const item = itemByHref.get(entry.path);
-            if (!item) return null;
-            return {
-              ...item,
-              count: Math.max(1, Number(entry.count || 1)),
-              lastUsedAt: Number(entry.ts || 0),
-            };
-          })
-          .filter((item): item is SidebarItem & { count: number; lastUsedAt: number } => Boolean(item))
-          .sort((a, b) => (b.count - a.count) || (b.lastUsedAt - a.lastUsedAt))
-          .slice(0, 3)
-          .map(({ lastUsedAt, ...item }) => item);
-        setFrequentItems(next);
-      } catch {
-        setFrequentItems([]);
-      }
-    }, 80);
-    return () => window.clearTimeout(timer);
-  }, [pathname, hideResearchOrgan]);
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
     Object.fromEntries(menuGroups.map(g => [g.title, g.defaultOpen]))
@@ -206,52 +162,6 @@ export default function Sidebar() {
 
         {/* メニューリスト */}
         <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-5 scrollbar-hide">
-          {frequentItems.length > 0 && (
-            <div className="mb-2">
-              {!isCollapsed && (
-                <div className="px-3 mb-3">
-                  <div className="flex items-center gap-1.5 text-[11px] font-black text-emerald-300 uppercase tracking-widest">
-                    <Brain className="h-3.5 w-3.5" />
-                    紫苑がよく使う
-                  </div>
-                  <p className="mt-1 text-[10px] font-bold text-slate-500">利用履歴で自動更新</p>
-                </div>
-              )}
-              {isCollapsed && (
-                <div className="h-px bg-emerald-900/60 w-full mb-4 mx-auto" />
-              )}
-              <div className={`space-y-1 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
-                {frequentItems.map((item) => {
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={`frequent-${item.href}`}
-                      href={item.href}
-                      onClick={() => { if (isMobileOpen) toggleMobile(); }}
-                      className={`
-                        flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 group relative
-                        ${isActive
-                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 shadow-inner'
-                          : 'bg-slate-800/60 hover:bg-slate-800 hover:text-white text-slate-300 border border-slate-700/60'}
-                        ${isCollapsed ? 'justify-center w-12 h-12' : 'w-full'}
-                      `}
-                      title={isCollapsed ? `${item.name} (${item.count})` : undefined}
-                    >
-                      <item.icon className={`w-5 h-5 flex-shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-emerald-300' : item.color}`} />
-                      {!isCollapsed && (
-                        <>
-                          <span className="min-w-0 flex-1 truncate tracking-tight">{item.name}</span>
-                          <span className="rounded-full bg-slate-950/70 px-2 py-0.5 text-[10px] font-black text-slate-400">
-                            {item.count}
-                          </span>
-                        </>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          )}
           {menuGroups.map((group) => (
             <div key={group.title} className="mb-2">
               {!isCollapsed && (
@@ -263,12 +173,12 @@ export default function Sidebar() {
                   {openGroups[group.title] ? <ChevronDown className="w-3 h-3 text-slate-600" /> : <ChevronRight className="w-3 h-3" />}
                 </button>
               )}
-              {isCollapsed && (
+              {isCollapsed && group.defaultOpen && (
                 <div className="h-px bg-slate-800 w-full mb-4 mx-auto" />
               )}
               
               <div className={`space-y-1 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
-                {(isCollapsed || openGroups[group.title]) && group.items.map((item) => {
+                {(isCollapsed ? group.defaultOpen : openGroups[group.title]) && group.items.map((item) => {
                   const isActive = pathname === item.href;
                   return (
                     <Link 
