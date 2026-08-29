@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -165,6 +167,55 @@ def test_review_candidate_writes_state_and_audit(tmp_path, monkeypatch):
     assert item["status"] == "revised"
     assert state["reviews"]["test_source__a1"]["edited_claim"] == "修正後の記憶候補"
     assert json.loads(audit_path.read_text(encoding="utf-8").splitlines()[0])["status"] == "revised"
+
+
+def test_review_candidate_concurrent_reviews_do_not_lose_each_other(tmp_path, monkeypatch):
+    source = tmp_path / "candidates.jsonl"
+    _write_jsonl(
+        source,
+        [
+            {"id": "a1", "claim": "並行レビュー対象A"},
+            {"id": "a2", "claim": "並行レビュー対象B"},
+        ],
+    )
+    state_path = tmp_path / "state.json"
+    audit_path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(inbox, "SOURCE_PATHS", {"test_source": source})
+    monkeypatch.setattr(inbox, "REVIEW_STATE_PATH", state_path)
+    monkeypatch.setattr(inbox, "REVIEW_AUDIT_PATH", audit_path)
+
+    original_save = inbox.save_review_state
+
+    def slow_save(state, path=None):
+        # Widen the read-modify-write window so a race would be caught if the
+        # critical section in review_candidate() were not locked.
+        time.sleep(0.05)
+        return original_save(state, path)
+
+    monkeypatch.setattr(inbox, "save_review_state", slow_save)
+
+    errors: list[BaseException] = []
+
+    def run(inbox_id: str, decision: str) -> None:
+        try:
+            inbox.review_candidate(inbox_id, decision=decision)
+        except BaseException as exc:  # pragma: no cover - surfaced via errors list
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=run, args=("test_source__a1", "adopted")),
+        threading.Thread(target=run, args=("test_source__a2", "rejected")),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert set(state["reviews"].keys()) == {"test_source__a1", "test_source__a2"}
+    assert state["reviews"]["test_source__a1"]["status"] == "adopted"
+    assert state["reviews"]["test_source__a2"]["status"] == "rejected"
 
 
 def test_revised_requires_edited_claim(tmp_path, monkeypatch):

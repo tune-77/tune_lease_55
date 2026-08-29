@@ -3384,6 +3384,34 @@ class CaseRegistration(BaseModel):
     retrospective_note: str = ""
 
 
+def _link_registered_case_to_shion_followups(
+    case_ids: list[str],
+    status: str,
+    note: str = "",
+) -> dict:
+    """結果登録を回答済み追加確認へ結びつける。失敗しても本線登録は止めない。"""
+    try:
+        from api.screening_followup import record_followup_outcome
+
+        results = []
+        seen: set[str] = set()
+        for raw_case_id in case_ids:
+            case_id = str(raw_case_id or "").strip()
+            if not case_id or case_id in seen:
+                continue
+            seen.add(case_id)
+            results.append(record_followup_outcome(case_id, status, note))
+        linked_count = sum(int(item.get("linked_count") or 0) for item in results)
+        return {
+            "status": "linked" if linked_count else "no_answered_followup",
+            "linked_count": linked_count,
+            "matches": results,
+        }
+    except Exception as exc:
+        logger.warning("Shion followup outcome link skipped: %s", exc)
+        return {"status": "error", "linked_count": 0, "reason": str(exc)}
+
+
 @app.post("/api/cases/register")
 def register_case_result(req: CaseRegistration, background_tasks: BackgroundTasks):
     from data_cases import load_all_cases, update_case
@@ -3479,6 +3507,9 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                     experience_result = {"status": "error", "reason": str(exp_err)}
                     prediction_error_result = {"status": "skipped", "reason": "case_payload_unavailable"}
                 _invalidate_cloudrun_input_events_cache()
+                followup_result = _link_registered_case_to_shion_followups(
+                    [req.case_id], req.status, req.note or req.retrospective_note,
+                )
                 return {
                     "status": "success",
                     "message": f"Cloud Run result registered for {cloudrun_event_id}",
@@ -3486,6 +3517,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                     "cloudrun_writeback": final_result,
                     "experience_promotion": experience_result,
                     "prediction_error": prediction_error_result,
+                    "shion_followup": followup_result,
                 }
             raise HTTPException(status_code=500, detail=f"Cloud Run result writeback failed: {final_result.get('reason')}")
 
@@ -3668,11 +3700,17 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
         except Exception as _mini_err:
             print(f"[MiniPDCA] feedback skipped: {_mini_err}")
 
+    followup_result = _link_registered_case_to_shion_followups(
+        [req.case_id, str(target_case_id or "")],
+        req.status,
+        req.note or req.retrospective_note,
+    )
     return {
         "status": "success",
         "message": f"Results updated for {target_case_id}",
         "experience_promotion": experience_result,
         "prediction_error": prediction_error_result,
+        "shion_followup": followup_result,
     }
 
 # ── アプリログ

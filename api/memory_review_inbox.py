@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import tempfile
+import threading
 from difflib import SequenceMatcher
 from collections import Counter
 from datetime import date, datetime, timedelta
@@ -33,6 +36,12 @@ AUTO_REJECT_JACCARD_THRESHOLD = 0.82
 AUTO_REJECT_SEQUENCE_THRESHOLD = 0.93
 AUTO_REJECT_MIN_TEXT_LEN = 18
 AUTO_REJECT_REVIEW_WEEKDAY = 0  # Monday
+
+# Guards the review-state read-modify-write cycle in review_candidate(). Without
+# it, two near-simultaneous reviews can each read the state before the other's
+# write lands, and the later save silently drops the earlier decision -- making
+# an already-reviewed item look like an unreviewed candidate again.
+_STATE_LOCK = threading.RLock()
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -83,7 +92,18 @@ def save_review_state(state: dict[str, Any], path: Path | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     state["schema_version"] = 1
     state["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(state, ensure_ascii=False, indent=2)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def _source_item_id(row: dict[str, Any]) -> str:
@@ -394,22 +414,23 @@ def review_candidate(
     if decision == "revised" and not edited_claim.strip():
         raise ValueError("edited_claim is required when decision is revised")
     now = datetime.now().isoformat(timespec="seconds")
-    state = load_review_state()
-    reviews = state.setdefault("reviews", {})
-    current = {
-        "status": decision,
-        "note": note.strip()[:1000],
-        "edited_claim": edited_claim.strip()[:4000],
-        "reviewed_at": now,
-        "source": candidates[inbox_id]["source"],
-        "source_item_id": candidates[inbox_id]["source_item_id"],
-    }
-    reviews[inbox_id] = current
-    if decision == "rejected":
-        _learn_rejection_pattern(state, candidates[inbox_id], reviewed_at=now)
-    else:
-        _forget_rejection_pattern(state, inbox_id)
-    save_review_state(state)
+    with _STATE_LOCK:
+        state = load_review_state()
+        reviews = state.setdefault("reviews", {})
+        current = {
+            "status": decision,
+            "note": note.strip()[:1000],
+            "edited_claim": edited_claim.strip()[:4000],
+            "reviewed_at": now,
+            "source": candidates[inbox_id]["source"],
+            "source_item_id": candidates[inbox_id]["source_item_id"],
+        }
+        reviews[inbox_id] = current
+        if decision == "rejected":
+            _learn_rejection_pattern(state, candidates[inbox_id], reviewed_at=now)
+        else:
+            _forget_rejection_pattern(state, inbox_id)
+        save_review_state(state)
     REVIEW_AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with REVIEW_AUDIT_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps({"ts": now, "inbox_id": inbox_id, **current}, ensure_ascii=False) + "\n")

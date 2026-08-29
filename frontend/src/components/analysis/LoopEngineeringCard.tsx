@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api";
-import { Loader2, Sparkles, type LucideIcon } from "lucide-react";
+import { Loader2, Sparkles, FileText, Copy, Check, type LucideIcon } from "lucide-react";
 
 type GenericProposal = {
   title: string;
@@ -44,7 +44,35 @@ type LoopEngineeringCardProps = {
   buttonLabel: string;
   fields: FieldSpec[];
   proposalKindLabel?: string;
+  enableRequestDraft?: boolean;
 };
+
+function proposalKey(proposal: GenericProposal, index: number): string {
+  const generatedAt = String(proposal.generated_at || "").trim();
+  const title = String(proposal.title || "").trim();
+  return generatedAt || title ? `${generatedAt}::${title}` : `index:${index}`;
+}
+
+function buildShionRequestDraft(proposal: GenericProposal): string {
+  const title = String(proposal.title || "").trim();
+  const targetPage = String(proposal.target_page || "").trim();
+  const hypothesis = String(proposal.hypothesis || "").trim();
+  const evidence = String(proposal.evidence || "").trim();
+  const proposedChange = String(proposal.proposed_change || "").trim();
+  const verificationPlan = String(proposal.verification_plan || "").trim();
+  const risk = String(proposal.risk || "").trim();
+
+  const lines = [`紫苑依頼文: ${title} を小さく実装してください。`];
+  if (targetPage) lines.push(`- 対象: ${targetPage}`);
+  if (hypothesis) lines.push(`- 目的: ${hypothesis}${evidence ? `（${evidence}）` : ""}`);
+  if (proposedChange) lines.push(`- 変更案: ${proposedChange}`);
+  if (verificationPlan) lines.push(`- 検証方法: ${verificationPlan}`);
+  if (risk) lines.push(`- リスク: ${risk}`);
+  lines.push("- 変更範囲: 対象ファイルを最小限に。DB/API分岐/スコアリング/認証/デプロイ設定には触らない");
+  lines.push("- data/・models/・.claude/state・.streamlit/secrets.toml は変更禁止");
+  lines.push("- gitship/deploy の要否は User が判断する（自動実行しない）");
+  return lines.join("\n");
+}
 
 const PRIORITY_STYLE: Record<string, string> = {
   high: "border-rose-200 bg-rose-50 text-rose-700",
@@ -67,10 +95,23 @@ export default function LoopEngineeringCard({
   buttonLabel,
   fields,
   proposalKindLabel = "改善案",
+  enableRequestDraft = false,
 }: LoopEngineeringCardProps) {
   const [proposals, setProposals] = useState<GenericProposal[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [openDraftKey, setOpenDraftKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyDraft = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1500);
+    } catch {
+      // クリップボードが使えない環境では無視（テキストエリアから手動コピー可能）
+    }
+  };
 
   const fetchProposals = async () => {
     try {
@@ -135,8 +176,10 @@ export default function LoopEngineeringCard({
         {proposals.length === 0 ? (
           <p className="text-xs text-slate-400">まだ{proposalKindLabel}はありません。ボタンを押すと生成されます。</p>
         ) : (
-          proposals.map((proposal, index) => (
-            <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          proposals.map((proposal, index) => {
+            const key = proposalKey(proposal, index);
+            return (
+            <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -206,8 +249,39 @@ export default function LoopEngineeringCard({
                   {String(proposal.effect_tracking)}
                 </p>
               )}
+              {enableRequestDraft && (
+                <div className="mt-2 border-t border-slate-200 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setOpenDraftKey((current) => (current === key ? null : key))}
+                    className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    <FileText className="h-3 w-3" />
+                    採用したい: 紫苑依頼文を作る
+                  </button>
+                  {openDraftKey === key && (
+                    <div className="mt-2">
+                      <textarea
+                        readOnly
+                        value={buildShionRequestDraft(proposal)}
+                        rows={7}
+                        className="w-full resize-y rounded-md border border-emerald-200 bg-emerald-50/50 px-2 py-1.5 text-[11px] leading-relaxed text-slate-800 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => copyDraft(key, buildShionRequestDraft(proposal))}
+                        className="mt-1 inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-700"
+                      >
+                        {copiedKey === key ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        {copiedKey === key ? "コピーしました" : "コピー"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
