@@ -22,7 +22,7 @@ jobs:
           pip install -q pytest pytest-cov fastapi uvicorn pydantic slowapi httpx python-multipart
           requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
           python-dateutil pyyaml beautifulsoup4 filelock bcrypt flask flask-cors
-          google-api-core
+          google-api-core lxml toml chromadb google-adk
 
       - name: Run full test suite with coverage
         run: |
