@@ -96,7 +96,7 @@ def test_numeric_actual_is_recorded_for_later_shadow_scoring(tmp_path):
         observed_year=1,
         sales=112_000,
         op_profit=6_500,
-        observed_at="2027-03-31",
+        observed_at="2025-03-31",
         actuals_path=actuals,
     )
 
@@ -110,8 +110,23 @@ def test_numeric_actual_is_recorded_for_later_shadow_scoring(tmp_path):
         case_id="case-1",
         observed_year=1,
         sales=float("nan"),
+        observed_at="2025-03-31",
         actuals_path=actuals,
     ) == {"status": "skipped", "reason": "actual_values_invalid"}
+    assert record_numeric_actual(
+        case_id="case-1",
+        observed_year=1,
+        sales=112_000,
+        observed_at="",
+        actuals_path=actuals,
+    ) == {"status": "skipped", "reason": "observed_at_invalid"}
+    assert record_numeric_actual(
+        case_id="case-1",
+        observed_year=1,
+        sales=112_000,
+        observed_at="2999-01-01",
+        actuals_path=actuals,
+    ) == {"status": "skipped", "reason": "observed_at_in_future"}
 
 
 def test_numeric_actual_api_validates_and_records(tmp_path, monkeypatch):
@@ -123,6 +138,21 @@ def test_numeric_actual_api_validates_and_records(tmp_path, monkeypatch):
         json={"case_id": "case-1", "observed_year": 1},
     )
     assert invalid.status_code == 422
+    missing_observation_date = _client().post(
+        "/api/future-simulation/actuals",
+        json={"case_id": "case-1", "observed_year": 1, "sales": 112_000},
+    )
+    assert missing_observation_date.status_code == 422
+    future_observation_date = _client().post(
+        "/api/future-simulation/actuals",
+        json={
+            "case_id": "case-1",
+            "observed_year": 1,
+            "sales": 112_000,
+            "observed_at": "2999-01-01",
+        },
+    )
+    assert future_observation_date.status_code == 422
 
     response = _client().post(
         "/api/future-simulation/actuals",
@@ -131,7 +161,7 @@ def test_numeric_actual_api_validates_and_records(tmp_path, monkeypatch):
             "observed_year": 1,
             "sales": 112_000,
             "op_profit": 6_500,
-            "observed_at": "2027-03-31",
+            "observed_at": "2025-03-31",
         },
     )
     assert response.status_code == 200

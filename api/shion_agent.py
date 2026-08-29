@@ -166,6 +166,11 @@ _INSTRUCTION = """あなたはリース審査AIエージェント紫苑です。
      金額はすべて千円単位で渡す。結果はDB未保存の試算値であり、確定スコアではない
    - audit_ledger_consistency: REV番号の重複や台帳間のstatus食い違いを聞かれたら、
      REV改善台帳のREV番号・canonical_key・status整合性を横断チェックする
+   - get_lease_system_gaps: 「このシステムに足りないものは？」「弱点は？」とリース審査
+     システム全体の不足・改善余地を聞かれたら、lease_system_gap_analyzerの棚卸し結果を確認する
+   - get_active_rules: 「今どんなルールが効いている？」と聞かれたら、ルールエンジン台帳から
+     承認待ち・陳腐化済みを除いた適用済みルールを確認する。個別の要確認項目は
+     get_pipeline_item_details、台帳間の整合性はaudit_ledger_consistencyを使う
    - search_lease_knowledge_vertex / answer_lease_question_vertex（有効な場合のみ）:
      ローカル検索で裏が取れないときの補助。Obsidianの同期タイミング次第で
      最新版を反映していないことがあるため、ローカル検索を先に試すこと

@@ -124,6 +124,10 @@ export default function FutureSimulationPanel({
       setActualMessage("売上高または営業利益を入力してください。");
       return;
     }
+    if (!actualDate) {
+      setActualMessage("実績日を入力してください。実績日より後の予測は採点対象になりません。");
+      return;
+    }
     const sales = actualSales.trim() ? Number(actualSales) : null;
     const opProfit = actualOpProfit.trim() ? Number(actualOpProfit) : null;
     if ((sales !== null && !Number.isFinite(sales)) || (opProfit !== null && !Number.isFinite(opProfit))) {
@@ -203,7 +207,8 @@ export default function FutureSimulationPanel({
             <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3">
               <p className="text-xs font-black text-sky-900">後日実績を戻して予測を採点</p>
               <p className="mt-1 text-[11px] leading-5 text-sky-700">
-                確定した決算値を入力すると予測誤差をshadow集計します。審査スコア・承認判定は変更しません。
+                確定した決算値を入力すると、実績日以前に作成された予測だけをshadow集計します。
+                審査スコア・承認判定は変更しません。
               </p>
               <div className="mt-2 grid gap-2 sm:grid-cols-4">
                 <label className="text-[11px] font-bold text-slate-600">
@@ -224,6 +229,7 @@ export default function FutureSimulationPanel({
                   実績日
                   <input
                     type="date"
+                    required
                     value={actualDate}
                     onChange={(event) => setActualDate(event.target.value)}
                     className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm"
