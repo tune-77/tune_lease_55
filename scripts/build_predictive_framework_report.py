@@ -19,9 +19,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -53,6 +54,7 @@ MIN_CALIBRATION_EVENTS_PER_BAND = 5
 MIN_CONFIDENCE_CALIBRATION_EVENTS = 30
 MIN_CONFIDENCE_BIN_EVENTS = 5
 MIN_NUMERIC_ACTUAL_MATCHES = 5
+TOKYO_TIMEZONE = ZoneInfo("Asia/Tokyo")
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -110,6 +112,18 @@ def _timestamp_or_none(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _observation_date_or_none(value: Any) -> date | None:
+    """実績日を東京時間の暦日として読む。旧timestamp形式もJSTへ変換する。"""
+    raw = _text(value)
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        parsed = _timestamp_or_none(raw)
+        return parsed.astimezone(TOKYO_TIMEZONE).date() if parsed is not None else None
 
 
 def build_snapshot_summary(snapshot_rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -197,8 +211,8 @@ def build_numeric_forecast_summary(
     matched_rows: list[dict[str, float | None]] = []
     actuals_without_observation_date = 0
     for (case_id, year), actual_row in latest_actuals.items():
-        observed_at = _timestamp_or_none(actual_row.get("observed_at"))
-        if observed_at is None:
+        observed_date = _observation_date_or_none(actual_row.get("observed_at"))
+        if observed_date is None:
             actuals_without_observation_date += 1
             continue
         candidates = forecasts_by_case.get(case_id) or []
@@ -208,7 +222,7 @@ def build_numeric_forecast_summary(
             row for row in candidates
             if (
                 (captured_at := _timestamp_or_none(row.get("captured_at"))) is not None
-                and captured_at <= observed_at
+                and captured_at.astimezone(TOKYO_TIMEZONE).date() <= observed_date
             )
         ]
         if not eligible:
@@ -243,7 +257,7 @@ def build_numeric_forecast_summary(
         "trustworthy": matched >= MIN_NUMERIC_ACTUAL_MATCHES,
         "minimum_matches_required": MIN_NUMERIC_ACTUAL_MATCHES,
         "calibration_blocker": None if matched > 0 else "future_actuals_not_collected_or_unmatched",
-        "matching_policy": "latest_forecast_captured_on_or_before_observed_at",
+        "matching_policy": "latest_forecast_captured_on_or_before_observed_date_asia_tokyo",
         "sales_error": _numeric_metric(matched_rows, "sales", "sales_p50"),
         "op_profit_error": _numeric_metric(matched_rows, "op_profit", "op_profit_p50"),
     }
@@ -621,7 +635,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- 実績 {numeric['actuals_latest']} 件 / 予測と突合 {numeric['matched_actuals']} 件"
         f"（突合率 {numeric['match_rate']}）"
     )
-    lines.append("- 突合条件: 実績日以前に固定された予測のうち最新のもの")
+    lines.append("- 突合条件: 東京時間の実績日以前に固定された予測のうち最新のもの")
     if numeric["actuals_without_observation_date"]:
         lines.append(
             f"- 実績日なしで採点対象外: {numeric['actuals_without_observation_date']} 件"

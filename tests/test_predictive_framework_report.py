@@ -223,7 +223,17 @@ def test_numeric_forecast_excludes_predictions_created_after_observation():
         },
         {
             "case_id": "case-1",
-            "captured_at": "2025-04-02T00:00:00+00:00",
+            # UTCでは正午だが、東京時間では実績日当日の21時なので対象に含む。
+            "captured_at": "2025-03-31T12:00:00+00:00",
+            "forecast": {
+                "sales_percentiles": {"10": [100, 100], "50": [110, 110], "90": [120, 120]},
+                "op_percentiles": {"10": [4, 4], "50": [5, 5], "90": [6, 6]},
+            },
+        },
+        {
+            "case_id": "case-1",
+            # UTCでは同じ3月31日だが、東京時間では翌日0時なので対象外。
+            "captured_at": "2025-03-31T15:00:00+00:00",
             "forecast": {
                 "sales_percentiles": {"10": [190, 190], "50": [200, 200], "90": [210, 210]},
                 "op_percentiles": {"10": [8, 8], "50": [9, 9], "90": [10, 10]},
@@ -241,9 +251,9 @@ def test_numeric_forecast_excludes_predictions_created_after_observation():
     summary = report_module.build_numeric_forecast_summary(forecasts, [actual])
 
     assert summary["matched_actuals"] == 1
-    assert summary["sales_error"]["mae"] == 0.0
-    assert summary["op_profit_error"]["mae"] == 0.0
-    assert summary["matching_policy"] == "latest_forecast_captured_on_or_before_observed_at"
+    assert summary["sales_error"]["mae"] == 10.0
+    assert summary["op_profit_error"]["mae"] == 1.0
+    assert summary["matching_policy"] == "latest_forecast_captured_on_or_before_observed_date_asia_tokyo"
 
 
 def test_numeric_forecast_does_not_score_actual_without_observation_date():

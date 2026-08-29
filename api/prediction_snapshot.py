@@ -18,6 +18,7 @@ import hashlib
 import math
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from api.loop_engineering_common import DATA_DIR, append_jsonl, load_jsonl
 
@@ -27,6 +28,7 @@ NUMERIC_FORECASTS_PATH = DATA_DIR / "prediction_numeric_forecasts.jsonl"
 NUMERIC_ACTUALS_PATH = DATA_DIR / "prediction_numeric_actuals.jsonl"
 
 SCHEMA_VERSION = 1
+TOKYO_TIMEZONE = ZoneInfo("Asia/Tokyo")
 
 _USE_POLICY = (
     "審査時点の予測を結果を知る前に固定するshadow mode。"
@@ -313,7 +315,7 @@ def record_numeric_actual(
             observation_date = dt.date.fromisoformat(_text(observed_at))
         except ValueError:
             return {"status": "skipped", "reason": "observed_at_invalid"}
-        if observation_date > dt.date.today():
+        if observation_date > dt.datetime.now(TOKYO_TIMEZONE).date():
             return {"status": "skipped", "reason": "observed_at_in_future"}
 
         actual_sales = _float_or_none(sales)
