@@ -71,6 +71,9 @@ package = false
 # リポジトリ直下には運用スクリプトや一時worktreeが置かれるため、
 # 本体テストディレクトリだけを収集対象に固定する。
 testpaths = ["tests"]
+markers = [
+    "integration: 外部サービスや実データを必要とする統合評価",
+]
 norecursedirs = [
     ".git",
     ".venv",
