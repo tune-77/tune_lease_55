@@ -5470,6 +5470,14 @@ def _promote_cloudrun_score_input_to_pending_case(score_input_id: int) -> str | 
     if not new_case_id:
         return None
 
+    from api.prediction_snapshot import record_saved_case_prediction
+
+    record_saved_case_prediction(
+        case_id=str(new_case_id),
+        case_data=case_payload,
+        source="cloudrun_score_promotion",
+    )
+
     try:
         with _connect_cloudrun_return_db() as conn:
             _ensure_cloudrun_return_review_schema(conn)

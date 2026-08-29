@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api import prediction_snapshot
-from api.prediction_snapshot import load_prediction_snapshot, record_numeric_forecast
+from api.prediction_snapshot import load_prediction_snapshot, record_numeric_actual, record_numeric_forecast
 from api.routers.analytics import router
 
 
@@ -76,7 +76,7 @@ def test_numeric_forecast_is_recorded_apart_from_judgment_prediction(tmp_path, m
 
     entry = json.loads(forecasts.read_text(encoding="utf-8").strip())
     assert entry["event_type"] == "numeric_forecast_snapshot"
-    # 3〜5年後の実績を持っていないため採点できないことを明示する
+    # 実績が戻るまでは採点できないことを明示する
     assert entry["calibratable"] is False
     assert entry["calibration_blocker"] == "future_actuals_not_collected"
 
@@ -86,3 +86,83 @@ def test_numeric_forecast_never_raises(tmp_path, monkeypatch):
 
     assert record_numeric_forecast(case_id="", forecast={"method": "gbm"})["status"] == "skipped"
     assert record_numeric_forecast(case_id="case-1", forecast={})["status"] == "skipped"
+
+
+def test_numeric_actual_is_recorded_for_later_shadow_scoring(tmp_path):
+    actuals = tmp_path / "prediction_numeric_actuals.jsonl"
+
+    recorded = record_numeric_actual(
+        case_id="case-1",
+        observed_year=1,
+        sales=112_000,
+        op_profit=6_500,
+        observed_at="2025-03-31",
+        actuals_path=actuals,
+    )
+
+    assert recorded["status"] == "recorded"
+    entry = json.loads(actuals.read_text(encoding="utf-8").strip())
+    assert entry["event_type"] == "numeric_forecast_actual"
+    assert entry["status"] == "shadow_only"
+    assert entry["unit"] == "千円"
+    assert entry["actual"] == {"sales": 112_000.0, "op_profit": 6_500.0}
+    assert record_numeric_actual(
+        case_id="case-1",
+        observed_year=1,
+        sales=float("nan"),
+        observed_at="2025-03-31",
+        actuals_path=actuals,
+    ) == {"status": "skipped", "reason": "actual_values_invalid"}
+    assert record_numeric_actual(
+        case_id="case-1",
+        observed_year=1,
+        sales=112_000,
+        observed_at="",
+        actuals_path=actuals,
+    ) == {"status": "skipped", "reason": "observed_at_invalid"}
+    assert record_numeric_actual(
+        case_id="case-1",
+        observed_year=1,
+        sales=112_000,
+        observed_at="2999-01-01",
+        actuals_path=actuals,
+    ) == {"status": "skipped", "reason": "observed_at_in_future"}
+
+
+def test_numeric_actual_api_validates_and_records(tmp_path, monkeypatch):
+    actuals = tmp_path / "prediction_numeric_actuals.jsonl"
+    monkeypatch.setattr(prediction_snapshot, "NUMERIC_ACTUALS_PATH", actuals)
+
+    invalid = _client().post(
+        "/api/future-simulation/actuals",
+        json={"case_id": "case-1", "observed_year": 1},
+    )
+    assert invalid.status_code == 422
+    missing_observation_date = _client().post(
+        "/api/future-simulation/actuals",
+        json={"case_id": "case-1", "observed_year": 1, "sales": 112_000},
+    )
+    assert missing_observation_date.status_code == 422
+    future_observation_date = _client().post(
+        "/api/future-simulation/actuals",
+        json={
+            "case_id": "case-1",
+            "observed_year": 1,
+            "sales": 112_000,
+            "observed_at": "2999-01-01",
+        },
+    )
+    assert future_observation_date.status_code == 422
+
+    response = _client().post(
+        "/api/future-simulation/actuals",
+        json={
+            "case_id": "case-1",
+            "observed_year": 1,
+            "sales": 112_000,
+            "op_profit": 6_500,
+            "observed_at": "2025-03-31",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "recorded"

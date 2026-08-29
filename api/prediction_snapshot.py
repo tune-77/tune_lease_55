@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import math
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from api.loop_engineering_common import DATA_DIR, append_jsonl, load_jsonl
 SNAPSHOTS_PATH = DATA_DIR / "prediction_snapshots.jsonl"
 # 数値予測は判断予測と混ぜない（load_prediction_snapshot が誤って拾わないようにするため）
 NUMERIC_FORECASTS_PATH = DATA_DIR / "prediction_numeric_forecasts.jsonl"
+NUMERIC_ACTUALS_PATH = DATA_DIR / "prediction_numeric_actuals.jsonl"
 
 SCHEMA_VERSION = 1
 
@@ -196,6 +198,38 @@ def record_prediction_snapshot(
         return {"status": "error", "reason": str(err)}
 
 
+def record_saved_case_prediction(
+    *,
+    case_id: str,
+    case_data: dict[str, Any] | None,
+    source: str,
+    snapshots_path: Path | None = None,
+) -> dict[str, Any]:
+    """`save_case_log()` 形式の案件から予測を記録する共通アダプター。
+
+    通常審査以外の保存経路（討論・バッチ・Cloud Run帰還）も同じ予測誤差
+    ループへ接続する。結果判明済みのバッチ行は `final_status` により既存の
+    `record_prediction_snapshot()` が安全に除外する。
+    """
+    try:
+        case_data = case_data if isinstance(case_data, dict) else {}
+        inputs = case_data.get("inputs")
+        result = case_data.get("result")
+        inputs = inputs if isinstance(inputs, dict) else {}
+        result = result if isinstance(result, dict) else {}
+        final_status = _text(case_data.get("final_status") or result.get("final_status"))
+        return record_prediction_snapshot(
+            case_id=case_id,
+            inputs=inputs,
+            result=result,
+            final_status=final_status,
+            source=source,
+            snapshots_path=snapshots_path,
+        )
+    except Exception as err:  # 補助記録で案件保存を壊さない
+        return {"status": "error", "reason": str(err)}
+
+
 def record_numeric_forecast(
     *,
     case_id: str,
@@ -235,6 +269,8 @@ def record_numeric_forecast(
                 "deficit_prob": forecast.get("deficit_prob"),
                 "final_op_median": forecast.get("final_op_median"),
                 "final_op_worst10": forecast.get("final_op_worst10"),
+                "sales_percentiles": forecast.get("sales_percentiles"),
+                "op_percentiles": forecast.get("op_percentiles"),
             },
             "calibratable": False,
             "calibration_blocker": "future_actuals_not_collected",
@@ -242,6 +278,82 @@ def record_numeric_forecast(
         }
         append_jsonl(path, entry)
         return {"status": "recorded", "case_id": entry["case_id"]}
+    except Exception as err:
+        return {"status": "error", "reason": str(err)}
+
+
+def record_numeric_actual(
+    *,
+    case_id: str,
+    observed_year: int,
+    sales: float | None = None,
+    op_profit: float | None = None,
+    observed_at: str = "",
+    source: str = "manual_financial_actual",
+    actuals_path: Path | None = None,
+) -> dict[str, Any]:
+    """将来財務予測を後日採点するための実績値を追記する。
+
+    shadow専用であり、入力された実績はスコア・承認判定・モデル再学習へ
+    自動反映しない。訂正は追記し、レポート側が最新記録を採用する。
+    """
+    try:
+        path = actuals_path or NUMERIC_ACTUALS_PATH
+        case_id = _text(case_id)
+        if not case_id:
+            return {"status": "skipped", "reason": "case_id_unavailable"}
+        try:
+            year = int(observed_year)
+        except (TypeError, ValueError):
+            return {"status": "skipped", "reason": "observed_year_invalid"}
+        if year < 1 or year > 10:
+            return {"status": "skipped", "reason": "observed_year_invalid"}
+
+        try:
+            observation_date = dt.date.fromisoformat(_text(observed_at))
+        except ValueError:
+            return {"status": "skipped", "reason": "observed_at_invalid"}
+        if observation_date > dt.date.today():
+            return {"status": "skipped", "reason": "observed_at_in_future"}
+
+        actual_sales = _float_or_none(sales)
+        actual_op_profit = _float_or_none(op_profit)
+        if any(value is not None and not math.isfinite(value) for value in (actual_sales, actual_op_profit)):
+            return {"status": "skipped", "reason": "actual_values_invalid"}
+        if actual_sales is None and actual_op_profit is None:
+            return {"status": "skipped", "reason": "actual_values_unavailable"}
+
+        recorded_at = _now_iso()
+        fingerprint = hashlib.sha256(
+            "\n".join(
+                [
+                    case_id,
+                    str(year),
+                    observation_date.isoformat(),
+                    "" if actual_sales is None else f"{actual_sales:.3f}",
+                    "" if actual_op_profit is None else f"{actual_op_profit:.3f}",
+                ]
+            ).encode("utf-8")
+        ).hexdigest()
+        entry = {
+            "id": fingerprint[:16],
+            "schema_version": SCHEMA_VERSION,
+            "event_type": "numeric_forecast_actual",
+            "status": "shadow_only",
+            "source": _text(source) or "manual_financial_actual",
+            "case_id": case_id,
+            "observed_year": year,
+            "observed_at": observation_date.isoformat(),
+            "recorded_at": recorded_at,
+            "unit": "千円",
+            "actual": {"sales": actual_sales, "op_profit": actual_op_profit},
+            "use_policy": (
+                "将来財務予測の誤差を観測するshadow実績。"
+                "スコア・判定・モデルへ自動反映せず、人間レビューにだけ使う。"
+            ),
+        }
+        append_jsonl(path, entry)
+        return {"status": "recorded", "actual_id": entry["id"], "case_id": case_id}
     except Exception as err:
         return {"status": "error", "reason": str(err)}
 

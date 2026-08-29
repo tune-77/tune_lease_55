@@ -83,6 +83,12 @@ export default function FutureSimulationPanel({
   const [data, setData] = useState<FutureSimulationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [actualYear, setActualYear] = useState("1");
+  const [actualSales, setActualSales] = useState("");
+  const [actualOpProfit, setActualOpProfit] = useState("");
+  const [actualDate, setActualDate] = useState("");
+  const [actualSaving, setActualSaving] = useState(false);
+  const [actualMessage, setActualMessage] = useState("");
 
   const fetchSimulation = useCallback(async () => {
     if (!salesMillionYen || salesMillionYen <= 0) {
@@ -112,6 +118,41 @@ export default function FutureSimulationPanel({
   useEffect(() => {
     fetchSimulation();
   }, [fetchSimulation]);
+
+  const saveActual = useCallback(async () => {
+    if (!caseId || (!actualSales.trim() && !actualOpProfit.trim())) {
+      setActualMessage("売上高または営業利益を入力してください。");
+      return;
+    }
+    if (!actualDate) {
+      setActualMessage("実績日を入力してください。実績日より後の予測は採点対象になりません。");
+      return;
+    }
+    const sales = actualSales.trim() ? Number(actualSales) : null;
+    const opProfit = actualOpProfit.trim() ? Number(actualOpProfit) : null;
+    if ((sales !== null && !Number.isFinite(sales)) || (opProfit !== null && !Number.isFinite(opProfit))) {
+      setActualMessage("実績値を数値で入力してください。");
+      return;
+    }
+    setActualSaving(true);
+    setActualMessage("");
+    try {
+      await apiClient.post("/api/future-simulation/actuals", {
+        case_id: caseId,
+        observed_year: Number(actualYear),
+        sales: sales === null ? null : sales * 1000,
+        op_profit: opProfit === null ? null : opProfit * 1000,
+        observed_at: actualDate,
+      });
+      setActualMessage("実績をshadow記録しました。審査スコアには影響しません。");
+      setActualSales("");
+      setActualOpProfit("");
+    } catch {
+      setActualMessage("実績を記録できませんでした。");
+    } finally {
+      setActualSaving(false);
+    }
+  }, [actualDate, actualOpProfit, actualSales, actualYear, caseId]);
 
   const salesRows = useMemo(
     () => (data?.years && data.sales_percentiles ? buildChartRows(data.years, data.sales_percentiles) : []),
@@ -161,9 +202,79 @@ export default function FutureSimulationPanel({
             帯は10〜90パーセンタイル。成長率{(DRIFT * 100).toFixed(0)}%・ボラティリティ
             {(VOLATILITY * 100).toFixed(0)}%の仮定値による試算です。
           </p>
+
+          {caseId ? (
+            <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3">
+              <p className="text-xs font-black text-sky-900">後日実績を戻して予測を採点</p>
+              <p className="mt-1 text-[11px] leading-5 text-sky-700">
+                確定した決算値を入力すると、実績日以前に作成された予測だけをshadow集計します。
+                審査スコア・承認判定は変更しません。
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                <label className="text-[11px] font-bold text-slate-600">
+                  予測から
+                  <select
+                    value={actualYear}
+                    onChange={(event) => setActualYear(event.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm"
+                  >
+                    {Array.from({ length: years }, (_, index) => index + 1).map((year) => (
+                      <option key={year} value={year}>{year}年後</option>
+                    ))}
+                  </select>
+                </label>
+                <ActualInput label="売上高（百万円）" value={actualSales} onChange={setActualSales} />
+                <ActualInput label="営業利益（百万円）" value={actualOpProfit} onChange={setActualOpProfit} />
+                <label className="text-[11px] font-bold text-slate-600">
+                  実績日
+                  <input
+                    type="date"
+                    required
+                    value={actualDate}
+                    onChange={(event) => setActualDate(event.target.value)}
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm"
+                  />
+                </label>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={saveActual}
+                  disabled={actualSaving}
+                  className="rounded-md bg-sky-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  {actualSaving ? "記録中…" : "実績を記録"}
+                </button>
+                {actualMessage ? <p className="text-xs text-sky-800">{actualMessage}</p> : null}
+              </div>
+            </div>
+          ) : null}
         </>
       ) : null}
     </div>
+  );
+}
+
+function ActualInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="text-[11px] font-bold text-slate-600">
+      {label}
+      <input
+        type="number"
+        step="0.1"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm"
+      />
+    </label>
   );
 }
 

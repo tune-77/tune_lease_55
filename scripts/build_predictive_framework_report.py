@@ -5,6 +5,8 @@
 新しい予測器を足すためではなく、既に記録されている
 
 - data/prediction_snapshots.jsonl（審査時点の予測）
+- data/prediction_numeric_forecasts.jsonl（将来財務予測）
+- data/prediction_numeric_actuals.jsonl（後日判明した財務実績）
 - data/prediction_error_events.jsonl（観測と誤差）
 - data/prediction_error_update_candidates.jsonl（信念更新候補）
 - data/prediction_error_candidate_reviews.jsonl（人間の採否）
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_SNAPSHOTS = REPO_ROOT / "data" / "prediction_snapshots.jsonl"
 DEFAULT_NUMERIC_FORECASTS = REPO_ROOT / "data" / "prediction_numeric_forecasts.jsonl"
+DEFAULT_NUMERIC_ACTUALS = REPO_ROOT / "data" / "prediction_numeric_actuals.jsonl"
 DEFAULT_EVENTS = REPO_ROOT / "data" / "prediction_error_events.jsonl"
 DEFAULT_CANDIDATES = REPO_ROOT / "data" / "prediction_error_update_candidates.jsonl"
 DEFAULT_REVIEWS = REPO_ROOT / "data" / "prediction_error_candidate_reviews.jsonl"
@@ -46,6 +50,9 @@ REPEAT_BELIEF_LIMIT = 10
 REPEAT_ALERT_THRESHOLD = 3
 # リスク帯の逆転を判定するのに必要な最低件数。少数件での逆転は偶然でしかない。
 MIN_CALIBRATION_EVENTS_PER_BAND = 5
+MIN_CONFIDENCE_CALIBRATION_EVENTS = 30
+MIN_CONFIDENCE_BIN_EVENTS = 5
+MIN_NUMERIC_ACTUAL_MATCHES = 5
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -77,6 +84,34 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 3)
 
 
+def _float_or_none(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return round(sum(values) / len(values), 3)
+
+
+def _timestamp_or_none(value: Any) -> datetime | None:
+    """ISO日付/日時を比較可能なUTC datetimeへ変換する。"""
+    raw = _text(value)
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def build_snapshot_summary(snapshot_rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_risk: dict[str, int] = {}
     cases: set[str] = set()
@@ -94,12 +129,43 @@ def build_snapshot_summary(snapshot_rows: list[dict[str, Any]]) -> dict[str, Any
     }
 
 
-def build_numeric_forecast_summary(forecast_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """数値予測（将来売上・営業利益）の記録状況。
+def _forecast_value(forecast: dict[str, Any], key: str, percentile: str, year: int) -> float | None:
+    bands = forecast.get(key) if isinstance(forecast.get(key), dict) else {}
+    values = bands.get(percentile)
+    if not isinstance(values, list) or year < 0 or year >= len(values):
+        return None
+    return _float_or_none(values[year])
 
-    採点には3〜5年後の実績値が必要だが、現在のDBは成約/失注と延滞しか
-    持っていない。よってここは件数の観測までで、キャリブレーションはしない。
-    """
+
+def _numeric_metric(rows: list[dict[str, float | None]], actual_key: str, forecast_key: str) -> dict[str, Any]:
+    errors: list[float] = []
+    percentage_errors: list[float] = []
+    interval_hits: list[float] = []
+    for row in rows:
+        actual = _float_or_none(row.get(actual_key))
+        predicted = _float_or_none(row.get(forecast_key))
+        if actual is None or predicted is None:
+            continue
+        errors.append(abs(predicted - actual))
+        if actual != 0:
+            percentage_errors.append(abs(predicted - actual) / abs(actual))
+        low = _float_or_none(row.get(f"{forecast_key}_p10"))
+        high = _float_or_none(row.get(f"{forecast_key}_p90"))
+        if low is not None and high is not None:
+            interval_hits.append(1.0 if low <= actual <= high else 0.0)
+    return {
+        "observations": len(errors),
+        "mae": _mean(errors),
+        "mape": _mean(percentage_errors),
+        "interval_80_coverage": _mean(interval_hits),
+    }
+
+
+def build_numeric_forecast_summary(
+    forecast_rows: list[dict[str, Any]],
+    actual_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """将来財務予測と後日実績を案件・予測年で突合し、shadow誤差を測る。"""
     cases: set[str] = set()
     by_method: dict[str, int] = {}
     for row in forecast_rows:
@@ -109,12 +175,77 @@ def build_numeric_forecast_summary(forecast_rows: list[dict[str, Any]]) -> dict[
         forecast = row.get("forecast") if isinstance(row.get("forecast"), dict) else {}
         method = _text(forecast.get("method")) or "unknown"
         by_method[method] = by_method.get(method, 0) + 1
+
+    latest_actuals: dict[tuple[str, int], dict[str, Any]] = {}
+    for row in sorted(actual_rows or [], key=lambda item: _text(item.get("recorded_at"))):
+        case_id = _text(row.get("case_id"))
+        try:
+            year = int(row.get("observed_year"))
+        except (TypeError, ValueError):
+            continue
+        if case_id and year >= 1:
+            latest_actuals[(case_id, year)] = row
+
+    forecasts_by_case: dict[str, list[dict[str, Any]]] = {}
+    for row in forecast_rows:
+        case_id = _text(row.get("case_id"))
+        if case_id:
+            forecasts_by_case.setdefault(case_id, []).append(row)
+    for rows in forecasts_by_case.values():
+        rows.sort(key=lambda item: _timestamp_or_none(item.get("captured_at")) or datetime.min.replace(tzinfo=timezone.utc))
+
+    matched_rows: list[dict[str, float | None]] = []
+    actuals_without_observation_date = 0
+    for (case_id, year), actual_row in latest_actuals.items():
+        observed_at = _timestamp_or_none(actual_row.get("observed_at"))
+        if observed_at is None:
+            actuals_without_observation_date += 1
+            continue
+        candidates = forecasts_by_case.get(case_id) or []
+        if not candidates:
+            continue
+        eligible = [
+            row for row in candidates
+            if (
+                (captured_at := _timestamp_or_none(row.get("captured_at"))) is not None
+                and captured_at <= observed_at
+            )
+        ]
+        if not eligible:
+            continue
+        forecast_row = eligible[-1]
+        forecast = forecast_row.get("forecast") if isinstance(forecast_row.get("forecast"), dict) else {}
+        actual = actual_row.get("actual") if isinstance(actual_row.get("actual"), dict) else {}
+        matched_rows.append(
+            {
+                "sales": _float_or_none(actual.get("sales")),
+                "sales_p50": _forecast_value(forecast, "sales_percentiles", "50", year),
+                "sales_p50_p10": _forecast_value(forecast, "sales_percentiles", "10", year),
+                "sales_p50_p90": _forecast_value(forecast, "sales_percentiles", "90", year),
+                "op_profit": _float_or_none(actual.get("op_profit")),
+                "op_profit_p50": _forecast_value(forecast, "op_percentiles", "50", year),
+                "op_profit_p50_p10": _forecast_value(forecast, "op_percentiles", "10", year),
+                "op_profit_p50_p90": _forecast_value(forecast, "op_percentiles", "90", year),
+            }
+        )
+
+    matched = len(matched_rows)
     return {
         "total": len(forecast_rows),
         "unique_cases": len(cases),
         "by_method": by_method,
-        "calibratable": False,
-        "calibration_blocker": "future_actuals_not_collected",
+        "actuals_total": len(actual_rows or []),
+        "actuals_latest": len(latest_actuals),
+        "actuals_without_observation_date": actuals_without_observation_date,
+        "matched_actuals": matched,
+        "match_rate": _rate(matched, len(latest_actuals)),
+        "calibratable": matched > 0,
+        "trustworthy": matched >= MIN_NUMERIC_ACTUAL_MATCHES,
+        "minimum_matches_required": MIN_NUMERIC_ACTUAL_MATCHES,
+        "calibration_blocker": None if matched > 0 else "future_actuals_not_collected_or_unmatched",
+        "matching_policy": "latest_forecast_captured_on_or_before_observed_at",
+        "sales_error": _numeric_metric(matched_rows, "sales", "sales_p50"),
+        "op_profit_error": _numeric_metric(matched_rows, "op_profit", "op_profit_p50"),
     }
 
 
@@ -174,6 +305,73 @@ def build_calibration(event_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def build_confidence_calibration(event_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """代理confidenceを、事前予測が実際に当たった割合へshadow校正する。
+
+    high は「非成約または延滞」、low は「成約かつ延滞なし」を当たりと定義する。
+    medium は方向を一意に定められないため校正対象外。生のconfidenceや判定は
+    変更せず、十分な件数が溜まった時だけ経験的な信頼度をレポートする。
+    """
+    eligible: list[tuple[float, float]] = []
+    for row in event_rows:
+        prediction = row.get("prediction") if isinstance(row.get("prediction"), dict) else {}
+        outcome = row.get("outcome") if isinstance(row.get("outcome"), dict) else {}
+        if _text(prediction.get("prediction_source")) != SNAPSHOT_SOURCE:
+            continue
+        risk = _text(prediction.get("risk_level")).lower()
+        confidence = _float_or_none(prediction.get("confidence"))
+        if risk not in {"high", "low"} or confidence is None:
+            continue
+        confidence = min(1.0, max(0.0, confidence))
+        if risk == "high":
+            correct = bool(outcome.get("delinquency")) or not bool(outcome.get("contracted"))
+        else:
+            correct = bool(outcome.get("contracted")) and not bool(outcome.get("delinquency"))
+        eligible.append((confidence, 1.0 if correct else 0.0))
+
+    bin_specs = [
+        (0.0, 0.5, "0.00–0.49"),
+        (0.5, 0.65, "0.50–0.64"),
+        (0.65, 0.8, "0.65–0.79"),
+        (0.8, 1.001, "0.80–1.00"),
+    ]
+    bins: list[dict[str, Any]] = []
+    weighted_gap = 0.0
+    for low, high, label in bin_specs:
+        values = [(confidence, correct) for confidence, correct in eligible if low <= confidence < high]
+        if not values:
+            continue
+        mean_confidence = _mean([value[0] for value in values])
+        accuracy = _mean([value[1] for value in values])
+        gap = None if mean_confidence is None or accuracy is None else round(abs(mean_confidence - accuracy), 3)
+        if gap is not None:
+            weighted_gap += gap * len(values)
+        bins.append(
+            {
+                "range": label,
+                "events": len(values),
+                "mean_raw_confidence": mean_confidence,
+                "observed_accuracy": accuracy,
+                "calibration_gap": gap,
+                "calibrated_confidence": accuracy if len(values) >= MIN_CONFIDENCE_BIN_EVENTS else None,
+            }
+        )
+
+    total = len(eligible)
+    return {
+        "eligible_events": total,
+        "excluded_events": max(0, len(event_rows) - total),
+        "accuracy": _mean([correct for _, correct in eligible]),
+        "mean_raw_confidence": _mean([confidence for confidence, _ in eligible]),
+        "brier_score": _mean([(confidence - correct) ** 2 for confidence, correct in eligible]),
+        "expected_calibration_error": round(weighted_gap / total, 3) if total else None,
+        "trustworthy": total >= MIN_CONFIDENCE_CALIBRATION_EVENTS,
+        "minimum_events_required": MIN_CONFIDENCE_CALIBRATION_EVENTS,
+        "policy": "shadow_only_raw_confidence_unchanged",
+        "bins": bins,
+    }
 
 
 def build_calibration_warnings(calibration: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -324,6 +522,25 @@ def build_daily_review_focus(report: dict[str, Any]) -> list[str]:
     for warning in report["calibration_warnings"]:
         focus.append(warning["message"])
 
+    confidence = report["confidence_calibration"]
+    if confidence["trustworthy"] and (confidence["expected_calibration_error"] or 0) >= 0.15:
+        focus.append(
+            f"確信度の校正誤差が {confidence['expected_calibration_error']}。"
+            "生のconfidenceは変更せず、経験的信頼度との乖離を人間レビューする。"
+        )
+
+    numeric = report["numeric_forecast"]
+    numeric_mapes = [
+        metric.get("mape")
+        for metric in (numeric["sales_error"], numeric["op_profit_error"])
+        if metric.get("mape") is not None
+    ]
+    if numeric["trustworthy"] and numeric_mapes and max(numeric_mapes) >= 0.3:
+        focus.append(
+            f"将来財務予測の最大MAPEが {max(numeric_mapes):.3f}。"
+            "前提条件または予測方式を人間レビューする。"
+        )
+
     if not focus:
         focus.append("予測の並びと候補レビューに未処理の異常なし。今日は何もしない。")
     return focus[:3]
@@ -336,6 +553,7 @@ def build_predictive_framework_report(
     candidate_rows: list[dict[str, Any]],
     review_rows: list[dict[str, Any]],
     numeric_forecast_rows: list[dict[str, Any]] | None = None,
+    numeric_actual_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     calibration = build_calibration(event_rows)
     report: dict[str, Any] = {
@@ -343,9 +561,13 @@ def build_predictive_framework_report(
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "policy": "read_only_no_automatic_scoring_or_rag_change",
         "snapshots": build_snapshot_summary(snapshot_rows),
-        "numeric_forecast": build_numeric_forecast_summary(numeric_forecast_rows or []),
+        "numeric_forecast": build_numeric_forecast_summary(
+            numeric_forecast_rows or [],
+            numeric_actual_rows or [],
+        ),
         "prediction_coverage": build_prediction_coverage(event_rows),
         "calibration": calibration,
+        "confidence_calibration": build_confidence_calibration(event_rows),
         "calibration_warnings": build_calibration_warnings(calibration),
         "surprise": build_surprise_rate(event_rows),
         "repeat_beliefs": build_repeat_beliefs(candidate_rows, review_rows),
@@ -396,9 +618,29 @@ def render_markdown(report: dict[str, Any]) -> str:
         breakdown = " / ".join(f"{key}={value}" for key, value in sorted(numeric["by_method"].items()))
         lines.append(f"- 生成方式: {breakdown}")
     lines.append(
-        "- 採点は未実施。3〜5年後の実績値をDBが持っていないため、"
-        "当面は記録とカバー率の観測までに留める。"
+        f"- 実績 {numeric['actuals_latest']} 件 / 予測と突合 {numeric['matched_actuals']} 件"
+        f"（突合率 {numeric['match_rate']}）"
     )
+    lines.append("- 突合条件: 実績日以前に固定された予測のうち最新のもの")
+    if numeric["actuals_without_observation_date"]:
+        lines.append(
+            f"- 実績日なしで採点対象外: {numeric['actuals_without_observation_date']} 件"
+        )
+    if numeric["calibratable"]:
+        sales = numeric["sales_error"]
+        op_profit = numeric["op_profit_error"]
+        lines.append(
+            f"- 売上予測: n={sales['observations']} / MAE={sales['mae']} / "
+            f"MAPE={sales['mape']} / 80%区間包含率={sales['interval_80_coverage']}"
+        )
+        lines.append(
+            f"- 営業利益予測: n={op_profit['observations']} / MAE={op_profit['mae']} / "
+            f"MAPE={op_profit['mape']} / 80%区間包含率={op_profit['interval_80_coverage']}"
+        )
+        if not numeric["trustworthy"]:
+            lines.append(f"- 参考値: 信頼判定には突合 {numeric['minimum_matches_required']} 件以上が必要")
+    else:
+        lines.append("- 採点可能な実績なし。実績登録後もスコア・判定へは自動反映しない。")
     lines.append("")
 
     lines.append("## キャリブレーション（予測リスク帯 × 実績）")
@@ -421,6 +663,30 @@ def render_markdown(report: dict[str, Any]) -> str:
         for warning in report["calibration_warnings"]:
             lines.append(f"- {warning['message']}")
         lines.append("")
+
+    confidence = report["confidence_calibration"]
+    lines.append("## 確信度キャリブレーション（shadow）")
+    lines.append("")
+    lines.append(
+        f"- 対象 {confidence['eligible_events']} 件 / 正解率 {confidence['accuracy']} / "
+        f"平均生confidence {confidence['mean_raw_confidence']}"
+    )
+    lines.append(
+        f"- Brier score {confidence['brier_score']} / "
+        f"Expected calibration error {confidence['expected_calibration_error']}"
+    )
+    if confidence["bins"]:
+        lines.append("| 生confidence帯 | 件数 | 平均confidence | 実績正解率 | 校正差 | 経験的confidence |")
+        lines.append("| --- | --- | --- | --- | --- | --- |")
+        for row in confidence["bins"]:
+            lines.append(
+                f"| {row['range']} | {row['events']} | {row['mean_raw_confidence']} | "
+                f"{row['observed_accuracy']} | {row['calibration_gap']} | {row['calibrated_confidence']} |"
+            )
+    if not confidence["trustworthy"]:
+        lines.append(f"- 参考値: 信頼判定には対象 {confidence['minimum_events_required']} 件以上が必要")
+    lines.append("- 生のconfidence・審査スコア・承認判定は変更しない。")
+    lines.append("")
 
     surprise = report["surprise"]
     lines.append("## 驚き率（予測と実績のずれ）")
@@ -469,6 +735,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshots", type=Path, default=DEFAULT_SNAPSHOTS)
     parser.add_argument("--numeric-forecasts", type=Path, default=DEFAULT_NUMERIC_FORECASTS)
+    parser.add_argument("--numeric-actuals", type=Path, default=DEFAULT_NUMERIC_ACTUALS)
     parser.add_argument("--events", type=Path, default=DEFAULT_EVENTS)
     parser.add_argument("--candidates", type=Path, default=DEFAULT_CANDIDATES)
     parser.add_argument("--reviews", type=Path, default=DEFAULT_REVIEWS)
@@ -482,6 +749,7 @@ def main() -> int:
         candidate_rows=read_jsonl(args.candidates.expanduser()),
         review_rows=read_jsonl(args.reviews.expanduser()),
         numeric_forecast_rows=read_jsonl(args.numeric_forecasts.expanduser()),
+        numeric_actual_rows=read_jsonl(args.numeric_actuals.expanduser()),
     )
     write_outputs(report, output_json=args.output_json.expanduser(), output_md=args.output_md.expanduser())
     print(f"saved: {args.output_json.expanduser()}")

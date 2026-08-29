@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -290,6 +291,24 @@ class FutureSimulationRequest(BaseModel):
     case_id: str = ""
 
 
+class FutureSimulationActualRequest(BaseModel):
+    """予測後に判明した財務実績。金額は千円、判定には自動反映しない。"""
+
+    case_id: str = Field(..., min_length=1, max_length=200)
+    observed_year: int = Field(..., ge=1, le=10, description="予測基準年から何年後の実績か")
+    sales: Optional[float] = None
+    op_profit: Optional[float] = None
+    observed_at: date = Field(..., description="実績の観測日。予測後の情報混入を防ぐため必須")
+    source: str = Field("manual_financial_actual", max_length=80)
+
+    @field_validator("observed_at")
+    @classmethod
+    def validate_observed_at(cls, value: date) -> date:
+        if value > date.today():
+            raise ValueError("実績日に未来日は指定できません")
+        return value
+
+
 @router.post("/api/future-simulation")
 def api_future_simulation(req: FutureSimulationRequest) -> dict:
     """案件の将来売上・営業利益を確率的にシミュレーションする。
@@ -334,6 +353,27 @@ def api_future_simulation(req: FutureSimulationRequest) -> dict:
     return {"available": True, **payload, "recorded": recorded}
 
 
+@router.post("/api/future-simulation/actuals")
+def api_future_simulation_actual(req: FutureSimulationActualRequest) -> dict:
+    """将来財務予測へ実績値を戻し、後続レポートで誤差を測れるようにする。"""
+    if req.sales is None and req.op_profit is None:
+        raise HTTPException(status_code=422, detail="sales または op_profit の実績値が必要です")
+
+    from api.prediction_snapshot import record_numeric_actual
+
+    recorded = record_numeric_actual(
+        case_id=req.case_id,
+        observed_year=req.observed_year,
+        sales=req.sales,
+        op_profit=req.op_profit,
+        observed_at=req.observed_at.isoformat(),
+        source=req.source,
+    )
+    if recorded.get("status") == "error":
+        raise HTTPException(status_code=500, detail=recorded.get("reason") or "実績記録に失敗しました")
+    return recorded
+
+
 @router.post("/api/forecast", response_model=ForecastResponse)
 def api_forecast(req: ForecastRequest):
     from timesfm_engine import TIMESFM_AVAILABLE
@@ -357,4 +397,3 @@ def api_forecast(req: ForecastRequest):
         net_assets_forecast=_run_forecast(net_assets_hist, 12),
         timesfm_available=TIMESFM_AVAILABLE,
     )
-

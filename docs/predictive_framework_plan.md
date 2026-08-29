@@ -188,7 +188,7 @@ Phase 1〜4 はすべて実装済み（PR分割は当初案から変更し、1�
 
 ## 7. 実装後に残っている限界
 
-1. **数値予測は採点できていない**。将来売上・営業利益の予測は `data/prediction_numeric_forecasts.jsonl` に記録し件数は観測しているが、採点には3〜5期後の実績値が必要で、現在のDBは成約/失注と延滞しか持っていない。レポート側も `calibratable: false` / `calibration_blocker: future_actuals_not_collected` と明示している。実績財務を取り込む経路ができるまでキャリブレーションはしない
-2. **スナップショットを取るのは `/api/score/full` の経路だけ**。`api/routers/debate.py`、`api/routers/pipeline_misc.py`、バッチ取り込み経由で作られた案件には事前予測が付かず、結果登録時の逆算にフォールバックする。`prediction_coverage` はこの取りこぼしを含めた実数として読む
-3. **confidence はまだ代理指標**。`abs(score - CONDITIONAL_LINE) / 60 + 0.35` は「承認ラインから遠いほど自信がある」以上の意味を持たない。`confidence_basis`（completeness_ratio / used_default_asset_score / quantum_risk 等）を記録しているので、実データが溜まってから式を見直す
+1. **数値予測の実績採点はshadow運用を開始済み**。`POST /api/future-simulation/actuals` で実績日を必須として後日実績を `data/prediction_numeric_actuals.jsonl` へ追記し、実績日以前に作成された予測だけを対象に、予測年ごとの売上・営業利益について MAE / MAPE / 80%区間包含率を日次レポートで測る。突合5件未満は参考値とし、スコア・判定・モデルへ自動反映しない
+2. **案件保存の主要4経路はスナップショットへ接続済み**。`/api/score/full` に加え、討論審査、バッチ保存、Cloud Run帰還案件の昇格も `record_saved_case_prediction()` を通る。成約・失注が既に判明しているバッチ行は予測に混ぜず、今後 `save_case_log()` の新しい呼び出し経路を追加する場合は同アダプターへの接続を必須とする
+3. **confidence の生値はまだ代理指標だが、実績校正をshadow観測する**。事前予測の high / low だけを対象に、confidence帯ごとの実績正解率、Brier score、Expected Calibration Errorを日次レポートへ出す。30件未満は参考値とし、生のconfidence式・審査スコア・承認判定は変更しない
 4. **キャリブレーションは事前予測が溜まるまで参考値**。`prediction_coverage.trustworthy` が false の間は、先回り提示（Phase 4）も意図的に沈黙する

@@ -21,6 +21,7 @@ def _event(
     contracted: bool = False,
     delinquency: bool = False,
     prediction_source: str = "snapshot",
+    confidence: float = 0.7,
     severity: str = "medium",
     error_type: str = "general_prediction_error",
 ) -> dict:
@@ -32,6 +33,7 @@ def _event(
             "main_concern": "自己資本比率",
             "recommended_action": "条件付き承認",
             "prediction_source": prediction_source,
+            "confidence": confidence,
         },
         "outcome": {"contracted": contracted, "delinquency": delinquency},
         "prediction_error": {"type": error_type, "severity": severity},
@@ -130,6 +132,138 @@ def test_no_warning_on_small_samples():
     )
 
     assert report_module.build_calibration_warnings(calibration) == []
+
+
+def test_confidence_calibration_uses_only_directional_snapshot_predictions():
+    events = [
+        _event(case_id=f"low-{i}", risk_level="low", contracted=True, confidence=0.8)
+        for i in range(30)
+    ]
+    events.extend(
+        [
+            _event(
+                case_id="medium",
+                risk_level="medium",
+                contracted=True,
+                confidence=0.9,
+            ),
+            _event(
+                case_id="reconstructed",
+                risk_level="low",
+                contracted=False,
+                confidence=0.9,
+                prediction_source="reconstructed_at_result",
+            ),
+        ]
+    )
+
+    calibration = report_module.build_confidence_calibration(events)
+
+    assert calibration["eligible_events"] == 30
+    assert calibration["accuracy"] == 1.0
+    assert calibration["mean_raw_confidence"] == 0.8
+    assert calibration["brier_score"] == 0.04
+    assert calibration["expected_calibration_error"] == 0.2
+    assert calibration["trustworthy"] is True
+    assert calibration["bins"][0]["calibrated_confidence"] == 1.0
+
+
+def test_confidence_calibration_stays_reference_only_on_small_samples():
+    calibration = report_module.build_confidence_calibration(
+        [_event(case_id="a", risk_level="high", contracted=False, confidence=0.6)]
+    )
+
+    assert calibration["trustworthy"] is False
+    assert calibration["bins"][0]["calibrated_confidence"] is None
+
+
+def test_numeric_forecast_is_scored_against_latest_actual():
+    forecast = {
+        "case_id": "case-1",
+        "captured_at": "2024-01-01T00:00:00+00:00",
+        "forecast": {
+            "method": "gbm",
+            "years": [0, 1],
+            "sales_percentiles": {"10": [90, 95], "50": [100, 110], "90": [110, 125]},
+            "op_percentiles": {"10": [3, 3], "50": [4, 5], "90": [5, 7]},
+        },
+    }
+    actual = {
+        "case_id": "case-1",
+        "observed_year": 1,
+        "observed_at": "2025-03-31",
+        "recorded_at": "2025-04-01T00:00:00+00:00",
+        "actual": {"sales": 100, "op_profit": 4},
+    }
+
+    summary = report_module.build_numeric_forecast_summary([forecast], [actual])
+
+    assert summary["matched_actuals"] == 1
+    assert summary["calibratable"] is True
+    assert summary["trustworthy"] is False
+    assert summary["sales_error"] == {
+        "observations": 1,
+        "mae": 10.0,
+        "mape": 0.1,
+        "interval_80_coverage": 1.0,
+    }
+    assert summary["op_profit_error"]["mae"] == 1.0
+    assert summary["op_profit_error"]["mape"] == 0.25
+
+
+def test_numeric_forecast_excludes_predictions_created_after_observation():
+    forecasts = [
+        {
+            "case_id": "case-1",
+            "captured_at": "2024-01-01T00:00:00+00:00",
+            "forecast": {
+                "sales_percentiles": {"10": [90, 90], "50": [100, 100], "90": [110, 110]},
+                "op_percentiles": {"10": [3, 3], "50": [4, 4], "90": [5, 5]},
+            },
+        },
+        {
+            "case_id": "case-1",
+            "captured_at": "2025-04-02T00:00:00+00:00",
+            "forecast": {
+                "sales_percentiles": {"10": [190, 190], "50": [200, 200], "90": [210, 210]},
+                "op_percentiles": {"10": [8, 8], "50": [9, 9], "90": [10, 10]},
+            },
+        },
+    ]
+    actual = {
+        "case_id": "case-1",
+        "observed_year": 1,
+        "observed_at": "2025-03-31",
+        "recorded_at": "2025-04-03T00:00:00+00:00",
+        "actual": {"sales": 100, "op_profit": 4},
+    }
+
+    summary = report_module.build_numeric_forecast_summary(forecasts, [actual])
+
+    assert summary["matched_actuals"] == 1
+    assert summary["sales_error"]["mae"] == 0.0
+    assert summary["op_profit_error"]["mae"] == 0.0
+    assert summary["matching_policy"] == "latest_forecast_captured_on_or_before_observed_at"
+
+
+def test_numeric_forecast_does_not_score_actual_without_observation_date():
+    forecast = {
+        "case_id": "case-1",
+        "captured_at": "2024-01-01T00:00:00+00:00",
+        "forecast": {"sales_percentiles": {"50": [100, 100]}},
+    }
+    actual = {
+        "case_id": "case-1",
+        "observed_year": 1,
+        "recorded_at": "2025-04-03T00:00:00+00:00",
+        "actual": {"sales": 100},
+    }
+
+    summary = report_module.build_numeric_forecast_summary([forecast], [actual])
+
+    assert summary["matched_actuals"] == 0
+    assert summary["actuals_without_observation_date"] == 1
+    assert summary["calibratable"] is False
 
 
 def test_repeat_beliefs_flag_only_unreviewed_repeats():
