@@ -1400,6 +1400,11 @@ export default function LeaseKunWizard() {
               onRegistered={(data) => {
                 rememberRegistrationResult(data);
                 setDoneMessage('結果登録まで完了しました！');
+                if (!data.followup_impact_pending) setPhase('done');
+              }}
+              onImpactCompleted={(data) => {
+                rememberRegistrationResult(data);
+                setDoneMessage('結果登録と追加確認の評価まで完了しました！');
                 setPhase('done');
               }}
             />
