@@ -5,18 +5,12 @@ DO NOT EDIT the AC docstrings manually — regenerate via:
 Each test_ac_xxx corresponds 1:1 with AC-xxx in the SPEC.
 """
 import time
-import sys
-import os
 import pytest
 
 SPEC_ID = "P1-001"
 PHASE = 1
 
-# mobile_app/ をパスに追加
-_MOBILE_APP_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "mobile_app")
-sys.path.insert(0, os.path.abspath(_MOBILE_APP_DIR))
-
-from lease_rule_checks import check_lease_rules, LEGAL_USEFUL_LIFE_YEARS
+from mobile_app.lease_rule_checks import check_lease_rules, LEGAL_USEFUL_LIFE_YEARS
 
 
 def _codes(result) -> list[str]:

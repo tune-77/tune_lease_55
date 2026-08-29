@@ -2,12 +2,8 @@
 P1-002: POST /predict API — warnings[] / rule_check_status フィールド追加
 SPEC: specs/phase1/P1-002-api-warnings-field.md
 """
-import sys
-import os
 import pytest
 from unittest.mock import patch
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "mobile_app"))
 
 SPEC_ID = "P1-002"
 PHASE = 1
@@ -31,9 +27,9 @@ _MINIMAL_REQUEST = {
 
 @pytest.fixture(scope="module")
 def client():
-    import api
-    api.app.config["TESTING"] = True
-    with api.app.test_client() as c:
+    from mobile_app import api as mobile_api
+    mobile_api.app.config["TESTING"] = True
+    with mobile_api.app.test_client() as c:
         yield c
 
 
@@ -104,7 +100,7 @@ def test_205_all_checks_pass(client):
 
 # AC-206: check_lease_rules が例外 → 200, score 正常, skipped, warnings=[]
 def test_206_rule_check_exception_fallback(client):
-    with patch("lease_rule_checks.check_lease_rules", side_effect=RuntimeError("mock error")):
+    with patch("mobile_app.lease_rule_checks.check_lease_rules", side_effect=RuntimeError("mock error")):
         rv = _post(client, _MINIMAL_REQUEST)
     assert rv.status_code == 200
     data = rv.get_json()

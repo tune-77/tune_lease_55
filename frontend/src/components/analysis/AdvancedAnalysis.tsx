@@ -109,8 +109,8 @@ export default function AdvancedAnalysis({ industrySub = "", companyName = "", s
     }
   };
 
-  // スコアから倒産確率を推定（score 100→0%, score 0→80%）
-  const bankruptcyPct = Math.max(0, Math.min(80, Math.round((100 - score) * 0.8)));
+  // 審査スコアの見やすさを補う参考指数。実績デフォルトで校正したPDではない。
+  const scoreRiskIndex = Math.max(0, Math.min(80, Math.round((100 - score) * 0.8)));
 
   const svgH = 40;
   const polylines = mcResult ? normalizePaths(mcResult.gbm_paths.slice(0, 20), svgH) : [];
@@ -173,15 +173,15 @@ export default function AdvancedAnalysis({ industrySub = "", companyName = "", s
                   )}
                 </svg>
                 <div className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-1 rounded shadow border text-white ${
-                  bankruptcyPct < 3 ? 'bg-emerald-500 border-emerald-600' :
-                  bankruptcyPct < 8 ? 'bg-amber-500 border-amber-600' :
+                  scoreRiskIndex < 3 ? 'bg-emerald-500 border-emerald-600' :
+                  scoreRiskIndex < 8 ? 'bg-amber-500 border-amber-600' :
                   'bg-red-500 border-red-600'
                 }`}>
-                  PD（デフォルト確率）: {bankruptcyPct}%
-                  <span className="ml-1 opacity-80">{bankruptcyPct < 3 ? '▼低リスク' : bankruptcyPct < 8 ? '▲要注意' : '⚠要警戒'}</span>
+                  スコア由来の参考リスク指数: {scoreRiskIndex}
+                  <span className="ml-1 opacity-80">{scoreRiskIndex < 3 ? '▼低め' : scoreRiskIndex < 8 ? '▲要注意' : '⚠要警戒'}</span>
                 </div>
                 <div className="absolute top-2 right-2 bg-white/90 text-[9px] text-slate-400 px-1.5 py-0.5 rounded border border-slate-100">
-                  スコア推定・5年後参考値
+                  PDではありません・5年後参考値
                 </div>
                 <div className="absolute bottom-2 right-2 text-[9px] text-slate-400">
                   {mcResult.timesfm_available ? 'TimesFM使用' : 'GBM'}

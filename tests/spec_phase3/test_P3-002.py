@@ -3,12 +3,8 @@ P3-002: POST /predict — aurion.competitor_pressure フィールド追加
 SPEC: specs/phase3/P3-002-api-competitor-pressure-field.md
 AC-801〜AC-808 に対応するテスト。
 """
-import sys
-import os
 import pytest
 from unittest.mock import patch
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "mobile_app"))
 
 SPEC_ID = "P3-002"
 PHASE = 3
@@ -64,9 +60,9 @@ _SPREAD_CLIP_REQUEST = {
 
 @pytest.fixture(scope="module")
 def client():
-    import api
-    api.app.config["TESTING"] = True
-    with api.app.test_client() as c:
+    from mobile_app import api as mobile_api
+    mobile_api.app.config["TESTING"] = True
+    with mobile_api.app.test_client() as c:
         yield c
 
 
@@ -108,8 +104,8 @@ def test_802_q_risk_field_unchanged(client):
 
 # ── AC-803: stealth_competitor 未ロード時はフォールバック値 ───────────────
 def test_803_fallback_when_stealth_not_loaded(client):
-    import api
-    with patch.object(api, "_stealth_loaded", False):
+    from mobile_app import api as mobile_api
+    with patch.object(mobile_api, "_stealth_loaded", False):
         rv = _post(client, _MINIMAL_REQUEST)
     assert rv.status_code == 200
     data = rv.get_json()
@@ -157,10 +153,10 @@ def test_806_log_output_on_caution(client, capsys):
     発火しない（1.5 超）。その場合は stealth_competitor 内の stealth ログは出ない。
     本テストは spread が低い場合をモックで模倣する。
     """
-    import api
+    from mobile_app import api as mobile_api
 
     _STEALTH_CAUTION = {"score": 35, "level": "caution", "patterns": ["COMP-STEALTH-001"], "pattern_details": []}
-    with patch("api.detect_stealth_competitor", return_value=_STEALTH_CAUTION):
+    with patch.object(mobile_api, "detect_stealth_competitor", return_value=_STEALTH_CAUTION):
         rv = _post(client, _STEALTH_CAUTION_REQUEST)
     assert rv.status_code == 200
     captured = capsys.readouterr()

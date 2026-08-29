@@ -6,7 +6,8 @@ auth_logic.py
 ユーザー別パスワード認証モジュール（多人数対応版）。
 ユーザー情報は data/users.db（SQLite）に保存。
 
-移行: .app_password が存在する場合、初回起動時に admin ユーザーとして自動取り込む。
+旧 .app_password からの移行は完了済み。新規環境は初回セットアップ画面で
+管理者を作成し、bcryptハッシュを data/users.db に保存する。
 """
 import streamlit as st
 import bcrypt
@@ -18,7 +19,6 @@ from contextlib import closing
 
 _PKG_DIR   = os.path.dirname(os.path.abspath(__file__))
 _USERS_DB  = os.path.join(_PKG_DIR, "data", "users.db")
-_PW_FILE   = os.path.join(_PKG_DIR, ".app_password")   # 旧形式（移行用）
 _TIMEOUT_S = 60 * 60 * 8  # 8時間でセッション期限切れ
 
 _BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
@@ -44,7 +44,7 @@ def _verify_password(stored_hash: str, pw: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _init_db() -> None:
-    """usersテーブルを作成し、.app_password からの移行を行う。"""
+    """usersテーブルを作成する。ユーザーがいなければUIで初回登録する。"""
     os.makedirs(os.path.dirname(_USERS_DB), exist_ok=True)
     with closing(sqlite3.connect(_USERS_DB)) as conn:
         conn.execute("""
@@ -57,19 +57,6 @@ def _init_db() -> None:
             )
         """)
         conn.commit()
-
-        # .app_password からの移行
-        row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
-        if row[0] == 0 and os.path.exists(_PW_FILE):
-            with open(_PW_FILE, "r") as f:
-                old_hash = f.read().strip()
-            if old_hash:
-                conn.execute(
-                    "INSERT INTO users(username, password_hash, role, created_at) VALUES (?,?,?,datetime('now'))",
-                    ("admin", old_hash, "admin"),
-                )
-                conn.commit()
-
 
 def _get_user(username: str) -> dict | None:
     with closing(sqlite3.connect(_USERS_DB)) as conn:

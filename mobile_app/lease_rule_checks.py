@@ -47,6 +47,10 @@ _EXACT_MATCH_YEARS: dict[str, int] = {
     "自動販売機": 5,
 }
 
+# P1仕様から参照される公開名。正本はこの完全一致マスタで、後方互換のため同じ
+# 読み取り専用辞書を公開する。
+LEGAL_USEFUL_LIFE_YEARS = _EXACT_MATCH_YEARS
+
 
 class WarningItem(TypedDict):
     code: str

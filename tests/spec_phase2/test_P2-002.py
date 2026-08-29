@@ -3,12 +3,8 @@ P2-002: POST /predict — aurion.q_risk フィールド追加
 SPEC: specs/phase2/P2-002-api-aurion-field.md
 AC-501〜AC-508 に対応するテスト。
 """
-import sys
-import os
 import pytest
 from unittest.mock import patch
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "mobile_app"))
 
 SPEC_ID = "P2-002"
 PHASE = 2
@@ -70,9 +66,9 @@ _LC_EXCEED_REQUEST = {
 
 @pytest.fixture(scope="module")
 def client():
-    import api
-    api.app.config["TESTING"] = True
-    with api.app.test_client() as c:
+    from mobile_app import api as mobile_api
+    mobile_api.app.config["TESTING"] = True
+    with mobile_api.app.test_client() as c:
         yield c
 
 
@@ -143,8 +139,8 @@ def test_504_existing_fields_unchanged(client):
 
 # ── AC-505: aurion モジュール未ロード時も 200 で成功 ─────────────────────
 def test_505_fallback_when_aurion_not_loaded(client):
-    import api
-    with patch.object(api, "_detect_q_risk", None):
+    from mobile_app import api as mobile_api
+    with patch.object(mobile_api, "_detect_q_risk", None):
         rv = _post(client, _MINIMAL_REQUEST)
     assert rv.status_code == 200
     data = rv.get_json()

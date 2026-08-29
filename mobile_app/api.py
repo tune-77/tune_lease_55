@@ -154,7 +154,10 @@ except Exception as e:
 _aurion_loaded = False
 _detect_q_risk = None
 try:
-    from aurion.q_risk import detect_q_risk as _detect_q_risk
+    try:
+        from .aurion.q_risk import detect_q_risk as _detect_q_risk
+    except ImportError:
+        from aurion.q_risk import detect_q_risk as _detect_q_risk
     _aurion_loaded = True
     print("[api] aurion.q_risk: 読み込み完了")
 except Exception as e:
@@ -163,7 +166,10 @@ except Exception as e:
 # ── aurion: ステルス競合推定モジュール (P3-002) ──────────────────────────
 _stealth_loaded = False
 try:
-    from aurion.stealth_competitor import detect_stealth_competitor
+    try:
+        from .aurion.stealth_competitor import detect_stealth_competitor
+    except ImportError:
+        from aurion.stealth_competitor import detect_stealth_competitor
     _stealth_loaded = True
     print("[api] aurion.stealth_competitor: 読み込み完了")
 except ImportError as e:
@@ -1143,7 +1149,10 @@ def predict():
 
     # P1-002: リースルールチェック（BR-111〜BR-115）
     try:
-        from lease_rule_checks import check_lease_rules
+        try:
+            from .lease_rule_checks import check_lease_rules
+        except ImportError:
+            from lease_rule_checks import check_lease_rules
         rule_result       = check_lease_rules(
             lease_term_months=int(lt),
             asset_type=asset_type_str,

@@ -66,3 +66,15 @@ dev = [
 # anaconda 環境を避け、uv 管理の venv を使う
 managed = true
 package = false
+
+[tool.pytest.ini_options]
+# リポジトリ直下には運用スクリプトや一時worktreeが置かれるため、
+# 本体テストディレクトリだけを収集対象に固定する。
+testpaths = ["tests"]
+norecursedirs = [
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "tune_lease_55_wt_*",
+]

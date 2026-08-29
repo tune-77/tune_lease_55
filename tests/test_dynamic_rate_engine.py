@@ -4,42 +4,17 @@ import sys
 from pathlib import Path
 
 import pytest
+import pandas as pd
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from dynamic_rate_engine import (
     RateProposal,
+    compute_dynamic_spread,
     compute_dynamic_rate_proposal,
     compute_risk_premium,
-    pd_from_score,
 )
-
-
-# ─── pd_from_score ───────────────────────────────────────────────────────────
-
-class TestPdFromScore:
-    def test_high_score_low_pd(self):
-        pd = pd_from_score(90.0)
-        assert pd < 0.03, f"高スコア(90)のPDは3%未満のはず: {pd:.4f}"
-
-    def test_low_score_high_pd(self):
-        pd = pd_from_score(25.0)
-        assert pd > 0.15, f"低スコア(25)のPDは15%超のはず: {pd:.4f}"
-
-    def test_mid_score(self):
-        pd = pd_from_score(60.0)
-        assert 0.03 < pd < 0.15, f"中スコア(60)のPDは3%-15%のはず: {pd:.4f}"
-
-    def test_monotone_decreasing(self):
-        pds = [pd_from_score(s) for s in [30, 50, 70, 90]]
-        for i in range(len(pds) - 1):
-            assert pds[i] > pds[i + 1], "スコアが上がればPDが下がること"
-
-    def test_boundary_clips(self):
-        assert pd_from_score(0.0) <= 0.40
-        assert pd_from_score(100.0) >= 0.005
-
 
 # ─── compute_risk_premium ────────────────────────────────────────────────────
 
@@ -98,14 +73,15 @@ class TestComputeDynamicRateProposal:
         r_low  = self._base_call(score=35.0).recommended_rate
         assert r_high < r_low, "高スコアの方が低金利提案になること"
 
-    def test_pd_fallback_when_none(self):
+    def test_pd_unavailable_when_none(self):
         result = compute_dynamic_rate_proposal(score=60.0, base_rate=2.66, pd_percent=None)
-        assert result.pd_source == "score_fallback"
-        assert result.pd_percent > 0.0
+        assert result.pd_source == "unavailable"
+        assert result.pd_percent is None
+        assert any("PD未算出" in note for note in result.notes)
 
     def test_pd_lgbm_when_given(self):
         result = self._base_call(pd_percent=3.0)
-        assert result.pd_source == "lgbm"
+        assert result.pd_source == "provided"
 
     def test_three_scenarios(self):
         result = self._base_call()
@@ -141,6 +117,23 @@ class TestComputeDynamicRateProposal:
         result = self._base_call()
         assert 0.0 <= result.success_prob <= 1.0
 
-    def test_negative_pd_treated_as_fallback(self):
+    def test_negative_pd_treated_as_unavailable(self):
         result = compute_dynamic_rate_proposal(score=70.0, base_rate=2.66, pd_percent=-1.0)
-        assert result.pd_source == "score_fallback"
+        assert result.pd_source == "unavailable"
+        assert result.pd_percent is None
+
+
+def test_dynamic_spread_does_not_fabricate_pd_when_missing():
+    result = compute_dynamic_spread(
+        score=70.0,
+        pd_percent=None,
+        industry_sub="製造業",
+        base_rate=2.0,
+        competitor_rate=0.0,
+        historical_df=pd.DataFrame(),
+        base_optimal_spread=1.0,
+    )
+
+    assert result["pd_available"] is False
+    assert result["pd_adjustment"] == 0.0
+    assert "PD" not in result["recommendation"]

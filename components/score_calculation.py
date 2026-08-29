@@ -963,6 +963,16 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                 # 後続の複雑なロジック（AIアドバイス、カスタムルール等）でエラーが起きても
                 # スコアと財務指標だけは確実に届くよう、ここで一度仮の結果をセットします
                 # [物理ファイル通信] APIへの確実なデータ受け渡し用
+                # scoring_result.hybrid_prob は、利用モデルによって「失注方向」または
+                # 「信用リスク方向」の確率を返す互換フィールドであり、校正済みPDではない。
+                # PDとして価格計算へ流さず、用途を限定した参考値として明示的に分離する。
+                _model_risk_probability_percent = None
+                if scoring_result and scoring_result.get("hybrid_prob") is not None:
+                    _model_risk_probability_percent = round(
+                        float(scoring_result["hybrid_prob"]) * 100,
+                        1,
+                    )
+
                 res_dict = {
                     "score": final_score,
                     "score_base": final_score,
@@ -976,8 +986,12 @@ def run_scoring(form_result, REQUIRED_FIELDS, benchmarks_data, hints_data, bankr
                     "user_equity_ratio": user_equity_ratio,
                     "bench_op_margin": bench_op_margin,
                     "bench_equity_ratio": bench_equity_ratio,
-                    "pd_percent": round(
-                        (scoring_result.get("hybrid_prob", 0) if scoring_result else 0) * 100, 1
+                    "pd_percent": None,
+                    "pd_source": "unavailable",
+                    "model_risk_probability_percent": _model_risk_probability_percent,
+                    "model_risk_probability_source": (
+                        scoring_result.get("model_used", "legacy_or_rf")
+                        if scoring_result else None
                     ),
                     "financials": {
                         "nenshu": nenshu, "rieki": rieki, "total_assets": total_assets, "net_assets": net_assets

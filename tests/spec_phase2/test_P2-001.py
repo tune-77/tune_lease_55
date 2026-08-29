@@ -3,18 +3,12 @@ Tests for P2-001: aurion/q_risk.py — 財務矛盾検知モジュール
 AC-401〜AC-415 に対応するテスト。
 """
 import time
-import sys
-import os
-
 import pytest
 
 SPEC_ID = "P2-001"
 PHASE = 2
 
-_MOBILE_APP_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "mobile_app")
-sys.path.insert(0, os.path.abspath(_MOBILE_APP_DIR))
-
-from aurion.q_risk import detect_q_risk
+from mobile_app.aurion.q_risk import detect_q_risk
 
 
 class TestAC401:
