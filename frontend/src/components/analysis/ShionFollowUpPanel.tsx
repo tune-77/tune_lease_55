@@ -64,6 +64,7 @@ export default function ShionFollowUpPanel({
   const [answers, setAnswers] = useState<Record<string, { status?: AnswerStatus; note: string }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const locked = Boolean(session?.status.startsWith("outcome_linked"));
 
   useEffect(() => {
     if (!caseId) return;
@@ -145,7 +146,7 @@ export default function ShionFollowUpPanel({
         <button
           type="button"
           onClick={createQuestions}
-          disabled={loading || !caseId}
+          disabled={loading || !caseId || locked}
           className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-black text-white hover:bg-indigo-700 disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -174,11 +175,12 @@ export default function ShionFollowUpPanel({
                     <button
                       key={option.value}
                       type="button"
+                      disabled={locked}
                       onClick={() => setAnswers((current) => ({
                         ...current,
                         [question.id]: { status: option.value, note: current[question.id]?.note || "" },
                       }))}
-                      className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-black ${selected ? option.tone : "border-slate-200 bg-white text-slate-500"}`}
+                      className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-black disabled:cursor-not-allowed disabled:opacity-60 ${selected ? option.tone : "border-slate-200 bg-white text-slate-500"}`}
                     >
                       {option.label}
                     </button>
@@ -193,8 +195,9 @@ export default function ShionFollowUpPanel({
                 }))}
                 rows={2}
                 maxLength={2000}
+                disabled={locked}
                 placeholder="回答の根拠・営業確認内容（任意）"
-                className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-700 outline-none focus:border-indigo-300"
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-700 outline-none focus:border-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
           ))}
@@ -202,13 +205,19 @@ export default function ShionFollowUpPanel({
           <button
             type="button"
             onClick={submitAnswers}
-            disabled={!allAnswered || loading}
+            disabled={!allAnswered || loading || locked}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Send className="h-3.5 w-3.5" />
             {loading ? "判断を更新中" : "回答を反映して判断を更新"}
           </button>
           {!allAnswered && <p className="text-center text-[10px] font-bold text-slate-400">すべての質問の状態を選ぶと反映できます</p>}
+          {locked && (
+            <p className="rounded-lg border border-slate-200 bg-slate-100 p-2 text-center text-[10px] font-black text-slate-600">
+              結果登録済みのため、この確認セッションは編集できません。
+              {session.status === "outcome_linked_unanswered" ? " 未回答のまま終了した記録として保持します。" : ""}
+            </p>
+          )}
         </div>
       ) : (
         <p className="mt-3 rounded-lg border border-dashed border-indigo-200 bg-white/70 p-3 text-[11px] font-bold text-indigo-600">

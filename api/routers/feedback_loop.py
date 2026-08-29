@@ -2839,13 +2839,16 @@ def post_shion_followup(req: ShionFollowupCreateRequest, background_tasks: Backg
     case_id = str(req.case_id or req.result_snapshot.get("case_id") or req.form_snapshot.get("company_no") or "").strip()
     if not case_id:
         raise HTTPException(status_code=422, detail="case_id is required")
-    session = create_followup_session(
-        case_id=case_id,
-        review_id=req.review_id,
-        form=req.form_snapshot,
-        result=req.result_snapshot,
-        judgment_assets=req.judgment_assets[:10],
-    )
+    try:
+        session = create_followup_session(
+            case_id=case_id,
+            review_id=req.review_id,
+            form=req.form_snapshot,
+            result=req.result_snapshot,
+            judgment_assets=req.judgment_assets[:10],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     background_tasks.add_task(
         record_cloudrun_input_event,
         event_type="shion_followup_questions_created",

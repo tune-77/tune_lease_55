@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from api.db_connection import get_connection, placeholder
+from constants import APPROVAL_LINE, CONDITIONAL_LINE, REVIEW_LINE
 
 
 ANSWER_LABELS = {
@@ -35,16 +36,19 @@ def _number(value: Any) -> float | None:
 
 def _baseline_decision(result: dict[str, Any]) -> str:
     stated = _text(result.get("hantei") or result.get("decision"))
-    if stated:
+    if any(term in stated for term in ("否決", "否認")):
         return stated
     score = _number(result.get("score") if result.get("score") is not None else result.get("score_base"))
     if score is None:
-        return "現判断を維持"
-    if score >= 70:
-        return "承認圏"
-    if score >= 40:
-        return "条件付き・境界圏"
-    return "否決・要再設計圏"
+        return stated or "現判断を維持"
+    suffix = f"（{stated} / {score:.1f}点）" if stated else f"（{score:.1f}点）"
+    if score < REVIEW_LINE:
+        return f"即否決圏{suffix}"
+    if score < CONDITIONAL_LINE:
+        return f"否決・要再設計圏{suffix}"
+    if score < APPROVAL_LINE:
+        return f"条件付き・境界圏{suffix}"
+    return f"承認圏{suffix}"
 
 
 def _candidate(
@@ -272,13 +276,28 @@ def create_followup_session(
     from api.db_connection import ensure_schema
 
     ensure_schema()
+    normalized_case_id = _text(case_id)[:120]
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT outcome_status
+              FROM shion_followup_sessions
+             WHERE case_id = {ph} AND outcome_status <> ''
+             ORDER BY created_at DESC
+             LIMIT 1
+            """,
+            (normalized_case_id,),
+        )
+        if cur.fetchone():
+            raise ValueError("case outcome already recorded; followup questions cannot be created")
     followup_id = f"SFU-{uuid.uuid4().hex[:12]}"
     questions = build_followup_questions(form, result, judgment_assets)
     baseline = _baseline_decision(result)
-    ph = placeholder()
     values = (
         followup_id,
-        _text(case_id)[:120],
+        normalized_case_id,
         review_id,
         baseline[:120],
         "",
@@ -326,7 +345,7 @@ def answer_followup_session(followup_id: str, answers: list[dict[str, Any]]) -> 
         if not row:
             raise KeyError("followup session not found")
         payload = dict(row)
-        if _text(payload.get("status")) == "outcome_linked":
+        if _text(payload.get("status")).startswith("outcome_linked"):
             raise ValueError("outcome-linked followup cannot be changed")
         questions = json.loads(payload.get("questions_json") or "[]")
         expected_ids = {_text(question.get("id")) for question in questions}
@@ -407,7 +426,7 @@ def list_followup_sessions(case_id: str, *, limit: int = 5) -> list[dict[str, An
 
 
 def record_followup_outcome(case_id: str, outcome_status: str, outcome_note: str = "") -> dict[str, Any]:
-    """結果登録時に、回答済み追加確認を後日検証可能な状態へ進める。"""
+    """結果登録時に全セッションをロックし、回答済みか未回答かを保存する。"""
     from api.db_connection import ensure_schema
 
     ensure_schema()
@@ -419,16 +438,39 @@ def record_followup_outcome(case_id: str, outcome_status: str, outcome_note: str
             UPDATE shion_followup_sessions
                SET outcome_status = {ph}, outcome_note = {ph}, status = {ph},
                    updated_at = CURRENT_TIMESTAMP
+             WHERE case_id = {ph} AND status IN ('questions_ready', 'outcome_linked_unanswered')
+            """,
+            (
+                _text(outcome_status)[:80],
+                _text(outcome_note)[:2000],
+                "outcome_linked_unanswered",
+                _text(case_id),
+            ),
+        )
+        unanswered_count = max(0, int(cur.rowcount or 0))
+        cur.execute(
+            f"""
+            UPDATE shion_followup_sessions
+               SET outcome_status = {ph}, outcome_note = {ph}, status = {ph},
+                   updated_at = CURRENT_TIMESTAMP
              WHERE case_id = {ph} AND status IN ('answered', 'outcome_linked')
             """,
-            (_text(outcome_status)[:80], _text(outcome_note)[:2000], "outcome_linked", _text(case_id)),
+            (
+                _text(outcome_status)[:80],
+                _text(outcome_note)[:2000],
+                "outcome_linked",
+                _text(case_id),
+            ),
         )
-        updated = max(0, int(cur.rowcount or 0))
+        answered_count = max(0, int(cur.rowcount or 0))
+        updated = answered_count + unanswered_count
     return {
         "status": "linked" if updated else "no_answered_followup",
         "case_id": _text(case_id),
         "outcome_status": _text(outcome_status),
         "linked_count": updated,
+        "answered_count": answered_count,
+        "unanswered_count": unanswered_count,
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "guardrail": "outcome_link_only_no_auto_promotion_no_scoring_change",
     }

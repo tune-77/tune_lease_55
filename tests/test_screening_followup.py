@@ -1,4 +1,5 @@
 from api.screening_followup import (
+    _baseline_decision,
     answer_followup_session,
     build_followup_questions,
     build_updated_view,
@@ -58,6 +59,26 @@ def test_partial_answers_become_conditions_without_changing_score():
     assert updated["approval_conditions"]
     assert updated["score_changed"] is False
     assert len(updated["verification_targets"]) == len(questions)
+
+
+def test_production_yoshin_verdict_keeps_low_score_stop_line():
+    low_baseline = _baseline_decision({"score": 10, "hantei": "要審議"})
+    boundary_baseline = _baseline_decision({"score": 65, "hantei": "要審議"})
+    questions = build_followup_questions(
+        {"asset_purpose": "増産", "asset_name": "設備", "asset_evidence_level": "確認済"},
+        {"score": 10, "hantei": "要審議"},
+    )
+    partial_answers = [
+        {"question_id": question["id"], "status": "partial", "note": "一部のみ確認"}
+        for question in questions
+    ]
+
+    low_updated = build_updated_view(low_baseline, questions, partial_answers)
+    boundary_updated = build_updated_view(boundary_baseline, questions, partial_answers)
+
+    assert "即否決圏" in low_baseline
+    assert low_updated["updated_decision"] == "条件再設計候補"
+    assert boundary_updated["updated_decision"] == "条件付きで進行可"
 
 
 def test_concern_answer_keeps_stop_line():
@@ -130,3 +151,40 @@ def test_followup_rejects_partial_payload_and_post_outcome_rewrite(tmp_path, mon
     record_followup_outcome("CASE-LOCK", "失注")
     with pytest.raises(ValueError, match="outcome-linked"):
         answer_followup_session(created["followup_id"], full_answers)
+
+
+def test_outcome_locks_unanswered_session_as_unanswered(tmp_path, monkeypatch):
+    import pytest
+    import runtime_paths
+
+    db_path = tmp_path / "followup-unanswered.db"
+    monkeypatch.setattr(runtime_paths, "get_db_path", lambda: str(db_path))
+    monkeypatch.setattr(runtime_paths, "ensure_cloudrun_demo_db_seeded", lambda: None)
+    created = create_followup_session(
+        case_id="CASE-UNANSWERED",
+        review_id=None,
+        form={},
+        result={"score": 10, "hantei": "要審議"},
+    )
+
+    linked = record_followup_outcome("CASE-UNANSWERED", "失注")
+    saved = list_followup_sessions("CASE-UNANSWERED", limit=1)[0]
+
+    assert linked["unanswered_count"] == 1
+    assert saved["status"] == "outcome_linked_unanswered"
+    assert saved["answers"] == []
+    with pytest.raises(ValueError, match="outcome-linked"):
+        answer_followup_session(
+            created["followup_id"],
+            [
+                {"question_id": question["id"], "status": "confirmed", "note": "結果を見た後の回答"}
+                for question in created["questions"]
+            ],
+        )
+    with pytest.raises(ValueError, match="outcome already recorded"):
+        create_followup_session(
+            case_id="CASE-UNANSWERED",
+            review_id=None,
+            form={},
+            result={"score": 10, "hantei": "要審議"},
+        )
