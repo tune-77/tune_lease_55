@@ -62,9 +62,8 @@ def _report_hash(report: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
-def _combined_hash(*values: dict[str, Any]) -> str:
-    canonical = json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 def _load_webhook(explicit: str | None = None) -> str:
@@ -551,16 +550,6 @@ def main() -> int:
     action_ledger_report = _read_optional_json(args.action_ledger_report)
     reflection_journal_report = _read_optional_json(args.reflection_journal_report)
     shion_obsidian_curator_daily = _read_optional_json(args.shion_obsidian_curator_daily)
-    digest = _combined_hash(
-        report,
-        mana_report or {},
-        screening_terms_report or {},
-        judgment_asset_growth_report or {},
-        judgment_asset_field_review or {},
-        action_ledger_report or {},
-        reflection_journal_report or {},
-        shion_obsidian_curator_daily or {},
-    )
     payload = build_message(
         report,
         report_date=args.date,
@@ -572,6 +561,11 @@ def main() -> int:
         reflection_journal_report=reflection_journal_report,
         shion_obsidian_curator_daily=shion_obsidian_curator_daily,
     )
+    # 実際にSlackへ送る本文でハッシュを取る。report/各サブレポートの生JSONには
+    # attach_shion_self_proposals_to_report.py が毎回書く attached_at 等の実行時刻
+    # フィールドが含まれ、本文が同じでも同日の再実行のたびにハッシュが変わって
+    # 重複送信防止(should_skip)が機能しない不具合があった。
+    digest = _text_hash(payload["text"])
 
     if args.dry_run:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
