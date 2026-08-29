@@ -84,8 +84,8 @@ filterwarnings = [
     'ignore:Using `httpx` with `starlette\.testclient` is deprecated.*:starlette.exceptions.StarletteDeprecationWarning',
     'ignore:Trying to unpickle estimator .* from version 1\.7\.1 when using version 1\.7\.2.*:sklearn.exceptions.InconsistentVersionWarning',
     'ignore:BaseAgentConfig is deprecated and will be removed in future versions\.:DeprecationWarning',
-    'ignore:ParallelAgent is deprecated and will be removed in future versions\..*:DeprecationWarning:api\.shion_debate_adk',
-    'ignore:SequentialAgent is deprecated and will be removed in future versions\..*:DeprecationWarning:api\.shion_debate_adk',
+    'ignore:ParallelAgent is deprecated.*:DeprecationWarning',
+    'ignore:SequentialAgent is deprecated.*:DeprecationWarning',
 ]
 norecursedirs = [
     ".git",

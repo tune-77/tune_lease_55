@@ -20,9 +20,9 @@ jobs:
       - name: Install test dependencies
         run: >
           pip install -q pytest pytest-cov fastapi uvicorn pydantic slowapi httpx python-multipart
-          requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
+          requests numpy pandas matplotlib seaborn scipy scikit-learn==1.7.2 joblib
           python-dateutil pyyaml beautifulsoup4 filelock bcrypt flask flask-cors
-          google-api-core lxml toml chromadb google-adk
+          google-api-core lxml toml chromadb google-adk apscheduler
 
       - name: Run full test suite with coverage
         run: |
