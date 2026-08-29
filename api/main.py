@@ -3402,10 +3402,19 @@ def _link_registered_case_to_shion_followups(
             seen.add(case_id)
             results.append(record_followup_outcome(case_id, status, note))
         linked_count = sum(int(item.get("linked_count") or 0) for item in results)
+        impact_sessions: list[dict] = []
+        seen_followups: set[str] = set()
+        for item in results:
+            for session in item.get("impact_sessions") or []:
+                followup_id = str(session.get("followup_id") or "")
+                if followup_id and followup_id not in seen_followups:
+                    seen_followups.add(followup_id)
+                    impact_sessions.append(session)
         return {
             "status": "linked" if linked_count else "no_answered_followup",
             "linked_count": linked_count,
             "matches": results,
+            "impact_sessions": impact_sessions,
         }
     except Exception as exc:
         logger.warning("Shion followup outcome link skipped: %s", exc)
