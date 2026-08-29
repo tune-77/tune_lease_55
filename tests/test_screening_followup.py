@@ -1,11 +1,13 @@
 from api.screening_followup import (
     _baseline_decision,
+    analyze_followup_question_impact,
     answer_followup_session,
     build_followup_questions,
     build_updated_view,
     create_followup_session,
     list_followup_sessions,
     record_followup_outcome,
+    save_followup_impact_feedback,
 )
 
 
@@ -188,3 +190,93 @@ def test_outcome_locks_unanswered_session_as_unanswered(tmp_path, monkeypatch):
             form={},
             result={"score": 10, "hantei": "要審議"},
         )
+
+
+def test_question_impact_feedback_is_human_labeled_and_aggregated(tmp_path, monkeypatch):
+    import pytest
+    import runtime_paths
+
+    db_path = tmp_path / "followup-impact.db"
+    monkeypatch.setattr(runtime_paths, "get_db_path", lambda: str(db_path))
+    monkeypatch.setattr(runtime_paths, "ensure_cloudrun_demo_db_seeded", lambda: None)
+    created = create_followup_session(
+        case_id="CASE-IMPACT",
+        review_id=None,
+        form={"asset_purpose": "増産", "asset_name": "設備", "asset_evidence_level": "未確認"},
+        result={"score": 55, "hantei": "条件付き承認"},
+    )
+    answers = [
+        {
+            "question_id": question["id"],
+            "status": "concern" if index == 0 else "confirmed",
+            "note": "懸念を条件へ反映" if index == 0 else "確認済み",
+        }
+        for index, question in enumerate(created["questions"])
+    ]
+    answer_followup_session(created["followup_id"], answers)
+    with pytest.raises(ValueError, match="recorded outcome"):
+        save_followup_impact_feedback(created["followup_id"], [{
+            "question_id": created["questions"][0]["id"],
+            "impact_label": "decision_changed",
+        }])
+
+    record_followup_outcome("CASE-IMPACT", "失注", "確認した懸念が結果にも表れた")
+    saved = save_followup_impact_feedback(created["followup_id"], [
+        {
+            "question_id": created["questions"][0]["id"],
+            "impact_label": "risk_prevented",
+            "note": "実行前の停止線になった",
+        },
+        {
+            "question_id": created["questions"][1]["id"],
+            "impact_label": "evidence_strengthened",
+        },
+    ])
+    analytics = analyze_followup_question_impact(limit=20)
+    rows = {row["question_id"]: row for row in analytics["questions"]}
+    first = rows[created["questions"][0]["id"]]
+
+    assert saved["saved_count"] == 2
+    assert analytics["feedback_count"] == 2
+    assert first["risk_prevented_count"] == 1
+    assert first["condition_signal_count"] == 1
+    assert first["warning_match_count"] == 1
+    assert first["usefulness_rate"] == 1.0
+    assert first["evidence_level"] == "暫定"
+    listed = list_followup_sessions("CASE-IMPACT", limit=1)[0]
+    assert len(listed["impact_feedback"]) == 2
+
+
+def test_question_impact_feedback_update_replaces_previous_label(tmp_path, monkeypatch):
+    import runtime_paths
+
+    db_path = tmp_path / "followup-impact-update.db"
+    monkeypatch.setattr(runtime_paths, "get_db_path", lambda: str(db_path))
+    monkeypatch.setattr(runtime_paths, "ensure_cloudrun_demo_db_seeded", lambda: None)
+    created = create_followup_session(
+        case_id="CASE-IMPACT-UPDATE",
+        review_id=None,
+        form={},
+        result={"score": 45},
+    )
+    answer_followup_session(created["followup_id"], [
+        {"question_id": question["id"], "status": "confirmed", "note": ""}
+        for question in created["questions"]
+    ])
+    record_followup_outcome("CASE-IMPACT-UPDATE", "成約")
+    question_id = created["questions"][0]["id"]
+    save_followup_impact_feedback(created["followup_id"], [{
+        "question_id": question_id,
+        "impact_label": "evidence_strengthened",
+    }])
+    save_followup_impact_feedback(created["followup_id"], [{
+        "question_id": question_id,
+        "impact_label": "not_helpful",
+    }])
+
+    analytics = analyze_followup_question_impact(limit=20)
+    row = next(item for item in analytics["questions"] if item["question_id"] == question_id)
+    assert analytics["feedback_count"] == 1
+    assert row["evidence_strengthened_count"] == 0
+    assert row["not_helpful_count"] == 1
+    assert row["usefulness_rate"] == 0.0

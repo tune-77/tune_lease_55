@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, HelpCircle, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, HelpCircle, RefreshCw, Send } from "lucide-react";
 import { apiClient } from "../../lib/api";
 import type { JudgmentAssetCandidate } from "../../lib/shionReview";
 
@@ -19,6 +19,37 @@ type FollowupAnswer = {
   question_id: string;
   status: AnswerStatus;
   note: string;
+};
+
+type ImpactLabel = "decision_changed" | "risk_prevented" | "evidence_strengthened" | "not_helpful";
+
+type ImpactFeedback = {
+  question_id: string;
+  impact_label: ImpactLabel;
+  impact_label_text?: string;
+  note?: string;
+};
+
+type ImpactQuestionAnalytics = {
+  question_id: string;
+  category: string;
+  question: string;
+  asked_count: number;
+  labeled_count: number;
+  direct_impact_count: number;
+  decision_changed_count: number;
+  risk_prevented_count: number;
+  warning_match_count: number;
+  usefulness_rate: number | null;
+  evidence_level: string;
+};
+
+type ImpactAnalytics = {
+  session_count: number;
+  outcome_linked_session_count: number;
+  feedback_count: number;
+  minimum_comparable_feedback: number;
+  questions: ImpactQuestionAnalytics[];
 };
 
 type FollowupSummary = {
@@ -39,12 +70,20 @@ type FollowupSession = {
   summary: FollowupSummary;
   status: "questions_ready" | "answered" | "outcome_linked" | string;
   outcome_status?: string;
+  impact_feedback?: ImpactFeedback[];
 };
 
 const ANSWER_OPTIONS: { value: AnswerStatus; label: string; tone: string }[] = [
   { value: "confirmed", label: "確認できた", tone: "border-emerald-300 bg-emerald-50 text-emerald-800" },
   { value: "partial", label: "一部確認", tone: "border-amber-300 bg-amber-50 text-amber-800" },
   { value: "concern", label: "未確認・懸念あり", tone: "border-rose-300 bg-rose-50 text-rose-800" },
+];
+
+const IMPACT_OPTIONS: { value: ImpactLabel; label: string; selectedTone: string }[] = [
+  { value: "decision_changed", label: "判断・条件を変えた", selectedTone: "border-indigo-400 bg-indigo-100 text-indigo-800" },
+  { value: "risk_prevented", label: "事故・見落とし防止", selectedTone: "border-rose-400 bg-rose-100 text-rose-800" },
+  { value: "evidence_strengthened", label: "根拠を補強", selectedTone: "border-emerald-400 bg-emerald-100 text-emerald-800" },
+  { value: "not_helpful", label: "役立たなかった", selectedTone: "border-slate-400 bg-slate-200 text-slate-700" },
 ];
 
 export default function ShionFollowUpPanel({
@@ -64,6 +103,9 @@ export default function ShionFollowUpPanel({
   const [answers, setAnswers] = useState<Record<string, { status?: AnswerStatus; note: string }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [analytics, setAnalytics] = useState<ImpactAnalytics | null>(null);
+  const [impactSaving, setImpactSaving] = useState("");
+  const [impactError, setImpactError] = useState("");
   const locked = Boolean(session?.status.startsWith("outcome_linked"));
 
   useEffect(() => {
@@ -83,6 +125,16 @@ export default function ShionFollowUpPanel({
       .catch(() => undefined);
     return () => { active = false; };
   }, [caseId]);
+
+  useEffect(() => {
+    let active = true;
+    apiClient.get("/api/shion-followups-analytics", { params: { limit: 10 } })
+      .then((response) => {
+        if (active) setAnalytics(response.data || null);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [session?.impact_feedback]);
 
   const allAnswered = useMemo(
     () => Boolean(session?.questions.length) && session!.questions.every((question) => Boolean(answers[question.id]?.status)),
@@ -130,6 +182,36 @@ export default function ShionFollowUpPanel({
       setLoading(false);
     }
   };
+
+  const saveImpact = async (questionId: string, impactLabel: ImpactLabel) => {
+    if (!session || !locked || impactSaving) return;
+    setImpactSaving(questionId);
+    setImpactError("");
+    try {
+      const response = await apiClient.post(`/api/shion-followups/${session.followup_id}/impact-feedback`, {
+        entries: [{ question_id: questionId, impact_label: impactLabel, note: "" }],
+      });
+      const saved = Array.isArray(response.data?.impact_feedback) ? response.data.impact_feedback[0] : null;
+      if (saved) {
+        setSession((current) => current ? {
+          ...current,
+          impact_feedback: [
+            ...(current.impact_feedback || []).filter((entry) => entry.question_id !== questionId),
+            saved,
+          ],
+        } : current);
+      }
+    } catch (requestError) {
+      console.error("Shion follow-up impact feedback save failed", requestError);
+      setImpactError("質問の効果を保存できませんでした。");
+    } finally {
+      setImpactSaving("");
+    }
+  };
+
+  const analyticsRows = (analytics?.questions || []).filter(
+    (question) => question.labeled_count > 0 || question.warning_match_count > 0,
+  ).slice(0, 3);
 
   return (
     <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 sm:p-4">
@@ -218,6 +300,39 @@ export default function ShionFollowUpPanel({
               {session.status === "outcome_linked_unanswered" ? " 未回答のまま終了した記録として保持します。" : ""}
             </p>
           )}
+
+          {locked && session.answers.length > 0 && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
+              <div className="text-[11px] font-black text-violet-900">結果を見て、この質問は何に役立ちましたか？</div>
+              <p className="mt-1 text-[10px] font-bold leading-4 text-violet-700">
+                人間の評価だけを蓄積します。審査スコアや判断資産は自動変更しません。
+              </p>
+              <div className="mt-3 space-y-3">
+                {session.questions.map((question) => {
+                  const selected = session.impact_feedback?.find((entry) => entry.question_id === question.id)?.impact_label;
+                  return (
+                    <div key={`impact-${question.id}`} className="rounded-lg border border-violet-100 bg-white p-2.5">
+                      <p className="text-[10px] font-black leading-4 text-slate-700">{question.category}: {question.question}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {IMPACT_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            disabled={Boolean(impactSaving)}
+                            onClick={() => saveImpact(question.id, option.value)}
+                            className={`rounded-lg border px-2 py-1.5 text-[9px] font-black disabled:opacity-50 ${selected === option.value ? option.selectedTone : "border-slate-200 bg-white text-slate-500"}`}
+                          >
+                            {impactSaving === question.id ? "保存中" : option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {impactError && <p className="mt-2 text-[10px] font-black text-rose-700">{impactError}</p>}
+            </div>
+          )}
         </div>
       ) : (
         <p className="mt-3 rounded-lg border border-dashed border-indigo-200 bg-white/70 p-3 text-[11px] font-bold text-indigo-600">
@@ -246,6 +361,39 @@ export default function ShionFollowUpPanel({
             結果登録時にこの確認内容を照合します。スコア変更: なし
             {session.outcome_status ? ` ／ 結果: ${session.outcome_status}` : ""}
           </p>
+        </div>
+      )}
+
+      {analytics && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-2 text-xs font-black text-slate-900">
+            <BarChart3 className="h-4 w-4 text-indigo-600" />
+            追加確認の効果分析
+          </div>
+          <p className="mt-1 text-[10px] font-bold leading-4 text-slate-500">
+            結果連携 {analytics.outcome_linked_session_count}件 ／ 人間評価 {analytics.feedback_count}件。
+            5評価未満は暫定で、順位を確定しません。
+          </p>
+          {analyticsRows.length ? (
+            <div className="mt-3 space-y-2">
+              {analyticsRows.map((question) => (
+                <div key={`analytics-${question.question_id}`} className="rounded-lg bg-slate-50 p-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[10px] font-black leading-4 text-slate-700">{question.category}: {question.question}</p>
+                    <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] font-black text-slate-500">{question.evidence_level}</span>
+                  </div>
+                  <p className="mt-1 text-[9px] font-bold text-slate-500">
+                    判断・条件変更 {question.decision_changed_count} ／ 事故・見落とし防止 {question.risk_prevented_count} ／ 懸念と結果一致 {question.warning_match_count}
+                    {question.usefulness_rate !== null ? ` ／ 有用評価 ${Math.round(question.usefulness_rate * 100)}%` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 rounded-lg border border-dashed border-slate-200 p-3 text-[10px] font-bold text-slate-500">
+              結果登録後に質問の効果を選ぶと、ここへ質問別の実績が蓄積されます。
+            </p>
+          )}
         </div>
       )}
     </div>
