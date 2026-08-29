@@ -48,6 +48,13 @@ try:
 except ImportError:  # pragma: no cover - package import fallback
     from ..api.context.time_context import current_datetime_prompt_block
 
+try:
+    from api.shion_agentic_skills import structure_judgment_asset_candidate
+    from api.agentic_skill_usage import record_agentic_skill_result
+except ImportError:  # pragma: no cover - package import fallback
+    from ..api.shion_agentic_skills import structure_judgment_asset_candidate
+    from ..api.agentic_skill_usage import record_agentic_skill_result
+
 
 def _get_gemini_key() -> str:
     try:
@@ -544,6 +551,16 @@ Webメモ保存の判断:
 - 保存するときは、どの情報が有益だったかを短く箇条書きにする。
 """
 
+    # NOTE: このトリガー基準はユーザーレビュー待ちの初期案（要調整）。
+    judgment_asset_prompt = """
+判断資産候補化の判断:
+- ユーザーがスコアや審査結果、AIの提案に対して「それは違う」「実際はこうだった」など明確な訂正・追加事実を述べた場合に検討する。
+- 単なる質問・雑談・確認依頼では起動しない。今後同種の案件判断に使い回せる「教訓」が言語化されたときだけ true にする。
+- judgment_asset_note には、ユーザーの発言から抽出した教訓・訂正内容を客観的な一文で書く。
+- judgment_asset_source_type は次から選ぶ: user_judgment（ユーザーの訂正・方針表明）/ case_observation（案件固有の気づき）/ failure_signal（失注・否決の後知恵）/ success_signal（成約・承認の後押し要因）/ research_signal（外部情報起点の教訓）。迷ったら user_judgment を既定とする。
+- 1回の応答につき1件まで。確信が持てないときは false のままにする。
+"""
+
     pdca_prompt = build_pdca_prompt_block() if include_pdca else ""
 
     obsidian_digest = build_obsidian_digest(message, obsidian_hits) if obsidian_hits else {"digest": "", "title": "", "source_count": "0"}
@@ -570,6 +587,7 @@ Obsidian自動保存の判断:
 {weekly_prompt}
 {web_prompt}
 {web_save_prompt}
+{judgment_asset_prompt}
 {pdca_prompt}
 {guidance.prompt_suffix}
 
@@ -605,7 +623,11 @@ Obsidian自動保存の判断:
   "weekly_should_save": true/false,
   "weekly_save_title": "保存する場合の短いタイトル",
   "weekly_save_body": "保存する場合のMarkdown要約。保存不要なら空文字",
-  "weekly_save_reason": "保存判断の理由。保存不要でも短く"
+  "weekly_save_reason": "保存判断の理由。保存不要でも短く",
+  "should_structure_judgment_asset": true/false,
+  "judgment_asset_note": "判断資産化する場合の教訓・訂正内容。不要なら空文字",
+  "judgment_asset_source_type": "user_judgment/case_observation/failure_signal/success_signal/research_signal のいずれか。不要なら空文字",
+  "judgment_asset_title": "判断資産化する場合の短いタイトル。不要なら空文字"
 }}
 
 現在の審査結果:
@@ -739,8 +761,12 @@ def build_chat_reply(
                         "weekly_save_title": {"type": "string"},
                         "weekly_save_body": {"type": "string"},
                         "weekly_save_reason": {"type": "string"},
+                        "should_structure_judgment_asset": {"type": "boolean"},
+                        "judgment_asset_note": {"type": "string"},
+                        "judgment_asset_source_type": {"type": "string"},
+                        "judgment_asset_title": {"type": "string"},
                     },
-                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items", "web_used", "web_reason", "web_should_save", "web_save_title", "web_save_body", "web_save_reason", "wiki_should_save", "wiki_save_title", "wiki_save_body", "wiki_save_reason", "weekly_should_save", "weekly_save_title", "weekly_save_body", "weekly_save_reason"],
+                    "required": ["reply", "should_save", "save_title", "save_body", "save_reason", "improvement_items", "web_used", "web_reason", "web_should_save", "web_save_title", "web_save_body", "web_save_reason", "wiki_should_save", "wiki_save_title", "wiki_save_body", "wiki_save_reason", "weekly_should_save", "weekly_save_title", "weekly_save_body", "weekly_save_reason", "should_structure_judgment_asset", "judgment_asset_note", "judgment_asset_source_type", "judgment_asset_title"],
                 },
                 http_options=types.HttpOptions(timeout=max(10000, int(timeout_seconds * 1000))),
             ),
@@ -827,6 +853,27 @@ def build_chat_reply(
                 related_paths=[item.get("path", "") for item in obsidian_hits],
                 source_query=message,
             )
+        judgment_asset_result = {"status": "skipped", "reason": "judgment asset not needed"}
+        judgment_asset_note = str(parsed.get("judgment_asset_note") or "").strip()
+        if parsed.get("should_structure_judgment_asset") and judgment_asset_note:
+            try:
+                candidate = structure_judgment_asset_candidate(
+                    note=judgment_asset_note,
+                    source_type=str(parsed.get("judgment_asset_source_type") or "user_judgment"),
+                    title=str(parsed.get("judgment_asset_title") or ""),
+                )
+                usage_event = record_agentic_skill_result(
+                    tool_name="structure_judgment_asset_candidate",
+                    result=candidate,
+                    session_id="mebuki_chat",
+                    case_context={"surface": "next_gunshi_chat", "message_excerpt": message[:200]},
+                )
+                judgment_asset_result = {
+                    "status": "queued_for_review",
+                    "review_inbox_id": (usage_event or {}).get("review_inbox_id", ""),
+                }
+            except Exception as exc:
+                judgment_asset_result = {"status": "error", "reason": str(exc)}
         try:
             record_prompt_feedback(
                 surface="next_gunshi_chat",
@@ -858,6 +905,8 @@ def build_chat_reply(
             "wiki_save_result": wiki_save_result,
             "weekly_saved": weekly_save_result.get("status") == "saved",
             "weekly_save_result": weekly_save_result,
+            "judgment_asset_queued": judgment_asset_result.get("status") == "queued_for_review",
+            "judgment_asset_result": judgment_asset_result,
             "obsidian_digest": obsidian_digest,
             "web_hits": web_hits,
             "obsidian_hits": obsidian_hits,
@@ -874,6 +923,8 @@ def build_chat_reply(
             "wiki_save_result": {"status": "error", "reason": str(exc)},
             "weekly_saved": False,
             "weekly_save_result": {"status": "error", "reason": str(exc)},
+            "judgment_asset_queued": False,
+            "judgment_asset_result": {"status": "error", "reason": str(exc)},
             "obsidian_digest": obsidian_digest,
             "web_hits": web_hits,
             "obsidian_hits": obsidian_hits,
