@@ -652,6 +652,8 @@ _MAIN_COMPAT_EXPORTS = {
     "_read_obsidian_files": ("api.routers.vault_hub", "_read_obsidian_files"),
     "_SCREENING_EXPERIENCE_DEMO_SEEDS": ("api.routers.feedback_loop", "_SCREENING_EXPERIENCE_DEMO_SEEDS"),
     "_score_screening_experience_case": ("api.routers.feedback_loop", "_score_screening_experience_case"),
+    "SaveDebateToObsidianRequest": ("api.routers.debate", "SaveDebateToObsidianRequest"),
+    "save_debate_to_obsidian": ("api.routers.debate", "save_debate_to_obsidian"),
 }
 
 

@@ -4,6 +4,7 @@ P4-003 モデル再学習パイプライン — 単体テスト（AC-1201〜AC-1
 from __future__ import annotations
 
 import os
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -41,6 +42,18 @@ CREATE TABLE IF NOT EXISTS screening_records (
 );
 """
 
+_DEFAULT_MODEL_SOURCE_DDL = """
+CREATE TABLE IF NOT EXISTS past_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS excluded_grade_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    original_grade TEXT NOT NULL,
+    data TEXT NOT NULL
+);
+"""
+
 
 def _make_db(
     tmp_path: Path,
@@ -53,7 +66,7 @@ def _make_db(
     target_dir.mkdir(parents=True, exist_ok=True)
     db_path = str(target_dir / "test_lease.db")
     conn = sqlite3.connect(db_path)
-    conn.executescript(_SCREENING_DDL)
+    conn.executescript(_SCREENING_DDL + _DEFAULT_MODEL_SOURCE_DDL)
 
     rows = []
     for i in range(n_records):
@@ -79,6 +92,44 @@ def _make_db(
         " competitor_pressure_score, outcome) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         rows,
+    )
+
+    def _inputs(i: int) -> dict:
+        # ラベルから独立した反復パターンにし、テストデータ自体のリーケージを避ける。
+        return {
+            "industry": ["製造業", "建設業", "サービス業"][i % 3],
+            "nenshu": 500 + (i % 11) * 20,
+            "bank_credit": 100 + (i % 7) * 10,
+            "lease_credit": 20 + (i % 5) * 5,
+            "op_profit": 10 + (i % 6),
+            "ord_profit": 8 + (i % 5),
+            "net_income": 5 + (i % 4),
+            "machines": 80 + (i % 9) * 3,
+            "other_assets": 40 + (i % 8) * 2,
+            "rent": i % 3,
+            "gross_profit": 50 + (i % 7),
+            "depreciation": 4 + (i % 3),
+            "dep_expense": 4 + (i % 3),
+            "rent_expense": 2 + (i % 2),
+            "contracts": 1 + (i % 5),
+        }
+
+    normal_count = max(0, n_records - n_delinquent)
+    normal_rows = [
+        (json.dumps({"final_status": "成約", "inputs": _inputs(i)}, ensure_ascii=False),)
+        for i in range(normal_count)
+    ]
+    delinquent_rows = [
+        (
+            "9",
+            json.dumps({"inputs": _inputs(normal_count + i)}, ensure_ascii=False),
+        )
+        for i in range(n_delinquent)
+    ]
+    conn.executemany("INSERT INTO past_cases (data) VALUES (?)", normal_rows)
+    conn.executemany(
+        "INSERT INTO excluded_grade_cases (original_grade, data) VALUES (?, ?)",
+        delinquent_rows,
     )
     conn.commit()
     conn.close()

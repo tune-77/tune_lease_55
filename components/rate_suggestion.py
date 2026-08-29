@@ -544,12 +544,12 @@ def _render_industry_colored_cases(similar_cases: list):
         )
 
 
-def _render_dynamic_rate_section(dyn: dict, base_rate: float, competitor_rate: float, pd_percent: float):
+def _render_dynamic_rate_section(dyn: dict, base_rate: float, competitor_rate: float, pd_percent: float | None):
     """
     動的金利提案エンジンの結果を表示する。
     PD・業種・スコア・競合を加味した最適スプレッドと失注率改善効果を示す。
     """
-    st.markdown("#### 🔬 動的金利提案（PD連動プライシング）")
+    st.markdown("#### 🔬 動的金利提案（審査スコア・条件連動）")
 
     d_spread = dyn["dynamic_spread"]
     d_rate   = dyn["dynamic_rate"]
@@ -573,7 +573,7 @@ def _render_dynamic_rate_section(dyn: dict, base_rate: float, competitor_rate: f
             f"""<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;text-align:center;">
             <div style="font-size:0.75rem;color:#15803d;font-weight:600;">予測成約確率</div>
             <div style="font-size:1.5rem;font-weight:700;color:{win_color};">{win_est:.0f}%</div>
-            <div style="font-size:0.75rem;color:#475569;">PD {pd_percent:.1f}% 加味</div>
+            <div style="font-size:0.75rem;color:#475569;">{f'PD {pd_percent:.1f}% 加味' if pd_percent is not None else 'PD未算出・PD補正なし'}</div>
             </div>""",
             unsafe_allow_html=True,
         )
@@ -751,17 +751,17 @@ def render_rate_suggestion(res: dict, similar_cases: list | None = None):
 
         # ── モンテカルロ最適プライシング ──
         st.divider()
+        # PDは実績デフォルトで校正された明示値だけを使う。
+        # 成約モデルのhybrid_probや審査スコアはPDの代用にしない。
+        _raw_pd = res.get("pd_percent")
+        try:
+            pd_val = float(_raw_pd) if _raw_pd is not None and float(_raw_pd) >= 0.0 else None
+        except (TypeError, ValueError):
+            pd_val = None
+
         try:
             from montecarlo_pricing import simulate_optimal_yield
             from customer_db import get_stats
-            
-            # AI（LightGBM）倒産確率: res.pd_percent → scoring_result.hybrid_prob の順で取得
-            pd_val = float(res.get("pd_percent") or 0.0)
-            if pd_val <= 0.0:
-                _scoring_res = res.get("scoring_result") or st.session_state.get("scoring_result")
-                if _scoring_res:
-                    _hp = _scoring_res.get("hybrid_prob") or 0.0
-                    pd_val = float(_hp) * 100.0 if float(_hp) <= 1.0 else float(_hp)
 
             _avg_w_rate = None
             try:
@@ -772,20 +772,22 @@ def render_rate_suggestion(res: dict, similar_cases: list | None = None):
                 pass
                     
             _has_comp = (st.session_state.get("competitor") == "競合あり")
-            mc_res = simulate_optimal_yield(
-                pd_percent=pd_val, 
-                lease_term_months=_lease_term,
-                historical_winning_rate=_avg_w_rate,
-                competitor_rate=competitor_rate,
-                has_competitor=_has_comp
-            )
-            
             st.markdown("#### 💡 モンテカルロ数理モデル最適値")
-            st.caption("本件の個別破綻リスク（PD）と競合条件を加味した1万回シミュレーション。逆ザヤを完全に回避します。")
-            mc_c1, mc_c2, mc_c3 = st.columns(3)
-            mc_c1.metric("💎 IRR（推奨利回り）", f"{mc_res['recommended_yield']:.2f}%", help="期待収益を最大化する顧客提示利回り")
-            mc_c2.metric("📈 予想成約率", f"{mc_res['success_prob']:.1f}%", help="この金利で契約してもらえる予測確率")
-            mc_c3.metric("🛡️ 提案ステータス", mc_res['status'])
+            if pd_val is None:
+                st.info("PDが未算出のため、個別デフォルト確率を使うモンテカルロ試算は表示しません。")
+            else:
+                mc_res = simulate_optimal_yield(
+                    pd_percent=pd_val,
+                    lease_term_months=_lease_term,
+                    historical_winning_rate=_avg_w_rate,
+                    competitor_rate=competitor_rate,
+                    has_competitor=_has_comp
+                )
+                st.caption("実績デフォルトで校正された個別PDと競合条件を加味した1万回シミュレーション。")
+                mc_c1, mc_c2, mc_c3 = st.columns(3)
+                mc_c1.metric("💎 IRR（推奨利回り）", f"{mc_res['recommended_yield']:.2f}%", help="期待収益を最大化する顧客提示利回り")
+                mc_c2.metric("📈 予想成約率", f"{mc_res['success_prob']:.1f}%", help="この金利で契約してもらえる予測確率")
+                mc_c3.metric("🛡️ 提案ステータス", mc_res['status'])
         except Exception as e_mc:
             st.caption(f"プライシング試算エラー: {e_mc}")
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import datetime as dt
 
 
 def test_agent_worklog_digest_extracts_public_summary_sections(tmp_path):
@@ -9,10 +10,11 @@ def test_agent_worklog_digest_extracts_public_summary_sections(tmp_path):
     vault = tmp_path / "Vault"
     daily = vault / "Daily"
     daily.mkdir(parents=True)
-    note = daily / "2026-07-31.md"
+    note_date = dt.date.today().isoformat()
+    note = daily / f"{note_date}.md"
     note.write_text(
         """
-# 2026-07-31
+# {note_date}
 
 ## 10:15 Codex Work Log
 
@@ -41,7 +43,7 @@ def test_agent_worklog_digest_extracts_public_summary_sections(tmp_path):
 
 ### Private
 - これは出してはいけない
-""".strip(),
+""".format(note_date=note_date).strip(),
         encoding="utf-8",
     )
 

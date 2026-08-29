@@ -2,7 +2,7 @@
 dynamic_rate_engine.py
 動的金利提案エンジン MVP（Phase1）
 
-スプレッド = 基準スプレッド + PD補正 + 業種補正 + スコア補正 + 競合補正
+スプレッド = 基準スプレッド + PD補正（実PDがある場合のみ） + 業種補正 + スコア補正 + 競合補正
 各補正はクランプ済みで逆ザヤを防止。
 """
 from __future__ import annotations
@@ -46,7 +46,7 @@ def _industry_spread_adjustment(industry_sub: str, df: pd.DataFrame) -> float:
 
 def compute_dynamic_spread(
     score: float,
-    pd_percent: float,
+    pd_percent: float | None,
     industry_sub: str,
     base_rate: float,
     competitor_rate: float,
@@ -60,7 +60,7 @@ def compute_dynamic_spread(
     Parameters
     ----------
     score              : 借手スコア（0-100）
-    pd_percent         : LightGBM等で推定された倒産確率（%）
+    pd_percent         : 延滞・デフォルト実績で校正されたPD（%）。未算出はNone
     industry_sub       : 業種（細分類）
     base_rate          : 基準金利（%）
     competitor_rate    : 競合他社金利（0なら競合なし）
@@ -81,11 +81,14 @@ def compute_dynamic_spread(
         win_rate_improvement: 基準スプレッドとの成約確率差（percentage points）
         recommendation      : 要約テキスト
     """
-    # ── 1. PD補正: 業界基準(5%)超 → スプレッド増、未満 → 減（成約率狙い） ──
-    pd_adj = float(np.clip(
-        (pd_percent - _BASELINE_PD_PCT) * _PD_RATE_PER_PCT,
-        -0.30, 0.50
-    ))
+    # ── 1. PD補正: 実PDが明示された場合のみ適用 ──
+    pd_available = pd_percent is not None and float(pd_percent) >= 0.0
+    pd_adj = 0.0
+    if pd_available:
+        pd_adj = float(np.clip(
+            (float(pd_percent) - _BASELINE_PD_PCT) * _PD_RATE_PER_PCT,
+            -0.30, 0.50
+        ))
 
     # ── 2. スコア補正: 高スコア借手は優遇（スプレッド引き下げ） ──────────
     score_adj = float(np.clip(
@@ -131,9 +134,9 @@ def compute_dynamic_spread(
 
     # ── 8. 推奨テキスト ──────────────────────────────────────────────────
     parts = []
-    if pd_adj > 0.01:
+    if pd_available and pd_adj > 0.01:
         parts.append(f"リスクプレミアム +{pd_adj:.2f}%（PD {pd_percent:.1f}%）")
-    elif pd_adj < -0.01:
+    elif pd_available and pd_adj < -0.01:
         parts.append(f"優良先割引 {pd_adj:.2f}%（PD {pd_percent:.1f}%低リスク）")
     if ind_adj > 0.01:
         parts.append(f"業種割増 +{ind_adj:.2f}%")
@@ -150,6 +153,7 @@ def compute_dynamic_spread(
         "dynamic_spread": round(dynamic_spread, 3),
         "dynamic_rate": round(dynamic_rate, 3),
         "pd_adjustment": round(pd_adj, 3),
+        "pd_available": pd_available,
         "score_adjustment": round(score_adj, 3),
         "industry_adjustment": round(ind_adj, 3),
         "competitor_adjustment": round(comp_adj, 3),
@@ -159,15 +163,7 @@ def compute_dynamic_spread(
     }
 
 
-# ── PD推定・リスクプレミアム・シナリオ提案（Phase1 MVP） ──────────────────────
-# スコアからPDを推定するモデルが無い案件向けのフォールバックと、
-# 3シナリオ（守り/推奨/強気）の金利提案を提供する。
-
-# スコア0点でのPD上限／スコア100点でのPD下限（クランプ）
-_PD_SCORE_MAX = 0.40
-_PD_SCORE_MIN = 0.005
-# スコア→PDの減衰係数（大きいほどスコアに敏感）
-_PD_SCORE_DECAY = 0.032
+# ── リスクプレミアム・シナリオ提案（Phase1 MVP） ───────────────────────────
 # デフォルトLGD（倒産時損失率）
 _DEFAULT_LGD_PCT = 45.0
 # スプレッドの絶対上限（逆ザヤ・暴利防止）
@@ -176,17 +172,6 @@ _RATE_MAX_SPREAD = 6.0
 _HIGH_PD_WARNING_PCT = 15.0
 # シナリオ名とスプレッド倍率（守り＜推奨＜強気の順を保証）
 _SCENARIO_SPREAD_MULTIPLIERS: dict[str, float] = {"守り": 0.7, "推奨": 1.0, "強気": 1.3}
-
-
-def pd_from_score(score: float) -> float:
-    """借手スコア（0-100）から倒産確率PD（0.0-1.0の割合）を推定する。
-
-    LightGBM等の実測PDが無い案件向けの簡易フォールバック。
-    スコアが高いほど指数関数的にPDが下がり、[0.005, 0.40] にクランプする。
-    """
-    s = max(0.0, min(100.0, float(score)))
-    pd_value = _PD_SCORE_MAX * float(np.exp(-_PD_SCORE_DECAY * s))
-    return float(np.clip(pd_value, _PD_SCORE_MIN, _PD_SCORE_MAX))
 
 
 def compute_risk_premium(
@@ -212,7 +197,7 @@ class RateProposal:
     spread: float
     recommended_rate: float
     base_rate: float
-    pd_percent: float
+    pd_percent: float | None
     pd_source: str
     scenarios: list[dict] = field(default_factory=list)
     success_prob: float = 0.0
@@ -236,20 +221,21 @@ def compute_dynamic_rate_proposal(
     lease_term_months: int = 60,
     lgd_percent: float = _DEFAULT_LGD_PCT,
 ) -> RateProposal:
-    """PD・スコア・競合を加味した金利提案を3シナリオ（守り/推奨/強気）付きで返す。
+    """PD・スコア・競合を加味した金利提案を3シナリオ付きで返す。
 
-    実測PD（LightGBM等）が無い/不正な値の場合はスコアからのフォールバックに切り替える。
+    PDが無い場合はスコアから代用PDを作らず、PD補正を0として明示する。
     """
     notes: list[str] = []
     if pd_percent is None or pd_percent < 0:
-        pd_source = "score_fallback"
-        pd_percent = pd_from_score(score) * 100.0
+        pd_source = "unavailable"
+        pd_percent = None
+        risk_premium = 0.0
+        notes.append("PD未算出のためPD補正は適用せず、審査スコアと競合条件のみで試算しています。")
     else:
-        pd_source = "lgbm"
-
-    risk_premium = compute_risk_premium(
-        pd_percent, lgd_percent=lgd_percent, lease_term_months=lease_term_months
-    )
+        pd_source = "provided"
+        risk_premium = compute_risk_premium(
+            pd_percent, lgd_percent=lgd_percent, lease_term_months=lease_term_months
+        )
     score_adj = (_SCORE_BASELINE - score) * _SCORE_RATE_PER_PT
     spread = max(risk_premium + score_adj, risk_premium * 0.8)
 
@@ -274,7 +260,7 @@ def compute_dynamic_rate_proposal(
         })
     success_prob = scenarios[1]["win_prob"]
 
-    if pd_percent >= _HIGH_PD_WARNING_PCT:
+    if pd_percent is not None and pd_percent >= _HIGH_PD_WARNING_PCT:
         notes.append(
             f"PD={pd_percent:.1f}% は高リスク水準のため、追加担保・保証・期間短縮等の条件強化を検討する。"
         )

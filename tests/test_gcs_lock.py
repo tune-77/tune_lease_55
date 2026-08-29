@@ -42,6 +42,8 @@ _setup_gcs_mock()
 from scripts.gcs_lock import GCSLock, GCSLockError, DEFAULT_TTL  # noqa: E402
 from google.api_core.exceptions import PreconditionFailed  # noqa: E402 (installed)
 
+_GCS_LOCK_MODULE = GCSLock.__init__.__globals__
+
 
 # ------------------------------------------------------------------
 # ヘルパー
@@ -67,7 +69,8 @@ def _lock_json(
 @pytest.fixture
 def mock_gcs():
     """storage.Client をモックし、(mock_bucket, mock_blob) を返す。"""
-    with patch("scripts.gcs_lock.storage.Client") as mock_client_cls:
+    storage_module = _GCS_LOCK_MODULE["storage"]
+    with patch.object(storage_module, "Client") as mock_client_cls:
         mock_client = MagicMock()
         mock_client_cls.return_value = mock_client
         mock_bucket = MagicMock()
@@ -282,7 +285,11 @@ class TestConfig:
         """GCS_BUCKET 環境変数が gcs_lock モジュールのデフォルトに反映される。"""
         import os
         from importlib import reload
-        import scripts.gcs_lock as gcs_lock_module
+        gcs_lock_module = sys.modules.get("scripts.gcs_lock")
+        if gcs_lock_module is None or gcs_lock_module.__dict__ is not _GCS_LOCK_MODULE:
+            gcs_lock_module = ModuleType("scripts.gcs_lock")
+            gcs_lock_module.__dict__.update(_GCS_LOCK_MODULE)
+            sys.modules["scripts.gcs_lock"] = gcs_lock_module
 
         with patch.dict(os.environ, {"GCS_BUCKET": "env-bucket-override"}):
             reload(gcs_lock_module)

@@ -25,10 +25,11 @@ jobs:
 
       - name: Run full test suite with coverage
         run: |
+          set -o pipefail
           python -m pytest tests/ \
             -v --tb=short --cov=. --cov-report=term-missing \
             --cov-report=json --cov-report=html \
-            2>&1 | tee test-report.txt || true
+            2>&1 | tee test-report.txt
 
       - name: Upload coverage reports
         if: always()
@@ -63,9 +64,12 @@ jobs:
 
       - name: Run full ESLint
         working-directory: frontend
-        run: npm run lint 2>&1 | tee lint-report.txt || true
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee lint-report.txt
 
       - name: Python Lint
         run: |
+          set -o pipefail
           pip install -q pylint flake8
-          flake8 api scripts tests *.py --max-line-length=120 2>&1 | tee flake8-report.txt || true
+          flake8 api scripts tests *.py --max-line-length=120 2>&1 | tee flake8-report.txt

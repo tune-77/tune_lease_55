@@ -9,16 +9,26 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "fetch_fincept_data.py"
 
 
-def test_exits_zero_when_akshare_unavailable():
-    # CI/このセッションには akshare が無いため、スキップ経路を通って exit 0 になるはず。
+def test_exits_zero_when_akshare_unavailable(tmp_path):
+    # 実行環境へのakshareインストール有無に依存しないよう、ImportErrorを起こす
+    # シャドーモジュールをPYTHONPATHの先頭に置いてスキップ経路を再現する。
+    (tmp_path / "akshare.py").write_text(
+        'raise ImportError("akshare intentionally unavailable in test")\n',
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(tmp_path), env.get("PYTHONPATH", "")]
+    ).rstrip(os.pathsep)
     proc = subprocess.run(
         [sys.executable, str(_SCRIPT)],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True, text=True, timeout=120, env=env,
     )
     assert proc.returncode == 0, f"exit={proc.returncode}, stderr={proc.stderr[:500]}"
     combined = proc.stdout + proc.stderr

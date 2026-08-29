@@ -12,6 +12,7 @@ __pycache__/
 .DS_Store
 
 # Secrets（Webhook URL, APIキー等）
+.app_password
 .streamlit/secrets.toml
 .env
 .env.*

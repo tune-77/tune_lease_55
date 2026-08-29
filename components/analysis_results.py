@@ -1898,14 +1898,24 @@ def render_analysis_results(
                                 st.error(f"分析エラー: {e}")
                 
                 if _model_ready:
-                    st.caption("**いずれも「デフォルト確率」（高い＝リスク大）です。** 上記の本システム「契約期待度」（成約率）とは尺度が逆です。成約率に換算するなら 約 100% − デフォルト確率。ハイブリッドは「業種別回帰のデフォルト確率」と「AI（RandomForest）のデフォルト確率」の加重平均なので、同じ尺度同士の組み合わせです。")
+                    _model_used = scoring_result.get("model_used", "")
+                    if _model_used == "lgbm_contract":
+                        st.caption("**成約・失注モデルの失注方向確率（参考値）です。PDではありません。** 上記の「契約期待度」とは別モデル・別定義のため、相互変換せず独立して確認してください。")
+                        _legacy_label = "成約モデル 失注方向確率"
+                        _ai_label = "成約モデル 失注方向確率"
+                        _hybrid_label = "成約モデル リスク参考値"
+                    else:
+                        st.caption("**学習モデルのリスク方向確率（参考値）です。校正済みPDではありません。** モデル世代により学習対象が異なるため、金利計算や正式なデフォルト確率には使用しません。")
+                        _legacy_label = "既存モデル リスク参考値"
+                        _ai_label = "AIモデル リスク参考値"
+                        _hybrid_label = "ハイブリッド リスク参考値"
                     sr1, sr2, sr3, sr4 = st.columns(4)
                     with sr1:
-                        st.metric("既存（業種別回帰）デフォルト確率", f"{scoring_result.get('legacy_prob', 0)*100:.2f}%", help="学習モデル側の業種別回帰")
+                        st.metric(_legacy_label, f"{scoring_result.get('legacy_prob', 0)*100:.2f}%", help="学習モデルの参考値（PDには使用しません）")
                     with sr2:
-                        st.metric("AI（RandomForest）デフォルト確率", f"{scoring_result.get('ai_prob', 0)*100:.2f}%", help="RandomForest統合")
+                        st.metric(_ai_label, f"{scoring_result.get('ai_prob', 0)*100:.2f}%", help="学習モデルの参考値（PDには使用しません）")
                     with sr3:
-                        st.metric("ハイブリッド デフォルト確率", f"{scoring_result.get('hybrid_prob', 0)*100:.2f}%", help="0.3×既存+0.7×AI（同尺度）")
+                        st.metric(_hybrid_label, f"{scoring_result.get('hybrid_prob', 0)*100:.2f}%", help="判定補助用のリスク方向値。校正済みPDではありません")
                     with sr4:
                         dec = scoring_result.get("decision", "—")
                         st.metric("学習モデル判定", dec, help="デフォルト確率50%未満で承認")
