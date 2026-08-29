@@ -170,6 +170,7 @@ class ShionFollowupImpactFeedback(BaseModel):
     impact_label: Literal[
         "decision_changed",
         "risk_prevented",
+        "outcome_matched",
         "evidence_strengthened",
         "not_helpful",
     ]

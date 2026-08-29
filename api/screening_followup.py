@@ -24,6 +24,7 @@ ANSWER_LABELS = {
 IMPACT_LABELS = {
     "decision_changed": "判断変更・条件追加",
     "risk_prevented": "事故・見落とし防止",
+    "outcome_matched": "懸念が結果に表れた",
     "evidence_strengthened": "判断根拠の補強",
     "not_helpful": "役立たなかった",
 }
@@ -545,15 +546,22 @@ def analyze_followup_question_impact(*, limit: int = 20) -> dict[str, Any]:
             """
             SELECT followup_id, questions_json, answers_json, status, outcome_status
               FROM shion_followup_sessions
-             ORDER BY created_at DESC
+             ORDER BY created_at DESC, followup_id DESC
              LIMIT 5000
             """
         )
         sessions = [dict(row) for row in cur.fetchall()]
         cur.execute(
             """
-            SELECT followup_id, question_id, impact_label
-              FROM shion_followup_impact_feedback
+            SELECT feedback.followup_id, feedback.question_id, feedback.impact_label
+              FROM shion_followup_impact_feedback AS feedback
+              JOIN (
+                    SELECT followup_id
+                      FROM shion_followup_sessions
+                     ORDER BY created_at DESC, followup_id DESC
+                     LIMIT 5000
+                   ) AS selected
+                ON selected.followup_id = feedback.followup_id
             """
         )
         feedback_rows = [dict(row) for row in cur.fetchall()]
@@ -584,6 +592,7 @@ def analyze_followup_question_impact(*, limit: int = 20) -> dict[str, Any]:
                 "warning_match_count": 0,
                 "decision_changed_count": 0,
                 "risk_prevented_count": 0,
+                "outcome_matched_count": 0,
                 "evidence_strengthened_count": 0,
                 "not_helpful_count": 0,
             })
@@ -594,11 +603,16 @@ def analyze_followup_question_impact(*, limit: int = 20) -> dict[str, Any]:
                 answer_status = _text(answer.get("status"))
                 if answer_status in {"partial", "concern"}:
                     item["condition_signal_count"] += 1
-                    if outcome in _ADVERSE_OUTCOMES:
-                        item["warning_match_count"] += 1
             impact_label = feedback_map.get((followup_id, question_id))
             if impact_label in IMPACT_LABELS:
                 item[f"{impact_label}_count"] += 1
+            if (
+                answer
+                and _text(answer.get("status")) in {"partial", "concern"}
+                and outcome in _ADVERSE_OUTCOMES
+                and impact_label == "outcome_matched"
+            ):
+                item["warning_match_count"] += 1
 
     rows = []
     for item in grouped.values():

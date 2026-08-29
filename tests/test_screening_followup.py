@@ -220,16 +220,20 @@ def test_question_impact_feedback_is_human_labeled_and_aggregated(tmp_path, monk
             "impact_label": "decision_changed",
         }])
 
-    record_followup_outcome("CASE-IMPACT", "失注", "確認した懸念が結果にも表れた")
+    record_followup_outcome("CASE-IMPACT", "失注", "価格条件で失注")
+    before_feedback = analyze_followup_question_impact(limit=20)
+    before_rows = {row["question_id"]: row for row in before_feedback["questions"]}
+    assert before_rows[created["questions"][0]["id"]]["warning_match_count"] == 0
+
     saved = save_followup_impact_feedback(created["followup_id"], [
         {
             "question_id": created["questions"][0]["id"],
-            "impact_label": "risk_prevented",
-            "note": "実行前の停止線になった",
+            "impact_label": "outcome_matched",
+            "note": "この懸念が失注結果に表れたと人間が確認",
         },
         {
             "question_id": created["questions"][1]["id"],
-            "impact_label": "evidence_strengthened",
+            "impact_label": "risk_prevented",
         },
     ])
     analytics = analyze_followup_question_impact(limit=20)
@@ -238,7 +242,7 @@ def test_question_impact_feedback_is_human_labeled_and_aggregated(tmp_path, monk
 
     assert saved["saved_count"] == 2
     assert analytics["feedback_count"] == 2
-    assert first["risk_prevented_count"] == 1
+    assert first["outcome_matched_count"] == 1
     assert first["condition_signal_count"] == 1
     assert first["warning_match_count"] == 1
     assert first["usefulness_rate"] == 1.0
@@ -280,3 +284,62 @@ def test_question_impact_feedback_update_replaces_previous_label(tmp_path, monke
     assert row["evidence_strengthened_count"] == 0
     assert row["not_helpful_count"] == 1
     assert row["usefulness_rate"] == 0.0
+
+
+def test_question_impact_analytics_caps_feedback_to_selected_sessions(tmp_path, monkeypatch):
+    import json
+    import runtime_paths
+    from api.db_connection import ensure_schema, get_connection
+
+    db_path = tmp_path / "followup-impact-cap.db"
+    monkeypatch.setattr(runtime_paths, "get_db_path", lambda: str(db_path))
+    monkeypatch.setattr(runtime_paths, "ensure_cloudrun_demo_db_seeded", lambda: None)
+    ensure_schema()
+    question = {
+        "id": "shared-question",
+        "category": "返済原資",
+        "question": "返済原資を確認できましたか？",
+    }
+    answer = {"question_id": "shared-question", "status": "concern", "note": "未確認"}
+    sessions = [
+        (
+            f"SFU-{index:05d}",
+            f"CASE-{index:05d}",
+            json.dumps([question], ensure_ascii=False),
+            json.dumps([answer], ensure_ascii=False),
+            "outcome_linked",
+            "失注",
+            "same-created-at",
+        )
+        for index in range(5001)
+    ]
+    with get_connection() as conn:
+        conn.executemany(
+            """
+            INSERT INTO shion_followup_sessions
+                (followup_id, case_id, questions_json, answers_json, status, outcome_status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            sessions,
+        )
+        conn.executemany(
+            """
+            INSERT INTO shion_followup_impact_feedback
+                (followup_id, question_id, impact_label)
+            VALUES (?, ?, ?)
+            """,
+            [
+                ("SFU-00000", "shared-question", "outcome_matched"),
+                ("SFU-05000", "shared-question", "risk_prevented"),
+            ],
+        )
+
+    analytics = analyze_followup_question_impact(limit=20)
+    row = analytics["questions"][0]
+
+    assert analytics["session_count"] == 5000
+    assert analytics["feedback_count"] == 1
+    assert row["asked_count"] == 5000
+    assert row["labeled_count"] == 1
+    assert row["risk_prevented_count"] == 1
+    assert row["outcome_matched_count"] == 0
