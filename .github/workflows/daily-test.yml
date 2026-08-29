@@ -21,12 +21,13 @@ jobs:
         run: >
           pip install -q pytest pytest-cov fastapi uvicorn pydantic slowapi httpx python-multipart
           requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
-          python-dateutil pyyaml
+          python-dateutil pyyaml beautifulsoup4 filelock bcrypt flask flask-cors
+          google-api-core
 
       - name: Run full test suite with coverage
         run: |
           set -o pipefail
-          python -m pytest tests/ \
+          python -m pytest tests/ -m "not external" \
             -v --tb=short --cov=. --cov-report=term-missing \
             --cov-report=json --cov-report=html \
             2>&1 | tee test-report.txt

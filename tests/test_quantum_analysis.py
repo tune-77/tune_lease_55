@@ -110,6 +110,7 @@ DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"
 
 
 @pytest.mark.skipif(not DB_PATH.exists(), reason="DB なし")
+@pytest.mark.integration
 def test_backtest_lost_recall():
     """
     高スコア失注案件の Q_risk>=60 捕捉率 ≥ 0.30 (緩め目標; データ14件のため)
@@ -160,6 +161,7 @@ MAHA_PATH = PROJECT_ROOT / "data" / "mahalanobis_model.joblib"
     not (DB_PATH.exists() and MAHA_PATH.exists()),
     reason="DB or マハラノビスモデルなし"
 )
+@pytest.mark.integration
 def test_independence_from_mahalanobis():
     """
     Q_risk とマハラノビスリスクの Pearson |r| < 0.90

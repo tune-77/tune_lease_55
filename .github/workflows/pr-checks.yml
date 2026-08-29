@@ -48,9 +48,9 @@ jobs:
       - name: Syntax check (compileall)
         run: python -m compileall -q api scripts tests *.py
 
-  # 改善ループ＋ガードのコアテスト網。全テスト一括ではなく、クリーン環境で
-  # グリーンを確認済みのスイートから段階導入する（未検証テストの偽赤でCIを
-  # 止めないため）。スイートを増やすときはローカルの素の環境で通ることを確認してから追加する
+  # Python回帰テストをPRごとに全件実行する。実Vault・外部サービスへ接続する
+  # externalテストだけを除外し、テスト追加時のCI登録漏れを防ぐ。
+  # ジョブIDは既存のbranch protectionとの互換性のためpytest-coreを維持する。
   pytest-core:
     runs-on: ubuntu-latest
     steps:
@@ -65,62 +65,11 @@ jobs:
         run: >
           pip install -q pytest fastapi uvicorn pydantic slowapi httpx python-multipart
           requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
-          python-dateutil pyyaml
+          python-dateutil pyyaml beautifulsoup4 filelock bcrypt flask flask-cors
+          google-api-core
 
-      - name: Run core test suite
-        run: >
-          python -m pytest -q
-          tests/test_no_duplicate_toplevel_defs.py
-          tests/test_preflight_pr_guard.py
-          tests/test_recursive_self_improvement.py
-          tests/test_loop_metrics.py
-          tests/test_improvement_log_recursive_summary.py
-          tests/test_improvement_triage.py
-          tests/test_dialogue_improvement_observability.py
-          tests/test_analyze_shion_pm_quality.py
-          tests/test_shion_triage_queue.py
-          tests/test_shion_llm_triage_proposal.py
-          tests/test_execute_codex_queue_guards.py
-          tests/test_sync_cloudrun_inputs_from_gcs.py
-          tests/test_judgment_asset_promotion.py
-          tests/test_judgment_asset_bandit.py
-          tests/test_screening_input_assist_summary.py
-          tests/test_chat_judgment_asset_capture_helpers.py
-          tests/test_chat_judgment_asset_capture.py
-          tests/test_lease_intelligence_dialogue.py
-          tests/test_loop_hardening.py
-          tests/test_codex_review_p1_p2_fixes.py
-          tests/test_build_loop_proof.py
-          tests/test_lease_intelligence_pending.py
-          tests/test_lease_intelligence_tools.py
-          tests/test_reconcile_pending_pipeline_wiring.py
-          tests/test_chat_quick_fix_intake.py
-          tests/test_send_daily_improvement_slack.py
-          tests/test_screening_domain.py
-          tests/test_threshold_single_source.py
-          tests/test_chat_prompt_cost.py
-          tests/test_emotion_history_backfill.py
-          tests/test_cleanup_title_matched_closures.py
-          tests/test_reconcile_needs_review_from_prs.py
-          tests/test_shion_agent_tools.py
-          tests/test_demo_quick_ui_seed.py
-          tests/test_shion_debate_adk_fallback.py
-          tests/test_analyze_debate_quality.py
-          tests/test_fetch_fincept_data_resilience.py
-          tests/test_requirements_pipeline_declares_akshare.py
-          tests/test_api_main_smoke.py
-          tests/test_chat_external_research.py
-          tests/test_sync_improvement_reports_from_ledger.py
-          tests/test_audit_ledger_applied_claims.py
-          tests/test_step3_auto_apply_applied_gate.py
-          tests/test_check_pr_change_risk.py
-          tests/test_lease_news_collection.py
-          tests/test_shion_memory_revisions.py
-          tests/test_shion_memory_vector.py
-          tests/test_validate_improvement_ledger.py
-          tests/test_check_frontend_backend_schema.py
-          tests/test_scoring_anomaly_monitor.py
-          tests/test_system_guardrails_stats_cache_consistency.py
+      - name: Run full Python test suite
+        run: python -m pytest -q -m "not external"
 
   # #863/#864/#865/#866 の危険域専用ガード。
   # Cloud Run実データ登録、APIアクセス制御、GCS DBスナップショット/復元、

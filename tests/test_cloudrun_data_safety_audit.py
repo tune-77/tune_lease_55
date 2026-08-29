@@ -127,7 +127,8 @@ class _FakeBlob:
         self.name = name
 
     def upload_from_filename(self, filename: str) -> None:
-        self._store[self.name] = open(filename, "rb").read()
+        with open(filename, "rb") as fh:
+            self._store[self.name] = fh.read()
 
     def upload_from_string(self, data: str, **_kwargs) -> None:
         self._store[self.name] = data.encode("utf-8")

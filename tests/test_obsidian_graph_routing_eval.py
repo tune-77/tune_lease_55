@@ -16,6 +16,8 @@ def test_obsidian_graph_routing_eval_set_shape():
         assert isinstance(case.get("forbidden_top_path_any"), list)
 
 
+@pytest.mark.integration
+@pytest.mark.external
 def test_obsidian_graph_routing_eval_set_passes():
     if os.environ.get("RUN_OBSIDIAN_GRAPH_EVAL") != "1":
         pytest.skip("実Vaultを使う変動性のある統合評価は RUN_OBSIDIAN_GRAPH_EVAL=1 で実行")
