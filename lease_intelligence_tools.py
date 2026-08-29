@@ -1477,6 +1477,38 @@ def audit_ledger_consistency(limit: int = 20) -> dict[str, Any]:
         return {"anomalies": [], "count": 0, "error": str(exc)}
 
 
+def get_lease_system_gaps(limit: int = 10) -> dict[str, Any]:
+    """リースシステム全体の不足・改善余地の棚卸し結果を返す。
+
+    scripts/lease_system_gap_analyzer.py が生成する reports/lease_system_gap_analysis.json
+    を読み取り専用で参照する（api/routers/analytics.py の /api/lease-system-gaps と同じ元データ）。
+    「このシステムに足りないものは？」「弱点は？」とシステム全体を俯瞰する質問に使う。
+    """
+    try:
+        from api.routers.analytics import _load_lease_system_gap_analysis
+
+        return _load_lease_system_gap_analysis(limit=limit)
+    except Exception as exc:
+        return {"available": False, "items": [], "error": str(exc)}
+
+
+def get_active_rules(limit: int = 20) -> dict[str, Any]:
+    """ルールエンジン台帳（api/rule_engine/ledger_rules.json）の現在のルール一覧を返す。
+
+    承認待ちの項目に絞る get_pipeline_item_details とは異なり、既に有効な項目も含めた
+    全件を返す。「今どんなルールが効いている？」と聞かれたときに使う。読み取り専用で、
+    承認・変更は行わない。
+    """
+    try:
+        from api.routers.rule_engine import list_rules
+
+        result = list_rules()
+    except Exception as exc:
+        return {"rules": [], "total": 0, "error": str(exc)}
+    rules = result.get("rules", [])
+    return {"rules": rules[:limit], "total": result.get("total", len(rules))}
+
+
 def recall_judgment_memory(question: str, limit: int = 5) -> dict[str, Any]:
     """質問に関連する審査判断の記憶を、正準ルールと紫苑の記憶索引の両方から想起する。
 
