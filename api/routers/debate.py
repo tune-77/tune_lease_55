@@ -98,4 +98,11 @@ def register_debate_case(req: RegisterDebateCaseRequest):
     case_id = save_case_log(case_data)
     if not case_id:
         raise HTTPException(status_code=500, detail="案件登録に失敗しました。")
+    from api.prediction_snapshot import record_saved_case_prediction
+
+    record_saved_case_prediction(
+        case_id=str(case_id),
+        case_data=case_data,
+        source="debate_register_case",
+    )
     return {"case_id": case_id, "hantei": hantei}

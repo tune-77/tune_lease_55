@@ -332,13 +332,20 @@ def _build_batch_response(df_in, df_out, summary: dict, batch_token: str | None 
 
 def _save_batch_payloads(db_results: list[dict], excluded_grade_results: list[dict]) -> tuple[int, int, int]:
     from data_cases import save_case_log, save_excluded_grade_case
+    from api.prediction_snapshot import record_saved_case_prediction
 
     saved_count = 0
     with_result = 0
     excluded_saved_count = 0
     for db_data in db_results:
-        if save_case_log(db_data):
+        case_id = save_case_log(db_data)
+        if case_id:
             saved_count += 1
+            record_saved_case_prediction(
+                case_id=str(case_id),
+                case_data=db_data,
+                source="batch_save",
+            )
             if db_data.get("final_status") in ("成約", "失注"):
                 with_result += 1
     for excluded_data in excluded_grade_results:
@@ -938,4 +945,3 @@ def save_batch(req: BatchSaveRequest, background_tasks: BackgroundTasks):
         result = _run_batch_scoring(req, save_to_db=True)
     background_tasks.add_task(_proxy_git_push_db)
     return result
-
