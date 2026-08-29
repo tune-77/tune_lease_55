@@ -61,6 +61,7 @@ if [[ -n "$latest_recursive" ]]; then
   cp "$latest_recursive" "$REPORTS_OUT/"
 fi
 copy_if_exists "$ROOT_DIR/reports/shion_pm_quality_latest.json" "$REPORTS_OUT/"
+copy_if_exists "$ROOT_DIR/reports/lease_system_gap_analysis.json" "$REPORTS_OUT/"
 
 # Memory Review Inbox / Memory Engineering は Cloud Run では reports/ と
 # data/*.jsonl が送信対象外になるため、レビューに必要な読み取り専用材料だけ
