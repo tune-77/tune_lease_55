@@ -303,6 +303,25 @@ def ensure_schema() -> None:
             user_feedback TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        # shion_followup_sessions ───────────────────────────────────────────────
+        # 紫苑レビュー後の「最大3問 → 回答 → 判断更新 → 結果照合」を保存する。
+        # スコア本体や判断資産active storeは変更しない。
+        f"""CREATE TABLE IF NOT EXISTS shion_followup_sessions (
+            id {auto_pk},
+            followup_id TEXT NOT NULL UNIQUE,
+            case_id TEXT NOT NULL DEFAULT '',
+            review_id INTEGER,
+            baseline_decision TEXT DEFAULT '',
+            updated_decision TEXT DEFAULT '',
+            questions_json TEXT NOT NULL DEFAULT '[]',
+            answers_json TEXT NOT NULL DEFAULT '[]',
+            summary_json TEXT NOT NULL DEFAULT '{{}}',
+            status TEXT NOT NULL DEFAULT 'questions_ready',
+            outcome_status TEXT DEFAULT '',
+            outcome_note TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
         # screening_experience_cases ─────────────────────────────────────────────
         f"""CREATE TABLE IF NOT EXISTS screening_experience_cases (
             id {auto_pk},
@@ -366,6 +385,8 @@ def ensure_schema() -> None:
         "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_case_id ON shion_screening_reviews(case_id)",
         "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_created ON shion_screening_reviews(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_industry ON shion_screening_reviews(industry_sub)",
+        "CREATE INDEX IF NOT EXISTS idx_shion_followup_case ON shion_followup_sessions(case_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_shion_followup_status ON shion_followup_sessions(status)",
         "CREATE INDEX IF NOT EXISTS idx_screening_experience_demo ON screening_experience_cases(demo_case_id)",
         "CREATE INDEX IF NOT EXISTS idx_screening_experience_industry ON screening_experience_cases(industry_sub)",
         "CREATE INDEX IF NOT EXISTS idx_screening_experience_created ON screening_experience_cases(created_at)",

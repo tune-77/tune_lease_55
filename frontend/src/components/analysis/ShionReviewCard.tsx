@@ -13,6 +13,7 @@ import {
   type ShionReviewFeedback,
   type ShionScreeningReview,
 } from "../../lib/shionReview";
+import ShionFollowUpPanel from "./ShionFollowUpPanel";
 
 const POPUP_WIDTH_PX = 320;
 const POPUP_MAX_HEIGHT_PX = 340;
@@ -264,6 +265,7 @@ export function ShionScreeningReviewCard({
   pastCompanies,
   judgmentAssetCandidates,
   result,
+  formData,
 }: {
   review: ShionScreeningReview | null;
   loading: boolean;
@@ -274,6 +276,7 @@ export function ShionScreeningReviewCard({
   pastCompanies: PastCompanyHighlight[];
   judgmentAssetCandidates: JudgmentAssetCandidate[];
   result: Record<string, any> | null;
+  formData: Record<string, any>;
 }) {
   const feedbackOptions: { key: ShionReviewFeedback; label: string }[] = [
     { key: "specific", label: "具体的" },
@@ -363,6 +366,13 @@ export function ShionScreeningReviewCard({
                     ))}
                   </div>
                 ) : null}
+                <ShionFollowUpPanel
+                  caseId={String(result?.case_id || formData.company_no || formData.company_name || "")}
+                  reviewId={review.savedId}
+                  formSnapshot={formData}
+                  resultSnapshot={result || {}}
+                  judgmentAssets={judgmentAssetCandidates}
+                />
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-violet-100 pt-3">
                   <span className="text-[11px] font-black text-violet-500">紫苑レビュー評価</span>
                   {feedbackOptions.map((option) => (
