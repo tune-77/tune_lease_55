@@ -2684,6 +2684,7 @@ export default function Dashboard() {
                       pastCompanies={shionPastCompanies}
                       judgmentAssetCandidates={judgmentAssetCandidates}
                       result={result}
+                      formData={formData}
                     />
                     <JudgmentAssetCandidateCard
                       candidates={judgmentAssetCandidates}

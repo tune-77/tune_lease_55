@@ -147,6 +147,24 @@ class ShionScreeningReviewFeedbackRequest(BaseModel):
     ]
 
 
+class ShionFollowupCreateRequest(BaseModel):
+    case_id: str = ""
+    review_id: Optional[int] = None
+    form_snapshot: dict = Field(default_factory=dict)
+    result_snapshot: dict = Field(default_factory=dict)
+    judgment_assets: list[dict] = Field(default_factory=list)
+
+
+class ShionFollowupAnswer(BaseModel):
+    question_id: str
+    status: Literal["confirmed", "partial", "concern"]
+    note: str = ""
+
+
+class ShionFollowupAnswerRequest(BaseModel):
+    answers: list[ShionFollowupAnswer] = Field(default_factory=list)
+
+
 class JudgmentAssetCandidateFeedbackRequest(BaseModel):
     feedback: Literal["useful", "neutral", "rejected"]
     case_id: str = ""
@@ -2812,6 +2830,71 @@ def patch_shion_screening_review_feedback(
         req.user_feedback,
     )
     return {"status": "ok", "review": entry}
+
+
+@router.post("/api/shion-followups")
+def post_shion_followup(req: ShionFollowupCreateRequest, background_tasks: BackgroundTasks) -> dict:
+    from api.screening_followup import create_followup_session
+
+    case_id = str(req.case_id or req.result_snapshot.get("case_id") or req.form_snapshot.get("company_no") or "").strip()
+    if not case_id:
+        raise HTTPException(status_code=422, detail="case_id is required")
+    try:
+        session = create_followup_session(
+            case_id=case_id,
+            review_id=req.review_id,
+            form=req.form_snapshot,
+            result=req.result_snapshot,
+            judgment_assets=req.judgment_assets[:10],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_followup_questions_created",
+        surface="screening",
+        payload={**session, "schema_version": 1, "form_snapshot": {}, "result_snapshot": {}},
+    )
+    return {"status": "ok", "followup": session}
+
+
+@router.post("/api/shion-followups/{followup_id}/answers")
+def post_shion_followup_answers(
+    followup_id: str,
+    req: ShionFollowupAnswerRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    from api.screening_followup import answer_followup_session
+
+    if not req.answers:
+        raise HTTPException(status_code=422, detail="answers are required")
+    try:
+        session = answer_followup_session(
+            followup_id,
+            [answer.model_dump() for answer in req.answers],
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        status_code = 409 if "outcome-linked" in str(exc) else 422
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="shion_followup_answered",
+        surface="screening",
+        payload={**session, "schema_version": 1},
+    )
+    return {"status": "ok", "followup": session}
+
+
+@router.get("/api/shion-followups")
+def get_shion_followups(case_id: str, limit: int = 5) -> dict:
+    from api.screening_followup import list_followup_sessions
+
+    if not str(case_id or "").strip():
+        raise HTTPException(status_code=422, detail="case_id is required")
+    rows = list_followup_sessions(case_id, limit=limit)
+    return {"count": len(rows), "followups": rows}
 
 
 @router.get("/api/judgment-asset-candidates/screening")
