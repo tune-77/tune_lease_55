@@ -30,6 +30,12 @@ DEFAULT_REFLECTION_JOURNAL_REPORT = REPO_ROOT / "reports" / "obsidian_reflection
 DEFAULT_SHION_OBSIDIAN_CURATOR_DAILY = REPO_ROOT / "reports" / "shion_obsidian_curator_daily_latest.json"
 DEFAULT_STATE = REPO_ROOT / "data" / "slack_daily_improvement_state.json"
 DEFAULT_TIMEOUT = 15
+# 本文ハッシュ方式へ切り替えた版数。旧方式（生JSON全体からのハッシュ）で保存された
+# state は digest_version が無いため、当日中にこのバージョンをまたいでパイプラインが
+# 再実行されるとハッシュ方式の違いだけで不一致になり、内容が同じでも重複送信して
+# しまう（Codexレビュー指摘）。それを避けるため、バージョン不一致時は日付一致のみで
+# 「送信済み」とみなす。
+DIGEST_VERSION = 2
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -522,7 +528,13 @@ def send_slack(webhook_url: str, payload: dict[str, Any], *, timeout: int = DEFA
 def should_skip(state: dict[str, Any], *, report_date: str, digest: str, force: bool) -> bool:
     if force:
         return False
-    return state.get("last_sent_date") == report_date and state.get("last_report_hash") == digest
+    if state.get("last_sent_date") != report_date:
+        return False
+    if state.get("digest_version") != DIGEST_VERSION:
+        # ハッシュ方式が変わった直後は新旧のダイジェストを比較できない。
+        # 同じ日付に既に送信済みという事実だけで重複送信とみなす。
+        return True
+    return state.get("last_report_hash") == digest
 
 
 def main() -> int:
@@ -598,6 +610,7 @@ def main() -> int:
             "last_sent_at": datetime.now().isoformat(timespec="seconds"),
             "last_sent_date": args.date,
             "last_report_hash": digest,
+            "digest_version": DIGEST_VERSION,
             "last_report": str(args.report),
         },
     )

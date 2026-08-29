@@ -347,9 +347,20 @@ def test_build_message_includes_judgment_asset_field_review_summary():
 
 
 def test_should_skip_same_date_and_hash_unless_forced():
-    state = {"last_sent_date": "2026-07-14", "last_report_hash": "abc"}
+    state = {"last_sent_date": "2026-07-14", "last_report_hash": "abc", "digest_version": 2}
 
     assert should_skip(state, report_date="2026-07-14", digest="abc", force=False)
     assert not should_skip(state, report_date="2026-07-14", digest="abc", force=True)
     assert not should_skip(state, report_date="2026-07-15", digest="abc", force=False)
     assert not should_skip(state, report_date="2026-07-14", digest="def", force=False)
+
+
+def test_should_skip_treats_legacy_state_without_digest_version_as_already_sent():
+    # digest_version 導入前(旧: 生JSON全体からのハッシュ)に書かれた state。
+    # 新旧のハッシュ方式は比較不能なため、内容の一致有無に関わらず
+    # 同じ日付なら「送信済み」として扱い、移行日の重複送信を防ぐ。
+    legacy_state = {"last_sent_date": "2026-07-14", "last_report_hash": "old-scheme-hash"}
+
+    assert should_skip(legacy_state, report_date="2026-07-14", digest="new-scheme-hash", force=False)
+    assert not should_skip(legacy_state, report_date="2026-07-14", digest="new-scheme-hash", force=True)
+    assert not should_skip(legacy_state, report_date="2026-07-15", digest="new-scheme-hash", force=False)
