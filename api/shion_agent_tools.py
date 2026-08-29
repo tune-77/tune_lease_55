@@ -12,6 +12,8 @@ from __future__ import annotations
 from lease_intelligence_tools import (
     audit_ledger_consistency,
     build_judgment_preview,
+    get_active_rules,
+    get_lease_system_gaps,
     get_pipeline_item_details,
     get_portfolio_stats,
     get_recent_errors,
@@ -44,6 +46,8 @@ READ_ONLY_DB_TOOLS = [
     build_judgment_preview,    # 判断材料プレビュー（レビュー前の下書き）を取得
     search_obsidian_context,   # Obsidian Vaultの知識ノート検索
     audit_ledger_consistency,  # REV改善台帳のREV番号・canonical_key・status整合性監査
+    get_lease_system_gaps,     # リースシステム全体の不足・改善余地の棚卸し結果
+    get_active_rules,          # ルールエンジン台帳の現在有効なルール一覧（承認待ち以外も含む）
     *OBSIDIAN_CURATOR_TOOLS,   # Obsidian情報健康・検索不調テーマの読み取り専用curation提案
     *AGENTIC_SKILL_TOOLS,      # 判断資産/ソース検証/調査変換/判断フロー/SCQAの副作用なしスキル
     *SHION_SYSTEM_SELF_INSPECTION_TOOLS,  # 紫苑システム全体の安全な自己検索・改善焦点提案
