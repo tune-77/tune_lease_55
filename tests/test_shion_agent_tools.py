@@ -23,6 +23,8 @@ EXPECTED_DB_TOOLS = {
     "build_judgment_preview",
     "search_obsidian_context",
     "audit_ledger_consistency",
+    "get_lease_system_gaps",
+    "get_active_rules",
     "review_obsidian_vault_health",
     "suggest_obsidian_curation_actions",
     "structure_judgment_asset_candidate",
