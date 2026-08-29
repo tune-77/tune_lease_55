@@ -180,7 +180,7 @@ def test_confidence_calibration_stays_reference_only_on_small_samples():
 def test_numeric_forecast_is_scored_against_latest_actual():
     forecast = {
         "case_id": "case-1",
-        "captured_at": "2026-01-01T00:00:00+00:00",
+        "captured_at": "2024-01-01T00:00:00+00:00",
         "forecast": {
             "method": "gbm",
             "years": [0, 1],
@@ -191,7 +191,8 @@ def test_numeric_forecast_is_scored_against_latest_actual():
     actual = {
         "case_id": "case-1",
         "observed_year": 1,
-        "recorded_at": "2027-04-01T00:00:00+00:00",
+        "observed_at": "2025-03-31",
+        "recorded_at": "2025-04-01T00:00:00+00:00",
         "actual": {"sales": 100, "op_profit": 4},
     }
 
@@ -208,6 +209,61 @@ def test_numeric_forecast_is_scored_against_latest_actual():
     }
     assert summary["op_profit_error"]["mae"] == 1.0
     assert summary["op_profit_error"]["mape"] == 0.25
+
+
+def test_numeric_forecast_excludes_predictions_created_after_observation():
+    forecasts = [
+        {
+            "case_id": "case-1",
+            "captured_at": "2024-01-01T00:00:00+00:00",
+            "forecast": {
+                "sales_percentiles": {"10": [90, 90], "50": [100, 100], "90": [110, 110]},
+                "op_percentiles": {"10": [3, 3], "50": [4, 4], "90": [5, 5]},
+            },
+        },
+        {
+            "case_id": "case-1",
+            "captured_at": "2025-04-02T00:00:00+00:00",
+            "forecast": {
+                "sales_percentiles": {"10": [190, 190], "50": [200, 200], "90": [210, 210]},
+                "op_percentiles": {"10": [8, 8], "50": [9, 9], "90": [10, 10]},
+            },
+        },
+    ]
+    actual = {
+        "case_id": "case-1",
+        "observed_year": 1,
+        "observed_at": "2025-03-31",
+        "recorded_at": "2025-04-03T00:00:00+00:00",
+        "actual": {"sales": 100, "op_profit": 4},
+    }
+
+    summary = report_module.build_numeric_forecast_summary(forecasts, [actual])
+
+    assert summary["matched_actuals"] == 1
+    assert summary["sales_error"]["mae"] == 0.0
+    assert summary["op_profit_error"]["mae"] == 0.0
+    assert summary["matching_policy"] == "latest_forecast_captured_on_or_before_observed_at"
+
+
+def test_numeric_forecast_does_not_score_actual_without_observation_date():
+    forecast = {
+        "case_id": "case-1",
+        "captured_at": "2024-01-01T00:00:00+00:00",
+        "forecast": {"sales_percentiles": {"50": [100, 100]}},
+    }
+    actual = {
+        "case_id": "case-1",
+        "observed_year": 1,
+        "recorded_at": "2025-04-03T00:00:00+00:00",
+        "actual": {"sales": 100},
+    }
+
+    summary = report_module.build_numeric_forecast_summary([forecast], [actual])
+
+    assert summary["matched_actuals"] == 0
+    assert summary["actuals_without_observation_date"] == 1
+    assert summary["calibratable"] is False
 
 
 def test_repeat_beliefs_flag_only_unreviewed_repeats():

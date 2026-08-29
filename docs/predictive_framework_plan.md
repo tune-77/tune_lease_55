@@ -188,7 +188,7 @@ Phase 1〜4 はすべて実装済み（PR分割は当初案から変更し、1�
 
 ## 7. 実装後に残っている限界
 
-1. **数値予測の実績採点はshadow運用を開始済み**。`POST /api/future-simulation/actuals` で後日実績を `data/prediction_numeric_actuals.jsonl` へ追記し、予測年ごとの売上・営業利益について MAE / MAPE / 80%区間包含率を日次レポートで測る。突合5件未満は参考値とし、スコア・判定・モデルへ自動反映しない
+1. **数値予測の実績採点はshadow運用を開始済み**。`POST /api/future-simulation/actuals` で実績日を必須として後日実績を `data/prediction_numeric_actuals.jsonl` へ追記し、実績日以前に作成された予測だけを対象に、予測年ごとの売上・営業利益について MAE / MAPE / 80%区間包含率を日次レポートで測る。突合5件未満は参考値とし、スコア・判定・モデルへ自動反映しない
 2. **案件保存の主要4経路はスナップショットへ接続済み**。`/api/score/full` に加え、討論審査、バッチ保存、Cloud Run帰還案件の昇格も `record_saved_case_prediction()` を通る。成約・失注が既に判明しているバッチ行は予測に混ぜず、今後 `save_case_log()` の新しい呼び出し経路を追加する場合は同アダプターへの接続を必須とする
 3. **confidence の生値はまだ代理指標だが、実績校正をshadow観測する**。事前予測の high / low だけを対象に、confidence帯ごとの実績正解率、Brier score、Expected Calibration Errorを日次レポートへ出す。30件未満は参考値とし、生のconfidence式・審査スコア・承認判定は変更しない
 4. **キャリブレーションは事前予測が溜まるまで参考値**。`prediction_coverage.trustworthy` が false の間は、先回り提示（Phase 4）も意図的に沈黙する

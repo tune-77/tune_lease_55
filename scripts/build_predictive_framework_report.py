@@ -98,6 +98,20 @@ def _mean(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 3)
 
 
+def _timestamp_or_none(value: Any) -> datetime | None:
+    """ISO日付/日時を比較可能なUTC datetimeへ変換する。"""
+    raw = _text(value)
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def build_snapshot_summary(snapshot_rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_risk: dict[str, int] = {}
     cases: set[str] = set()
@@ -178,17 +192,24 @@ def build_numeric_forecast_summary(
         if case_id:
             forecasts_by_case.setdefault(case_id, []).append(row)
     for rows in forecasts_by_case.values():
-        rows.sort(key=lambda item: _text(item.get("captured_at")))
+        rows.sort(key=lambda item: _timestamp_or_none(item.get("captured_at")) or datetime.min.replace(tzinfo=timezone.utc))
 
     matched_rows: list[dict[str, float | None]] = []
+    actuals_without_observation_date = 0
     for (case_id, year), actual_row in latest_actuals.items():
+        observed_at = _timestamp_or_none(actual_row.get("observed_at"))
+        if observed_at is None:
+            actuals_without_observation_date += 1
+            continue
         candidates = forecasts_by_case.get(case_id) or []
         if not candidates:
             continue
-        actual_recorded_at = _text(actual_row.get("recorded_at"))
         eligible = [
             row for row in candidates
-            if not actual_recorded_at or _text(row.get("captured_at")) <= actual_recorded_at
+            if (
+                (captured_at := _timestamp_or_none(row.get("captured_at"))) is not None
+                and captured_at <= observed_at
+            )
         ]
         if not eligible:
             continue
@@ -215,12 +236,14 @@ def build_numeric_forecast_summary(
         "by_method": by_method,
         "actuals_total": len(actual_rows or []),
         "actuals_latest": len(latest_actuals),
+        "actuals_without_observation_date": actuals_without_observation_date,
         "matched_actuals": matched,
         "match_rate": _rate(matched, len(latest_actuals)),
         "calibratable": matched > 0,
         "trustworthy": matched >= MIN_NUMERIC_ACTUAL_MATCHES,
         "minimum_matches_required": MIN_NUMERIC_ACTUAL_MATCHES,
         "calibration_blocker": None if matched > 0 else "future_actuals_not_collected_or_unmatched",
+        "matching_policy": "latest_forecast_captured_on_or_before_observed_at",
         "sales_error": _numeric_metric(matched_rows, "sales", "sales_p50"),
         "op_profit_error": _numeric_metric(matched_rows, "op_profit", "op_profit_p50"),
     }
@@ -598,6 +621,11 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- 実績 {numeric['actuals_latest']} 件 / 予測と突合 {numeric['matched_actuals']} 件"
         f"（突合率 {numeric['match_rate']}）"
     )
+    lines.append("- 突合条件: 実績日以前に固定された予測のうち最新のもの")
+    if numeric["actuals_without_observation_date"]:
+        lines.append(
+            f"- 実績日なしで採点対象外: {numeric['actuals_without_observation_date']} 件"
+        )
     if numeric["calibratable"]:
         sales = numeric["sales_error"]
         op_profit = numeric["op_profit_error"]
