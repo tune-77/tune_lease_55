@@ -189,6 +189,6 @@ Phase 1〜4 はすべて実装済み（PR分割は当初案から変更し、1�
 ## 7. 実装後に残っている限界
 
 1. **数値予測は採点できていない**。将来売上・営業利益の予測は `data/prediction_numeric_forecasts.jsonl` に記録し件数は観測しているが、採点には3〜5期後の実績値が必要で、現在のDBは成約/失注と延滞しか持っていない。レポート側も `calibratable: false` / `calibration_blocker: future_actuals_not_collected` と明示している。実績財務を取り込む経路ができるまでキャリブレーションはしない
-2. **スナップショットを取るのは `/api/score/full` の経路だけ**。`api/routers/debate.py`、`api/routers/pipeline_misc.py`、バッチ取り込み経由で作られた案件には事前予測が付かず、結果登録時の逆算にフォールバックする。`prediction_coverage` はこの取りこぼしを含めた実数として読む
+2. **案件保存の主要4経路はスナップショットへ接続済み**。`/api/score/full` に加え、討論審査、バッチ保存、Cloud Run帰還案件の昇格も `record_saved_case_prediction()` を通る。成約・失注が既に判明しているバッチ行は予測に混ぜず、今後 `save_case_log()` の新しい呼び出し経路を追加する場合は同アダプターへの接続を必須とする
 3. **confidence はまだ代理指標**。`abs(score - CONDITIONAL_LINE) / 60 + 0.35` は「承認ラインから遠いほど自信がある」以上の意味を持たない。`confidence_basis`（completeness_ratio / used_default_asset_score / quantum_risk 等）を記録しているので、実データが溜まってから式を見直す
 4. **キャリブレーションは事前予測が溜まるまで参考値**。`prediction_coverage.trustworthy` が false の間は、先回り提示（Phase 4）も意図的に沈黙する

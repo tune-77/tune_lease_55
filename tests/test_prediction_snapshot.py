@@ -8,6 +8,7 @@ from api.prediction_error_loop import build_case_result_prediction_error_payload
 from api.prediction_snapshot import (
     build_prediction_snapshot,
     load_prediction_snapshot,
+    record_saved_case_prediction,
     record_prediction_snapshot,
     summarize_prediction_snapshots,
 )
@@ -64,6 +65,36 @@ def test_skips_when_outcome_is_already_known(tmp_path, monkeypatch):
     assert recorded["status"] == "skipped"
     assert recorded["reason"] == "outcome_already_known"
     assert load_prediction_snapshot("case-batch") is None
+
+
+def test_saved_case_adapter_records_unregistered_case(tmp_path):
+    path = tmp_path / "snapshots.jsonl"
+
+    recorded = record_saved_case_prediction(
+        case_id="case-debate",
+        case_data={"inputs": _INPUTS, "result": _RESULT, "final_status": "未登録"},
+        source="debate_register_case",
+        snapshots_path=path,
+    )
+
+    assert recorded["status"] == "recorded"
+    snapshot = load_prediction_snapshot("case-debate", snapshots_path=path)
+    assert snapshot is not None
+    assert snapshot["source"] == "debate_register_case"
+
+
+def test_saved_case_adapter_skips_known_batch_outcome(tmp_path):
+    path = tmp_path / "snapshots.jsonl"
+
+    recorded = record_saved_case_prediction(
+        case_id="case-known",
+        case_data={"inputs": _INPUTS, "result": _RESULT, "final_status": "失注"},
+        source="batch_save",
+        snapshots_path=path,
+    )
+
+    assert recorded == {"status": "skipped", "reason": "outcome_already_known"}
+    assert load_prediction_snapshot("case-known", snapshots_path=path) is None
 
 
 def test_never_raises_on_broken_input(tmp_path, monkeypatch):

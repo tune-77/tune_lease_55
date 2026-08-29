@@ -196,6 +196,38 @@ def record_prediction_snapshot(
         return {"status": "error", "reason": str(err)}
 
 
+def record_saved_case_prediction(
+    *,
+    case_id: str,
+    case_data: dict[str, Any] | None,
+    source: str,
+    snapshots_path: Path | None = None,
+) -> dict[str, Any]:
+    """`save_case_log()` 形式の案件から予測を記録する共通アダプター。
+
+    通常審査以外の保存経路（討論・バッチ・Cloud Run帰還）も同じ予測誤差
+    ループへ接続する。結果判明済みのバッチ行は `final_status` により既存の
+    `record_prediction_snapshot()` が安全に除外する。
+    """
+    try:
+        case_data = case_data if isinstance(case_data, dict) else {}
+        inputs = case_data.get("inputs")
+        result = case_data.get("result")
+        inputs = inputs if isinstance(inputs, dict) else {}
+        result = result if isinstance(result, dict) else {}
+        final_status = _text(case_data.get("final_status") or result.get("final_status"))
+        return record_prediction_snapshot(
+            case_id=case_id,
+            inputs=inputs,
+            result=result,
+            final_status=final_status,
+            source=source,
+            snapshots_path=snapshots_path,
+        )
+    except Exception as err:  # 補助記録で案件保存を壊さない
+        return {"status": "error", "reason": str(err)}
+
+
 def record_numeric_forecast(
     *,
     case_id: str,
