@@ -441,6 +441,26 @@ def propose_agentic_skill_next_actions(limit: int = 3) -> dict[str, Any]:
             "human_action": "improvement-log の紫苑ADKレビュー箱で警告内容を確認する",
         })
 
+    repeated = [item for item in inbox if item.get("prior_review_context")]
+    if repeated:
+        sample = repeated[0]
+        proposals.append({
+            "priority": "high",
+            "type": "flag_repeated_pattern",
+            "title": "過去にrejected/heldされた論点と似た候補がある",
+            "reason": (
+                "同じcandidate_typeで主張が重なる過去決定があります。"
+                "同じ理由で繰り返し却下しないよう、まず過去の却下理由と比べてください。"
+            ),
+            "target": {
+                "id": sample.get("id"),
+                "candidate_type": sample.get("candidate_type"),
+                "claim": sample.get("claim"),
+                "prior_review_context": sample.get("prior_review_context", [])[:2],
+            },
+            "human_action": "過去の却下/保留理由と比べ、今回は根拠が違うか確認してから採用・修正・保留・却下を選ぶ",
+        })
+
     if inbox:
         proposals.append({
             "priority": "medium" if len(inbox) <= 3 else "high",
@@ -453,6 +473,7 @@ def propose_agentic_skill_next_actions(limit: int = 3) -> dict[str, Any]:
                     "tool_name": item.get("tool_name"),
                     "candidate_type": item.get("candidate_type"),
                     "claim": item.get("claim"),
+                    "prior_review_context": item.get("prior_review_context", []),
                 }
                 for item in inbox[:3]
             ],

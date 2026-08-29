@@ -254,6 +254,89 @@ def test_agentic_skill_usage_log_and_review_inbox(tmp_path):
     assert flow["summary"]["review_decisions"] == 1
 
 
+def test_agentic_skill_result_flags_similar_prior_rejection(tmp_path):
+    """一度rejected/heldされた論点と似た候補は、次回の候補作成時にprior_review_contextへ
+    自動で反映される（WikiSkill論文のWiki層＝知見の不変蓄積、に相当）。人間の採否判断は変えない。"""
+    from api.agentic_skill_usage import (
+        record_agentic_skill_result,
+        review_agentic_skill_inbox_item,
+        load_agentic_skill_review_inbox,
+    )
+    from api.shion_agentic_skills import propose_agentic_skill_next_actions
+
+    usage_log = tmp_path / "usage.jsonl"
+    review_inbox = tmp_path / "inbox.jsonl"
+    review_log = tmp_path / "reviews.jsonl"
+
+    first = record_agentic_skill_result(
+        tool_name="structure_judgment_asset_candidate",
+        result={"result": {"candidate": {
+            "core_judgment": "競合見積がある時は信用リスクとして減点する",
+            "recommended_action": "減点する",
+        }}},
+        session_id="s1",
+        usage_log_path=usage_log,
+        review_inbox_path=review_inbox,
+        review_log_path=review_log,
+    )
+    review_agentic_skill_inbox_item(
+        inbox_id=first["review_inbox_id"],
+        decision="rejected",
+        note="競合見積だけでは減点根拠として弱い",
+        review_inbox_path=review_inbox,
+        review_log_path=review_log,
+    )
+
+    record_agentic_skill_result(
+        tool_name="structure_judgment_asset_candidate",
+        result={"result": {"candidate": {
+            "core_judgment": "競合見積がある案件は信用リスクとして減点すべき",
+            "recommended_action": "減点する",
+        }}},
+        session_id="s2",
+        usage_log_path=usage_log,
+        review_inbox_path=review_inbox,
+        review_log_path=review_log,
+    )
+
+    inbox = load_agentic_skill_review_inbox(
+        review_inbox_path=review_inbox,
+        review_log_path=review_log,
+    )
+    new_candidate = [item for item in inbox if item["status"] == "candidate"][0]
+    prior = new_candidate.get("prior_review_context")
+    assert prior and prior[0]["decision"] == "rejected"
+    assert "減点根拠として弱い" in prior[0]["note"]
+
+
+def test_propose_agentic_skill_next_actions_flags_repeated_pattern(monkeypatch):
+    from api import shion_agentic_skills as sas
+
+    monkeypatch.setattr(sas, "check_agentic_skill_flow", lambda: {
+        "status": "ok",
+        "summary": {},
+        "checks": [],
+    })
+    monkeypatch.setattr(sas, "load_agentic_skill_review_inbox", lambda limit=20, status="candidate": [
+        {
+            "id": "new1",
+            "tool_name": "structure_judgment_asset_candidate",
+            "candidate_type": "judgment_asset_candidate",
+            "claim": "競合見積がある案件は信用リスクとして減点すべき",
+            "prior_review_context": [
+                {"decision": "rejected", "note": "競合見積だけでは減点根拠として弱い"},
+            ],
+        }
+    ])
+
+    proposals = sas.propose_agentic_skill_next_actions(limit=3)
+    types = [p["type"] for p in proposals["proposals"]]
+    assert "flag_repeated_pattern" in types
+    flagged = next(p for p in proposals["proposals"] if p["type"] == "flag_repeated_pattern")
+    assert flagged["priority"] == "high"
+    assert flagged["target"]["prior_review_context"][0]["decision"] == "rejected"
+
+
 def test_agentic_skill_tools_handle_loose_llm_arguments():
     from api.shion_agentic_skills import (
         convert_research_to_screening_insights,
