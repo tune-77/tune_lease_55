@@ -165,6 +165,21 @@ class ShionFollowupAnswerRequest(BaseModel):
     answers: list[ShionFollowupAnswer] = Field(default_factory=list)
 
 
+class ShionFollowupImpactFeedback(BaseModel):
+    question_id: str
+    impact_label: Literal[
+        "decision_changed",
+        "risk_prevented",
+        "evidence_strengthened",
+        "not_helpful",
+    ]
+    note: str = ""
+
+
+class ShionFollowupImpactFeedbackRequest(BaseModel):
+    entries: list[ShionFollowupImpactFeedback] = Field(default_factory=list)
+
+
 class JudgmentAssetCandidateFeedbackRequest(BaseModel):
     feedback: Literal["useful", "neutral", "rejected"]
     case_id: str = ""
@@ -2895,6 +2910,34 @@ def get_shion_followups(case_id: str, limit: int = 5) -> dict:
         raise HTTPException(status_code=422, detail="case_id is required")
     rows = list_followup_sessions(case_id, limit=limit)
     return {"count": len(rows), "followups": rows}
+
+
+@router.post("/api/shion-followups/{followup_id}/impact-feedback")
+def post_shion_followup_impact_feedback(
+    followup_id: str,
+    req: ShionFollowupImpactFeedbackRequest,
+) -> dict:
+    from api.screening_followup import save_followup_impact_feedback
+
+    if not req.entries:
+        raise HTTPException(status_code=422, detail="impact feedback entries are required")
+    try:
+        saved = save_followup_impact_feedback(
+            followup_id,
+            [entry.model_dump() for entry in req.entries],
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "ok", **saved}
+
+
+@router.get("/api/shion-followups-analytics")
+def get_shion_followup_analytics(limit: int = 20) -> dict:
+    from api.screening_followup import analyze_followup_question_impact
+
+    return {"status": "ok", **analyze_followup_question_impact(limit=limit)}
 
 
 @router.get("/api/judgment-asset-candidates/screening")

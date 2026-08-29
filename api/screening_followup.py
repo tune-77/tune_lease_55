@@ -21,6 +21,15 @@ ANSWER_LABELS = {
     "concern": "未確認・懸念あり",
 }
 
+IMPACT_LABELS = {
+    "decision_changed": "判断変更・条件追加",
+    "risk_prevented": "事故・見落とし防止",
+    "evidence_strengthened": "判断根拠の補強",
+    "not_helpful": "役立たなかった",
+}
+
+_ADVERSE_OUTCOMES = {"失注", "延滞", "事故", "デフォルト", "貸倒", "解約"}
+
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
@@ -404,6 +413,32 @@ def list_followup_sessions(case_id: str, *, limit: int = 5) -> list[dict[str, An
             (_text(case_id),),
         )
         rows = cur.fetchall()
+    feedback_by_followup: dict[str, list[dict[str, Any]]] = {}
+    followup_ids = [_text(dict(row).get("followup_id")) for row in rows]
+    if followup_ids:
+        marks = ", ".join([ph] * len(followup_ids))
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                SELECT followup_id, question_id, impact_label, note, created_at, updated_at
+                  FROM shion_followup_impact_feedback
+                 WHERE followup_id IN ({marks})
+                 ORDER BY created_at ASC
+                """,
+                tuple(followup_ids),
+            )
+            for feedback_row in cur.fetchall():
+                feedback = dict(feedback_row)
+                feedback_by_followup.setdefault(_text(feedback.get("followup_id")), []).append({
+                    "question_id": _text(feedback.get("question_id")),
+                    "impact_label": _text(feedback.get("impact_label")),
+                    "impact_label_text": IMPACT_LABELS.get(_text(feedback.get("impact_label")), ""),
+                    "note": _text(feedback.get("note")),
+                    "created_at": str(feedback.get("created_at") or ""),
+                    "updated_at": str(feedback.get("updated_at") or ""),
+                })
+
     result = []
     for row in rows:
         item = dict(row)
@@ -419,10 +454,186 @@ def list_followup_sessions(case_id: str, *, limit: int = 5) -> list[dict[str, An
             "status": item.get("status") or "",
             "outcome_status": item.get("outcome_status") or "",
             "outcome_note": item.get("outcome_note") or "",
+            "impact_feedback": feedback_by_followup.get(_text(item.get("followup_id")), []),
             "created_at": str(item.get("created_at") or ""),
             "updated_at": str(item.get("updated_at") or ""),
         })
     return result
+
+
+def save_followup_impact_feedback(
+    followup_id: str,
+    entries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """結果登録後の人間評価を質問単位で保存する。自動学習には接続しない。"""
+    from api.db_connection import ensure_schema
+
+    ensure_schema()
+    normalized_followup_id = _text(followup_id)
+    ph = placeholder()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT questions_json, answers_json, status FROM shion_followup_sessions WHERE followup_id = {ph}",
+            (normalized_followup_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise KeyError("followup session not found")
+        session = dict(row)
+        if not _text(session.get("status")).startswith("outcome_linked"):
+            raise ValueError("impact feedback requires a recorded outcome")
+        answered_ids = {
+            _text(answer.get("question_id"))
+            for answer in json.loads(session.get("answers_json") or "[]")
+        }
+        seen: set[str] = set()
+        normalized_entries: list[dict[str, str]] = []
+        for entry in entries:
+            question_id = _text(entry.get("question_id"))
+            impact_label = _text(entry.get("impact_label"))
+            if not question_id or question_id in seen:
+                raise ValueError("impact feedback question_id must be unique")
+            if question_id not in answered_ids:
+                raise ValueError("impact feedback is limited to answered questions")
+            if impact_label not in IMPACT_LABELS:
+                raise ValueError("invalid impact feedback label")
+            seen.add(question_id)
+            normalized_entries.append({
+                "question_id": question_id,
+                "impact_label": impact_label,
+                "note": _text(entry.get("note"))[:2000],
+            })
+
+        for entry in normalized_entries:
+            cur.execute(
+                f"DELETE FROM shion_followup_impact_feedback WHERE followup_id = {ph} AND question_id = {ph}",
+                (normalized_followup_id, entry["question_id"]),
+            )
+            cur.execute(
+                f"""
+                INSERT INTO shion_followup_impact_feedback
+                    (followup_id, question_id, impact_label, note)
+                VALUES ({ph}, {ph}, {ph}, {ph})
+                """,
+                (
+                    normalized_followup_id,
+                    entry["question_id"],
+                    entry["impact_label"],
+                    entry["note"],
+                ),
+            )
+    return {
+        "followup_id": normalized_followup_id,
+        "saved_count": len(normalized_entries),
+        "impact_feedback": [
+            {**entry, "impact_label_text": IMPACT_LABELS[entry["impact_label"]]}
+            for entry in normalized_entries
+        ],
+        "guardrail": "human_feedback_only_no_auto_promotion_no_scoring_change",
+    }
+
+
+def analyze_followup_question_impact(*, limit: int = 20) -> dict[str, Any]:
+    """蓄積済みセッションから、質問別の判断・結果シグナルを説明可能に集計する。"""
+    from api.db_connection import ensure_schema
+
+    ensure_schema()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT followup_id, questions_json, answers_json, status, outcome_status
+              FROM shion_followup_sessions
+             ORDER BY created_at DESC
+             LIMIT 5000
+            """
+        )
+        sessions = [dict(row) for row in cur.fetchall()]
+        cur.execute(
+            """
+            SELECT followup_id, question_id, impact_label
+              FROM shion_followup_impact_feedback
+            """
+        )
+        feedback_rows = [dict(row) for row in cur.fetchall()]
+
+    feedback_map = {
+        (_text(row.get("followup_id")), _text(row.get("question_id"))): _text(row.get("impact_label"))
+        for row in feedback_rows
+    }
+    grouped: dict[str, dict[str, Any]] = {}
+    for session in sessions:
+        followup_id = _text(session.get("followup_id"))
+        outcome = _text(session.get("outcome_status"))
+        answers = {
+            _text(answer.get("question_id")): answer
+            for answer in json.loads(session.get("answers_json") or "[]")
+        }
+        for question in json.loads(session.get("questions_json") or "[]"):
+            question_id = _text(question.get("id"))
+            key = question_id or _text(question.get("question"))
+            item = grouped.setdefault(key, {
+                "question_id": question_id,
+                "category": _text(question.get("category")),
+                "question": _text(question.get("question")),
+                "source_asset_id": _text(question.get("source_asset_id")),
+                "asked_count": 0,
+                "answered_count": 0,
+                "condition_signal_count": 0,
+                "warning_match_count": 0,
+                "decision_changed_count": 0,
+                "risk_prevented_count": 0,
+                "evidence_strengthened_count": 0,
+                "not_helpful_count": 0,
+            })
+            item["asked_count"] += 1
+            answer = answers.get(question_id)
+            if answer:
+                item["answered_count"] += 1
+                answer_status = _text(answer.get("status"))
+                if answer_status in {"partial", "concern"}:
+                    item["condition_signal_count"] += 1
+                    if outcome in _ADVERSE_OUTCOMES:
+                        item["warning_match_count"] += 1
+            impact_label = feedback_map.get((followup_id, question_id))
+            if impact_label in IMPACT_LABELS:
+                item[f"{impact_label}_count"] += 1
+
+    rows = []
+    for item in grouped.values():
+        labeled_count = sum(
+            int(item[f"{label}_count"])
+            for label in IMPACT_LABELS
+        )
+        useful_count = labeled_count - int(item["not_helpful_count"])
+        direct_impact_count = int(item["decision_changed_count"]) + int(item["risk_prevented_count"])
+        item.update({
+            "labeled_count": labeled_count,
+            "useful_count": useful_count,
+            "direct_impact_count": direct_impact_count,
+            "usefulness_rate": round(useful_count / labeled_count, 3) if labeled_count else None,
+            "evidence_level": "比較可能" if labeled_count >= 5 else ("暫定" if labeled_count else "蓄積中"),
+        })
+        rows.append(item)
+    rows.sort(key=lambda item: (
+        -int(item["labeled_count"] >= 5),
+        -int(item["direct_impact_count"]),
+        -int(item["useful_count"]),
+        -int(item["asked_count"]),
+        _text(item.get("question_id")),
+    ))
+    capped = max(1, min(int(limit or 20), 100))
+    return {
+        "session_count": len(sessions),
+        "answered_session_count": sum(1 for session in sessions if json.loads(session.get("answers_json") or "[]")),
+        "outcome_linked_session_count": sum(1 for session in sessions if _text(session.get("status")).startswith("outcome_linked")),
+        "feedback_count": len(feedback_rows),
+        "question_count": len(rows),
+        "questions": rows[:capped],
+        "minimum_comparable_feedback": 5,
+        "guardrail": "descriptive_human_reviewed_analytics_no_auto_promotion_no_scoring_change",
+    }
 
 
 def record_followup_outcome(case_id: str, outcome_status: str, outcome_note: str = "") -> dict[str, Any]:

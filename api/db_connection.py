@@ -322,6 +322,19 @@ def ensure_schema() -> None:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        # shion_followup_impact_feedback ────────────────────────────────────────
+        # 結果登録後に、人間が各質問の実務上の効き方を評価する。
+        # 自動昇格・スコア変更には使わず、質問別分析の根拠だけを保存する。
+        f"""CREATE TABLE IF NOT EXISTS shion_followup_impact_feedback (
+            id {auto_pk},
+            followup_id TEXT NOT NULL,
+            question_id TEXT NOT NULL,
+            impact_label TEXT NOT NULL,
+            note TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(followup_id, question_id)
+        )""",
         # screening_experience_cases ─────────────────────────────────────────────
         f"""CREATE TABLE IF NOT EXISTS screening_experience_cases (
             id {auto_pk},
@@ -387,6 +400,8 @@ def ensure_schema() -> None:
         "CREATE INDEX IF NOT EXISTS idx_shion_screening_reviews_industry ON shion_screening_reviews(industry_sub)",
         "CREATE INDEX IF NOT EXISTS idx_shion_followup_case ON shion_followup_sessions(case_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_shion_followup_status ON shion_followup_sessions(status)",
+        "CREATE INDEX IF NOT EXISTS idx_shion_followup_impact_id ON shion_followup_impact_feedback(followup_id)",
+        "CREATE INDEX IF NOT EXISTS idx_shion_followup_impact_label ON shion_followup_impact_feedback(impact_label)",
         "CREATE INDEX IF NOT EXISTS idx_screening_experience_demo ON screening_experience_cases(demo_case_id)",
         "CREATE INDEX IF NOT EXISTS idx_screening_experience_industry ON screening_experience_cases(industry_sub)",
         "CREATE INDEX IF NOT EXISTS idx_screening_experience_created ON screening_experience_cases(created_at)",
