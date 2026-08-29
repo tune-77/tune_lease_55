@@ -19,6 +19,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/": "リース知性体 紫苑システム",
   "/screening": "審査・分析",
   "/home": "ダッシュボード",
+  "/news": "ニュース審査",
   "/chat": "紫苑チャット",
   "/operations": "運用情報",
   "/devops": "DevOpsサイクル",

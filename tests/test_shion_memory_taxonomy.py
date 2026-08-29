@@ -147,3 +147,157 @@ def test_build_index_reads_memory_and_mind(tmp_path, monkeypatch):
     assert index["summary"]["by_layer"]["long_term"] == 1
     assert index["summary"]["by_layer"]["mid_term"] == 1
     assert any(r["source"] == "mind.upper_authority" for r in index["records"])
+
+
+def test_build_index_enriches_all_long_term_memories_with_domain_and_use_when(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "data").mkdir()
+    (repo / "MEMORY.md").write_text(
+        "\n".join(
+            [
+                "- RandomForest のOOF AUCを確認してPD表示を見直す。",
+                "- 境界案件では条件付き承認を検討する。",
+                "- Mana は紫苑の上位規範として説明責任を確認する。",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder, "REPO_ROOT", repo)
+
+    index = builder.build_index()
+
+    long_term = [r for r in index["records"] if r["memory_layer"] == "long_term"]
+    assert len(long_term) == 3
+    assert all(r.get("domain") for r in long_term)
+    assert all(r.get("use_when") for r in long_term)
+    assert {r["domain"] for r in long_term} >= {"scoring_model", "lease_screening", "shion_identity"}
+
+
+def test_long_term_enrichment_fills_empty_metadata_without_overwriting_nonempty():
+    records = [
+        {
+            "id": "empty",
+            "content": "境界案件では条件付き承認を検討する。",
+            "memory_layer": "long_term",
+            "memory_type": "judgment_memory",
+            "domain": "",
+            "use_when": "",
+        },
+        {
+            "id": "curated",
+            "content": "境界案件では条件付き承認を検討する。",
+            "memory_layer": "long_term",
+            "memory_type": "judgment_memory",
+            "domain": "curated_domain",
+            "use_when": "curated use",
+        },
+    ]
+
+    builder._enrich_long_term_metadata(records)
+
+    assert records[0]["domain"] == "lease_screening"
+    assert records[0]["use_when"]
+    assert records[1]["domain"] == "curated_domain"
+    assert records[1]["use_when"] == "curated use"
+
+
+def test_long_term_enrichment_does_not_overwrite_curated_metadata(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "data").mkdir()
+    (repo / "knowledge_base").mkdir()
+    (repo / "knowledge_base" / "shion_promoted_memories.md").write_text(
+        "\n".join(
+            [
+                "# 紫苑 昇格済み長期記憶",
+                "",
+                "- content: リースに必要なものは何よりもスピードだ",
+                "  type: value_memory",
+                "  domain: lease_sales",
+                "  confidence: user_taught",
+                "  use_when: 初回回答で優先順位を決める時",
+                "  judgment_asset_candidate: true",
+                "  source: promo_speed",
+                "  kind: teaching",
+                "  promoted_at: 2026-08-25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder, "REPO_ROOT", repo)
+
+    index = builder.build_index()
+
+    record = next(r for r in index["records"] if r["source"] == "promoted_memory")
+    assert record["domain"] == "lease_sales"
+    assert record["use_when"] == "初回回答で優先順位を決める時"
+
+
+def test_build_index_reads_structured_promoted_memories(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "knowledge_base").mkdir()
+    (repo / "data").mkdir()
+    (repo / "knowledge_base" / "shion_promoted_memories.md").write_text(
+        "\n".join(
+            [
+                "# 紫苑 昇格済み長期記憶",
+                "",
+                "- content: リースに必要なものは何よりもスピードだ",
+                "  type: value_memory",
+                "  domain: lease_sales",
+                "  confidence: user_taught",
+                "  use_when: 初回回答で優先順位を決める時",
+                "  judgment_asset_candidate: true",
+                "  source: promo_speed",
+                "  kind: teaching",
+                "  promoted_at: 2026-08-25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder, "REPO_ROOT", repo)
+
+    index = builder.build_index()
+
+    record = next(r for r in index["records"] if r["source"] == "promoted_memory")
+    assert record["content"] == "リースに必要なものは何よりもスピードだ"
+    assert record["memory_type"] == "value_memory"
+    assert record["domain"] == "lease_sales"
+    assert record["confidence_label"] == "user_taught"
+    assert record["judgment_asset_candidate"] is True
+    assert record["promotion_source_id"] == "promo_speed"
+
+
+def test_build_index_keeps_short_structured_promoted_memory(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "knowledge_base").mkdir()
+    (repo / "data").mkdir()
+    (repo / "knowledge_base" / "shion_promoted_memories.md").write_text(
+        "\n".join(
+            [
+                "# 紫苑 昇格済み長期記憶",
+                "",
+                "- content: 情報はすべて判断資産だ",
+                "  type: value_memory",
+                "  domain: judgment_asset_ops",
+                "  confidence: user_taught",
+                "  use_when: 判断資産化するか迷う情報を扱う時",
+                "  judgment_asset_candidate: false",
+                "  source: promo_asset",
+                "  kind: teaching",
+                "  promoted_at: 2026-08-25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder, "REPO_ROOT", repo)
+
+    index = builder.build_index()
+
+    record = next(r for r in index["records"] if r["source"] == "promoted_memory")
+    assert record["content"] == "情報はすべて判断資産だ"
+    assert record["memory_type"] == "value_memory"
+    assert record["domain"] == "judgment_asset_ops"

@@ -7,7 +7,13 @@ def test_generated_outputs_are_avoided():
         "reports/recursive_self_improvement_20260725.md",
         "static_data/macro_context.json",
         "data/shion_pending_tasks.json",
+        "data/demo.db",
+        "data/user_personal_memory.md",
+        ".claude/reports/api-health/latest.md",
+        "reports/agent_sidecar_brief.md",
+        "reports/loop_proof.html",
         "frontend/public/lease-grumble/2026-07-25.webp",
+        "tune_lease_55_wt_cibundle/",
     ]
 
     assert {classify_path(path).bucket for path in paths} == {"avoid"}

@@ -255,7 +255,6 @@ def _recent_news_items(vault: Path, limit: int = 10) -> list[dict]:
         md_files.extend(news_dir.glob("*.md"))
     if not md_files:
         return []
-    md_files = sorted(md_files, key=lambda p: p.stat().st_mtime, reverse=True)
 
     def _dedupe_key(item: dict) -> str:
         url = str(item.get("article_url") or item.get("source") or "").strip().lower()
@@ -269,14 +268,35 @@ def _recent_news_items(vault: Path, limit: int = 10) -> list[dict]:
                 break
         return f"text:{title}|{first_summary[:80]}"
 
-    items: list[dict] = []
-    seen: set[str] = set()
+    parsed_items: list[dict] = []
     for fpath in md_files:
         item = _parse_news_note(fpath)
+        item_date = str(item.get("date") or "")[:10]
+        file_date = _note_effective_date(fpath)
+        item["_sort_date"] = item_date or file_date
+        try:
+            item["_sort_mtime"] = fpath.stat().st_mtime
+        except OSError:
+            item["_sort_mtime"] = 0
+        parsed_items.append(item)
+    parsed_items.sort(
+        key=lambda item: (
+            str(item.get("_sort_date") or ""),
+            float(item.get("_sort_mtime") or 0),
+            str(item.get("file_path") or ""),
+        ),
+        reverse=True,
+    )
+
+    items: list[dict] = []
+    seen: set[str] = set()
+    for item in parsed_items:
         key = _dedupe_key(item)
         if key in seen:
             continue
         seen.add(key)
+        item.pop("_sort_date", None)
+        item.pop("_sort_mtime", None)
         items.append(item)
         if len(items) >= limit:
             break

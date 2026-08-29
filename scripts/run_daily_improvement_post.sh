@@ -182,6 +182,14 @@ echo "[記憶] 会話ログから記憶昇格候補キューを生成（承認�
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_promotion_queue.py"; log_step "build_shion_memory_promotion_queue" $?
 
 echo ""
+echo "[記憶] 明示教示のうち安全な会話候補だけを自動昇格..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/apply_shion_memory_promotions.py" --auto-safe; log_step "apply_shion_memory_promotions_auto_safe" $?
+
+echo ""
+echo "[育成] 自動昇格後の紫苑記憶インデックスを再構築..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_index.py"; log_step "build_shion_memory_index_after_auto_promotions" $?
+
+echo ""
 echo "[番人] Mana Obsidian Curator を生成（読み取り専用・暴走防止判定）..."
 MANA_REPAIR_ATTEMPT=0
 while true; do
@@ -231,6 +239,19 @@ echo "[記憶] Obsidian Memory Effectiveness を生成（保存→想起→使�
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_memory_effectiveness_report.py" \
   --date "${PIPELINE_DATE}"
 log_step "obsidian_memory_effectiveness_report" $?
+
+echo ""
+echo "[記憶] Shion Memory Sentinel を生成（記憶監視レポートを統合・ADK参照用。観測のみ）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_sentinel_report.py"
+log_step "build_shion_memory_sentinel_report" $?
+
+echo ""
+echo "[運用] Ops Friction Doctor を生成し、低リスクな再生成/同期だけ自動適用..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/ops_friction_doctor.py" \
+  --apply-safe \
+  --output-json "${PROJECT_ROOT}/reports/ops_friction_latest.json" \
+  --output-md "${PROJECT_ROOT}/reports/ops_friction_latest.md"
+log_step "ops_friction_doctor" $?
 
 echo ""
 echo "[育成] Obsidianグラフの複雑さが判断に効いているかを測定（観測のみ）..."
@@ -478,9 +499,35 @@ if [ "${MANA_STATUS}" = "allow" ]; then
   echo "[内省拡張] 一番強いテーマの改善の切り口をProblem/気づき/解決アウトラインにしてSystem Improvement Reflectionへ記録（Slack朝報告に載せるため送信前に実行）..."
   "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py" || true
   log_step "obsidian_reflection_journal" 0
+elif [ "${MANA_STATUS}" = "watch" ]; then
+  echo ""
+  echo "[内省拡張] Mana が watch のため note_curator --apply は止め、System Improvement Reflection の説明用ノートだけ生成します。"
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py" || true
+  log_step "obsidian_reflection_journal" 0
 else
   echo ""
   echo "[内省拡張] Mana が allow ではないため、Vault書き込み系（note_curator/reflection_journal）をスキップします。"
+  "${PYTHON}" -c 'import json, sys
+from pathlib import Path
+mana_path = Path(sys.argv[1])
+out_path = Path(sys.argv[2])
+status = "missing"
+summary = ""
+try:
+    mana = json.loads(mana_path.read_text(encoding="utf-8"))
+    status = str(mana.get("status") or "missing")
+    summary = str(mana.get("action_summary") or "")
+except Exception:
+    pass
+out_path.parent.mkdir(parents=True, exist_ok=True)
+out_path.write_text(json.dumps({
+    "status": f"skipped_mana_{status}",
+    "written": False,
+    "reason": "Mana判定がallowではないため、Vault書き込みを伴うSystem Improvement Reflectionをスキップ",
+    "mana_status": status,
+    "mana_action_summary": summary,
+}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+' "${MANA_REPORT_JSON}" "${PROJECT_ROOT}/reports/obsidian_reflection_journal_latest.json" || true
 fi
 
 echo ""

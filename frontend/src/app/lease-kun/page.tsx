@@ -1353,6 +1353,7 @@ export default function LeaseKunWizard() {
                 feedbackSaving={shionReview.feedbackSaving}
                 pastCompanies={shionReview.pastCompanies}
                 judgmentAssetCandidates={shionReview.judgmentAssetCandidates}
+                formData={formData}
               />
             </div>
             <div className="mt-4 space-y-2">

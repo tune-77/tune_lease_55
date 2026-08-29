@@ -12,6 +12,13 @@ Use this skill to keep the current app stack available and publish the Next UI t
 Run from the repository root:
 
 ```bash
+python scripts/ops_friction_doctor.py
+python scripts/local_deploy_doctor.py --public-tunnel
+```
+
+Use the recommended command from the doctor unless the user requested a specific action. The doctor exists because past local deploy attempts often lost time on the same branches: LaunchAgent missing vs installed, API-only failure, Next-only failure, stale occupied ports, missing tunnel URL, and missing `cloudflared`.
+
+```bash
 launchctl print gui/$(id -u)/com.tunelease.next
 ```
 
@@ -65,13 +72,13 @@ Reason: the app stack has separate API, Next, and tunnel processes, and a full f
 Scope: use when restoring local Next/FastAPI availability or refreshing the public Cloudflare quick tunnel.
 Retirement: remove this workflow if the LaunchAgent exposes a reliable health-and-restart command that handles API, Next, and tunnel checks end to end.
 
-1. Run status first.
-2. Confirm `com.tunelease.next` is registered with `launchctl`.
-3. Use `launchctl kickstart -k` for a persistent full restart.
-4. If only API is down, run `RESTART_SCOPE=api`.
-5. If only Next is down, run `RESTART_SCOPE=next`.
-6. If the public URL is dead but local Next is OK, run `RESTART_SCOPE=tunnel`.
-7. Use the foreground full restart only if launchd is unavailable.
+1. Run `python scripts/ops_friction_doctor.py` to catch repeated operational traps from recent logs.
+2. Run `python scripts/local_deploy_doctor.py --public-tunnel` first.
+3. If the local doctor recommends `install_launchagent`, run `bash scripts/install_next_launchagent.sh`.
+4. If it recommends `restart_api`, `restart_next`, or `restart_tunnel`, run that targeted `RESTART_SCOPE` instead of a full restart.
+5. If it recommends `kickstart_launchagent`, use `launchctl kickstart -k gui/$(id -u)/com.tunelease.next`.
+6. If it recommends `start_all`, use `run_next_stable.sh` with `PUBLIC_TUNNEL=1`.
+7. Use the foreground full restart only if launchd is unavailable or the user explicitly asks for it.
 8. Verify health:
 
 ```bash

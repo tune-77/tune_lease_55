@@ -13,6 +13,7 @@ class _FakeCollection:
     def __init__(self, ids):
         self._ids = list(ids)
         self.added: list[str] = []
+        self.metadatas: list[dict] = []
 
     def count(self):
         return len(self._ids)
@@ -24,6 +25,7 @@ class _FakeCollection:
 
     def add(self, *, ids, embeddings, documents, metadatas):
         self.added.extend(str(i) for i in ids)
+        self.metadatas.extend(metadatas)
 
 
 class _FakeEncoder:
@@ -111,9 +113,12 @@ def test_low_similarity_does_not_add_noise(tmp_path):
     assert recalled["refs"] == []
 
 
-def test_vector_module_degrades_gracefully_without_chromadb():
+def test_vector_module_degrades_gracefully_without_chromadb(monkeypatch):
     """chromadb 未導入環境では利用不可と判定され、検索は空を返す。"""
     from api import shion_memory_vector
+
+    monkeypatch.setattr(shion_memory_vector, "_get_collection", lambda: None)
+    monkeypatch.setattr(shion_memory_vector, "_get_encoder", lambda: None)
 
     assert shion_memory_vector.similarity_scores("テスト質問") == {}
     assert shion_memory_vector.is_available() is False
@@ -126,9 +131,13 @@ def test_shared_encoder_returns_none_without_local_model():
     assert get_shared_encoder() is None
 
 
-def test_background_sync_not_started_without_chromadb():
+def test_background_sync_not_started_without_chromadb(monkeypatch):
     """chromadb が無い環境では自動構築スレッドを起動しない（クライアント不在で早期return）。"""
     from api import shion_memory_vector
+
+    monkeypatch.setattr(shion_memory_vector, "_get_collection", lambda: None)
+    monkeypatch.setattr(shion_memory_vector, "_get_encoder", lambda: None)
+    monkeypatch.setattr(shion_memory_vector, "_background_sync_started", False)
 
     shion_memory_vector.similarity_scores("テスト質問")
 
@@ -151,6 +160,30 @@ def test_sync_records_fingerprint_and_clears_staleness(vector_env, monkeypatch):
 
     # 同期前は指紋が無いので未同期扱い
     assert vec.index_sync_is_stale(index_path) is True
+
+
+def test_sync_includes_domain_metadata(vector_env, monkeypatch):
+    vec, index_path, write_index, _ = vector_env
+    write_index(
+        [
+            {
+                "id": "mem_screening",
+                "content": "境界案件では条件付き承認を検討する。",
+                "memory_type": "judgment_memory",
+                "status": "active",
+                "domain": "lease_screening",
+            }
+        ]
+    )
+    collection = _FakeCollection([])
+    monkeypatch.setattr(vec, "_get_collection", lambda: collection)
+    monkeypatch.setattr(vec, "_get_encoder", lambda: _FakeEncoder())
+    monkeypatch.setattr(vec, "_get_client", lambda: None)
+
+    summary = vec.sync_from_index(index_path)
+
+    assert summary["synced"] == 1
+    assert collection.metadatas[0]["domain"] == "lease_screening"
 
     collection = _FakeCollection([])
     monkeypatch.setattr(vec, "_get_collection", lambda: collection)

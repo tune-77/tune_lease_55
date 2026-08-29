@@ -55,6 +55,41 @@ def test_mana_holds_when_private_reflection_is_weak():
     assert "紫苑がするべきこと" in markdown
 
 
+def test_mana_watches_when_private_reflection_is_only_similar_to_yesterday():
+    report = build_mana_report(
+        target_date=date(2026, 8, 25),
+        monitor_report=_monitor_report(
+            (
+                "private_reflection_meaning",
+                "warn",
+                "Private Reflection exists but meaningful update is weak: too_similar_to_yesterday:0.938",
+                {
+                    "similarity_to_yesterday": 0.938,
+                    "missing_categories": [],
+                    "matched_labels": ["今日の観察:"] * 8,
+                },
+            ),
+            ("self_reference_loop", "ok", "no obvious self-reference loop", {}),
+        ),
+        reflection_delta=_reflection_delta(flags=["too_similar_to_yesterday"], status="pass"),
+        candidates=[
+            {
+                "candidate_type": "user_preference",
+                "quality": "useful_candidate",
+                "source_path": "Projects/tune_lease_55/Research/note.md",
+                "claim": "Userは本番接続なしで検査したい。",
+            }
+        ],
+    )
+
+    markdown = render_markdown(report)
+
+    assert report["status"] == "watch"
+    assert "private_reflection_similarity_watch" in {finding["code"] for finding in report["findings"]}
+    assert "Why This Strictness" in markdown
+    assert "similarity_to_yesterday=0.938" in markdown
+
+
 def test_mana_stops_on_high_self_reference_candidates():
     candidates = [
         {

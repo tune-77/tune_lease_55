@@ -163,7 +163,8 @@ class TestApplyPromotions:
         rc = apply_promotions(queue, target, log, ids={"promo_abc"}, apply_all=False, dry_run=False)
         assert rc == 0
         text = target.read_text(encoding="utf-8")
-        assert "- 補助金案件は入金時期・未採択時の返済余力まで確認する" in text
+        assert "- content: 補助金案件は入金時期・未採択時の返済余力まで確認する" in text
+        assert "  confidence: user_taught" in text
         assert "promo_abc" in log.read_text(encoding="utf-8")
 
     def test_second_apply_is_noop(self, tmp_path):
@@ -174,6 +175,47 @@ class TestApplyPromotions:
         before = target.read_text(encoding="utf-8")
         apply_promotions(queue, target, log, ids=None, apply_all=True, dry_run=False)
         assert target.read_text(encoding="utf-8") == before
+
+    def test_auto_safe_applies_only_durable_explicit_memory(self, tmp_path):
+        queue = tmp_path / "queue.json"
+        queue.write_text(
+            json.dumps(
+                {
+                    "candidates": [
+                        {
+                            "candidate_id": "promo_speed",
+                            "kind": "teaching",
+                            "proposed_content": "リースに必要なものは何よりもスピードだ 覚えておいて",
+                        },
+                        {
+                            "candidate_id": "promo_praise",
+                            "kind": "teaching",
+                            "proposed_content": "正解！きみは偉いな 覚えていて",
+                        },
+                        {
+                            "candidate_id": "promo_case",
+                            "kind": "recurring_topic",
+                            "proposed_content": "Userは「北関東物流」を繰り返し気にしている。企業名: デモ北関東物流",
+                        },
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        target = tmp_path / "promoted.md"
+        log = tmp_path / "applied.jsonl"
+
+        rc = apply_promotions(queue, target, log, ids=None, apply_all=False, auto_safe=True, dry_run=False)
+
+        assert rc == 0
+        text = target.read_text(encoding="utf-8")
+        assert "- content: リースに必要なものは何よりもスピードだ" in text
+        assert "  type: value_memory" in text
+        assert "  domain: lease_sales" in text
+        assert "正解！きみは偉いな" not in text
+        assert "北関東物流" not in text
+        assert "promo_speed" in log.read_text(encoding="utf-8")
 
 
 # ── フィードバック連動の忘却 ────────────────────────────────────────────────

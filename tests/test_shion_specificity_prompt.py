@@ -201,3 +201,21 @@ def test_human_device_resonance_skips_empty_message():
     )
 
     assert block == ""
+
+
+def test_public_memory_recall_payload_drops_empty_refs():
+    import api.main as main
+
+    payload = main._public_memory_recall_payload(
+        {
+            "route": "local",
+            "refs": ["mem_1", None, "", "  ", "mem_2"],
+            "impact_hints": [{"id": "mem_1"}, "bad", {"id": "mem_2"}],
+        }
+    )
+
+    assert payload == {
+        "route": "local",
+        "refs": ["mem_1", "mem_2"],
+        "impact_hints": [{"id": "mem_1"}, {"id": "mem_2"}],
+    }

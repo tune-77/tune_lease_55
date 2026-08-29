@@ -74,6 +74,19 @@ def test_reflection_journal_section_reports_skip_reason():
     assert "Vaultにテーマ材料なし" in payload["text"]
 
 
+def test_reflection_journal_section_reports_mana_hold_skip_reason():
+    payload = build_message(
+        {"applied_count": 0},
+        report_date="2026-08-25",
+        reflection_journal_report={
+            "status": "skipped_mana_hold",
+            "mana_action_summary": "Private Reflection を User要求・誤読・次回行動が分かる形で再生成する。",
+        },
+    )
+    assert "Mana判定がhold" in payload["text"]
+    assert "Private Reflection を User要求" in payload["text"]
+
+
 def test_script_dry_run_works_when_executed_by_path(tmp_path):
     # 実運用の reports/latest.json（.gitignore対象で本番実行でのみ生成される）に
     # 依存させず、--report で自己完結した最小レポートを渡す。

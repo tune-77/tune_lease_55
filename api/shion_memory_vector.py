@@ -236,6 +236,7 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
                         "memory_type": str(r.get("memory_type") or ""),
                         "status": str(r.get("status") or "active"),
                         "source_path": str(r.get("source_path") or ""),
+                        "domain": str(r.get("domain") or ""),
                     }
                     for r in batch
                 ],

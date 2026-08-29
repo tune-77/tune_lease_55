@@ -24,9 +24,16 @@ interface ChatMessage {
   content: string;
   created_at: string;
   knowledge_refs?: RagKnowledgeRef[];
+  memory_recall?: MemoryRecallPayload;
   external_research_request?: ExternalResearchRequest;
   original_user_message?: string;
 }
+
+type MemoryRecallPayload = {
+  route?: string;
+  refs?: string[];
+  impact_hints?: Array<{ id?: string; hint?: string; memory_layer?: string; memory_type?: string; status?: string }>;
+};
 
 type ExternalResearchRequest = {
   needed?: boolean;
@@ -123,6 +130,18 @@ const getSpeechRecognition = (): SpeechRecognitionConstructor | null => {
 const parseKnowledgeRefs = (value: unknown): RagKnowledgeRef[] | undefined =>
   Array.isArray(value) && value.length ? (value as RagKnowledgeRef[]) : undefined;
 
+const parseMemoryRecall = (value: unknown): MemoryRecallPayload | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const payload = value as MemoryRecallPayload;
+  const refs = Array.isArray(payload.refs) ? payload.refs.map(String).filter(Boolean).slice(0, 8) : [];
+  if (!refs.length) return undefined;
+  return {
+    route: payload.route || "",
+    refs,
+    impact_hints: Array.isArray(payload.impact_hints) ? payload.impact_hints.slice(0, 3) : [],
+  };
+};
+
 const normalizeMessageContent = (content: string) =>
   (content || "")
     .replace(/\\r\\n/g, "\n")
@@ -212,6 +231,7 @@ export default function ChatPage() {
   const [showDailyNewsBrief, setShowDailyNewsBrief] = useState(false);
   const [newsPrefectureReady, setNewsPrefectureReady] = useState(false);
   const [feedbackGiven, setFeedbackGiven] = useState<Record<number, "shion_like" | "not_shion">>({});
+  const [memoryFeedbackGiven, setMemoryFeedbackGiven] = useState<Record<number, "helped" | "neutral" | "challenged">>({});
   const [researchRunning, setResearchRunning] = useState<Record<number, boolean>>({});
   const [speechEnabled, setSpeechEnabled] = useState(true);
   const [speaking, setSpeaking] = useState(false);
@@ -539,6 +559,7 @@ export default function ChatPage() {
         content: reply,
         created_at: new Date().toISOString(),
         knowledge_refs: parseKnowledgeRefs(res.data?.knowledge_refs),
+        memory_recall: parseMemoryRecall(res.data?.memory_recall),
         external_research_request: res.data?.external_research_request,
         original_user_message: text,
       };
@@ -607,6 +628,7 @@ export default function ChatPage() {
         content: res.data.reply,
         created_at: new Date().toISOString(),
         knowledge_refs: parseKnowledgeRefs(res.data?.knowledge_refs),
+        memory_recall: parseMemoryRecall(res.data?.memory_recall),
         external_research_request: res.data?.external_research_request,
         original_user_message: text,
       };
@@ -668,6 +690,7 @@ export default function ChatPage() {
         content: reply,
         created_at: new Date().toISOString(),
         knowledge_refs: parseKnowledgeRefs(res.data?.knowledge_refs),
+        memory_recall: parseMemoryRecall(res.data?.memory_recall),
         original_user_message: original,
       };
       setMessages((prev) => {
@@ -717,6 +740,33 @@ export default function ChatPage() {
       });
     } catch {
       // フィードバック送信の失敗はチャット体験をブロックしない
+    }
+  };
+
+  const submitMemoryFeedback = async (
+    assistantMessage: ChatMessage,
+    userMessage: string,
+    outcome: "helped" | "neutral" | "challenged",
+  ) => {
+    const refs = assistantMessage.memory_recall?.refs || [];
+    if (!refs.length || memoryFeedbackGiven[assistantMessage.id]) return;
+    setMemoryFeedbackGiven((prev) => ({ ...prev, [assistantMessage.id]: outcome }));
+    try {
+      await apiClient.post("/api/shion-memory-feedback", {
+        memory_ids: refs,
+        outcome,
+        route: assistantMessage.memory_recall?.route || "",
+        surface: "next_chat",
+        question: userMessage,
+        user_id: userId,
+      });
+    } catch {
+      setMemoryFeedbackGiven((prev) => {
+        const next = { ...prev };
+        delete next[assistantMessage.id];
+        return next;
+      });
+      // 記憶フィードバック送信の失敗はチャット体験をブロックしない
     }
   };
 
@@ -1202,6 +1252,61 @@ export default function ChatPage() {
                     >
                       <ThumbsDown className="h-3 w-3" />
                     </button>
+                    {!!msg.memory_recall?.refs?.length && (
+                      <div className="ml-1 flex items-center gap-1 border-l border-slate-200 pl-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const previousUser = [...messages.slice(0, index)].reverse().find((item) => item.role === "user");
+                            submitMemoryFeedback(msg, previousUser?.content || "", "helped");
+                          }}
+                          disabled={Boolean(memoryFeedbackGiven[msg.id])}
+                          title="想起記憶が回答に効いた"
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-black transition ${
+                            memoryFeedbackGiven[msg.id] === "helped"
+                              ? "border-emerald-300 bg-emerald-100 text-emerald-700"
+                              : "border-slate-200 bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
+                          }`}
+                        >
+                          <ThumbsUp className="h-3 w-3" />
+                          効いた
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const previousUser = [...messages.slice(0, index)].reverse().find((item) => item.role === "user");
+                            submitMemoryFeedback(msg, previousUser?.content || "", "neutral");
+                          }}
+                          disabled={Boolean(memoryFeedbackGiven[msg.id])}
+                          title="想起記憶は微妙"
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-black transition ${
+                            memoryFeedbackGiven[msg.id] === "neutral"
+                              ? "border-amber-300 bg-amber-100 text-amber-700"
+                              : "border-slate-200 bg-white text-slate-500 hover:bg-amber-50 hover:text-amber-700"
+                          }`}
+                        >
+                          <MessageCircle className="h-3 w-3" />
+                          微妙
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const previousUser = [...messages.slice(0, index)].reverse().find((item) => item.role === "user");
+                            submitMemoryFeedback(msg, previousUser?.content || "", "challenged");
+                          }}
+                          disabled={Boolean(memoryFeedbackGiven[msg.id])}
+                          title="想起記憶が違う"
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-black transition ${
+                            memoryFeedbackGiven[msg.id] === "challenged"
+                              ? "border-rose-300 bg-rose-100 text-rose-700"
+                              : "border-slate-200 bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                          }`}
+                        >
+                          <ThumbsDown className="h-3 w-3" />
+                          違う
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

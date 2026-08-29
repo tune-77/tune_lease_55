@@ -487,6 +487,60 @@ def test_materialize_events_applies_judgment_asset_promotion_to_local_canonical_
     assert len(canonical_store_again["rules"]) == 1
 
 
+def test_materialize_events_judgment_asset_promotion_summary_counts_only_active_rules(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+    canonical_path = tmp_path / "canonical_judgment_rules.json"
+    state_path = tmp_path / "candidate_state.json"
+    monkeypatch.setattr(syncer, "CANONICAL_JUDGMENT_RULES_JSON", canonical_path)
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_CANDIDATE_STATE_JSON", state_path)
+
+    # 既存の正本に demoted 済みルールが1件残っている状況を再現する
+    # (data/canonical_judgment_rules.json で実際に観測された active/demoted 混在パターン)。
+    canonical_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "rules": [
+                    {"id": "demoted-rule-1", "status": "demoted", "canonical_statement": "旧ルール"},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    rule = {
+        "id": "cloudrun-rule-2",
+        "status": "active",
+        "canonical_statement": "新規昇格ルール",
+        "evidence_count": 1,
+        "user_evidence_count": 1,
+        "confidence": 0.8,
+        "private": False,
+    }
+    event = {
+        "event_id": "promote-evt-2",
+        "ts": "2026-08-20T00:00:00Z",
+        "event_type": "judgment_asset_candidate_promoted",
+        "surface": "improvement_log",
+        "payload": {"status": "promoted", "candidate_id": "cand-2", "rule": rule},
+    }
+
+    result = syncer.materialize_events([event])
+
+    assert result["judgment_asset_promotions_applied"] == 1
+    canonical_store = json.loads(canonical_path.read_text(encoding="utf-8"))
+    # 総ルール数は2件(demoted 1 + active 1)だが、summary.active_rules は
+    # status=="active" のみをフィルタしたカウントでなければならない。
+    assert len(canonical_store["rules"]) == 2
+    assert canonical_store["summary"]["active_rules"] == 1
+
+
 def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
     monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
@@ -626,6 +680,20 @@ def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, 
                 "refs": ["memory/a.md", "memory/b.md"],
             },
         },
+        {
+            "event_id": "memory-feedback-1",
+            "ts": "2026-07-01T00:05:00Z",
+            "event_type": "shion_memory_feedback",
+            "surface": "next_chat",
+            "payload": {
+                "event_id": "local-feedback-1",
+                "ts": "2026-07-01T00:05:00Z",
+                "route": "next_chat",
+                "refs": ["memory/a.md"],
+                "memory_feedback": "helped",
+                "question": "補助金について教えて",
+            },
+        },
     ])
 
     improvement_rows = [json.loads(line) for line in improvement_log.read_text(encoding="utf-8").splitlines()]
@@ -634,12 +702,14 @@ def test_materialize_events_appends_improvement_chat_and_memory_usage(tmp_path, 
     assert result["improvement_new"] == 1
     assert result["chat_new"] == 1
     assert result["hypothesis_collision_new"] == 0
-    assert result["shion_memory_usage_new"] == 1
+    assert result["shion_memory_usage_new"] == 2
     assert improvement_rows[0]["source"] == "cloudrun_input_writeback"
     assert "Cloud Run入力" in improvement_rows[0]["body"]
     assert chat_rows[0]["category"] == "lease"
     assert chat_rows[0]["metadata"]["knowledge_refs"] == 2
     assert memory_rows[0]["ref_count"] == 2
+    assert memory_rows[1]["memory_feedback"] == "helped"
+    assert memory_rows[1]["feedback_source"] == "explicit_memory_feedback"
 
 
 def test_materialize_events_appends_hypothesis_collision_when_next_user_corrects(tmp_path, monkeypatch) -> None:

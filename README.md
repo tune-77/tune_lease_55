@@ -984,8 +984,14 @@ erDiagram
 
 ```bash
 cd /Users/kobayashiisaoryou/clawd/tune_lease_55
+python scripts/ops_friction_doctor.py
+python scripts/local_deploy_doctor.py --public-tunnel
 bash run_next_stable.sh
 ```
+
+`ops_friction_doctor.py` は、日次メモ、latest reports、Claude reports、現在のdirty状態から、Gitship、ローカルデプロイ、PRレビュー、記憶パイプライン、Cloud Run同期のどこで同じ試行錯誤が再発しそうかを先に出します。
+
+`local_deploy_doctor.py` は、LaunchAgent、FastAPI、Next.js、Cloudflare Tunnel の状態を見て、`install_launchagent` / `restart_api` / `restart_next` / `restart_tunnel` / `start_all` のどれで進めるべきかを先に出します。ローカル起動で迷ったら、まずこの診断結果の `command` を使ってください。
 
 起動後:
 

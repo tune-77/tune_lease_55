@@ -154,6 +154,7 @@ from api.knowledge.news_classifier import (
     build_classified_news_summary_from_vault,
     load_latest_classified_news_summary,
 )
+from api.knowledge.news_vertex_summary import build_vertex_assisted_news_trend_summary
 from obsidian_daily_intelligence import (
     obsidian_daily_intelligence_as_text,
     record_obsidian_daily_intelligence_event,
@@ -602,6 +603,8 @@ app.include_router(screening_misc_router)
 
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
+from api.routers.shion_memory_feedback import router as shion_memory_feedback_router
+app.include_router(shion_memory_feedback_router)
 from api.routers.feedback_loop import JudgmentAssetCandidateManualRequest, ScreeningExperienceCaseRequest  # used by chat/improvement endpoints
 from api.routers.feedback_loop import (  # noqa: F401 - re-exported for tests/back-compat
     _CLOUDRUN_INPUT_EVENTS_CACHE,
@@ -2342,24 +2345,52 @@ def get_lease_news_daily_digest_api(limit: int = 3):
 def get_lease_news_classified_summary_api(limit: int = 30, days: int = 14, refresh: bool = False):
     """ニュースを業種別・社会情勢・金融情報の軸で束ね、審査示唆つきで返す。"""
     try:
-        if refresh:
-            vault = find_vault()
-            return build_classified_news_summary_from_vault(
-                vault,
-                limit=max(1, min(int(limit), 80)),
-                days=max(1, min(int(days), 60)),
-            )
-        latest = load_latest_classified_news_summary()
-        if latest.get("available"):
-            return latest
         vault = find_vault()
-        return build_classified_news_summary_from_vault(
+        summary = build_classified_news_summary_from_vault(
             vault,
             limit=max(1, min(int(limit), 80)),
             days=max(1, min(int(days), 60)),
         )
+        if summary.get("available") or refresh:
+            return summary
+        latest = load_latest_classified_news_summary()
+        if latest.get("available"):
+            return latest
+        return summary
     except Exception as e:
+        if refresh:
+            raise HTTPException(status_code=500, detail=str(e))
+        latest = load_latest_classified_news_summary()
+        if latest.get("available"):
+            return latest
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/lease-news/trend-summary")
+def get_lease_news_trend_summary_api(
+    limit: int = 30,
+    days: int = 14,
+    refresh: bool = False,
+    use_vertex: bool = True,
+):
+    """分類済みニュースから、Vertex補助つきの傾向・要約・注意点を返す。"""
+    try:
+        vault = find_vault()
+        summary = build_classified_news_summary_from_vault(
+            vault,
+            limit=max(1, min(int(limit), 80)),
+            days=max(1, min(int(days), 60)),
+        )
+        if not summary.get("available") and not refresh:
+            latest = load_latest_classified_news_summary()
+            if latest.get("available"):
+                summary = latest
+        return build_vertex_assisted_news_trend_summary(summary, use_vertex=use_vertex)
+    except Exception as e:
+        if refresh:
+            raise HTTPException(status_code=500, detail=str(e))
+        latest = load_latest_classified_news_summary()
+        return build_vertex_assisted_news_trend_summary(latest, use_vertex=use_vertex)
 
 
 def _candidate_report_dirs() -> list[Path]:
@@ -3353,6 +3384,34 @@ class CaseRegistration(BaseModel):
     retrospective_note: str = ""
 
 
+def _link_registered_case_to_shion_followups(
+    case_ids: list[str],
+    status: str,
+    note: str = "",
+) -> dict:
+    """結果登録を回答済み追加確認へ結びつける。失敗しても本線登録は止めない。"""
+    try:
+        from api.screening_followup import record_followup_outcome
+
+        results = []
+        seen: set[str] = set()
+        for raw_case_id in case_ids:
+            case_id = str(raw_case_id or "").strip()
+            if not case_id or case_id in seen:
+                continue
+            seen.add(case_id)
+            results.append(record_followup_outcome(case_id, status, note))
+        linked_count = sum(int(item.get("linked_count") or 0) for item in results)
+        return {
+            "status": "linked" if linked_count else "no_answered_followup",
+            "linked_count": linked_count,
+            "matches": results,
+        }
+    except Exception as exc:
+        logger.warning("Shion followup outcome link skipped: %s", exc)
+        return {"status": "error", "linked_count": 0, "reason": str(exc)}
+
+
 @app.post("/api/cases/register")
 def register_case_result(req: CaseRegistration, background_tasks: BackgroundTasks):
     from data_cases import load_all_cases, update_case
@@ -3448,6 +3507,9 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                     experience_result = {"status": "error", "reason": str(exp_err)}
                     prediction_error_result = {"status": "skipped", "reason": "case_payload_unavailable"}
                 _invalidate_cloudrun_input_events_cache()
+                followup_result = _link_registered_case_to_shion_followups(
+                    [req.case_id], req.status, req.note or req.retrospective_note,
+                )
                 return {
                     "status": "success",
                     "message": f"Cloud Run result registered for {cloudrun_event_id}",
@@ -3455,6 +3517,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                     "cloudrun_writeback": final_result,
                     "experience_promotion": experience_result,
                     "prediction_error": prediction_error_result,
+                    "shion_followup": followup_result,
                 }
             raise HTTPException(status_code=500, detail=f"Cloud Run result writeback failed: {final_result.get('reason')}")
 
@@ -3637,11 +3700,17 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
         except Exception as _mini_err:
             print(f"[MiniPDCA] feedback skipped: {_mini_err}")
 
+    followup_result = _link_registered_case_to_shion_followups(
+        [req.case_id, str(target_case_id or "")],
+        req.status,
+        req.note or req.retrospective_note,
+    )
     return {
         "status": "success",
         "message": f"Results updated for {target_case_id}",
         "experience_promotion": experience_result,
         "prediction_error": prediction_error_result,
+        "shion_followup": followup_result,
     }
 
 # ── アプリログ
@@ -5783,6 +5852,27 @@ def _chat_memory_debug_payload(
     )
 
 
+def _public_memory_recall_payload(memory_recall: dict | None) -> dict:
+    if not isinstance(memory_recall, dict):
+        return {"route": "", "refs": [], "impact_hints": []}
+    refs = []
+    for ref in memory_recall.get("refs") or []:
+        if ref is None:
+            continue
+        text = str(ref).strip()
+        if text:
+            refs.append(text)
+    return {
+        "route": str(memory_recall.get("route") or ""),
+        "refs": refs[:8],
+        "impact_hints": [
+            hint
+            for hint in (memory_recall.get("impact_hints") or [])
+            if isinstance(hint, dict)
+        ][:3],
+    }
+
+
 def _build_shared_shion_dialogue_memory_context(
     message: str,
     history_for_gemini: list[dict[str, str]] | None,
@@ -7274,6 +7364,7 @@ def post_chat(req: ChatRequest):
                     injected=obsidian_daily_injected,
                     effect=obsidian_daily_effect,
                 ),
+                extra={"memory_recall": _public_memory_recall_payload(memory_recall)},
             )
             if req.debug_memory:
                 response_payload["memory_debug"] = _chat_memory_debug_payload(
@@ -7785,7 +7876,8 @@ def post_chat(req: ChatRequest):
                 vertex_ai_search=vertex_agent_search,
                 vertex_answer_api=vertex_answer_api,
                 vertex_distillation_capture=vertex_distillation_capture,
-            ),
+            )
+            | {"memory_recall": _public_memory_recall_payload(memory_recall)},
         )
         if req.debug_memory:
             response_payload["memory_debug"] = _chat_memory_debug_payload(

@@ -166,6 +166,7 @@ echo "[回帰] Cloud Runニュース/記憶レイヤーの回帰テスト..."
 MEMORY_CHAT_REGRESSION_START=$(date +%s)
 "${PYTHON}" -m pytest -q \
     "${PROJECT_ROOT}/tests/test_lease_news_collection.py::test_find_vault_refreshes_cloudrun_gcs_vault" \
+    "${PROJECT_ROOT}/tests/test_lease_news_collection.py::test_daily_digest_prefers_note_date_over_gcs_download_mtime" \
     "${PROJECT_ROOT}/tests/test_chat_context_builder.py" \
     "${PROJECT_ROOT}/tests/test_chat_mid_term_memory.py" \
     "${PROJECT_ROOT}/tests/test_build_cloud_chat_memory_pack.py" \

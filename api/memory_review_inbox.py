@@ -3,8 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
+import tempfile
+import threading
+from difflib import SequenceMatcher
 from collections import Counter
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -27,6 +32,16 @@ SOURCE_PATHS: dict[str, Path] = {
 Decision = Literal["adopted", "revised", "held", "rejected"]
 
 TERMINAL_STATUSES = {"adopted", "revised", "held", "rejected"}
+AUTO_REJECT_JACCARD_THRESHOLD = 0.82
+AUTO_REJECT_SEQUENCE_THRESHOLD = 0.93
+AUTO_REJECT_MIN_TEXT_LEN = 18
+AUTO_REJECT_REVIEW_WEEKDAY = 0  # Monday
+
+# Guards the review-state read-modify-write cycle in review_candidate(). Without
+# it, two near-simultaneous reviews can each read the state before the other's
+# write lands, and the later save silently drops the earlier decision -- making
+# an already-reviewed item look like an unreviewed candidate again.
+_STATE_LOCK = threading.RLock()
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -66,6 +81,9 @@ def load_review_state(path: Path | None = None) -> dict[str, Any]:
     reviews = payload.get("reviews")
     if not isinstance(reviews, dict):
         payload["reviews"] = {}
+    rejection_patterns = payload.get("rejection_patterns")
+    if not isinstance(rejection_patterns, list):
+        payload["rejection_patterns"] = []
     return payload
 
 
@@ -74,7 +92,18 @@ def save_review_state(state: dict[str, Any], path: Path | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     state["schema_version"] = 1
     state["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(state, ensure_ascii=False, indent=2)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def _source_item_id(row: dict[str, Any]) -> str:
@@ -98,6 +127,100 @@ def _first_text(row: dict[str, Any], keys: tuple[str, ...]) -> str:
     return ""
 
 
+def _auto_reject_text(item: dict[str, Any]) -> str:
+    return " ".join(
+        str(item.get(key) or "")
+        for key in ("source", "candidate_type", "topic", "title", "claim")
+        if str(item.get(key) or "").strip()
+    )
+
+
+def _normalize_auto_reject_text(text: str) -> str:
+    return re.sub(r"[\W_]+", "", text.lower())
+
+
+def _char_ngrams(text: str, n: int = 3) -> set[str]:
+    if len(text) <= n:
+        return {text} if text else set()
+    return {text[i : i + n] for i in range(len(text) - n + 1)}
+
+
+def _text_similarity(left: str, right: str) -> float:
+    left = _normalize_auto_reject_text(left)
+    right = _normalize_auto_reject_text(right)
+    if len(left) < AUTO_REJECT_MIN_TEXT_LEN or len(right) < AUTO_REJECT_MIN_TEXT_LEN:
+        return 0.0
+    if left == right:
+        return 1.0
+    if len(left) >= 28 and left in right:
+        return 0.96
+    if len(right) >= 28 and right in left:
+        return 0.96
+    left_ngrams = _char_ngrams(left)
+    right_ngrams = _char_ngrams(right)
+    if not left_ngrams or not right_ngrams:
+        return 0.0
+    jaccard = len(left_ngrams & right_ngrams) / len(left_ngrams | right_ngrams)
+    sequence = SequenceMatcher(None, left, right).ratio()
+    return max(jaccard, sequence)
+
+
+def _pattern_matches_item(pattern: dict[str, Any], item: dict[str, Any]) -> tuple[bool, float]:
+    if str(pattern.get("source") or "") != str(item.get("source") or ""):
+        return False, 0.0
+    pattern_type = str(pattern.get("candidate_type") or "")
+    item_type = str(item.get("candidate_type") or "")
+    if pattern_type and item_type and pattern_type != item_type:
+        return False, 0.0
+    similarity = _text_similarity(str(pattern.get("text") or ""), _auto_reject_text(item))
+    return (
+        similarity >= AUTO_REJECT_JACCARD_THRESHOLD
+        or similarity >= AUTO_REJECT_SEQUENCE_THRESHOLD,
+        similarity,
+    )
+
+
+def _rejection_pattern_for_item(item: dict[str, Any], *, reviewed_at: str = "") -> dict[str, Any]:
+    text = _auto_reject_text(item)
+    normalized = _normalize_auto_reject_text(text)
+    return {
+        "source": str(item.get("source") or ""),
+        "source_item_id": str(item.get("source_item_id") or ""),
+        "inbox_id": str(item.get("inbox_id") or ""),
+        "candidate_type": str(item.get("candidate_type") or ""),
+        "topic": str(item.get("topic") or ""),
+        "title": str(item.get("title") or ""),
+        "claim": str(item.get("claim") or ""),
+        "text": text,
+        "text_hash": hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16] if normalized else "",
+        "reviewed_at": reviewed_at or str(item.get("reviewed_at") or ""),
+    }
+
+
+def _learn_rejection_pattern(state: dict[str, Any], item: dict[str, Any], *, reviewed_at: str) -> None:
+    patterns = state.setdefault("rejection_patterns", [])
+    if not isinstance(patterns, list):
+        patterns = []
+        state["rejection_patterns"] = patterns
+    pattern = _rejection_pattern_for_item(item, reviewed_at=reviewed_at)
+    if not pattern["text_hash"]:
+        return
+    patterns[:] = [
+        existing
+        for existing in patterns
+        if str(existing.get("inbox_id") or "") != pattern["inbox_id"]
+        and str(existing.get("text_hash") or "") != pattern["text_hash"]
+    ]
+    patterns.append(pattern)
+
+
+def _forget_rejection_pattern(state: dict[str, Any], inbox_id: str) -> None:
+    patterns = state.get("rejection_patterns")
+    if not isinstance(patterns, list):
+        return
+    patterns[:] = [pattern for pattern in patterns if str(pattern.get("inbox_id") or "") != inbox_id]
+
+
 def normalize_candidate(source_name: str, row: dict[str, Any], review: dict[str, Any] | None = None) -> dict[str, Any]:
     review = review or {}
     inbox_id = make_inbox_id(source_name, row)
@@ -110,12 +233,18 @@ def normalize_candidate(source_name: str, row: dict[str, Any], review: dict[str,
         if isinstance(paths, list) and paths:
             evidence_path = str(paths[0])
     status = str(review.get("status") or "candidate")
+    has_human_review = bool(review.get("status"))
     edited_claim = str(review.get("edited_claim") or row.get("edited_claim") or "")
     return {
         "inbox_id": inbox_id,
         "source": source_name,
         "source_item_id": source_item_id,
         "status": status,
+        "has_human_review": has_human_review,
+        "auto_rejected": False,
+        "auto_reject_reason": "",
+        "auto_reject_matched_inbox_id": "",
+        "auto_reject_score": 0.0,
         "title": title or source_item_id,
         "claim": claim,
         "edited_claim": edited_claim,
@@ -131,6 +260,46 @@ def normalize_candidate(source_name: str, row: dict[str, Any], review: dict[str,
     }
 
 
+def _apply_auto_rejections(items: list[dict[str, Any]], state: dict[str, Any]) -> list[dict[str, Any]]:
+    stored_patterns = [
+        pattern
+        for pattern in state.get("rejection_patterns", [])
+        if isinstance(pattern, dict) and str(pattern.get("text_hash") or "")
+    ]
+    learned_from_reviews = [
+        _rejection_pattern_for_item(item, reviewed_at=str(item.get("reviewed_at") or ""))
+        for item in items
+        if item.get("has_human_review") and str(item.get("status") or "") == "rejected"
+    ]
+    patterns = stored_patterns + [
+        pattern
+        for pattern in learned_from_reviews
+        if str(pattern.get("text_hash") or "")
+        and str(pattern.get("text_hash") or "")
+        not in {str(stored.get("text_hash") or "") for stored in stored_patterns}
+    ]
+    if not patterns:
+        return items
+    for item in items:
+        if item.get("has_human_review") or str(item.get("status") or "candidate") != "candidate":
+            continue
+        best_pattern: dict[str, Any] | None = None
+        best_score = 0.0
+        for pattern in patterns:
+            matched, score = _pattern_matches_item(pattern, item)
+            if matched and score > best_score:
+                best_pattern = pattern
+                best_score = score
+        if best_pattern:
+            item["status"] = "rejected"
+            item["auto_rejected"] = True
+            item["auto_reject_reason"] = "過去に却下された同種候補と高一致したため自動却下"
+            item["auto_reject_matched_inbox_id"] = str(best_pattern.get("inbox_id") or "")
+            item["auto_reject_score"] = round(best_score, 3)
+            item["note"] = item["auto_reject_reason"]
+    return items
+
+
 def load_candidates() -> list[dict[str, Any]]:
     state = load_review_state()
     reviews = state.get("reviews") if isinstance(state.get("reviews"), dict) else {}
@@ -140,7 +309,7 @@ def load_candidates() -> list[dict[str, Any]]:
             inbox_id = make_inbox_id(source_name, row)
             review = reviews.get(inbox_id) if isinstance(reviews.get(inbox_id), dict) else {}
             items.append(normalize_candidate(source_name, row, review))
-    return items
+    return _apply_auto_rejections(items, state)
 
 
 def summarize_items(items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -154,6 +323,36 @@ def summarize_items(items: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _next_review_date(today: date | None = None) -> str:
+    today = today or date.today()
+    days_until_review = (AUTO_REJECT_REVIEW_WEEKDAY - today.weekday()) % 7
+    if days_until_review == 0:
+        days_until_review = 7
+    return (today + timedelta(days=days_until_review)).isoformat()
+
+
+def auto_reject_review_policy(state: dict[str, Any] | None = None) -> dict[str, Any]:
+    state = state or load_review_state()
+    patterns = state.get("rejection_patterns")
+    persisted_pattern_count = len(patterns) if isinstance(patterns, list) else 0
+    reviews = state.get("reviews") if isinstance(state.get("reviews"), dict) else {}
+    rejected_review_count = sum(
+        1
+        for review in reviews.values()
+        if isinstance(review, dict) and str(review.get("status") or "") == "rejected"
+    )
+    return {
+        "cadence": "weekly",
+        "review_weekday": "Monday",
+        "next_review_date": _next_review_date(),
+        "pattern_count": persisted_pattern_count + rejected_review_count,
+        "persisted_pattern_count": persisted_pattern_count,
+        "rejected_review_count": rejected_review_count,
+        "policy": "auto_reject_runs_inline_review_patterns_weekly_or_on_false_positive",
+        "reason": "毎日見るとレビュー負荷が増えるため、定期棚卸しは週1回に抑える。",
+    }
+
+
 def list_inbox(
     *,
     status: str = "candidate",
@@ -163,6 +362,7 @@ def list_inbox(
     offset: int = 0,
 ) -> dict[str, Any]:
     items = load_candidates()
+    state = load_review_state()
     filtered = items
     if status != "all":
         filtered = [item for item in filtered if str(item.get("status") or "candidate") == status]
@@ -196,6 +396,7 @@ def list_inbox(
         "offset": offset,
         "items": filtered[offset : offset + limit],
         "review_policy": "state_only_no_source_mutation",
+        "auto_reject_review_policy": auto_reject_review_policy(state),
         "state_path": _display_path(REVIEW_STATE_PATH),
     }
 
@@ -213,18 +414,23 @@ def review_candidate(
     if decision == "revised" and not edited_claim.strip():
         raise ValueError("edited_claim is required when decision is revised")
     now = datetime.now().isoformat(timespec="seconds")
-    state = load_review_state()
-    reviews = state.setdefault("reviews", {})
-    current = {
-        "status": decision,
-        "note": note.strip()[:1000],
-        "edited_claim": edited_claim.strip()[:4000],
-        "reviewed_at": now,
-        "source": candidates[inbox_id]["source"],
-        "source_item_id": candidates[inbox_id]["source_item_id"],
-    }
-    reviews[inbox_id] = current
-    save_review_state(state)
+    with _STATE_LOCK:
+        state = load_review_state()
+        reviews = state.setdefault("reviews", {})
+        current = {
+            "status": decision,
+            "note": note.strip()[:1000],
+            "edited_claim": edited_claim.strip()[:4000],
+            "reviewed_at": now,
+            "source": candidates[inbox_id]["source"],
+            "source_item_id": candidates[inbox_id]["source_item_id"],
+        }
+        reviews[inbox_id] = current
+        if decision == "rejected":
+            _learn_rejection_pattern(state, candidates[inbox_id], reviewed_at=now)
+        else:
+            _forget_rejection_pattern(state, inbox_id)
+        save_review_state(state)
     REVIEW_AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with REVIEW_AUDIT_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps({"ts": now, "inbox_id": inbox_id, **current}, ensure_ascii=False) + "\n")

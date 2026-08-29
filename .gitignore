@@ -41,6 +41,7 @@ data/backups/
 data/.fuse_hidden*
 data/dashboard_stats_cache.json
 data/department_stats_cache.json
+data/runtime_cache/
 data/shion_self_analysis_cache.json
 data/lease_news_metrics.json
 data/model_review_state.json
