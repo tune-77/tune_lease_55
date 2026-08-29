@@ -206,7 +206,11 @@ class TestAC611FourFieldsInRequest:
     def test_field_accepts_mobile_decimal_input(self, soup, field_id):
         el = soup.find("input", id=field_id)
         assert el.get("type") == "text", f"#{field_id} は全角数字入力対応のため type=text にする"
-        assert el.get("inputmode") in ("decimal", "numeric"), f"#{field_id} の inputmode が数値入力向けでない"
+        if field_id == "op_profit":
+            # 営業赤字のマイナス記号を入力できるよう、モバイルでも通常キーボードを使う。
+            assert el.get("inputmode") == "text"
+        else:
+            assert el.get("inputmode") in ("decimal", "numeric"), f"#{field_id} の inputmode が数値入力向けでない"
 
     @pytest.mark.parametrize("field_id", ["op_profit", "bank_credit", "machines", "depreciation"])
     def test_field_in_request_body(self, src, field_id):

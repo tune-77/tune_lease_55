@@ -10,8 +10,10 @@ def _write(path: Path, text: str) -> None:
 
 def test_detects_case_and_separator_tag_duplicates(tmp_path):
     vault = tmp_path
-    _write(vault / "A" / "note1.md", "---\ntags: [AI, 機械学習]\n---\nbody")
-    _write(vault / "a" / "note2.md", "---\ntags: [ai, 機械学習]\n---\nbody")
+    # macOSの既定ファイルシステムは大文字小文字を区別しないため、
+    # フォルダ重複は区切り文字の差で再現する。
+    _write(vault / "folder-test" / "note1.md", "---\ntags: [AI, 機械学習]\n---\nbody")
+    _write(vault / "folder_test" / "note2.md", "---\ntags: [ai, 機械学習]\n---\nbody")
     _write(vault / "note3.md", "---\ntags: [tag-test, tag_test]\n---\nbody")
 
     report = build_taxonomy_audit(vault)
@@ -20,7 +22,7 @@ def test_detects_case_and_separator_tag_duplicates(tmp_path):
     assert {"AI", "ai"} <= tag_labels
     assert {"tag-test", "tag_test"} <= tag_labels
     folder_labels = {label for cluster in report["folder_duplicate_clusters"] for label in cluster["labels"]}
-    assert {"A", "a"} <= folder_labels
+    assert {"folder-test", "folder_test"} <= folder_labels
     assert report["naming_rules"]
     assert len(report["naming_rules"]) <= 5
 

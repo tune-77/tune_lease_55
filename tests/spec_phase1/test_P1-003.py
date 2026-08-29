@@ -121,13 +121,12 @@ class TestAssetTypeSelect:
         assert not missing, f"必須オプションが欠けている: {missing}"
 
 
-# ─── AC-306: re_lease_insurance が初期状態で disabled ───────────────────────
+# ─── AC-306: 廃止済み re_lease_insurance が再混入しない ────────────────────
 
 class TestReleaseInsuranceDisabled:
-    def test_re_lease_insurance_initially_disabled(self, soup):
+    def test_re_lease_insurance_field_is_removed(self, soup):
         sel = soup.find("select", id="re_lease_insurance")
-        assert sel is not None, "#re_lease_insurance select が存在しない"
-        assert sel.has_attr("disabled"), "初期状態で disabled 属性がない"
+        assert sel is None, "廃止済みの #re_lease_insurance が再追加されている"
 
 
 # ─── BR-121 / AC-301: warnings-section が初期非表示 ─────────────────────────
@@ -172,13 +171,9 @@ class TestClearAllScript:
         src = INDEX_HTML.read_text(encoding="utf-8")
         assert 'getElementById("insurance_applicable").value = "不明"' in src
 
-    def test_clearall_resets_re_lease_insurance(self):
+    def test_clearall_does_not_reference_removed_re_lease_insurance(self):
         src = INDEX_HTML.read_text(encoding="utf-8")
-        assert 'getElementById("re_lease_insurance").value = "不明"' in src
-
-    def test_clearall_disables_re_lease_insurance(self):
-        src = INDEX_HTML.read_text(encoding="utf-8")
-        assert 'getElementById("re_lease_insurance").disabled = true' in src
+        assert 'getElementById("re_lease_insurance")' not in src
 
     def test_clearall_hides_warnings_section(self):
         src = INDEX_HTML.read_text(encoding="utf-8")
@@ -204,9 +199,9 @@ class TestRunPredictFields:
         src = INDEX_HTML.read_text(encoding="utf-8")
         assert 'getElementById("insurance_applicable").value' in src
 
-    def test_request_includes_re_lease_insurance(self):
+    def test_request_omits_removed_re_lease_insurance(self):
         src = INDEX_HTML.read_text(encoding="utf-8")
-        assert 'getElementById("re_lease_insurance").value' in src
+        assert "re_lease_insurance:" not in src
 
 
 # ─── BR-124: _VALID_SEVERITIES ホワイトリストが JS 内に定義されている ─────────

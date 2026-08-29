@@ -20,7 +20,7 @@ def test_screening_experience_scoring_accepts_partial_industry_labels():
 
 
 def test_shion_review_prompt_requires_past_company_citation():
-    text = Path("frontend/src/app/screening/page.tsx").read_text(encoding="utf-8")
+    text = Path("frontend/src/lib/shionReview.ts").read_text(encoding="utf-8")
 
     assert "過去会社引用ルール" in text
     assert "必ず過去会社名を1社以上明示" in text

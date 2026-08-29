@@ -652,6 +652,8 @@ _MAIN_COMPAT_EXPORTS = {
     "_read_obsidian_files": ("api.routers.vault_hub", "_read_obsidian_files"),
     "_SCREENING_EXPERIENCE_DEMO_SEEDS": ("api.routers.feedback_loop", "_SCREENING_EXPERIENCE_DEMO_SEEDS"),
     "_score_screening_experience_case": ("api.routers.feedback_loop", "_score_screening_experience_case"),
+    "SaveDebateToObsidianRequest": ("api.routers.debate", "SaveDebateToObsidianRequest"),
+    "save_debate_to_obsidian": ("api.routers.debate", "save_debate_to_obsidian"),
 }
 
 
@@ -1980,50 +1982,6 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
         "experience_promotion": experience_result,
         "prediction_error": prediction_error_result,
     }
-
-
-@app.get("/api/cases/pending")
-def get_pending_cases():
-    """past_cases と Cloud Run帰還スコア入力から未登録案件を統合して取得する。"""
-    import json
-
-    rows = []
-
-    try:
-        with get_connection() as conn:
-            res = conn.execute(
-                "SELECT id, timestamp, industry_sub, score, data "
-                "FROM past_cases "
-                "WHERE COALESCE(NULLIF(final_status, ''), '未登録') IN ('未登録', '稟議中', 'スコアリングのみ') "
-                "ORDER BY timestamp DESC LIMIT 50"
-            ).fetchall()
-            for r in res:
-                try:
-                    d = json.loads(r["data"] or "{}")
-                except Exception:
-                    d = {}
-                inputs = d.get("inputs") if isinstance(d.get("inputs"), dict) else {}
-                result = d.get("result") if isinstance(d.get("result"), dict) else {}
-                rows.append({
-                    "id": str(r["id"]),
-                    "company_no": d.get("company_no") or inputs.get("company_no") or "",
-                    "company_name": d.get("company_name") or inputs.get("company_name") or "名称未設定",
-                    "timestamp": r["timestamp"],
-                    "score": r["score"] if r["score"] not in (None, "") else result.get("score", result.get("score_base")),
-                    "hantei": result.get("hantei") or d.get("hantei") or "",
-                    "industry": r["industry_sub"] or d.get("industry_sub") or inputs.get("industry_sub") or d.get("industry_major") or inputs.get("industry_major") or "",
-                    "registration_date": d.get("registration_date") or (r["timestamp"] or "")[:10],
-                    "estimate_sent_date": d.get("estimate_sent_date") or (r["timestamp"] or "")[:10],
-                    "final_result_date": d.get("final_result_date"),
-                    "_source": "past_cases"
-                })
-    except Exception as e:
-        logger.error("get_pending_cases DB error: %s", e)
-
-    cloudrun_rows = _list_cloudrun_score_pending_cases(limit=50)
-    rows.extend(cloudrun_rows)
-    rows.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
-    return rows[:80]
 
 
 @app.delete("/api/cases/operation/clear-all")
@@ -3402,10 +3360,19 @@ def _link_registered_case_to_shion_followups(
             seen.add(case_id)
             results.append(record_followup_outcome(case_id, status, note))
         linked_count = sum(int(item.get("linked_count") or 0) for item in results)
+        impact_sessions: list[dict] = []
+        seen_followups: set[str] = set()
+        for item in results:
+            for session in item.get("impact_sessions") or []:
+                followup_id = str(session.get("followup_id") or "")
+                if followup_id and followup_id not in seen_followups:
+                    seen_followups.add(followup_id)
+                    impact_sessions.append(session)
         return {
             "status": "linked" if linked_count else "no_answered_followup",
             "linked_count": linked_count,
             "matches": results,
+            "impact_sessions": impact_sessions,
         }
     except Exception as exc:
         logger.warning("Shion followup outcome link skipped: %s", exc)

@@ -28,6 +28,18 @@ _gcs_mock = _setup_gcs_mock()
 from scripts.gcs_vault_loader import GCS_BUCKET, GCS_VAULT_PREFIX, download_vault, load_vault_texts  # noqa: E402
 
 
+def _set_client_mock(client_mock: MagicMock) -> None:
+    # download_vault は呼び出しごとに ``from google.cloud import storage``
+    # するため、他テストが差し替えた import 状態も毎回復元する。
+    cloud_mod = sys.modules.get("google.cloud")
+    if cloud_mod is None:
+        cloud_mod = ModuleType("google.cloud")
+        sys.modules["google.cloud"] = cloud_mod
+    sys.modules["google.cloud.storage"] = _gcs_mock
+    setattr(cloud_mod, "storage", _gcs_mock)
+    _gcs_mock.Client.return_value = client_mock
+
+
 def _make_blob(name: str, content: bytes = b"# test") -> MagicMock:
     blob = MagicMock()
     blob.name = name
@@ -41,7 +53,7 @@ class TestDownloadVault:
     def test_returns_dest_dir(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = []
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         result = download_vault(dest_dir=tmp_path)
         assert result == tmp_path
@@ -50,7 +62,7 @@ class TestDownloadVault:
         dest = tmp_path / "vault_out"
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = []
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=dest)
         assert dest.is_dir()
@@ -62,7 +74,7 @@ class TestDownloadVault:
         ]
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = blobs
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, prefix="vault/")
 
@@ -76,7 +88,7 @@ class TestDownloadVault:
         ]
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = blobs
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, prefix="vault/")
 
@@ -89,7 +101,7 @@ class TestDownloadVault:
         file_blob = _make_blob("vault/note.md", b"ok")
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = [dir_blob, file_blob]
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, prefix="vault/")
 
@@ -99,7 +111,7 @@ class TestDownloadVault:
     def test_uses_default_bucket_and_prefix(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = []
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path)
 
@@ -108,7 +120,7 @@ class TestDownloadVault:
     def test_uses_custom_bucket_and_prefix(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = []
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, bucket="my-bucket", prefix="custom/")
 
@@ -117,7 +129,7 @@ class TestDownloadVault:
     def test_normalizes_gs_url_bucket(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = []
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, bucket="gs://my-bucket/some-prefix", prefix="custom/")
 
@@ -129,7 +141,7 @@ class TestDownloadVault:
         ]
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = blobs
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, prefix="vault/")
 
@@ -144,7 +156,7 @@ class TestDownloadVault:
         blobs = [_make_blob("vault/keep.md", b"# fresh keep")]
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = blobs
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, prefix="vault/")
 
@@ -162,7 +174,7 @@ class TestDownloadVault:
         ]
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = blobs
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, prefix="vault/")
 
@@ -178,7 +190,7 @@ class TestLoadVaultTexts:
         ]
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = blobs
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         texts = load_vault_texts(dest_dir=tmp_path, prefix="vault/")
 
@@ -189,7 +201,7 @@ class TestLoadVaultTexts:
     def test_returns_empty_list_when_no_md(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
         client_mock.list_blobs.return_value = [_make_blob("vault/image.png")]
-        _gcs_mock.Client.return_value = client_mock
+        _set_client_mock(client_mock)
 
         texts = load_vault_texts(dest_dir=tmp_path, prefix="vault/")
 

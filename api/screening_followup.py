@@ -689,6 +689,15 @@ def record_followup_outcome(case_id: str, outcome_status: str, outcome_note: str
         )
         answered_count = max(0, int(cur.rowcount or 0))
         updated = answered_count + unanswered_count
+    impact_sessions = []
+    if answered_count:
+        sessions = list_followup_sessions(_text(case_id), limit=1)
+        if (
+            sessions
+            and _text(sessions[0].get("status")).startswith("outcome_linked")
+            and bool(sessions[0].get("answers"))
+        ):
+            impact_sessions.append(sessions[0])
     return {
         "status": "linked" if updated else "no_answered_followup",
         "case_id": _text(case_id),
@@ -696,6 +705,7 @@ def record_followup_outcome(case_id: str, outcome_status: str, outcome_note: str
         "linked_count": updated,
         "answered_count": answered_count,
         "unanswered_count": unanswered_count,
+        "impact_sessions": impact_sessions,
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "guardrail": "outcome_link_only_no_auto_promotion_no_scoring_change",
     }

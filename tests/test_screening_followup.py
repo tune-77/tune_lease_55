@@ -121,6 +121,7 @@ def test_followup_session_persists_answers_and_links_outcome(tmp_path, monkeypat
 
     assert answered["status"] == "answered"
     assert linked["linked_count"] == 1
+    assert linked["impact_sessions"][0]["followup_id"] == created["followup_id"]
     assert saved["status"] == "outcome_linked"
     assert saved["outcome_status"] == "成約"
 

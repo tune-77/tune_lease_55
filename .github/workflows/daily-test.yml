@@ -20,13 +20,14 @@ jobs:
       - name: Install test dependencies
         run: >
           pip install -q pytest pytest-cov fastapi uvicorn pydantic slowapi httpx python-multipart
-          requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
-          python-dateutil pyyaml
+          requests numpy pandas matplotlib seaborn scipy scikit-learn==1.7.2 joblib
+          python-dateutil pyyaml beautifulsoup4 filelock bcrypt flask flask-cors
+          google-api-core lxml toml chromadb google-adk apscheduler
 
       - name: Run full test suite with coverage
         run: |
           set -o pipefail
-          python -m pytest tests/ \
+          python -m pytest tests/ -m "not external" \
             -v --tb=short --cov=. --cov-report=term-missing \
             --cov-report=json --cov-report=html \
             2>&1 | tee test-report.txt
