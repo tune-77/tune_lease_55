@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -297,8 +298,15 @@ class FutureSimulationActualRequest(BaseModel):
     observed_year: int = Field(..., ge=1, le=10, description="予測基準年から何年後の実績か")
     sales: Optional[float] = None
     op_profit: Optional[float] = None
-    observed_at: str = Field("", max_length=40)
+    observed_at: date = Field(..., description="実績の観測日。予測後の情報混入を防ぐため必須")
     source: str = Field("manual_financial_actual", max_length=80)
+
+    @field_validator("observed_at")
+    @classmethod
+    def validate_observed_at(cls, value: date) -> date:
+        if value > date.today():
+            raise ValueError("実績日に未来日は指定できません")
+        return value
 
 
 @router.post("/api/future-simulation")
@@ -358,7 +366,7 @@ def api_future_simulation_actual(req: FutureSimulationActualRequest) -> dict:
         observed_year=req.observed_year,
         sales=req.sales,
         op_profit=req.op_profit,
-        observed_at=req.observed_at,
+        observed_at=req.observed_at.isoformat(),
         source=req.source,
     )
     if recorded.get("status") == "error":
