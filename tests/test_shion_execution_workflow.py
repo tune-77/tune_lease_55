@@ -9,7 +9,11 @@ def test_execution_workflow_covers_brief_tools_iteration_and_delivery():
     assert "背景・目的 / 実行タスク / 制約・権限 / 期待する出力" in block
     assert "必要最小限のツール選択" in block
     assert "骨子 → 初稿 → 要件・事実・読みやすさの確認 → 1回の改善" in block
+    assert "別途指定された出力形式がない回答" in block
     assert "結論または完成物を先に" in block
+    assert "審査判定を末尾に置く形式" in block
+    assert "調査結果 → 推論 → 対応策" in block
+    assert block.index("出力契約がある場合はその順序を優先") < block.index("逐語的な思考過程")
     assert "逐語的な思考過程" in block
 
 
@@ -39,3 +43,4 @@ def test_execution_workflow_is_shared_by_dialogue_and_screening_agent(tmp_path, 
     assert "必要最小限のツール選択" in prompt
     assert "紫苑の実務ワークフロー" in _INSTRUCTION
     assert "結論または完成物を先に" in _INSTRUCTION
+    assert "出力契約がある場合はその順序を優先" in _INSTRUCTION
