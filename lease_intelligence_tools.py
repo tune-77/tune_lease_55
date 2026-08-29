@@ -1493,11 +1493,11 @@ def get_lease_system_gaps(limit: int = 10) -> dict[str, Any]:
 
 
 def get_active_rules(limit: int = 20) -> dict[str, Any]:
-    """ルールエンジン台帳（api/rule_engine/ledger_rules.json）の現在のルール一覧を返す。
+    """ルールエンジン台帳（api/rule_engine/ledger_rules.json）から適用済みの有効なルールを返す。
 
-    承認待ちの項目に絞る get_pipeline_item_details とは異なり、既に有効な項目も含めた
-    全件を返す。「今どんなルールが効いている？」と聞かれたときに使う。読み取り専用で、
-    承認・変更は行わない。
+    pending_review=True（承認待ち）と status="stale_resolved"（陳腐化済み）の項目は除外する。
+    「今どんなルールが効いている？」と聞かれたときに使う。要確認項目は get_pipeline_item_details、
+    台帳間の整合性は audit_ledger_consistency を使う。読み取り専用で、承認・変更は行わない。
     """
     try:
         from api.routers.rule_engine import list_rules
@@ -1505,8 +1505,12 @@ def get_active_rules(limit: int = 20) -> dict[str, Any]:
         result = list_rules()
     except Exception as exc:
         return {"rules": [], "total": 0, "error": str(exc)}
-    rules = result.get("rules", [])
-    return {"rules": rules[:limit], "total": result.get("total", len(rules))}
+    all_rules = result.get("rules", [])
+    active = [
+        r for r in all_rules
+        if not r.get("pending_review") and r.get("status") not in ("pending_review", "stale_resolved")
+    ]
+    return {"rules": active[:limit], "total": len(active)}
 
 
 def recall_judgment_memory(question: str, limit: int = 5) -> dict[str, Any]:
