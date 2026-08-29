@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import math
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from api.loop_engineering_common import DATA_DIR, append_jsonl, load_jsonl
 SNAPSHOTS_PATH = DATA_DIR / "prediction_snapshots.jsonl"
 # 数値予測は判断予測と混ぜない（load_prediction_snapshot が誤って拾わないようにするため）
 NUMERIC_FORECASTS_PATH = DATA_DIR / "prediction_numeric_forecasts.jsonl"
+NUMERIC_ACTUALS_PATH = DATA_DIR / "prediction_numeric_actuals.jsonl"
 
 SCHEMA_VERSION = 1
 
@@ -267,6 +269,8 @@ def record_numeric_forecast(
                 "deficit_prob": forecast.get("deficit_prob"),
                 "final_op_median": forecast.get("final_op_median"),
                 "final_op_worst10": forecast.get("final_op_worst10"),
+                "sales_percentiles": forecast.get("sales_percentiles"),
+                "op_percentiles": forecast.get("op_percentiles"),
             },
             "calibratable": False,
             "calibration_blocker": "future_actuals_not_collected",
@@ -274,6 +278,75 @@ def record_numeric_forecast(
         }
         append_jsonl(path, entry)
         return {"status": "recorded", "case_id": entry["case_id"]}
+    except Exception as err:
+        return {"status": "error", "reason": str(err)}
+
+
+def record_numeric_actual(
+    *,
+    case_id: str,
+    observed_year: int,
+    sales: float | None = None,
+    op_profit: float | None = None,
+    observed_at: str = "",
+    source: str = "manual_financial_actual",
+    actuals_path: Path | None = None,
+) -> dict[str, Any]:
+    """将来財務予測を後日採点するための実績値を追記する。
+
+    shadow専用であり、入力された実績はスコア・承認判定・モデル再学習へ
+    自動反映しない。訂正は追記し、レポート側が最新記録を採用する。
+    """
+    try:
+        path = actuals_path or NUMERIC_ACTUALS_PATH
+        case_id = _text(case_id)
+        if not case_id:
+            return {"status": "skipped", "reason": "case_id_unavailable"}
+        try:
+            year = int(observed_year)
+        except (TypeError, ValueError):
+            return {"status": "skipped", "reason": "observed_year_invalid"}
+        if year < 1 or year > 10:
+            return {"status": "skipped", "reason": "observed_year_invalid"}
+
+        actual_sales = _float_or_none(sales)
+        actual_op_profit = _float_or_none(op_profit)
+        if any(value is not None and not math.isfinite(value) for value in (actual_sales, actual_op_profit)):
+            return {"status": "skipped", "reason": "actual_values_invalid"}
+        if actual_sales is None and actual_op_profit is None:
+            return {"status": "skipped", "reason": "actual_values_unavailable"}
+
+        recorded_at = _now_iso()
+        fingerprint = hashlib.sha256(
+            "\n".join(
+                [
+                    case_id,
+                    str(year),
+                    _text(observed_at),
+                    "" if actual_sales is None else f"{actual_sales:.3f}",
+                    "" if actual_op_profit is None else f"{actual_op_profit:.3f}",
+                ]
+            ).encode("utf-8")
+        ).hexdigest()
+        entry = {
+            "id": fingerprint[:16],
+            "schema_version": SCHEMA_VERSION,
+            "event_type": "numeric_forecast_actual",
+            "status": "shadow_only",
+            "source": _text(source) or "manual_financial_actual",
+            "case_id": case_id,
+            "observed_year": year,
+            "observed_at": _text(observed_at),
+            "recorded_at": recorded_at,
+            "unit": "千円",
+            "actual": {"sales": actual_sales, "op_profit": actual_op_profit},
+            "use_policy": (
+                "将来財務予測の誤差を観測するshadow実績。"
+                "スコア・判定・モデルへ自動反映せず、人間レビューにだけ使う。"
+            ),
+        }
+        append_jsonl(path, entry)
+        return {"status": "recorded", "actual_id": entry["id"], "case_id": case_id}
     except Exception as err:
         return {"status": "error", "reason": str(err)}
 
