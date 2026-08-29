@@ -14,8 +14,12 @@ import pytest
 import api.shion_debate_adk as adk
 
 
-def test_fallback_always_returns_valid_result_without_adk():
-    # このCI/セッションには google.adk が無いため、必ず劣化経路を通る。
+def test_fallback_always_returns_valid_result_without_adk(monkeypatch):
+    # ADK のインストール有無に左右されず、劣化経路そのものを決定的に検証する。
+    def raise_adk_unavailable(_params):
+        raise RuntimeError("ADK unavailable")
+
+    monkeypatch.setattr(adk, "_run_adk_debate", raise_adk_unavailable)
     out = adk.run_debate_adk_fallback({"score": 80, "company_name": "テスト社"})
     assert out["final"] in {"承認", "条件付承認", "否決"}
     assert "summary" in out and "conditions" in out

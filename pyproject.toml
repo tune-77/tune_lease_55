@@ -71,8 +71,21 @@ package = false
 # リポジトリ直下には運用スクリプトや一時worktreeが置かれるため、
 # 本体テストディレクトリだけを収集対象に固定する。
 testpaths = ["tests"]
+addopts = ["--strict-config", "--strict-markers"]
+xfail_strict = true
 markers = [
     "integration: 外部サービスや実データを必要とする統合評価",
+    "external: 実Vaultや外部サービスへ接続する、通常CIでは除外する評価",
+]
+# 既知の依存ライブラリ移行警告だけを明示的に許容し、それ以外は失敗させる。
+# 許容項目は依存更新時に削除し、警告の恒久的な隠蔽を防ぐ。
+filterwarnings = [
+    "error",
+    'ignore:Using `httpx` with `starlette\.testclient` is deprecated.*:starlette.exceptions.StarletteDeprecationWarning',
+    'ignore:Trying to unpickle estimator .* from version 1\.7\.1 when using version 1\.7\.2.*:sklearn.exceptions.InconsistentVersionWarning',
+    'ignore:BaseAgentConfig is deprecated and will be removed in future versions\.:DeprecationWarning',
+    'ignore:ParallelAgent is deprecated.*:DeprecationWarning',
+    'ignore:SequentialAgent is deprecated.*:DeprecationWarning',
 ]
 norecursedirs = [
     ".git",

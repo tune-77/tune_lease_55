@@ -50,15 +50,22 @@ def test_app_has_expected_route_count():
     assert len(main_module.app.routes) >= 60
 
 
-@pytest.mark.xfail(
-    reason=(
-        "api/routers/analytics.py の ReportRequest が pydantic の "
-        "TypeAdapter 未確定エラーで /openapi.json 生成に失敗する既知の不具合"
-        "（本テスト追加時に発見、Phase 1のスコープ外のため未修正）。"
-        "https://errors.pydantic.dev/2.13/u/class-not-fully-defined"
-    ),
-    strict=False,
-)
+def test_no_duplicate_method_path_routes():
+    """同じHTTPメソッドとパスの二重登録を検知する。"""
+    seen = set()
+    duplicates = []
+    for route in main_module.app.routes:
+        path = getattr(route, "path", None)
+        for method in getattr(route, "methods", None) or ():
+            key = (method, path)
+            if key in seen:
+                duplicates.append(key)
+            seen.add(key)
+
+    assert not duplicates, f"duplicate API routes: {sorted(duplicates)}"
+
+
 def test_openapi_schema_generation():
+    """OpenAPI schema の生成を通常の回帰テストとして保証する。"""
     response = client.get("/openapi.json")
     assert response.status_code == 200
