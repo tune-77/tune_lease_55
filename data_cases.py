@@ -792,15 +792,32 @@ def analyze_lost_cases(industry_sub=None):
         "cases": lost_cases
     }
 
-def delete_case(case_id: str) -> bool:
+def delete_case(
+    case_id: str,
+    *,
+    deletion_route: str = "data_cases.delete_case",
+    deletion_reason: str = "manual_delete",
+) -> bool:
     """指定IDの案件を1件削除する。全件置き換えを使わない安全な単体削除。"""
     if not _cloud_db_enabled() and not os.path.exists(DB_PATH):
         return False
     try:
         ph = _db_placeholder()
         with _case_db_connection() as conn:
+            from case_deletion_audit import begin_case_deletion_event, complete_case_deletion_event
+
+            audit_event = begin_case_deletion_event(
+                conn,
+                [case_id],
+                route=deletion_route,
+                reason=deletion_reason,
+                placeholder=ph,
+                is_postgres=_cloud_db_enabled(),
+            )
             cursor = conn.cursor()
             cursor.execute(f"DELETE FROM past_cases WHERE id = {ph}", (case_id,))
+            deleted_ids = audit_event.matched_case_ids if cursor.rowcount else ()
+            complete_case_deletion_event(conn, audit_event, deleted_ids, placeholder=ph)
             conn.commit()
         refresh_stats_caches()
         return True

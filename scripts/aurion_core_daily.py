@@ -27,12 +27,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault  # noqa: E402
+from screening_record_lifecycle import active_screening_predicate  # noqa: E402
 
 PROJECT_ROOT = _REPO_ROOT
 ORIGIN_VAULT = resolve_obsidian_vault()
@@ -342,19 +342,20 @@ def audit_db() -> dict[str, Any]:
 
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     try:
+        active = active_screening_predicate(conn)
         counts = _query(
             conn,
-            """
+            f"""
             SELECT 'past_cases' table_name, COUNT(*) n FROM past_cases
             UNION ALL SELECT 'ml_features', COUNT(*) FROM ml_features
-            UNION ALL SELECT 'screening_records', COUNT(*) FROM screening_records
+            UNION ALL SELECT 'screening_records', COUNT(*) FROM screening_records WHERE {active}
             UNION ALL SELECT 'screening_outcomes', COUNT(*) FROM screening_outcomes
             UNION ALL SELECT 'excluded_grade_cases', COUNT(*) FROM excluded_grade_cases
             """,
         )
         top_industries = _query(
             conn,
-            """
+            f"""
             SELECT industry_sub, COUNT(*) n, ROUND(AVG(score),1) avg_score,
                    ROUND(MIN(score),1) min_score, ROUND(MAX(score),1) max_score
             FROM past_cases
@@ -391,11 +392,11 @@ def audit_db() -> dict[str, Any]:
         )
         q_risk = _query(
             conn,
-            """
+            f"""
             SELECT COUNT(*) n, ROUND(AVG(q_risk_score),2) avg_q,
                    ROUND(MIN(q_risk_score),2) min_q, ROUND(MAX(q_risk_score),2) max_q
             FROM screening_records
-            WHERE q_risk_score IS NOT NULL
+            WHERE {active} AND q_risk_score IS NOT NULL
             """,
         )
     finally:

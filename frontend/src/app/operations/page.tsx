@@ -1,19 +1,58 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ArrowRight,
   BarChart3,
   CheckCircle2,
   Cloud,
   Database,
   GitBranch,
+  History,
   Lock,
   Orbit,
+  RefreshCw,
   Settings2,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import { apiClient } from "@/lib/api";
+
+type DeletionAuditItem = {
+  case_id: string;
+  parent_table: string;
+  status: "matched" | "deleted" | "not_found" | string;
+};
+
+type DeletionAuditEvent = {
+  event_id: string;
+  occurred_at: string;
+  route: string;
+  reason: string;
+  requested_count: number;
+  matched_count: number;
+  deleted_count: number;
+  affected_screening_count: number;
+  status: "started" | "completed" | "partial" | "no_match" | string;
+  items: DeletionAuditItem[];
+};
+
+type DeletionAuditResponse = {
+  total: number;
+  limit: number;
+  offset: number;
+  events: DeletionAuditEvent[];
+};
+
+type DeletionAuditFilters = {
+  status: string;
+  dateFrom: string;
+  dateTo: string;
+};
+
+const emptyAuditFilters: DeletionAuditFilters = { status: "", dateFrom: "", dateTo: "" };
 
 const operationCards = [
   {
@@ -64,6 +103,49 @@ const successMetrics = [
 ];
 
 export default function OperationsPage() {
+  const [deletionAudit, setDeletionAudit] = useState<DeletionAuditResponse | null>(null);
+  const [deletionAuditError, setDeletionAuditError] = useState("");
+  const [deletionAuditLoading, setDeletionAuditLoading] = useState(true);
+  const [auditFilters, setAuditFilters] = useState<DeletionAuditFilters>(emptyAuditFilters);
+  const [appliedAuditFilters, setAppliedAuditFilters] = useState<DeletionAuditFilters>(emptyAuditFilters);
+
+  const loadDeletionAudit = useCallback(async (filters: DeletionAuditFilters) => {
+    setDeletionAuditLoading(true);
+    setDeletionAuditError("");
+    try {
+      const response = await apiClient.get<DeletionAuditResponse>("/api/admin/deletion-audit", {
+        params: {
+          limit: 50,
+          offset: 0,
+          status: filters.status || undefined,
+          date_from: filters.dateFrom || undefined,
+          date_to: filters.dateTo || undefined,
+        },
+      });
+      setDeletionAudit(response.data);
+      setAppliedAuditFilters(filters);
+    } catch {
+      setDeletionAuditError("削除監査ログを取得できませんでした。");
+    } finally {
+      setDeletionAuditLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDeletionAudit(emptyAuditFilters);
+  }, [loadDeletionAudit]);
+
+  const auditFilterActive = Boolean(
+    appliedAuditFilters.status || appliedAuditFilters.dateFrom || appliedAuditFilters.dateTo,
+  );
+
+  const formatAuditTime = (value: string) => {
+    if (!value) return "—";
+    const normalized = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("ja-JP");
+  };
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
       <section className="border-b border-slate-200 bg-white">
@@ -167,6 +249,178 @@ export default function OperationsPage() {
             </div>
           </section>
         </aside>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 pb-12 md:px-8">
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5 text-rose-600" />
+                <h2 className="text-xl font-black text-slate-950">案件削除監査</h2>
+                {deletionAudit && (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700">
+                    {auditFilterActive ? `該当${deletionAudit.total}件` : `全${deletionAudit.total}件`}
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-sm font-bold leading-6 text-slate-600">
+                削除経路・理由・対象案件ID・関連審査記録を確認する読み取り専用ログです。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadDeletionAudit(appliedAuditFilters)}
+              disabled={deletionAuditLoading}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+            >
+              <RefreshCw className={`h-4 w-4 ${deletionAuditLoading ? "animate-spin" : ""}`} />
+              再読込
+            </button>
+          </div>
+
+          <form
+            className="grid gap-3 border-b border-slate-200 bg-slate-50/70 px-5 py-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void loadDeletionAudit(auditFilters);
+            }}
+          >
+            <label className="text-xs font-black text-slate-700">
+              状態
+              <select
+                value={auditFilters.status}
+                onChange={(event) => setAuditFilters((current) => ({ ...current, status: event.target.value }))}
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-fuchsia-400"
+              >
+                <option value="">すべて</option>
+                <option value="completed">completed（削除完了）</option>
+                <option value="no_match">no_match（対象なし）</option>
+                <option value="partial">partial（一部）</option>
+                <option value="started">started（処理中）</option>
+              </select>
+            </label>
+            <label className="text-xs font-black text-slate-700">
+              開始日
+              <input
+                type="date"
+                value={auditFilters.dateFrom}
+                max={auditFilters.dateTo || undefined}
+                onChange={(event) => setAuditFilters((current) => ({ ...current, dateFrom: event.target.value }))}
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-fuchsia-400"
+              />
+            </label>
+            <label className="text-xs font-black text-slate-700">
+              終了日
+              <input
+                type="date"
+                value={auditFilters.dateTo}
+                min={auditFilters.dateFrom || undefined}
+                onChange={(event) => setAuditFilters((current) => ({ ...current, dateTo: event.target.value }))}
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-fuchsia-400"
+              />
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={deletionAuditLoading}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
+              >
+                絞り込む
+              </button>
+              <button
+                type="button"
+                disabled={deletionAuditLoading || (!auditFilterActive && !auditFilters.status && !auditFilters.dateFrom && !auditFilters.dateTo)}
+                onClick={() => {
+                  setAuditFilters(emptyAuditFilters);
+                  void loadDeletionAudit(emptyAuditFilters);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                解除
+              </button>
+            </div>
+          </form>
+
+          {deletionAuditError ? (
+            <div className="m-5 flex items-center gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              {deletionAuditError}
+            </div>
+          ) : deletionAuditLoading && !deletionAudit ? (
+            <div className="p-8 text-center text-sm font-bold text-slate-500">監査ログを読み込み中...</div>
+          ) : !deletionAudit?.events.length ? (
+            <div className="p-8 text-center">
+              <ShieldCheck className="mx-auto h-8 w-8 text-emerald-500" />
+              <p className="mt-3 text-sm font-black text-slate-800">
+                {auditFilterActive ? "条件に一致する削除イベントはありません" : "導入後の削除イベントはまだありません"}
+              </p>
+              <p className="mt-1 text-xs font-bold text-slate-500">
+                {auditFilterActive ? "条件を変えるか、フィルターを解除してください。" : "過去の削除履歴は推測で補完していません。"}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-black uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3">日時 / 状態</th>
+                    <th className="px-5 py-3">経路 / 理由</th>
+                    <th className="px-5 py-3">件数</th>
+                    <th className="px-5 py-3">対象案件ID</th>
+                    <th className="px-5 py-3">イベントID</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {deletionAudit.events.map((event) => (
+                    <tr key={event.event_id} className="align-top hover:bg-slate-50/70">
+                      <td className="whitespace-nowrap px-5 py-4">
+                        <div className="font-black text-slate-900">{formatAuditTime(event.occurred_at)}</div>
+                        <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-black ${
+                          event.status === "completed"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : event.status === "no_match"
+                              ? "bg-slate-100 text-slate-700"
+                              : "bg-amber-100 text-amber-900"
+                        }`}>
+                          {event.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="font-black text-slate-900">{event.route}</div>
+                        <div className="mt-1 text-xs font-bold text-slate-500">{event.reason || "—"}</div>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-4 text-xs font-bold leading-6 text-slate-600">
+                        <div>要求 {event.requested_count} / 一致 {event.matched_count}</div>
+                        <div>削除 {event.deleted_count} / 審査記録 {event.affected_screening_count}</div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex max-w-md flex-wrap gap-1.5">
+                          {event.items.map((item) => (
+                            <span
+                              key={`${event.event_id}-${item.case_id}`}
+                              title={`${item.parent_table}: ${item.status}`}
+                              className={`rounded-md border px-2 py-1 font-mono text-[11px] font-bold ${
+                                item.status === "deleted"
+                                  ? "border-rose-200 bg-rose-50 text-rose-800"
+                                  : "border-slate-200 bg-slate-50 text-slate-700"
+                              }`}
+                            >
+                              {item.case_id}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="max-w-52 break-all px-5 py-4 font-mono text-[11px] font-bold text-slate-500">
+                        {event.event_id}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
     </main>
   );

@@ -14,16 +14,20 @@ import sqlite3
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from screening_record_lifecycle import active_screening_predicate
+
 
 def export(db_path: str, out_path: str, outcome: str | None = None) -> int:
     """DB から screening_records をエクスポートし、行数を返す。"""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
-    where = ""
+    active = active_screening_predicate(conn)
+    where = f"WHERE {active}"
     params: list = []
     if outcome:
-        where = "WHERE outcome = ?"
+        where += " AND outcome = ?"
         params = [outcome]
 
     rows = conn.execute(

@@ -12,6 +12,12 @@ import os
 import sqlite3
 from typing import Optional
 
+from screening_record_lifecycle import (
+    ensure_screening_lifecycle_columns,
+    is_canonical_case_id,
+    screening_parent_exists,
+)
+
 logger = logging.getLogger(__name__)
 
 VALID_OUTCOMES = {"contracted", "lost", "delinquent", "completed"}
@@ -30,6 +36,9 @@ CREATE TABLE IF NOT EXISTS screening_records (
     outcome                   TEXT,
     input_snapshot            TEXT,
     source                    TEXT    NOT NULL,
+    record_state              TEXT    NOT NULL DEFAULT 'active',
+    parent_deleted_at         TEXT,
+    deletion_event_id         TEXT,
     created_at                TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -45,6 +54,7 @@ class ScreeningRecordResult(dict):
 
 def _ensure_table(conn: sqlite3.Connection) -> None:
     conn.executescript(_DDL)
+    ensure_screening_lifecycle_columns(conn)
 
 
 def _redact_pii(snapshot: dict) -> dict:
@@ -131,6 +141,12 @@ def record_screening_result(
 
         with sqlite3.connect(db_path) as conn:
             _ensure_table(conn)
+            if is_canonical_case_id(case_id) and not screening_parent_exists(conn, case_id):
+                return ScreeningRecordResult(
+                    record_id=-1,
+                    success=False,
+                    error="parent case not found for canonical case_id",
+                )
             cur = conn.execute(
                 """
                 INSERT INTO screening_records
@@ -186,7 +202,7 @@ def update_screening_outcome(
                        updated_at = datetime('now')
                  WHERE id = (
                      SELECT id FROM screening_records
-                      WHERE case_id = ?
+                      WHERE case_id = ? AND COALESCE(record_state, 'active')='active'
                       ORDER BY id DESC
                       LIMIT 1
                  )
@@ -195,7 +211,7 @@ def update_screening_outcome(
             )
             # 更新されたレコードの id を取得
             row = conn.execute(
-                "SELECT id FROM screening_records WHERE case_id=? ORDER BY id DESC LIMIT 1",
+                "SELECT id FROM screening_records WHERE case_id=? AND COALESCE(record_state, 'active')='active' ORDER BY id DESC LIMIT 1",
                 (case_id,),
             ).fetchone()
             record_id = row[0] if row else -1

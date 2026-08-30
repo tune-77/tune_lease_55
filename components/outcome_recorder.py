@@ -17,6 +17,7 @@ from typing import Optional
 
 import streamlit as st
 from runtime_paths import get_data_path
+from screening_record_lifecycle import active_screening_predicate
 
 _DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = get_data_path("lease_data.db")
@@ -135,8 +136,9 @@ def _save_outcome(
 def _get_outcome_summary() -> dict:
     """登録状況サマリーを返す。"""
     conn = _open_db()
+    active = active_screening_predicate(conn)
     total_contracted = conn.execute(
-        "SELECT COUNT(*) FROM screening_records WHERE outcome IN ('contracted','completed')"
+        f"SELECT COUNT(*) FROM screening_records WHERE {active} AND outcome IN ('contracted','completed')"
     ).fetchone()[0]
     registered = conn.execute(
         "SELECT COUNT(DISTINCT case_id) FROM screening_outcomes"

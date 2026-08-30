@@ -2032,10 +2032,31 @@ def clear_all_pending_cases(background_tasks: BackgroundTasks):
     from data_cases import refresh_stats_caches
     try:
         with get_connection() as conn:
-            conn.execute(
+            from api.db_connection import current_backend, placeholder
+            from case_deletion_audit import begin_case_deletion_event, complete_case_deletion_event
+
+            ph = placeholder()
+            deletion_cursor = conn.cursor()
+            deletion_cursor.execute(
+                "SELECT id FROM past_cases "
+                "WHERE COALESCE(NULLIF(final_status, ''), '未登録') IN ('未登録', '稟議中', 'スコアリングのみ')"
+            )
+            rows_to_delete = deletion_cursor.fetchall()
+            target_ids = [str(row[0]) for row in rows_to_delete]
+            audit_event = begin_case_deletion_event(
+                conn,
+                target_ids,
+                route="api.clear_all_pending_cases",
+                reason="clear_pending_statuses",
+                placeholder=ph,
+                is_postgres=current_backend() == "postgresql",
+            )
+            deletion_cursor.execute(
                 "DELETE FROM past_cases "
                 "WHERE COALESCE(NULLIF(final_status, ''), '未登録') IN ('未登録', '稟議中', 'スコアリングのみ')"
             )
+            deleted_ids = audit_event.matched_case_ids if deletion_cursor.rowcount == len(audit_event.matched_case_ids) else ()
+            complete_case_deletion_event(conn, audit_event, deleted_ids, placeholder=ph)
         refresh_stats_caches()
         try:
             for item in _list_cloudrun_score_pending_cases(limit=200):
@@ -2050,13 +2071,46 @@ def clear_all_pending_cases(background_tasks: BackgroundTasks):
         logger.error("clear_all_pending_cases DB error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/api/admin/deletion-audit")
+def get_case_deletion_audit(
+    limit: int = 50,
+    offset: int = 0,
+    status: str = "",
+    date_from: str = "",
+    date_to: str = "",
+):
+    """案件削除イベントを読み取り専用で返す。"""
+    from case_deletion_audit import list_case_deletion_events
+
+    try:
+        with get_connection() as conn:
+            return list_case_deletion_events(
+                conn,
+                limit=limit,
+                offset=offset,
+                placeholder=placeholder(),
+                status=status,
+                date_from=date_from,
+                date_to=date_to,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("get_case_deletion_audit DB error: %s", exc)
+        raise HTTPException(status_code=500, detail="削除監査ログを取得できませんでした") from exc
+
 @app.delete("/api/cases/{case_id}")
 def delete_case(case_id: str, background_tasks: BackgroundTasks):
     """案件を past_cases から削除する"""
     from data_cases import delete_case as delete_case_from_db
     try:
         if not _reject_cloudrun_score_pending_case(str(case_id)) and not _reject_cloudrun_event_pending_case(str(case_id)):
-            delete_case_from_db(str(case_id))
+            delete_case_from_db(
+                str(case_id),
+                deletion_route="api.case_delete",
+                deletion_reason="api_request",
+            )
     except Exception:
         pass
     background_tasks.add_task(_git_push_db)

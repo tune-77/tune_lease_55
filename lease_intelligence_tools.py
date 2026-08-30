@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from runtime_paths import get_data_path, resolve_lease_wiki_vault
+from screening_record_lifecycle import active_screening_predicate
 
 _REPO_PATH = Path(__file__).parent
 
@@ -86,12 +87,13 @@ def search_cases(query: str, limit: int = 5) -> dict[str, Any]:
     """Search recent screening cases by company name or any field in input_snapshot."""
     like = f"%{query}%"
     with closing(_open_db()) as conn:
+        active = active_screening_predicate(conn)
         rows = conn.execute(
-            """
+            f"""
             SELECT case_id, screened_at, total_score, asset_score, tenant_score,
                    q_risk_score, outcome, input_snapshot
             FROM screening_records
-            WHERE case_id LIKE ? OR input_snapshot LIKE ?
+            WHERE {active} AND (case_id LIKE ? OR input_snapshot LIKE ?)
             ORDER BY screened_at DESC
             LIMIT ?
             """,
@@ -121,12 +123,13 @@ def get_score_detail(company_name: str) -> dict[str, Any]:
     """Get latest score detail for a company with factor breakdown and risk flags."""
     like = f"%{company_name}%"
     with closing(_open_db()) as conn:
+        active = active_screening_predicate(conn)
         row = conn.execute(
-            """
+            f"""
             SELECT case_id, screened_at, total_score, asset_score, tenant_score,
                    q_risk_score, competitor_pressure_score, outcome, input_snapshot
             FROM screening_records
-            WHERE case_id LIKE ? OR input_snapshot LIKE ?
+            WHERE {active} AND (case_id LIKE ? OR input_snapshot LIKE ?)
             ORDER BY screened_at DESC
             LIMIT 1
             """,
@@ -454,18 +457,19 @@ def get_screening_activity(period: str = "today", days: int = 0) -> dict[str, An
     else:  # today（未知の値も今日にフォールバック）
         period, start, end, label = "today", today, today, "今日"
 
-    where = ""
     params: list[Any] = []
+    date_condition = ""
     if start is not None and end is not None:
-        where = "WHERE date(screened_at) BETWEEN ? AND ?"
+        date_condition = " AND date(screened_at) BETWEEN ? AND ?"
         params = [start.isoformat(), end.isoformat()]
 
     with closing(_open_db()) as conn:
+        active = active_screening_predicate(conn)
         rows = conn.execute(
             f"""
             SELECT case_id, screened_at, total_score, outcome, input_snapshot
             FROM screening_records
-            {where}
+            WHERE {active}{date_condition}
             ORDER BY screened_at DESC
             """,
             params,
@@ -917,8 +921,9 @@ def get_portfolio_stats() -> dict[str, Any]:
                 "SELECT MIN(timestamp), MAX(timestamp) FROM past_cases"
             ).fetchone()
             try:
+                active = active_screening_predicate(conn)
                 screening_total = conn.execute(
-                    "SELECT COUNT(*) FROM screening_records"
+                    f"SELECT COUNT(*) FROM screening_records WHERE {active}"
                 ).fetchone()[0]
             except Exception:
                 screening_total = None

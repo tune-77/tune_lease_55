@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from api.db_connection import get_connection
 from lease_news_digest import get_latest_lease_news_focus, record_lease_news_view
+from screening_record_lifecycle import active_screening_predicate
 
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 _OBSIDIAN_VAULT_PATH: str = os.environ.get("OBSIDIAN_VAULT_PATH", "") or os.environ.get("OBSIDIAN_VAULT", "")
@@ -97,8 +98,9 @@ def get_latest_screening():
 
             # screening_records から最新スコアを取得
             try:
+                active = active_screening_predicate(conn)
                 sr = conn.execute(
-                    "SELECT total_score, input_snapshot FROM screening_records ORDER BY id DESC LIMIT 1"
+                    f"SELECT total_score, input_snapshot FROM screening_records WHERE {active} ORDER BY id DESC LIMIT 1"
                 ).fetchone()
                 if sr:
                     defaults["score"] = round(float(sr["total_score"]), 1)

@@ -204,8 +204,31 @@ def ensure_schema() -> None:
             outcome TEXT,
             input_snapshot TEXT,
             source TEXT NOT NULL,
+            record_state TEXT NOT NULL DEFAULT 'active',
+            parent_deleted_at TEXT,
+            deletion_event_id TEXT,
             created_at TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL DEFAULT ''
+        )""",
+        # case deletion audit ──────────────────────────────────────────────────
+        """CREATE TABLE IF NOT EXISTS case_deletion_events (
+            event_id TEXT PRIMARY KEY,
+            occurred_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            route TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            requested_count INTEGER NOT NULL,
+            matched_count INTEGER NOT NULL,
+            deleted_count INTEGER NOT NULL DEFAULT 0,
+            affected_screening_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'started',
+            metadata_json TEXT NOT NULL DEFAULT '{}'
+        )""",
+        """CREATE TABLE IF NOT EXISTS case_deletion_event_items (
+            event_id TEXT NOT NULL,
+            case_id TEXT NOT NULL,
+            parent_table TEXT NOT NULL DEFAULT 'past_cases',
+            item_status TEXT NOT NULL DEFAULT 'matched',
+            PRIMARY KEY (event_id, case_id)
         )""",
         # payment_history ────────────────────────────────────────────────────────
         f"""CREATE TABLE IF NOT EXISTS payment_history (
@@ -412,6 +435,8 @@ def ensure_schema() -> None:
         "CREATE INDEX IF NOT EXISTS idx_screening_records_case_id ON screening_records(case_id)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_screened_at ON screening_records(screened_at)",
         "CREATE INDEX IF NOT EXISTS idx_screening_records_outcome ON screening_records(outcome)",
+        "CREATE INDEX IF NOT EXISTS idx_case_deletion_events_occurred ON case_deletion_events(occurred_at)",
+        "CREATE INDEX IF NOT EXISTS idx_case_deletion_items_case ON case_deletion_event_items(case_id)",
         "CREATE INDEX IF NOT EXISTS idx_ph_contract_id ON payment_history(contract_id)",
         "CREATE INDEX IF NOT EXISTS idx_ph_check_date ON payment_history(check_date)",
         "CREATE INDEX IF NOT EXISTS idx_ph_payment_status ON payment_history(payment_status)",
@@ -422,6 +447,10 @@ def ensure_schema() -> None:
             cur = conn.cursor()
             for stmt in _DDL + _IDX:
                 cur.execute(stmt)
+            from screening_record_lifecycle import ensure_screening_lifecycle_columns
+            ensure_screening_lifecycle_columns(conn, is_postgres=is_pg)
+            from case_deletion_audit import ensure_case_deletion_audit_tables
+            ensure_case_deletion_audit_tables(conn, is_postgres=is_pg)
             if not is_pg:
                 conn.commit()
         print(f"[ensure_schema] スキーマ初期化完了 ({current_backend()})")

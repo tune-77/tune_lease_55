@@ -201,6 +201,22 @@ echo ""
 echo "[診断] aurion 自動診断ステータス確認..."
 EXPORT_FILE="${EXPORT_FILE}" "${PYTHON}" "${PROJECT_ROOT}/scripts/check_aurion_state.py"; log_step "check_aurion_state" $?
 
+echo ""
+echo "[診断] 案件削除監査ログの整合性を確認中（読み取り専用・自動修復なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/audit_case_deletion_integrity.py" --strict
+DELETION_AUDIT_EXIT=$?
+log_step "audit_case_deletion_integrity" ${DELETION_AUDIT_EXIT}
+if [ ${DELETION_AUDIT_EXIT} -ne 0 ]; then
+    echo "警告: 案件削除監査ログの不一致を検出しました。reports/case_deletion_integrity_latest.md を確認してください。"
+fi
+
+"${PYTHON}" "${PROJECT_ROOT}/scripts/notify_case_deletion_integrity_slack.py" --apply
+DELETION_AUDIT_SLACK_EXIT=$?
+log_step "notify_case_deletion_integrity_slack" ${DELETION_AUDIT_SLACK_EXIT}
+if [ ${DELETION_AUDIT_SLACK_EXIT} -ne 0 ]; then
+    echo "警告: 案件削除監査のSlack通知に失敗しました。次回の日次実行で再試行します。"
+fi
+
 # 診断用の改善候補抽出
 echo ""
 echo "[診断] Obsidian 改善インデックスから改善案を抽出中..."

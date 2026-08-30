@@ -369,7 +369,16 @@ def render_status_registration():
                         if st.button("🗑️ 案件レコードを完全に削除", key=f"del_full_{rec_id}", type="secondary"):
                             try:
                                 with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
-                                    conn.execute("DELETE FROM past_cases WHERE id=?", (str(rec_id),))
+                                    from case_deletion_audit import begin_case_deletion_event, complete_case_deletion_event
+                                    audit_event = begin_case_deletion_event(
+                                        conn,
+                                        [str(rec_id)],
+                                        route="streamlit.form_status",
+                                        reason="manual_full_delete",
+                                    )
+                                    cursor = conn.execute("DELETE FROM past_cases WHERE id=?", (str(rec_id),))
+                                    deleted_ids = audit_event.matched_case_ids if cursor.rowcount else ()
+                                    complete_case_deletion_event(conn, audit_event, deleted_ids)
                                     conn.commit()
                                 st.toast(f"🗑️ 案件を削除しました")
                                 time.sleep(0.5)

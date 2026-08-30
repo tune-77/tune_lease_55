@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import streamlit as st
 
 from retraining_pipeline import check_retraining_needed, run_retraining
+from screening_record_lifecycle import active_screening_predicate
 
 DB_PATH = "data/lease_data.db"
 MODEL_DIR = "models/"
@@ -23,9 +24,10 @@ st.title("モデル管理")
 def _get_counts(db_path: str) -> tuple[int, int]:
     try:
         conn = sqlite3.connect(db_path)
-        (total,) = conn.execute("SELECT COUNT(*) FROM screening_records").fetchone()
+        active = active_screening_predicate(conn)
+        (total,) = conn.execute(f"SELECT COUNT(*) FROM screening_records WHERE {active}").fetchone()
         (confirmed,) = conn.execute(
-            "SELECT COUNT(*) FROM screening_records WHERE outcome IS NOT NULL"
+            f"SELECT COUNT(*) FROM screening_records WHERE {active} AND outcome IS NOT NULL"
         ).fetchone()
         conn.close()
         return int(total), int(confirmed)
