@@ -1,0 +1,19 @@
+#!include:.gcloudignore
+
+# APIイメージでは使わないWeb/UI・制作素材。
+frontend/
+mebuki/
+
+# 実行時に不要な検証・設計資料。
+tests/
+test_*.py
+docs/
+
+# ローカル専用ツールと生成物。Cloud Run bundleは除外しない。
+.playwright-cli/
+.claude/worktrees/
+artifacts/
+graft/
+awesome-agent-skills/
+the-book-of-secret-knowledge/
+tune_lease_55_wt_*/

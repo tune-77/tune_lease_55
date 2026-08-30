@@ -19,7 +19,6 @@ RUN apt-get update \
 
 COPY --from=python-deps /opt/venv /opt/venv
 COPY . .
-COPY .cloudrun_bundle/ /app/.cloudrun_bundle/
 
 RUN chmod +x scripts/start_cloud_run.sh scripts/start_api_cloud_run.sh \
     && mkdir -p /app/data /app/obsidian_vault /tmp/tune-lease \
