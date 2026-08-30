@@ -19,7 +19,7 @@ PROJECT_ID=test-project
 DATABASE_SECRET_NAME=DATABASE_URL
 CLOUDRUN_DATA_MODE={mode}
 CLOUDSQL_INSTANCE={instance}
-configure_cloud_run_database_deploy_args
+configure_cloud_run_database_deploy_args || exit $?
 printf '%s\n' "${{deploy_args[@]}}"
 """
     return subprocess.run(["bash", "-c", script], text=True, capture_output=True, check=False)
