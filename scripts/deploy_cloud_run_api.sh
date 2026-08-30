@@ -7,6 +7,7 @@ source "$ROOT_DIR/scripts/cloud_run_database_deploy_args.sh"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-asia-northeast1}"
 SERVICE_NAME="${SERVICE_NAME:-tune-lease-55-api}"
+API_IGNORE_FILE="${API_IGNORE_FILE:-$ROOT_DIR/.gcloudignore.api}"
 SHORT_SHA="${SHORT_SHA:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo manual)}"
 MEMORY="${MEMORY:-4Gi}"
 CPU="${CPU:-2}"
@@ -54,6 +55,10 @@ if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "PROJECT_ID is required." >&2
   exit 1
 fi
+if [[ ! -f "$API_IGNORE_FILE" ]]; then
+  echo "API ignore file is required: $API_IGNORE_FILE" >&2
+  exit 1
+fi
 
 echo "Preparing Cloud Run bundle (CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE})..."
 CLOUDRUN_DATA_MODE="$CLOUDRUN_DATA_MODE" "$ROOT_DIR/scripts/package_cloud_run_bundle.sh"
@@ -73,6 +78,7 @@ IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERV
 gcloud builds submit \
   --project "$PROJECT_ID" \
   --config "$ROOT_DIR/cloudbuild.api.yaml" \
+  --ignore-file "$API_IGNORE_FILE" \
   --substitutions _IMAGE_URI="$IMAGE_URI" \
   --suppress-logs \
   "$ROOT_DIR"
