@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/cloud_run_database_deploy_args.sh"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-asia-northeast1}"
@@ -114,26 +115,7 @@ else
   echo "Warning: Secret Manager secret API_ACCESS_KEY was not found. Demo mode stays unauthenticated at the app layer." >&2
 fi
 
-if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
-  echo "Demo mode: DATABASE_URL/Cloud SQL is intentionally not attached."
-  # --add-cloudsql-instances は明示的に外さない限り前リビジョンの設定を引き継ぐため、
-  # 過去に付けたインスタンス（削除済みでも）がぶら下がったまま残ることがある。
-  # demo modeでは常に明示的にクリアしておく。
-  deploy_args+=(--clear-cloudsql-instances)
-else
-  if gcloud secrets describe "$DATABASE_SECRET_NAME" --project "$PROJECT_ID" >/dev/null 2>&1; then
-    deploy_args+=(--set-secrets "DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
-  else
-    echo "Warning: Secret Manager secret ${DATABASE_SECRET_NAME} was not found. Cloud SQL will not be enabled." >&2
-  fi
-
-  if [[ -n "$CLOUDSQL_INSTANCE" ]]; then
-    deploy_args+=(--add-cloudsql-instances "$CLOUDSQL_INSTANCE")
-  else
-    # CLOUDSQL_INSTANCE未指定なら、前リビジョンの古い接続を持ち越さないようクリアする
-    deploy_args+=(--clear-cloudsql-instances)
-  fi
-fi
+configure_cloud_run_database_deploy_args
 
 if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
