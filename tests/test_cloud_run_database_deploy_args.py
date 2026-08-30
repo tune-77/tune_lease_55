@@ -18,6 +18,8 @@ source {HELPER!s}
 gcloud() {{ {secret_result}; }}
 declare -a deploy_args=()
 PROJECT_ID=test-project
+SERVICE_NAME=test-service
+REGION=asia-northeast1
 DATABASE_SECRET_NAME=DATABASE_URL
 CLOUDRUN_DATA_MODE={mode}
 CLOUDSQL_INSTANCE={instance}
@@ -31,7 +33,6 @@ def test_production_without_instance_removes_stale_database_url() -> None:
     result = _database_args(mode="production", instance="")
 
     assert result.returncode == 0
-    assert "--remove-secrets=DATABASE_URL" in result.stdout
     assert "--clear-cloudsql-instances" in result.stdout
     assert "--set-secrets" not in result.stdout
 
@@ -40,8 +41,39 @@ def test_demo_removes_stale_database_url() -> None:
     result = _database_args(mode="demo", instance="")
 
     assert result.returncode == 0
-    assert "--remove-secrets=DATABASE_URL" in result.stdout
     assert "--clear-cloudsql-instances" in result.stdout
+
+
+def test_stale_database_url_is_removed_in_separate_update() -> None:
+    script = f"""
+set -u
+source {HELPER!s}
+gcloud() {{
+  if [[ "$1 $2 $3" == "run services describe" ]]; then
+    printf 'API_ACCESS_KEY DATABASE_URL GEMINI_API_KEY\n'
+    return 0
+  fi
+  printf 'GCLOUD_CALL %s\n' "$*"
+}}
+declare -a deploy_args=()
+PROJECT_ID=test-project
+SERVICE_NAME=test-service
+REGION=asia-northeast1
+DATABASE_SECRET_NAME=DATABASE_URL
+CLOUDRUN_DATA_MODE=production
+CLOUDSQL_INSTANCE=
+configure_cloud_run_database_deploy_args || exit $?
+printf 'DEPLOY_ARG %s\n' "${{deploy_args[@]}}"
+"""
+
+    result = subprocess.run(
+        ["bash", "-c", script], text=True, capture_output=True, check=False
+    )
+
+    assert result.returncode == 0
+    assert "GCLOUD_CALL run services update test-service" in result.stdout
+    assert "--remove-secrets=DATABASE_URL" in result.stdout
+    assert "DEPLOY_ARG --clear-cloudsql-instances" in result.stdout
 
 
 def test_cloud_sql_requires_instance_and_secret_together() -> None:
