@@ -34,6 +34,13 @@ fi
 # api/cloudrun_db_snapshot.py が自動的に無効化するため、この値は非demoモードのみ
 # 効果を持つ（REV-310）。
 GCS_DB_SNAPSHOT_INTERVAL_SECONDS="${GCS_DB_SNAPSHOT_INTERVAL_SECONDS:-300}"
+# 紫苑（軍師AI/ADKエージェント）がVertex AI Searchを能動的にツール呼び出しできるようにする
+# opt-inフラグ。課金対象の外部APIのため既定オフだが、本番でも使う判断が出たため有効化する
+# （api/shion_vertex_tools.py参照）。
+SHION_ENABLE_VERTEX_TOOLS="${SHION_ENABLE_VERTEX_TOOLS:-true}"
+# 通常チャットのVertex Answer APIでGoogle検索グラウンディングを使うか。コード側の既定もtrueだが、
+# 課金を伴う挙動なので本番の環境変数としても明示しておく（api/vertex_agent_search.py参照）。
+VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED="${VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED:-true}"
 # Cloud Run demo でも登録・削除を通常操作として試せるよう、既定では
 # DEMO_READONLY を解除する。公開審査などで削除を塞ぎたい時だけ
 # DEMO_READONLY=1 を明示して上書きする。
@@ -91,7 +98,7 @@ deploy_args=(
   # フォールバックに落ちる（根幹の知識ベースが機能しない状態が続く）。
   # ENABLE_GUNSHI_RAG は別経路（リクエスト同期でembeddingモデルを読む）で
   # 過去に共有プロセスの不安定化を招いた実績があるため、意図的に false のまま。
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/lease_data.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=${SHION_MEMORY_HYBRID},REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY},GCS_DB_SNAPSHOT_INTERVAL_SECONDS=${GCS_DB_SNAPSHOT_INTERVAL_SECONDS},TZ=Asia/Tokyo"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/lease_data.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=${SHION_MEMORY_HYBRID},REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY},GCS_DB_SNAPSHOT_INTERVAL_SECONDS=${GCS_DB_SNAPSHOT_INTERVAL_SECONDS},SHION_ENABLE_VERTEX_TOOLS=${SHION_ENABLE_VERTEX_TOOLS},VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED=${VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED},TZ=Asia/Tokyo"
 )
 
 if gcloud secrets describe GEMINI_API_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
