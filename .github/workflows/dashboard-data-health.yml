@@ -1,0 +1,34 @@
+name: Dashboard Data Health
+
+on:
+  schedule:
+    # 毎時17分。デプロイ直後と重なりにくい時刻にずらす。
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-data-health
+  cancel-in-progress: true
+
+jobs:
+  check-dashboard-data:
+    name: Detect HTTP 200 with unusable dashboard data
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check production dashboard health
+        run: |
+          python scripts/check_dashboard_stats_health.py \
+            --base-url "https://tune-lease-55-web-6mijhyebkq-an.a.run.app" \
+            --attempts 3 \
+            --retry-delay 10 \
+            --timeout 20
