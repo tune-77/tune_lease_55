@@ -50,3 +50,7 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 
 詳細: @.claude/rules/workflow.md | @.claude/rules/security.md | .claude/AGENTS.md
 週次サマリーは `scripts/weekly_self_management.py` が毎週月曜 `WEEKLY_LOG.md` に自動追記（本ファイルには追記しない）
+
+---
+
+初めてこのリポジトリで作業する時・ディレクトリの役割が不明な時は .claude/rules/structure.md を読むこと（2系統の実装の対比、ディレクトリ早見表、開発コマンド早見表）。常時読み込む内容ではないため、必要な時にだけ参照する。
