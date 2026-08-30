@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from scripts import check_cloudrun_demo_readiness as readiness
+
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "scripts" / "cloud_run_database_deploy_args.sh"
@@ -64,3 +66,11 @@ def test_cloud_sql_instance_without_secret_fails_closed() -> None:
 
     assert result.returncode != 0
     assert "Secret Manager secret DATABASE_URL was not found" in result.stderr
+
+
+def test_readiness_accepts_shared_database_deploy_guard() -> None:
+    checks = readiness.CheckRun()
+
+    readiness.check_deploy_scripts(checks)
+
+    assert checks.failures == []

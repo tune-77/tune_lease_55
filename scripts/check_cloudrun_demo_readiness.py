@@ -382,6 +382,13 @@ def check_recent_pipeline_health(checks: CheckRun) -> None:
 
 
 def check_deploy_scripts(checks: CheckRun) -> None:
+    database_guard_text = "DATABASE_URL/Cloud SQL is intentionally not attached"
+    helper_path = ROOT / "scripts" / "cloud_run_database_deploy_args.sh"
+    helper_text = (
+        helper_path.read_text(encoding="utf-8", errors="replace")
+        if helper_path.exists()
+        else ""
+    )
     for rel in ("scripts/deploy_cloud_run.sh", "scripts/deploy_cloud_run_api.sh"):
         path = ROOT / rel
         if not path.exists():
@@ -391,9 +398,16 @@ def check_deploy_scripts(checks: CheckRun) -> None:
         required = (
             "check_cloudrun_demo_readiness.py",
             "CLOUDRUN_DATA_MODE",
-            "DATABASE_URL/Cloud SQL is intentionally not attached",
         )
         missing = [needle for needle in required if needle not in text]
+        has_inline_database_guard = database_guard_text in text
+        has_shared_database_guard = (
+            "cloud_run_database_deploy_args.sh" in text
+            and "configure_cloud_run_database_deploy_args" in text
+            and database_guard_text in helper_text
+        )
+        if not (has_inline_database_guard or has_shared_database_guard):
+            missing.append(database_guard_text)
         # DB_PATH は b497b96（2026-08-16）で demo.db から lease_data.db に
         # 意図的に切替済み（_git_push_db() のバックアップ先不整合修正のため）。
         # 両方の値を許容し、どちらのファイル名でも安全ガード扱いにする。
