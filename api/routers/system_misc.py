@@ -97,6 +97,44 @@ def _cloud_chroma_status() -> dict:
     return status
 
 
+def _knowledge_sync_status(gcs_vault: dict, chroma: dict) -> dict:
+    """VaultのMarkdown件数を基準にChromaDB同期の健全性を判定する。"""
+    indexing_enabled = bool(chroma.get("indexing_enabled"))
+    vault_count = max(0, int(gcs_vault.get("markdown_count") or 0))
+    document_count = max(0, int(chroma.get("document_count") or 0))
+    coverage_ratio = min(1.0, document_count / vault_count) if vault_count else 0.0
+
+    if not indexing_enabled:
+        state = "disabled"
+        reason = "Obsidian indexing is disabled"
+        ready = False
+    elif vault_count == 0:
+        state = "waiting_for_vault"
+        reason = "GCS Vault has no local Markdown files"
+        ready = False
+    elif document_count == 0:
+        state = "empty"
+        reason = "ChromaDB has no indexed documents"
+        ready = False
+    elif document_count < vault_count:
+        state = "partial"
+        reason = "ChromaDB document count is below the Vault Markdown count"
+        ready = False
+    else:
+        state = "ready"
+        reason = "ok"
+        ready = True
+
+    return {
+        "ready": ready,
+        "state": state,
+        "reason": reason,
+        "vault_markdown_count": vault_count,
+        "chroma_document_count": document_count,
+        "coverage_ratio": round(coverage_ratio, 4),
+    }
+
+
 # ── loop-proof helpers ──────────────────────────────────────────────────────
 
 _loop_proof_mod = None
@@ -129,8 +167,10 @@ def get_cloud_status():
     db = _cloud_db_status()
     gcs_vault = _cloud_gcs_vault_status()
     chroma = _cloud_chroma_status()
+    knowledge_sync = _knowledge_sync_status(gcs_vault, chroma)
     ready = db["available"] and (
-        not gcs_vault["enabled"] or gcs_vault["markdown_count"] > 0
+        not gcs_vault["enabled"]
+        or (gcs_vault["markdown_count"] > 0 and knowledge_sync["ready"])
     )
     return {
         "status": "ok" if ready else "degraded",
@@ -138,6 +178,7 @@ def get_cloud_status():
         "db": db,
         "gcs_vault": gcs_vault,
         "chroma": chroma,
+        "knowledge_sync": knowledge_sync,
         "cloud_run": {
             "service": os.environ.get("K_SERVICE", ""),
             "revision": os.environ.get("K_REVISION", ""),
