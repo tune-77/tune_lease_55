@@ -1,7 +1,7 @@
 """知識グラフ・支払アラート・補助金・耐用年数・バッチ審査ルーター (REV-234 Phase11)"""
 from __future__ import annotations
 
-import json, os
+import json, os, re, threading, time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -57,6 +57,15 @@ class BatchSaveRequest(BatchScoreRequest):
 
 def _knowledge_graph_display_path(raw_path: str, file_name: str = "") -> str:
     path = str(raw_path or "").replace("\\", "/")
+    # Cloud Run の GCS 同期先やbundle上の絶対パスを、同じノートIDへ揃える。
+    runtime_roots = {
+        str(os.environ.get("GCS_VAULT_LOCAL_DIR") or "/tmp/gcs_vault").replace("\\", "/").rstrip("/"),
+        str(os.environ.get("OBSIDIAN_VAULT_PATH") or "").replace("\\", "/").rstrip("/"),
+        str(os.environ.get("OBSIDIAN_VAULT") or "").replace("\\", "/").rstrip("/"),
+    }
+    for root in sorted((item for item in runtime_roots if item), key=len, reverse=True):
+        if path.startswith(root + "/"):
+            return path[len(root) + 1:]
     for marker in ("/Obsidian Vault/", "/Documents/"):
         if marker in path:
             tail = path.split(marker, 1)[1]
@@ -67,6 +76,117 @@ def _knowledge_graph_display_path(raw_path: str, file_name: str = "") -> str:
             else:
                 return tail
     return path or str(file_name or "")
+
+
+_KNOWLEDGE_GRAPH_VAULT_CACHE_TTL = 60.0
+_knowledge_graph_vault_cache_lock = threading.Lock()
+_knowledge_graph_vault_cache: dict[str, Any] = {
+    "vault": "",
+    "loaded_at": 0.0,
+    "notes": {},
+}
+_KNOWLEDGE_GRAPH_H2_RE = re.compile(r"^##\s+(.+)$", re.MULTILINE)
+_knowledge_graph_snapshot_cache: dict[str, Any] = {"path": "", "mtime": 0.0, "notes": {}}
+
+
+def _load_knowledge_graph_snapshot_notes() -> dict[str, dict[str, Any]]:
+    """Load the prebuilt, read-only retrieval graph bundled for Cloud Run."""
+    from runtime_paths import get_data_path
+
+    bundle_root = Path(os.environ.get("CLOUDRUN_BUNDLE_DIR") or (_REPO_ROOT + "/.cloudrun_bundle"))
+    candidates = (
+        Path(get_data_path("obsidian_retrieval_graph.json")),
+        bundle_root / "data" / "obsidian_retrieval_graph.json",
+    )
+    snapshot = next((path for path in candidates if path.is_file()), None)
+    if snapshot is None:
+        return {}
+    try:
+        mtime = snapshot.stat().st_mtime
+        if (
+            _knowledge_graph_snapshot_cache.get("path") == str(snapshot)
+            and float(_knowledge_graph_snapshot_cache.get("mtime") or 0.0) == mtime
+        ):
+            return _knowledge_graph_snapshot_cache.get("notes") or {}
+        payload = json.loads(snapshot.read_text(encoding="utf-8"))
+        notes: dict[str, dict[str, Any]] = {}
+        for raw in payload.get("nodes") or []:
+            path = str(raw.get("path") or "").replace("\\", "/")
+            if not path or "Private Reflection" in Path(path).parts:
+                continue
+            headings = {str(item).strip() for item in raw.get("headings") or [] if str(item).strip()}
+            links = {str(item).strip() for item in raw.get("links") or [] if str(item).strip()}
+            notes[path] = {
+                "id": path,
+                "label": str(raw.get("key") or Path(path).stem),
+                "path": path,
+                "category": _knowledge_graph_category(path),
+                "source": _knowledge_graph_source(path),
+                "sections": headings,
+                "wikilinks": links,
+                "chunk_count": max(1, len(headings)),
+                "mtime": float(raw.get("mtime") or 0),
+            }
+        _knowledge_graph_snapshot_cache.update({"path": str(snapshot), "mtime": mtime, "notes": notes})
+        return notes
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {}
+
+
+def _load_knowledge_graph_vault_notes() -> dict[str, dict[str, Any]]:
+    """Build cached file-level graph metadata directly from the runtime Vault.
+
+    Cloud Run may pause background indexing after readiness, leaving Chroma with
+    only a few chunks even though the GCS Vault is complete. The graph itself
+    does not need embeddings, so Markdown can safely fill only the display gap.
+    """
+    from api.knowledge.obsidian_loader import extract_wikilinks
+    from obsidian_query import list_vault_md_files
+    from runtime_paths import get_obsidian_vault_path
+
+    vault = Path(get_obsidian_vault_path())
+    if not vault.is_dir():
+        return {}
+
+    now = time.monotonic()
+    with _knowledge_graph_vault_cache_lock:
+        if (
+            _knowledge_graph_vault_cache.get("vault") == str(vault)
+            and now - float(_knowledge_graph_vault_cache.get("loaded_at") or 0.0)
+            < _KNOWLEDGE_GRAPH_VAULT_CACHE_TTL
+        ):
+            return _knowledge_graph_vault_cache.get("notes") or {}
+
+    notes: dict[str, dict[str, Any]] = {}
+    for md_path in list_vault_md_files(vault):
+        try:
+            rel_parts = md_path.relative_to(vault).parts
+            if "Private Reflection" in rel_parts:
+                continue
+            rel_path = Path(*rel_parts).as_posix()
+            text = md_path.read_text(encoding="utf-8", errors="replace")
+            sections = {match.group(1).strip() for match in _KNOWLEDGE_GRAPH_H2_RE.finditer(text)}
+            notes[rel_path] = {
+                "id": rel_path,
+                "label": md_path.stem,
+                "path": rel_path,
+                "category": _knowledge_graph_category(rel_path),
+                "source": _knowledge_graph_source(rel_path),
+                "sections": sections,
+                "wikilinks": set(extract_wikilinks(text)[:20]),
+                "chunk_count": max(1, len(sections)),
+                "mtime": md_path.stat().st_mtime,
+            }
+        except (OSError, ValueError):
+            continue
+
+    with _knowledge_graph_vault_cache_lock:
+        _knowledge_graph_vault_cache.update({
+            "vault": str(vault),
+            "loaded_at": now,
+            "notes": notes,
+        })
+    return notes
 
 
 def _knowledge_graph_category(path: str) -> str:
@@ -642,14 +762,7 @@ def get_knowledge_graph(limit: int = 180):
             collection = store._collection
             chunk_total = collection.count() if collection is not None else 0
             raw = collection.get(include=["metadatas"]) if chunk_total else None
-        if not raw:
-            return {
-                "nodes": [],
-                "edges": [],
-                "summary": {"indexed_chunks": 0, "notes": 0, "links": 0, "limit": limit},
-                "legend": [],
-            }
-        metadatas = raw.get("metadatas") or []
+        metadatas = (raw or {}).get("metadatas") or []
 
         notes: dict[str, dict[str, Any]] = {}
         stem_to_id: dict[str, str] = {}
@@ -683,6 +796,34 @@ def get_knowledge_graph(limit: int = 180):
                 item["wikilinks"].add(link)
             if stem:
                 stem_to_id.setdefault(stem, note_id)
+
+        # Cloud Run のCPUはリクエスト外で停止しうるため、起動時のバックグラウンド
+        # indexer が途中までしか進まないことがある。要求上限に満たない時だけ、
+        # embedding不要のMarkdownメタデータでグラフ表示を補完する。
+        vault_fallback_used = False
+        vault_notes: dict[str, dict[str, Any]] = {}
+        if len(notes) < limit:
+            vault_notes = dict(_load_knowledge_graph_snapshot_notes())
+            vault_notes.update(_load_knowledge_graph_vault_notes())
+            for note_id, fallback in vault_notes.items():
+                item = notes.get(note_id)
+                if item is None:
+                    notes[note_id] = fallback
+                    item = fallback
+                    vault_fallback_used = True
+                else:
+                    item["sections"].update(fallback["sections"])
+                    item["wikilinks"].update(fallback["wikilinks"])
+                    item["chunk_count"] = max(
+                        int(item.get("chunk_count") or 0),
+                        int(fallback["chunk_count"]),
+                    )
+                    item["mtime"] = max(
+                        float(item.get("mtime") or 0),
+                        float(fallback["mtime"]),
+                    )
+                if fallback.get("label"):
+                    stem_to_id.setdefault(str(fallback["label"]), note_id)
 
         link_counts: dict[str, int] = {note_id: 0 for note_id in notes}
         for note in notes.values():
@@ -825,6 +966,9 @@ def get_knowledge_graph(limit: int = 180):
                 "shown_nodes": len(nodes),
                 "links": len(unique_edges),
                 "limit": limit,
+                "vault_notes": len(vault_notes),
+                "vault_fallback_used": vault_fallback_used,
+                "graph_source": "chroma+vault" if vault_fallback_used else "chroma",
             },
             "legend": [
                 {"label": label, "category": category, "color": color_map[category]}
