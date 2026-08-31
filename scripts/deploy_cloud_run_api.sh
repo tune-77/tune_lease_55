@@ -2,7 +2,6 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$ROOT_DIR/scripts/cloud_run_database_deploy_args.sh"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-asia-northeast1}"
@@ -17,8 +16,6 @@ CONCURRENCY="${CONCURRENCY:-1}"
 MIN_INSTANCES="${MIN_INSTANCES:-0}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
-DATABASE_SECRET_NAME="${DATABASE_SECRET_NAME:-DATABASE_URL}"
-CLOUDSQL_INSTANCE="${CLOUDSQL_INSTANCE:-}"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-production}"
 # 紫苑記憶のハイブリッド想起（キーワード＋埋め込み）。埋め込みモデルは
 # ENABLE_OBSIDIAN_INDEXING の経路で既にロードされるため追加コストは小さい。
@@ -128,7 +125,8 @@ else
   echo "Warning: Secret Manager secret API_ACCESS_KEY was not found. Demo mode stays unauthenticated at the app layer." >&2
 fi
 
-configure_cloud_run_database_deploy_args
+echo "SQLite/GCS mode: DATABASE_URL/Cloud SQL is intentionally not attached."
+deploy_args+=(--remove-secrets=DATABASE_URL --clear-cloudsql-instances)
 
 if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
