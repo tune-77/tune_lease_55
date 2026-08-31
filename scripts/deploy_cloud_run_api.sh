@@ -15,8 +15,6 @@ CONCURRENCY="${CONCURRENCY:-1}"
 MIN_INSTANCES="${MIN_INSTANCES:-0}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
-DATABASE_SECRET_NAME="${DATABASE_SECRET_NAME:-DATABASE_URL}"
-CLOUDSQL_INSTANCE="${CLOUDSQL_INSTANCE:-}"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-production}"
 # 紫苑記憶のハイブリッド想起（キーワード＋埋め込み）。埋め込みモデルは
 # ENABLE_OBSIDIAN_INDEXING の経路で既にロードされるため追加コストは小さい。
@@ -114,26 +112,8 @@ else
   echo "Warning: Secret Manager secret API_ACCESS_KEY was not found. Demo mode stays unauthenticated at the app layer." >&2
 fi
 
-if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
-  echo "Demo mode: DATABASE_URL/Cloud SQL is intentionally not attached."
-  # --add-cloudsql-instances は明示的に外さない限り前リビジョンの設定を引き継ぐため、
-  # 過去に付けたインスタンス（削除済みでも）がぶら下がったまま残ることがある。
-  # demo modeでは常に明示的にクリアしておく。
-  deploy_args+=(--clear-cloudsql-instances)
-else
-  if gcloud secrets describe "$DATABASE_SECRET_NAME" --project "$PROJECT_ID" >/dev/null 2>&1; then
-    deploy_args+=(--set-secrets "DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
-  else
-    echo "Warning: Secret Manager secret ${DATABASE_SECRET_NAME} was not found. Cloud SQL will not be enabled." >&2
-  fi
-
-  if [[ -n "$CLOUDSQL_INSTANCE" ]]; then
-    deploy_args+=(--add-cloudsql-instances "$CLOUDSQL_INSTANCE")
-  else
-    # CLOUDSQL_INSTANCE未指定なら、前リビジョンの古い接続を持ち越さないようクリアする
-    deploy_args+=(--clear-cloudsql-instances)
-  fi
-fi
+echo "SQLite/GCS mode: DATABASE_URL/Cloud SQL is intentionally not attached."
+deploy_args+=(--remove-secrets=DATABASE_URL --clear-cloudsql-instances)
 
 if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")

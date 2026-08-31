@@ -18,8 +18,6 @@ CONCURRENCY="${CONCURRENCY:-1}"
 MIN_INSTANCES="${MIN_INSTANCES:-0}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
-DATABASE_SECRET_NAME="${DATABASE_SECRET_NAME:-DATABASE_URL}"
-CLOUDSQL_INSTANCE="${CLOUDSQL_INSTANCE:-}"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
@@ -77,19 +75,8 @@ else
   echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
 fi
 
-if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
-  echo "Demo mode: DATABASE_URL/Cloud SQL is intentionally not attached."
-else
-  if gcloud secrets describe "$DATABASE_SECRET_NAME" --project "$PROJECT_ID" >/dev/null 2>&1; then
-    deploy_args+=(--set-secrets "DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
-  else
-    echo "Warning: Secret Manager secret ${DATABASE_SECRET_NAME} was not found. Cloud SQL will not be enabled." >&2
-  fi
-
-  if [[ -n "$CLOUDSQL_INSTANCE" ]]; then
-    deploy_args+=(--add-cloudsql-instances "$CLOUDSQL_INSTANCE")
-  fi
-fi
+echo "SQLite/GCS mode: DATABASE_URL/Cloud SQL is intentionally not attached."
+deploy_args+=(--remove-secrets=DATABASE_URL --clear-cloudsql-instances)
 
 if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
