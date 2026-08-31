@@ -13,4 +13,10 @@ if [ ! -x "$PYTHON_BIN" ]; then
   PYTHON_BIN="$(command -v python3)"
 fi
 
-exec "$PYTHON_BIN" "$SCRIPT_DIR/collect_lease_news_to_obsidian.py" "$@"
+"$PYTHON_BIN" "$SCRIPT_DIR/collect_lease_news_to_obsidian.py" "$@"
+
+# 収集直後にGCSへ同期する。日次改善パイプライン（4時）の同期を待つと、
+# その後6時に収集した当日分がCloud Runへ反映されるまで最大1日遅れるため、
+# ここで前倒しして同期する。失敗してもニュース収集自体の成否には影響させない
+# （次回の日次パイプラインの同期ステップで再試行される）。
+"$PYTHON_BIN" "$SCRIPT_DIR/icloud_to_gcs_sync.py" || echo "[run_lease_news_collection] GCS同期に失敗しました" >&2
