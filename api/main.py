@@ -295,19 +295,40 @@ async def lifespan(app: FastAPI):
     # ダウンロードはネットワークI/Oでタイムアウトが効かず起動を長時間ブロックしうるため、
     # readiness確認（/docs）を先に通すためバックグラウンドスレッドで実行する。
     import threading as _gcs_th
-    # ChromaDB インデクサが GCS Vault 同期後の OBSIDIAN_VAULT_PATH を参照できるよう、
-    # 同期完了を通知する（失敗時も set してインデクサを永久待機させない）
-    _gcs_vault_sync_done = _gcs_th.Event()
-
     def _run_gcs_vault_sync():
+        gcs_sync: dict = {"enabled": False, "status": "skipped"}
         try:
             gcs_sync = _sync_gcs_vault_if_enabled()
             if gcs_sync.get("enabled"):
                 print(f"[GCSVault] startup sync: {gcs_sync}")
         except Exception as e:
             print(f"[GCSVault] startup sync failed (non-fatal): {e}")
-        finally:
-            _gcs_vault_sync_done.set()
+
+        # GCS同期とインデックス開始を同じワーカー内で直列化する。
+        # Cloud Runでは同期に10分以上かかることがあり、別スレッドのタイムアウト後に
+        # 同梱Vaultを索引すると、その少数チャンクでChromaDBが固定されてしまう。
+        from runtime_paths import get_obsidian_vault_path
+
+        vault_path = str(gcs_sync.get("local_dir") or get_obsidian_vault_path())
+        if os.environ.get("ENABLE_OBSIDIAN_INDEXING", "false").lower() == "true":
+            try:
+                from api.knowledge.indexer import run_indexing
+
+                added, skipped = run_indexing(vault_path)
+                print(
+                    "[Indexer] startup indexing complete: "
+                    f"vault={vault_path}, added={added}, skipped={skipped}"
+                )
+            except Exception as e:
+                print(f"[API] knowledge indexing failed (non-fatal): {e}")
+
+        if os.environ.get("ENABLE_FEEDBACK_LOADING", "false").lower() == "true":
+            try:
+                from api.knowledge.feedback_watcher import start_background_feedback_loading
+
+                start_background_feedback_loading(vault_path)
+            except Exception as e:
+                print(f"[API] feedback loading start failed (non-fatal): {e}")
     _gcs_th.Thread(target=_run_gcs_vault_sync, daemon=True, name="gcs-vault-sync").start()
     # startup: DB スキーマ自動初期化（REV-167 — Cloud SQL 冷起動時のテーブル不在対策）
     try:
@@ -329,45 +350,11 @@ async def lifespan(app: FastAPI):
             refresh_department_stats_cache()
     except Exception:
         pass
-    # startup: Obsidian ナレッジのバックグラウンドインデックス化（30秒遅延 — OMP競合回避）
-    # 既定では無効。ENABLE_OBSIDIAN_INDEXING=true で明示的に有効化する。
-    # sentence-transformers の重い初期化が --reload 環境下でワーカーをゾンビ化させる
-    # 原因になっていたため、API 主要機能から切り離す。
     import threading as _th
-    if os.environ.get("ENABLE_OBSIDIAN_INDEXING", "false").lower() == "true":
-        def _delayed_indexing():
-            import time as _t; _t.sleep(30)
-            # Cloud Run では GCS Vault 同期の完了時に OBSIDIAN_VAULT_PATH が
-            # /tmp/gcs_vault へ書き換わる。indexer 側の既定パスは import 時に
-            # 固定されるため、同期完了を待ってから実行時のパスを明示して渡す
-            # （待たないと空の /app/obsidian_vault を索引して ChromaDB が空のままになる）
-            if os.environ.get("USE_GCS_VAULT", "").lower() in ("1", "true"):
-                _gcs_vault_sync_done.wait(timeout=600)
-            try:
-                from api.knowledge.indexer import start_background_indexing
-                from runtime_paths import get_obsidian_vault_path
-                start_background_indexing(get_obsidian_vault_path())
-            except Exception as e:
-                print(f"[API] knowledge indexing start failed (non-fatal): {e}")
-        _th.Thread(target=_delayed_indexing, daemon=True, name="delayed-indexer").start()
-    else:
+
+    if os.environ.get("ENABLE_OBSIDIAN_INDEXING", "false").lower() != "true":
         print("[API] Obsidian indexing disabled (set ENABLE_OBSIDIAN_INDEXING=true to enable)")
-    # startup: Obsidian フィードバックのバックグラウンド読み込み（30秒遅延）
-    # 既定では無効。ENABLE_FEEDBACK_LOADING=true で明示的に有効化する。
-    if os.environ.get("ENABLE_FEEDBACK_LOADING", "false").lower() == "true":
-        def _delayed_feedback():
-            import time as _t; _t.sleep(30)
-            # インデクサと同様、GCS Vault 同期後の実行時パスを明示して渡す
-            if os.environ.get("USE_GCS_VAULT", "").lower() in ("1", "true"):
-                _gcs_vault_sync_done.wait(timeout=600)
-            try:
-                from api.knowledge.feedback_watcher import start_background_feedback_loading
-                from runtime_paths import get_obsidian_vault_path
-                start_background_feedback_loading(get_obsidian_vault_path())
-            except Exception as e:
-                print(f"[API] feedback loading start failed (non-fatal): {e}")
-        _th.Thread(target=_delayed_feedback, daemon=True, name="delayed-feedback").start()
-    else:
+    if os.environ.get("ENABLE_FEEDBACK_LOADING", "false").lower() != "true":
         print("[API] Feedback loading disabled (set ENABLE_FEEDBACK_LOADING=true to enable)")
     # startup: 会話履歴テーブルの初期化
     try:
