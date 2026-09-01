@@ -34,11 +34,18 @@ export function isDraftNumericText(value: string): boolean {
   return text === "" || text === "-" || text === "." || text === "-.";
 }
 
-export function focusNextScreeningNumber(current: HTMLInputElement): void {
-  const inputs = Array.from(document.querySelectorAll<HTMLInputElement>("[data-screening-number='true']"));
+export function focusNextNumericInput(current: HTMLInputElement, selector: string): boolean {
+  const scope = current.form || document;
+  const inputs = Array.from(scope.querySelectorAll<HTMLInputElement>(selector))
+    .filter((input) => !input.disabled && input.tabIndex !== -1);
   const index = inputs.indexOf(current);
   const next = inputs[index + 1];
-  if (!next) return;
+  if (!next) return false;
   next.focus();
   next.select();
+  return true;
+}
+
+export function focusNextScreeningNumber(current: HTMLInputElement): void {
+  focusNextNumericInput(current, "[data-screening-number='true']");
 }

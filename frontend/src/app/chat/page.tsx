@@ -15,6 +15,7 @@ import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture
 import { formatLocalDateKey } from "@/lib/date";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import { buildShionEntryGreeting, type ShionEntryGreeting } from "@/lib/shionEntryGreeting";
+import { isImeComposing } from "@/lib/keyboard";
 import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
 
 interface ChatMessage {
@@ -771,7 +772,7 @@ export default function ChatPage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) {
       e.preventDefault();
       sendMessage();
     }

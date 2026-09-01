@@ -11,6 +11,7 @@ import {
   saveLocalChatHistory,
 } from "@/lib/chatLocalHistory";
 import { usePathname } from "next/navigation";
+import { isImeComposing } from "@/lib/keyboard";
 
 const YANAMI_BOT_MESSAGES = [
   "システム稼働中。いつでもサポートします！",
@@ -267,7 +268,7 @@ export default function FloatingMebuki() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) {
       e.preventDefault();
       sendMessage();
     }

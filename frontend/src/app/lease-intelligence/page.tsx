@@ -10,6 +10,7 @@ import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
 import LeasePaymentSimulator from "@/components/analysis/LeasePaymentSimulator";
+import { isImeComposing } from "@/lib/keyboard";
 
 type KnowledgeRef = {
   doc_id: string;
@@ -2355,7 +2356,7 @@ export default function LeaseIntelligencePage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) {
                     e.preventDefault();
                     send();
                   }
