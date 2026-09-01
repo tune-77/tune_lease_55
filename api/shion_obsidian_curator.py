@@ -19,6 +19,18 @@ _GRAPH_EFFECT_JSON = _REPO_ROOT / "reports" / "obsidian_graph_judgment_effect_la
 _RETRIEVAL_GRAPH_JSON = _REPO_ROOT / "data" / "obsidian_retrieval_graph.json"
 _ENV_MONITOR_JSON = _REPO_ROOT / "reports" / "obsidian_environment_monitor_latest.json"
 
+_SKILLS_DIR = _REPO_ROOT / ".claude" / "skills"
+_SYNTAX_GUIDE_SOURCES: dict[str, Path] = {
+    "markdown": _SKILLS_DIR / "obsidian-markdown" / "SKILL.md",
+    "callouts": _SKILLS_DIR / "obsidian-markdown" / "references" / "CALLOUTS.md",
+    "embeds": _SKILLS_DIR / "obsidian-markdown" / "references" / "EMBEDS.md",
+    "properties": _SKILLS_DIR / "obsidian-markdown" / "references" / "PROPERTIES.md",
+    "bases": _SKILLS_DIR / "obsidian-bases" / "SKILL.md",
+    "bases_functions": _SKILLS_DIR / "obsidian-bases" / "references" / "FUNCTIONS_REFERENCE.md",
+    "canvas": _SKILLS_DIR / "json-canvas" / "SKILL.md",
+    "canvas_examples": _SKILLS_DIR / "json-canvas" / "references" / "EXAMPLES.md",
+}
+
 _AUTO_CURATION_EXCLUDED_PARTS = (
     "Daily/",
     "AI Chat/",
@@ -246,7 +258,48 @@ def suggest_obsidian_curation_actions(theme: str = "", limit: int = 5) -> dict[s
     }
 
 
+def get_obsidian_syntax_guide(topic: str = "markdown") -> dict[str, Any]:
+    """Look up Obsidian-flavored syntax guidance for notes, Bases, and Canvas.
+
+    Args:
+        topic: One of markdown, callouts, embeds, properties, bases,
+            bases_functions, canvas, canvas_examples. Unknown values fall
+            back to "markdown".
+
+    Returns:
+        Static reference text vendored from kepano/obsidian-skills under
+        .claude/skills/. Documentation only: no Vault write, no ChromaDB
+        reindex, no prompt change.
+    """
+    key = str(topic or "").strip().lower()
+    if key not in _SYNTAX_GUIDE_SOURCES:
+        key = "markdown"
+    path = _SYNTAX_GUIDE_SOURCES[key]
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {
+            "mode": "obsidian_syntax_guide",
+            "topic": key,
+            "status": "missing_reference_file",
+            "available_topics": sorted(_SYNTAX_GUIDE_SOURCES),
+            "guardrail": "read_only_static_reference_no_vault_write",
+        }
+    max_chars = 6000
+    return {
+        "mode": "obsidian_syntax_guide",
+        "topic": key,
+        "status": "ok",
+        "source": str(path.relative_to(_REPO_ROOT)),
+        "content": text[:max_chars],
+        "truncated": len(text) > max_chars,
+        "available_topics": sorted(_SYNTAX_GUIDE_SOURCES),
+        "guardrail": "read_only_static_reference_no_vault_write",
+    }
+
+
 OBSIDIAN_CURATOR_TOOLS = [
     review_obsidian_vault_health,
     suggest_obsidian_curation_actions,
+    get_obsidian_syntax_guide,
 ]

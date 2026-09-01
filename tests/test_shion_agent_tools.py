@@ -27,6 +27,7 @@ EXPECTED_DB_TOOLS = {
     "get_active_rules",
     "review_obsidian_vault_health",
     "suggest_obsidian_curation_actions",
+    "get_obsidian_syntax_guide",
     "structure_judgment_asset_candidate",
     "validate_lease_source_summary",
     "convert_research_to_screening_insights",
@@ -130,6 +131,20 @@ def test_obsidian_curator_tools_are_read_only_and_bounded():
     assert themed["mode"] == "read_only_obsidian_curator"
     assert "no_chroma_reindex" in themed["guardrail"]
     assert len(themed.get("suggestions", [])) <= 2
+
+
+def test_obsidian_syntax_guide_tool_reads_vendored_reference():
+    from api.shion_obsidian_curator import get_obsidian_syntax_guide
+
+    markdown = get_obsidian_syntax_guide("callouts")
+    assert markdown["status"] == "ok"
+    assert markdown["topic"] == "callouts"
+    assert "no_vault_write" in markdown["guardrail"]
+    assert markdown["content"]
+
+    fallback = get_obsidian_syntax_guide("not_a_real_topic")
+    assert fallback["topic"] == "markdown"
+    assert fallback["status"] == "ok"
 
 
 def test_agentic_skill_tools_are_side_effect_free_and_bounded():
