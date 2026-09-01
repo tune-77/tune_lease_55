@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ElementType } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/lib/api";
+import { isImeComposing } from "@/lib/keyboard";
 import {
   ArrowRight,
   Brain,
@@ -600,7 +601,10 @@ export default function ShionConciergeHome() {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") submit();
+                  if (event.key === "Enter" && !isImeComposing(event)) {
+                    event.preventDefault();
+                    submit();
+                  }
                 }}
                 placeholder="例: 決算書を読んで審査したい / 調査してから判断したい / システム運用を確認したい"
                 className="min-h-12 flex-1 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
