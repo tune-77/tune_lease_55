@@ -2,6 +2,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SECRET_CLEAR_BLOCK = """if (( has_replacement_secrets == 0 )); then
+  deploy_args+=(--clear-secrets)
+fi"""
 
 
 def test_cloud_run_deploy_scripts_do_not_attach_cloud_sql() -> None:
@@ -19,8 +22,18 @@ def test_cloud_run_deploy_scripts_do_not_attach_cloud_sql() -> None:
         assert '--clear-cloudsql-instances' in script
 
 
-def test_cloud_run_deploy_does_not_mix_secret_set_and_remove_flags() -> None:
-    script = (ROOT / "scripts" / "deploy_cloud_run_api.sh").read_text(encoding="utf-8")
+def test_cloud_run_deploy_clears_secrets_only_without_replacements() -> None:
+    expected_replacement_counts = {
+        "scripts/deploy_cloud_run.sh": 2,
+        "scripts/deploy_cloud_run_api.sh": 3,
+    }
 
-    assert "--set-secrets" in script
-    assert "--remove-secrets" not in script
+    for relative_path, expected_count in expected_replacement_counts.items():
+        script = (ROOT / relative_path).read_text(encoding="utf-8")
+
+        assert "has_replacement_secrets=0" in script
+        assert script.count("has_replacement_secrets=1") == expected_count
+        assert SECRET_CLEAR_BLOCK in script
+        assert script.index(SECRET_CLEAR_BLOCK) < script.index("--clear-cloudsql-instances")
+        assert "--set-secrets" in script
+        assert "--remove-secrets" not in script
