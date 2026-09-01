@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+import threading
+import time
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock, patch
@@ -25,7 +27,13 @@ def _setup_gcs_mock() -> MagicMock:
 
 _gcs_mock = _setup_gcs_mock()
 
-from scripts.gcs_vault_loader import GCS_BUCKET, GCS_VAULT_PREFIX, download_vault, load_vault_texts  # noqa: E402
+from scripts.gcs_vault_loader import (  # noqa: E402
+    GCS_BUCKET,
+    GCS_VAULT_PREFIX,
+    _download_worker_count,
+    download_vault,
+    load_vault_texts,
+)
 
 
 def _set_client_mock(client_mock: MagicMock) -> None:
@@ -80,6 +88,47 @@ class TestDownloadVault:
 
         assert (tmp_path / "notes" / "note1.md").read_bytes() == b"# Note 1"
         assert (tmp_path / "notes" / "note2.md").read_bytes() == b"# Note 2"
+
+    def test_downloads_multiple_files_in_parallel(self, tmp_path: Path) -> None:
+        active = 0
+        max_active = 0
+        lock = threading.Lock()
+
+        def _slow_blob(name: str) -> MagicMock:
+            blob = MagicMock()
+            blob.name = name
+
+            def _download(filename: str, **_kwargs: object) -> None:
+                nonlocal active, max_active
+                with lock:
+                    active += 1
+                    max_active = max(max_active, active)
+                time.sleep(0.03)
+                Path(filename).write_text(name, encoding="utf-8")
+                with lock:
+                    active -= 1
+
+            blob.download_to_filename.side_effect = _download
+            return blob
+
+        blobs = [_slow_blob(f"vault/note-{index}.md") for index in range(4)]
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = blobs
+        _set_client_mock(client_mock)
+
+        download_vault(dest_dir=tmp_path, prefix="vault/", max_workers=4)
+
+        assert max_active > 1
+        assert len(list(tmp_path.glob("*.md"))) == 4
+
+    def test_worker_count_is_bounded(self, monkeypatch) -> None:
+        monkeypatch.setenv("GCS_VAULT_DOWNLOAD_WORKERS", "999")
+        assert _download_worker_count() == 32
+        assert _download_worker_count(0) == 1
+
+    def test_invalid_worker_env_uses_default(self, monkeypatch) -> None:
+        monkeypatch.setenv("GCS_VAULT_DOWNLOAD_WORKERS", "invalid")
+        assert _download_worker_count() == 8
 
     def test_skips_non_md_files(self, tmp_path: Path) -> None:
         blobs = [

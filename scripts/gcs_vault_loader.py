@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_VAULT_PREFIX = os.environ.get("GCS_VAULT_PREFIX", "vault/")
 _DEFAULT_LOCAL_DIR = Path("/tmp/gcs_vault")
+_DEFAULT_DOWNLOAD_WORKERS = 8
+_MAX_DOWNLOAD_WORKERS = 32
 
 
 def _bucket_name(value: str) -> str:
@@ -53,11 +56,22 @@ def _prune_stale_markdown(dest: Path, expected_paths: set[Path]) -> int:
     return removed
 
 
+def _download_worker_count(value: int | None = None) -> int:
+    """並列ダウンロード数を1〜32に制限する。"""
+    if value is None:
+        try:
+            value = int(os.environ.get("GCS_VAULT_DOWNLOAD_WORKERS", _DEFAULT_DOWNLOAD_WORKERS))
+        except (TypeError, ValueError):
+            value = _DEFAULT_DOWNLOAD_WORKERS
+    return max(1, min(_MAX_DOWNLOAD_WORKERS, value))
+
+
 def download_vault(
     *,
     dest_dir: Path | None = None,
     bucket: str | None = None,
     prefix: str | None = None,
+    max_workers: int | None = None,
 ) -> Path:
     """GCS の vault プレフィックス配下の .md を dest_dir へダウンロードする。
 
@@ -84,16 +98,22 @@ def download_vault(
 
     pruned = _prune_stale_markdown(dest, {rel for _, rel in md_blobs})
 
-    downloaded = 0
-    for blob, rel in md_blobs:
+    def _download(item: tuple[object, Path]) -> int:
+        blob, rel = item
         local = dest / rel
         local.parent.mkdir(parents=True, exist_ok=True)
         blob.download_to_filename(str(local), timeout=30)
-        downloaded += 1
+        return 1
+
+    workers = min(_download_worker_count(max_workers), len(md_blobs)) if md_blobs else 1
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="gcs-vault-download") as executor:
+        downloaded = sum(executor.map(_download, md_blobs))
 
     logger.info(
-        "[gcs_vault_loader] downloaded %d .md files, pruned %d stale files from gs://%s/%s to %s",
+        "[gcs_vault_loader] downloaded %d .md files with %d workers, "
+        "pruned %d stale files from gs://%s/%s to %s",
         downloaded,
+        workers,
         pruned,
         bkt,
         pfx,
