@@ -63,16 +63,24 @@ deploy_args=(
   --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DB_PATH=/app/data/lease_data.db,GCS_BUCKET=tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
 )
 
+has_replacement_secrets=0
+
 if gcloud secrets describe GEMINI_API_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
   deploy_args+=(--set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest")
+  has_replacement_secrets=1
 else
   echo "Warning: Secret Manager secret GEMINI_API_KEY was not found." >&2
 fi
 
 if gcloud secrets describe ESTAT_APP_ID --project "$PROJECT_ID" >/dev/null 2>&1; then
   deploy_args+=(--set-secrets "ESTAT_APP_ID=ESTAT_APP_ID:latest")
+  has_replacement_secrets=1
 else
   echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
+fi
+
+if (( has_replacement_secrets == 0 )); then
+  deploy_args+=(--clear-secrets)
 fi
 
 echo "SQLite/GCS mode: DATABASE_URL/Cloud SQL is intentionally not attached."
