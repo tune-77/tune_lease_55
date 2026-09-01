@@ -126,7 +126,8 @@ API サービスを非公開にし、Web サービスのサービスアカウン
 
 - **API 側**: FastAPI の `ApiKeyAuthMiddleware`（`api/api_key_auth.py`）が有効化され、
   `/api/*` へのリクエストに一致する `X-API-Key`（または `Authorization: Bearer <key>`）を
-  要求します（`/`, `/healthz`, `/docs` は免除）。未設定時は無効なので、ローカル開発・
+  要求します（`/`, `/health`, `/healthz`, `/docs` は免除）。Cloud Run の公開ヘルスチェックは
+  予約パスとの衝突を避けるため `/health` を使います。未設定時は無効なので、ローカル開発・
   テスト・既存構成は一切壊れません。`REQUIRE_API_ACCESS_KEY`（既定: demoモードは`0`、
   非demoモードは`1`）が`1`かつキー未設定の場合、`/api/*` は503を返します。
 - **Web 側**: `frontend/src/proxy.ts`（Next.js 16 の proxy 規約）が `/api/*` に

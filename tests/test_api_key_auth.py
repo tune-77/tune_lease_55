@@ -20,14 +20,15 @@ def _build_client(monkeypatch, api_key: str) -> TestClient:
     else:
         monkeypatch.delenv("API_ACCESS_KEY", raising=False)
 
-    async def healthz(request):
+    async def health(request):
         return JSONResponse({"ok": True})
 
     async def secret(request):
         return JSONResponse({"data": "sensitive"})
 
     app = Starlette(routes=[
-        Route("/healthz", healthz),
+        Route("/health", health),
+        Route("/healthz", health),
         Route("/api/secret", secret),
     ])
     app.add_middleware(ApiKeyAuthMiddleware)
@@ -63,6 +64,7 @@ def test_rejects_wrong_key(monkeypatch):
     assert client.get("/api/secret", headers={"X-API-Key": "nope"}).status_code == 401
 
 
-def test_health_exempt_even_when_enabled(monkeypatch):
+@pytest.mark.parametrize("path", ["/health", "/healthz"])
+def test_health_exempt_even_when_enabled(monkeypatch, path):
     client = _build_client(monkeypatch, "s3cret")
-    assert client.get("/healthz").status_code == 200
+    assert client.get(path).status_code == 200

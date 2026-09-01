@@ -157,8 +157,15 @@ def _get_build_loop_proof():
 
 # ── endpoints ───────────────────────────────────────────────────────────────
 
-@router.get("/healthz")
-def healthz():
+@router.get("/health")
+@router.get("/healthz", include_in_schema=False)
+def health():
+    """Return a public liveness response.
+
+    Cloud Run reserves some URL paths ending in ``z`` and can return a GFE 404
+    before ``/healthz`` reaches the container. ``/health`` is the canonical
+    Cloud Run endpoint; ``/healthz`` remains as a local compatibility alias.
+    """
     return {"status": "ok"}
 
 

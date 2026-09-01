@@ -22,6 +22,7 @@ client = TestClient(main_module.app)
 # main.py 本体に残るルートと、api/routers/ へ既に抽出済みのルーターの双方から、
 # DB 未セットアップでも 200 を返す代表的な GET エンドポイントを選んでいる。
 SMOKE_GET_PATHS = [
+    "/health",
     "/healthz",
     "/api/dashboard/stats",
     "/api/improvement-log",

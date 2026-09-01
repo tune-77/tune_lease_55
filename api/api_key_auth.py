@@ -19,7 +19,15 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 # 認証不要の公開パス（ヘルスチェック・ルート・APIドキュメント）
-AUTH_EXEMPT_PATHS = {"/", "/healthz", "/docs", "/redoc", "/openapi.json", "/favicon.ico"}
+AUTH_EXEMPT_PATHS = {
+    "/",
+    "/health",
+    "/healthz",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/favicon.ico",
+}
 
 
 def get_api_access_key() -> str:
