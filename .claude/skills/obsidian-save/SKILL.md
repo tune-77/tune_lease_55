@@ -11,3 +11,4 @@ description: ユーザーが「Obsidianに保存」「Vaultに保存」と言っ
 - `lease-wiki-vault` には、ユーザーが明示的に「lease-wiki」「wiki vault」「lease_wikiの方」と指定した場合だけ保存する。
 - リサーチメモや一般メモは、通常Vault内の `Projects/tune_lease_55/Research/`、`Daily/`、または文脈に合う既存フォルダへ保存する。
 - 保存後は、実際の絶対パスを報告し、`lease-wiki-vault` へ保存していないことが重要な文脈では明記する。
+- 保存先パスの判定はこのスキルに従い、Markdown本文の記法（wikilink・frontmatter・callout等）は `obsidian-markdown` スキルに従う。役割は分離されており競合しない。
