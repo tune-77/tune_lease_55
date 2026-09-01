@@ -105,25 +105,34 @@ deploy_args=(
   --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/lease_data.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=${SHION_MEMORY_HYBRID},REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY},GCS_DB_SNAPSHOT_INTERVAL_SECONDS=${GCS_DB_SNAPSHOT_INTERVAL_SECONDS},SHION_ENABLE_VERTEX_TOOLS=${SHION_ENABLE_VERTEX_TOOLS},VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED=${VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED},TZ=Asia/Tokyo"
 )
 
+has_replacement_secrets=0
+
 if gcloud secrets describe GEMINI_API_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
   deploy_args+=(--set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest")
+  has_replacement_secrets=1
 else
   echo "Warning: Secret Manager secret GEMINI_API_KEY was not found." >&2
 fi
 
 if gcloud secrets describe ESTAT_APP_ID --project "$PROJECT_ID" >/dev/null 2>&1; then
   deploy_args+=(--set-secrets "ESTAT_APP_ID=ESTAT_APP_ID:latest")
+  has_replacement_secrets=1
 else
   echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
 fi
 
 if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
   deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
+  has_replacement_secrets=1
 elif [[ "$CLOUDRUN_DATA_MODE" != "demo" ]]; then
   echo "ERROR: Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy non-demo (real data) without an access key. Register it first: gcloud secrets create API_ACCESS_KEY --replication-policy=automatic --project ${PROJECT_ID}" >&2
   exit 1
 else
   echo "Warning: Secret Manager secret API_ACCESS_KEY was not found. Demo mode stays unauthenticated at the app layer." >&2
+fi
+
+if (( has_replacement_secrets == 0 )); then
+  deploy_args+=(--clear-secrets)
 fi
 
 echo "SQLite/GCS mode: DATABASE_URL/Cloud SQL is intentionally not attached."
