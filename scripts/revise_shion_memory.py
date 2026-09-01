@@ -79,12 +79,16 @@ def apply_revisions(index: dict[str, Any], revisions: list[dict[str, Any]]) -> d
                 successor["supersedes"] = supersedes
                 summary["superseded_linked"] += 1
         elif new_content:
+            try:
+                revision_confidence = float(revision.get("confidence") or 0.8)
+            except (TypeError, ValueError):
+                revision_confidence = 0.8
             successor_record = make_memory_record(
                 new_content,
                 source="revision",
                 source_path=str(revision.get("source_path") or old_record.get("source_path") or ""),
                 memory_type=old_record.get("memory_type") or None,
-                confidence=float(revision.get("confidence") or 0.8),
+                confidence=revision_confidence,
             ).to_dict()
             successor_record["supersedes"] = [old_id]
             successor_id = str(successor_record["id"])

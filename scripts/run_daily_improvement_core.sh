@@ -503,12 +503,26 @@ if [ -f "${LATEST_FILE}" ]; then
             echo "警告: 機微情報の疑いを検出したため Gist 更新をスキップします（ローカル結果は保存済み）"
             log_step "gist_safety_block" 1
         elif command -v gh >/dev/null 2>&1; then
-            if gh gist edit "${GIST_ID}" "${LATEST_FILE}" 2>/dev/null; then
-                echo "Gist 更新完了: https://gist.github.com/tune-77/${GIST_ID}"
-                GIST_EXIT=0
-            else
+            # gh gist edit は GitHub API 呼び出しのため単発のネットワーク瞬断で失敗しやすい。
+            # 他の外形監視スクリプト（check_cloudrun_knowledge_sync.py 等）と同じ
+            # リトライ+バックオフの方針に合わせ、最大3回まで再試行する。
+            GIST_EXIT=1
+            GIST_RETRY_DELAY=5
+            for GIST_ATTEMPT in 1 2 3; do
+                GIST_ERR_OUTPUT="$(gh gist edit "${GIST_ID}" "${LATEST_FILE}" 2>&1)"
                 GIST_EXIT=$?
-                echo "警告: Gist 更新に失敗しました（ローカル結果は保存済み）"
+                if [ ${GIST_EXIT} -eq 0 ]; then
+                    echo "Gist 更新完了: https://gist.github.com/tune-77/${GIST_ID}"
+                    break
+                fi
+                echo "警告: Gist 更新に失敗しました（試行 ${GIST_ATTEMPT}/3）: ${GIST_ERR_OUTPUT}"
+                if [ ${GIST_ATTEMPT} -lt 3 ]; then
+                    sleep "${GIST_RETRY_DELAY}"
+                    GIST_RETRY_DELAY=$((GIST_RETRY_DELAY * 2))
+                fi
+            done
+            if [ ${GIST_EXIT} -ne 0 ]; then
+                echo "警告: Gist 更新は3回試行後も失敗しました（ローカル結果は保存済み）"
             fi
             log_step "gist_update" ${GIST_EXIT}
             if [ ${GIST_EXIT} -ne 0 ] && [ ${FINAL_EXIT} -eq 0 ]; then

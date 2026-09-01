@@ -123,6 +123,25 @@ _TYPE_DOMAIN_DEFAULTS: dict[str, tuple[str, str]] = {
 }
 
 
+def _safe_float(value: Any, default: float) -> float:
+    """confidence等の数値フィールドを安全に変換する。
+
+    mind.json / canonical_judgment_rules.json は他プロセスが書くため、
+    想定外の型（文字列ラベル等）が混じっても索引構築全体を落とさない。
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8")
@@ -338,7 +357,7 @@ def _mind_records(path: Path) -> list[dict[str, Any]]:
                 source=str(kp.get("source") or "mind.conversation_keypoint"),
                 source_path=str(path.relative_to(REPO_ROOT)),
                 memory_type=kp.get("memory_type") or None,
-                confidence=float(kp.get("confidence") or 0.75),
+                confidence=_safe_float(kp.get("confidence"), 0.75),
             ).to_dict()
         )
 
@@ -394,11 +413,11 @@ def _canonical_judgment_rule_records(path: Path) -> list[dict[str, Any]]:
             source="canonical_judgment_rules",
             source_path=str(path.relative_to(REPO_ROOT)),
             memory_type="judgment_memory",
-            confidence=float(rule.get("confidence") or 0.82),
+            confidence=_safe_float(rule.get("confidence"), 0.82),
         ).to_dict()
         record["topic"] = str(rule.get("concept") or "")
-        record["evidence_count"] = int(rule.get("evidence_count") or 0)
-        record["user_evidence_count"] = int(rule.get("user_evidence_count") or 0)
+        record["evidence_count"] = _safe_int(rule.get("evidence_count"), 0)
+        record["user_evidence_count"] = _safe_int(rule.get("user_evidence_count"), 0)
         record["evidence_paths"] = list(rule.get("evidence_paths") or [])[:6]
         records.append(record)
     return records
@@ -470,6 +489,20 @@ def _load_previous_fields(path: Path) -> dict[str, dict[str, str]]:
     return previous
 
 
+def _safe_records(label: str, factory: Any) -> list[dict[str, Any]]:
+    """1つの記憶ソースの取り込み失敗が索引全体のビルドを落とさないようにする。
+
+    各ソースの読み込み関数はファイルI/O・JSON解析の例外は個別に握っているが、
+    想定外のフィールド型など未知の異常まで防げるとは限らない。ここで最後の
+    セーフティネットとして広く捕捉し、当該ソースだけ空扱いで継続する。
+    """
+    try:
+        return factory()
+    except Exception as exc:  # noqa: BLE001 - 単一ソースの異常で夜間パイプラインを止めない
+        print(f"警告: 記憶ソース取り込みに失敗（スキップして継続）: {label}: {exc}")
+        return []
+
+
 def build_index(
     previous_index_path: Path | None = None, *, demo_safe: bool = False
 ) -> dict[str, Any]:
@@ -478,42 +511,63 @@ def build_index(
     persistent_path = REPO_ROOT / "PERSISTENT_MEMORY.md"
     if persistent_path.exists():
         records.extend(
-            _memory_bullets_from_markdown(
-                persistent_path,
-                "persistent_memory",
-                memory_layer="persistent",
+            _safe_records(
+                str(persistent_path.relative_to(REPO_ROOT)),
+                lambda: _memory_bullets_from_markdown(
+                    persistent_path,
+                    "persistent_memory",
+                    memory_layer="persistent",
+                ),
             )
         )
 
     memory_path = REPO_ROOT / "MEMORY.md"
     if memory_path.exists():
         records.extend(
-            _memory_bullets_from_markdown(
-                memory_path,
-                "long_term_memory",
-                memory_layer="long_term",
+            _safe_records(
+                str(memory_path.relative_to(REPO_ROOT)),
+                lambda: _memory_bullets_from_markdown(
+                    memory_path,
+                    "long_term_memory",
+                    memory_layer="long_term",
+                ),
             )
         )
 
     memory_dir = REPO_ROOT / "memory"
     if memory_dir.exists():
         for path in sorted(memory_dir.glob("20*.md"))[-14:]:
-            records.extend(_memory_bullets_from_markdown(path, "daily_memory", memory_layer="mid_term"))
+            records.extend(
+                _safe_records(
+                    str(path.relative_to(REPO_ROOT)),
+                    lambda path=path: _memory_bullets_from_markdown(path, "daily_memory", memory_layer="mid_term"),
+                )
+            )
 
     mind_path = REPO_ROOT / "data" / "mind.json"
     if mind_path.exists():
-        records.extend(_mind_records(mind_path))
+        records.extend(_safe_records(str(mind_path.relative_to(REPO_ROOT)), lambda: _mind_records(mind_path)))
 
     # 会話から承認を経て昇格した長期記憶（apply_shion_memory_promotions.py が追記）
     promoted_path = REPO_ROOT / "knowledge_base" / "shion_promoted_memories.md"
     if promoted_path.exists():
-        records.extend(_promoted_memory_records(promoted_path))
+        records.extend(
+            _safe_records(
+                str(promoted_path.relative_to(REPO_ROOT)),
+                lambda: _promoted_memory_records(promoted_path),
+            )
+        )
 
-    records.extend(_knowledge_markdown_records())
+    records.extend(_safe_records("knowledge_base", _knowledge_markdown_records))
 
     canonical_rules_path = REPO_ROOT / "data" / "canonical_judgment_rules.json"
     if canonical_rules_path.exists():
-        records.extend(_canonical_judgment_rule_records(canonical_rules_path))
+        records.extend(
+            _safe_records(
+                str(canonical_rules_path.relative_to(REPO_ROOT)),
+                lambda: _canonical_judgment_rule_records(canonical_rules_path),
+            )
+        )
 
     # Deduplicate by stable id, keeping the first occurrence.
     deduped: dict[str, dict[str, Any]] = {}
@@ -546,8 +600,12 @@ def build_index(
     revisions = load_revisions(REPO_ROOT / "data" / "shion_memory_revisions.jsonl")
     if revisions:
         holder: dict[str, Any] = {"records": final_records}
-        apply_revisions(holder, revisions)
-        final_records = holder["records"]
+        try:
+            apply_revisions(holder, revisions)
+        except Exception as exc:  # noqa: BLE001 - 改訂宣言の異常で索引再構築全体を止めない
+            print(f"警告: 改訂宣言の適用に失敗（スキップして継続）: {exc}")
+        else:
+            final_records = holder["records"]
 
     _enrich_long_term_metadata(final_records)
 

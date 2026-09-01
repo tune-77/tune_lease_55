@@ -255,8 +255,11 @@ def main() -> int:
     try:
         index = json.loads(args.index.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"索引を読めません: {args.index} ({exc})")
-        return 1
+        # 索引ビルド（build_shion_memory_index.py）が同じ夜間パイプライン内で
+        # このステップの直前に走る前提だが、本スクリプトは非推奨の補助経路であり
+        # 索引が一時的に無い/壊れているだけで夜間パイプライン全体を失敗扱いにしない。
+        print(f"警告: 索引を読めないためスキップします: {args.index} ({exc})")
+        return 0
 
     usage_dates = merge_usage_dates(
         load_usage_dates(args.usage_log),
