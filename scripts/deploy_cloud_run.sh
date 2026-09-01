@@ -76,7 +76,7 @@ else
 fi
 
 echo "SQLite/GCS mode: DATABASE_URL/Cloud SQL is intentionally not attached."
-deploy_args+=(--remove-secrets=DATABASE_URL --clear-cloudsql-instances)
+deploy_args+=(--clear-cloudsql-instances)
 
 if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
