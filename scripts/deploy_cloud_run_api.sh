@@ -89,6 +89,7 @@ deploy_args=(
   --port 8080
   --memory "$MEMORY"
   --cpu "$CPU"
+  --no-cpu-throttling
   --timeout "$TIMEOUT"
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
