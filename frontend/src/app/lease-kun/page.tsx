@@ -1336,7 +1336,7 @@ export default function LeaseKunWizard() {
             <button
               type="submit"
               disabled={submitted && step >= STEPS.length - 1}
-              aria-label={step >= STEPS.length - 1 ? '審査を実行する' : `次のステップ「${STEPS[step + 1]}」へ進む`}
+              aria-label={step >= STEPS.length - 1 ? '審査を実行する' : `次に進む: 次のステップ「${STEPS[step + 1]}」へ進む`}
               className={`flex-1 min-h-14 flex touch-manipulation items-center justify-center rounded-2xl border-2 px-4 text-base font-black tracking-wide transition-all active:scale-[0.98] ${submitted && step >= STEPS.length - 1 ? 'border-slate-400 bg-slate-400 text-white cursor-not-allowed' : 'border-[#1A1A2E] bg-[#E8A838] text-[#1A1A2E] shadow-[0_5px_0_#1A1A2E] active:translate-y-1 active:shadow-none'}`}>
               {submitted && step >= STEPS.length - 1 ? '送信済み ✓' : step >= STEPS.length - 1 ? '審査を実行する 🚀' : '次に進む →'}
             </button>
