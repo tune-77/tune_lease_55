@@ -855,6 +855,35 @@ def _explain(pair_anomalies: dict[str, float], rec: dict[str, float]) -> list[st
     return msgs
 
 
+def _build_breakdown(
+    q_risk: float,
+    raw_score: float,
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """q_risk のルール別寄与内訳を組み立てる（表示専用・合計値の計算には一切影響しない）。
+
+    R2 の severity には上限がないため raw_score は 100 を大きく超えることがある。
+    その場合でも画面上の内訳合計が表示 Q_risk と一致するよう、weighted は
+    素点に対する比率を clip 後の値へ按分した「表示上の寄与点」とする。
+    """
+    breakdown: dict[str, Any] = {
+        "total": round(float(q_risk), 2),
+        "raw_total": round(float(raw_score), 2),
+        "clipped": float(raw_score) > 100.0,
+        "items": [],
+    }
+    if not items:
+        return breakdown
+    ordered = sorted(items, key=lambda item: item["contribution"], reverse=True)
+    denom = sum(item["contribution"] for item in ordered) or 1.0
+    for item in ordered:
+        share = item["contribution"] / denom
+        item["share"] = round(share, 4)
+        item["weighted"] = round(share * float(q_risk), 2)
+    breakdown["items"] = ordered
+    return breakdown
+
+
 def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
     """
     財務矛盾ルールによる q_risk 計算。
@@ -891,6 +920,16 @@ def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
 
     score = 0.0
     flags: list[str] = []
+    items: list[dict[str, Any]] = []
+
+    def _add(code: str, label: str, contrib: float, detail: str) -> None:
+        """ルール加点を内訳リストへ記録する（合計値の計算には関与しない表示専用の副作用）。"""
+        items.append({
+            "code": code,
+            "label": label,
+            "contribution": round(float(contrib), 2),
+            "detail": detail,
+        })
 
     # R1: 格付低×利益率高（最強シグナル）
     # 低格付なのに利益率が高い = 粉飾・一過性利益の疑い
@@ -900,6 +939,7 @@ def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
         contrib = 35.0 * max(grade_factor, 0.1) * (0.5 + 0.5 * margin_factor)
         score += contrib
         flags.append(f"格付({grade_raw})と利益率({op_margin:.0%})の矛盾")
+        _add("R1", "格付×利益率の矛盾", contrib, flags[-1])
 
     # R2: 売上規模対比利益率異常（売上はあるが利益が薄すぎる）
     if nenshu_k > 10_000 and op_margin < 0.005:
@@ -907,6 +947,7 @@ def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
         contrib = 20.0 * severity
         score += contrib
         flags.append(f"売上({nenshu_k/1000:.0f}百万)対比利益率異常({op_margin:.1%})")
+        _add("R2", "売上規模対比の利益率異常", contrib, flags[-1])
 
     # R3: 営業赤字
     if op_k < 0:
@@ -914,6 +955,7 @@ def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
         contrib = 25.0 + 15.0 * red_depth
         score += contrib
         flags.append(f"営業赤字({op_k/1000:.1f}百万)")
+        _add("R3", "営業赤字", contrib, flags[-1])
 
     # R4: 特別損益乖離（経常→純利益で大幅減）
     if ord_k > 0 and net_k < ord_k * 0.5:
@@ -921,20 +963,24 @@ def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
         contrib = min(15.0, gap * 20.0)
         score += contrib
         flags.append(f"特別損益乖離（経常→純利益 {gap:.0%}減）")
+        _add("R4", "特別損益乖離", contrib, flags[-1])
 
     # R5: 業種別設備矛盾
     if major_code == "D" and op_k > 0 and mach_k < op_k * 0.3:
         contrib = min(15.0, (1.0 - mach_k / max(op_k * 0.3, 1.0)) * 15.0)
         score += contrib
         flags.append(f"建設業: 設備薄({mach_k/1000:.1f}百万)×高利益({op_k/1000:.1f}百万)")
+        _add("R5", "業種別設備矛盾（建設業）", contrib, flags[-1])
     elif major_code == "H" and op_k > 0 and mach_k < op_k:
         contrib = min(10.0, (1.0 - mach_k / max(op_k, 1.0)) * 10.0)
         score += contrib
         flags.append(f"運輸業: 車両薄({mach_k/1000:.1f}百万)×利益({op_k/1000:.1f}百万)")
+        _add("R5", "業種別設備矛盾（運輸業）", contrib, flags[-1])
 
     q_risk = float(np.clip(score, 0.0, 100.0))
     return {
         "quantum_risk":      round(q_risk, 2),
+        "q_risk_breakdown":  _build_breakdown(q_risk, score, items),
         "pair_anomalies":    {},
         "pair_contributions": {},
         "explained_risk":    round(q_risk, 2),
@@ -951,6 +997,7 @@ def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
 def _null_result() -> dict[str, Any]:
     return {
         "quantum_risk": 0.0,
+        "q_risk_breakdown": None,
         "pair_anomalies": {},
         "pair_contributions": {},
         "explained_risk": 0.0,
