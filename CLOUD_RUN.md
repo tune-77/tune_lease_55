@@ -96,6 +96,37 @@ traffic or tagged at 0%) are never deleted. Among the rest, the most recent
 `--keep` revisions per service (default 5) are kept for rollback headroom;
 only older, untagged, 0%-traffic revisions beyond that are removed.
 
+## Artifact Registry cleanup
+
+Cloud Run revision cleanup does not delete container images. The shared
+`cloud-run-source-deploy` repository therefore uses
+`config/artifact_registry_cleanup_policy.json` to delete versions older than
+one day while retaining the 15 newest Artifact Registry versions for each API
+and Web package. A Docker push currently produces approximately three registry
+versions (the runnable image plus index/metadata records), so this preserves
+roughly five deployable build generations for rollback.
+
+Apply the policy in dry-run mode first, then enable deletion after reviewing
+the repository details:
+
+```bash
+gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy \
+  --project gen-lang-client-0420497423 \
+  --location asia-northeast1 \
+  --policy config/artifact_registry_cleanup_policy.json \
+  --dry-run
+
+gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy \
+  --project gen-lang-client-0420497423 \
+  --location asia-northeast1 \
+  --policy config/artifact_registry_cleanup_policy.json \
+  --no-dry-run
+```
+
+Cleanup runs asynchronously and can take approximately one day. The policy
+also lets obsolete combined/local-demo packages expire because only the active
+API and Web package prefixes receive the 15-version keep rule.
+
 ## セキュリティ: アクセス制御（重要）
 
 **両サービスとも既定で `--allow-unauthenticated`（Cloud Run IAM レベルでは無認証公開）
