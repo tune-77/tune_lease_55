@@ -1,7 +1,12 @@
 // 紫苑レビュー（審査分析画面の AI レビュー）を screening（PC）と lease-kun（スマホ）の
 // 両方から同一ロジックで呼べるようにするための、状態を持たない純粋関数・型の置き場。
-// プロンプト文面や過去事例の扱いがここから外れると、画面間で紫苑の挙動が食い違うため、
+// プロンプト文面がここから外れると画面間で紫苑の挙動が食い違うため、
 // 生成ロジックは screening/page.tsx に重複定義せず必ずここを参照すること。
+//
+// REV-358: 紫苑レビューには過去事歴（類似経験ケース・過去レビュー本文・過去会社名）を一切渡さない。
+// 類似度計算が実質キーワード一致で無関係な会社を拾っていたため、レビューは今回案件の
+// 数値・定性情報・判断資産だけで書く。過去案件は「過去案件から作成」入力アシストと
+// 経験ケースパネル（screening/page.tsx）の側にのみ残す。
 
 export type ShionReviewFeedback = "useful" | "needs_fix" | "wrong" | "specific" | "thin" | "discomfort_hit" | "over_inferred";
 export type JudgmentAssetCandidateFeedback = "useful" | "neutral" | "rejected";
@@ -43,20 +48,10 @@ export type JudgmentAssetCandidate = {
   userFeedback?: JudgmentAssetCandidateFeedback;
 };
 
-export type PastCompanyHighlight = {
-  name: string;
-  label: "類似案件" | "過去レビュー" | "反面教師";
-  experienceCase?: DemoSimilarPastCase;
-  pastReview?: PastShionScreeningReview;
-};
-
-export type PastShionScreeningReview = {
-  company_name?: string;
-  industry_sub?: string;
-  score?: number;
-  hantei?: string;
-  review_text?: string;
-  created_at?: string;
+// 紫苑レビューの人間評価だけを読むための最小形。
+// REV-358 以降、過去レビューから紫苑へ渡してよいのは「書き方への評価ラベル」だけで、
+// 社名・スコア・本文は渡さない。API レスポンスには他のフィールドも含まれるが、意図的に読まない。
+export type ShionReviewFeedbackSample = {
   user_feedback?: ShionReviewFeedback | "";
 };
 
@@ -117,29 +112,6 @@ export const normalizeReviewText = (text: string) =>
     .replace(/\\n/g, "\n")
     .trim();
 
-export const validPastCompanyName = (name: string) =>
-  name.length >= 2 && name !== "名称不明" && name !== "名称未設定";
-
-export const uniquePastCompanyHighlights = (
-  reviews: PastShionScreeningReview[],
-  experienceCases: DemoSimilarPastCase[],
-): PastCompanyHighlight[] => {
-  const byName = new Map<string, PastCompanyHighlight>();
-  experienceCases.forEach((item) => {
-    const name = String(item.companyName || "").trim();
-    if (validPastCompanyName(name) && !byName.has(name)) {
-      byName.set(name, { name, label: "類似案件", experienceCase: item });
-    }
-  });
-  reviews.forEach((review) => {
-    const name = String(review.company_name || "").trim();
-    if (!validPastCompanyName(name)) return;
-    const label: PastCompanyHighlight["label"] = ["wrong", "thin", "over_inferred"].includes(String(review.user_feedback)) ? "反面教師" : "過去レビュー";
-    byName.set(name, { name, label, pastReview: review, experienceCase: byName.get(name)?.experienceCase });
-  });
-  return Array.from(byName.values());
-};
-
 export const judgmentAssetHighlightTerms = (candidates: JudgmentAssetCandidate[]) => {
   const terms = candidates
     .flatMap((candidate) => {
@@ -164,77 +136,35 @@ export const judgmentAssetHighlightTerms = (candidates: JudgmentAssetCandidate[]
   return Array.from(byTerm.values());
 };
 
-export const ensurePastCompanyMentionInReview = (
-  reviewText: string,
-  pastCompanies: PastCompanyHighlight[],
+// 否定的な人間評価と、それを受けて次のレビューで直すべきことの対応表。
+// 扱うのは「レビュー文の書き方」への指摘だけで、案件の中身には触れない。
+const NEGATIVE_REVIEW_FEEDBACK_ACTIONS: Partial<Record<ShionReviewFeedback, string>> = {
+  thin: "リスク項目の列挙で終わらせず、注目する1点に絞って根拠まで掘り下げること。",
+  over_inferred: "根拠の薄い推測を断定で書かず、確認論点・仮説として置くこと。",
+  wrong: "案件情報から確認できないことを事実として書かないこと。",
+  needs_fix: "そのまま稟議に貼れる粒度まで具体化して書くこと。",
+};
+
+// 直近レビューへの人間評価から、次のレビューへの自己補正1ブロックを作る。
+// 過去案件の社名・スコア・本文は渡さない（REV-358 の方針）。評価ラベルだけを使う。
+export const buildReviewQualityFeedbackBlock = (
+  feedbacks: (ShionReviewFeedback | "" | undefined)[],
 ) => {
-  const company = pastCompanies.find((item) => validPastCompanyName(item.name));
-  if (!company || reviewText.includes(company.name)) return reviewText;
-  const detail = company.experienceCase;
-  const comparison = detail
-    ? `${company.name}（${detail.decision} / ${detail.outcome}）では「${detail.lesson}」が残っており、今回も似ている点より導入目的・返済原資・今回固有の差分を確認します。`
-    : `${company.name}の過去レビューを参照し、今回案件との共通点と差分を確認します。`;
-  const insertion = `過去取引事例: ${comparison}`;
-  if (/2\.\s*数字だけでは見落としそうな違和感/.test(reviewText)) {
-    return reviewText.replace(
-      /(2\.\s*数字だけでは見落としそうな違和感[^\n]*\n)/,
-      `$1${insertion}\n`,
-    );
+  const counts = new Map<ShionReviewFeedback, number>();
+  for (const feedback of feedbacks) {
+    if (!feedback || !NEGATIVE_REVIEW_FEEDBACK_ACTIONS[feedback]) continue;
+    counts.set(feedback, (counts.get(feedback) || 0) + 1);
   }
-  return `${reviewText.trim()}\n\n${insertion}`;
-};
-
-export const ensureCandidateJudgmentAssetMentionInReview = (
-  reviewText: string,
-  candidates: JudgmentAssetCandidate[],
-) => {
-  const candidate = candidates.find((item) => !isCanonicalJudgmentAsset(item));
-  const claim = (candidate?.edited_claim || candidate?.effective_claim || candidate?.claim || "").trim();
-  if (!candidate || !claim || reviewText.includes(claim)) return reviewText;
-  const insertion = `昇格候補: ${claim}`;
-  if (/3\.\s*条件付き承認にするなら必要な確認/.test(reviewText)) {
-    return reviewText.replace(
-      /(3\.\s*条件付き承認にするなら必要な確認[^\n]*\n)/,
-      `$1${insertion}\n`,
-    );
-  }
-  return `${reviewText.trim()}\n\n${insertion}`;
-};
-
-export const buildDemoSimilarPastCaseBlock = (cases: DemoSimilarPastCase[]) => {
-  if (!cases.length) return "";
+  if (!counts.size) return "";
+  const ranked = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2);
   return [
-    "【保存済み経験ケース】",
-    "次の事例は、DBに保存された類似経験ケースです。今回と同じ扱いにせず、共通点・違い・今回なら何を確認するかを明示してください。",
-    ...cases.slice(0, 3).map((item, index) => [
-      `事例${index + 1}: ${item.companyName} / ${item.period} / ${item.industry}`,
-      item.similarityScore ? `類似度: ${Math.round(item.similarityScore)} / 理由: ${(item.similarityReasons || []).join("・") || "未計算"}` : "",
-      `スコア・判断: ${item.score.toFixed(1)}点 / ${item.decision} / ${item.outcome}`,
-      `似ている点: ${item.similarity}`,
-      `当時の対応: ${item.actionTaken}`,
-      `得た教訓: ${item.lesson}`,
-      `今回との差分: ${item.difference}`,
-    ].filter(Boolean).join("\n")),
-  ].join("\n");
-};
-
-export const buildPastReviewBlock = (reviews: PastShionScreeningReview[]) => {
-  if (!reviews.length) return "";
-  const lines = reviews.slice(0, 3).map((review, index) => {
-    const preview = normalizeReviewText(review.review_text || "").slice(0, 260);
-    const feedbackLabel = review.user_feedback
-      ? `人間評価: ${FEEDBACK_LABELS[review.user_feedback] || review.user_feedback}`
-      : "人間評価: 未評価";
-    return [
-      `過去${index + 1}: ${review.company_name || "名称不明"} / ${review.industry_sub || "業種不明"} / ${review.score != null ? Number(review.score).toFixed(1) + "点" : "点数不明"} / ${review.hantei || "判定不明"}`,
-      feedbackLabel,
-      `紫苑の過去レビュー: ${preview || "本文なし"}`,
-    ].join("\n");
-  });
-  return [
-    "【過去の紫苑審査レビュー記憶】",
-    "次の過去レビューは、今回の判断に似た経験として参照してください。人間評価が「使えた」は重めに、「違った」は反面教師として扱い、丸写しではなく今回との差分を見てください。",
-    ...lines,
+    "【直近レビューへの人間評価】",
+    "次は、今回案件とは無関係に、あなたの直近レビューの書き方に対して人間が付けた評価です。同じ指摘を繰り返さないでください。",
+    ...ranked.map(([feedback, count]) => (
+      `・「${FEEDBACK_LABELS[feedback]}」${count}件 → ${NEGATIVE_REVIEW_FEEDBACK_ACTIONS[feedback]}`
+    )),
   ].join("\n");
 };
 
@@ -261,10 +191,9 @@ export const buildVertexSearchHint = (result: Record<string, any>, data: Record<
 export const buildShionReviewPrompt = (
   result: Record<string, any>,
   data: Record<string, any>,
-  pastReviews: PastShionScreeningReview[] = [],
-  experienceCases: DemoSimilarPastCase[] = [],
   judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
   judgmentAssetAdaptationMode: JudgmentAssetAdaptationMode = "standard",
+  recentReviewFeedbacks: (ShionReviewFeedback | "" | undefined)[] = [],
 ) => {
   const score = getScreeningScore(result);
   const baseScore = Number(result.score_base);
@@ -276,18 +205,22 @@ export const buildShionReviewPrompt = (
     "【Vertex補助検索ヒント】",
     vertexSearchHint || "リース審査 判断資産 物件リスク 返済余力 承認条件",
     "",
-    "出力は短く、次の4項目でお願いします。",
-    "1. 紫苑の第一印象",
-    "2. 数字だけでは見落としそうな違和感（過去取引事例を1社名つきで比較）",
-    "3. 条件付き承認にするなら必要な確認",
-    "4. 稟議で残すべき一文",
+    "出力は短くしてください。必ず書くのは次の2項目だけです。",
+    "・違和感: 数字だけでは見落としそうな点。何を根拠にそう感じたかまで書く。",
+    "・稟議に残す一文: そのまま稟議書に貼れる一文。",
+    "",
+    "そのうえで、この案件で書く価値がある項目だけを次から1〜2個選んで足してください。",
+    "選択肢: 第一印象 / 条件付き承認にするなら必要な確認 / この見立てが外れるとしたら何か（反証） / 物件と保全の見方 / 今回は論点が薄いと判断した理由",
+    "・用意された項目を全部書かないでください。選んだ項目名をそのまま見出しにし、番号や決まった順番に縛られなくてよいです。",
+    "・毎回同じ組み合わせを選ばないでください。案件の性質から見て書く意味がある項目を選んでください。",
+    "・埋めるための一般論を足さないでください。書くことがなければ項目は2つだけで構いません。",
     "",
     "専門家としての深掘りルール:",
     "・単なるリスク項目の列挙で終えず、「私ならこの点に注目します」と審査担当者目線の優先順位を1つ示してください。",
-    "・Q2では、提示された数字・Q_risk・定性項目・現場メモ・過去事例のうち、何が違和感の根拠になったかを具体的に結びつけてください。",
-    "・過去事例を使う場合は、社名だけを飾りにせず、似ている点、違う点、今回の確認事項への変換を短く書いてください。",
+    "・違和感の項目では、提示された数字・Q_risk・定性項目・現場メモのうち何が根拠になったかを具体的に結びつけてください。",
     "・根拠が薄い違和感は断定せず、「確認論点」「仮説」「稟議で聞くべきこと」として表現してください。",
     "・不確実な推測で採否を誘導しないでください。違和感は減点ではなく、人間が確認するための論点です。",
+    "・過去の類似案件や他社事例は渡していません。手元にない過去事例を推測で作って引用しないでください。",
     "",
     "複数見立てサンプリング:",
     "・回答を書く前に、内部で5つの見立て候補を作り、それぞれに候補重みを置いてください。",
@@ -337,14 +270,6 @@ export const buildShionReviewPrompt = (
       lines.push(`  - ${label}: ${status}${reason ? `（理由: ${reason}）` : ""}`);
     }
   }
-  const demoPastCaseBlock = buildDemoSimilarPastCaseBlock(experienceCases);
-  if (demoPastCaseBlock) {
-    lines.push("", demoPastCaseBlock);
-  }
-  const pastReviewBlock = buildPastReviewBlock(pastReviews);
-  if (pastReviewBlock) {
-    lines.push("", pastReviewBlock);
-  }
   if (judgmentAssetCandidates.length) {
     const hasCanonicalAssets = judgmentAssetCandidates.some((item) => (
       item.source === "canonical_judgment_rules" || item.promotion_status === "active" || item.verified_status === "canonical"
@@ -374,25 +299,20 @@ export const buildShionReviewPrompt = (
       )),
     );
   }
-  if (experienceCases.length || pastReviews.length) {
-    lines.push(
-      "",
-      "過去会社引用ルール:",
-      "・保存済み経験ケースまたは過去レビューがある場合、2番か3番の本文中で必ず過去会社名を1社以上明示してください。",
-      "・会社名を出したうえで、似ている点、違う点、今回の追加確認にどう使うかを短く述べてください。",
-      "・過去会社を丸写しせず、今回案件との差分を判断材料にしてください。",
-    );
+  const reviewQualityFeedbackBlock = buildReviewQualityFeedbackBlock(recentReviewFeedbacks);
+  if (reviewQualityFeedbackBlock) {
+    lines.push("", reviewQualityFeedbackBlock);
   }
   lines.push("", "注意: 点数の再説明ではなく、審査判断として何を残すかに寄せてください。");
   return lines.join("\n");
 };
 
+// LLM 応答が得られなかったときの簡易生成。定型文なので、カード側で「簡易生成」バッジを出して
+// 紫苑が書いた本文と区別できるようにしている（ShionScreeningReviewCard の isFallback）。
 export const buildShionReviewFallback = (
   result: Record<string, any>,
   data: Record<string, any>,
   judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
-  experienceCases: DemoSimilarPastCase[] = [],
-  pastReviews: PastShionScreeningReview[] = [],
 ) => {
   const score = getScreeningScore(result);
   const hantei = String(result.hantei || "未判定");
@@ -409,7 +329,6 @@ export const buildShionReviewFallback = (
   const canonicalAsset = judgmentAssetCandidates.find((item) => isCanonicalJudgmentAsset(item));
   const primaryAsset = candidateAsset || canonicalAsset || judgmentAssetCandidates[0];
   const secondaryAsset = judgmentAssetCandidates.find((item) => item.id !== primaryAsset?.id);
-  const pastCompany = uniquePastCompanyHighlights(pastReviews, experienceCases).at(0);
   const assetSources = judgmentAssetCandidates.slice(0, 3).map((item) => {
     const label = isCanonicalJudgmentAsset(item) ? "正規" : "候補";
     return `判断資産出典: ${label} JA-${item.id.slice(0, 8)} / ${item.research_topic || item.candidate_type || "screening"}`;
@@ -417,18 +336,15 @@ export const buildShionReviewFallback = (
   const primaryClaim = primaryAsset?.edited_claim || primaryAsset?.effective_claim || primaryAsset?.claim || "";
   const secondaryClaim = secondaryAsset?.edited_claim || secondaryAsset?.effective_claim || secondaryAsset?.claim || "";
   return [
-    "1. 紫苑の第一印象",
-    `${companyName}は${industry}の${assetName}案件です。総合スコアは${Number.isFinite(score) ? `${score.toFixed(1)}点` : "未算出"}、判定は${hantei}。点数だけで終わらせず、導入目的と返済原資の具体性を確認してから条件を組む案件です。`,
+    "違和感",
+    `${companyName}は${industry}の${assetName}案件、総合スコア${Number.isFinite(score) ? `${score.toFixed(1)}点` : "未算出"}で判定は${hantei}です。私なら、${qRiskText}と現場メモの具体性の差に注目します。営業メモは「${memo}」、導入目的は「${purpose}」。ここが抽象的なままだと、資金使途・稼働開始・売上寄与の説明が弱くなります。これは断定的な否認材料ではなく、確認論点として扱います。`,
     "",
-    "2. 数字だけでは見落としそうな違和感",
-    `私なら、${qRiskText}と現場メモの具体性の差に注目します。営業メモは「${memo}」、導入目的は「${purpose}」。ここが抽象的なままだと、資金使途・稼働開始・売上寄与の説明が弱くなります。${pastCompany ? `過去の${pastCompany}と比べる場合も、社名の類似ではなく、似ている点・違う点・今回追加で聞くべきことに分けて確認します。` : "これは断定的な否認材料ではなく、確認論点として扱います。"}`,
-    "",
-    "3. 条件付き承認にするなら必要な確認",
+    "条件付き承認にするなら必要な確認",
     primaryClaim
       ? `判断資産を使うなら、まず「${primaryClaim}」を今回案件向けに確認質問へ落とします。${secondaryClaim ? `加えて「${secondaryClaim}」も条件文に使えるかを見ます。` : ""}`
       : "資金繰り表、稼働開始時期、既存債務、競合条件、物件の換価性を確認し、条件付き承認に足る説明を作ります。",
     "",
-    "4. 稟議で残すべき一文",
+    "稟議に残す一文",
     `本件は${assetName}導入による収益寄与と支払原資の具体性を確認し、未達時の代替返済原資または追加条件を明記したうえで判断する。`,
     ...(assetSources.length ? ["", ...assetSources] : []),
   ].join("\n");
@@ -437,7 +353,6 @@ export const buildShionReviewFallback = (
 export const buildShionThoughtProcessSteps = (
   result: Record<string, any>,
   judgmentAssetCandidates: JudgmentAssetCandidate[],
-  pastCompanies: PastCompanyHighlight[],
   review: ShionScreeningReview | null,
 ): ShionThoughtStep[] => {
   const steps: ShionThoughtStep[] = [];
@@ -484,11 +399,6 @@ export const buildShionThoughtProcessSteps = (
   ));
   if (assetItems.length) {
     steps.push({ title: "参照した判断資産", items: assetItems });
-  }
-
-  const companyItems = pastCompanies.slice(0, 5).map((c) => `${c.name}（${c.label}）`);
-  if (companyItems.length) {
-    steps.push({ title: "参照した過去事例", items: companyItems });
   }
 
   if (review) {
