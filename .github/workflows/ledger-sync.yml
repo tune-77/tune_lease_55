@@ -5,6 +5,14 @@ on:
     types: [closed]
     branches: [master]
 
+# 短時間に複数PRがマージされると、古い run が master から計算した後に新しい run の
+# push を追い越して force push し、新しいエントリを落とした状態で両方が成功扱いに
+# なりうる。同一グループで直列化して防ぐ。待機中の run は後続に置き換えられるが、
+# 各 run はマージ済みPR一覧から毎回全再計算するため最後の run だけで内容は完全になる。
+concurrency:
+  group: ledger-sync
+  cancel-in-progress: false
+
 jobs:
   sync-ledger:
     if: github.event.pull_request.merged == true
@@ -74,32 +82,45 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           EXISTING=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number' || true)
-          if [ -n "$EXISTING" ]; then
-            echo "既存の台帳PR #${EXISTING} を更新しました（マージすれば master へ反映されます）" \
-              >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+
+          if [ -z "$EXISTING" ]; then
+            BODY=$(printf '%s\n' \
+              "マージ済みPRから \`cleanup_improvement_reviews.py --apply\` が再計算した改善台帳です。" \
+              "" \
+              "このPRは \`$SYNC_BRANCH\` 1本を上書きし続ける形で更新されます。" \
+              "GITHUB_TOKEN 作成のPRでは再帰防止により pr-checks.yml が起動しないため、" \
+              "ledger-sync ジョブ内で validate_improvement_ledger.py を通しています。")
+
+            if ! gh pr create --base master --head "$SYNC_BRANCH" \
+              --title "chore: ledger sync" --body "$BODY"; then
+              {
+                echo "### 台帳が master へ入る経路がありません"
+                echo ""
+                echo "更新内容はブランチ \`$SYNC_BRANCH\` に保全されていますが、PRが無いため master へ入りません。"
+                echo ""
+                echo "- 今すぐ入れる: https://github.com/${GITHUB_REPOSITORY}/pull/new/$SYNC_BRANCH からPRを作ってマージ"
+                echo "- 恒久対応: Settings → Actions → General → Workflow permissions →"
+                echo "  「Allow GitHub Actions to create and approve pull requests」を有効化すると全自動になります"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::台帳更新が $SYNC_BRANCH に滞留しています（PRを作成できませんでした）"
+              exit 1
+            fi
+            EXISTING=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number' || true)
           fi
 
-          BODY=$(printf '%s\n' \
-            "マージ済みPRから \`cleanup_improvement_reviews.py --apply\` が再計算した改善台帳です。" \
-            "" \
-            "このPRは \`$SYNC_BRANCH\` 1本を上書きし続ける形で更新されます。" \
-            "GITHUB_TOKEN 作成のPRでは再帰防止により pr-checks.yml が起動しないため、" \
-            "ledger-sync ジョブ内で validate_improvement_ledger.py を通しています。")
+          EXISTING="${EXISTING:-?}"   # 作成直後に一覧へ出ないことがあるため表示用に既定値を置く
 
-          if gh pr create --base master --head "$SYNC_BRANCH" \
-            --title "chore: ledger sync" --body "$BODY"; then
-            exit 0
+          # PRを開いたまま放置すると、以降の run は push だけして緑になり、台帳が
+          # master へ入らない滞留がまた静かに続く。作成直後も既存PRも、毎回
+          # auto-merge を有効化してマージまで繋ぐ（旧構成の gh pr merge --auto 相当）。
+          if gh pr merge "$SYNC_BRANCH" --auto --merge --delete-branch; then
+            echo "台帳PR #${EXISTING} を更新し、auto-merge を有効化しました" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### 台帳PRは手動マージが必要です"
+              echo ""
+              echo "PR #${EXISTING} に更新内容は入っていますが、auto-merge を有効化できませんでした。"
+              echo "リポジトリ設定で auto-merge が無効になっている可能性があります。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::台帳PR #${EXISTING} の auto-merge を有効化できませんでした（手動マージが必要）"
           fi
-
-          {
-            echo "### 台帳が master へ入る経路がありません"
-            echo ""
-            echo "更新内容はブランチ \`$SYNC_BRANCH\` に保全されていますが、PRが無いため master へ入りません。"
-            echo ""
-            echo "- 今すぐ入れる: https://github.com/${GITHUB_REPOSITORY}/pull/new/$SYNC_BRANCH からPRを作ってマージ"
-            echo "- 恒久対応: Settings → Actions → General → Workflow permissions →"
-            echo "  「Allow GitHub Actions to create and approve pull requests」を有効化すると全自動になります"
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "::error::台帳更新が $SYNC_BRANCH に滞留しています（PRを作成できませんでした）"
-          exit 1
