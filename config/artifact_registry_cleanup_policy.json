@@ -1,0 +1,25 @@
+[
+  {
+    "name": "delete-images-older-than-one-day",
+    "action": {
+      "type": "Delete"
+    },
+    "condition": {
+      "tagState": "any",
+      "olderThan": "1d"
+    }
+  },
+  {
+    "name": "keep-fifteen-current-service-versions",
+    "action": {
+      "type": "Keep"
+    },
+    "mostRecentVersions": {
+      "packageNamePrefixes": [
+        "tune-lease-55-api",
+        "tune-lease-55-web"
+      ],
+      "keepCount": 15
+    }
+  }
+]
