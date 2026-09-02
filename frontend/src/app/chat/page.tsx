@@ -17,6 +17,7 @@ import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import { buildShionEntryGreeting, type ShionEntryGreeting } from "@/lib/shionEntryGreeting";
 import { isImeComposing } from "@/lib/keyboard";
 import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
+import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 
 interface ChatMessage {
   id: number;
@@ -1213,6 +1214,14 @@ export default function ChatPage() {
                 )}
                 {msg.role === "assistant" && (
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {!msg.memory_recall?.refs?.length && (
+                      <ResponseUsefulnessButtons
+                        question={[...messages.slice(0, index)].reverse().find((item) => item.role === "user")?.content}
+                        response={msg.content}
+                        route="next_chat"
+                        userId={userId}
+                      />
+                    )}
                     <button
                       onClick={() => {
                         const previousUser = [...messages.slice(0, index)].reverse().find((item) => item.role === "user");
