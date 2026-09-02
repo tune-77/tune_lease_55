@@ -1372,7 +1372,6 @@ export default function LeaseKunWizard() {
                 onReview={() => shionReview.requestReview(fullResult, formData)}
                 onFeedback={submitReviewFeedbackAndOpenRegistration}
                 feedbackSaving={shionReview.feedbackSaving}
-                pastCompanies={shionReview.pastCompanies}
                 judgmentAssetCandidates={shionReview.judgmentAssetCandidates}
                 formData={formData}
               />
