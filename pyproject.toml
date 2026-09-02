@@ -83,6 +83,7 @@ filterwarnings = [
     "error",
     'ignore:Using `httpx` with `starlette\.testclient` is deprecated.*:starlette.exceptions.StarletteDeprecationWarning',
     'ignore:Trying to unpickle estimator .* from version 1\.7\.1 when using version 1\.7\.2.*:sklearn.exceptions.InconsistentVersionWarning',
+    'ignore:The anyio\.abc\.BlockingPortal alias is deprecated.*:DeprecationWarning',
     'ignore:BaseAgentConfig is deprecated and will be removed in future versions\.:DeprecationWarning',
     'ignore:ParallelAgent is deprecated.*:DeprecationWarning',
     'ignore:SequentialAgent is deprecated.*:DeprecationWarning',
