@@ -951,7 +951,7 @@ export default function LeaseKunWizard() {
 
         {/* 下部フォームエリア */}
         {!loading && phase === 'wizard' && (
-        <form ref={wizardFormRef} onSubmit={handleNext} onKeyDownCapture={handleWizardNumberEnter} className="w-full bg-white border-t-2 border-[#1A1A2E] p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20">
+        <form ref={wizardFormRef} onSubmit={handleNext} onKeyDownCapture={handleWizardNumberEnter} className="w-full bg-white border-t-2 border-[#1A1A2E] px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shrink-0 shadow-[0_-6px_20px_rgba(0,0,0,0.12)] rounded-t-2xl z-20">
           {(draftRestored || draftSavedAt) && (
             <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
               <span>{draftRestored ? '下書きを復元済み' : '下書き保存済み'}</span>
@@ -1319,17 +1319,26 @@ export default function LeaseKunWizard() {
 
           </div>
 
-          <div className="flex gap-2 mt-2">
+          {Object.keys(errors).length > 0 && (
+            <div role="alert" className="mb-2 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              上の必須項目を入力すると次に進めます
+            </div>
+          )}
+
+          <div className="flex gap-3 mt-2" aria-label="ステップ操作">
             <button
               type="button" onClick={goBack} disabled={step === 0}
-              className="w-12 h-12 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 disabled:opacity-30">
+              aria-label="前のステップに戻る"
+              className="w-14 h-14 shrink-0 flex touch-manipulation items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 text-slate-700 active:scale-[0.98] disabled:opacity-30">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <button
               type="submit"
               disabled={submitted && step >= STEPS.length - 1}
-              className={`flex-1 h-12 flex items-center justify-center rounded-xl font-bold tracking-wide shadow-[0_4px_0_#0f0f1c] active:shadow-none active:translate-y-1 transition-all ${submitted && step >= STEPS.length - 1 ? 'bg-slate-400 text-white cursor-not-allowed shadow-none' : 'bg-[#1A1A2E] text-white'}`}>
-              {submitted && step >= STEPS.length - 1 ? '送信済み ✓' : step >= STEPS.length - 1 ? '審査実行 🚀' : '次へ進む'}
+              aria-label={step >= STEPS.length - 1 ? '審査を実行する' : `次のステップ「${STEPS[step + 1]}」へ進む`}
+              className={`flex-1 min-h-14 flex touch-manipulation items-center justify-center rounded-2xl border-2 px-4 text-base font-black tracking-wide transition-all active:scale-[0.98] ${submitted && step >= STEPS.length - 1 ? 'border-slate-400 bg-slate-400 text-white cursor-not-allowed' : 'border-[#1A1A2E] bg-[#E8A838] text-[#1A1A2E] shadow-[0_5px_0_#1A1A2E] active:translate-y-1 active:shadow-none'}`}>
+              {submitted && step >= STEPS.length - 1 ? '送信済み ✓' : step >= STEPS.length - 1 ? '審査を実行する 🚀' : '次に進む →'}
             </button>
           </div>
         </form>
