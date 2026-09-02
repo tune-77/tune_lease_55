@@ -2,20 +2,12 @@
 import { useRef, useState } from "react";
 import { apiClient } from "./api";
 import {
-  buildExperienceCaseQuery,
   buildShionReviewFallback,
   buildShionReviewPrompt,
   buildShionReviewUserId,
-  ensureCandidateJudgmentAssetMentionInReview,
-  ensurePastCompanyMentionInReview,
   getScreeningScore,
-  hasExperienceSearchContext,
-  normalizeExperienceCase,
-  uniquePastCompanyHighlights,
-  type DemoSimilarPastCase,
   type JudgmentAssetCandidate,
-  type PastCompanyHighlight,
-  type PastShionScreeningReview,
+  type ShionReviewFeedbackSample,
   type ShionReviewFeedback,
   type ShionScreeningReview,
 } from "./shionReview";
@@ -28,33 +20,17 @@ export function useShionScreeningReview() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [feedbackSaving, setFeedbackSaving] = useState(false);
-  const [pastCompanies, setPastCompanies] = useState<PastCompanyHighlight[]>([]);
   const [judgmentAssetCandidates, setJudgmentAssetCandidates] = useState<JudgmentAssetCandidate[]>([]);
   const requestSeq = useRef(0);
 
-  const fetchPastShionReviews = async (targetResult: any, targetFormData: Record<string, any>) => {
+  // 直近レビューへの人間評価だけを読む。案件内容（社名・スコア・本文）は紫苑へ渡さない。
+  const fetchRecentReviewFeedbacks = async () => {
     try {
-      const res = await apiClient.get("/api/shion-screening-reviews", {
-        params: {
-          industry_sub: targetResult?.industry_sub || targetFormData.industry_sub || "",
-          limit: 3,
-        },
-      });
-      return Array.isArray(res.data?.reviews) ? res.data.reviews as PastShionScreeningReview[] : [];
+      const res = await apiClient.get("/api/shion-screening-reviews", { params: { limit: 8 } });
+      const reviews = Array.isArray(res.data?.reviews) ? res.data.reviews as ShionReviewFeedbackSample[] : [];
+      return reviews.map((item) => item.user_feedback);
     } catch {
       return [];
-    }
-  };
-
-  const fetchExperienceCases = async (targetResult: any, targetFormData: Record<string, any>) => {
-    if (!hasExperienceSearchContext(targetFormData, targetResult)) return [] as DemoSimilarPastCase[];
-    try {
-      const res = await apiClient.get("/api/screening-experience-cases", {
-        params: buildExperienceCaseQuery("", targetFormData, targetResult),
-      });
-      return Array.isArray(res.data?.cases) ? res.data.cases.map(normalizeExperienceCase) : [];
-    } catch {
-      return [] as DemoSimilarPastCase[];
     }
   };
 
@@ -112,22 +88,15 @@ export function useShionScreeningReview() {
     if (!targetResult) return;
     const seq = ++requestSeq.current;
     let promptText = "";
-    let fallbackPastReviews: PastShionScreeningReview[] = [];
-    let fallbackExperienceCases: DemoSimilarPastCase[] = [];
     let fallbackCandidates: JudgmentAssetCandidate[] = [];
     setLoading(true);
     setError("");
     try {
-      const pastReviews = await fetchPastShionReviews(targetResult, targetFormData);
-      const experienceCases = await fetchExperienceCases(targetResult, targetFormData);
+      const recentFeedbacks = await fetchRecentReviewFeedbacks();
       const candidates = await fetchJudgmentAssetCandidates(targetResult, targetFormData);
-      fallbackPastReviews = pastReviews;
-      fallbackExperienceCases = experienceCases;
       fallbackCandidates = candidates;
-      const nextPastCompanies = uniquePastCompanyHighlights(pastReviews, experienceCases);
-      setPastCompanies(nextPastCompanies);
       if (seq !== requestSeq.current) return;
-      promptText = buildShionReviewPrompt(targetResult, targetFormData, pastReviews, experienceCases, candidates, "standard");
+      promptText = buildShionReviewPrompt(targetResult, targetFormData, candidates, "standard", recentFeedbacks);
       const res = await apiClient.post("/api/chat", {
         message: promptText,
         user_id: buildShionReviewUserId(targetResult, targetFormData),
@@ -151,13 +120,7 @@ export function useShionScreeningReview() {
       const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0;
       const memoryRefs = Array.isArray(memoryRecall.refs) ? memoryRecall.refs.length : 0;
       const nextReview: ShionScreeningReview = {
-        reply: ensureCandidateJudgmentAssetMentionInReview(
-          ensurePastCompanyMentionInReview(
-            String(res.data?.reply || "紫苑レビューが空でした。"),
-            nextPastCompanies,
-          ),
-          candidates,
-        ),
+        reply: String(res.data?.reply || "紫苑レビューが空でした。"),
         memoryRefs,
         knowledgeRefs,
         identityUsed: Boolean(identityMemory.used),
@@ -183,22 +146,9 @@ export function useShionScreeningReview() {
     } catch (error) {
       if (seq !== requestSeq.current) return;
       console.error("Shion review error", error);
-      const fallbackPastCompanies = uniquePastCompanyHighlights(fallbackPastReviews, fallbackExperienceCases);
       const fallbackReview: ShionScreeningReview = {
-        reply: ensureCandidateJudgmentAssetMentionInReview(
-          ensurePastCompanyMentionInReview(
-            buildShionReviewFallback(
-              targetResult,
-              targetFormData,
-              fallbackCandidates,
-              fallbackExperienceCases,
-              fallbackPastReviews,
-            ),
-            fallbackPastCompanies,
-          ),
-          fallbackCandidates,
-        ),
-        memoryRefs: fallbackPastReviews.length,
+        reply: buildShionReviewFallback(targetResult, targetFormData, fallbackCandidates),
+        memoryRefs: 0,
         knowledgeRefs: fallbackCandidates.length,
         identityUsed: false,
         vertexUsed: false,
@@ -258,7 +208,6 @@ export function useShionScreeningReview() {
     loading,
     error,
     feedbackSaving,
-    pastCompanies,
     judgmentAssetCandidates,
     requestReview,
     submitFeedback,

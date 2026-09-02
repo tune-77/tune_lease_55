@@ -258,7 +258,7 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">物件取得価額 (百万円)</label>
-            <input type="text" inputMode="decimal" data-screening-number="true" name="acquisition_cost" value={displayNumber(data.acquisition_cost)} step="0.1" onChange={handleNumber} onFocus={handleNumberFocus} onKeyDown={handleNumberKeyDown} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <input type="number" inputMode="decimal" data-screening-number="true" name="acquisition_cost" value={displayNumber(data.acquisition_cost)} min="0" step="0.1" onChange={handleNumber} onFocus={handleNumberFocus} onKeyDown={handleNumberKeyDown} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
             <div className="flex flex-wrap gap-1.5">
               {acquisitionQuickValues.map((item) => (
                 <button
@@ -276,10 +276,12 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">リース期間 (月)</label>
             <input
-              type="text"
+              type="number"
               inputMode="decimal"
               data-screening-number="true"
               name="lease_term"
+              min="1"
+              step="1"
               value={displayNumber(data.lease_term)}
               onChange={handleNumber}
               onFocus={handleNumberFocus}
@@ -310,7 +312,7 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
           </div>
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">検収年 (西暦)</label>
-            <input type="text" inputMode="numeric" data-screening-number="true" name="acceptance_year" value={displayNumber(data.acceptance_year)} onChange={handleNumber} onFocus={handleNumberFocus} onKeyDown={handleNumberKeyDown} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
+            <input type="number" inputMode="numeric" data-screening-number="true" name="acceptance_year" value={displayNumber(data.acceptance_year)} min="1900" max="2100" step="1" onChange={handleNumber} onFocus={handleNumberFocus} onKeyDown={handleNumberKeyDown} className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 text-right h-[46px]" />
             <div className="flex flex-wrap gap-1.5">
               {acceptanceYearQuickValues.map((year) => (
                 <button
