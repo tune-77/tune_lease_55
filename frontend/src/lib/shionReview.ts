@@ -207,6 +207,18 @@ export const buildVertexSearchHint = (result: Record<string, any>, data: Record<
   return Array.from(new Set(terms)).slice(0, 14).join(" ");
 };
 
+// Q_risk の内訳を「営業赤字 29.5 / 売上規模対比の利益率異常 40.0」の形の1行へ整形する。
+// 紫苑が「Q_risk のどの成分に反応したか」を根拠として書けるよう、プロンプトと思考プロセスの
+// 両方から同じ文字列を使う。寄与の大きい順に最大3件まで。
+export const formatQRiskBreakdown = (breakdown?: QRiskBreakdown | null, limit = 3) => {
+  const items = breakdown?.items ?? [];
+  if (!items.length) return "";
+  return items
+    .slice(0, limit)
+    .map((item) => `${item.label} ${Number(item.weighted ?? item.contribution ?? 0).toFixed(1)}`)
+    .join(" / ");
+};
+
 export const buildShionReviewPrompt = (
   result: Record<string, any>,
   data: Record<string, any>,
@@ -217,6 +229,7 @@ export const buildShionReviewPrompt = (
   const score = getScreeningScore(result);
   const baseScore = Number(result.score_base);
   const vertexSearchHint = buildVertexSearchHint(result, data);
+  const qRiskBreakdownText = formatQRiskBreakdown(result.q_risk_breakdown as QRiskBreakdown | undefined);
   const lines = [
     "【審査分析画面からの紫苑レビュー依頼】",
     "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
@@ -237,6 +250,7 @@ export const buildShionReviewPrompt = (
     "専門家としての深掘りルール:",
     "・単なるリスク項目の列挙で終えず、「私ならこの点に注目します」と審査担当者目線の優先順位を1つ示してください。",
     "・違和感の項目では、提示された数字・Q_risk・定性項目・現場メモのうち何が根拠になったかを具体的に結びつけてください。",
+    "・Q_riskの内訳が提示されている場合は、合計値ではなく寄与の大きいルール名を根拠として挙げてください（例: 営業赤字が主因）。",
     "・根拠が薄い違和感は断定せず、「確認論点」「仮説」「稟議で聞くべきこと」として表現してください。",
     "・不確実な推測で採否を誘導しないでください。違和感は減点ではなく、人間が確認するための論点です。",
     "・過去の類似案件や他社事例は渡していません。手元にない過去事例を推測で作って引用しないでください。",
@@ -258,6 +272,9 @@ export const buildShionReviewPrompt = (
       : []),
     `・借手スコア: ${result.score_borrower != null ? Number(result.score_borrower).toFixed(1) : "未算出"}`,
     `・Q_risk: ${result.quantum_risk != null ? `${Number(result.quantum_risk).toFixed(1)}（0-100スケール、35以上で要注意・60以上で強警戒）` : "未算出"}`,
+    ...(qRiskBreakdownText
+      ? [`・Q_riskの内訳（財務矛盾ルール別の寄与点）: ${qRiskBreakdownText}`]
+      : []),
     `・UMAP異常度: ${result.umap_anomaly_score != null ? Number(result.umap_anomaly_score).toFixed(1) : "未算出"}`,
     `・マハラノビス: ${result.mahalanobis_score != null ? Number(result.mahalanobis_score).toFixed(1) : "未算出"}`,
     `・物件: ${data.asset_name || "未入力"}`,
@@ -380,6 +397,10 @@ export const buildShionThoughtProcessSteps = (
   const numericItems: string[] = [];
   if (result.quantum_risk != null) {
     numericItems.push(`Q_risk ${Number(result.quantum_risk).toFixed(1)}（35以上で要注意・60以上で強警戒）`);
+    const breakdownText = formatQRiskBreakdown(result.q_risk_breakdown as QRiskBreakdown | undefined);
+    if (breakdownText) {
+      numericItems.push(`Q_riskの内訳: ${breakdownText}`);
+    }
   }
   if (result.umap_anomaly_score != null) {
     numericItems.push(`UMAP異常度 ${Number(result.umap_anomaly_score).toFixed(1)}`);
