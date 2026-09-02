@@ -51,6 +51,11 @@ _OOD_Z_THRESHOLD: float           = float(_T.get("ood_z_threshold", 2.0))
 _DISC_MIN_CASES: int              = int(_CFG.get("training", {}).get("disc_min_cases", 5))
 _DISC_WEIGHT_SCALE: float         = float(_T.get("disc_weight_scale", 2.0))
 _DISC_TRIGGER_N: int              = int(_CFG.get("training", {}).get("disc_trigger_n", 10))
+# R2（売上規模対比の利益率異常）の severity 上限。
+# severity = (0.005 - op_margin)/0.005 は営業赤字案件で 30 倍以上に振り切れ、
+# 素点が 600 点超 → clip(100) となって内訳の寄与率が実態を表さなくなっていた。
+# 実案件 1,924 件で検証し、35/60 の判定帯が一切動かない上限として 2.0（R2 最大 40 点）を採用。
+_R2_SEVERITY_CAP: float           = float(_T.get("r2_severity_cap", 2.0))
 
 _GRADE_MAP: dict[str, float] = {
     "①A格": 9.0, "①a": 9.0, "A": 9.0,
@@ -943,7 +948,7 @@ def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
 
     # R2: 売上規模対比利益率異常（売上はあるが利益が薄すぎる）
     if nenshu_k > 10_000 and op_margin < 0.005:
-        severity = max(0.0, 0.005 - op_margin) / 0.005
+        severity = min(max(0.0, 0.005 - op_margin) / 0.005, _R2_SEVERITY_CAP)
         contrib = 20.0 * severity
         score += contrib
         flags.append(f"売上({nenshu_k/1000:.0f}百万)対比利益率異常({op_margin:.1%})")

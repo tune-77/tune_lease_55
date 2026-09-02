@@ -21,6 +21,7 @@ from quantum_analysis_module import (
     QuantumGate,
     QuantumInterferenceAnalyzer,
     _extract_features,
+    _R2_SEVERITY_CAP,
     compute_simple_q_risk,
 )
 
@@ -416,11 +417,11 @@ _BREAKDOWN_CASES = {
              grade="①A格", machines=50000, industry_major="E 製造業"),
         0.0,
     ),
-    # R2 + R3。R2 の severity に上限がないため素点が 100 を超え clip される
+    # R2（上限40点で頭打ち） + R3。REV-360 の severity 上限導入前は素点 649.5 → clip(100) だった
     "deficit": (
         dict(nenshu=200000, op_profit=-30000, ord_profit=-32000, net_income=-35000,
              grade="④無格付", machines=1000, industry_major="D 建設業"),
-        100.0,
+        69.5,
     ),
     # R1 + R4 + R5（建設業）
     "low_grade_high_margin": (
@@ -439,7 +440,7 @@ _BREAKDOWN_CASES = {
 
 @pytest.mark.parametrize("name", sorted(_BREAKDOWN_CASES))
 def test_simple_q_risk_value_unchanged(name):
-    """内訳追加後も quantum_risk の値が変わらない（回帰）"""
+    """quantum_risk の値を固定する回帰（R2 上限導入後のゴールデン値）"""
     inputs, expected = _BREAKDOWN_CASES[name]
     assert compute_simple_q_risk(inputs)["quantum_risk"] == pytest.approx(expected, abs=0.01)
 
@@ -475,10 +476,20 @@ def test_simple_q_risk_breakdown_empty_when_no_rule_fires():
     assert breakdown["clipped"] is False
 
 
-def test_simple_q_risk_breakdown_flags_clipping():
-    """素点が 100 を超える案件では clipped=True で按分表示になる"""
-    inputs, _ = _BREAKDOWN_CASES["deficit"]
-    breakdown = compute_simple_q_risk(inputs)["q_risk_breakdown"]
-    assert breakdown["clipped"] is True
-    assert breakdown["raw_total"] > 100.0
-    assert breakdown["total"] == pytest.approx(100.0, abs=0.01)
+def test_r2_contribution_is_capped():
+    """R2 は severity 上限により頭打ちする（内訳が R2 一色になる歪みを防ぐ）
+
+    上限導入前は営業赤字案件で severity が 31 倍まで伸び、R2 単独で 620 点＝
+    素点の 95% を占めていた。上限後は 20点 × _R2_SEVERITY_CAP が最大値。
+    """
+    max_contrib = 20.0 * _R2_SEVERITY_CAP
+    # 営業赤字が深いほど severity は伸びるが、寄与は上限で止まる
+    for op_profit in (-30000, -100000, -1000000):
+        inputs = dict(nenshu=200000, op_profit=op_profit, ord_profit=-1000,
+                      net_income=-2000, grade="④無格付", machines=1000,
+                      industry_major="D 建設業")
+        breakdown = compute_simple_q_risk(inputs)["q_risk_breakdown"]
+        r2 = next(item for item in breakdown["items"] if item["code"] == "R2")
+        assert r2["contribution"] <= max_contrib + 0.01
+    # 頭打ちにより素点が 100 を超えなくなり、按分表示も不要になる
+    assert breakdown["clipped"] is False
