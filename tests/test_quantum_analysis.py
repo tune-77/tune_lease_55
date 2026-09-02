@@ -21,6 +21,7 @@ from quantum_analysis_module import (
     QuantumGate,
     QuantumInterferenceAnalyzer,
     _extract_features,
+    compute_simple_q_risk,
 )
 
 
@@ -403,3 +404,81 @@ def test_residual_signal_equals_entropy_risk():
     gate.fit([])
     r = gate.predict(_base_case())
     assert r["residual_signal"] == r["entropy_risk"]
+
+
+# ── compute_simple_q_risk の内訳（REV-359） ─────────────────────────────────
+# 内訳は表示専用の追加であり、quantum_risk の値そのものは変えてはならない。
+
+_BREAKDOWN_CASES = {
+    # 加点ルールに触れない健全案件
+    "clean": (
+        dict(nenshu=500000, op_profit=30000, ord_profit=28000, net_income=20000,
+             grade="①A格", machines=50000, industry_major="E 製造業"),
+        0.0,
+    ),
+    # R2 + R3。R2 の severity に上限がないため素点が 100 を超え clip される
+    "deficit": (
+        dict(nenshu=200000, op_profit=-30000, ord_profit=-32000, net_income=-35000,
+             grade="④無格付", machines=1000, industry_major="D 建設業"),
+        100.0,
+    ),
+    # R1 + R4 + R5（建設業）
+    "low_grade_high_margin": (
+        dict(nenshu=100000, op_profit=25000, ord_profit=24000, net_income=5000,
+             grade="⑤D格", machines=100, industry_major="D 建設業"),
+        55.0,
+    ),
+    # R2 のみ
+    "thin_margin": (
+        dict(nenshu=2000000, op_profit=2000, ord_profit=1500, net_income=1000,
+             grade="②B格", machines=100000, industry_major="I 卸売業"),
+        16.0,
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_BREAKDOWN_CASES))
+def test_simple_q_risk_value_unchanged(name):
+    """内訳追加後も quantum_risk の値が変わらない（回帰）"""
+    inputs, expected = _BREAKDOWN_CASES[name]
+    assert compute_simple_q_risk(inputs)["quantum_risk"] == pytest.approx(expected, abs=0.01)
+
+
+@pytest.mark.parametrize("name", sorted(_BREAKDOWN_CASES))
+def test_simple_q_risk_breakdown_consistent(name):
+    """内訳の総和が素点と一致し、按分後の weighted 合計が表示 Q_risk と一致する"""
+    inputs, expected = _BREAKDOWN_CASES[name]
+    result = compute_simple_q_risk(inputs)
+    breakdown = result["q_risk_breakdown"]
+
+    assert breakdown["total"] == pytest.approx(result["quantum_risk"], abs=0.01)
+    items = breakdown["items"]
+    if not items:
+        assert breakdown["raw_total"] == pytest.approx(0.0, abs=0.01)
+        return
+
+    raw_sum = sum(item["contribution"] for item in items)
+    assert raw_sum == pytest.approx(breakdown["raw_total"], abs=0.05)
+    weighted_sum = sum(item["weighted"] for item in items)
+    assert weighted_sum == pytest.approx(breakdown["total"], abs=0.05)
+    # 寄与度の降順で返す
+    assert items == sorted(items, key=lambda item: item["contribution"], reverse=True)
+    # 内訳の detail は既存の explanation と同じ文言を使う
+    assert {item["detail"] for item in items} == set(result["explanation"])
+
+
+def test_simple_q_risk_breakdown_empty_when_no_rule_fires():
+    """加点ゼロの案件では内訳が空リストになる"""
+    inputs, _ = _BREAKDOWN_CASES["clean"]
+    breakdown = compute_simple_q_risk(inputs)["q_risk_breakdown"]
+    assert breakdown["items"] == []
+    assert breakdown["clipped"] is False
+
+
+def test_simple_q_risk_breakdown_flags_clipping():
+    """素点が 100 を超える案件では clipped=True で按分表示になる"""
+    inputs, _ = _BREAKDOWN_CASES["deficit"]
+    breakdown = compute_simple_q_risk(inputs)["q_risk_breakdown"]
+    assert breakdown["clipped"] is True
+    assert breakdown["raw_total"] > 100.0
+    assert breakdown["total"] == pytest.approx(100.0, abs=0.01)
