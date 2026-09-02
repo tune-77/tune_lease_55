@@ -264,7 +264,7 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
           <div>
             <label className="block text-xs font-black text-slate-400 uppercase mb-2">最終獲得レート (%)</label>
             <input
-              type="text" inputMode="decimal" value={finalRate}
+              type="number" inputMode="decimal" data-screening-number="true" min="0" step="0.01" value={finalRate}
               onChange={(e) => setFinalRate(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-emerald-600 outline-none"
             />
@@ -272,7 +272,7 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
           <div>
             <label className="block text-xs font-black text-slate-400 uppercase mb-2">当時の基準金利 (%)</label>
             <input
-              type="text" inputMode="decimal" value={baseRate}
+              type="number" inputMode="decimal" data-screening-number="true" min="0" step="0.01" value={baseRate}
               onChange={(e) => setBaseRate(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-slate-600 outline-none"
             />
@@ -299,7 +299,7 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
             <div>
               <label className="block text-xs font-black text-slate-400 uppercase mb-2">他社提示レート (%)</label>
               <input
-                type="text" inputMode="decimal" value={competitorRate}
+                type="number" inputMode="decimal" data-screening-number="true" min="0" step="0.01" value={competitorRate}
                 onChange={(e) => setCompetitorRate(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-orange-600 outline-none"
               />
