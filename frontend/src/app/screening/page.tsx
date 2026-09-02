@@ -29,10 +29,6 @@ import { triggerMebuki } from "../../components/layout/FloatingMebuki";
 import {
   isCanonicalJudgmentAsset,
   normalizeReviewText,
-  validPastCompanyName,
-  uniquePastCompanyHighlights,
-  ensurePastCompanyMentionInReview,
-  ensureCandidateJudgmentAssetMentionInReview,
   buildShionReviewPrompt,
   buildShionReviewFallback,
   parseExperienceSnapshot,
@@ -45,8 +41,7 @@ import {
   type JudgmentAssetCandidateFeedback,
   type JudgmentAssetAdaptationMode,
   type JudgmentAssetCandidate,
-  type PastCompanyHighlight,
-  type PastShionScreeningReview,
+  type ShionReviewFeedbackSample,
   type DemoSimilarPastCase,
 } from "../../lib/shionReview";
 
@@ -1495,7 +1490,6 @@ export default function Dashboard() {
   const [shionReviewLoading, setShionReviewLoading] = useState(false);
   const [shionReviewError, setShionReviewError] = useState("");
   const [shionFeedbackSaving, setShionFeedbackSaving] = useState(false);
-  const [shionPastCompanies, setShionPastCompanies] = useState<PastCompanyHighlight[]>([]);
   const [judgmentAssetCandidates, setJudgmentAssetCandidates] = useState<JudgmentAssetCandidate[]>([]);
   const [judgmentAssetCandidatesLoading, setJudgmentAssetCandidatesLoading] = useState(false);
   const [inputJudgmentAssetCandidates, setInputJudgmentAssetCandidates] = useState<JudgmentAssetCandidate[]>([]);
@@ -1573,7 +1567,6 @@ export default function Dashboard() {
         result?: any;
         gunshiText?: string;
         shionReview?: ShionScreeningReview | null;
-        shionPastCompanies?: PastCompanyHighlight[];
         judgmentAssetCandidates?: JudgmentAssetCandidate[];
         judgmentAssetAdaptationMode?: JudgmentAssetAdaptationMode;
         currentExperienceCases?: DemoSimilarPastCase[];
@@ -1584,9 +1577,6 @@ export default function Dashboard() {
       if (saved.result) setResult(saved.result);
       if (typeof saved.gunshiText === "string") setGunshiText(saved.gunshiText);
       if (saved.shionReview) setShionReview(saved.shionReview);
-      if (Array.isArray(saved.shionPastCompanies) && saved.shionPastCompanies.length) {
-        setShionPastCompanies(saved.shionPastCompanies);
-      }
       if (Array.isArray(saved.judgmentAssetCandidates)) setJudgmentAssetCandidates(saved.judgmentAssetCandidates);
       if (saved.judgmentAssetAdaptationMode) setJudgmentAssetAdaptationMode(saved.judgmentAssetAdaptationMode);
       if (Array.isArray(saved.currentExperienceCases)) setCurrentExperienceCases(saved.currentExperienceCases);
@@ -1617,7 +1607,6 @@ export default function Dashboard() {
           result,
           gunshiText,
           shionReview,
-          shionPastCompanies,
           judgmentAssetCandidates,
           judgmentAssetAdaptationMode,
           currentExperienceCases,
@@ -1630,7 +1619,7 @@ export default function Dashboard() {
       }
     }, SCREENING_DRAFT_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [draftRestored, formData, result, gunshiText, shionReview, shionPastCompanies, judgmentAssetCandidates, judgmentAssetAdaptationMode, currentExperienceCases, activeTab]);
+  }, [draftRestored, formData, result, gunshiText, shionReview, judgmentAssetCandidates, judgmentAssetAdaptationMode, currentExperienceCases, activeTab]);
 
 
 
@@ -1748,7 +1737,6 @@ export default function Dashboard() {
     setGameTheoryResult(null);
     setGunshiText("");
     setShionReview(null);
-    setShionPastCompanies([]);
     setJudgmentAssetCandidates([]);
     setCurrentExperienceCases([]);
     setInputAssistSelectedCase(null);
@@ -1782,16 +1770,12 @@ export default function Dashboard() {
   };
 
 
-  const fetchPastShionReviews = async (targetResult: any, targetFormData: ScoringFormData) => {
+  // 直近レビューへの人間評価だけを読む。案件内容（社名・スコア・本文）は紫苑へ渡さない。
+  const fetchRecentReviewFeedbacks = async () => {
     try {
-      const industrySub = targetResult?.industry_sub || targetFormData.industry_sub || "";
-      const res = await apiClient.get("/api/shion-screening-reviews", {
-        params: {
-          industry_sub: industrySub,
-          limit: 3,
-        },
-      });
-      return Array.isArray(res.data?.reviews) ? res.data.reviews as PastShionScreeningReview[] : [];
+      const res = await apiClient.get("/api/shion-screening-reviews", { params: { limit: 8 } });
+      const reviews = Array.isArray(res.data?.reviews) ? res.data.reviews as ShionReviewFeedbackSample[] : [];
+      return reviews.map((item) => item.user_feedback);
     } catch {
       return [];
     }
@@ -1982,31 +1966,20 @@ export default function Dashboard() {
     if (!targetResult) return;
     const seq = ++shionReviewRequestSeq.current;
     let promptText = "";
-    let fallbackPastReviews: PastShionScreeningReview[] = [];
-    let fallbackExperienceCases: DemoSimilarPastCase[] = [];
     let fallbackCandidates: JudgmentAssetCandidate[] = [];
     setShionReviewLoading(true);
     setShionReviewError("");
     try {
-      const pastReviews = await fetchPastShionReviews(targetResult, targetFormData);
-      const experienceCases = await fetchExperienceCasesForContext("", targetFormData, targetResult);
+      const recentFeedbacks = await fetchRecentReviewFeedbacks();
       const candidates = await fetchJudgmentAssetCandidatesForScreening(targetResult, targetFormData);
-      fallbackPastReviews = pastReviews;
-      fallbackExperienceCases = experienceCases as DemoSimilarPastCase[];
       fallbackCandidates = candidates;
-      const pastCompanies = uniquePastCompanyHighlights(
-        pastReviews,
-        experienceCases as DemoSimilarPastCase[],
-      );
-      setShionPastCompanies(pastCompanies);
       if (seq !== shionReviewRequestSeq.current) return;
       promptText = buildShionReviewPrompt(
         targetResult,
         targetFormData,
-        pastReviews,
-        experienceCases,
         candidates,
         judgmentAssetAdaptationMode,
+        recentFeedbacks,
       );
       const res = await apiClient.post("/api/chat", {
         message: promptText,
@@ -2031,13 +2004,7 @@ export default function Dashboard() {
       const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0;
       const memoryRefs = Array.isArray(memoryRecall.refs) ? memoryRecall.refs.length : 0;
       const nextReview: ShionScreeningReview = {
-        reply: ensureCandidateJudgmentAssetMentionInReview(
-          ensurePastCompanyMentionInReview(
-            String(res.data?.reply || "紫苑レビューが空でした。"),
-            pastCompanies,
-          ),
-          candidates,
-        ),
+        reply: String(res.data?.reply || "紫苑レビューが空でした。"),
         memoryRefs,
         knowledgeRefs,
         identityUsed: Boolean(identityMemory.used),
@@ -2063,22 +2030,9 @@ export default function Dashboard() {
     } catch (error) {
       if (seq !== shionReviewRequestSeq.current) return;
       console.error("Shion review error", error);
-      const fallbackPastCompanies = uniquePastCompanyHighlights(fallbackPastReviews, fallbackExperienceCases);
       const fallbackReview: ShionScreeningReview = {
-        reply: ensureCandidateJudgmentAssetMentionInReview(
-          ensurePastCompanyMentionInReview(
-            buildShionReviewFallback(
-              targetResult,
-              targetFormData,
-              fallbackCandidates,
-              fallbackExperienceCases,
-              fallbackPastReviews,
-            ),
-            fallbackPastCompanies,
-          ),
-          fallbackCandidates,
-        ),
-        memoryRefs: fallbackPastReviews.length,
+        reply: buildShionReviewFallback(targetResult, targetFormData, fallbackCandidates),
+        memoryRefs: 0,
         knowledgeRefs: fallbackCandidates.length,
         identityUsed: false,
         vertexUsed: false,
@@ -2125,7 +2079,6 @@ export default function Dashboard() {
     setShionReviewError("");
     setShionFeedbackSaving(false);
     setCurrentExperienceCases([]);
-    setShionPastCompanies([]);
     setJudgmentAssetCandidates([]);
     setInputJudgmentAssetCandidates([]);
     setInputJudgmentAssetSearched(false);
@@ -2139,7 +2092,6 @@ export default function Dashboard() {
     setLoading(true);
     setShionReview(null);
     setShionReviewError("");
-    setShionPastCompanies([]);
     setJudgmentAssetCandidates([]);
     setInputJudgmentAssetCandidates([]);
     setInputJudgmentAssetSearched(false);
@@ -2248,7 +2200,6 @@ export default function Dashboard() {
       result,
       gunshiText,
       shionReview,
-      shionPastCompanies,
       judgmentAssetCandidates,
       judgmentAssetAdaptationMode,
       currentExperienceCases,
@@ -2681,7 +2632,6 @@ export default function Dashboard() {
                       onReview={() => requestShionReview()}
                       onFeedback={submitShionReviewFeedback}
                       feedbackSaving={shionFeedbackSaving}
-                      pastCompanies={shionPastCompanies}
                       judgmentAssetCandidates={judgmentAssetCandidates}
                       result={result}
                       formData={formData}
@@ -2965,7 +2915,6 @@ export default function Dashboard() {
               formData={formData}
               estatContext={result?.estat_context || null}
               onChatLoaded={setGunshiText}
-              highlightCompanies={shionPastCompanies}
             />
           </div>
           

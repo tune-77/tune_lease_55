@@ -24,6 +24,9 @@ const YANAMI_BOT_MESSAGES = [
   "[観察メモ] 競合金利を見る時は、価格だけでなく条件差も一緒に残します。"
 ];
 
+const WORLD_VIEW_CHECKED_AT_KEY = "tune-lease-world-view-checked-at";
+const WORLD_VIEW_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
+
 interface ChatMessage {
   id: number;
   user_id: string;
@@ -123,13 +126,20 @@ export default function FloatingMebuki() {
     };
   }, [isChatOpen, suppressPassiveBubble]);
 
-  // world_view 更新チェック（マウント時と10分ごと）
+  // world_view 更新チェック（初回表示時と画面復帰時。成功後6時間は再確認しない）
+  // 10分ポーリングは、instance-based billing のAPIを常時起動させるため廃止した。
   useEffect(() => {
     const checkWorldView = async () => {
       if (suppressPassiveBubble) return;
       if (worldViewAckedRef.current) return;
+      if (document.visibilityState !== "visible") return;
+
+      const lastCheckedAt = Number(window.localStorage.getItem(WORLD_VIEW_CHECKED_AT_KEY) || "0");
+      if (Number.isFinite(lastCheckedAt) && Date.now() - lastCheckedAt < WORLD_VIEW_CHECK_TTL_MS) return;
+
       try {
         const res = await apiClient.get("/api/world-view-status");
+        window.localStorage.setItem(WORLD_VIEW_CHECKED_AT_KEY, String(Date.now()));
         if (res.data.has_update && !worldViewAckedRef.current) {
           const summary: string = res.data.summary || "";
           const preview = summary.slice(0, 30) + (summary.length > 30 ? "…" : "");
@@ -145,8 +155,11 @@ export default function FloatingMebuki() {
     };
 
     checkWorldView();
-    const interval = setInterval(checkWorldView, 10 * 60 * 1000);
-    return () => clearInterval(interval);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") checkWorldView();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [suppressPassiveBubble]);
 
   // チャットパネル開閉

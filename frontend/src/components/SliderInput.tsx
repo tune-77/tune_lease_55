@@ -127,13 +127,16 @@ export default function SliderInput({
           />
         </div>
 
-        {/* 数値入力領域: type="text" + inputMode="decimal" でスマホ数字キーボード表示 */}
+        {/* 数値入力領域: 数値欄として扱い、PC/スマホとも数値入力を優先する */}
         <div className="w-full sm:w-1/3 flex items-center gap-2">
           <input
-            type="text"
+            type="number"
             inputMode="decimal"
             name={`${name}_number`}
             data-screening-number="true"
+            min={min}
+            max={max}
+            step={step}
             value={inputStr}
             onChange={handleNumberChange}
             onFocus={handleFocus}

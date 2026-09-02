@@ -1,192 +1,30 @@
 "use client";
-import { useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Activity, Bot, Brain, ChevronDown, Database, MessageSquare } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Activity, Bot, Brain, ChevronDown, MessageSquare } from "lucide-react";
 import {
-  FEEDBACK_LABELS,
   judgmentAssetHighlightTerms,
   normalizeReviewText,
-  validPastCompanyName,
   buildShionThoughtProcessSteps,
   SHION_REVIEW_IMAGE,
   type JudgmentAssetCandidate,
-  type PastCompanyHighlight,
   type ShionReviewFeedback,
   type ShionScreeningReview,
 } from "../../lib/shionReview";
 import ShionFollowUpPanel from "./ShionFollowUpPanel";
 
-const POPUP_WIDTH_PX = 320;
-const POPUP_MAX_HEIGHT_PX = 340;
-
-function PastCompanyPopupRow({ label, value }: { label: string; value?: string }) {
-  if (!value) return null;
-  return (
-    <span className="block">
-      <span className="mr-1.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-500">{label}</span>
-      <span className="text-[11px] font-bold leading-5 text-slate-700">{value}</span>
-    </span>
-  );
-}
-
-function PastCompanyHighlightBadge({ highlight }: { highlight: PastCompanyHighlight }) {
-  const [popupPos, setPopupPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
-  const experienceCase = highlight.experienceCase;
-  const pastReview = highlight.pastReview;
-  const hasDetail = Boolean(experienceCase || pastReview);
-
-  const handleMouseEnter = (event: ReactMouseEvent<HTMLSpanElement>) => {
-    if (!hasDetail) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - POPUP_WIDTH_PX - 8));
-    const showAbove = rect.bottom + POPUP_MAX_HEIGHT_PX + 12 > window.innerHeight && rect.top > POPUP_MAX_HEIGHT_PX + 12;
-    setPopupPos(
-      showAbove
-        ? { left, bottom: window.innerHeight - rect.top + 6 }
-        : { left, top: rect.bottom + 6 },
-    );
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded bg-cyan-50 px-1.5 py-0.5 font-black text-cyan-800 ring-1 ring-cyan-200 ${hasDetail ? "cursor-help" : ""}`}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setPopupPos(null)}
-    >
-      {highlight.name}
-      <span className="rounded bg-white px-1 text-[10px] font-black text-cyan-600">
-        {highlight.label}
-      </span>
-      {popupPos && hasDetail && (
-        <span
-          className="fixed z-[120] block overflow-y-auto rounded-xl border border-cyan-200 bg-white p-3 text-left font-medium shadow-xl"
-          style={{ left: popupPos.left, top: popupPos.top, bottom: popupPos.bottom, width: POPUP_WIDTH_PX, maxHeight: POPUP_MAX_HEIGHT_PX }}
-        >
-          <span className="block border-b border-slate-100 pb-1.5 text-xs font-black text-cyan-900">
-            {highlight.name}
-            <span className="ml-1.5 rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] text-cyan-600 ring-1 ring-cyan-200">{highlight.label}</span>
-          </span>
-          {experienceCase && (
-            <span className="mt-2 block space-y-1.5">
-              <PastCompanyPopupRow label="期間・業種" value={[experienceCase.period, experienceCase.industry].filter(Boolean).join(" / ")} />
-              <PastCompanyPopupRow
-                label="スコア・判断"
-                value={[`${experienceCase.score.toFixed(1)}点`, experienceCase.decision, experienceCase.outcome].filter(Boolean).join(" / ")}
-              />
-              <PastCompanyPopupRow
-                label="類似度"
-                value={experienceCase.similarityScore
-                  ? `${Math.round(experienceCase.similarityScore)}（${(experienceCase.similarityReasons || []).join("・") || "理由未計算"}）`
-                  : ""}
-              />
-              <PastCompanyPopupRow label="似ている点" value={experienceCase.similarity} />
-              <PastCompanyPopupRow label="当時の対応" value={experienceCase.actionTaken} />
-              <PastCompanyPopupRow label="得た教訓" value={experienceCase.lesson} />
-              <PastCompanyPopupRow label="今回との差分" value={experienceCase.difference} />
-            </span>
-          )}
-          {pastReview && (
-            <span className="mt-2 block space-y-1.5">
-              <PastCompanyPopupRow label="業種" value={pastReview.industry_sub} />
-              <PastCompanyPopupRow
-                label="スコア・判定"
-                value={[
-                  pastReview.score != null ? `${Number(pastReview.score).toFixed(1)}点` : "",
-                  pastReview.hantei || "",
-                ].filter(Boolean).join(" / ")}
-              />
-              <PastCompanyPopupRow
-                label="紫苑レビュー評価"
-                value={pastReview.user_feedback ? FEEDBACK_LABELS[pastReview.user_feedback] : "未評価"}
-              />
-              <PastCompanyPopupRow
-                label="過去レビュー"
-                value={(() => {
-                  const preview = normalizeReviewText(pastReview.review_text || "");
-                  return preview ? `${preview.slice(0, 220)}${preview.length > 220 ? "…" : ""}` : "";
-                })()}
-              />
-            </span>
-          )}
-        </span>
-      )}
-    </span>
-  );
-}
-
-export function PastCompanyReferenceStrip({ companies }: { companies: PastCompanyHighlight[] }) {
-  const visibleCompanies = Array.from(new Map(companies.map((item) => [item.name.trim(), item])).values())
-    .filter((item) => validPastCompanyName(item.name))
-    .slice(0, 3);
-  if (!visibleCompanies.length) return null;
-  return (
-    <div className="mb-3 rounded-xl border border-cyan-200 bg-cyan-50/80 p-3">
-      <div className="mb-2 flex items-center gap-2 text-[11px] font-black text-cyan-900">
-        <Database className="h-3.5 w-3.5" />
-        参照した過去取引事例
-      </div>
-      <div className="grid gap-2 md:grid-cols-3">
-        {visibleCompanies.map((highlight) => {
-          const caseDetail = highlight.experienceCase;
-          const reviewDetail = highlight.pastReview;
-          const score = caseDetail?.score ?? reviewDetail?.score;
-          const decision = caseDetail?.decision || reviewDetail?.hantei || "";
-          const lesson = caseDetail?.lesson || reviewDetail?.review_text || "";
-          return (
-            <div key={highlight.name} className="rounded-lg border border-cyan-100 bg-white p-2 shadow-sm">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-black text-cyan-950">{highlight.name}</span>
-                <span className="rounded bg-cyan-100 px-1.5 py-0.5 text-[10px] font-black text-cyan-700">
-                  {highlight.label}
-                </span>
-              </div>
-              <p className="mt-1 text-[11px] font-bold leading-5 text-slate-700">
-                {[caseDetail?.industry || reviewDetail?.industry_sub, score != null ? `${Number(score).toFixed(1)}点` : "", decision]
-                  .filter(Boolean)
-                  .join(" / ")}
-              </p>
-              {lesson && (
-                <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-5 text-slate-600">
-                  {String(lesson)}
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-const highlightTextByCompanies = (text: string, companies: PastCompanyHighlight[]) => {
-  const highlights = Array.from(new Map(companies.map((item) => [item.name.trim(), item])).values())
-    .filter((item) => validPastCompanyName(item.name))
-    .sort((a, b) => b.name.length - a.name.length);
-  if (!highlights.length) return text;
-  const names = highlights.map((item) => item.name);
-  const highlightByName = new Map(highlights.map((item) => [item.name, item]));
-  const pattern = new RegExp(`(${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
-  return text.split(pattern).map((part, index) => {
-    const highlight = highlightByName.get(part);
-    return highlight && names.includes(part) ? (
-      <PastCompanyHighlightBadge key={`${part}-${index}`} highlight={highlight} />
-    ) : part;
-  });
-};
-
 const renderPlainReviewTextWithHighlights = (
   text: string,
-  companies: PastCompanyHighlight[],
   candidates: JudgmentAssetCandidate[],
   keyPrefix: string,
 ) => {
   const assetTerms = judgmentAssetHighlightTerms(candidates);
-  if (!assetTerms.length) return highlightTextByCompanies(text, companies);
+  if (!assetTerms.length) return text;
   const pattern = new RegExp(`(${assetTerms.map((item) => item.term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
   const byTerm = new Map(assetTerms.map((item) => [item.term, item]));
   return text.split(pattern).map((part, index): ReactNode => {
     const asset = byTerm.get(part);
     if (!asset) {
-      return <span key={`${keyPrefix}-plain-${index}`}>{highlightTextByCompanies(part, companies)}</span>;
+      return <span key={`${keyPrefix}-plain-${index}`}>{part}</span>;
     }
     return (
       <span
@@ -208,7 +46,6 @@ const renderPlainReviewTextWithHighlights = (
 
 const renderReviewTextWithHighlights = (
   text: string,
-  companies: PastCompanyHighlight[],
   candidates: JudgmentAssetCandidate[] = [],
 ) => {
   const parts = text.split(/(判断資産出典\s*[:：][^\n]*|JA-[A-Za-z0-9_-]{6,})/g).filter((part) => part !== "");
@@ -249,7 +86,7 @@ const renderReviewTextWithHighlights = (
     }
     return (
       <span key={`review-text-${index}`}>
-        {renderPlainReviewTextWithHighlights(part, companies, candidates, `review-text-${index}`)}
+        {renderPlainReviewTextWithHighlights(part, candidates, `review-text-${index}`)}
       </span>
     );
   });
@@ -262,7 +99,6 @@ export function ShionScreeningReviewCard({
   onReview,
   onFeedback,
   feedbackSaving,
-  pastCompanies,
   judgmentAssetCandidates,
   result,
   formData,
@@ -273,7 +109,6 @@ export function ShionScreeningReviewCard({
   onReview: () => void;
   onFeedback: (feedback: ShionReviewFeedback) => void;
   feedbackSaving: boolean;
-  pastCompanies: PastCompanyHighlight[];
   judgmentAssetCandidates: JudgmentAssetCandidate[];
   result: Record<string, any> | null;
   formData: Record<string, any>;
@@ -289,8 +124,11 @@ export function ShionScreeningReviewCard({
   ];
   const [showThoughtProcess, setShowThoughtProcess] = useState(false);
   const thoughtProcessSteps = result
-    ? buildShionThoughtProcessSteps(result, judgmentAssetCandidates, pastCompanies, review)
+    ? buildShionThoughtProcessSteps(result, judgmentAssetCandidates, review)
     : [];
+  // LLM 応答が取れず buildShionReviewFallback の定型文を表示している状態。
+  // エラーは握り潰して本文を出しているため、紫苑が書いた文と区別できるようバッジで明示する。
+  const isFallback = review?.vertexStatus === "fallback";
 
   return (
     <section className="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
@@ -309,7 +147,7 @@ export function ShionScreeningReviewCard({
                 紫苑レビュー
               </h3>
               <p className="mt-1 text-xs font-bold leading-relaxed text-violet-700">
-                点数の説明ではなく、違和感・承認条件・稟議に残す一文へ変換します。過去案件名と判断資産出典は色付きで表示します。
+                点数の説明ではなく、違和感・承認条件・稟議に残す一文へ変換します。判断資産出典は色付きで表示します。
               </p>
             </div>
             <button
@@ -333,11 +171,15 @@ export function ShionScreeningReviewCard({
               <p className="text-sm font-bold leading-7 text-rose-700">{error}</p>
             ) : review ? (
               <>
-                <PastCompanyReferenceStrip companies={pastCompanies} />
+                {isFallback && (
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-bold leading-5 text-amber-900">
+                    簡易生成: 紫苑からの応答が取得できなかったため、案件情報と判断資産から組み立てた定型の下書きを表示しています。「再レビュー」で生成し直せます。
+                  </div>
+                )}
                 <div className="space-y-2 text-sm font-medium leading-7 text-slate-800">
                   {normalizeReviewText(review.reply).split(/\n{2,}/).map((block, index) => (
                     <p key={index} className="whitespace-pre-wrap">
-                      {renderReviewTextWithHighlights(block, pastCompanies, judgmentAssetCandidates)}
+                      {renderReviewTextWithHighlights(block, judgmentAssetCandidates)}
                     </p>
                   ))}
                 </div>
