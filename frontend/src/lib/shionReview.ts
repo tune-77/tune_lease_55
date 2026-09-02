@@ -79,6 +79,25 @@ export type DemoSimilarPastCase = {
   resultSnapshot?: Record<string, any>;
 };
 
+// Q_risk のルール別寄与内訳（API: /api/score/full の q_risk_breakdown）。
+// 表示専用でスコアには影響しない。clipped=true のとき raw_total は 100 を超えており、
+// weighted は表示 Q_risk へ按分済みの寄与点。
+export type QRiskBreakdownItem = {
+  code: string;
+  label: string;
+  contribution: number;
+  detail?: string;
+  share?: number;
+  weighted?: number;
+};
+
+export type QRiskBreakdown = {
+  total: number;
+  raw_total: number;
+  clipped: boolean;
+  items: QRiskBreakdownItem[];
+};
+
 export type ShionThoughtStep = {
   title: string;
   items: string[];
