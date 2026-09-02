@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
 from statistics import mean
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from runtime_paths import get_data_dir
 
@@ -16,6 +18,7 @@ DEFAULT_LOG_PATH = get_data_dir() / "prompt_feedback_log.jsonl"
 DEFAULT_HUMAN_FEEDBACK_PATH = get_data_dir() / "human_response_feedback.jsonl"
 
 USEFULNESS_RATINGS = {"good", "thin", "bad"}
+DEFAULT_REPORT_TIMEZONE = ZoneInfo("Asia/Tokyo")
 
 
 def filter_rows_by_month(
@@ -23,14 +26,26 @@ def filter_rows_by_month(
     month: str,
     *,
     timestamp_keys: tuple[str, ...] = ("timestamp", "ts"),
+    report_timezone: ZoneInfo = DEFAULT_REPORT_TIMEZONE,
 ) -> list[dict[str, Any]]:
-    """Return only rows whose ISO-like timestamp belongs to YYYY-MM."""
+    """Return rows belonging to YYYY-MM in the report's local timezone.
+
+    Offset-aware timestamps (including Cloud Run's UTC values) are converted to
+    the report timezone. Naive timestamps are treated as already being local so
+    existing locally-written prompt feedback keeps its historical semantics.
+    """
     if not re.fullmatch(r"\d{4}-\d{2}", month):
         raise ValueError("month must be YYYY-MM")
     matched: list[dict[str, Any]] = []
     for row in rows:
         timestamp = next((str(row.get(key) or "") for key in timestamp_keys if row.get(key)), "")
-        if timestamp[:7] == month:
+        try:
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(report_timezone)
+        if f"{parsed.year:04d}-{parsed.month:02d}" == month:
             matched.append(row)
     return matched
 

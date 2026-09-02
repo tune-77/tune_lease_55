@@ -173,8 +173,8 @@ def test_monthly_feedback_filters_target_month_and_summarizes_buttons(tmp_path):
         "\n".join(
             json.dumps(row, ensure_ascii=False)
             for row in [
-                {"ts": "2026-08-31T23:59:00+00:00", "route": "next_chat", "rating": "bad"},
-                {"ts": "2026-09-01T01:00:00+00:00", "route": "next_chat", "rating": "good"},
+                {"ts": "2026-08-31T14:59:00+00:00", "route": "next_chat", "rating": "bad"},
+                {"ts": "2026-08-31T15:00:00+00:00", "route": "next_chat", "rating": "good"},
                 {"ts": "2026-09-02T01:00:00+00:00", "route": "voice_chat", "rating": "thin"},
                 {"ts": "2026-09-03T01:00:00+00:00", "route": "voice_chat", "rating": "bad"},
                 {"ts": "2026-09-04T01:00:00+00:00", "route": "lease_judgment", "rating": "shion_like"},
@@ -201,6 +201,22 @@ def test_monthly_feedback_filters_target_month_and_summarizes_buttons(tmp_path):
     assert "効いた: 1件" in markdown
     assert "`voice_chat`" in markdown
     assert "改善優先順位" in markdown
+
+
+def test_month_filter_converts_utc_timestamps_to_japan_calendar_month():
+    from prompt_feedback_metrics import filter_rows_by_month
+
+    rows = [
+        {"ts": "2026-08-31T14:59:59+00:00", "id": "august"},
+        {"ts": "2026-08-31T15:00:00+00:00", "id": "september"},
+        {"ts": "2026-09-30T15:00:00Z", "id": "october"},
+        {"ts": "2026-09-15T12:00:00", "id": "naive-local"},
+    ]
+
+    assert [row["id"] for row in filter_rows_by_month(rows, "2026-09")] == [
+        "september",
+        "naive-local",
+    ]
 
 
 def test_monthly_report_defaults_to_previous_calendar_month():
