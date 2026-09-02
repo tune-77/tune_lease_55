@@ -2,12 +2,12 @@
 
 ## 結論
 
-- 物理ファイルは **41個**、一意なskill名は **39個**。
-- `.claude/skills` は23個、`.agents/skills` は18個、総量は **5,851行**（本監査後の境界整理を反映）。
-- 200行超は12個。うち10個は汎用開発skillで、プロジェクト固有ルールや互いの守備範囲と広く重なる。
+- 物理ファイルは **45個**、一意なskill名は **43個**。
+- `.claude/skills` は28個、`.agents/skills` は17個、総量は **6,891行**（レビュー修正後の作業ログ工程を含む）。
+- 200行超は14個。うち10個は汎用開発skillで、プロジェクト固有ルールや互いの守備範囲と広く重なる。
 - Claude Code履歴で明示実行を確認できたローカルskillは5系統だけ。`git-ship`、`restart-api`、`ponytail`、`ponytail-audit`、`ponytail-review`。
 - 名前の完全重複は `git-ship` と `re-lease-count`。`git-ship` は本監査後に2定義を同一内容へ同期し、安全上の競合を解消した。
-- Obsidian系5個の発火境界は整理済み。`ponytail` / `graft` は一度狭めたが、Userの明示方針によりコード作業では常時適用へ戻し、非コード依頼だけ除外した。残る主な競合候補は改善系3個、調査→審査資産化系3個、汎用開発系10個。
+- プロジェクト運用のObsidian系5個の発火境界は整理済み。別に、ファイル形式・CLI用の `json-canvas` / `obsidian-bases` / `obsidian-cli` / `obsidian-markdown` も存在する。`ponytail` / `graft` は一度狭めたが、Userの明示方針によりコード作業では常時適用へ戻し、非コード依頼だけ除外した。残る主な競合候補は改善系3個、調査→審査資産化系3個、汎用開発系10個。
 - 現時点では一括削除しない。まず重複定義の同期、発火境界の狭小化、30日利用計測の順で整理する。
 
 ## 調査範囲と判定方法
@@ -39,7 +39,7 @@
 
 `Skill` toolとslash commandは同じ作業内で重複する可能性があるため、合算して「総利用回数」とは扱わない。
 
-## 41 skill全件一覧
+## 45 skill全件一覧
 
 | # | skill / 配置 | 行 | 主な発火条件 | 利用 | 重複・競合 | 棚卸し判断 |
 |---:|---|---:|---|---|---|---|
@@ -78,12 +78,16 @@
 | 33 | `research-to-screening-insights` `.agents` | 66 | 調査を審査ポイント・確認質問へ変換 | B | source-validator、judgment-asset-structurerと連鎖 | 固有価値あり。検証済み素材→審査行動の変換に限定 |
 | 34 | `restart-api` `.claude` | 70 | 再起動、API落ちた、フロント反映されない | A: tool 3、slash 2 | restart-next-cloudflareと「再起動」が競合 | 「ローカル3000/8000、公開tunnelなし」をdescriptionに明記 |
 | 35 | `restart-next-cloudflare` `.agents` | 102 | 再起動＋Cloudflare/public URL | B | restart-apiと「再起動」が競合 | 「公開URL/tunnelが必要な時だけ」に限定して維持 |
-| 36 | `scqa-report-writer` `.agents` | 67 | SCQA、報告文、発表、README、Slack | B | screening-output-repurposer、kb-reportと競合 | 明示的にSCQA指定された時だけに狭める |
+| 36 | `scqa-report-writer` `.agents` | 67 | SCQA、報告文、発表、README、Slack | B | kb-reportと報告構造が隣接 | 明示的にSCQA指定された時だけに狭める |
 | 37 | `screening-decision-flow-builder` `.agents` | 73 | フロー、決定木、条件分岐、審査プロセス図解 | B | judgment structurer、diagram系skillと隣接 | 意思決定構造専用で境界明瞭。維持 |
-| 38 | `screening-output-repurposer` `.agents` | 78 | 上席、Slack、稟議、営業、顧客、動画向け変換 | C | scqa-report-writerと媒体変換が競合 | 「既存の審査結論がある場合のみ」に限定して30日計測 |
-| 39 | `security-and-hardening` `.claude` | 349 | 入力、認証、保存、外部連携 | C | security-checker AGENT、security rule、API design | skillより専門AGENT/ルールへ一本化候補 |
-| 40 | `test-driven-development` `.claude` | 383 | あらゆる実装・bugfix・挙動変更 | C | incremental、debugging、test-runner AGENT | 発火範囲が広すぎる。テスト先行を明示された時だけに狭める |
-| 41 | `tune-lease-55-obsidian-wiki` `.agents` | 82 | Wiki hub、検索語索引、Relatedリンク整理 | C | 2026-09-02に単独保存・通常検索を除外 | 既存ノートのWiki構造整理専用として維持 |
+| 38 | `defuddle` `.claude` | 41 | URLから本文Markdownを抽出 | C | WebFetchと役割が重なる | Webページ本文抽出専用として維持候補 |
+| 39 | `json-canvas` `.claude` | 244 | Obsidian Canvas・マインドマップ・フロー図 | C | diagram系skillと隣接 | `.canvas`形式の作成・編集専用として維持候補 |
+| 40 | `obsidian-bases` `.claude` | 499 | Obsidian Basesのview・filter・formula | C | obsidianと単語が重なる | `.base`形式の作成・編集専用として維持候補 |
+| 41 | `obsidian-cli` `.claude` | 106 | Obsidian CLIでVaultやpluginを操作 | C | obsidianの通常Vault操作と競合 | CLIまたはplugin/theme操作が必要な時だけ使用 |
+| 42 | `obsidian-markdown` `.claude` | 196 | wikilink・embed・callout等のObsidian Markdown | C | obsidianのノート作成と隣接 | Obsidian固有Markdown構文が必要な時だけ使用 |
+| 43 | `security-and-hardening` `.claude` | 349 | 入力、認証、保存、外部連携 | C | security-checker AGENT、security rule、API design | skillより専門AGENT/ルールへ一本化候補 |
+| 44 | `test-driven-development` `.claude` | 383 | あらゆる実装・bugfix・挙動変更 | C | incremental、debugging、test-runner AGENT | 発火範囲が広すぎる。テスト先行を明示された時だけに狭める |
+| 45 | `tune-lease-55-obsidian-wiki` `.agents` | 82 | Wiki hub、検索語索引、Relatedリンク整理 | C | 2026-09-02に単独保存・通常検索を除外 | 既存ノートのWiki構造整理専用として維持 |
 
 ## 重複・発火競合マップ
 
@@ -98,12 +102,13 @@
 
 | グループ | 競合する語・状況 | 望ましいルーティング |
 |---|---|---|
-| Obsidian | `obsidian` / `obsidian-save` / `obsidian-search-rule` / `kb-report` / `tune-lease-55-obsidian-wiki` | 保存先判定=save、RAGコード変更=search-rule、根拠付き保存レポート=kb-report、リンク整理=wiki、その他Vault操作=obsidian |
+| Obsidian運用 | `obsidian` / `obsidian-save` / `obsidian-search-rule` / `kb-report` / `tune-lease-55-obsidian-wiki` | 保存先判定=save、RAGコード変更=search-rule、根拠付き保存レポート=kb-report、リンク整理=wiki、その他Vault操作=obsidian |
+| Obsidian形式・CLI | `json-canvas` / `obsidian-bases` / `obsidian-cli` / `obsidian-markdown` | `.canvas`=json-canvas、`.base`=bases、CLI・plugin/theme=cli、Obsidian固有Markdown=markdown |
 | 汎用開発 | ponytail、TDD、incremental、planning、debugging、review、security、API、frontend、performance | 明示モードを優先。通常作業はAGENTS標準プロトコルを正本とし、専門条件がある時だけskillを追加 |
 | 改善 | auto-improvement-pipeline / improvement-list / improvement-report-sync | 実行=auto、閲覧=list、実装済み状態更新=sync |
 | 調査→判断資産 | lease-source-validator / research-to-screening-insights / judgment-asset-structurer | 情報源検査→審査行動化→候補構造化。毎回3つ全部を自動発火させない |
 | 再起動 | restart-api / restart-next-cloudflare | ローカルのみ=restart-api、外部公開URLが必要=restart-next-cloudflare |
-| 報告変換 | scqa-report-writer / screening-output-repurposer / kb-report | 構造指定=SCQA、媒体変換=repurposer、Obsidian根拠＋reports保存=kb-report |
+| 報告 | scqa-report-writer / kb-report | 構造指定=SCQA、Obsidian根拠＋reports保存=kb-report |
 
 ## 推奨アクション
 
@@ -118,7 +123,7 @@
 1. ↩️ `ponytail` は一度明示呼出し専用へ狭めたが、User方針によりコード作業の常時適用へ戻した。非コード依頼は除外する（2026-09-02）。
 2. ↩️ `graft` は一度専門探索時だけへ狭めたが、User方針によりコード作業の常時context routerへ戻した。最初の呼出しで十分なら追加呼出しを止める（2026-09-02）。
 3. ✅ Obsidian系5個を上記ルーティングへ合わせ、単語だけで競合する状態を解消した（2026-09-02）。
-4. `scqa-report-writer` はSCQA明示時、`screening-output-repurposer` は既存結論の媒体変換時だけにする。
+4. `scqa-report-writer` はSCQA明示時だけにする。
 
 ### 常時適用のコスト判断
 

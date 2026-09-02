@@ -92,6 +92,22 @@ git log --oneline -3
 git ls-remote origin refs/heads/<branch> refs/heads/master
 ```
 
+## 6. 作業ログを保存する
+
+依頼されたgit操作が正常に完了したら、会話全文や機密情報を含めず、決定・変更・検証結果を日次作業ログへ残す。PRを作成した場合はPR番号も記録する。
+
+```bash
+python3 scripts/save_work_log.py \
+  --title "<PRタイトルまたは変更要約>" \
+  --what "<変更内容と検証結果の1〜2行要約>" \
+  --pr <PR番号> \
+  --tags "自動生成"
+```
+
+- PRを作成していない場合は `--pr` を省略する。
+- Obsidianへの保存が `skipped` でも、git操作自体は失敗扱いにしない。
+- `scripts/save_work_log.py` が利用できない場合は、`obsidian` skillの `codex-work-log` / `claude-work-log` 手順で保存する。
+
 ## エラー時
 
 - conflict: 作業を止め、競合ファイルと選択肢を報告する。
