@@ -12,6 +12,7 @@ import {
 } from "@/lib/chatLocalHistory";
 import { usePathname } from "next/navigation";
 import { isImeComposing } from "@/lib/keyboard";
+import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 
 const YANAMI_BOT_MESSAGES = [
   "システム稼働中。いつでもサポートします！",
@@ -384,7 +385,7 @@ export default function FloatingMebuki() {
                 <p className="text-slate-400 text-xs mt-1">リース審査のことなら何でも相談してください！</p>
               </div>
             ) : (
-              messages.map((msg) => (
+              messages.map((msg, index) => (
                 <div
                   key={msg.id}
                   className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
@@ -407,6 +408,15 @@ export default function FloatingMebuki() {
                     <p className={`text-[9px] mt-1 ${msg.role === "user" ? "text-blue-200 text-right" : "text-slate-400"}`}>
                       {formatTime(msg.created_at)}
                     </p>
+                    {msg.role === "assistant" && (
+                      <ResponseUsefulnessButtons
+                        question={[...messages.slice(0, index)].reverse().find((item) => item.role === "user")?.content}
+                        response={msg.content}
+                        route="floating_mebuki"
+                        userId={MEBUKI_USER_ID}
+                        className="mt-1.5"
+                      />
+                    )}
                   </div>
                 </div>
               ))
