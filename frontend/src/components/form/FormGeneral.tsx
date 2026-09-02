@@ -144,6 +144,8 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
             <label className="text-xs font-bold text-blue-600 mb-1 block">企業番号 (必須6桁)</label>
             <input
               type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               name="company_no"
               maxLength={6}
               value={data.company_no || ""}
@@ -357,10 +359,12 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">既存の契約数 (件)</label>
             <input
-              type="text"
+              type="number"
               inputMode="decimal"
               name="contracts"
               data-screening-number="true"
+              min={0}
+              step={1}
               value={displayNumber(data.contracts)}
               onChange={(e) => handleNumericTextChange("contracts", e.target.value)}
               onFocus={handleNumericFocus}
@@ -372,7 +376,7 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">銀行与信残高 (百万円)</label>
             <input
-              type="text"
+              type="number"
               inputMode="decimal"
               name="bank_credit"
               data-screening-number="true"
@@ -389,7 +393,7 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <div className="space-y-1">
             <label className="text-sm font-bold text-slate-600 block">リース与信残高 (百万円)</label>
             <input
-              type="text"
+              type="number"
               inputMode="decimal"
               name="lease_credit"
               data-screening-number="true"
