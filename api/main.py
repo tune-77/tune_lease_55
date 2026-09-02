@@ -1646,6 +1646,7 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             asset_bonuses=result.get("asset_bonuses", []),
             default_warnings=result.get("default_warnings", []),
             quantum_risk=result.get("quantum_risk"),
+            q_risk_breakdown=result.get("q_risk_breakdown"),
             financial_consistency_score=result.get("financial_consistency_score"),
             financial_consistency_risk=result.get("financial_consistency_risk"),
             credit_quantum_strong_warning=result.get("credit_quantum_strong_warning", False),
