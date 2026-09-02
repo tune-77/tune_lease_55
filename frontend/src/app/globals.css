@@ -42,6 +42,20 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  input[type="number"][data-screening-number="true"],
+  input[type="number"][data-wizard-number="true"] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  input[type="number"][data-screening-number="true"]::-webkit-inner-spin-button,
+  input[type="number"][data-screening-number="true"]::-webkit-outer-spin-button,
+  input[type="number"][data-wizard-number="true"]::-webkit-inner-spin-button,
+  input[type="number"][data-wizard-number="true"]::-webkit-outer-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+  }
 }
 
 /* ── テーマ CSS 変数 ── */
