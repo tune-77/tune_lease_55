@@ -125,6 +125,36 @@ export const isCanonicalJudgmentAsset = (candidate: JudgmentAssetCandidate) => (
 export const getScreeningScore = (result?: Record<string, any> | null) =>
   Number(result?.score ?? result?.score_base ?? 0);
 
+// プロンプトが LLM に渡す判断資産の件数。出典の補完もこの件数に揃える。
+export const PROMPTED_JUDGMENT_ASSET_LIMIT = 3;
+
+export const formatJudgmentAssetCitation = (item: JudgmentAssetCandidate) => {
+  const label = isCanonicalJudgmentAsset(item) ? "正規" : "候補";
+  return `判断資産出典: ${label} JA-${item.id.slice(0, 8)} / ${item.research_topic || item.candidate_type || "screening"}`;
+};
+
+// LLM が出典を書かなかった判断資産を、本文末尾に補う。
+//
+// api/routers/feedback_loop.py の _record_judgment_asset_feedback_from_review は
+// 本文中の「JA-cr-<rule_id先頭>」だけを手がかりに、レビュー評価を判断資産へ紐付ける。
+// 出典が本文に無いと no_matching_refs で全て捨てられ、field_validation が
+// 永久に 0 のままになる。出典を確実に出すのはフォールバック定型文だけで、
+// LLM 経路はプロンプト指示（buildShionReviewPrompt）頼みだった。
+//
+// 補うのはプロンプトへ実際に渡した資産（先頭 PROMPTED_JUDGMENT_ASSET_LIMIT 件）だけで、
+// 渡していない資産の出典は作らない。
+export const ensureJudgmentAssetCitations = (
+  reviewText: string,
+  judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
+) => {
+  const text = reviewText || "";
+  const missing = judgmentAssetCandidates
+    .slice(0, PROMPTED_JUDGMENT_ASSET_LIMIT)
+    .filter((item) => item.id && !text.includes(`JA-${item.id.slice(0, 8)}`));
+  if (!missing.length) return text;
+  return [text.trimEnd(), "", ...missing.map(formatJudgmentAssetCitation)].join("\n");
+};
+
 export const normalizeReviewText = (text: string) =>
   (text || "")
     .replace(/\\r\\n/g, "\n")
@@ -365,10 +395,7 @@ export const buildShionReviewFallback = (
   const canonicalAsset = judgmentAssetCandidates.find((item) => isCanonicalJudgmentAsset(item));
   const primaryAsset = candidateAsset || canonicalAsset || judgmentAssetCandidates[0];
   const secondaryAsset = judgmentAssetCandidates.find((item) => item.id !== primaryAsset?.id);
-  const assetSources = judgmentAssetCandidates.slice(0, 3).map((item) => {
-    const label = isCanonicalJudgmentAsset(item) ? "正規" : "候補";
-    return `判断資産出典: ${label} JA-${item.id.slice(0, 8)} / ${item.research_topic || item.candidate_type || "screening"}`;
-  });
+  const assetSources = judgmentAssetCandidates.slice(0, PROMPTED_JUDGMENT_ASSET_LIMIT).map(formatJudgmentAssetCitation);
   const primaryClaim = primaryAsset?.edited_claim || primaryAsset?.effective_claim || primaryAsset?.claim || "";
   const secondaryClaim = secondaryAsset?.edited_claim || secondaryAsset?.effective_claim || secondaryAsset?.claim || "";
   return [
