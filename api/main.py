@@ -1426,6 +1426,37 @@ def _log_wizard_input_task(inputs: dict) -> None:
             _f.write(entry)
 
 
+def _record_screening_result_task(case_id: str, result: dict) -> None:
+    """審査結果を screening_records に記録する（P4-001 サイドカー）。
+
+    Streamlit 側 (`components/score_calculation.py`) は `_api_mode` のとき記録を
+    スキップし、API 側に委ねている。API経由の審査はここが唯一の記録経路になる。
+    スコア・判定・レスポンスには一切影響させない（例外は握り潰す）。
+    input_snapshot は company_name 等が screening_recorder の PII_KEYS に含まれず
+    素通りするため、スコアだけを記録して渡さない。
+    """
+    try:
+        from datetime import datetime, timezone
+
+        from screening_recorder import record_screening_result
+
+        def _clamp(value: object, default: float = 0.0) -> float:
+            return min(max(_score_float(value, default), 0.0), 100.0)
+
+        record_screening_result(
+            case_id=str(case_id),
+            screened_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            total_score=_clamp(result.get("score")),
+            asset_score=_clamp(result.get("asset_score")),
+            tenant_score=_clamp(result.get("score_borrower")),
+            q_risk_score=_clamp(result.get("quantum_risk")),
+            source="api",
+            db_path=_LEASE_DB_PATH,
+        )
+    except Exception as exc:  # 記録失敗は審査を止めない
+        print(f"[WARNING] screening_records 記録をスキップしました: {exc}")
+
+
 @app.post("/api/score/calculate", response_model=ScoringResponse)
 def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
     try:
@@ -1573,6 +1604,9 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
                 result=result,
                 final_status=case_data.get("final_status", ""),
                 source="score_full",
+            )
+            background_tasks.add_task(
+                _record_screening_result_task, case_id, result
             )
         background_tasks.add_task(
             record_cloudrun_input_event,

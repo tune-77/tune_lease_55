@@ -81,7 +81,10 @@ markers = [
 # 許容項目は依存更新時に削除し、警告の恒久的な隠蔽を防ぐ。
 filterwarnings = [
     "error",
-    'ignore:Using `httpx` with `starlette\.testclient` is deprecated.*:starlette.exceptions.StarletteDeprecationWarning',
+    # カテゴリを完全修飾パスで指定すると、starlette 側でクラスの置き場所が変わった
+    # だけで pytest が設定パース時に AttributeError で全滅する（exit code 4・収集0件）。
+    # メッセージだけでマッチさせてバージョン差を吸収する。
+    'ignore:Using `httpx` with `starlette\.testclient` is deprecated.*',
     'ignore:Trying to unpickle estimator .* from version 1\.7\.1 when using version 1\.7\.2.*:sklearn.exceptions.InconsistentVersionWarning',
     'ignore:The anyio\.abc\.BlockingPortal alias is deprecated.*:DeprecationWarning',
     'ignore:BaseAgentConfig is deprecated and will be removed in future versions\.:DeprecationWarning',

@@ -792,6 +792,42 @@ def analyze_lost_cases(industry_sub=None):
         "cases": lost_cases
     }
 
+
+# past_cases.final_status → screening_records.outcome の対応。
+# 基本は migrate_outcomes.py の _STATUS_TO_OUTCOME と同じ（対応のない状態は記録しない）。
+# 「検収」だけは migrate_outcomes.py にないが、load_all_cases が「検収」を成約として
+# 集計している（本ファイル内の同名処理を参照）ため、そちらの慣行に合わせる。
+_STATUS_TO_SCREENING_OUTCOME = {
+    "成約": "contracted",
+    "検収": "contracted",
+    "検収完了": "completed",
+    "失注": "lost",
+}
+
+
+def _sync_screening_outcome(case_id: str, final_status: str) -> None:
+    """案件のステータス確定を screening_records.outcome へ反映する。
+
+    これがないと API 経由で記録した行の outcome が NULL のままになり、
+    retraining_pipeline.check_retraining_needed の
+    `COUNT(*) WHERE outcome IS NOT NULL` に載らない。
+    サイドカーなので失敗しても案件更新は成功扱いのままにする。
+    """
+    outcome = _STATUS_TO_SCREENING_OUTCOME.get(str(final_status or "").strip())
+    if not outcome or not case_id:
+        return
+    try:
+        from screening_recorder import update_screening_outcome
+
+        update_screening_outcome(
+            case_id=str(case_id), outcome=outcome, db_path=DB_PATH
+        )
+    except Exception:
+        logger.warning(
+            "screening_records の outcome 同期に失敗: case_id=%s", case_id, exc_info=True
+        )
+
+
 def delete_case(case_id: str) -> bool:
     """指定IDの案件を1件削除する。全件置き換えを使わない安全な単体削除。"""
     if not _cloud_db_enabled() and not os.path.exists(DB_PATH):
@@ -832,6 +868,7 @@ def update_case(case_id: str, updates: dict) -> bool:
                 (json_str, final_status, case_id),
             )
             conn.commit()
+        _sync_screening_outcome(case_id, final_status)
         refresh_stats_caches()
         return True
     except Exception:
@@ -1415,6 +1452,8 @@ def update_case_field(case_id: str, key: str, value: object) -> bool:
 
             cursor.execute(f"UPDATE past_cases SET {update_cols} WHERE id = {ph}", tuple(update_args))
             conn.commit()
+        if key == "final_status":
+            _sync_screening_outcome(case_id, value)
         if not _cloud_db_enabled():
             _trigger_ml_features_update(case_id)
         if key in {

@@ -18,8 +18,12 @@ from contextlib import closing
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO_ROOT)
 
-_LEASE_DB = os.path.join(_REPO_ROOT, "tune_lease_55", "data", "lease_data.db")
-_SCREENING_DB = os.path.join(_REPO_ROOT, "data", "screening_db.sqlite")
+from runtime_paths import get_data_path, get_db_path  # noqa: E402
+
+# パスはハードコードせず runtime_paths に委ねる（旧実装はリポジトリ名を二重に
+# 連結した存在しないパスを見ていて、常に0件で早期リターンしていた）。
+_LEASE_DB = get_db_path()
+_SCREENING_DB = get_data_path("screening_db.sqlite")
 
 
 def aggregate(verbose: bool = True) -> dict:
