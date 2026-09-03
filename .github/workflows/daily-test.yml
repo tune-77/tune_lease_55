@@ -47,6 +47,51 @@ jobs:
           echo "⚠️ Daily test suite に失敗がありました" >> $GITHUB_STEP_SUMMARY
           echo "詳細は Actions タブを確認してください" >> $GITHUB_STEP_SUMMARY
 
+  # 判断資産フィードバックループの定期チェック（REV-365）。
+  # full-pytest でも同じテストは回るが、この経路が壊れた時に
+  # 「Daily Test Suite が赤い」ではなく「判断資産ループが赤い」と分かるように
+  # 名前を分けて出す。数週間 field_validation が 0 のまま気づけなかった再発防止。
+  judgment-asset-loop:
+    name: Judgment Asset Loop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install judgment asset loop test dependencies
+        run: >
+          pip install -q pytest fastapi uvicorn pydantic slowapi httpx python-multipart
+          requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
+          python-dateutil pyyaml
+
+      - name: Run judgment asset feedback loop suite
+        run: |
+          set -o pipefail
+          python -m pytest -q \
+            tests/test_judgment_asset_feedback_loop_e2e.py \
+            tests/test_judgment_asset_feedback_drop_log.py \
+            tests/test_screening_judgment_asset_selection.py \
+            tests/test_judgment_asset_growth_report.py \
+            tests/test_build_judgment_asset_field_review.py \
+            2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Explain failure
+        if: failure()
+        run: |
+          {
+            echo "### 判断資産フィードバックループが壊れています"
+            echo ""
+            echo "守っている不変条件: 正規判断資産が候補に出る → 出典が本文に残る"
+            echo "→ 評価が rule_id へ紐付く → field_validation が 0 より大きくなる"
+            echo ""
+            echo "このどこかが切れると、UIは動いたまま field_validation だけが静かに 0 へ戻ります。"
+            echo "詳細は tests/test_judgment_asset_feedback_loop_e2e.py の docstring を参照。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   lint-full:
     name: Full Lint Check
     runs-on: ubuntu-latest
