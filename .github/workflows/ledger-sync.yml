@@ -19,9 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     # PAT (LEDGER_SYNC_PAT) を廃止し、既定の GITHUB_TOKEN で完結させる。
     # ブランチ作成・push に contents:write、PR作成・auto-merge に pull-requests:write が要る。
+    # actions:write は台帳PRの pr-checks を workflow_dispatch で起動するため。
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     env:
       SYNC_BRANCH: chore/ledger-sync
       # 台帳PRがこの分数を超えて開いたままなら「masterへ届いていない」と見なして赤にする。
@@ -127,6 +129,47 @@ jobs:
               echo "リポジトリ設定で auto-merge が無効になっている可能性があります。"
             } >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::台帳PR #${EXISTING} の auto-merge を有効化できませんでした（手動マージが必要）"
+          fi
+
+      # bot が作ったPRでは pr-checks.yml の run が action_required（承認待ち）で止まり、
+      # 必須チェックが1件も報告されないため auto-merge が永久に待つ。PR #943 の
+      # run #1029 で、bot のPRが一度マージされた後も承認待ちのままになることを実測した
+      # （「マージ実績ができれば承認不要になる」という当初の想定は誤りだった）。
+      # workflow_dispatch は GITHUB_TOKEN でも発火する唯一の入口なので、そこから
+      # 同じ pr-checks を起動して必須チェックを埋める（REV-367 の master-ci-guard.yml と同じ手口）。
+      # 承認待ちの run は放置してよい。ジョブは走らないので必須チェックを塞がない。
+      - name: Run pr-checks on the sync branch
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_WORKFLOW: pr-checks.yml
+        run: |
+          set -euo pipefail
+
+          SHA="$(git rev-parse HEAD)"
+          # 承認待ちで止まっている pull_request の run まで数えると永久に起動しないため、
+          # workflow_dispatch の run だけを見て二重起動を防ぐ。
+          # 問い合わせに失敗した時は 0 として起動を試みる。二重起動は無害だが、
+          # ここで set -e に落ちて ledger-sync 全体を赤にするのは過剰。
+          RUNS="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/${TARGET_WORKFLOW}/runs?head_sha=${SHA}&event=workflow_dispatch&per_page=1" \
+            --jq '.total_count' 2>/dev/null || echo 0)"
+          if [ "${RUNS:-0}" -gt 0 ]; then
+            echo "pr-checks は \`${SHA}\` で既に起動済みです" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # 起動できなくても台帳はPRに入っており、承認待ちの run を手動で
+          # Approve and run すれば同じ結果になる。忘れても次の run の滞留検知が赤にする。
+          if gh workflow run "${TARGET_WORKFLOW}" --ref "$SYNC_BRANCH"; then
+            echo "台帳PRの必須チェックを workflow_dispatch で起動しました（\`${SHA}\`）" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### 台帳PRのチェックを起動できませんでした"
+              echo ""
+              echo "承認待ち（action_required）の run を Actions から Approve and run してください。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::pr-checks を起動できませんでした（台帳PRは手動承認待ちのままです）"
           fi
 
       # 「PRを作れた＝成功」で終わらせない。成否は台帳が master へ入ったかで判定する。
