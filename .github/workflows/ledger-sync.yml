@@ -24,6 +24,9 @@ jobs:
       pull-requests: write
     env:
       SYNC_BRANCH: chore/ledger-sync
+      # 台帳PRがこの分数を超えて開いたままなら「masterへ届いていない」と見なして赤にする。
+      # 通常は pr-checks + auto-merge で数分に収まるため、一時的なCI待ちでは鳴らない。
+      STALE_LEDGER_PR_MINUTES: "60"
 
     steps:
       # 旧構成は PAT で checkout していたが、PAT の未設定/期限切れで
@@ -88,8 +91,9 @@ jobs:
               "マージ済みPRから \`cleanup_improvement_reviews.py --apply\` が再計算した改善台帳です。" \
               "" \
               "このPRは \`$SYNC_BRANCH\` 1本を上書きし続ける形で更新されます。" \
-              "GITHUB_TOKEN 作成のPRでは再帰防止により pr-checks.yml が起動しないため、" \
-              "ledger-sync ジョブ内で validate_improvement_ledger.py を通しています。")
+              "bot が作ったPRのため pr-checks.yml が承認待ち（action_required）で止まることがあります。" \
+              "その場合は Actions で該当runを Approve and run するか、このPRを直接マージしてください。" \
+              "台帳自体は ledger-sync ジョブ内で validate_improvement_ledger.py を通しています。")
 
             if ! gh pr create --base master --head "$SYNC_BRANCH" \
               --title "chore: ledger sync" --body "$BODY"; then
@@ -124,3 +128,50 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::台帳PR #${EXISTING} の auto-merge を有効化できませんでした（手動マージが必要）"
           fi
+
+      # 「PRを作れた＝成功」で終わらせない。成否は台帳が master へ入ったかで判定する。
+      #
+      # bot が作ったPRでは pr-checks.yml が action_required（承認待ち）のまま走らず、
+      # required check が報告されないので auto-merge が永久に待つ。このときジョブは
+      # 緑（PRは作れた・auto-merge も有効化できた）なのに台帳は master に届かない。
+      # REV-362 で潰したはずの「静かな滞留」が一段先で再発したため、
+      # 台帳PRが残り続けている状態そのものを赤にする。
+      #
+      # push する差分が無かった run（pushed=false）でも滞留は起きているので、
+      # if: always() で必ず通す。
+      - name: Fail when the ledger PR is stalled
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN_PR=$(gh pr list --head "$SYNC_BRANCH" --state open --json number,createdAt --jq '.[0] | "\(.number) \(.createdAt)"' || true)
+          if [ -z "$OPEN_PR" ] || [ "$OPEN_PR" = "null null" ]; then
+            echo "台帳PRは残っていません（master へ反映済み）" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          PR_NUM="${OPEN_PR%% *}"
+          OPENED_AT="${OPEN_PR##* }"
+          AGE_MIN=$(( ( $(date -u +%s) - $(date -u -d "$OPENED_AT" +%s) ) / 60 ))
+
+          if [ "$AGE_MIN" -le "$STALE_LEDGER_PR_MINUTES" ]; then
+            echo "台帳PR #${PR_NUM} は作成から ${AGE_MIN} 分でマージ待ちです（許容内）" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "### 台帳が master に届いていません"
+            echo ""
+            echo "台帳PR #${PR_NUM} が ${AGE_MIN} 分マージされないままです（許容 ${STALE_LEDGER_PR_MINUTES} 分）。"
+            echo "PRを作れてもマージされなければ、台帳は master に入らず滞留し続けます。"
+            echo ""
+            echo "よくある原因:"
+            echo "- bot作成PRのため pr-checks が action_required（承認待ち）で走らず、required check が報告されない"
+            echo "  → Actions で該当runの Approve and run、または恒久対応として承認要件の見直し"
+            echo "- auto-merge がリポジトリ設定で無効"
+            echo "- master との競合"
+            echo ""
+            echo "PR: https://github.com/${GITHUB_REPOSITORY}/pull/${PR_NUM}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::台帳PR #${PR_NUM} が ${AGE_MIN} 分マージされていません（台帳が master に届いていない）"
+          exit 1
