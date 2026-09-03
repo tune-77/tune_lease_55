@@ -85,6 +85,19 @@ if [ ! -f "$NODE_MARKER" ]; then
   fi
 fi
 
+# ── graft: 常時適用スキル・.mcp.json の graft サーバが依存するCLI (@nanonets/graft) ──
+# ローカルMacはグローバルインストール済み想定（.claude/helpers/graft-hooks.cjs の
+# BAKED 定数参照）。リモートコンテナは毎回まっさらなので、ここで揃えないと
+# .mcp.json の graft サーバが「Executable not found in $PATH」で接続失敗する。
+if ! command -v graft >/dev/null 2>&1; then
+  echo "[session-start] graft CLI をインストール中..."
+  if npm install -g @nanonets/graft --no-audit --no-fund 2>&1; then
+    echo "[session-start] graft CLI: OK"
+  else
+    echo "[session-start] ⚠️ graft CLI のインストールに失敗。graft skill/MCPはrg/Readへフォールバックします（次回セッションで再試行します）。"
+  fi
+fi
+
 # リポジトリ直下の scoring_core.py 等を import するテスト・スクリプトのため固定する。
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   echo "export PYTHONPATH=\"${PROJECT_DIR}:\${PYTHONPATH:-}\"" >> "$CLAUDE_ENV_FILE"
