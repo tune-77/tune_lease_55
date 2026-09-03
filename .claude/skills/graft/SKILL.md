@@ -1,11 +1,9 @@
 ---
 name: graft
-description: >
-  Always-on code-context router for this indexed repo. Use for every code
-  investigation, implementation, bug fix, refactor, and code review; consult
-  graft before broad raw-source reading to locate implementations, callers,
-  dependencies, and blast radius. Do not use for non-coding conversation or
-  prose-only work.
+description: This repo is indexed by graft/. For ANY task here, whether
+  understanding how something works, finding where code lives, tracing what
+  calls a symbol or what a change breaks, or scoping an edit, get your context
+  from graft before grepping or reading source files.
 ---
 
 # graft
@@ -14,10 +12,6 @@ description: >
 part in prose and name the exact `file:line` spans they cover, plus a wiring
 graph of who-calls-what. Querying a node costs a few hundred tokens; rebuilding
 that understanding by reading source costs thousands, and misses the edges.
-
-## Always-on boundary
-
-For every coding task in this repo, use graft as the first context router before broad `rg` or source reads. If the task already names a file or symbol, use the narrowest command (`grep`, `skeleton`, or `callers`) instead of a broad `ask`. Loading the skill is mandatory for coding work; extra graft calls are not—stop after the first call provides enough context.
 
 Every command below is `$0`, needs no API key, and returns in under a second.
 There are six of them. **Pick the one that fits the task, run it, act on the
