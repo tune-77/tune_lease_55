@@ -6,11 +6,18 @@ name: PR Checks
 # Phase 0.5（planning/shion_improvement_loop_plan.md）:
 # master への直接push（Codex経由の直コミット等）はPRを経由せずCI未実行のまま
 # 本番コードに入っていたため、push トリガーでも同じチェックを実行する。
+#
+# workflow_dispatch: GITHUB_TOKEN 起因の push / pull_request は GitHub の再帰防止で
+# ワークフローを起動しない（例外が workflow_dispatch / repository_dispatch）。
+# ledger-sync.yml が GITHUB_TOKEN で作って auto-merge した台帳PRのマージコミットは
+# pull_request も push も発火せず、pr-checks が一度も走らないまま master に入る。
+# master-ci-guard.yml がその取りこぼしを検知してこの入口から走らせ直す。
 on:
   pull_request:
     branches: [master]
   push:
     branches: [master]
+  workflow_dispatch: {}
 
 jobs:
   frontend:
@@ -131,7 +138,8 @@ jobs:
 
   # PR前プリフライト検証ガード（AST / 幻覚import / リトライ）。
   # 対話セッション経由だけでなく、自律パイプラインが作る PR も含め全経路を対象化する。
-  # pull_request では strict（警告があれば失敗）、master push では既存運用保護のため warn-only。
+  # pull_request では strict（警告があれば失敗）、master push / 手動dispatch では
+  # 既存運用保護のため warn-only。
   preflight-guard:
     runs-on: ubuntu-latest
     steps:
@@ -151,13 +159,13 @@ jobs:
         run: |
           python scripts/preflight_pr_guard.py --strict | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Preflight guard (warn-only on master push)
-        if: github.event_name == 'push'
+      - name: Preflight guard (warn-only on master push / dispatch)
+        if: github.event_name != 'pull_request'
         run: |
           python scripts/preflight_pr_guard.py | tee -a "$GITHUB_STEP_SUMMARY" || true
 
-  # 生成物混入と過大PRを検知する。pull_request では strict、master push では
-  # post-merge 観測として warn-only にする。
+  # 生成物混入と過大PRを検知する。pull_request では strict、master push / 手動dispatch
+  # では post-merge 観測として warn-only にする。
   pr-change-risk:
     runs-on: ubuntu-latest
     steps:
@@ -174,8 +182,8 @@ jobs:
         run: |
           python scripts/check_pr_change_risk.py --base origin/master...HEAD --max-files 80 --max-text-changes 2500 | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: PR change risk guard (warn-only on master push)
-        if: github.event_name == 'push'
+      - name: PR change risk guard (warn-only on master push / dispatch)
+        if: github.event_name != 'pull_request'
         run: |
           python scripts/check_pr_change_risk.py --base HEAD~1..HEAD --max-files 80 --max-text-changes 2500 | tee -a "$GITHUB_STEP_SUMMARY" || true
 
