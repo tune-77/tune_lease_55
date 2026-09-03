@@ -806,22 +806,31 @@ _STATUS_TO_SCREENING_OUTCOME = {
 
 
 def _sync_screening_outcome(case_id: str, final_status: str) -> None:
-    """案件のステータス確定を screening_records.outcome へ反映する。
+    """案件のステータスを screening_records.outcome へ反映する。
 
     これがないと API 経由で記録した行の outcome が NULL のままになり、
     retraining_pipeline.check_retraining_needed の
     `COUNT(*) WHERE outcome IS NOT NULL` に載らない。
+
+    outcome は final_status の写しとして扱う。確定状態なら対応する outcome を
+    立て、「未登録」等の未確定状態へ差し戻されたら NULL に戻す。戻さないと
+    確定していない案件が古い結果のまま再学習の教師データに残る。
     サイドカーなので失敗しても案件更新は成功扱いのままにする。
     """
-    outcome = _STATUS_TO_SCREENING_OUTCOME.get(str(final_status or "").strip())
-    if not outcome or not case_id:
+    if not case_id:
         return
+    outcome = _STATUS_TO_SCREENING_OUTCOME.get(str(final_status or "").strip())
     try:
-        from screening_recorder import update_screening_outcome
+        if outcome:
+            from screening_recorder import update_screening_outcome
 
-        update_screening_outcome(
-            case_id=str(case_id), outcome=outcome, db_path=DB_PATH
-        )
+            update_screening_outcome(
+                case_id=str(case_id), outcome=outcome, db_path=DB_PATH
+            )
+        else:
+            from screening_recorder import clear_screening_outcome
+
+            clear_screening_outcome(case_id=str(case_id), db_path=DB_PATH)
     except Exception:
         logger.warning(
             "screening_records の outcome 同期に失敗: case_id=%s", case_id, exc_info=True

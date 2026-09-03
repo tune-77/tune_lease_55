@@ -114,6 +114,46 @@ def test_sync_screening_outcome_ignores_undecided_status(tmp_path, monkeypatch, 
     assert _rows(db)[0][3] is None
 
 
+# ── 未確定へ差し戻すと outcome が NULL に戻る ────────────────────────────
+@pytest.mark.parametrize("reverted_to", ["未登録", "スコアリングのみ", "稟議中", "", None])
+def test_sync_screening_outcome_clears_on_revert(tmp_path, monkeypatch, reverted_to):
+    db = str(tmp_path / "lease_data.db")
+    monkeypatch.setattr(data_cases, "DB_PATH", db)
+    from screening_recorder import record_screening_result
+
+    record_screening_result(
+        case_id="case-1",
+        screened_at="2026-09-03T00:00:00Z",
+        total_score=70.0,
+        asset_score=60.0,
+        source="api",
+        db_path=db,
+    )
+
+    data_cases._sync_screening_outcome("case-1", "成約")
+    assert _rows(db)[0][3] == "contracted"
+
+    # 差し戻すと確定していない案件として教師データから外れる
+    data_cases._sync_screening_outcome("case-1", reverted_to)
+    assert _rows(db)[0][3] is None
+
+
+def test_clear_screening_outcome_requires_case_id(tmp_path):
+    from screening_recorder import clear_screening_outcome
+
+    result = clear_screening_outcome(case_id="", db_path=str(tmp_path / "x.db"))
+    assert result["success"] is False
+    assert result["error"] is not None
+
+
+def test_clear_screening_outcome_never_raises():
+    from screening_recorder import clear_screening_outcome
+
+    # 例外が漏れたらここで落ちる
+    result = clear_screening_outcome(case_id="case-1", db_path="/nonexistent\x00/bad.db")
+    assert result["success"] is False
+
+
 # ── 案件更新の入口から outcome 同期が呼ばれる ────────────────────────────
 def _seed_past_case(db_path, case_id="case-1"):
     with sqlite3.connect(db_path) as conn:
@@ -172,3 +212,16 @@ def test_aggregate_batch_points_at_real_db_paths():
     import customer_db
 
     assert agg._SCREENING_DB == customer_db.get_db_path()
+
+
+# ── 集計バッチが日次パイプラインに組み込まれている ──────────────────────
+def test_aggregate_batch_runs_in_daily_pipeline():
+    """手動ボタン頼みに戻らないよう、日次 core への組み込みを固定する。"""
+    from pathlib import Path
+
+    core = Path(__file__).resolve().parents[1] / "scripts" / "run_daily_improvement_core.sh"
+    text = core.read_text(encoding="utf-8")
+
+    assert "scripts/aggregate_stats_from_past_cases.py" in text
+    # 失敗しても朝報告を止めない（CLAUDE.md: 追記のみ・|| true 付き）
+    assert 'log_step "aggregate_stats_from_past_cases" $? || true' in text
