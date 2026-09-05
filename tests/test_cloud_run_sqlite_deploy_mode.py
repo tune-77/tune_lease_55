@@ -24,7 +24,7 @@ def test_cloud_run_deploy_scripts_do_not_attach_cloud_sql() -> None:
 
 def test_cloud_run_deploy_clears_secrets_only_without_replacements() -> None:
     expected_replacement_counts = {
-        "scripts/deploy_cloud_run.sh": 2,
+        "scripts/deploy_cloud_run.sh": 3,
         "scripts/deploy_cloud_run_api.sh": 3,
     }
 

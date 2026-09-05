@@ -177,6 +177,7 @@ def _install_fake_google_storage(monkeypatch):
     storage_mod.Client = _FakeStorageClient
     storage_mod.Blob = _FakeBlob
     exceptions_mod.PreconditionFailed = PreconditionFailed
+    exceptions_mod.NotFound = type("NotFound", (Exception,), {})
 
     monkeypatch.setitem(sys.modules, "google", google_mod)
     monkeypatch.setitem(sys.modules, "google.cloud", cloud_mod)

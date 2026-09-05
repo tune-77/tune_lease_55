@@ -19,6 +19,9 @@ fi
 
 mkdir -p "$DATA_DIR"
 
+# 実データの復元失敗時は、同梱DBで起動せず停止する。
+python "$(dirname "$0")/restore_lease_db_snapshot.py"
+
 seed_dir() {
   local src="$1"
   local dst="$2"
@@ -71,15 +74,18 @@ trap cleanup EXIT
 
 READY_TIMEOUT_SECONDS="${READY_TIMEOUT_SECONDS:-240}"
 python - "$FASTAPI_HOST" "$FASTAPI_PORT" "$READY_TIMEOUT_SECONDS" <<'PY'
+import os
 import sys
 import time
 import urllib.request
 
 host, port, timeout_seconds = sys.argv[1], sys.argv[2], int(sys.argv[3])
-url = f"http://{host}:{port}/docs"
+url = f"http://{host}:{port}/api/health/auth"
+headers = {"X-API-Key": os.environ["API_ACCESS_KEY"]} if os.environ.get("API_ACCESS_KEY") else {}
+request = urllib.request.Request(url, headers=headers)
 for _ in range(timeout_seconds):
     try:
-        with urllib.request.urlopen(url, timeout=1) as response:
+        with urllib.request.urlopen(request, timeout=1) as response:
             if response.status == 200:
                 raise SystemExit(0)
     except Exception:
