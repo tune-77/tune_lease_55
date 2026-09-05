@@ -92,10 +92,10 @@ changed_files_between() {
 
 path_impacts_api() {
   case "$1" in
-    api/*|data/*|mobile_app/*|runtime_paths.py|requirements*.txt|Dockerfile.api|cloudbuild.api.yaml)
+    api/*|data/*|mobile_app/*|runtime_paths.py|data_cases.py|requirements*.txt|Dockerfile.api|cloudbuild.api.yaml)
       return 0
       ;;
-    scripts/deploy_cloud_run_api.sh|scripts/package_cloud_run_bundle.sh|scripts/check_cloudrun_demo_readiness.py)
+    scripts/deploy_cloud_run_api.sh|scripts/start_api_cloud_run.sh|scripts/restore_lease_db_snapshot.py|scripts/package_cloud_run_bundle.sh|scripts/check_cloudrun_demo_readiness.py)
       return 0
       ;;
     scripts/build_shion_memory_index.py|scripts/gcs_vault_loader.py|scripts/cloud_init.py)
@@ -199,11 +199,16 @@ print_reasons() {
 check_api() {
   local url="$1"
   local status_code
+  local api_key="${API_ACCESS_KEY:-}"
+  if [[ -z "$api_key" ]]; then
+    api_key="$(gcloud secrets versions access latest --secret API_ACCESS_KEY 2>/dev/null || true)"
+  fi
   echo "[check] API cloud-status"
-  curl --max-time "$CHECK_TIMEOUT" -sS "$url/api/system/cloud-status"
+  curl --max-time "$CHECK_TIMEOUT" -fsS --header @<(printf 'X-API-Key: %s\n' "$api_key") "$url/api/system/cloud-status"
   echo
   echo "[check] API score/full"
   status_code="$(curl --max-time "$CHECK_TIMEOUT" -sS \
+    --header @<(printf 'X-API-Key: %s\n' "$api_key") \
     -o /tmp/tune_lease_smart_deploy_score.json \
     -w '%{http_code}' \
     "$url/api/score/full" \
@@ -222,6 +227,13 @@ check_web() {
   local status_code
   echo "[check] Web /home"
   status_code="$(curl --max-time "$CHECK_TIMEOUT" -sS -o /tmp/tune_lease_smart_deploy_web.html -w '%{http_code}' "$url/home")"
+  if [[ "$status_code" == "401" || "$status_code" == "403" ]]; then
+    local identity_token
+    identity_token="$(gcloud auth print-identity-token)" || return 1
+    status_code="$(curl --max-time "$CHECK_TIMEOUT" -sS \
+      --header @<(printf 'Authorization: Bearer %s\n' "$identity_token") \
+      -o /tmp/tune_lease_smart_deploy_web.html -w '%{http_code}' "$url/home")"
+  fi
   echo "web /home HTTP $status_code"
   if [[ "$status_code" != "200" && "$status_code" != "307" && "$status_code" != "308" ]]; then
     echo "web check failed" >&2

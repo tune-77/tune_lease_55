@@ -2006,6 +2006,12 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
     }
 
 
+@app.get("/api/health/auth")
+def authenticated_health():
+    """起動時に認証設定も含めて確認する軽量なAPI。"""
+    return {"ok": True}
+
+
 @app.delete("/api/cases/operation/clear-all")
 def clear_all_pending_cases(background_tasks: BackgroundTasks):
     """未登録案件をすべて削除する（一括クリア）"""
@@ -2035,12 +2041,19 @@ def delete_case(case_id: str, background_tasks: BackgroundTasks):
     """案件を past_cases から削除する"""
     from data_cases import delete_case as delete_case_from_db
     try:
-        if not _reject_cloudrun_score_pending_case(str(case_id)) and not _reject_cloudrun_event_pending_case(str(case_id)):
-            delete_case_from_db(str(case_id))
+        if _parse_cloudrun_score_case_id(case_id) is not None:
+            deleted = _reject_cloudrun_score_pending_case(case_id, raise_on_error=True)
+        elif _parse_cloudrun_event_case_id(case_id):
+            deleted = _reject_cloudrun_event_pending_case(case_id, raise_on_error=True)
+        else:
+            deleted = delete_case_from_db(case_id, raise_on_error=True)
     except Exception:
-        pass
+        logger.exception("case deletion failed: %s", case_id)
+        raise HTTPException(status_code=503, detail="案件の削除に失敗しました。再試行してください。")
+    if not deleted:
+        raise HTTPException(status_code=404, detail="削除対象の案件が見つかりません。")
     background_tasks.add_task(_git_push_db)
-    return {"message": "Deleted if existed", "case_id": case_id}
+    return {"message": "Deleted", "case_id": case_id}
 @app.get("/api/dashboard/stats")
 def get_dashboard_stats():
     try:
@@ -5537,7 +5550,7 @@ def _promote_cloudrun_score_input_to_pending_case(score_input_id: int) -> str | 
     return str(new_case_id)
 
 
-def _reject_cloudrun_score_pending_case(case_id: str) -> bool:
+def _reject_cloudrun_score_pending_case(case_id: str, *, raise_on_error: bool = False) -> bool:
     score_id = _parse_cloudrun_score_case_id(case_id)
     if score_id is None or not _CLOUDRUN_RETURN_DB.exists():
         return False
@@ -5559,10 +5572,12 @@ def _reject_cloudrun_score_pending_case(case_id: str) -> bool:
             return cur.rowcount > 0
     except Exception as exc:
         logger.warning("cloudrun score pending reject skipped: %s", exc)
+        if raise_on_error:
+            raise
         return False
 
 
-def _reject_cloudrun_event_pending_case(case_id: str) -> bool:
+def _reject_cloudrun_event_pending_case(case_id: str, *, raise_on_error: bool = False) -> bool:
     event_id = _parse_cloudrun_event_case_id(case_id)
     if not event_id:
         return False
@@ -5574,6 +5589,8 @@ def _reject_cloudrun_event_pending_case(case_id: str) -> bool:
     if result.get("ok") is True:
         _invalidate_cloudrun_input_events_cache()
         return True
+    if raise_on_error:
+        raise RuntimeError("Failed to persist pending case rejection")
     return False
 
 

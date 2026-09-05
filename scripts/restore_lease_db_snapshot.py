@@ -8,7 +8,8 @@ GCSスナップショットがあればバンドルより優先され、無け�
 自然にフォールバックする。demoモードは自動リセットが仕様のため対象外
 （後段のdemoモード強制上書きブロックでどのみち上書きされる）。
 
-失敗しても起動をブロックしないよう、常にexit 0で終了する。
+バックアップ未作成時だけ同梱DBへのフォールバックを許可する。
+取得失敗時は起動を止め、古い同梱DBで最新バックアップを上書きしない。
 """
 
 from __future__ import annotations
@@ -47,9 +48,9 @@ def main() -> None:
 
     try:
         from google.cloud import storage
+        from google.api_core.exceptions import NotFound
     except Exception as exc:
-        print(f"[RestoreLeaseDB] google.cloud.storage が利用できないためスキップ: {exc}")
-        return
+        raise RuntimeError("GCS復元依存を読み込めないため起動を中止します") from exc
 
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = target.with_suffix(target.suffix + ".downloading")
@@ -70,7 +71,12 @@ def main() -> None:
             tmp_path.unlink(missing_ok=True)
         except OSError:
             pass
-        print(f"[RestoreLeaseDB] 復元スキップ（非致命的）: {exc}")
+        if isinstance(exc, NotFound):
+            # バケット自体の欠落を初回起動と誤認しない。
+            bucket.reload()
+            print("[RestoreLeaseDB] バックアップ未作成: 同梱DBで初期化します")
+            return
+        raise RuntimeError("GCSのDB復元に失敗したため起動を中止します") from exc
 
 
 if __name__ == "__main__":
