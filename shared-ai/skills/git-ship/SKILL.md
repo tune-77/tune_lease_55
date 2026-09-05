@@ -1,6 +1,6 @@
 ---
 name: git-ship
-description: tune_lease_55で、対象変更を安全に選別してgit add・commit・feature branchへのpush・PR作成・必要ならmergeとブランチ削除まで行う。「git全部やって」「add commit push merge」「ブランチ削除まで」「ship」「一気にコミット」で使用する。単なるgit状態確認やdiff説明には使用しない。
+description: tune_lease_55で、対象変更を安全に選別してcommit・push・PR作成・Codexレビューの妥当な指摘の自動修正・必要ならmergeまで行う。「git全部やって」「ship」「一気にコミット」で使用する。単なるgit状態確認やdiff説明には使用しない。
 ---
 
 # Git Ship
@@ -83,8 +83,20 @@ gh pr create --base master --head <branch> --title "<title>" --body "<変更概�
 
 - `gh` 認証が使えない場合は、push後のPR作成URLを返して止める。
 - required checksやreviewを迂回しない。
+- PR作成または追加push後は、Codexレビュー本文だけでなくインラインコメントも取得する。`gh pr view` の `comments` だけではインライン指摘を取得できない。
+- 各指摘を対象コード・既存規約・テストで検証し、妥当かつ依頼範囲内なら確認なしで修正、対象テスト、commit、pushまで行う。
+- 好みだけの提案、根拠不足、依頼範囲外、高リスクな設計変更は自動修正せず、理由を報告する。
+- 修正後は `@codex review` を投稿して再レビューを依頼する。自動修正は1 PRにつき最大2巡とし、同じ指摘の再発や3巡目は停止してユーザーへ判断を返す。
+- Codexレビューが未完了ならmergeしない。レビュー待ちは最大5分とし、時間内に完了しなければ待機中と報告する。
 - mergeまで依頼されている場合だけ、checksとmerge可否を確認してPRをmergeする。
 - ブランチ削除まで依頼されている場合だけ、merge済みを確認してローカル・リモートブランチを削除する。
+
+レビュー確認例:
+
+```bash
+gh pr view <PR番号> --json reviews,latestReviews,mergeStateStatus,statusCheckRollup
+gh api repos/{owner}/{repo}/pulls/<PR番号>/comments --paginate
+```
 
 ```bash
 git fetch --prune origin
@@ -105,4 +117,5 @@ git ls-remote origin refs/heads/<branch> refs/heads/master
 - push先とPR URL
 - merge状態
 - 実行した検証
+- Codex指摘ごとの妥当性判断、修正内容、修正commit、再レビュー結果
 - 意図的に除外したdirtyファイル群
