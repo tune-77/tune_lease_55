@@ -63,6 +63,10 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 
 ## Claude Code / Codex 共通資産
 
+Reason: 同じSkillをツール別に複製すると、片側更新によって判断・安全手順がずれる。
+Scope: Claude CodeとCodexが同じSkillまたは知識運用規約を使う時。
+Retirement: 両ツールが単一の標準Skillディレクトリを直接参照できるようになった時。
+
 - 共通Skillの正本は `shared-ai/skills/`。`.claude/skills/` と `.agents/skills/` には相対symlinkだけを置く。
 - 共通判断規約は `shared-ai/knowledge/shared-conventions.md` を参照する。
 - Claude Code固有の権限・hooks・モデル・プラグイン規約は共通領域へ移さない。
