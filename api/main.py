@@ -588,6 +588,9 @@ app.include_router(vault_hub_router)
 from api.routers.screening_misc import router as screening_misc_router
 app.include_router(screening_misc_router)
 
+from api.routers.screening_report import router as screening_report_router
+app.include_router(screening_report_router)
+
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
 from api.routers.shion_memory_feedback import router as shion_memory_feedback_router
