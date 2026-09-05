@@ -18,6 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from data_cases import _STATUS_TO_SCREENING_OUTCOME
 from screening_recorder import record_screening_result
 
 
@@ -138,6 +139,12 @@ def backfill(db_path: str, since: str, apply: bool) -> int:
         asset_score, asset_error = _score_value(
             _prefer_result_value(data, "asset_score")
         )
+        if asset_error == "missing":
+            inputs_for_fallback = data.get("inputs")
+            if isinstance(inputs_for_fallback, dict):
+                asset_score, asset_error = _score_value(
+                    inputs_for_fallback.get("asset_score")
+                )
         if total_error:
             skipped_reasons[f"total_score_{total_error}"] += 1
         if asset_error:
@@ -162,8 +169,10 @@ def backfill(db_path: str, since: str, apply: bool) -> int:
                 _prefer_result_value(data, "quantum_risk")
             ),
             competitor_pressure_score=None,
-            outcome=None,
-            input_snapshot=data.get("inputs"),
+            outcome=_STATUS_TO_SCREENING_OUTCOME.get(
+                str(data.get("final_status") or "").strip()
+            ),
+            input_snapshot=None,
             source="api_backfill",
             db_path=db_path,
         )
