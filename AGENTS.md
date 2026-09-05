@@ -212,3 +212,13 @@ Retirement: remove or rewrite if the repo adopts a dedicated external-doc or des
 - `taste-skill` は `frontend` の新規画面、大きな改修、見た目レビューの時だけ使う。
 - `taste-skill` はレイアウト、余白、文字組み、色、情報密度、画面の個性の確認に限定し、機能要件やバックエンド設計には踏み込まない。
 - 既存デザイン言語がある画面はそれを優先し、`taste-skill` を理由に毎回UIを作り変えない。
+
+## Claude Code / Codex Shared Asset Rule
+
+Reason: 同じSkillを `.claude/skills` と `.agents/skills` に複製すると、片側だけ更新されて判断・安全手順がずれる。
+Scope: このプロジェクトでClaude CodeとCodexの両方が同じSkillまたは知識運用規約を使う時。
+Retirement: 両ツールが同じ標準Skillディレクトリを直接参照し、symlinkなしで単一実体を保証できるようになった時。
+
+- 共通Skillの正本は `shared-ai/skills/` とし、ツール別Skillディレクトリには相対symlinkだけを置く。
+- 共通知識運用は `shared-ai/knowledge/shared-conventions.md` を参照する。
+- 1ツール固有の権限、hooks、モデル、プラグイン規約は共通化しない。

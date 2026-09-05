@@ -60,3 +60,9 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 
 詳細: @.claude/rules/workflow.md | @.claude/rules/security.md | .claude/AGENTS.md
 週次サマリーは `scripts/weekly_self_management.py` が毎週月曜 `WEEKLY_LOG.md` に自動追記（本ファイルには追記しない）
+
+## Claude Code / Codex 共通資産
+
+- 共通Skillの正本は `shared-ai/skills/`。`.claude/skills/` と `.agents/skills/` には相対symlinkだけを置く。
+- 共通判断規約は `shared-ai/knowledge/shared-conventions.md` を参照する。
+- Claude Code固有の権限・hooks・モデル・プラグイン規約は共通領域へ移さない。
