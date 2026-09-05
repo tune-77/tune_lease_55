@@ -74,7 +74,7 @@ def _load_rows(db_path: str, since: str) -> tuple[list[sqlite3.Row], set[str]]:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
-            SELECT id, timestamp, registration_date, data
+            SELECT id, timestamp, registration_date, data, final_status
               FROM past_cases
              WHERE substr(timestamp, 1, 10) >= ?
                 OR substr(registration_date, 1, 10) >= ?
@@ -170,7 +170,7 @@ def backfill(db_path: str, since: str, apply: bool) -> int:
             ),
             competitor_pressure_score=None,
             outcome=_STATUS_TO_SCREENING_OUTCOME.get(
-                str(data.get("final_status") or "").strip()
+                str(row["final_status"] or data.get("final_status") or "").strip()
             ),
             input_snapshot=None,
             source="api_backfill",
