@@ -129,27 +129,33 @@ API and Web package prefixes receive the 15-version keep rule.
 
 ## セキュリティ: アクセス制御（重要）
 
-**両サービスとも既定で `--allow-unauthenticated`（Cloud Run IAM レベルでは無認証公開）
-としてデプロイされます。** Web は審査員・来場者に見せる公開デモ用途のため、IAM を
-無効化する変更（後述の方式1）はこのリポジトリでは未導入です。実データを扱う
-非demoモード（`CLOUDRUN_DATA_MODE` が `demo` 以外）では、代わりに**方式2（共有シークレット）
-がアプリ層で既定・必須（fail-closed）**になります——`API_ACCESS_KEY` を Secret Manager に
-登録していない状態で非demoデプロイを実行すると `scripts/deploy_cloud_run_api.sh` が
-`exit 1` でデプロイ自体を止めます。
+実データ用Webは `--no-allow-unauthenticated --invoker-iam-check` でデプロイします。
+WebがAPIキーを自動付与する前にCloud Run IAMで利用者を認証します。
+Webの公開可否は接続先APIの `CLOUDRUN_DATA_MODE` から決め、未設定は実データ扱いです。
+APIが明示的に `demo` の場合だけWebを公開します。
 
-FastAPI は175以上の `/api/*` エンドポイントを持ち、それ自体は Cloud Run IAM の外側では
-無防備です。デモモード（`CLOUDRUN_DATA_MODE=demo`、公開匿名データのみ）では
-方式2は任意（未設定なら無防備公開のまま）ですが、**非demoモードでは必須**です。
+API単体は引き続きアプリ層の共有キーで保護します。Web→APIの経路は従来どおりです。
+実データ用ではAPI・Web・一体型のいずれも `API_ACCESS_KEY` がSecret Managerに
+存在しなければデプロイを中止します。一体型も実データ用ではIAMで入口を保護し、
+デモだけキー未設定を許可します。
 
-### 1. Cloud Run IAM（未導入・追加強化オプション）
+### 1. 実データ用Webへのアクセス
 
-API サービスを非公開にし、Web サービスのサービスアカウントにのみ
-`roles/run.invoker` を付与する方式。Web → API 呼び出しには ID トークンが必要になるため、
-**Next.js の `rewrites` プロキシ（`next.config.ts`）を Route Handler 化して
-`Authorization: Bearer <ID token>` を server-side で付与する実装が別途必要です**
-（`rewrites` はヘッダを追加できません）。**この実装は現時点で未着手**であり、
-`--no-allow-unauthenticated` を単純に指定するとWeb→API疎通が壊れます。導入する
-場合は先にRoute Handler化を行ってください。
+利用するGoogleアカウントに対象Webサービスの `roles/run.invoker` が必要です。
+認証済みのローカルプロキシを通してブラウザから利用できます。
+
+```bash
+gcloud run services proxy tune-lease-55-web --region asia-northeast1 --port 8080
+# ブラウザで http://localhost:8080 を開く
+```
+
+デプロイ後、実データ用Webの直接URLには匿名アクセスできなくなります。
+通常のブラウザログインを導入する場合はIAP等を別途構成してください。
+共有キー方式は利用者別の権限分離ではありません。IAMで許可された利用者は
+既存の業務操作を利用できます。プロジェクト全体などで広いInvoker権限を付与して
+いないことも運用側で確認してください。
+
+参考: [Cloud Runの公開アクセスとIAMチェック](https://docs.cloud.google.com/run/docs/authenticating/public)
 
 ### 2. 共有シークレット（既定の保護方式）
 
@@ -201,36 +207,29 @@ openssl rand -hex 32 | gcloud secrets versions add API_ACCESS_KEY \
 （`api/demo_guard.py`）。スコアリング・チャット・討論・案件登録などの試用は許可し、
 削除操作のみ塞ぎます。
 
-**API デプロイでは `CLOUDRUN_DATA_MODE=demo`（既定）のとき `DEMO_READONLY=1` が
-自動で有効**になります。本番データや削除を許可したい場合は `DEMO_READONLY=0` を明示。
+APIデプロイの既定は実データモード、`DEMO_READONLY=0` です。
+公開デモの削除を保護するときは両方を明示してください。
 
 ```bash
-# 公開デモ（既定で削除保護ON）
-./scripts/deploy_cloud_run_api.sh
-# 削除も許可する場合
-DEMO_READONLY=0 ./scripts/deploy_cloud_run_api.sh
+# 公開デモ（削除保護ON）
+CLOUDRUN_DATA_MODE=demo DEMO_READONLY=1 ./scripts/deploy_cloud_run_api.sh
+# 削除も許可する公開デモ
+CLOUDRUN_DATA_MODE=demo DEMO_READONLY=0 ./scripts/deploy_cloud_run_api.sh
 ```
 
 UI 側の削除ボタンは押下時に 403 となりエラー表示されます（データは保全）。デモ体験を
 更に磨くならボタン自体の非表示は任意の追加対応です。
 
-### 残課題: Web フロントエンド自体の保護（ハッカソンでは不要）
+### DB復元と起動確認
 
-> ハッカソン公開デモでは審査員・来場者に見せるため、Web はログイン等で囲わず
-> **公開のまま**にします。以下は「限定公開の内部ツールとして運用する」場合の選択肢です。
+実データ用では、一体型・API単体とも同梱DBを配置する前にGCSスナップショットを復元します。
+既存バケットにスナップショットが存在しない初回だけ、同梱DBで初期化します。
+通信障害・権限エラー・バケット欠落・依存ライブラリ不足では起動を中止します。
+古い同梱DBが後続の定期保存で最新スナップショットを上書きすることを防ぎます。
+復旧後に起動を再試行してください。
 
-
-上記はいずれも「API の直叩き」を塞ぐものです。Web サービスを
-`ALLOW_UNAUTHENTICATED=1` で公開している限り、**公開 URL を知る第三者は Web UI を
-開いて proxy 経由で API を操作できます**（キーは server-side 注入されるため UI からは
-操作可能）。1 ユーザー運用でフロント自体も秘匿するには、次のいずれかを別途導入します:
-
-- Next.js にログイン（認証必須ページ）を追加する
-- Web サービスも `--no-allow-unauthenticated` にし、`gcloud run services proxy` や
-  IAP 経由でアクセスする
-
-この対応は本 PR のスコープ外です（`docs/archive/WHY_USER_COUNT_MATTERS.md` /
-`docs/archive/IMPLEMENTATION_DECISION_FOR_1USER.md` の方針と併せて別途計画）。
+一体型の起動確認は `/api/health/auth` にAPIキーを付けて行います。
+認証対象外の `/docs` だけで起動成功と判定しません。
 
 Update rule:
 
