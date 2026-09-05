@@ -41,8 +41,18 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 適用条件: ローカル開発・コード調査・ブランチ作成・PR作成、およびスコアリング/審査ロジック/業種データ/主要UIの変更提案を行う時。
 削除条件: ツール規約・出典検査・計画確認・矛盾検査が別の自動ガードまたはリポジトリ設定で担保された時。
 
+### 常時適用するコード作業skill
+
+理由: `graft` で必要箇所だけを取得し、`ponytail` で実装量を抑える組み合わせにより、コード作業の読込コンテキストと変更量を減らす。
+適用条件: このリポジトリのコード調査、実装、bugfix、refactor、code review。
+削除条件: 同等の索引ルーティングと最小実装規律がハーネス側で自動保証された時。
+
+- コード作業では `.claude/skills/graft/SKILL.md` と `.claude/skills/ponytail/SKILL.md` を常時適用する。
+- 非コード会話・文章作成だけの依頼では読み込まない。
+- `graft` は最初の1呼出しで必要な文脈が得られたら止め、呼出し数を増やすこと自体を目的にしない。
+
 - **TS/Next.js**: strict mode厳守・`apiClient`（`src/lib/api.ts`）経由でAPI呼び出し。詳細: @.claude/rules/frontend.md
-- **Serena MCP**: `get_symbols_overview` / `find_symbol` / `replace_symbol_body` をReadより優先
+- **Graft → Serena**: 先にGraftで変更範囲・caller・依存を絞り、対象確定後はSerenaの `get_symbols_overview` / `find_symbol` / `replace_symbol_body` を広いReadより優先。Graftが利用不能・未索引の場合だけ `rg` / Readへfallback
 - **ブランチ/PR**: `feature/rev-<番号>-<説明>` / `fix/...` / `chore/...`。一括shipは `/git-ship`
 - **出典明記**: 提案前に `static_data/` か `notes/` の具体ファイル名を引用。出典がなければ「これは推測です」と明示
 - **計画確認**: `scoring_core.py` / `analysis_*.py` / フロントエンド変更前に3文の変更計画を提示し承認を得る
@@ -50,7 +60,3 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 
 詳細: @.claude/rules/workflow.md | @.claude/rules/security.md | .claude/AGENTS.md
 週次サマリーは `scripts/weekly_self_management.py` が毎週月曜 `WEEKLY_LOG.md` に自動追記（本ファイルには追記しない）
-
----
-
-初めてこのリポジトリで作業する時・ディレクトリの役割が不明な時は .claude/rules/structure.md を読むこと（2系統の実装の対比、ディレクトリ早見表、開発コマンド早見表）。常時読み込む内容ではないため、必要な時にだけ参照する。

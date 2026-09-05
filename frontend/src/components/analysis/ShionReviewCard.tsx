@@ -7,10 +7,12 @@ import {
   buildShionThoughtProcessSteps,
   SHION_REVIEW_IMAGE,
   type JudgmentAssetCandidate,
+  type QRiskBreakdown,
   type ShionReviewFeedback,
   type ShionScreeningReview,
 } from "../../lib/shionReview";
 import ShionFollowUpPanel from "./ShionFollowUpPanel";
+import QRiskBreakdownChart from "./QRiskBreakdownChart";
 
 const renderPlainReviewTextWithHighlights = (
   text: string,
@@ -208,6 +210,7 @@ export function ShionScreeningReviewCard({
                     ))}
                   </div>
                 ) : null}
+                <QRiskBreakdownChart breakdown={(result?.q_risk_breakdown as QRiskBreakdown | undefined) ?? null} />
                 <ShionFollowUpPanel
                   caseId={String(result?.case_id || formData.company_no || formData.company_name || "")}
                   reviewId={review.savedId}

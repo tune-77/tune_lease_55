@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
+import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 
 type SpeechRecognitionInstance = {
   lang: string;
@@ -528,6 +529,14 @@ export default function VoiceChatPage() {
                       </button>
                     )}
                   </div>
+                  {message.role === "assistant" && (
+                    <ResponseUsefulnessButtons
+                      question={message.query}
+                      response={message.text}
+                      route="voice_chat"
+                      className="mt-2"
+                    />
+                  )}
                 </div>
                 {message.role === "user" && (
                   <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-200 text-stone-700">

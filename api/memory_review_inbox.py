@@ -36,6 +36,10 @@ AUTO_REJECT_JACCARD_THRESHOLD = 0.82
 AUTO_REJECT_SEQUENCE_THRESHOLD = 0.93
 AUTO_REJECT_MIN_TEXT_LEN = 18
 AUTO_REJECT_REVIEW_WEEKDAY = 0  # Monday
+# Statuses a fresh near-duplicate candidate should inherit instead of resurfacing
+# as an unreviewed "candidate". Excludes "rejected", which already has its own
+# persisted-pattern path via _apply_auto_rejections.
+CARRY_OVER_STATUSES = {"adopted", "revised", "held"}
 
 # Guards the review-state read-modify-write cycle in review_candidate(). Without
 # it, two near-simultaneous reviews can each read the state before the other's
@@ -245,6 +249,10 @@ def normalize_candidate(source_name: str, row: dict[str, Any], review: dict[str,
         "auto_reject_reason": "",
         "auto_reject_matched_inbox_id": "",
         "auto_reject_score": 0.0,
+        "auto_carried_over": False,
+        "auto_carried_over_reason": "",
+        "auto_carried_over_matched_inbox_id": "",
+        "auto_carried_over_score": 0.0,
         "title": title or source_item_id,
         "claim": claim,
         "edited_claim": edited_claim,
@@ -300,6 +308,45 @@ def _apply_auto_rejections(items: list[dict[str, Any]], state: dict[str, Any]) -
     return items
 
 
+def _apply_carried_over_reviews(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Carry an existing adopted/revised/held decision onto a near-duplicate candidate.
+
+    Some source pipelines mint a fresh row id per detection run rather than per
+    underlying claim (e.g. prediction_error_loop's timestamp-based candidate_id),
+    so the same already-reviewed item can re-emit under a new inbox_id and show
+    up again as an unreviewed "candidate". _apply_auto_rejections already guards
+    against this for rejected items via persisted rejection_patterns; this does
+    the equivalent, session-local check for the other terminal decisions so a
+    human isn't asked to re-review something already decided.
+    """
+    decided = [
+        item
+        for item in items
+        if item.get("has_human_review") and str(item.get("status") or "") in CARRY_OVER_STATUSES
+    ]
+    if not decided:
+        return items
+    decided_patterns = [(_rejection_pattern_for_item(item), item) for item in decided]
+    for item in items:
+        if item.get("has_human_review") or str(item.get("status") or "candidate") != "candidate":
+            continue
+        best_match: dict[str, Any] | None = None
+        best_score = 0.0
+        for pattern, source_item in decided_patterns:
+            matched, score = _pattern_matches_item(pattern, item)
+            if matched and score > best_score:
+                best_match = source_item
+                best_score = score
+        if best_match:
+            item["status"] = str(best_match.get("status") or "")
+            item["auto_carried_over"] = True
+            item["auto_carried_over_reason"] = "既にレビュー済みの類似候補と高一致したため前回の判断を引き継ぎ"
+            item["auto_carried_over_matched_inbox_id"] = str(best_match.get("inbox_id") or "")
+            item["auto_carried_over_score"] = round(best_score, 3)
+            item["note"] = item["auto_carried_over_reason"]
+    return items
+
+
 def load_candidates() -> list[dict[str, Any]]:
     state = load_review_state()
     reviews = state.get("reviews") if isinstance(state.get("reviews"), dict) else {}
@@ -309,7 +356,8 @@ def load_candidates() -> list[dict[str, Any]]:
             inbox_id = make_inbox_id(source_name, row)
             review = reviews.get(inbox_id) if isinstance(reviews.get(inbox_id), dict) else {}
             items.append(normalize_candidate(source_name, row, review))
-    return _apply_auto_rejections(items, state)
+    items = _apply_auto_rejections(items, state)
+    return _apply_carried_over_reviews(items)
 
 
 def summarize_items(items: list[dict[str, Any]]) -> dict[str, Any]:

@@ -5,15 +5,30 @@ on:
     types: [closed]
     branches: [master]
 
+# 短時間に複数PRがマージされると、古い run が master から計算した後に新しい run の
+# push を追い越して force push し、新しいエントリを落とした状態で両方が成功扱いに
+# なりうる。同一グループで直列化して防ぐ。待機中の run は後続に置き換えられるが、
+# 各 run はマージ済みPR一覧から毎回全再計算するため最後の run だけで内容は完全になる。
+concurrency:
+  group: ledger-sync
+  cancel-in-progress: false
+
 jobs:
   sync-ledger:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     # PAT (LEDGER_SYNC_PAT) を廃止し、既定の GITHUB_TOKEN で完結させる。
     # ブランチ作成・push に contents:write、PR作成・auto-merge に pull-requests:write が要る。
+    # actions:write は台帳PRの pr-checks を workflow_dispatch で起動するため。
     permissions:
       contents: write
       pull-requests: write
+      actions: write
+    env:
+      SYNC_BRANCH: chore/ledger-sync
+      # 台帳PRがこの分数を超えて開いたままなら「masterへ届いていない」と見なして赤にする。
+      # 通常は pr-checks + auto-merge で数分に収まるため、一時的なCI待ちでは鳴らない。
+      STALE_LEDGER_PR_MINUTES: "60"
 
     steps:
       # 旧構成は PAT で checkout していたが、PAT の未設定/期限切れで
@@ -41,64 +56,165 @@ jobs:
         run: |
           python3 scripts/validate_improvement_ledger.py | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Open PR with updated ledger
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # PR1本につき1ブランチ（chore/ledger-sync-pr-<番号>）を作る旧方式は、
+      # PR作成が拒否されるたびにブランチだけが残り 132 本まで積み上がった。
+      # 台帳は毎回 master から全再計算されるので履歴を分けて持つ意味がなく、
+      # 常に同じ1本（chore/ledger-sync）へ上書きする。
+      - name: Push ledger update to the sync branch
+        id: push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add scripts/improvement_ledger.jsonl
           if git diff --cached --quiet; then
             echo "No ledger changes to commit"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          PR_NUM="${{ github.event.pull_request.number }}"
-          BRANCH="chore/ledger-sync-pr-${PR_NUM}"
+          git checkout -b "$SYNC_BRANCH"
+          git commit -m "chore: ledger sync (PR #${{ github.event.pull_request.number }} まで反映)"
+          # 内容は master からの再計算結果そのものなので、残っている旧内容は捨ててよい。
+          git push --force origin "$SYNC_BRANCH"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
 
-          git checkout -b "$BRANCH"
-          git commit -m "chore: ledger sync after PR #${PR_NUM} merge"
-          git push origin "$BRANCH"
+      # ここで緑のまま終わらせない。旧方式は PR 作成が拒否されても exit 0 で
+      # 緑になっていたため、PR #797 以降 127 回のマージで台帳が master へ入って
+      # いないことに誰も気づけなかった。master へ入る経路が無い状態は赤にする。
+      - name: Ensure the ledger PR is open
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXISTING=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number' || true)
 
-          BODY=$(cat <<EOF
-          PR #${PR_NUM} merge後の \`cleanup_improvement_reviews.py --apply\` による自動更新です。
+          if [ -z "$EXISTING" ]; then
+            BODY=$(printf '%s\n' \
+              "マージ済みPRから \`cleanup_improvement_reviews.py --apply\` が再計算した改善台帳です。" \
+              "" \
+              "このPRは \`$SYNC_BRANCH\` 1本を上書きし続ける形で更新されます。" \
+              "bot が作ったPRのため pr-checks.yml が承認待ち（action_required）で止まることがあります。" \
+              "その場合は Actions で該当runを Approve and run するか、このPRを直接マージしてください。" \
+              "台帳自体は ledger-sync ジョブ内で validate_improvement_ledger.py を通しています。")
 
-          このPRは GITHUB_TOKEN で作成されているため、GitHub の再帰防止により \`pr-checks.yml\` は起動しません。
-          代わりに ledger-sync ジョブ内で \`scripts/validate_improvement_ledger.py\` による検査を通しています。
-          EOF
-          )
-
-          # ここまでで push は完了しており、台帳更新はブランチに保全されている。
-          # 以降の PR 作成・auto-merge は「あれば嬉しい」段階なので、失敗しても
-          # ジョブを落とさない（落とすと成功しているデータ保全まで赤く見える）。
-          if ! gh pr create \
-            --base master \
-            --head "$BRANCH" \
-            --title "chore: ledger sync after PR #${PR_NUM} merge" \
-            --body "$BODY"; then
-            # 既定では Actions による PR 作成はリポジトリ設定で禁止されている
-            # （GraphQL: GitHub Actions is not permitted to create or approve pull requests）。
-            echo "::warning::PRの自動作成が拒否されました。台帳更新はブランチ ${BRANCH} に保全済みです"
-            {
-              echo "### 台帳更新はブランチに保全されています（PR作成は未実行）"
-              echo ""
-              echo "ブランチ: \`${BRANCH}\`"
-              echo ""
-              echo "PR作成URL: https://github.com/${GITHUB_REPOSITORY}/pull/new/${BRANCH}"
-              echo ""
-              echo "恒久対応: Settings → Actions → General → Workflow permissions →"
-              echo "「Allow GitHub Actions to create and approve pull requests」を有効化すると完全自動になります。"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            if ! gh pr create --base master --head "$SYNC_BRANCH" \
+              --title "chore: ledger sync" --body "$BODY"; then
+              {
+                echo "### 台帳が master へ入る経路がありません"
+                echo ""
+                echo "更新内容はブランチ \`$SYNC_BRANCH\` に保全されていますが、PRが無いため master へ入りません。"
+                echo ""
+                echo "- 今すぐ入れる: https://github.com/${GITHUB_REPOSITORY}/pull/new/$SYNC_BRANCH からPRを作ってマージ"
+                echo "- 恒久対応: Settings → Actions → General → Workflow permissions →"
+                echo "  「Allow GitHub Actions to create and approve pull requests」を有効化すると全自動になります"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::台帳更新が $SYNC_BRANCH に滞留しています（PRを作成できませんでした）"
+              exit 1
+            fi
+            EXISTING=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number' || true)
           fi
 
-          # auto-merge が無効（設定なし等）でも失敗させない。マージできなくても
-          # PR さえ残れば台帳更新は失われない = 旧構成の「毎回捨てられる」より安全。
-          if ! gh pr merge "$BRANCH" --auto --squash --delete-branch; then
-            echo "::warning::auto-merge を有効化できませんでした。台帳PR ($BRANCH) は手動マージが必要です"
+          EXISTING="${EXISTING:-?}"   # 作成直後に一覧へ出ないことがあるため表示用に既定値を置く
+
+          # PRを開いたまま放置すると、以降の run は push だけして緑になり、台帳が
+          # master へ入らない滞留がまた静かに続く。作成直後も既存PRも、毎回
+          # auto-merge を有効化してマージまで繋ぐ（旧構成の gh pr merge --auto 相当）。
+          if gh pr merge "$SYNC_BRANCH" --auto --merge --delete-branch; then
+            echo "台帳PR #${EXISTING} を更新し、auto-merge を有効化しました" >> "$GITHUB_STEP_SUMMARY"
+          else
             {
               echo "### 台帳PRは手動マージが必要です"
-              echo "ブランチ: \`$BRANCH\`"
-              echo "auto-merge を有効化できませんでしたが、更新内容はPRとして保全されています。"
+              echo ""
+              echo "PR #${EXISTING} に更新内容は入っていますが、auto-merge を有効化できませんでした。"
+              echo "リポジトリ設定で auto-merge が無効になっている可能性があります。"
             } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::台帳PR #${EXISTING} の auto-merge を有効化できませんでした（手動マージが必要）"
           fi
+
+      # bot が作ったPRでは pr-checks.yml の run が action_required（承認待ち）で止まり、
+      # 必須チェックが1件も報告されないため auto-merge が永久に待つ。PR #943 の
+      # run #1029 で、bot のPRが一度マージされた後も承認待ちのままになることを実測した
+      # （「マージ実績ができれば承認不要になる」という当初の想定は誤りだった）。
+      # workflow_dispatch は GITHUB_TOKEN でも発火する唯一の入口なので、そこから
+      # 同じ pr-checks を起動して必須チェックを埋める（REV-367 の master-ci-guard.yml と同じ手口）。
+      # 承認待ちの run は放置してよい。ジョブは走らないので必須チェックを塞がない。
+      - name: Run pr-checks on the sync branch
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_WORKFLOW: pr-checks.yml
+        run: |
+          set -euo pipefail
+
+          SHA="$(git rev-parse HEAD)"
+          # 承認待ちで止まっている pull_request の run まで数えると永久に起動しないため、
+          # workflow_dispatch の run だけを見て二重起動を防ぐ。
+          # 問い合わせに失敗した時は 0 として起動を試みる。二重起動は無害だが、
+          # ここで set -e に落ちて ledger-sync 全体を赤にするのは過剰。
+          RUNS="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/${TARGET_WORKFLOW}/runs?head_sha=${SHA}&event=workflow_dispatch&per_page=1" \
+            --jq '.total_count' 2>/dev/null || echo 0)"
+          if [ "${RUNS:-0}" -gt 0 ]; then
+            echo "pr-checks は \`${SHA}\` で既に起動済みです" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # 起動できなくても台帳はPRに入っており、承認待ちの run を手動で
+          # Approve and run すれば同じ結果になる。忘れても次の run の滞留検知が赤にする。
+          if gh workflow run "${TARGET_WORKFLOW}" --ref "$SYNC_BRANCH"; then
+            echo "台帳PRの必須チェックを workflow_dispatch で起動しました（\`${SHA}\`）" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### 台帳PRのチェックを起動できませんでした"
+              echo ""
+              echo "承認待ち（action_required）の run を Actions から Approve and run してください。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::pr-checks を起動できませんでした（台帳PRは手動承認待ちのままです）"
+          fi
+
+      # 「PRを作れた＝成功」で終わらせない。成否は台帳が master へ入ったかで判定する。
+      #
+      # bot が作ったPRでは pr-checks.yml が action_required（承認待ち）のまま走らず、
+      # required check が報告されないので auto-merge が永久に待つ。このときジョブは
+      # 緑（PRは作れた・auto-merge も有効化できた）なのに台帳は master に届かない。
+      # REV-362 で潰したはずの「静かな滞留」が一段先で再発したため、
+      # 台帳PRが残り続けている状態そのものを赤にする。
+      #
+      # push する差分が無かった run（pushed=false）でも滞留は起きているので、
+      # if: always() で必ず通す。
+      - name: Fail when the ledger PR is stalled
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN_PR=$(gh pr list --head "$SYNC_BRANCH" --state open --json number,createdAt --jq '.[0] | "\(.number) \(.createdAt)"' || true)
+          if [ -z "$OPEN_PR" ] || [ "$OPEN_PR" = "null null" ]; then
+            echo "台帳PRは残っていません（master へ反映済み）" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          PR_NUM="${OPEN_PR%% *}"
+          OPENED_AT="${OPEN_PR##* }"
+          AGE_MIN=$(( ( $(date -u +%s) - $(date -u -d "$OPENED_AT" +%s) ) / 60 ))
+
+          if [ "$AGE_MIN" -le "$STALE_LEDGER_PR_MINUTES" ]; then
+            echo "台帳PR #${PR_NUM} は作成から ${AGE_MIN} 分でマージ待ちです（許容内）" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "### 台帳が master に届いていません"
+            echo ""
+            echo "台帳PR #${PR_NUM} が ${AGE_MIN} 分マージされないままです（許容 ${STALE_LEDGER_PR_MINUTES} 分）。"
+            echo "PRを作れてもマージされなければ、台帳は master に入らず滞留し続けます。"
+            echo ""
+            echo "よくある原因:"
+            echo "- bot作成PRのため pr-checks が action_required（承認待ち）で走らず、required check が報告されない"
+            echo "  → Actions で該当runの Approve and run、または恒久対応として承認要件の見直し"
+            echo "- auto-merge がリポジトリ設定で無効"
+            echo "- master との競合"
+            echo ""
+            echo "PR: https://github.com/${GITHUB_REPOSITORY}/pull/${PR_NUM}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::台帳PR #${PR_NUM} が ${AGE_MIN} 分マージされていません（台帳が master に届いていない）"
+          exit 1

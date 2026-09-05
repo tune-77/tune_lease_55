@@ -1,6 +1,6 @@
 ---
 name: obsidian-search-rule
-description: AIチャットからObsidian/Vaultを参照する処理を実装・変更する時に使うスキル。「Obsidian検索実装」「RAG経路変更」「vault.rglobを直接呼ぶ」等の場面で使用。Flask/mobile版・Streamlit版・Next版・軍師AI・ホームFABチャットの全実装に適用する共通経路ルール。
+description: AIチャットがObsidian/Vaultを参照するRAGコードを実装・変更する時だけ使用する。「Obsidian検索実装」「RAG経路変更」「vault.rglobを直接呼ぶ」が対象。ノートを検索して読むだけの依頼、Vaultへの保存、Wikiリンク整理、根拠付きレポート作成には使用しない。
 ---
 
 # AI Chat / Obsidian Search Rule

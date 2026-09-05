@@ -5,6 +5,7 @@ import {
   buildShionReviewFallback,
   buildShionReviewPrompt,
   buildShionReviewUserId,
+  ensureJudgmentAssetCitations,
   getScreeningScore,
   type JudgmentAssetCandidate,
   type ShionReviewFeedbackSample,
@@ -120,7 +121,7 @@ export function useShionScreeningReview() {
       const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0;
       const memoryRefs = Array.isArray(memoryRecall.refs) ? memoryRecall.refs.length : 0;
       const nextReview: ShionScreeningReview = {
-        reply: String(res.data?.reply || "紫苑レビューが空でした。"),
+        reply: ensureJudgmentAssetCitations(String(res.data?.reply || "紫苑レビューが空でした。"), candidates),
         memoryRefs,
         knowledgeRefs,
         identityUsed: Boolean(identityMemory.used),

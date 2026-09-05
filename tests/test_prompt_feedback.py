@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from datetime import date
 
 
 def test_build_pdca_prompt_block_dedupes_and_limits(tmp_path, monkeypatch):
@@ -156,6 +157,81 @@ def test_prompt_feedback_metrics_summary_shape():
     assert summary["total"] == 1
     assert summary["by_surface"]["next_chat_general"]["count"] == 1
     assert summary["avg_prompt_final_len"] == 120.0
+
+
+def test_monthly_feedback_filters_target_month_and_summarizes_buttons(tmp_path):
+    from prompt_feedback_metrics import (
+        build_human_feedback_summary,
+        build_summary,
+        filter_rows_by_month,
+        load_jsonl,
+        render_markdown,
+    )
+
+    feedback_path = tmp_path / "human_response_feedback.jsonl"
+    feedback_path.write_text(
+        "\n".join(
+            json.dumps(row, ensure_ascii=False)
+            for row in [
+                {"ts": "2026-08-31T14:59:00+00:00", "route": "next_chat", "rating": "bad"},
+                {"ts": "2026-08-31T15:00:00+00:00", "route": "next_chat", "rating": "good"},
+                {"ts": "2026-09-02T01:00:00+00:00", "route": "voice_chat", "rating": "thin"},
+                {"ts": "2026-09-03T01:00:00+00:00", "route": "voice_chat", "rating": "bad"},
+                {"ts": "2026-09-04T01:00:00+00:00", "route": "lease_judgment", "rating": "shion_like"},
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rows = filter_rows_by_month(load_jsonl(feedback_path), "2026-09")
+    summary = build_human_feedback_summary(rows)
+
+    assert summary["total"] == 4
+    assert summary["usefulness_total"] == 3
+    assert summary["good_count"] == 1
+    assert summary["thin_count"] == 1
+    assert summary["bad_count"] == 1
+    assert summary["identity_feedback_total"] == 1
+    assert summary["improvement_priorities"][0]["route"] == "voice_chat"
+
+    prompt_summary = build_summary([])
+    markdown = render_markdown(prompt_summary, tmp_path / "prompt.jsonl", summary, feedback_path)
+    assert "## 回答ボタン評価" in markdown
+    assert "効いた: 1件" in markdown
+    assert "`voice_chat`" in markdown
+    assert "改善優先順位" in markdown
+
+
+def test_month_filter_converts_utc_timestamps_to_japan_calendar_month():
+    from prompt_feedback_metrics import filter_rows_by_month
+
+    rows = [
+        {"ts": "2026-08-31T14:59:59+00:00", "id": "august"},
+        {"ts": "2026-08-31T15:00:00+00:00", "id": "september"},
+        {"ts": "2026-09-30T15:00:00Z", "id": "october"},
+        {"ts": "2026-09-15T12:00:00", "id": "naive-local"},
+    ]
+
+    assert [row["id"] for row in filter_rows_by_month(rows, "2026-09")] == [
+        "september",
+        "naive-local",
+    ]
+
+
+def test_monthly_report_defaults_to_previous_calendar_month():
+    from scripts.run_monthly_prompt_feedback_report import _previous_month_key
+
+    assert _previous_month_key(date(2026, 9, 2)) == "2026-08"
+    assert _previous_month_key(date(2026, 1, 1)) == "2025-12"
+
+
+def test_month_filter_rejects_invalid_month():
+    import pytest
+    from prompt_feedback_metrics import filter_rows_by_month
+
+    with pytest.raises(ValueError, match="YYYY-MM"):
+        filter_rows_by_month([], "2026-9")
 
 
 def test_append_pdca_rule_dedupes_and_persists(tmp_path):
