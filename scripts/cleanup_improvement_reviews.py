@@ -297,7 +297,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--apply", action="store_true", help="台帳に実際に書き込む（省略時は dry-run）")
     parser.add_argument("--mark-deferred", action="store_true", help="PR なしの REV も deferred として台帳に追加する")
+    parser.add_argument(
+        "--title-closures-only",
+        action="store_true",
+        help="GitHub照会を行わず、出荷証跡済みタイトルの滞留解消だけ実行する",
+    )
     args = parser.parse_args()
+
+    if args.title_closures_only:
+        updates = _apply_title_matched_closures(datetime.now().isoformat())
+        if not updates:
+            print("タイトル一致の未決着項目はありません")
+            return
+        for entry in updates:
+            print(f"{entry['status']}: {entry['title']} ({entry['key']})")
+            if args.apply:
+                _append_ledger(entry)
+        print(f"タイトル一致で解消: {len(updates)} 件" + ("" if args.apply else " (dry-run)"))
+        return
 
     print("GitHub PR から REV マッピングを取得中...")
     pr_map = _fetch_pr_rev_map()

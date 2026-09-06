@@ -28,6 +28,7 @@ DEFAULT_OUTPUT_MD = REPORTS_DIR / "loop_engineering_latest.md"
 DEFAULT_COEFF_OVERRIDES = REPO_ROOT / "data" / "coeff_overrides.json"
 DEFAULT_COEFF_AUTO = REPO_ROOT / "data" / "coeff_auto.json"
 DEFAULT_PREFLIGHT_RETRY_STATE = REPO_ROOT / ".claude" / "state" / "preflight_retries.json"
+DEFAULT_PREFLIGHT_STATE_MAX_AGE_DAYS = 7
 DEFAULT_DATA_DIR = REPO_ROOT / "data"
 DEFAULT_PDCA_LOG = DEFAULT_DATA_DIR / "shion_self_pdca_log.jsonl"
 # 4つの結果ループが提案を永続化する jsonl（出典: api/*_loop.py）
@@ -294,6 +295,7 @@ def build_guard_health(
     reports_dir: Path = REPORTS_DIR,
     preflight_retry_state_path: Path = DEFAULT_PREFLIGHT_RETRY_STATE,
     preflight_max_retries: int | None = None,
+    preflight_state_max_age_days: int = DEFAULT_PREFLIGHT_STATE_MAX_AGE_DAYS,
 ) -> dict[str, Any]:
     """安全ガード層（Codex自律実行ブレーカー・PR前プリフライト）の作動状況を集約する。
 
@@ -333,9 +335,27 @@ def build_guard_health(
     retry_state, retry_available = _load_json(preflight_retry_state_path)
     over_budget: list[str] = []
     max_retry_count = 0
+    fresh_signature_count = 0
+    stale_signature_count = 0
+    now = dt.datetime.now()
     if isinstance(retry_state, dict):
         for sig, entry in retry_state.items():
             count = _safe_int(entry.get("count")) if isinstance(entry, dict) else 0
+            updated_at = str(entry.get("updated_at") or "") if isinstance(entry, dict) else ""
+            try:
+                updated = dt.datetime.fromisoformat(updated_at)
+                age = (
+                    now.astimezone(updated.tzinfo) - updated
+                    if updated.tzinfo is not None
+                    else now - updated
+                )
+                is_fresh = age <= dt.timedelta(days=preflight_state_max_age_days)
+            except (TypeError, ValueError):
+                is_fresh = False
+            if not is_fresh:
+                stale_signature_count += 1
+                continue
+            fresh_signature_count += 1
             max_retry_count = max(max_retry_count, count)
             if count > preflight_max_retries:
                 over_budget.append(str(sig))
@@ -363,6 +383,9 @@ def build_guard_health(
         "preflight_guard": {
             "available": retry_available,
             "tracked_signatures": len(retry_state) if isinstance(retry_state, dict) else 0,
+            "fresh_signatures": fresh_signature_count,
+            "stale_signatures_ignored": stale_signature_count,
+            "state_max_age_days": preflight_state_max_age_days,
             "over_budget_count": len(over_budget),
             "max_retry_count": max_retry_count,
             "max_retries": preflight_max_retries,
@@ -523,11 +546,14 @@ def build_loop_metrics(
         if status == "ok":
             status = "warn"
         recommendations.append("needs_review が多いため、低リスク候補と高リスク候補を分けて棚卸しする")
-    # 滞留(churn)判定は churn_rate を使う（＝クールダウン固着のみ）。
+    # 滞留(churn)判定は、会話・調査タスクを除いた実行可能なコード候補を優先する。
+    # 未実装の古いレポートでのみ全候補 churn_rate へフォールバックする。
     # noise_rate は applied 等の健全な重複排除も含むため、それ単体を異常扱いしない。
     # churn_rate 未提供の古いレポートは noise_rate にフォールバック（後方互換）。
     churn_signal = (
-        _safe_float(recursive_measurement.get("churn_rate"))
+        _safe_float(recursive_measurement.get("churn_rate_code_actionable"))
+        if "churn_rate_code_actionable" in recursive_measurement
+        else _safe_float(recursive_measurement.get("churn_rate"))
         if "churn_rate" in recursive_measurement
         else _safe_float(recursive_measurement.get("noise_rate"))
     )
@@ -588,6 +614,13 @@ def build_loop_metrics(
                 "reuse_rate": _safe_float(recursive_measurement.get("reuse_rate")),
                 "noise_rate": _safe_float(recursive_measurement.get("noise_rate")),
                 "churn_rate": _safe_float(recursive_measurement.get("churn_rate")),
+                "churn_rate_code_actionable": _safe_float(
+                    recursive_measurement.get("churn_rate_code_actionable")
+                ),
+                "code_actionable_count": _safe_int(recursive_measurement.get("code_actionable_count")),
+                "conversational_non_code_count": _safe_int(
+                    recursive_measurement.get("conversational_non_code_count")
+                ),
                 "suppressed_healthy_count": _safe_int(recursive_measurement.get("suppressed_healthy_count")),
                 "suppressed_churn_count": _safe_int(recursive_measurement.get("suppressed_churn_count")),
             },
@@ -636,6 +669,11 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"(healthy dedup: {measurement.get('suppressed_healthy_count', 0)}, "
         f"churn: {measurement.get('suppressed_churn_count', 0)})"
     )
+    lines.append(
+        f"- Actionable churn rate: {measurement.get('churn_rate_code_actionable', 0.0)}% "
+        f"(code actionable: {measurement.get('code_actionable_count', 0)}, "
+        f"conversational/non-code: {measurement.get('conversational_non_code_count', 0)})"
+    )
     lines.append("")
     lines.append("## Prompt Feedback Loop")
     prompt = report["prompt_feedback_loop"]
@@ -669,6 +707,11 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(
         f"- Preflight retries: over-budget {preflight.get('over_budget_count', 0)} "
         f"(max count {preflight.get('max_retry_count', 0)} / limit {preflight.get('max_retries', 0)})"
+    )
+    lines.append(
+        f"- Preflight state: fresh {preflight.get('fresh_signatures', 0)}, "
+        f"stale ignored {preflight.get('stale_signatures_ignored', 0)} "
+        f"(max age {preflight.get('state_max_age_days', 0)}d)"
     )
     if guard.get("issues"):
         for issue in guard["issues"][:8]:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import sys
 
 
 def _load_module(monkeypatch, ledger_path):
@@ -84,3 +85,22 @@ def test_norm_title_absorbs_whitespace(tmp_path, monkeypatch):
     # KNOWN_TITLE_APPLIED には議論停滞は含めていない（A群=cleanupがREV番号で拾う）ため空。
     # ただし _norm_title が前後空白を吸収することは単体で確認する。
     assert mod._norm_title("  エージェントチームとの議論停滞  ") == mod._norm_title("エージェントチームとの議論停滞")
+
+
+def test_title_closures_only_skips_github_and_applies_match(tmp_path, monkeypatch):
+    ledger = tmp_path / "ledger.jsonl"
+    _write_ledger(ledger, [{
+        "key": "memory-review-key",
+        "status": "needs_review",
+        "title": "Memory Review Inboxで登録済み項目が再度表示される可能性",
+        "recorded_at": "2026-09-01T00:00:00",
+    }])
+    mod = _load_module(monkeypatch, ledger)
+    monkeypatch.setattr(mod, "_fetch_pr_rev_map", lambda: (_ for _ in ()).throw(AssertionError("must not fetch")))
+    monkeypatch.setattr(sys, "argv", ["cleanup_improvement_reviews.py", "--title-closures-only", "--apply"])
+
+    mod.main()
+
+    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+    assert rows[-1]["key"] == "memory-review-key"
+    assert rows[-1]["status"] == "applied"
