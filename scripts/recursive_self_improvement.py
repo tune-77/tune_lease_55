@@ -516,6 +516,8 @@ def load_chat_quick_fix_intake(
 
     propose_quick_fix ツール（lease_intelligence_tools）が追記する JSONL を、
     自律改善パイプラインの候補源へ取り込むための入口。欠損時は空リスト。
+    shion_promise は調査約束でありコード修正候補ではない。その専用正本
+    shion_pending_tasks.json で追跡されるため、ここでは除外する。
     ledger のクールダウンで重複起票は自動的に抑制されるため、追記形式のまま扱う。
     ただし execute_chat_quick_fix によりすでに即時実行済みのIDは除外する
     （二重実行防止。実行結果は codex_queue_result_*_chat.json 側にある）。
@@ -535,6 +537,8 @@ def load_chat_quick_fix_intake(
             continue
         if not isinstance(record, dict):
             continue
+        if str(record.get("source") or "").strip() == "shion_promise":
+            continue
         title = str(record.get("title") or "").strip()
         if not title:
             continue
@@ -545,7 +549,7 @@ def load_chat_quick_fix_intake(
             "title": title,
             "description": str(record.get("description") or "").strip(),
             "target_module": str(record.get("target_module") or "").strip(),
-            # 元の source（例: shion_promise）を保持し、改善ログUIで出所を辿れるようにする。
+            # 元の source を保持し、改善ログUIで出所を辿れるようにする。
             # 未指定のチャット quick_fix は従来どおり chat_quick_fix。
             "source": str(record.get("source") or "chat_quick_fix"),
         })

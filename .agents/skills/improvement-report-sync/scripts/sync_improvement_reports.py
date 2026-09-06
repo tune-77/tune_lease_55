@@ -214,12 +214,19 @@ def title_matches(item: dict, patterns: Iterable[str]) -> bool:
 
 
 def applied_entry(item: dict) -> dict:
-    return {
+    entry = {
         "id": item.get("id"),
         "file": item.get("file"),
         "title": item.get("title"),
         "pr_url": item.get("pr_url"),
     }
+    # 後続の recursive_self_improvement が起票時と同じ canonical_key を
+    # 再計算できるよう、識別に必要な原文を落とさない。
+    for key in ("canonical_key", "description", "detail", "reason", "target_module"):
+        value = item.get(key)
+        if value not in (None, ""):
+            entry[key] = value
+    return entry
 
 
 def status_entry(item: dict, reason: str = "") -> dict:

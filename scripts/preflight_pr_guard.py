@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import datetime as dt
 import hashlib
 import importlib.util
 import json
@@ -50,6 +51,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # CODEX_QUEUE_MAX_CONSECUTIVE_FAILURES（既定 2）と同じ規約に揃える。
 DEFAULT_MAX_RETRIES = 2
 RETRY_STATE_PATH = REPO_ROOT / ".claude" / "state" / "preflight_retries.json"
+RETRY_STATE_RETENTION_DAYS = 30
 
 # import 名 ⇄ 配布名（PyPI 名）が食い違う代表例の別名表。
 # ここに無くても find_spec フォールバックで実在すれば通るため、
@@ -143,8 +145,8 @@ def git_changed_py_files(base_ref: str | None) -> list[Path]:
 
 
 def git_diff_text(base_ref: str | None) -> str:
-    """base_ref（無ければ HEAD）からの unified diff テキスト。"""
-    code, out, _ = _run_git(["diff", base_ref if base_ref else "HEAD"])
+    """base_ref（無ければ HEAD）からの Python unified diff テキスト。"""
+    code, out, _ = _run_git(["diff", base_ref if base_ref else "HEAD", "--", "*.py"])
     return out if code == 0 else ""
 
 
@@ -468,6 +470,17 @@ def run_pyflakes(files: list[Path]) -> list[Warning_]:
     return warnings
 
 
+def is_circuit_breaker_quality_warning(warning: Warning_) -> bool:
+    """自律リトライを止める品質警告か。
+
+    pyflakes は任意・非致命の補助警告なので、未使用 import だけで
+    修正試行回数を消費させない。
+    """
+    return warning.guard == "ast" or (
+        warning.guard == "import" and warning.message != "pyflakes"
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Guard 3: Circuit Breaker（リトライ計数）
 # ─────────────────────────────────────────────────────────────────────────────
@@ -505,6 +518,27 @@ def _save_retry_state(state_path: Path, state: dict) -> None:
         pass  # 状態保存の失敗でプリフライトを止めない
 
 
+def _prune_retry_state(state: dict, now: dt.datetime, retention_days: int) -> dict:
+    """解決済み・古い署名を除外し、過去の失敗を現在の詰まりにしない。"""
+    kept: dict = {}
+    for signature, entry in state.items():
+        if not isinstance(entry, dict) or int(entry.get("count", 0)) <= 0:
+            continue
+        updated_at = str(entry.get("updated_at") or "")
+        try:
+            updated = dt.datetime.fromisoformat(updated_at)
+        except (TypeError, ValueError):
+            # 個別時刻が無い旧形式は、現在障害と判定できないため移行時に捨てる。
+            continue
+        if updated.tzinfo is not None:
+            age = now.astimezone(updated.tzinfo) - updated
+        else:
+            age = now - updated
+        if age <= dt.timedelta(days=retention_days):
+            kept[str(signature)] = entry
+    return kept
+
+
 def run_circuit_breaker(
     signature: str, has_warnings: bool, max_retries: int, state_path: Path = RETRY_STATE_PATH
 ) -> Warning_ | None:
@@ -512,7 +546,12 @@ def run_circuit_breaker(
     entry = state.get(signature, {})
     prev_count = int(entry.get("count", 0))
     new_count, tripped = evaluate_retry(prev_count, has_warnings, max_retries)
-    state[signature] = {"count": new_count}
+    now = dt.datetime.now()
+    state = _prune_retry_state(state, now, RETRY_STATE_RETENTION_DAYS)
+    if new_count > 0:
+        state[signature] = {"count": new_count, "updated_at": now.isoformat(timespec="seconds")}
+    else:
+        state.pop(signature, None)
     _save_retry_state(state_path, state)
     if tripped:
         return Warning_(
@@ -548,7 +587,7 @@ def run_preflight(max_retries: int | None = None) -> GuardReport:
         report.add(w)
 
     # circuit breaker は「コード品質の警告（ast/import）」が解消したかで判定する。
-    quality_warnings = any(w.guard in ("ast", "import") for w in report.warnings)
+    quality_warnings = any(is_circuit_breaker_quality_warning(w) for w in report.warnings)
     _, branch, _ = _run_git(["rev-parse", "--abbrev-ref", "HEAD"])
     signature = changed_files_signature(files, branch.strip() or "HEAD")
     breaker = run_circuit_breaker(signature, quality_warnings, max_retries)

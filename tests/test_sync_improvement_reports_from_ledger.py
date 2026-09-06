@@ -75,7 +75,7 @@ def test_from_ledger_moves_applied_and_parked_items(tmp_path):
     )
     report = {
         "needs_review": [
-            {"id": "REV-001", "title": "実装済み", "file": None, "pr_url": None},
+            {"id": "REV-001", "title": "実装済み", "detail": "起票時の根拠", "file": None, "pr_url": None},
             {"id": "REV-002", "title": "監視テーマ", "file": None, "pr_url": None},
         ],
         "applied": [],
@@ -103,6 +103,7 @@ def test_from_ledger_moves_applied_and_parked_items(tmp_path):
     assert skipped == []
     assert updated_report["summary"]["needs_review_count"] == 0
     assert [item["id"] for item in updated_report["applied"]] == ["REV-001"]
+    assert updated_report["applied"][0]["detail"] == "起票時の根拠"
     assert [item["id"] for item in updated_report["parked"]] == ["REV-002"]
     assert updated_latest["needs_review_count"] == 0
     assert [item["id"] for item in updated_latest["applied_improvements"]] == ["REV-001"]
