@@ -22,6 +22,7 @@ NEXT_PORT="${NEXT_PORT:-3000}"
 API_HOST="${API_HOST:-127.0.0.1}"
 NEXT_HOST="${NEXT_HOST:-127.0.0.1}"
 PUBLIC_TUNNEL="${PUBLIC_TUNNEL:-0}"
+PUBLIC_TUNNEL_AUTH_FILE="${PUBLIC_TUNNEL_AUTH_FILE:-${HOME:-}/Library/Application Support/tune_lease_55/public_tunnel_auth}"
 # Named Tunnel（固定URL・認証あり）を使う場合はこの2つを設定する。
 # 未設定なら従来どおり quick tunnel（認証不要・URL変動・本番非推奨）にフォールバックする。
 CLOUDFLARE_TUNNEL_CONFIG="${CLOUDFLARE_TUNNEL_CONFIG:-}"
@@ -33,8 +34,12 @@ mkdir -p "$LOG_DIR"
 # Generate an ephemeral server-side key when the operator did not provide one;
 # FastAPI and Next.js inherit the same value without exposing it to the browser.
 if [ "$PUBLIC_TUNNEL" = "1" ]; then
+  if [ -z "${PUBLIC_TUNNEL_AUTH:-}" ] && [ -n "$PUBLIC_TUNNEL_AUTH_FILE" ] && [ -r "$PUBLIC_TUNNEL_AUTH_FILE" ]; then
+    IFS= read -r PUBLIC_TUNNEL_AUTH < "$PUBLIC_TUNNEL_AUTH_FILE" || true
+  fi
   if [ -z "${PUBLIC_TUNNEL_AUTH:-}" ]; then
-    echo "PUBLIC_TUNNEL=1 requires a user-supplied PUBLIC_TUNNEL_AUTH password." >&2
+    echo "PUBLIC_TUNNEL=1 requires PUBLIC_TUNNEL_AUTH or a readable PUBLIC_TUNNEL_AUTH_FILE." >&2
+    echo "Run scripts/install_next_launchagent.sh to provision the persistent launcher credential." >&2
     exit 1
   fi
   export PUBLIC_TUNNEL PUBLIC_TUNNEL_AUTH

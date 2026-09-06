@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { internalApiAuthHeaders } from "@/lib/apiAuth";
 
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000";
 
@@ -42,7 +43,9 @@ function rowResponse(rows: Record<string, string>[], index: number) {
 }
 
 async function fetchAllCases(): Promise<Record<string, string>[]> {
-  const res = await fetch(`${FASTAPI_URL}/api/judgment-drill/cases?limit=1100&offset=0`);
+  const res = await fetch(`${FASTAPI_URL}/api/judgment-drill/cases?limit=1100&offset=0`, {
+    headers: internalApiAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`FastAPI error: ${res.status}`);
   const data = (await res.json()) as { cases: Record<string, string>[] };
   return data.cases;
@@ -80,6 +83,7 @@ export async function PATCH(request: NextRequest) {
     // 現在の行を取得して派生フィールドを計算
     const currentRes = await fetch(
       `${FASTAPI_URL}/api/judgment-drill/cases/${encodeURIComponent(caseId)}`,
+      { headers: internalApiAuthHeaders() },
     );
     if (!currentRes.ok) {
       return NextResponse.json({ error: "case_id not found" }, { status: 404 });
@@ -110,7 +114,10 @@ export async function PATCH(request: NextRequest) {
       `${FASTAPI_URL}/api/judgment-drill/cases/${encodeURIComponent(caseId)}`,
       {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          ...internalApiAuthHeaders(),
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ fields }),
       },
     );

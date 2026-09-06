@@ -81,10 +81,16 @@ def test_public_tunnel_requires_web_auth_and_same_origin_api_proxy():
     proxy = (root / "frontend/src/proxy.ts").read_text()
     api_client = (root / "frontend/src/lib/api.ts").read_text()
 
-    assert "PUBLIC_TUNNEL=1 requires a user-supplied PUBLIC_TUNNEL_AUTH password" in launcher
+    installer = (root / "scripts/install_next_launchagent.sh").read_text()
+    judgment_drill = (root / "frontend/src/app/api/judgment-drill/route.ts").read_text()
+
+    assert "PUBLIC_TUNNEL_AUTH_FILE" in launcher
+    assert 'chmod 600 "$AUTH_FILE"' in installer
+    assert "EnvironmentVariables.PUBLIC_TUNNEL_AUTH_FILE" in installer
     assert "process.env.PUBLIC_TUNNEL_AUTH" in proxy
     assert 'matcher: "/:path*"' in proxy
     assert 'return "http://127.0.0.1:8000"' not in api_client
+    assert judgment_drill.count("internalApiAuthHeaders()") == 3
 
 
 def test_smart_web_check_retries_with_identity_without_printing_token(tmp_path):

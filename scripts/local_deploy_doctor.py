@@ -105,7 +105,7 @@ def build_state(
     next_port: int,
     public_tunnel: bool,
 ) -> DeployState:
-    api_url = "http://%s:%s/docs" % (api_host, api_port)
+    api_url = "http://%s:%s/healthz" % (api_host, api_port)
     next_url = "http://%s:%s/" % (next_host, next_port)
     return DeployState(
         api=EndpointState("API", api_url, http_ok(api_url), port_listening(api_port)),
