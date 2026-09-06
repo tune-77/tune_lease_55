@@ -32,6 +32,13 @@ MIN_CLAIM_LENGTH = 12
 SCORE_WEIGHTS = {"useful": 4, "edit": 3, "use": 1, "manual_bonus": 2, "rejected": -5}
 SCORE_FORMULA = "useful_count*4 + edit_count*3 + use_count*1 + (2 if manual) - rejected_count*5"
 
+# 2026-09時点の試験導入基準（高スコア・低リスクのみ）。ready_for_review の中で
+# さらに厳しい条件を満たす候補だけに auto_apply_eligible フラグを立てる。
+# これは分類のみで、実際の自動昇格は scripts/apply_judgment_asset_auto_promotions.py
+# 側でこのフラグを見て判断する（本スクリプトはpromote APIを呼ばない）。
+AUTO_APPLY_MIN_SCORE = 8
+AUTO_APPLY_MIN_EVIDENCE_COUNT = 3
+
 BUCKET_ORDER = [
     "ready_for_review",
     "caution_mixed_signal",
@@ -167,6 +174,18 @@ def evaluate_candidate(
             bucket = "ready_for_review"
             reasons.append(f"score={score}、reject無し。人間レビューへ回してよい状態。")
 
+    evidence_count = useful_count + edit_count + use_count
+    auto_apply_eligible = (
+        bucket == "ready_for_review"
+        and score is not None
+        and score >= AUTO_APPLY_MIN_SCORE
+        and evidence_count >= AUTO_APPLY_MIN_EVIDENCE_COUNT
+    )
+    if auto_apply_eligible:
+        reasons.append(
+            f"score={score}>={AUTO_APPLY_MIN_SCORE} かつ evidence={evidence_count}>={AUTO_APPLY_MIN_EVIDENCE_COUNT} のため試験的自動適用の対象。"
+        )
+
     return {
         "id": candidate_id,
         "claim": claim,
@@ -181,6 +200,7 @@ def evaluate_candidate(
         "already_active_statement": already_active_statement,
         "score": score,
         "bucket": bucket,
+        "auto_apply_eligible": auto_apply_eligible,
         "reasons": reasons,
     }
 
@@ -205,6 +225,7 @@ def build_report(
 
     summary = {key: len(buckets.get(key, [])) for key in BUCKET_ORDER}
     summary["total_candidates"] = len(evaluated)
+    summary["auto_apply_eligible"] = sum(1 for entry in evaluated if entry.get("auto_apply_eligible"))
 
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -217,6 +238,8 @@ def build_report(
             "score_weights": SCORE_WEIGHTS,
             "score_formula": SCORE_FORMULA,
             "buckets": BUCKET_CRITERIA,
+            "auto_apply_min_score": AUTO_APPLY_MIN_SCORE,
+            "auto_apply_min_evidence_count": AUTO_APPLY_MIN_EVIDENCE_COUNT,
         },
         "summary": summary,
         "buckets": buckets,
@@ -224,6 +247,9 @@ def build_report(
             "このレポートは昇格基準の可視化専用。/api/judgment-asset-candidates/{id}/promote は一切呼ばない。",
             "ready_for_review は「自動昇格してよい」ではなく「人間が見るべき候補」を意味する。最終判断は人間。",
             "caution_mixed_signal は自動除外せず、reject理由を人間が読んでから判断する対象として残す。",
+            "auto_apply_eligible は試験導入中の自動適用パイロット向けフラグ。"
+            "JUDGMENT_ASSET_AUTO_APPLY_ENABLED=1 かつ scripts/apply_judgment_asset_auto_promotions.py "
+            "経由でのみ実際の昇格に使われる。",
         ],
     }
 
@@ -238,6 +264,7 @@ def build_markdown(payload: dict[str, Any]) -> str:
         f"- Mode: {payload['mode']}",
         f"- Guardrail: {payload['guardrail']}",
         f"- Total candidates evaluated: {summary['total_candidates']}",
+        f"- Auto-apply eligible (pilot): {summary['auto_apply_eligible']}",
         "",
         "## 昇格基準（明文化）",
         "",
@@ -265,7 +292,8 @@ def build_markdown(payload: dict[str, Any]) -> str:
             continue
         for entry in entries[:20]:
             claim_preview = entry["claim"][:80] + ("..." if len(entry["claim"]) > 80 else "")
-            lines.append(f"- `{entry['id']}` {entry['research_topic']}: {claim_preview}")
+            marker = " 🚀auto_apply_eligible" if entry.get("auto_apply_eligible") else ""
+            lines.append(f"- `{entry['id']}` {entry['research_topic']}: {claim_preview}{marker}")
             lines.append(f"  - {' / '.join(entry['reasons'])}")
         lines.append("")
 

@@ -31,6 +31,38 @@ def test_ready_for_review_when_score_positive_and_no_rejections():
     assert entry["score"] == 2 * 4 + 1  # useful*4 + use*1
 
 
+def test_auto_apply_eligible_when_score_and_evidence_are_high():
+    candidates = [
+        {"id": "cand-auto", "claim": "十分に長い判断資産候補の文面です。", "research_topic": "topic-auto"},
+    ]
+    # score = 2*4 + 1*3 + 0*1 = 11 (>=8), evidence = 2+1+0 = 3 (>=3)
+    state = {"cand-auto": {"useful_count": 2, "edit_count": 1, "rejected_count": 0}}
+
+    payload = readiness.build_report(
+        target_date="2026-08-20", candidates=candidates, state=state, canonical={},
+    )
+
+    assert payload["summary"]["ready_for_review"] == 1
+    assert payload["summary"]["auto_apply_eligible"] == 1
+    assert payload["buckets"]["ready_for_review"][0]["auto_apply_eligible"] is True
+
+
+def test_ready_for_review_below_auto_apply_threshold_is_not_eligible():
+    candidates = [
+        {"id": "cand-low", "claim": "十分に長い判断資産候補の文面です。", "research_topic": "topic-low"},
+    ]
+    # score = 1*4 = 4 (< 8)
+    state = {"cand-low": {"useful_count": 1, "rejected_count": 0}}
+
+    payload = readiness.build_report(
+        target_date="2026-08-20", candidates=candidates, state=state, canonical={},
+    )
+
+    assert payload["summary"]["ready_for_review"] == 1
+    assert payload["summary"]["auto_apply_eligible"] == 0
+    assert payload["buckets"]["ready_for_review"][0]["auto_apply_eligible"] is False
+
+
 def test_caution_mixed_signal_when_score_positive_but_rejected():
     candidates = [
         {"id": "cand-2", "claim": "十分に長い判断資産候補の文面です。", "research_topic": "topic-b"},

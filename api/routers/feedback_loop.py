@@ -1379,7 +1379,9 @@ def _judgment_asset_promotion_lock():
         lock.release()
 
 
-def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[str, Any]:
+def _promote_judgment_asset_candidate_to_canonical(
+    candidate_id: str, *, promoted_by: str = "judgment_asset_review_gate"
+) -> dict[str, Any]:
     import datetime as _dt
     import hashlib as _hashlib
 
@@ -1438,7 +1440,7 @@ def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[st
                 "evidence_paths": [str(candidate.get("evidence_path") or f"judgment_asset_candidate_state:{candidate_id}")],
                 "created_at": now,
                 "updated_at": now,
-                "promotion_source": "judgment_asset_review_gate",
+                "promotion_source": promoted_by,
                 "private": False,
                 "material_types": [material_type],
                 "domains": ["lease_screening"],
@@ -1473,6 +1475,7 @@ def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[st
         current["promotion_status"] = "promoted"
         current["promoted_at"] = now
         current["promoted_rule_id"] = str(promoted_rule.get("id") or "")
+        current["promoted_by"] = promoted_by
         current["verified_status"] = "canonical"
         state[candidate_id] = current
         _write_judgment_asset_candidate_state(state)

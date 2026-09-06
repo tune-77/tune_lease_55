@@ -278,6 +278,12 @@ echo "[成長] 判断資産の実利用棚卸しを生成（伸ばす/見直す/
 log_step "build_judgment_asset_field_review" $?
 
 echo ""
+echo "[育成] 判断資産の高スコア・低リスク候補のみ試験的に自動適用（既定オフ・JUDGMENT_ASSET_AUTO_APPLY_ENABLED=1でopt-in）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/apply_judgment_asset_auto_promotions.py" \
+  --date "${PIPELINE_DATE}" || true
+log_step "apply_judgment_asset_auto_promotions" 0
+
+echo ""
 echo "[育成] 経験フライホイール候補を生成（context/decision/feedbackを品質ゲート。自動昇格なし）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_experience_flywheel_report.py"
 log_step "build_experience_flywheel_report" $?
