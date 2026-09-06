@@ -1,4 +1,5 @@
 from scripts.local_deploy_doctor import (
+    build_state,
     DeployState,
     EndpointState,
     Recommendation,
@@ -19,7 +20,7 @@ def state(
     public_tunnel=True,
 ):
     return DeployState(
-        api=EndpointState("API", "http://127.0.0.1:8000/docs", api_ok, api_listening),
+        api=EndpointState("API", "http://127.0.0.1:8000/healthz", api_ok, api_listening),
         next=EndpointState("Next", "http://127.0.0.1:3000/", next_ok, next_listening),
         launchagent_installed=launchagent,
         cloudflared_available=cloudflared,
@@ -81,3 +82,26 @@ def test_latest_tunnel_url_uses_newest_log(tmp_path):
     new.write_text("https://new.trycloudflare.com\n", encoding="utf-8")
 
     assert latest_tunnel_url(tmp_path) == "https://new.trycloudflare.com"
+
+
+def test_build_state_probes_auth_exempt_health_endpoint(tmp_path, monkeypatch):
+    probed_urls = []
+    monkeypatch.setattr(
+        "scripts.local_deploy_doctor.http_ok",
+        lambda url: probed_urls.append(url) or True,
+    )
+    monkeypatch.setattr("scripts.local_deploy_doctor.port_listening", lambda _port: True)
+    monkeypatch.setattr("scripts.local_deploy_doctor.launchagent_installed", lambda: True)
+    monkeypatch.setattr("scripts.local_deploy_doctor.shutil.which", lambda _name: "/bin/cloudflared")
+
+    deploy_state = build_state(
+        root=tmp_path,
+        api_host="127.0.0.1",
+        api_port=8000,
+        next_host="127.0.0.1",
+        next_port=3000,
+        public_tunnel=True,
+    )
+
+    assert deploy_state.api.url == "http://127.0.0.1:8000/healthz"
+    assert probed_urls == ["http://127.0.0.1:8000/healthz", "http://127.0.0.1:3000/"]
