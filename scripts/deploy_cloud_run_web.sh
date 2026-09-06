@@ -59,14 +59,13 @@ deploy_args=(
 )
 
 # API側のApiKeyAuthMiddlewareと同じ値をWeb側にも配線する（frontend/src/proxy.tsが
-# process.env.API_ACCESS_KEYを読んでX-API-Keyを自動注入する）。CLOUDRUN_DATA_MODEは
-# API側スクリプトの概念でありWeb単体では判定できないため、未登録でも常にsoft-warn
-# に留める（ここでexit 1すると、API側は非demoで正しく起動していてもWebだけデプロイ
-# 不能になり、デモ公開中の事故につながる）。
+# process.env.API_ACCESS_KEYを読んでX-API-Keyを自動注入する）。公開Webだけがキーなしで
+# デプロイされると全APIが503になるため、設定漏れはfail-closedで止める。
 if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
   deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
 else
-  echo "Warning: Secret Manager secret API_ACCESS_KEY was not found. Web will not send X-API-Key." >&2
+  echo "ERROR: Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy Web without the API proxy key." >&2
+  exit 1
 fi
 
 deploy_args+=(--allow-unauthenticated)

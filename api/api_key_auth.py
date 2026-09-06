@@ -47,7 +47,13 @@ def api_access_key_required() -> bool:
         return True
     if raw in {"0", "false", "no", "off"}:
         return False
-    return bool(os.environ.get("K_SERVICE", "").strip())
+    public_tunnel = os.environ.get("PUBLIC_TUNNEL", "").strip().lower()
+    return bool(os.environ.get("K_SERVICE", "").strip()) or public_tunnel in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 class ApiKeyAuthMiddleware(BaseHTTPMiddleware):

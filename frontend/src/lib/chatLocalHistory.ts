@@ -13,7 +13,7 @@ const HISTORY_PREFIX = "lease-chat-local-history:";
 const CLEARED_PREFIX = "lease-chat-cleared-at:";
 const MAX_LOCAL_MESSAGES = 120;
 
-const storageAvailable = () => typeof window !== "undefined" && Boolean(window.localStorage);
+const storageAvailable = () => typeof window !== "undefined" && Boolean(window.sessionStorage);
 
 const historyKey = (userId: string) => `${HISTORY_PREFIX}${userId || "default"}`;
 const clearedKey = (userId: string) => `${CLEARED_PREFIX}${userId || "default"}`;
@@ -36,7 +36,7 @@ const messageSignature = (message: LocalChatMessage) =>
 
 export const getChatClearedAt = (userId: string) => {
   if (!storageAvailable()) return 0;
-  const parsed = Number(window.localStorage.getItem(clearedKey(userId)) || "0");
+  const parsed = Number(window.sessionStorage.getItem(clearedKey(userId)) || "0");
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
@@ -46,7 +46,11 @@ export const getChatHistorySinceIso = (userId: string) =>
 export const loadLocalChatHistory = (userId: string): LocalChatMessage[] => {
   if (!storageAvailable()) return [];
   try {
-    const raw = window.localStorage.getItem(historyKey(userId));
+    // Remove legacy persistent chat content instead of carrying sensitive text
+    // across browser sessions.
+    window.localStorage.removeItem(historyKey(userId));
+    window.localStorage.removeItem(clearedKey(userId));
+    const raw = window.sessionStorage.getItem(historyKey(userId));
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed.filter((item) => item?.role && item?.content) : [];
   } catch {
@@ -60,7 +64,8 @@ export const saveLocalChatHistory = (userId: string, messages: LocalChatMessage[
   const filtered = messages
     .filter((message) => messageTime(message) > clearedAt)
     .slice(-MAX_LOCAL_MESSAGES);
-  window.localStorage.setItem(historyKey(userId), JSON.stringify(filtered));
+  window.localStorage.removeItem(historyKey(userId));
+  window.sessionStorage.setItem(historyKey(userId), JSON.stringify(filtered));
 };
 
 export const appendLocalChatMessages = (userId: string, additions: LocalChatMessage[]) => {
@@ -92,6 +97,8 @@ export const mergeChatHistories = (
 
 export const clearVisibleChatHistory = (userId: string) => {
   if (!storageAvailable()) return;
-  window.localStorage.setItem(clearedKey(userId), String(Date.now()));
   window.localStorage.removeItem(historyKey(userId));
+  window.localStorage.removeItem(clearedKey(userId));
+  window.sessionStorage.setItem(clearedKey(userId), String(Date.now()));
+  window.sessionStorage.removeItem(historyKey(userId));
 };

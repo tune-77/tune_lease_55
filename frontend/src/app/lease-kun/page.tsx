@@ -861,7 +861,8 @@ export default function LeaseKunWizard() {
       quantum_risk: result.quantum_risk,
       case_id: result.case_id,
     };
-    window.localStorage.setItem('lease-gunshi-context', JSON.stringify(context));
+    window.localStorage.removeItem('lease-gunshi-context');
+    window.sessionStorage.setItem('lease-gunshi-context', JSON.stringify(context));
     router.push('/chat');
   };
 

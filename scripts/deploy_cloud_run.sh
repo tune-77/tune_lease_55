@@ -19,6 +19,7 @@ MIN_INSTANCES="${MIN_INSTANCES:-0}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
+REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-1}"
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "PROJECT_ID is required." >&2
@@ -60,7 +61,7 @@ deploy_args=(
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
   --max-instances "$MAX_INSTANCES"
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DB_PATH=/app/data/lease_data.db,GCS_BUCKET=tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DB_PATH=/app/data/lease_data.db,GCS_BUCKET=tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY}"
 )
 
 has_replacement_secrets=0
@@ -77,6 +78,14 @@ if gcloud secrets describe ESTAT_APP_ID --project "$PROJECT_ID" >/dev/null 2>&1;
   has_replacement_secrets=1
 else
   echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
+fi
+
+if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
+  deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
+  has_replacement_secrets=1
+else
+  echo "Error: Refusing to deploy a public service without an access key. Create Secret Manager secret API_ACCESS_KEY first." >&2
+  exit 1
 fi
 
 if (( has_replacement_secrets == 0 )); then

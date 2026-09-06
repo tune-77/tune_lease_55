@@ -22,6 +22,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -476,7 +477,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 from api.api_key_auth import ApiKeyAuthMiddleware, api_access_key_required, get_api_access_key
 # 公開デモ用の削除保護（api/demo_guard.py に実装）。
 from api.demo_guard import DemoReadonlyMiddleware, is_demo_readonly
-from api.security_headers import SecurityHeadersMiddleware
+from api.security_headers import SecurityHeadersMiddleware, get_trusted_hosts
 
 
 _ALLOWED_ORIGINS = [
@@ -488,16 +489,22 @@ for _origin in [o.strip() for o in _extra_cors_origins.split(",") if o.strip()]:
     if _origin not in _ALLOWED_ORIGINS:
         _ALLOWED_ORIGINS.append(_origin)
 
+_API_DOCS_ENABLED = not api_access_key_required()
+
 app = FastAPI(
     title="Lease Scoring API",
     description="リース審査ロジックのバックエンドAPI",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if _API_DOCS_ENABLED else None,
+    redoc_url="/redoc" if _API_DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _API_DOCS_ENABLED else None,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=get_trusted_hosts())
 app.add_middleware(SecurityHeadersMiddleware)
 # 公開デモの削除保護（DEMO_READONLY 設定時のみ有効）
 app.add_middleware(DemoReadonlyMiddleware)

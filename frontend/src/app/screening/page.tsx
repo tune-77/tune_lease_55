@@ -1556,7 +1556,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("case_id")) return;
-    const raw = window.localStorage.getItem(SCREENING_RETURN_STATE_KEY);
+    window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+    const raw = window.sessionStorage.getItem(SCREENING_RETURN_STATE_KEY);
     if (!raw) {
       setDraftRestored(true);
       return;
@@ -1587,7 +1588,7 @@ export default function Dashboard() {
         if (!Number.isNaN(savedDate.getTime())) setLastDraftSavedAt(savedDate);
       }
     } catch {
-      window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+      window.sessionStorage.removeItem(SCREENING_RETURN_STATE_KEY);
     } finally {
       setDraftRestored(true);
     }
@@ -1602,7 +1603,7 @@ export default function Dashboard() {
     const timer = window.setTimeout(() => {
       try {
         const savedAt = new Date();
-        window.localStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
+        window.sessionStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
           version: SCREENING_DRAFT_VERSION,
           formData,
           result,
@@ -2086,6 +2087,7 @@ export default function Dashboard() {
     setJudgmentAssetFeedbackSavingId("");
     setActiveTab("input");
     window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+    window.sessionStorage.removeItem(SCREENING_RETURN_STATE_KEY);
     setLastDraftSavedAt(null);
   };
 
@@ -2195,7 +2197,7 @@ export default function Dashboard() {
       quantum_risk: result.quantum_risk,
       case_id: result.case_id,
     };
-    window.localStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
+    window.sessionStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
       version: SCREENING_DRAFT_VERSION,
       formData,
       result,
@@ -2207,7 +2209,7 @@ export default function Dashboard() {
       activeTab: "analysis",
       savedAt: new Date().toISOString(),
     }));
-    window.localStorage.setItem("lease-gunshi-context", JSON.stringify(chatContext));
+    window.sessionStorage.setItem("lease-gunshi-context", JSON.stringify(chatContext));
     router.push("/chat");
   };
 
@@ -2243,7 +2245,7 @@ export default function Dashboard() {
       lease_amount: formData.acquisition_cost,
       reason: "screening_handoff",
     };
-    window.localStorage.setItem("lease-debate-context", JSON.stringify(debateContext));
+    window.sessionStorage.setItem("lease-debate-context", JSON.stringify(debateContext));
     router.push("/debate");
   };
 

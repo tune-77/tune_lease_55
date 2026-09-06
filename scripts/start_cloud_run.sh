@@ -76,7 +76,7 @@ import time
 import urllib.request
 
 host, port, timeout_seconds = sys.argv[1], sys.argv[2], int(sys.argv[3])
-url = f"http://{host}:{port}/docs"
+url = f"http://{host}:{port}/healthz"
 for _ in range(timeout_seconds):
     try:
         with urllib.request.urlopen(url, timeout=1) as response:

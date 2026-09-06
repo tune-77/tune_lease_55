@@ -29,6 +29,22 @@ CLOUDFLARE_TUNNEL_HOSTNAME="${CLOUDFLARE_TUNNEL_HOSTNAME:-}"
 LOG_DIR="logs/next"
 mkdir -p "$LOG_DIR"
 
+# An internet-facing tunnel must never inherit local development's auth opt-out.
+# Generate an ephemeral server-side key when the operator did not provide one;
+# FastAPI and Next.js inherit the same value without exposing it to the browser.
+if [ "$PUBLIC_TUNNEL" = "1" ]; then
+  export REQUIRE_API_ACCESS_KEY=1
+  if [ -z "${API_ACCESS_KEY:-}" ]; then
+    if ! command -v openssl >/dev/null 2>&1; then
+      echo "PUBLIC_TUNNEL=1 requires API_ACCESS_KEY or openssl for secure key generation." >&2
+      exit 1
+    fi
+    export API_ACCESS_KEY="$(openssl rand -hex 32)"
+    FORCE_RESTART=1
+    echo "Generated an ephemeral API access key for this public tunnel session."
+  fi
+fi
+
 named_tunnel_active() {
   [ -n "$CLOUDFLARE_TUNNEL_CONFIG" ] && [ -f "$CLOUDFLARE_TUNNEL_CONFIG" ]
 }
@@ -100,7 +116,7 @@ print_status() {
   local api_state="DOWN"
   local next_state="DOWN"
   local tunnel_url
-  if curl -fsS --max-time 2 "http://${API_HOST}:${API_PORT}/docs" >/dev/null 2>&1; then
+  if curl -fsS --max-time 2 "http://${API_HOST}:${API_PORT}/healthz" >/dev/null 2>&1; then
     api_state="OK"
   elif lsof -ti :"$API_PORT" >/dev/null 2>&1; then
     api_state="LISTENING"
@@ -358,7 +374,7 @@ trap cleanup INT TERM
 if [ "$FORCE_RESTART" != "1" ] && [ "$REUSE_RUNNING" = "1" ]; then
   sync_standalone_assets
   if port_is_listening "$API_PORT" && port_is_listening "$NEXT_PORT" \
-      && http_ok "http://${API_HOST}:${API_PORT}/docs" \
+      && http_ok "http://${API_HOST}:${API_PORT}/healthz" \
       && http_ok "http://${NEXT_HOST}:${NEXT_PORT}/"; then
     echo "FastAPI and Next.js are already running. No restart/build needed."
     echo "  API  : http://${API_HOST}:${API_PORT}"
