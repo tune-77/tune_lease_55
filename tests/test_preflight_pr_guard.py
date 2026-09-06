@@ -203,3 +203,17 @@ def test_run_circuit_breaker_prunes_legacy_and_stale_entries(tmp_path):
     assert set(saved) == {"current"}
     assert saved["current"]["count"] == 1
     assert saved["current"]["updated_at"]
+
+
+def test_run_circuit_breaker_resets_stale_matching_signature_before_increment(tmp_path):
+    state = tmp_path / "retries.json"
+    sig = "stale-signature"
+    state.write_text(json.dumps({
+        sig: {"count": 8, "updated_at": "2020-01-01T00:00:00"},
+    }), encoding="utf-8")
+
+    assert g.run_circuit_breaker(sig, True, 2, state) is None
+
+    saved = json.loads(state.read_text(encoding="utf-8"))
+    assert saved[sig]["count"] == 1
+    assert saved[sig]["updated_at"] != "2020-01-01T00:00:00"
