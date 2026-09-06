@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse  # noqa: E402
 from starlette.routing import Route  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
 
-from api.api_key_auth import ApiKeyAuthMiddleware  # noqa: E402
+from api.api_key_auth import ApiKeyAuthMiddleware, api_docs_enabled  # noqa: E402
 
 
 def _build_client(monkeypatch, api_key: str) -> TestClient:
@@ -61,6 +61,14 @@ def test_public_runtime_ignores_explicit_auth_opt_out(monkeypatch, runtime_env):
     monkeypatch.setenv(runtime_env, "1")
     monkeypatch.setenv("REQUIRE_API_ACCESS_KEY", "0")
     assert client.get("/api/secret").status_code == 503
+
+
+def test_docs_disabled_when_access_key_is_configured(monkeypatch):
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("PUBLIC_TUNNEL", raising=False)
+    monkeypatch.delenv("REQUIRE_API_ACCESS_KEY", raising=False)
+    monkeypatch.setenv("API_ACCESS_KEY", "configured")
+    assert api_docs_enabled() is False
 
 
 def test_blocks_without_key_when_enabled(monkeypatch):

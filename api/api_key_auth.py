@@ -35,6 +35,11 @@ def get_api_access_key() -> str:
     return os.environ.get("API_ACCESS_KEY", "").strip()
 
 
+def api_docs_enabled() -> bool:
+    """Expose API schemas only when the API is completely unprotected/local."""
+    return not get_api_access_key() and not api_access_key_required()
+
+
 def api_access_key_required() -> bool:
     """Return whether protected API paths must have an access key configured.
 

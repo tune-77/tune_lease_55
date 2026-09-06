@@ -14,7 +14,7 @@ A subsequent no-cost local review found one high-severity deployment/authenticat
 
 Local fixes were completed on 2026-09-06. They have been tested but have **not** been deployed to Cloud Run.
 
-- SEC-001: Fixed locally. Public-tunnel and all Cloud Run deployment paths now require API-key authentication and fail closed when the key is unavailable.
+- SEC-001: Fixed locally. Cloud Run Web/combined services require IAM in every data mode; public tunnels require a separate user-supplied Basic-auth password; backend API access requires an API key and fails closed when unavailable.
 - SEC-002: Fixed locally. OpenAPI, Swagger UI, and ReDoc are disabled whenever API-key enforcement is active.
 - SEC-003: Partially fixed. Production CSP no longer permits `unsafe-eval`; removing `unsafe-inline` safely requires a nonce/hash rollout across Next.js rendering.
 - SEC-004: Mitigated locally. Sensitive chat and screening handoff data now uses tab-scoped `sessionStorage`, and legacy persistent entries are removed.

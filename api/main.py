@@ -474,7 +474,12 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
 # 共有シークレットによる API アクセス制御（api/api_key_auth.py に実装。多層防御）。
-from api.api_key_auth import ApiKeyAuthMiddleware, api_access_key_required, get_api_access_key
+from api.api_key_auth import (
+    ApiKeyAuthMiddleware,
+    api_access_key_required,
+    api_docs_enabled,
+    get_api_access_key,
+)
 # 公開デモ用の削除保護（api/demo_guard.py に実装）。
 from api.demo_guard import DemoReadonlyMiddleware, is_demo_readonly
 from api.security_headers import SecurityHeadersMiddleware, get_trusted_hosts
@@ -489,7 +494,7 @@ for _origin in [o.strip() for o in _extra_cors_origins.split(",") if o.strip()]:
     if _origin not in _ALLOWED_ORIGINS:
         _ALLOWED_ORIGINS.append(_origin)
 
-_API_DOCS_ENABLED = not api_access_key_required()
+_API_DOCS_ENABLED = api_docs_enabled()
 
 app = FastAPI(
     title="Lease Scoring API",

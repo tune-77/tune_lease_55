@@ -99,10 +99,7 @@ if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
 fi
 
-if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
-  deploy_args+=(--allow-unauthenticated)
-else
-  deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
-fi
+# Next.jsが内部APIキーを代理付与するため、Web境界はデータモードにかかわらずIAM認証必須。
+deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
 
 gcloud "${deploy_args[@]}"
