@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fnmatch
 import json
 import logging
 import os
@@ -40,6 +39,17 @@ except ImportError:
             "max_files": 0,
             "required_checks": [],
         }
+
+try:
+    from loop_constraints import (  # type: ignore[import]
+        AttemptLedger,
+        evaluate_execution_constraints,
+        load_loop_constraints,
+        matches_any_path,
+    )
+    from implementation_verifier import IndependentImprovementVerifier  # type: ignore[import]
+except ImportError as exc:
+    raise RuntimeError("auto-improvement mechanical constraints unavailable") from exc
 
 try:
     from claude_agent_runner import run_claude_agent, _get_gemini_api_key as _runner_gemini_key  # type: ignore[import]
@@ -104,49 +114,10 @@ def _mask_secrets(text: str) -> str:
     return text
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# NEEDS_REVIEW 判定用キーワード
-# ────────────────────────────────────────────────────────────────────────────
-
-_SECURITY_KEYWORDS = [
-    "sql", "xss", "injection", "auth", "セキュリティ", "認証", "権限", "csrf",
-    "command injection", "password", "パスワード", "token", "トークン",
-]
-_DB_KEYWORDS = [
-    "スキーマ", "migration", "マイグレーション", "alter table", "create table",
-    "drop table", "db schema", "sqlite", "データベース定義",
-]
-_API_KEYWORDS = [
-    "api変更", "引数変更", "レスポンス構造", "インターフェース変更", "i/f変更",
-    "エンドポイント変更", "rest api",
-]
-_SCORING_KEYWORDS = [
-    "スコアリング", "閾値", "threshold", "lgbm", "lightgbm", "quantum_risk",
-    "auc", "モデル係数", "model weight", "score_calculation",
-]
-
-# 変更に慎重を要するスコアリング重要ファイル
-_SCORING_FILES: frozenset[str] = frozenset({
-    "quantum_analysis_module.py", "scoring_core.py", "total_scorer.py",
-    "asset_scorer.py", "category_config.py", "industry_hybrid_model.py",
-    "rule_manager.py", "coeff_definitions.py",
-})
-
 # テスト探索から除外するディレクトリ名
 EXCLUDE_DIRS: frozenset[str] = frozenset({
     "pydeps", "_archive", "node_modules", ".venv", "__pycache__", ".git",
 })
-
-# 自動書き換え禁止ファイル（denylist）
-WRITE_DENYLIST: list[str] = [
-    ".streamlit/secrets.toml",
-    "data/",
-    "*.plist",
-    "scoring_core.py",
-    "retraining_pipeline.py",
-    "migrate",
-    "alembic",
-]
 
 # ── パイプライン台帳（optional）────────────────────────────────────────────
 _LEDGER_AVAILABLE: bool = False
@@ -197,6 +168,11 @@ class Step3AutoApplier:
         self._needs_review: list[dict[str, Any]] = []
         self._rejected: list[dict[str, Any]] = []
         self._pr_url: str | None = None
+
+        # 全実装経路で共有する機械制約と、maker とは別責務の verifier。
+        self.loop_constraints = load_loop_constraints()
+        self.attempt_ledger = AttemptLedger(self.workspace_root, self.loop_constraints)
+        self.verifier = IndependentImprovementVerifier(self.workspace_root)
 
         # テスト済みコードを保持（ブランチ切り替え後に再適用するため）
         self._pending_patches: list[tuple[Path, str]] = []
@@ -322,12 +298,50 @@ class Step3AutoApplier:
                 )
             return _result("needs_review", denylist_reason)
 
+        attempt_key = (
+            _ledger_key
+            or str(improvement.get("canonical_key") or "")
+            or _canonical_key(title, improvement.get("description", ""))
+        )
+        previous_attempts = self.attempt_ledger.count(attempt_key)
+        execution_gate = evaluate_execution_constraints(
+            improvement,
+            [target_file.relative_to(self.workspace_root)],
+            attempt_count=previous_attempts,
+            constraints=self.loop_constraints,
+        )
+        if not execution_gate["allowed"]:
+            reason = f"loop constraint: {execution_gate['reason']}"
+            self._needs_review.append({
+                "id": imp_id,
+                "title": title,
+                "reason": reason,
+                "detail": str(target_file.relative_to(self.workspace_root)),
+                "constraint_decision": execution_gate["decision"],
+            })
+            if _LEDGER_AVAILABLE and _ledger_key:
+                _ledger.record(
+                    _ledger_key,
+                    "needs_review",
+                    title,
+                    reason=reason,
+                    canonical_key=str(improvement.get("canonical_key", "")),
+                )
+            return _result("needs_review", reason)
+
+        attempt = self.attempt_ledger.begin(attempt_key)
+        if not attempt["allowed"]:
+            reason = f"最大試行回数 {attempt['max_attempts']} 回に到達"
+            self._needs_review.append({"id": imp_id, "title": title, "reason": reason})
+            return _result("needs_review", reason)
+
         # コード生成（Codex → Claude → Gemini フォールバック）
         current_code = target_file.read_text(encoding="utf-8")
         prompt = self._build_diff_prompt(target_file, improvement, current_code)
         raw_output = self._generate_code_with_fallback(prompt, current_code, improvement)
         new_code = self._extract_new_code(raw_output, target_file, current_code) if raw_output else None
         if not new_code:
+            self.attempt_ledger.finish(attempt_key, "failed", "code_generation_failed")
             patch_file = self._save_patch_markdown(improvement, validation_result, target_file)
             self._needs_review.append({
                 "id": imp_id,
@@ -345,37 +359,19 @@ class Step3AutoApplier:
                 )
             return _result("needs_review", "コード生成失敗", patch_file=str(patch_file))
 
-        # ローカルテスト（現ブランチ上で試験的に書き換え → テスト → 元に戻す）
+        # maker が生成した候補を、独立 verifier が隔離 worktree で検証する。
         original_code = current_code
 
-        # [#2-C] 健全性チェック（書き込み前に行数・関数消失を検証）
-        sanity_ok, sanity_reason = self._sanity_check(original_code, new_code, target_file)
-        if not sanity_ok:
-            patch_file = self._save_patch_markdown(improvement, validation_result, target_file)
-            self._needs_review.append({
-                "id": imp_id,
-                "title": title,
-                "reason": f"健全性チェック失敗: {sanity_reason}",
-                "detail": str(patch_file),
-            })
-            if _LEDGER_AVAILABLE and _ledger_key:
-                _ledger.record(
-                    _ledger_key,
-                    "needs_review",
-                    title,
-                    reason=f"健全性チェック失敗: {sanity_reason}",
-                    canonical_key=str(improvement.get("canonical_key", "")),
-                )
-            return _result("needs_review", f"健全性チェック失敗: {sanity_reason}", patch_file=str(patch_file))
-
-        # auto_fix_allowed かつ risk=low な変更はテストファイル不在でも syntax のみで通過
-        skip_test_file_required = policy.get("risk") == "low" and policy.get("auto_fix_allowed", False)
-
-        target_file.write_text(new_code, encoding="utf-8")
-        test_ok, test_output = self._run_local_tests(target_file, skip_test_file_required=skip_test_file_required)
-        target_file.write_text(original_code, encoding="utf-8")  # 必ずロールバック
+        verification = self.verifier.verify(
+            target_file,
+            original_code,
+            new_code,
+            allow_syntax_only=policy.get("risk") == "low" and policy.get("auto_fix_allowed", False),
+        )
+        test_ok, test_output = verification.passed, verification.summary
 
         if test_ok is None:
+            self.attempt_ledger.finish(attempt_key, "failed", test_output)
             # テスト環境未整備（pytest なし / テストファイル0件）→ 自動適用しない
             patch_file = self._save_patch_markdown(improvement, validation_result, target_file)
             self._needs_review.append({
@@ -395,6 +391,7 @@ class Step3AutoApplier:
             return _result("needs_review", "テスト環境未整備", patch_file=str(patch_file))
 
         if not test_ok:
+            self.attempt_ledger.finish(attempt_key, "failed", test_output)
             patch_file = self._save_patch_markdown(improvement, validation_result, target_file)
             self._needs_review.append({
                 "id": imp_id,
@@ -417,6 +414,7 @@ class Step3AutoApplier:
         # なく _pending_applied に置く。台帳への "applied" 記録も commit 確認後に
         # 行う（git_commit_and_push の結果を見て apply_improvements_pipeline 側で
         # 昇格 or needs_review へ差し戻しを行う）。
+        self.attempt_ledger.finish(attempt_key, "verified", verification.verification_id)
         self._pending_patches.append((target_file, new_code))
         self._pending_applied.append({
             "id": imp_id,
@@ -426,6 +424,8 @@ class Step3AutoApplier:
             "canonical_key": str(improvement.get("canonical_key", "")),
             "_ledger_key": _ledger_key or "",
             "pr_url": None,  # git_commit_and_push 後に更新
+            "verification": verification.as_dict(),
+            "execution_roles": dict(self.loop_constraints["roles"]),
         })
         return _result("pending_commit", "テスト通過・commit確認待ち")
 
@@ -685,31 +685,14 @@ class Step3AutoApplier:
     ) -> tuple[bool, str]:
         """NEEDS_REVIEW かを判定し (bool, reason_str) を返す."""
         reasons: list[str] = []
-        text = (
-            improvement.get("description", "")
-            + " "
-            + improvement.get("title", "")
-        ).lower()
-
-        if any(kw in text for kw in _SECURITY_KEYWORDS):
-            reasons.append("セキュリティ関連の変更")
-
-        if any(kw in text for kw in _DB_KEYWORDS):
-            reasons.append("DBスキーマ変更・マイグレーション")
-
-        if any(kw in text for kw in _API_KEYWORDS):
-            reasons.append("API I/F変更")
-
-        py_file_count = len(re.findall(r'\b\w+\.py\b', text))
-        if py_file_count >= 3:
-            reasons.append(f"複数ファイルにまたがる変更（{py_file_count}ファイル参照）")
-
-        if any(kw in text for kw in _SCORING_KEYWORDS):
-            reasons.append("スコアリングロジック・モデル閾値変更")
-
         target_module = improvement.get("target_module", "") or ""
-        if Path(target_module).name in _SCORING_FILES:
-            reasons.append(f"スコアリング重要ファイルへの変更（{target_module}）")
+        gate = evaluate_execution_constraints(
+            improvement,
+            [target_module] if target_module else [],
+            constraints=self.loop_constraints,
+        )
+        if not gate["allowed"]:
+            reasons.append(gate["reason"])
 
         confidence = self._compute_confidence(validation_result)
         if confidence < 0.7:
@@ -1160,23 +1143,12 @@ class Step3AutoApplier:
         return True, "OK"
 
     def _is_denylisted(self, target_file: Path) -> bool:
-        """対象ファイルが WRITE_DENYLIST に該当するかチェック。"""
+        """中央の機械制約denylistに対象ファイルが該当するかチェック。"""
         try:
             rel = str(target_file.relative_to(self.workspace_root))
         except ValueError:
             rel = str(target_file)
-
-        for pattern in WRITE_DENYLIST:
-            if pattern.endswith("/"):
-                if rel.startswith(pattern) or f"/{pattern[:-1]}/" in f"/{rel}":
-                    return True
-            elif "*" in pattern:
-                if fnmatch.fnmatch(target_file.name, pattern):
-                    return True
-            else:
-                if pattern in rel or target_file.name == pattern:
-                    return True
-        return False
+        return matches_any_path(rel, self.loop_constraints["denylist"]) is not None
 
     # ── ファイル検索 ──────────────────────────────────────────────────────
 
@@ -1390,12 +1362,45 @@ def _run_claude_agent_flow(
     if not _AGENT_RUNNER_AVAILABLE:
         return None
 
+    attempt_key = (
+        str(improvement.get("canonical_key") or "")
+        or _canonical_key(title, improvement.get("description", ""))
+    )
+    execution_gate = evaluate_execution_constraints(
+        improvement,
+        [improvement.get("target_module", "")],
+        attempt_count=applier.attempt_ledger.count(attempt_key),
+        constraints=applier.loop_constraints,
+    )
+    if not execution_gate["allowed"]:
+        reason = f"loop constraint: {execution_gate['reason']}"
+        applier._needs_review.append({
+            "id": imp_id,
+            "title": title,
+            "reason": reason,
+            "constraint_decision": execution_gate["decision"],
+        })
+        return {"action": "needs_review", "reason": reason, "size": size}
+
+    attempt = applier.attempt_ledger.begin(attempt_key)
+    if not attempt["allowed"]:
+        reason = f"最大試行回数 {attempt['max_attempts']} 回に到達"
+        applier._needs_review.append({"id": imp_id, "title": title, "reason": reason})
+        return {"action": "needs_review", "reason": reason, "size": size}
+
     print(f"  [{imp_id}] 🤖 gemini-agent 起動 (size={size}): {title[:50]}")
     agent_result = run_claude_agent(improvement, size)
 
     if not agent_result["success"]:
+        applier.attempt_ledger.finish(attempt_key, "failed", agent_result["message"])
         logger.warning("claude-agent 失敗: %s", agent_result["message"])
         return None  # フォールバックへ
+
+    applier.attempt_ledger.finish(
+        attempt_key,
+        "verified",
+        str((agent_result.get("verification") or {}).get("verification_id") or "agent-verifier"),
+    )
 
     pr_url = agent_result.get("pr_url") or ""
     pr_number = agent_result.get("pr_number")
@@ -1434,6 +1439,8 @@ def _run_claude_agent_flow(
             "title": title,
             "canonical_key": str(improvement.get("canonical_key", "")),
             "pr_url": pr_url,
+            "verification": agent_result.get("verification"),
+            "execution_roles": dict(applier.loop_constraints["roles"]),
         })
         if _LEDGER_AVAILABLE and ledger_key:
             _ledger.record(
