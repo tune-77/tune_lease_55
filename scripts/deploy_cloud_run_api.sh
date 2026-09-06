@@ -23,7 +23,7 @@ CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-production}"
 SHION_MEMORY_HYBRID="${SHION_MEMORY_HYBRID:-1}"
 # インターネット公開するCloud Runはdemoを含めAPIキー必須（fail-closed）。
 # ブラウザにはキーを渡さず、Next.jsのserver-side proxyが付与する。
-REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-1}"
+REQUIRE_API_ACCESS_KEY=1
 # lease_data.db をGCSへ定期スナップショットする間隔（秒）。demoモードでは
 # api/cloudrun_db_snapshot.py が自動的に無効化するため、この値は非demoモードのみ
 # 効果を持つ（REV-310）。

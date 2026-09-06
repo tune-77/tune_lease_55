@@ -837,20 +837,30 @@ def _sync_screening_outcome(case_id: str, final_status: str) -> None:
         )
 
 
-def delete_case(case_id: str) -> bool:
-    """指定IDの案件を1件削除する。全件置き換えを使わない安全な単体削除。"""
+def delete_case(case_id: str, *, raise_on_error: bool = False) -> bool:
+    """指定IDを削除。APIではraise_on_errorでDB障害と対象なしを区別する。"""
     if not _cloud_db_enabled() and not os.path.exists(DB_PATH):
+        if raise_on_error:
+            raise FileNotFoundError("Case database is unavailable")
         return False
     try:
         ph = _db_placeholder()
         with _case_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(f"DELETE FROM past_cases WHERE id = {ph}", (case_id,))
+            deleted = cursor.rowcount > 0
             conn.commit()
-        refresh_stats_caches()
-        return True
     except Exception:
+        if raise_on_error:
+            raise
+        logger.exception("delete_case failed: %s", case_id)
         return False
+    # コミット後の派生キャッシュ更新失敗を、削除失敗とは報告しない。
+    try:
+        refresh_stats_caches()
+    except Exception:
+        logger.exception("delete_case cache refresh failed: %s", case_id)
+    return deleted
 
 
 def update_case(case_id: str, updates: dict) -> bool:

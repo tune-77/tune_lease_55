@@ -44,9 +44,9 @@ def test_public_cloud_run_deployments_require_api_access_key() -> None:
     api_script = (ROOT / "scripts/deploy_cloud_run_api.sh").read_text(encoding="utf-8")
     web_script = (ROOT / "scripts/deploy_cloud_run_web.sh").read_text(encoding="utf-8")
 
-    assert 'REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-1}"' in combined_script
+    assert "REQUIRE_API_ACCESS_KEY=1" in combined_script
     assert "Refusing to deploy a public service without an access key" in combined_script
-    assert 'REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-1}"' in api_script
+    assert "REQUIRE_API_ACCESS_KEY=1" in api_script
     assert "Demo mode stays unauthenticated" not in api_script
     assert "Refusing to deploy a public API without an access key" in api_script
     assert "Refusing to deploy Web without the API proxy key" in web_script

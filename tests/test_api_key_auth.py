@@ -55,6 +55,14 @@ def test_missing_key_fails_closed_for_public_tunnel(monkeypatch):
     assert client.get("/api/secret").status_code == 503
 
 
+@pytest.mark.parametrize("runtime_env", ["K_SERVICE", "PUBLIC_TUNNEL"])
+def test_public_runtime_ignores_explicit_auth_opt_out(monkeypatch, runtime_env):
+    client = _build_client(monkeypatch, "")
+    monkeypatch.setenv(runtime_env, "1")
+    monkeypatch.setenv("REQUIRE_API_ACCESS_KEY", "0")
+    assert client.get("/api/secret").status_code == 503
+
+
 def test_blocks_without_key_when_enabled(monkeypatch):
     client = _build_client(monkeypatch, "s3cret")
     assert client.get("/api/secret").status_code == 401

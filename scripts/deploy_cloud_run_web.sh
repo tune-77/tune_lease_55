@@ -26,6 +26,10 @@ if [[ -z "$API_URL" ]]; then
   exit 1
 fi
 
+# 公開可否は接続先APIの実際のデータモードから決める。未設定は実データ扱い。
+API_DESCRIPTION="$(gcloud run services describe "$API_SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format=json)"
+API_DATA_MODE="$(python3 -c 'import json,sys; d=json.load(sys.stdin); env=d["spec"]["template"]["spec"]["containers"][0].get("env", []); print(next((e.get("value", "production") for e in env if e.get("name") == "CLOUDRUN_DATA_MODE"), "production"))' <<< "$API_DESCRIPTION")"
+
 gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
@@ -68,6 +72,11 @@ else
   exit 1
 fi
 
-deploy_args+=(--allow-unauthenticated)
+if [[ "$API_DATA_MODE" == "demo" ]]; then
+  deploy_args+=(--allow-unauthenticated)
+else
+  # APIキーの自動付与より前に、Cloud Run IAMで利用者を認証する。
+  deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
+fi
 
 gcloud "${deploy_args[@]}"

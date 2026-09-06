@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Brain, Search, Copy } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Brain, Search, Copy, FileDown } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
@@ -324,6 +324,34 @@ function AiHeroCard({
   data?: Partial<ScoringFormData>;
   onOpenKnowledge?: () => void;
 }) {
+  const [exportingReport, setExportingReport] = useState(false);
+
+  const handleExportReport = async () => {
+    if (!result || exportingReport) return;
+    setExportingReport(true);
+    try {
+      const res = await apiClient.post<string>(
+        "/api/screening/report",
+        { result, case_label: data?.company_name || "" },
+        { responseType: "text" }
+      );
+      const blob = new Blob([res.data], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `審査分析レポート_${data?.company_name || "case"}.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to export screening report", err);
+      window.alert("分析レポートの出力に失敗しました。");
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   if (!result) return null;
   const score = getScreeningScore(result);
   const hantei: string = result.hantei ?? "";
@@ -382,6 +410,15 @@ function AiHeroCard({
               関連知識を見る
             </button>
           )}
+          <button
+            type="button"
+            onClick={handleExportReport}
+            disabled={exportingReport}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-[11px] font-black text-white backdrop-blur-sm transition hover:bg-white/25 disabled:opacity-50"
+          >
+            <FileDown className="h-3.5 w-3.5" />
+            {exportingReport ? "出力中…" : "分析レポートを出力"}
+          </button>
         </div>
       </div>
       {data && (

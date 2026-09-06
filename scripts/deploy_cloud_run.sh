@@ -19,7 +19,7 @@ MIN_INSTANCES="${MIN_INSTANCES:-0}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
-REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-1}"
+REQUIRE_API_ACCESS_KEY=1
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "PROJECT_ID is required." >&2
@@ -61,7 +61,7 @@ deploy_args=(
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
   --max-instances "$MAX_INSTANCES"
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DB_PATH=/app/data/lease_data.db,GCS_BUCKET=tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY}"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY},DB_PATH=/app/data/lease_data.db,GCS_BUCKET=tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
 )
 
 has_replacement_secrets=0
@@ -99,6 +99,10 @@ if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
 fi
 
-deploy_args+=(--allow-unauthenticated)
+if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
+  deploy_args+=(--allow-unauthenticated)
+else
+  deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
+fi
 
 gcloud "${deploy_args[@]}"

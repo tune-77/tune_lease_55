@@ -42,18 +42,20 @@ def api_access_key_required() -> bool:
     runtimes fail closed so a missing environment variable does not silently
     expose mutating API endpoints.
     """
+    public_tunnel = os.environ.get("PUBLIC_TUNNEL", "").strip().lower()
+    if os.environ.get("K_SERVICE", "").strip() or public_tunnel in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return True
     raw = os.environ.get("REQUIRE_API_ACCESS_KEY", "").strip().lower()
     if raw in {"1", "true", "yes", "on"}:
         return True
     if raw in {"0", "false", "no", "off"}:
         return False
-    public_tunnel = os.environ.get("PUBLIC_TUNNEL", "").strip().lower()
-    return bool(os.environ.get("K_SERVICE", "").strip()) or public_tunnel in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return False
 
 
 class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
