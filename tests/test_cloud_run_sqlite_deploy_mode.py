@@ -37,3 +37,16 @@ def test_cloud_run_deploy_clears_secrets_only_without_replacements() -> None:
         assert script.index(SECRET_CLEAR_BLOCK) < script.index("--clear-cloudsql-instances")
         assert "--set-secrets" in script
         assert "--remove-secrets" not in script
+
+
+def test_public_cloud_run_deployments_require_api_access_key() -> None:
+    combined_script = (ROOT / "scripts/deploy_cloud_run.sh").read_text(encoding="utf-8")
+    api_script = (ROOT / "scripts/deploy_cloud_run_api.sh").read_text(encoding="utf-8")
+    web_script = (ROOT / "scripts/deploy_cloud_run_web.sh").read_text(encoding="utf-8")
+
+    assert "REQUIRE_API_ACCESS_KEY=1" in combined_script
+    assert "Refusing to deploy a public service without an access key" in combined_script
+    assert "REQUIRE_API_ACCESS_KEY=1" in api_script
+    assert "Demo mode stays unauthenticated" not in api_script
+    assert "Refusing to deploy a public API without an access key" in api_script
+    assert "Refusing to deploy Web without the API proxy key" in web_script

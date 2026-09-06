@@ -49,36 +49,42 @@ if a[:2] == ["run", "deploy"]:
 
 @pytest.mark.parametrize("script", ["deploy_cloud_run.sh", "deploy_cloud_run_web.sh"])
 @pytest.mark.parametrize("mode", ["production", "demo"])
-def test_public_access_only_for_demo(deploy, script, mode):
+def test_web_boundary_always_requires_iam(deploy, script, mode):
     result, args = deploy(script, mode)
     assert result.returncode == 0, result.stderr
-    assert ("--allow-unauthenticated" in args) == (mode == "demo")
-    assert ("--no-allow-unauthenticated" in args) == (mode != "demo")
-    assert ("--invoker-iam-check" in args) == (mode != "demo")
+    assert "--allow-unauthenticated" not in args
+    assert "--no-allow-unauthenticated" in args
+    assert "--invoker-iam-check" in args
     assert "API_ACCESS_KEY=API_ACCESS_KEY:latest" in args
     if script == "deploy_cloud_run.sh":
         env = args[args.index("--set-env-vars") + 1]
-        assert f"REQUIRE_API_ACCESS_KEY={0 if mode == 'demo' else 1}" in env
+        assert "REQUIRE_API_ACCESS_KEY=1" in env
 
 
 @pytest.mark.parametrize("script", ["deploy_cloud_run.sh", "deploy_cloud_run_web.sh"])
-def test_production_missing_key_never_deploys(deploy, script):
-    result, args = deploy(script, "production", key=False)
+@pytest.mark.parametrize("mode", ["production", "demo"])
+def test_missing_key_never_deploys(deploy, script, mode):
+    result, args = deploy(script, mode, key=False)
     assert result.returncode != 0
     assert not args
 
 
-@pytest.mark.parametrize("script", ["deploy_cloud_run.sh", "deploy_cloud_run_web.sh"])
-def test_demo_without_key_still_deploys(deploy, script):
-    result, args = deploy(script, "demo", key=False)
-    assert result.returncode == 0, result.stderr
-    assert "--allow-unauthenticated" in args
-
-
-def test_missing_api_mode_keeps_web_private(deploy):
+def test_unknown_api_mode_keeps_web_private(deploy):
     result, args = deploy("deploy_cloud_run_web.sh", "")
     assert result.returncode == 0, result.stderr
     assert "--no-allow-unauthenticated" in args
+
+
+def test_public_tunnel_requires_web_auth_and_same_origin_api_proxy():
+    root = Path(__file__).resolve().parents[1]
+    launcher = (root / "run_next_stable.sh").read_text()
+    proxy = (root / "frontend/src/proxy.ts").read_text()
+    api_client = (root / "frontend/src/lib/api.ts").read_text()
+
+    assert "PUBLIC_TUNNEL=1 requires a user-supplied PUBLIC_TUNNEL_AUTH password" in launcher
+    assert "process.env.PUBLIC_TUNNEL_AUTH" in proxy
+    assert 'matcher: "/:path*"' in proxy
+    assert 'return "http://127.0.0.1:8000"' not in api_client
 
 
 def test_smart_web_check_retries_with_identity_without_printing_token(tmp_path):

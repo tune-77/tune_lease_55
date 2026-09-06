@@ -7,6 +7,9 @@ const BROWSER_FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || "";
 const connectSrc = ["'self'", "http://127.0.0.1:8000", "http://localhost:8000", BROWSER_FASTAPI_URL]
   .filter(Boolean)
   .join(" ");
+const scriptSrc = process.env.NODE_ENV === "production"
+  ? "script-src 'self' 'unsafe-inline'"
+  : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
 
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
@@ -22,7 +25,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      scriptSrc,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",

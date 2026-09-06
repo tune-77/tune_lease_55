@@ -19,11 +19,7 @@ MIN_INSTANCES="${MIN_INSTANCES:-0}"
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
 CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-demo}"
-if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
-  REQUIRE_API_ACCESS_KEY=0
-else
-  REQUIRE_API_ACCESS_KEY=1
-fi
+REQUIRE_API_ACCESS_KEY=1
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
   echo "PROJECT_ID is required." >&2
@@ -87,8 +83,8 @@ fi
 if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
   deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
   has_replacement_secrets=1
-elif [[ "$CLOUDRUN_DATA_MODE" != "demo" ]]; then
-  echo "ERROR: API_ACCESS_KEY is required for a production deployment." >&2
+else
+  echo "Error: Refusing to deploy a public service without an access key. Create Secret Manager secret API_ACCESS_KEY first." >&2
   exit 1
 fi
 
@@ -103,10 +99,7 @@ if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
 fi
 
-if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
-  deploy_args+=(--allow-unauthenticated)
-else
-  deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
-fi
+# Next.jsが内部APIキーを代理付与するため、Web境界はデータモードにかかわらずIAM認証必須。
+deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
 
 gcloud "${deploy_args[@]}"

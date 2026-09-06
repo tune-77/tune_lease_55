@@ -21,13 +21,9 @@ CLOUDRUN_DATA_MODE="${CLOUDRUN_DATA_MODE:-production}"
 # ENABLE_OBSIDIAN_INDEXING の経路で既にロードされるため追加コストは小さい。
 # コレクションは初回起動時にバックグラウンド自動構築される（api/shion_memory_vector.py）。
 SHION_MEMORY_HYBRID="${SHION_MEMORY_HYBRID:-1}"
-# 非demoモード（実データ）では API キー検証を既定で必須にする（fail-closed）。
-# demoモードのみ従来通り既定で無効（ローカル検証・公開デモ体験を壊さない）。
-if [[ "$CLOUDRUN_DATA_MODE" == "demo" ]]; then
-  REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-0}"
-else
-  REQUIRE_API_ACCESS_KEY="${REQUIRE_API_ACCESS_KEY:-1}"
-fi
+# インターネット公開するCloud Runはdemoを含めAPIキー必須（fail-closed）。
+# ブラウザにはキーを渡さず、Next.jsのserver-side proxyが付与する。
+REQUIRE_API_ACCESS_KEY=1
 # lease_data.db をGCSへ定期スナップショットする間隔（秒）。demoモードでは
 # api/cloudrun_db_snapshot.py が自動的に無効化するため、この値は非demoモードのみ
 # 効果を持つ（REV-310）。
@@ -124,11 +120,9 @@ fi
 if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
   deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
   has_replacement_secrets=1
-elif [[ "$CLOUDRUN_DATA_MODE" != "demo" ]]; then
-  echo "ERROR: Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy non-demo (real data) without an access key. Register it first: gcloud secrets create API_ACCESS_KEY --replication-policy=automatic --project ${PROJECT_ID}" >&2
-  exit 1
 else
-  echo "Warning: Secret Manager secret API_ACCESS_KEY was not found. Demo mode stays unauthenticated at the app layer." >&2
+  echo "ERROR: Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy a public API without an access key. Register it first: gcloud secrets create API_ACCESS_KEY --replication-policy=automatic --project ${PROJECT_ID}" >&2
+  exit 1
 fi
 
 if (( has_replacement_secrets == 0 )); then

@@ -26,10 +26,6 @@ if [[ -z "$API_URL" ]]; then
   exit 1
 fi
 
-# 公開可否は接続先APIの実際のデータモードから決める。未設定は実データ扱い。
-API_DESCRIPTION="$(gcloud run services describe "$API_SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format=json)"
-API_DATA_MODE="$(python3 -c 'import json,sys; d=json.load(sys.stdin); env=d["spec"]["template"]["spec"]["containers"][0].get("env", []); print(next((e.get("value", "production") for e in env if e.get("name") == "CLOUDRUN_DATA_MODE"), "production"))' <<< "$API_DESCRIPTION")"
-
 gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
@@ -62,22 +58,17 @@ deploy_args=(
   --set-env-vars "FASTAPI_URL=$API_URL"
 )
 
-# Web→APIの共有キーを配線する。接続先が実データ用なら未登録で停止する。
-# デモだけはキー未設定でも公開できる。
+# API側のApiKeyAuthMiddlewareと同じ値をWeb側にも配線する（frontend/src/proxy.tsが
+# process.env.API_ACCESS_KEYを読んでX-API-Keyを自動注入する）。公開Webだけがキーなしで
+# デプロイされると全APIが503になるため、設定漏れはfail-closedで止める。
 if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
   deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
-elif [[ "$API_DATA_MODE" != "demo" ]]; then
-  echo "ERROR: API_ACCESS_KEY is required for a production Web deployment." >&2
-  exit 1
 else
-  echo "Warning: Secret Manager secret API_ACCESS_KEY was not found. Web will not send X-API-Key." >&2
+  echo "ERROR: Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy Web without the API proxy key." >&2
+  exit 1
 fi
 
-if [[ "$API_DATA_MODE" == "demo" ]]; then
-  deploy_args+=(--allow-unauthenticated)
-else
-  # APIキーの自動付与より前に、Cloud Run IAMで利用者を認証する。
-  deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
-fi
+# APIキーの自動付与より前に、Cloud Run IAMで利用者を認証する。
+deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
 
 gcloud "${deploy_args[@]}"

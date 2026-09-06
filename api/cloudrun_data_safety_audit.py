@@ -74,10 +74,10 @@ def audit_cloudrun_data_safety() -> dict[str, Any]:
         ),
         _check(
             "deploy_refuses_missing_access_key",
-            "Refusing to deploy non-demo" in deploy_api
+            "Refusing to deploy a public API without an access key" in deploy_api
             and "API_ACCESS_KEY" in deploy_api
             and "exit 1" in deploy_api,
-            "非demoデプロイ時に API_ACCESS_KEY Secret 不在ならデプロイを止める",
+            "demoを含む公開デプロイで API_ACCESS_KEY Secret 不在ならデプロイを止める",
         ),
         _check(
             "snapshot_disabled_outside_runtime",

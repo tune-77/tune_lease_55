@@ -11,10 +11,13 @@ from starlette.responses import JSONResponse  # noqa: E402
 from starlette.routing import Route  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
 
-from api.api_key_auth import ApiKeyAuthMiddleware  # noqa: E402
+from api.api_key_auth import ApiKeyAuthMiddleware, api_docs_enabled  # noqa: E402
 
 
 def _build_client(monkeypatch, api_key: str) -> TestClient:
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("PUBLIC_TUNNEL", raising=False)
+    monkeypatch.delenv("REQUIRE_API_ACCESS_KEY", raising=False)
     if api_key:
         monkeypatch.setenv("API_ACCESS_KEY", api_key)
     else:
@@ -41,9 +44,31 @@ def test_disabled_when_key_unset(monkeypatch):
 
 
 def test_missing_key_fails_closed_in_cloud_run(monkeypatch):
-    monkeypatch.setenv("K_SERVICE", "lease-api")
     client = _build_client(monkeypatch, "")
+    monkeypatch.setenv("K_SERVICE", "lease-api")
     assert client.get("/api/secret").status_code == 503
+
+
+def test_missing_key_fails_closed_for_public_tunnel(monkeypatch):
+    client = _build_client(monkeypatch, "")
+    monkeypatch.setenv("PUBLIC_TUNNEL", "1")
+    assert client.get("/api/secret").status_code == 503
+
+
+@pytest.mark.parametrize("runtime_env", ["K_SERVICE", "PUBLIC_TUNNEL"])
+def test_public_runtime_ignores_explicit_auth_opt_out(monkeypatch, runtime_env):
+    client = _build_client(monkeypatch, "")
+    monkeypatch.setenv(runtime_env, "1")
+    monkeypatch.setenv("REQUIRE_API_ACCESS_KEY", "0")
+    assert client.get("/api/secret").status_code == 503
+
+
+def test_docs_disabled_when_access_key_is_configured(monkeypatch):
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("PUBLIC_TUNNEL", raising=False)
+    monkeypatch.delenv("REQUIRE_API_ACCESS_KEY", raising=False)
+    monkeypatch.setenv("API_ACCESS_KEY", "configured")
+    assert api_docs_enabled() is False
 
 
 def test_blocks_without_key_when_enabled(monkeypatch):

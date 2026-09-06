@@ -331,10 +331,12 @@ export default function ChatPage() {
         setInput("この件は後で話し合おう");
         window.setTimeout(resizeTextarea, 0);
       }
-      const raw = window.localStorage.getItem("lease-gunshi-context");
-      setHasScreeningReturn(Boolean(raw || window.localStorage.getItem(SCREENING_RETURN_STATE_KEY)));
+      window.localStorage.removeItem("lease-gunshi-context");
+      window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+      const raw = window.sessionStorage.getItem("lease-gunshi-context");
+      setHasScreeningReturn(Boolean(raw || window.sessionStorage.getItem(SCREENING_RETURN_STATE_KEY)));
       if (raw) {
-        window.localStorage.removeItem("lease-gunshi-context");
+        window.sessionStorage.removeItem("lease-gunshi-context");
         try {
           const ctx = JSON.parse(raw) as ChatContext;
           setChatContext(ctx);
