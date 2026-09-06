@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from loop_constraints import evaluate_execution_constraints, load_loop_constraints
+
 
 _ALLOWED_KEYWORDS = [
     "文言", "ラベル", "説明文", "placeholder", "tooltip", "表示名",
@@ -13,22 +15,10 @@ _ALLOWED_KEYWORDS = [
     "誤字", "タイポ", "表示",
 ]
 
-_DENY_KEYWORDS = [
-    "スコアリング", "score", "auc", "モデル", "係数", "閾値", "randomforest",
-    "lightgbm", "lgbm", "学習", "再学習", "db", "sqlite", "schema",
-    "スキーマ", "migration", "api連携", "api変更", "レスポンス", "認証",
-    "セキュリティ", "権限", "外部api", "edinet", "帝国データバンク",
-    "ocr", "kubernetes", "docker", "インフラ", "データ移行", "削除",
-    "複数ファイル", "横断", "ポートフォリオ", "公平性", "バイアス",
-    "動いていない", "機能がない", "接続エラー", "通信エラー", "500",
-    "登録ボタンがない", "リース期間",
-]
+_LOOP_CONSTRAINTS = load_loop_constraints()
+_DENY_KEYWORDS = list(_LOOP_CONSTRAINTS["human_gate"]["keywords"])
 
 _SAFE_FILE_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx", ".md", ".json"}
-_DANGEROUS_PATH_PARTS = {
-    "models", "data", "migrations", "alembic", ".github", "launchd",
-}
-
 _TARGET_INFERENCE_RULES: list[tuple[tuple[str, ...], str]] = [
     (("自律改善フロー",), "frontend/src/app/system-overview/page.tsx"),
     (("紫苑の記憶システム",), "frontend/src/app/shion-memory-system/page.tsx"),
@@ -115,6 +105,22 @@ def evaluate_auto_fix_policy(
     reasons: list[str] = []
     required_checks = ["py_compile", "targeted_test"]
 
+    constraint_decision = evaluate_execution_constraints(
+        improvement,
+        files,
+        constraints=_LOOP_CONSTRAINTS,
+    )
+    if not constraint_decision["allowed"]:
+        return {
+            "auto_fix_allowed": False,
+            "reason": constraint_decision["reason"],
+            "risk": "high" if constraint_decision["decision"] == "denylist" else "medium",
+            "max_files": int(_LOOP_CONSTRAINTS["limits"]["max_files_per_change"]),
+            "required_checks": required_checks,
+            "human_gate": True,
+            "constraint_decision": constraint_decision["decision"],
+        }
+
     deny_hits = [kw for kw in _DENY_KEYWORDS if kw in text]
     if deny_hits:
         return {
@@ -134,15 +140,6 @@ def evaluate_auto_fix_policy(
             "required_checks": required_checks,
         }
 
-    if len(files) > 1:
-        return {
-            "auto_fix_allowed": False,
-            "reason": f"複数ファイル参照のため手動確認: {len(files)} files",
-            "risk": "medium",
-            "max_files": 1,
-            "required_checks": required_checks,
-        }
-
     if files:
         file_name = next(iter(files))
         path = Path(file_name)
@@ -154,15 +151,6 @@ def evaluate_auto_fix_policy(
                 "max_files": 1,
                 "required_checks": required_checks,
             }
-        if any(part in _DANGEROUS_PATH_PARTS for part in path.parts):
-            return {
-                "auto_fix_allowed": False,
-                "reason": f"重要パス配下のため手動確認: {file_name}",
-                "risk": "high",
-                "max_files": 1,
-                "required_checks": required_checks,
-            }
-
     allowed_hit = any(kw in text for kw in _ALLOWED_KEYWORDS)
     category = str((improvement.get("implementation") or {}).get("category", ""))
     if category == "quick_ui":
@@ -183,8 +171,10 @@ def evaluate_auto_fix_policy(
         "auto_fix_allowed": True,
         "reason": "; ".join(reasons),
         "risk": "low",
-        "max_files": 1,
+        "max_files": int(_LOOP_CONSTRAINTS["limits"]["max_files_per_change"]),
         "required_checks": required_checks,
+        "constraint_decision": "auto",
+        "execution_roles": dict(_LOOP_CONSTRAINTS["roles"]),
     }
     if inferred_target_module and not improvement.get("target_module"):
         result["inferred_target_module"] = inferred_target_module
