@@ -24,7 +24,7 @@ elif [ -s "$AUTH_FILE" ]; then
   chmod 600 "$AUTH_FILE"
   echo "Reusing the existing public tunnel credential."
 elif [ -t 0 ]; then
-  read -r -s -p "Public tunnel password (12+ characters): " tunnel_password
+  read -r -s -p "Public tunnel password (12+ printable ASCII characters): " tunnel_password
   echo
 else
   echo "No public tunnel credential is provisioned." >&2
@@ -35,6 +35,12 @@ fi
 if [ -n "$tunnel_password" ]; then
   if [[ "$tunnel_password" == *$'\n'* || "$tunnel_password" == *$'\r'* ]]; then
     echo "Public tunnel password must not contain line breaks." >&2
+    exit 1
+  fi
+  # Basic認証側はatob()のバイト列を比較するため、Unicode文字は保存しない。
+  # Cロケールで判定し、実行環境の文字クラスに依存させない。
+  if LC_ALL=C grep -q '[^ -~]' <<< "$tunnel_password"; then
+    echo "Public tunnel password must contain only printable ASCII characters (letters, digits, symbols, or spaces)." >&2
     exit 1
   fi
   if [ "${#tunnel_password}" -lt 12 ]; then
