@@ -185,6 +185,36 @@ def test_loop_metrics_flags_high_churn(tmp_path):
     assert any("churn" in item for item in report["recommendations"])
 
 
+def test_loop_metrics_ignores_conversational_churn_when_actionable_queue_is_clean(tmp_path):
+    """会話タスクの滞留だけで、コード改善ループを警告にしない。"""
+    from scripts.loop_metrics import build_loop_metrics
+
+    latest = tmp_path / "latest.json"
+    latest.write_text(json.dumps({"applied_count": 0, "needs_review_count": 0, "failed_count": 0}), encoding="utf-8")
+    recursive = tmp_path / "recursive.json"
+    recursive.write_text(
+        json.dumps({"measurement_summary": {
+            "noise_rate": 100.0,
+            "churn_rate": 100.0,
+            "churn_rate_code_actionable": 0.0,
+            "code_actionable_count": 0,
+            "conversational_non_code_count": 10,
+        }}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    prompt_log = tmp_path / "prompt.jsonl"
+    prompt_log.write_text("", encoding="utf-8")
+
+    report = build_loop_metrics(
+        latest_report_path=latest,
+        recursive_report_path=recursive,
+        prompt_log_path=prompt_log,
+        model_paths=(),
+    )
+
+    assert not any("churn" in item for item in report["recommendations"])
+
+
 def test_build_guard_health_flags_codex_abort_and_carryover(tmp_path):
     from scripts.loop_metrics import build_guard_health
 
@@ -226,7 +256,11 @@ def test_build_guard_health_flags_preflight_over_budget(tmp_path):
     reports = tmp_path / "reports"
     reports.mkdir()
     state = tmp_path / "preflight.json"
-    state.write_text(json.dumps({"sigA": {"count": 3}, "sigB": {"count": 1}}), encoding="utf-8")
+    now = __import__("datetime").datetime.now().isoformat()
+    state.write_text(json.dumps({
+        "sigA": {"count": 3, "updated_at": now},
+        "sigB": {"count": 1, "updated_at": now},
+    }), encoding="utf-8")
 
     health = build_guard_health(reports_dir=reports, preflight_retry_state_path=state, preflight_max_retries=2)
 
@@ -234,6 +268,24 @@ def test_build_guard_health_flags_preflight_over_budget(tmp_path):
     assert health["preflight_guard"]["over_budget_count"] == 1
     assert health["preflight_guard"]["max_retry_count"] == 3
     assert any(issue["code"] == "preflight_retry_budget_exhausted" for issue in health["issues"])
+
+
+def test_build_guard_health_ignores_legacy_and_stale_retry_state(tmp_path):
+    from scripts.loop_metrics import build_guard_health
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    state = tmp_path / "preflight.json"
+    state.write_text(json.dumps({
+        "legacy": {"count": 8},
+        "stale": {"count": 4, "updated_at": "2020-01-01T00:00:00"},
+    }), encoding="utf-8")
+
+    health = build_guard_health(reports_dir=reports, preflight_retry_state_path=state)
+
+    assert health["status"] == "ok"
+    assert health["preflight_guard"]["over_budget_count"] == 0
+    assert health["preflight_guard"]["stale_signatures_ignored"] == 2
 
 
 def test_build_guard_health_ok_when_clean(tmp_path):
