@@ -543,11 +543,11 @@ def run_circuit_breaker(
     signature: str, has_warnings: bool, max_retries: int, state_path: Path = RETRY_STATE_PATH
 ) -> Warning_ | None:
     state = _load_retry_state(state_path)
+    now = dt.datetime.now()
+    state = _prune_retry_state(state, now, RETRY_STATE_RETENTION_DAYS)
     entry = state.get(signature, {})
     prev_count = int(entry.get("count", 0))
     new_count, tripped = evaluate_retry(prev_count, has_warnings, max_retries)
-    now = dt.datetime.now()
-    state = _prune_retry_state(state, now, RETRY_STATE_RETENTION_DAYS)
     if new_count > 0:
         state[signature] = {"count": new_count, "updated_at": now.isoformat(timespec="seconds")}
     else:
