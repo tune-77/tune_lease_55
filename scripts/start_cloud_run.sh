@@ -81,7 +81,9 @@ import urllib.request
 
 host, port, timeout_seconds = sys.argv[1], sys.argv[2], int(sys.argv[3])
 url = f"http://{host}:{port}/api/health/auth"
-headers = {"X-API-Key": os.environ["API_ACCESS_KEY"]} if os.environ.get("API_ACCESS_KEY") else {}
+# 認証側と同じ正規化を行い、Secret Managerへ保存された末尾改行を送らない。
+access_key = os.environ.get("API_ACCESS_KEY", "").strip()
+headers = {"X-API-Key": access_key} if access_key else {}
 request = urllib.request.Request(url, headers=headers)
 for _ in range(timeout_seconds):
     try:
