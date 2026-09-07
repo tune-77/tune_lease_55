@@ -49,6 +49,7 @@ def audit_cloudrun_data_safety() -> dict[str, Any]:
     restore = _read_text("scripts/restore_lease_db_snapshot.py")
     api_auth = _read_text("api/api_key_auth.py")
     deploy_api = _read_text("scripts/deploy_cloud_run_api.sh")
+    require_access_key_lib = _read_text("scripts/lib/require_api_access_key_secret.sh")
     promote = _read_text("scripts/promote_cloudrun_return_data.py")
     pending = _read_text("api/cloudrun_pending_cases.py")
     agent_tools = _read_text("api/shion_agent_tools.py")
@@ -74,7 +75,13 @@ def audit_cloudrun_data_safety() -> dict[str, Any]:
         ),
         _check(
             "deploy_refuses_missing_access_key",
-            "Refusing to deploy a public API without an access key" in deploy_api
+            # 2026-09、fail-closedの実体は scripts/lib/require_api_access_key_secret.sh に
+            # 集約され、deploy_cloud_run_api.sh / deploy_cloud_run_web.sh / deploy.yml が
+            # それを呼ぶ形に統合された（片方だけ強化して他方が取り残される乖離の再発防止）。
+            "Refusing to deploy a public" in require_access_key_lib
+            and "API_ACCESS_KEY" in require_access_key_lib
+            and "return 1" in require_access_key_lib
+            and "require_api_access_key_secret" in deploy_api
             and "API_ACCESS_KEY" in deploy_api
             and "exit 1" in deploy_api,
             "demoを含む公開デプロイで API_ACCESS_KEY Secret 不在ならデプロイを止める",

@@ -14,6 +14,11 @@ def deploy(tmp_path):
     scripts.mkdir()
     for name in ("deploy_cloud_run.sh", "deploy_cloud_run_web.sh"):
         (scripts / name).write_text((root / "scripts" / name).read_text())
+    lib_dir = scripts / "lib"
+    lib_dir.mkdir()
+    (lib_dir / "require_api_access_key_secret.sh").write_text(
+        (root / "scripts" / "lib" / "require_api_access_key_secret.sh").read_text()
+    )
     package = scripts / "package_cloud_run_bundle.sh"
     package.write_text("#!/bin/sh\nexit 0\n")
     package.chmod(0o755)

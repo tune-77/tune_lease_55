@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/require_api_access_key_secret.sh"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-asia-northeast1}"
@@ -61,12 +62,8 @@ deploy_args=(
 # API側のApiKeyAuthMiddlewareと同じ値をWeb側にも配線する（frontend/src/proxy.tsが
 # process.env.API_ACCESS_KEYを読んでX-API-Keyを自動注入する）。公開Webだけがキーなしで
 # デプロイされると全APIが503になるため、設定漏れはfail-closedで止める。
-if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
-  deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
-else
-  echo "ERROR: Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy Web without the API proxy key." >&2
-  exit 1
-fi
+api_access_key_ref="$(require_api_access_key_secret "$PROJECT_ID" "Web")" || exit 1
+deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref}")
 
 # APIキーの自動付与より前に、Cloud Run IAMで利用者を認証する。
 deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)

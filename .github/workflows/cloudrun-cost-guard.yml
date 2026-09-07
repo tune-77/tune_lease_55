@@ -1,0 +1,104 @@
+# .github/workflows/cloudrun-cost-guard.yml
+#
+# Cloud Runの「気づかないうちに課金が積み上がる」経路を定期的に塞ぐガード。
+#
+# 2026-09、CI自動デプロイ(deploy.yml)が手動デプロイスクリプトのfail-closed認証
+# 強化から取り残され、未認証・GEMINI_API_KEY付きAPIが再公開され続けるコスト急増
+# インシデントが起きた（対応: PR #977 / #978）。その振り返りで残っていた2件を
+# ここで自動化する。
+#
+#   1. 高頻度push（api/**・frontend/** 変更のたびにdeploy.ymlがビルド）で
+#      Cloud Runリビジョンが積み上がる → scripts/cleanup_cloud_run_revisions.py
+#      --apply を定期実行し、トラフィックが乗っていない古いリビジョンを削除する。
+#   2. scripts/demo_warm.sh on（min-instances=1常駐、アイドル課金が発生する）の
+#      つけっぱなしはリポジトリ内からは検知できない → 定期的に実サービスの
+#      min-instances を確認し、0以外ならワークフローを失敗させて可視化する。
+#
+# WIF Secrets (WIF_PROVIDER / WIF_SERVICE_ACCOUNT) は deploy.yml と共用。
+# 未設定ならジョブごとスキップする（deploy.yml と同じ理由・同じ判定方法）。
+
+name: Cloud Run Cost Guard
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # 6時間おき。demo_warm.sh on のつけっぱなしを半日以内に検知する
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_ID: gen-lang-client-0420497423
+  REGION: asia-northeast1
+
+jobs:
+  check-wif:
+    name: Detect WIF configuration
+    runs-on: ubuntu-latest
+    outputs:
+      wif: ${{ steps.wif.outputs.configured }}
+    steps:
+      - id: wif
+        env:
+          WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+        run: |
+          if [ -n "${WIF_PROVIDER}" ] && [ -n "${WIF_SERVICE_ACCOUNT}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::WIF Secrets (WIF_PROVIDER / WIF_SERVICE_ACCOUNT) が未設定のためCloud Runコストガードをスキップします。"
+          fi
+
+  cost-guard:
+    name: Cleanup revisions & check idle billing
+    needs: check-wif
+    if: needs.check-wif.outputs.wif == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # WIF に必須
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # トラフィックが乗っている（または直近 --keep 件以内の）リビジョンは
+      # scripts/cleanup_cloud_run_revisions.py が保護するため安全に --apply できる。
+      - name: Delete stale 0%-traffic Cloud Run revisions
+        run: |
+          python3 scripts/cleanup_cloud_run_revisions.py \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --service tune-lease-55-api \
+            --service tune-lease-55-web \
+            --apply
+
+      # demo_warm.sh on の消し忘れ（min-instances=1常駐）を検知する。
+      # 発表・審査中など意図的にonにしている時間帯にこのジョブが失敗するのは
+      # 想定内（赤=要確認のシグナルとして機能させる。誤検知ではない）。
+      - name: Warn if min-instances is left non-zero
+        run: |
+          set -Eeuo pipefail
+          left_on=0
+          for service in tune-lease-55-api tune-lease-55-web; do
+            min_instances="$(gcloud run services describe "${service}" \
+              --project "${PROJECT_ID}" --region "${REGION}" \
+              --format="value(spec.template.metadata.annotations['autoscaling.knative.dev/minScale'])")"
+            min_instances="${min_instances:-0}"
+            echo "${service}: min-instances=${min_instances}"
+            if [ "${min_instances}" != "0" ]; then
+              echo "::warning::${service} の min-instances が ${min_instances} のままです。発表・審査などで意図的にscripts/demo_warm.sh on した場合は無視してよいですが、そうでなければアイドル課金が発生し続けています。終わったら scripts/demo_warm.sh off を実行してください。"
+              left_on=1
+            fi
+          done
+          if [ "${left_on}" != "0" ]; then
+            exit 1
+          fi

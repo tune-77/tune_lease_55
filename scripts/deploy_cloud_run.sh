@@ -5,6 +5,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/require_api_access_key_secret.sh"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-asia-northeast1}"
@@ -80,13 +81,9 @@ else
   echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
 fi
 
-if gcloud secrets describe API_ACCESS_KEY --project "$PROJECT_ID" >/dev/null 2>&1; then
-  deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
-  has_replacement_secrets=1
-else
-  echo "Error: Refusing to deploy a public service without an access key. Create Secret Manager secret API_ACCESS_KEY first." >&2
-  exit 1
-fi
+api_access_key_ref="$(require_api_access_key_secret "$PROJECT_ID" "service")" || exit 1
+deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref}")
+has_replacement_secrets=1
 
 if (( has_replacement_secrets == 0 )); then
   deploy_args+=(--clear-secrets)
