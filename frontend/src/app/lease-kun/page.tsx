@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Activity, ChevronDown, MessageSquare, CheckCircle2, Trash2, Upload, Loader2, ScanText, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { apiClient } from '@/lib/api';
+import { apiClient, API_BASE } from '@/lib/api';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
 import { extractPrefectureFromText } from '@/lib/prefecture';
 import { CurrentIssueCard, RingiPolicyCard } from '../../components/analysis/IssuePolicyCards';
@@ -470,7 +470,7 @@ export default function LeaseKunWizard() {
 
   // 業種マスター取得
   useEffect(() => {
-    fetch('/api/master/industries')
+    fetch(`${API_BASE}/api/master/industries`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return;
