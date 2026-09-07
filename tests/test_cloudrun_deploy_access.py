@@ -24,11 +24,24 @@ def deploy(tmp_path):
     package.chmod(0o755)
     (scripts / "check_cloudrun_demo_readiness.py").write_text("")
     gcloud = tmp_path / "gcloud"
+    # SECRET_STATE は describe の実挙動を再現する:
+    #   ok      … シークレットあり
+    #   missing … 本当に存在しない (NOT_FOUND)
+    #   denied  … 存在するが describe 権限が無い (PERMISSION_DENIED)
+    # 旧実装は stderr を捨てて missing と denied を同じ「not found」に潰しており、
+    # それが2026-09-07のIAM当て推量ループの原因だった。
     gcloud.write_text('''#!/usr/bin/env python3
 import json, os, sys
 a = sys.argv[1:]
 if a[:3] == ["secrets", "describe", "API_ACCESS_KEY"]:
-    sys.exit(0 if os.environ["HAS_KEY"] == "1" else 1)
+    state = os.environ["SECRET_STATE"]
+    if state == "ok":
+        sys.exit(0)
+    if state == "missing":
+        sys.stderr.write("ERROR: (gcloud.secrets.describe) NOT_FOUND: Secret [projects/test-project/secrets/API_ACCESS_KEY] not found.\\n")
+        sys.exit(1)
+    sys.stderr.write("ERROR: (gcloud.secrets.describe) PERMISSION_DENIED: Permission 'secretmanager.secrets.get' denied for resource.\\n")
+    sys.exit(1)
 if a[:3] == ["run", "services", "describe"]:
     if "--format=json" in a:
         mode = os.environ["API_MODE"]
@@ -41,12 +54,12 @@ if a[:2] == ["run", "deploy"]:
 ''')
     gcloud.chmod(0o755)
     log = tmp_path / "args.json"
-    def run(script, mode, key=True):
+    def run(script, mode, secret="ok"):
         log.unlink(missing_ok=True)
         result = subprocess.run(["bash", str(scripts / script)], env={**os.environ,
             "PATH": f"{tmp_path}:{os.environ['PATH']}", "PROJECT_ID": "test-project",
             "SHORT_SHA": "test", "CLOUDRUN_DATA_MODE": mode, "API_MODE": mode,
-            "HAS_KEY": "1" if key else "0", "DEPLOY_ARGS": str(log),
+            "SECRET_STATE": secret, "DEPLOY_ARGS": str(log),
         }, capture_output=True, text=True, timeout=20)
         return result, json.loads(log.read_text()) if log.exists() else []
     return run
@@ -69,9 +82,32 @@ def test_web_boundary_always_requires_iam(deploy, script, mode):
 @pytest.mark.parametrize("script", ["deploy_cloud_run.sh", "deploy_cloud_run_web.sh"])
 @pytest.mark.parametrize("mode", ["production", "demo"])
 def test_missing_key_never_deploys(deploy, script, mode):
-    result, args = deploy(script, mode, key=False)
+    result, args = deploy(script, mode, secret="missing")
     assert result.returncode != 0
     assert not args
+
+
+@pytest.mark.parametrize("script", ["deploy_cloud_run.sh", "deploy_cloud_run_web.sh"])
+def test_unverifiable_key_still_deploys_with_the_key_wired(deploy, script):
+    """事前チェックの権限(secretmanager.secrets.get)が無いだけの時は止めない。
+
+    ここで止めると「本来デプロイできるのに事前チェックだけが落ちて永久に進めない」
+    状態になる（2026-09-07にCIが実際にこれで停止した）。キー無しデプロイを防ぐ実体は
+    --set-secrets 側にあるので、配線が残っていれば fail-closed は維持される。
+    """
+    result, args = deploy(script, "production", secret="denied")
+
+    assert result.returncode == 0, result.stderr
+    assert "API_ACCESS_KEY=API_ACCESS_KEY:latest" in args
+    assert "PERMISSION_DENIED" in result.stderr, "本当のgcloudエラーが出ていない"
+
+
+@pytest.mark.parametrize("script", ["deploy_cloud_run.sh", "deploy_cloud_run_web.sh"])
+def test_real_gcloud_error_is_surfaced_when_secret_is_missing(deploy, script):
+    """原因が「潰れた」メッセージにならず、gcloudの実エラーが残ること。"""
+    result, _ = deploy(script, "production", secret="missing")
+
+    assert "NOT_FOUND" in result.stderr
 
 
 def test_unknown_api_mode_keeps_web_private(deploy):

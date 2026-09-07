@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -50,6 +51,22 @@ def test_web_deploy_requires_iam_auth() -> None:
     assert "source scripts/lib/require_api_access_key_secret.sh" in script
     assert 'require_api_access_key_secret "${PROJECT_ID}" "Web"' in script
     assert "|| exit 1" in script, "API_ACCESS_KEY secret が無い時にfail-closedしていない"
+
+
+@pytest.mark.parametrize(
+    ("job", "build_step"),
+    [("deploy-api", "Build API image"), ("deploy-web", "Build frontend image")],
+)
+def test_secret_preflight_runs_before_the_expensive_build(job: str, build_step: str) -> None:
+    """シークレット検証は17分のビルドより前に置く。
+
+    後ろに置くと、キー未設定や権限不足がビルド完了まで分からず、切り分け1回に
+    17分かかる（2026-09-07に実際に何度も空費した）。
+    """
+    steps = [step.get("name") for step in _load()["jobs"][job]["steps"]]
+
+    assert "Preflight - verify API access key secret" in steps
+    assert steps.index("Preflight - verify API access key secret") < steps.index(build_step)
 
 
 def test_lib_require_api_access_key_secret_is_fail_closed() -> None:
