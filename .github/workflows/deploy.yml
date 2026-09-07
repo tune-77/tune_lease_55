@@ -153,6 +153,11 @@ jobs:
       # GitHub Secret CLOUDSQL_INSTANCE があれば Secret Manager の DATABASE_URL
       # を注入し、同じデプロイで Cloud SQL ソケットもマウントする。
       # 未設定なら Cloud SQL は明示的に外し、ローカルDB既定で起動する。
+      #
+      # インターネット公開するCloud RunはAPIキー必須（fail-closed、scripts/deploy_cloud_run_api.sh
+      # と同じ方針）。これが欠けていると api/** への push のたびに未認証で
+      # GEMINI_API_KEY 付きAPIが公開され、悪用による課金急増につながる
+      # （2026-09の突発的なコスト増の原因調査で判明）。
       - name: Deploy to Cloud Run
         env:
           DATABASE_SECRET_NAME: DATABASE_URL
@@ -172,13 +177,21 @@ jobs:
             --concurrency 1
             --min-instances 0
             --max-instances 1
-            --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=1,TZ=Asia/Tokyo"
-            --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest"
+            --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=1,REQUIRE_API_ACCESS_KEY=1,TZ=Asia/Tokyo"
             --allow-unauthenticated
           )
 
+          secret_args=("GEMINI_API_KEY=GEMINI_API_KEY:latest")
+
+          if gcloud secrets describe API_ACCESS_KEY --project "${PROJECT_ID}" >/dev/null 2>&1; then
+            secret_args+=("API_ACCESS_KEY=API_ACCESS_KEY:latest")
+          else
+            echo "::error::Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy a public API without an access key. Register it first: gcloud secrets create API_ACCESS_KEY --replication-policy=automatic --project ${PROJECT_ID}"
+            exit 1
+          fi
+
           if [ -n "${CLOUDSQL_INSTANCE}" ]; then
-            deploy_args+=(--set-secrets "DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
+            secret_args+=("DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
             deploy_args+=(--add-cloudsql-instances "${CLOUDSQL_INSTANCE}")
           else
             echo "::warning::GitHub Secret CLOUDSQL_INSTANCE が未設定のため、${DATABASE_SECRET_NAME} は注入せず Cloud SQL も接続しません。DB_PATH既定（data/lease_data.db）で起動します。"
@@ -186,6 +199,8 @@ jobs:
             # 未設定時は古い接続を持ち越さないよう明示的にクリアする。
             deploy_args+=(--clear-cloudsql-instances)
           fi
+
+          IFS=,; deploy_args+=(--set-secrets "${secret_args[*]}"); unset IFS
 
           gcloud "${deploy_args[@]}"
 
@@ -257,22 +272,38 @@ jobs:
             frontend/
 
       # ── Cloud Run にデプロイ ─────────────────────────────────────────
+      # Web境界はデータモードにかかわらずIAM認証必須（scripts/deploy_cloud_run_web.sh と
+      # 同じ方針、2026-09-06の "fix: authenticate public web entry points" 参照）。
+      # API_ACCESS_KEY はNext.jsのserver-side proxyがAPIへX-API-Keyを自動付与するために必須。
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy "${SERVICE_NAME}" \
-            --image "${IMAGE_URI}" \
-            --project "${PROJECT_ID}" \
-            --region "${REGION}" \
-            --execution-environment gen2 \
-            --port 8080 \
-            --memory 2Gi \
-            --cpu 1 \
-            --timeout 900 \
-            --concurrency 80 \
-            --min-instances 0 \
-            --max-instances 1 \
-            --set-env-vars "FASTAPI_URL=${API_URL}" \
-            --allow-unauthenticated
+          set -Eeuo pipefail
+          deploy_args=(
+            run deploy "${SERVICE_NAME}"
+            --image "${IMAGE_URI}"
+            --project "${PROJECT_ID}"
+            --region "${REGION}"
+            --execution-environment gen2
+            --port 8080
+            --memory 2Gi
+            --cpu 1
+            --timeout 900
+            --concurrency 80
+            --min-instances 0
+            --max-instances 1
+            --set-env-vars "FASTAPI_URL=${API_URL}"
+            --no-allow-unauthenticated
+            --invoker-iam-check
+          )
+
+          if gcloud secrets describe API_ACCESS_KEY --project "${PROJECT_ID}" >/dev/null 2>&1; then
+            deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
+          else
+            echo "::error::Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy Web without the API proxy key."
+            exit 1
+          fi
+
+          gcloud "${deploy_args[@]}"
 
       - name: Show deployed URL
         run: |
