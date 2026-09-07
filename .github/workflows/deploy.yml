@@ -164,6 +164,8 @@ jobs:
           CLOUDSQL_INSTANCE: ${{ secrets.CLOUDSQL_INSTANCE }}
         run: |
           set -Eeuo pipefail
+          source scripts/lib/require_api_access_key_secret.sh
+
           deploy_args=(
             run deploy "${SERVICE_NAME}"
             --image "${IMAGE_URI}"
@@ -181,14 +183,8 @@ jobs:
             --allow-unauthenticated
           )
 
-          secret_args=("GEMINI_API_KEY=GEMINI_API_KEY:latest")
-
-          if gcloud secrets describe API_ACCESS_KEY --project "${PROJECT_ID}" >/dev/null 2>&1; then
-            secret_args+=("API_ACCESS_KEY=API_ACCESS_KEY:latest")
-          else
-            echo "::error::Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy a public API without an access key. Register it first: gcloud secrets create API_ACCESS_KEY --replication-policy=automatic --project ${PROJECT_ID}"
-            exit 1
-          fi
+          api_access_key_ref="$(require_api_access_key_secret "${PROJECT_ID}" "API")" || exit 1
+          secret_args=("GEMINI_API_KEY=GEMINI_API_KEY:latest" "API_ACCESS_KEY=${api_access_key_ref}")
 
           if [ -n "${CLOUDSQL_INSTANCE}" ]; then
             secret_args+=("DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
@@ -278,6 +274,10 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           set -Eeuo pipefail
+          source scripts/lib/require_api_access_key_secret.sh
+
+          api_access_key_ref="$(require_api_access_key_secret "${PROJECT_ID}" "Web")" || exit 1
+
           deploy_args=(
             run deploy "${SERVICE_NAME}"
             --image "${IMAGE_URI}"
@@ -294,14 +294,8 @@ jobs:
             --set-env-vars "FASTAPI_URL=${API_URL}"
             --no-allow-unauthenticated
             --invoker-iam-check
+            --set-secrets "API_ACCESS_KEY=${api_access_key_ref}"
           )
-
-          if gcloud secrets describe API_ACCESS_KEY --project "${PROJECT_ID}" >/dev/null 2>&1; then
-            deploy_args+=(--set-secrets "API_ACCESS_KEY=API_ACCESS_KEY:latest")
-          else
-            echo "::error::Secret Manager secret API_ACCESS_KEY was not found. Refusing to deploy Web without the API proxy key."
-            exit 1
-          fi
 
           gcloud "${deploy_args[@]}"
 

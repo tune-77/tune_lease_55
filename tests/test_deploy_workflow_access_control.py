@@ -35,9 +35,9 @@ def test_api_deploy_requires_access_key_fail_closed() -> None:
     script = _run_script(workflow["jobs"]["deploy-api"], "Deploy to Cloud Run")
 
     assert "REQUIRE_API_ACCESS_KEY=1" in script
-    assert "API_ACCESS_KEY=API_ACCESS_KEY:latest" in script
-    assert "secrets describe API_ACCESS_KEY" in script
-    assert "exit 1" in script, "API_ACCESS_KEY secret が無い時にfail-closedしていない"
+    assert "source scripts/lib/require_api_access_key_secret.sh" in script
+    assert 'require_api_access_key_secret "${PROJECT_ID}" "API"' in script
+    assert "|| exit 1" in script, "API_ACCESS_KEY secret が無い時にfail-closedしていない"
 
 
 def test_web_deploy_requires_iam_auth() -> None:
@@ -47,6 +47,17 @@ def test_web_deploy_requires_iam_auth() -> None:
     assert "--allow-unauthenticated" not in script
     assert "--no-allow-unauthenticated" in script
     assert "--invoker-iam-check" in script
-    assert "API_ACCESS_KEY=API_ACCESS_KEY:latest" in script
-    assert "secrets describe API_ACCESS_KEY" in script
-    assert "exit 1" in script, "API_ACCESS_KEY secret が無い時にfail-closedしていない"
+    assert "source scripts/lib/require_api_access_key_secret.sh" in script
+    assert 'require_api_access_key_secret "${PROJECT_ID}" "Web"' in script
+    assert "|| exit 1" in script, "API_ACCESS_KEY secret が無い時にfail-closedしていない"
+
+
+def test_lib_require_api_access_key_secret_is_fail_closed() -> None:
+    # deploy.yml と scripts/deploy_cloud_run*.sh の両方が同じ関数を経由することで、
+    # 片方だけ認証強化して他方が取り残される乖離（2026-09のコスト急増の原因）を防ぐ。
+    lib_script = (
+        ROOT / "scripts/lib/require_api_access_key_secret.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "gcloud secrets describe API_ACCESS_KEY" in lib_script
+    assert "return 1" in lib_script

@@ -40,13 +40,28 @@ def test_cloud_run_deploy_clears_secrets_only_without_replacements() -> None:
 
 
 def test_public_cloud_run_deployments_require_api_access_key() -> None:
+    # scripts/lib/require_api_access_key_secret.sh (2026-09) が
+    # deploy_cloud_run.sh / deploy_cloud_run_api.sh / deploy_cloud_run_web.sh と
+    # .github/workflows/deploy.yml の全デプロイ経路で共有される、fail-closedの
+    # 単一実装。ここが乖離すると個別スクリプトを直しても他経路が取り残される
+    # （2026-09のCloud Runコスト急増の原因）。
+    lib_script = (ROOT / "scripts/lib/require_api_access_key_secret.sh").read_text(encoding="utf-8")
     combined_script = (ROOT / "scripts/deploy_cloud_run.sh").read_text(encoding="utf-8")
     api_script = (ROOT / "scripts/deploy_cloud_run_api.sh").read_text(encoding="utf-8")
     web_script = (ROOT / "scripts/deploy_cloud_run_web.sh").read_text(encoding="utf-8")
 
+    assert "Refusing to deploy a public" in lib_script
+    assert "return 1" in lib_script
+
     assert "REQUIRE_API_ACCESS_KEY=1" in combined_script
-    assert "Refusing to deploy a public service without an access key" in combined_script
     assert "REQUIRE_API_ACCESS_KEY=1" in api_script
     assert "Demo mode stays unauthenticated" not in api_script
-    assert "Refusing to deploy a public API without an access key" in api_script
-    assert "Refusing to deploy Web without the API proxy key" in web_script
+
+    for script, label in (
+        (combined_script, "service"),
+        (api_script, "API"),
+        (web_script, "Web"),
+    ):
+        assert 'source "$ROOT_DIR/scripts/lib/require_api_access_key_secret.sh"' in script
+        assert f'require_api_access_key_secret "$PROJECT_ID" "{label}"' in script
+        assert "|| exit 1" in script
