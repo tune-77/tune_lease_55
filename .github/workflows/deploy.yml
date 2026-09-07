@@ -132,18 +132,19 @@ jobs:
         run: mkdir -p .cloudrun_bundle
 
       # ── Cloud Build でイメージをビルド ──────────────────────────────
+      # ビルド完了待ちの方式は scripts/lib/submit_cloud_build_and_wait.sh 参照
+      # （ログバケット読み取りに依存する gcloud builds submit の同期待ちが
+      # WIF環境で失敗し続けた問題の回避）。
       - name: Build API image
         run: |
+          set -Eeuo pipefail
+          source scripts/lib/submit_cloud_build_and_wait.sh
+
           SHORT_SHA="${GITHUB_SHA::7}"
           IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}/${SERVICE_NAME}:${SHORT_SHA}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 
-          gcloud builds submit \
-            --project "${PROJECT_ID}" \
-            --config cloudbuild.api.yaml \
-            --substitutions "_IMAGE_URI=${IMAGE_URI}" \
-            --suppress-logs \
-            .
+          submit_cloud_build_and_wait "${PROJECT_ID}" cloudbuild.api.yaml "_IMAGE_URI=${IMAGE_URI}" .
 
       # ── Cloud Run にデプロイ ─────────────────────────────────────────
       # CLOUDRUN_DATA_MODE=demo / DB_PATH=demo.db は固定しない。デモ用の
@@ -254,18 +255,19 @@ jobs:
           echo "API_URL=${API_URL}"
 
       # ── Cloud Build でイメージをビルド ──────────────────────────────
+      # ビルド完了待ちの方式は scripts/lib/submit_cloud_build_and_wait.sh 参照
+      # （ログバケット読み取りに依存する gcloud builds submit の同期待ちが
+      # WIF環境で失敗し続けた問題の回避）。
       - name: Build frontend image
         run: |
+          set -Eeuo pipefail
+          source scripts/lib/submit_cloud_build_and_wait.sh
+
           SHORT_SHA="${GITHUB_SHA::7}"
           IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}/${SERVICE_NAME}:${SHORT_SHA}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 
-          gcloud builds submit \
-            --project "${PROJECT_ID}" \
-            --config cloudbuild.web.yaml \
-            --substitutions "_IMAGE_URI=${IMAGE_URI},_FASTAPI_URL=${API_URL}" \
-            --suppress-logs \
-            frontend/
+          submit_cloud_build_and_wait "${PROJECT_ID}" cloudbuild.web.yaml "_IMAGE_URI=${IMAGE_URI},_FASTAPI_URL=${API_URL}" frontend/
 
       # ── Cloud Run にデプロイ ─────────────────────────────────────────
       # Web境界はデータモードにかかわらずIAM認証必須（scripts/deploy_cloud_run_web.sh と
