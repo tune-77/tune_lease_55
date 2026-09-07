@@ -121,6 +121,15 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      # シークレット検証はビルドより前に置く。ビルドの後に置くと、キーの設定漏れや
+      # 権限不足が17分のビルドを待たないと分からず、1回の切り分けに17分かかる
+      # （2026-09-07、実際にこれで何度も空費した）。
+      - name: Preflight - verify API access key secret
+        run: |
+          set -Eeuo pipefail
+          source scripts/lib/require_api_access_key_secret.sh
+          require_api_access_key_secret "${PROJECT_ID}" "API" >/dev/null
+
       # Dockerfile.api は COPY .cloudrun_bundle/ /app/.cloudrun_bundle/ を無条件で
       # 実行するため、ビルドコンテキストに .cloudrun_bundle/ が存在しないと
       # COPY failed: file not found で毎回ビルド自体が失敗する。
@@ -237,6 +246,14 @@ jobs:
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
+
+      # シークレット検証はビルドより前に置く（API側と同じ理由。deploy-api ジョブの
+      # 同名ステップのコメント参照）。
+      - name: Preflight - verify API access key secret
+        run: |
+          set -Eeuo pipefail
+          source scripts/lib/require_api_access_key_secret.sh
+          require_api_access_key_secret "${PROJECT_ID}" "Web" >/dev/null
 
       # ── API URL を取得（Next.js ビルド時の FASTAPI_URL として渡す） ──
       - name: Resolve API service URL
