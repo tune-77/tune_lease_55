@@ -120,7 +120,10 @@ def check_scoring() -> CheckResult:
     except Exception as exc:  # noqa: BLE001
         return r.fail(f"スコアリングモジュールを import できない: {exc}")
 
-    categories = sorted(set(ASSET_ID_TO_CATEGORY.values()))
+    # ASSET_ID_TO_CATEGORY の値は None を含みうる（category_config.py: "other" はカテゴリ
+    # 別スコアリング対象外の意図的な None）。str と None は比較できないため sorted() には
+    # None を末尾に固定するキーを渡す。
+    categories = sorted(set(ASSET_ID_TO_CATEGORY.values()), key=lambda v: (v is None, v))
     out_of_range: list[str] = []
     errored: list[str] = []
     for cat in categories:
