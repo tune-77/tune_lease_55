@@ -342,15 +342,11 @@ async def lifespan(app: FastAPI):
     def _warm_dashboard_stats_caches():
         try:
             from data_cases import (
-                load_dashboard_stats_cache,
-                load_department_stats_cache,
-                refresh_dashboard_stats_cache,
-                refresh_department_stats_cache,
+                refresh_dashboard_stats_cache_if_missing,
+                refresh_department_stats_cache_if_missing,
             )
-            if load_dashboard_stats_cache() is None:
-                refresh_dashboard_stats_cache()
-            if load_department_stats_cache() is None:
-                refresh_department_stats_cache()
+            refresh_dashboard_stats_cache_if_missing()
+            refresh_department_stats_cache_if_missing()
         except Exception:
             pass
     threading.Thread(
