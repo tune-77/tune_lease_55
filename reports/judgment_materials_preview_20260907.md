@@ -1,4 +1,4 @@
-# Judgment Materials Preview (2026-09-06 to 2026-09-08)
+# Judgment Materials Preview (2026-09-05 to 2026-09-07)
 
 ## Summary
 

@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "legacy_version": "1.0.0",
   "artifactType": "structured-handoff",
-  "timestamp": "2026-08-23T09:34:40Z",
+  "timestamp": "2026-09-08T12:57:10Z",
   "sessionId": "",
   "previous_state": {
     "summary": "Before compaction: 20 recent edit(s)",
@@ -26,19 +26,19 @@
       "severity": "medium",
       "kind": "verification",
       "summary": "20 recent edit(s) should be re-validated after resume",
-      "detail": ".claude/memory/session-log.md, .claude/reports/api-health/latest.md, .claude/reports/build/latest.md, .claude/reports/data-quality/latest.md, .claude/reports/log-analysis/latest.md"
+      "detail": ".agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py, .claude/memory/session-log.md, .claude/reports/api-health/latest.md, .claude/reports/build/latest.md, .claude/reports/data-quality/latest.md"
     }
   ],
   "failed_checks": null,
   "decision_log": [
     {
-      "timestamp": "2026-08-23T09:34:40Z",
+      "timestamp": "2026-09-08T12:57:10Z",
       "actor": "pre-compact-save",
       "decision": "canonical_handoff_artifact_written",
       "rationale": "Persist a stable JSON artifact in .claude/state for long-running session handoff."
     },
     {
-      "timestamp": "2026-08-23T09:34:40Z",
+      "timestamp": "2026-09-08T12:57:10Z",
       "actor": "pre-compact-save",
       "decision": "legacy_snapshot_mirrored",
       "rationale": "Keep precompact-snapshot.json for backward compatibility with older hooks."
@@ -57,10 +57,9 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 885 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8",
     "reasons": [
-      "20 recent edit count exceed threshold 8",
-      "885 session age (minutes) exceed threshold 120"
+      "20 recent edit count exceed threshold 8"
     ],
     "candidates": [
       {
@@ -94,9 +93,9 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 885,
+        "actual": 52,
         "threshold": 120,
-        "triggered": true
+        "triggered": false
       }
     ],
     "counters": {
@@ -104,7 +103,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 885
+      "sessionAgeMinutes": 52
     }
   },
   "continuity": {
@@ -116,6 +115,7 @@
   "planItems": null,
   "wipTasks": null,
   "recentEdits": [
+    ".agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py",
     ".claude/memory/session-log.md",
     ".claude/reports/api-health/latest.md",
     ".claude/reports/build/latest.md",
@@ -126,15 +126,14 @@
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
     ".claude/state/session.events.jsonl",
-    "CLAUDE.md",
-    "api/routers/recipes.py",
+    "WEEKLY_LOG.md",
     "api/rule_engine/ledger_rules.json",
     "data/aurion_daily/latest.json",
-    "data/demo.db",
+    "data/coeff_auto.json",
     "data/news_judgment_signals_latest.json",
-    "data/pdca_ai_rules.json",
     "data/shion_monitor_report_state.json",
-    "frontend/.claude/state/instructions-loaded.jsonl",
-    "frontend/src/app/improvement-log/page.tsx"
+    "data/training_meta.json",
+    "frontend/public/generated/judgment-asset-graph/index.html",
+    "frontend/public/lease-grumble/2026-07-26.webp"
   ]
 }

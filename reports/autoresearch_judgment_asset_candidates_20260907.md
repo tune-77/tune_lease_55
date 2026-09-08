@@ -1,9 +1,9 @@
-# Auto Research Judgment Asset Candidates (2026-08-26 to 2026-09-08)
+# Auto Research Judgment Asset Candidates (2026-08-25 to 2026-09-07)
 
 ## Summary
 
 - Candidates: 88
-- Deduped similar candidates: 81
+- Deduped similar candidates: 72
 - application_rule: 22
 - confirmation_question: 23
 - condition_signal: 21
@@ -904,7 +904,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 9
+- Deduped similar: 8
 
 ### 2026-08-26 / confirmation_question / subsidy-timing
 
@@ -915,7 +915,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 9
+- Deduped similar: 8
 
 ### 2026-08-26 / confirmation_question / subsidy-timing
 
@@ -926,7 +926,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_confirmation_action
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 9
+- Deduped similar: 8
 
 ### 2026-08-26 / condition_signal / subsidy-timing
 
@@ -937,7 +937,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 9
+- Deduped similar: 8
 
 ### 2026-08-26 / condition_signal / subsidy-timing
 
@@ -948,7 +948,7 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 9
+- Deduped similar: 8
 
 ### 2026-08-26 / caution / subsidy-timing
 
@@ -959,7 +959,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 9
+- Deduped similar: 8
 
 ### 2026-08-26 / caution / subsidy-timing
 
@@ -970,7 +970,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition, not_a_caution
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 9
+- Deduped similar: 8
 
 ### 2026-08-26 / application_rule / subsidy-timing
 
@@ -981,7 +981,7 @@
 - Status: candidate / not_promoted_textbook_general
 - Asset quality: textbook_general / reasons=no_case_action_or_condition
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 9
+- Deduped similar: 8
 
 ### 2026-08-26 / application_rule / subsidy-timing
 
@@ -992,4 +992,4 @@
 - Status: candidate / not_promoted
 - Asset quality: actionable / reasons=none
 - Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified
-- Deduped similar: 9
+- Deduped similar: 8

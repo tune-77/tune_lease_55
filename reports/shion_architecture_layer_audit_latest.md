@@ -1,6 +1,6 @@
 # 紫苑 アーキテクチャ層監査
 
-- Date: 2026-08-24
+- Date: 2026-09-08
 - Mode: read_only_architecture_audit
 - Guardrail: read_only_no_prompt_no_scoring_no_rag_no_memory_write_no_auto_promotion
 - Overall status: attention
@@ -16,8 +16,8 @@ HOIKUAGENT 型の `harness / agents / improver` という見方を、紫苑に�
 - Lineage assets: 0
 - Field feedback sleeping: 8
 - Field validation score: 12.0
-- Growth: 育っている途中
-- Loop engineering: warn
+- Growth: 後退・要点検
+- Loop engineering: attention
 
 ## 3層の見立て
 
