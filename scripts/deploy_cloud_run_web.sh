@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/require_api_access_key_secret.sh"
+source "$ROOT_DIR/scripts/lib/require_public_tunnel_auth_secret.sh"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-asia-northeast1}"
@@ -56,22 +57,26 @@ deploy_args=(
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
   --max-instances "$MAX_INSTANCES"
-  --set-env-vars "FASTAPI_URL=$API_URL"
+  --set-env-vars "FASTAPI_URL=$API_URL,PUBLIC_TUNNEL=1"
 )
 
 # API側のApiKeyAuthMiddlewareと同じ値をWeb側にも配線する（frontend/src/proxy.tsが
 # process.env.API_ACCESS_KEYを読んでX-API-Keyを自動注入する）。公開Webだけがキーなしで
 # デプロイされると全APIが503になるため、設定漏れはfail-closedで止める。
 api_access_key_ref="$(require_api_access_key_secret "$PROJECT_ID" "Web")" || exit 1
-deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref}")
+tunnel_auth_ref="$(require_public_tunnel_auth_secret "$PROJECT_ID" "Web")" || exit 1
+deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_auth_ref}")
 
-# Web境界はIAM認証必須（--no-allow-unauthenticated --invoker-iam-check）。
-# 2026-09-08、UX上の理由から一時 --allow-unauthenticated に変更したが、
-# frontend/src/proxy.ts は Web境界のIAM有無に関係なく全ての未認証 /api/* リクエストへ
-# 上で配線した特権的な API_ACCESS_KEY を代理付与するため、Webを公開にすると誰でも
-# そのプロキシ経由でAPIの鍵付きエンドポイント（コスト発生するchat・案件削除等）を
-# 叩けてしまい、元のコスト急増インシデントと同種の穴を別URLで再現していた
-# （Codexレビューで指摘、PR #983 で一度マージされたが直後に巻き戻し）。
-deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
+# Web境界は公開（--allow-unauthenticated）。2026-09-06にIAM認証必須へ変更し、
+# 2026-09-08にPR #983で一時公開へ戻したが、frontend/src/proxy.ts は Web境界の
+# IAM有無に関係なく全ての未認証 /api/* リクエストへ上で配線した特権的な
+# API_ACCESS_KEY を代理付与するため、単純にIAMを外すだけでは誰でもそのプロキシ
+# 経由でAPIの鍵付きエンドポイント（コスト発生するchat・案件削除等）を叩けてしまい、
+# 元のコスト急増インシデントと同種の穴を別URLで再現していた（Codexレビューで指摘、
+# 一度巻き戻し）。今回は同じ穴を開けないため、上で配線した PUBLIC_TUNNEL=1 と
+# PUBLIC_TUNNEL_AUTH をセットで必ず配線する。proxy.ts はこの2つが揃っている時、
+# Basic認証（ID: lease）を通らない限り /api/* を含む全パスを401で拒否するため、
+# Web境界のIAMを外しても未認証の第三者はAPIへ到達できない。
+deploy_args+=(--allow-unauthenticated)
 
 gcloud "${deploy_args[@]}"
