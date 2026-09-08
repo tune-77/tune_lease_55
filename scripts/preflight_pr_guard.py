@@ -76,7 +76,7 @@ NAMESPACE_ROOTS = {"google"}
 
 @dataclass
 class Warning_:
-    """1 件の警告。guard は 'ast' / 'import' / 'circuit_breaker' のいずれか。"""
+    """1 件の警告。guard は 'ast' / 'import' / 'circuit_breaker' / 'staleness' のいずれか。"""
 
     guard: str
     message: str
@@ -482,8 +482,71 @@ def is_circuit_breaker_quality_warning(warning: Warning_) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Guard 3: Circuit Breaker（リトライ計数）
+# Guard 4: Staleness Guard（分岐後に origin/master でも変わったファイルの検知）
 # ─────────────────────────────────────────────────────────────────────────────
+
+def git_changed_all_files(base_ref: str | None) -> list[Path]:
+    """base_ref（無ければ HEAD）から見た変更ファイル（拡張子問わず、作業ツリー込み）。"""
+    diff_args = ["diff", "--name-only", base_ref if base_ref else "HEAD"]
+    code, out, _ = _run_git(diff_args)
+    files: list[Path] = []
+    if code == 0:
+        for line in out.splitlines():
+            name = line.strip()
+            if name:
+                p = REPO_ROOT / name
+                if p.is_file():
+                    files.append(p)
+    return files
+
+
+def run_staleness_guard(base_ref: str | None, files: Iterable[Path]) -> list[Warning_]:
+    """分岐後、別セッションが origin/master に直接マージした変更と、自分のローカル
+    差分が同じファイルに触れていないか検知する。
+
+    背景（2026-09 の事故未遂）: preflight_pr_guard.py 自身の circuit breaker 修正
+    （コミット c14e1b1）が origin/master に先にマージされていたのに、古い base_ref
+    のまま作業していたローカルセッションがそれと知らずに旧版のまま commit しかけた
+    （気づけたのは偶然の手動 diff）。base_ref（分岐点）から見て origin/master が
+    進んでおり、かつローカルでも変更しているファイルが「分岐後に upstream でも
+    変更されている」場合、重複修正または（今回のような）巻き戻しの恐れがあるため
+    警告する。
+
+    guard-only（警告のみ）。fetch 失敗やオフライン時は黙ってスキップし、他の
+    3 ガードの判定を妨げない。
+    """
+    warnings: list[Warning_] = []
+    if not base_ref:
+        return warnings
+
+    fetch_code, _, _ = _run_git(["fetch", "origin", "master", "--quiet"])
+    if fetch_code != 0:
+        return warnings  # オフライン等は静かにスキップ（警告のみツールなので落とさない）
+
+    remote_code, remote_out, _ = _run_git(["rev-parse", "--verify", "--quiet", "origin/master"])
+    if remote_code != 0:
+        return warnings
+    remote_master = remote_out.strip()
+
+    if remote_master == base_ref:
+        return warnings  # 分岐後、master は進んでいない
+
+    diverged_code, diverged_out, _ = _run_git(["diff", "--name-only", base_ref, remote_master])
+    if diverged_code != 0:
+        return warnings
+    diverged_files = {line.strip() for line in diverged_out.splitlines() if line.strip()}
+
+    for p in files:
+        rel = p.relative_to(REPO_ROOT).as_posix()
+        if rel in diverged_files:
+            warnings.append(Warning_(
+                "staleness",
+                "分岐後に origin/master でも変更されているファイル（重複修正/巻き戻しの恐れ）",
+                rel,
+                f"確認: git diff {base_ref}..{remote_master} -- {rel}",
+            ))
+    return warnings
+
 
 def changed_files_signature(files: Iterable[Path], branch: str) -> str:
     rels = sorted(p.relative_to(REPO_ROOT).as_posix() for p in files)
@@ -585,6 +648,8 @@ def run_preflight(max_retries: int | None = None) -> GuardReport:
         report.add(w)
     for w in run_pyflakes(files):
         report.add(w)
+    for w in run_staleness_guard(base_ref, git_changed_all_files(base_ref)):
+        report.add(w)
 
     # circuit breaker は「コード品質の警告（ast/import）」が解消したかで判定する。
     quality_warnings = any(is_circuit_breaker_quality_warning(w) for w in report.warnings)
@@ -606,7 +671,7 @@ def format_human(report: GuardReport) -> str:
         lines.append("✅ 警告なし")
         return "\n".join(lines)
     lines.append(f"⚠️  警告 {len(report.warnings)} 件:")
-    label = {"ast": "AST", "import": "Import", "circuit_breaker": "CircuitBreaker"}
+    label = {"ast": "AST", "import": "Import", "circuit_breaker": "CircuitBreaker", "staleness": "Staleness"}
     for w in report.warnings:
         loc = f" [{w.file}]" if w.file else ""
         lines.append(f"  • ({label.get(w.guard, w.guard)}){loc} {w.message}")
