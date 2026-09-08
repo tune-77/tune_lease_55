@@ -338,19 +338,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[API] ensure_schema failed (non-fatal): {e}")
     # startup: ダッシュボードキャッシュのウォームアップ
-    try:
-        from data_cases import (
-            load_dashboard_stats_cache,
-            load_department_stats_cache,
-            refresh_dashboard_stats_cache,
-            refresh_department_stats_cache,
-        )
-        if load_dashboard_stats_cache() is None:
-            refresh_dashboard_stats_cache()
-        if load_department_stats_cache() is None:
-            refresh_department_stats_cache()
-    except Exception:
-        pass
+    import threading
+    def _warm_dashboard_stats_caches():
+        try:
+            from data_cases import (
+                load_dashboard_stats_cache,
+                load_department_stats_cache,
+                refresh_dashboard_stats_cache,
+                refresh_department_stats_cache,
+            )
+            if load_dashboard_stats_cache() is None:
+                refresh_dashboard_stats_cache()
+            if load_department_stats_cache() is None:
+                refresh_department_stats_cache()
+        except Exception:
+            pass
+    threading.Thread(
+        target=_warm_dashboard_stats_caches,
+        daemon=True,
+        name="dashboard-cache-warmup",
+    ).start()
     import threading as _th
 
     if os.environ.get("ENABLE_OBSIDIAN_INDEXING", "false").lower() != "true":
