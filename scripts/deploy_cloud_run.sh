@@ -6,6 +6,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/require_api_access_key_secret.sh"
+source "$ROOT_DIR/scripts/lib/require_public_tunnel_auth_secret.sh"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-asia-northeast1}"
@@ -62,7 +63,7 @@ deploy_args=(
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
   --max-instances "$MAX_INSTANCES"
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY},DB_PATH=/app/data/lease_data.db,GCS_BUCKET=tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY},DB_PATH=/app/data/lease_data.db,GCS_BUCKET=tune-lease-55-data,GITHUB_REPO=git@github.com:tune-77/tune_lease_55.git,DATA_GIT_DIR=/app/data-git,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,PUBLIC_TUNNEL=1"
 )
 
 has_replacement_secrets=0
@@ -82,7 +83,10 @@ else
 fi
 
 api_access_key_ref="$(require_api_access_key_secret "$PROJECT_ID" "service")" || exit 1
-deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref}")
+tunnel_auth_ref="$(require_public_tunnel_auth_secret "$PROJECT_ID" "service")" || exit 1
+# API_ACCESS_KEYとPUBLIC_TUNNEL_AUTHは1つの--set-secretsにまとめる。gcloudは
+# --set-secretsを複数回指定すると後勝ちで上書きするため、分けると片方が消える。
+deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_auth_ref}")
 has_replacement_secrets=1
 
 if (( has_replacement_secrets == 0 )); then
@@ -96,15 +100,14 @@ if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
 fi
 
-# Web境界はIAM認証必須（--no-allow-unauthenticated --invoker-iam-check）。
-# 2026-09-08、UX上の理由から一時 --allow-unauthenticated に変更したが、
-# frontend/src/proxy.ts は Web境界のIAM有無に関係なく全ての未認証 /api/* リクエストへ
-# 特権的な API_ACCESS_KEY を代理付与するため、Webを公開にすると誰でもそのプロキシ
-# 経由でAPIの鍵付きエンドポイント（コスト発生するchat・案件削除等）を叩けてしまい、
-# 元のコスト急増インシデントと同種の穴を別URLで再現していた（Codexレビューで指摘、
-# PR #983 で一度マージされたが直後に本コミットで巻き戻し）。
-# Web単体を安全に公開したい場合は、IAMロックを外すのではなく
-# frontend/src/proxy.ts 側で未認証キャラーへのキー代理付与自体を止める実装が必要。
-deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
+# Web境界は公開（--allow-unauthenticated）。単純にIAMを外すだけだと、
+# frontend/src/proxy.ts が Web境界のIAM有無に関係なく全ての未認証 /api/* リクエストへ
+# 特権的な API_ACCESS_KEY を代理付与するため、誰でもそのプロキシ経由でAPIの鍵付き
+# エンドポイント（コスト発生するchat・案件削除等）を叩けてしまい、元のコスト急増
+# インシデントと同種の穴を別URLで再現する（Codexレビューで指摘、PR #983 で一度
+# 発生）。そのため上で配線した PUBLIC_TUNNEL=1 と PUBLIC_TUNNEL_AUTH を必ずセットで
+# 使う。proxy.ts はこの2つが揃っている時、Basic認証（ID: lease）を通らない限り
+# /api/* を含む全パスを401で拒否するため、未認証の第三者はAPIへ到達できない。
+deploy_args+=(--allow-unauthenticated)
 
 gcloud "${deploy_args[@]}"
