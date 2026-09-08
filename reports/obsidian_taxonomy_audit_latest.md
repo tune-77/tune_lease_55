@@ -1,20 +1,24 @@
 # Obsidian Taxonomy Audit
 
-- Generated at: `2026-08-24T04:17:32`
-- Distinct tags: 209
+- Generated at: `2026-09-08T04:19:07`
+- Distinct tags: 236
 - Distinct folders: 84
 
 ## Tag Duplicate Clusters (normalized match)
-- cloud-run(1), cloud_run(63), cloudrun(139)
+- cloud-run(1), cloud_run(79), cloudrun(171)
 - GCS(1), gcs(1)
 - RAG(1), rag(8)
 
 ## Tag Fuzzy Duplicate Pairs
+- autoresearch / autoreserch (similarity=0.957)
+- leaseDb FOLDER: leaseDb_データ / leaseDb_データ FOLDER: leaseDb_データ (similarity=0.941)
 - phase1 / phase1-3 (similarity=0.923)
 - phase1-3 / phase3 (similarity=0.923)
+- business-strategy FOLDER: リースニュース / business-strategy FOLDER: リース審査実務 (similarity=0.867)
 - chroma / chromadb (similarity=0.857)
 - research / search (similarity=0.857)
 - スコアリング / 審査スコアリング (similarity=0.857)
+- asset-finance FOLDER: リース基礎知識 / asset-finance FOLDER: リース審査実務 (similarity=0.846)
 - category:地域市場 / category:市場分析 (similarity=0.846)
 - category:市場分析 / category:業種分析 (similarity=0.846)
 
@@ -27,23 +31,23 @@
 - 新しいタグを作る前に既存タグ一覧を検索し、近い意味のタグがあれば使い回す
 
 ## Top Tags
-- その他: 215
-- 紫苑: 203
-- 設備投資: 186
-- 建設/不動産: 169
-- AURION: 158
-- 製造/DX: 153
-- cloudrun: 139
-- 物流/車両: 129
-- リース審査: 102
-- 判断資産: 86
-- 帰還データ: 86
-- autoresearch: 83
-- 日次レポート: 79
-- AI洞察: 79
-- cloud_run: 63
-- chat_memory: 63
-- public_knowledge: 63
-- past_cases: 60
-- obsidian_sync: 53
-- 入力ログ: 53
+- 設備投資: 255
+- 紫苑: 251
+- その他: 232
+- 製造/DX: 202
+- 建設/不動産: 199
+- AURION: 188
+- cloudrun: 171
+- 物流/車両: 157
+- リース審査: 117
+- 判断資産: 106
+- 帰還データ: 106
+- autoresearch: 99
+- AI洞察: 96
+- 日次レポート: 94
+- cloud_run: 79
+- chat_memory: 79
+- public_knowledge: 79
+- past_cases: 75
+- obsidian_sync: 65
+- 入力ログ: 65

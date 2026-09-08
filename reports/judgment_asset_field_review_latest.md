@@ -1,6 +1,6 @@
 # Judgment Asset Field Review
 
-- Date: 2026-08-24
+- Date: 2026-09-08
 - Mode: local_review_only
 - Guardrail: review_only_no_promotion_no_prompt_no_scoring_no_gcs_no_cloudrun_no_obsidian_write
 - Active rules: 8
@@ -8,7 +8,7 @@
 - Simulation feedback: 3 / included: False
 - Unknown feedback rows: 1
 - Remapped feedback rows (rule_id drift, matched by concept): 0
-- Feedback drops (submitted but not recorded): 0
+- Feedback drops (submitted but not recorded): 1 ([REDACTED]=1)
 
 ## 伸ばす
 

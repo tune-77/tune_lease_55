@@ -1,7 +1,7 @@
 # Recursive Self-Improvement Report
 
-- Generated at: `2026-09-08T04:18:55`
-- Source report: ``
+- Generated at: `2026-09-07T04:19:33`
+- Source report: `/Users/kobayashiisaoryou/clawd/tune_lease_55/reports/latest.json`
 - Canonical candidates: 0
 - Ranked queue: 0
 - Suppressed: 0

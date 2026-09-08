@@ -1,7 +1,7 @@
 # Codex/Claude 作業録ダイジェスト
 
-- generated_at: 2026-08-24T04:06:16
-- source_count: 24
+- generated_at: 2026-09-08T04:06:26
+- source_count: 19
 - displayed: 12
 
 ## Shion Use Policy
@@ -10,98 +10,98 @@
 
 ## Items
 
-### 2026-08-23 13:47 Codex
-- Summary: Cloud Run DBスナップショットの実行環境ガードを修正してPR #866でship
-- Chat Summary: Userから#863 #864 #865のレビューと修正、続けてgitship依頼。マージ済みPR群をレビューし、ローカル未設定環境でGCS DBスナップショットが有効になるリスクだけを修正した。
-- Decisions: CLOUDRUN_DATA_MODE未設定時はK_SERVICEがあるCloud Run実行環境だけスナップショット有効にする。既存の大量未コミット変更は巻き込まず対象2ファイルだけshipした。
-- Changes: api/cloudrun_db_snapshot.py / tests/test_cloudrun_db_snapshot.py
-- Verification: 22 passed: tests/test_cloudrun_db_snapshot.py tests/test_api_key_auth.py tests/test_promote_cloudrun_return_data.py tests/test_cloudrun_shion_memory_readiness.py / Cloud Run demo readiness: PASS
+### 2026-09-06 20:47 Codex
+- Summary: Loop Engineering準拠の自動改善制約をPR #972で出荷
+- Chat Summary: 既存自動改善パイプラインへdenylist・人間ゲート・最大3試行を統一し、実装担当と独立検証担当を分離してGitshipした。
+- Decisions: 通常経路とGemini agent経路が単一制約JSONを共有し、検証はdetached git worktreeで行う。運用レベルはL2-assistedを維持する。
+- Changes: 自動改善スキル、中央制約JSON、独立verifier、監査CLI、回帰テストの計10ファイル
+- Verification: ローカル39 tests passed、py_compile成功、監査95/100、GitHub Actions 11 checks passed
 - Open Items: -
 
-### 2026-08-21 08:25 Codex
-- Summary: #835 Codexレビュー修正をPR #841でship
-- Chat Summary: Userから#835のCodexレビュー修正依頼を受け、REV台帳監査のCloud Run runtime ledger検出、deleted等の終端ステータス保持、malformed JSONL検出を修正。master保護のため直接pushではなくPR #841でマージした。
-- Decisions: masterは保護ブランチのため、修正コミットをfix/codex-835-ledger-audit-runtimeへpushし、CI通過後にPRマージした。
-- Changes: lease_intelligence_tools.py / tests/test_lease_intelligence_tools.py
-- Verification: pytest -q tests/test_shion_agent_tools.py tests/test_lease_intelligence_tools.py: 50 passed / python -m py_compile lease_intelligence_tools.py api/shion_agent_tools.py
+### 2026-09-06 20:31 Codex
+- Summary: 自動改善をLoop Engineering基準で監査し、機械制約とmaker/checker分離を実装
+- Chat Summary: 既存パイプラインの監査、denylist・人間ゲート・最大再試行数の統一、実装担当と検証担当の明示的分離を依頼された。
+- Decisions: 自動改善はL2 Assistedを維持し、全実装経路を単一JSON制約とdetached-worktree verifierへ集約。L3はtoken budget/pause-all実装まで見送る。
+- Changes: loop_constraints.json、loop_constraints.py、implementation_verifier.py、通常Step3・Gemini agent経路、監査CLI・文書・回帰テスト
+- Verification: 関連回帰テスト81件成功、Loop Engineering監査95/100、preflight警告なし、git diff --check成功
 - Open Items: -
 
-### 2026-08-21 07:42 Codex
-- Summary: LaunchAgent監査と朝ニュース表示を整備し、PR #840 をマージ
-- Chat Summary: 朝ニュース未更新に見える問題からLaunchAgent全体を監査。古い設定を同期し、監査スクリプトと回帰テストを追加してGit shipした。
-- Decisions: master保護により直接pushは拒否されたため、既存PR #840経由でマージ。com.tunelease.next は外部公開トンネルを起動し得るため自動ロードしない。
-- Changes: frontend/src/app/home/page.tsx / launchd/com.tunelease.*.plist / scripts/audit_launchagents.py
-- Verification: npm run typecheck / python3 scripts/audit_launchagents.py --no-launchctl
+### 2026-09-06 18:53 Codex
+- Summary: 改善ループの滞留・誤検知修正をGitshipし、PR #970をマージ
+- Chat Summary: 既存ループの詰まり修正後、Gitship依頼を受けた。古い作業ブランチの過大差分を避け、最新master起点の専用ブランチに今回分だけを分離して出荷した。
+- Decisions: 生成レポートと日次メモはPRから除外し、11個のソース・テスト・設定ファイルだけを出荷
+- Changes: 改善候補分離、実装済み候補決着、preflight状態寿命・誤検知対策、同期時の識別情報保持
+- Verification: ローカル対象テスト51件成功、preflight警告なし、PR change risk OK、GitHub必須チェック全件成功
 - Open Items: -
 
-### 2026-08-21 07:16 Codex
-- Summary: Gitship: 判断資産候補保全と日次Slack設定更新をPR化
-- Chat Summary: UserからGitship依頼。master直pushは保護ブランチで拒否されたため、rebase後にPRブランチへpushし、PR #840を作成した。
-- Decisions: data/ と .streamlit/secrets.toml と tune_lease_55_wt_cibundle/ はコミット対象外。master保護に従いPR経由に切替。
-- Changes: scripts/build_autoresearch_judgment_asset_candidates.py / tests/test_build_autoresearch_judgment_asset_candidates.py / reports・frontend assets・memory/2026-08-21.md
-- Verification: pytest tests/test_build_autoresearch_judgment_asset_candidates.py -q: 14 passed / python3 scripts/preflight_pr_guard.py: no warnings
+### 2026-09-06 13:59 Codex
+- Summary: Codex Security指摘を修正し、PR #966を最新masterへ追随。マージ後の追加レビュー3件をフォローアップPR #968で修正した。
+- Chat Summary: Codex Securityを利用してリポジトリを点検し、課金を伴う追加スキャンは避ける条件で修正・stash退避・PR作成を実施。公開境界の認証強化と追加レビュー対応を継続した。
+- Decisions: Cloud Run Web/combinedはdemoを含めIAM必須。公開トンネルは別パスワードを所有者限定ファイルで供給し、内部APIキーはブラウザへ公開しない。
+- Changes: PR #966: APIキー認証、Trusted Hosts、公開Web境界、sessionStorage、CSP、デプロイスクリプト、セキュリティ報告。PR #968: LaunchAgent認証情報、judgment-drill内部認証、/healthz診断。
+- Verification: PR #966は全12 CI成功。PR #968は関連34テスト、TypeScript、ESLint、ShellCheck、事前ガード、全11 CI成功。
+- Open Items: PR #968はOPEN・MERGEABLE。明示依頼があるまでマージしない。
+
+### 2026-09-02 07:22 Codex
+- Summary: 数値入力のEnter移動とチャットIME誤送信防止を実装し、PR #922でmasterへ統合
+- Chat Summary: 審査分析欄とリースくんの数値入力でEnter時に次項目へ進むよう改善。続けて通常チャット等で日本語IME変換確定Enterによる誤送信を防止し、Gitshipを実行した。
+- Decisions: 大量の既存dirty変更を混入させず、origin/master起点の専用worktreeで今回の7ファイルだけをPR化した。
+- Changes: frontendの数値入力フォーカス処理、リースくんウィザード、4つのチャット入力面、共通IME判定ヘルパー
+- Verification: TypeScript成功、対象Lintエラー0、本番build成功、PR必須CI全項目成功
 - Open Items: -
 
-### 2026-08-20 21:47 Codex
-- Summary: Private Reflectionを複数の声の衝突ログと紫苑の統合記録として再定義しPR #838でmasterへマージ
-- Chat Summary: ユーザーがPrivate Reflectionは一つのAIの反省文ではなく複数の声の衝突ログを紫苑が統合した記録にする方針を示し、生成・fallback・品質ゲート・監視へ実装した。
-- Decisions: Private Reflectionの正本に 複数の声の衝突ログ を追加し、紫苑の初期仮説、監査の声、実装の声、別視点の声、良心の声、衝突、統合を必須化する。
-- Changes: lease_intelligence_reflection.py / lease_intelligence_mind.py / scripts/monitor_obsidian_environment.py
-- Verification: local pytest 55 passed; py_compile passed; git diff --check passed; GitHub CI all checks passed
+### 2026-09-02 06:01 Codex
+- Summary: Cloud Runで404になるhealthzを公開health経路へ移行
+- Chat Summary: ユーザー指定の2番としてCloud Runヘルスチェック404を調査・修正。既存dirty変更を避け、専用worktreeで実装・全テスト・PR作成まで実施した。
+- Decisions: Cloud Run公式の予約パス制約に合わせ、/healthを本番の正規経路とし、/healthzはローカル互換エイリアスとして残す。
+- Changes: CLOUD_RUN.md, api/api_key_auth.py, api/routers/system_misc.py, tests/test_api_key_auth.py, tests/test_api_main_smoke.py
+- Verification: 修正前 /health=404、修正後 /health=200。対象25 passed、全体2307 passed・3 skipped。preflightとrisk guard成功。
 - Open Items: -
 
-### 2026-08-20 21:24 Codex
-- Summary: 紫苑がCodex/Gemini/Claude向けに安全要約の外部推論相談票を起票できる相談キューを追加しPR #837でmasterへマージ
-- Chat Summary: ユーザーがCodex停止時にGeminiやClaudeにも聞けるかを相談し、紫苑が直接外部実行せず相談票を作る設計で実装・shipした。
-- Decisions: 外部推論相談は request_reasoner_consultation でappend-onlyキューに保存し、safe_summary_onlyを既定にする。外部AI実行・外部送信・コード変更は相談票作成時には行わない。
-- Changes: api/shion_reasoner_consultation_queue.py / api/routers/shion_tasks.py / lease_intelligence_tools.py
-- Verification: local pytest 111 passed; py_compile passed; git diff --check passed; GitHub CI all checks passed
+### 2026-09-01 22:19 Codex
+- Summary: Cloud Run APIを同一URL・公開IAMで再デプロイし、GCS同期とChromaDB索引を計測
+- Chat Summary: 本番SQLiteとMemory Review JSONL 5ファイルを同じCloud Run APIへ含める承認、および認証なしCloud Run公開設定での再デプロイ承認を受けて実施。デプロイ引数のSecret競合を修正してPR化した。
+- Decisions: Cloud SQLは接続せずSQLite/GCSモードを維持。Cloud Run IAMはallUsers invoker、アプリのAPI_ACCESS_KEY保護は維持。
+- Changes: scripts/deploy_cloud_run.sh, scripts/deploy_cloud_run_api.sh, tests/test_cloud_run_sqlite_deploy_mode.py
+- Verification: revision tune-lease-55-api-00102-7pl Ready、100% traffic、従来URL維持、Cloud SQL空、score/full HTTP 200、Vault 1439、Chroma 6528、knowledge_sync ready / instance開始→GCS同期 32.8秒、GCS同期→Chroma完了 29.7秒、全体 62.5秒。旧GCS同期約22分18秒から短縮
 - Open Items: -
 
-### 2026-08-20 21:02 Codex
-- Summary: 判断資産監査AGENT、PRマージ前チェックリスト、AGENT標準作業プロトコル、紫苑AGENT相談キューを追加しPR #836でmasterへマージ
-- Chat Summary: ユーザーがAGENT運用の単発実行をシステム化したい、紫苑からも呼べる形にしたいと依頼。直接実行ではなく相談票キューとして安全にCodex側へ渡す設計にした。
-- Decisions: 紫苑はCodex AGENTを直接実行せず、request_agent_consultationでappend-only相談票を作り、Codexの作業プロトコルで拾う。
-- Changes: .claude/agents/judgment-asset-auditor.md / .claude/commands/pre-merge-agent-check.md / .claude/commands/agent-workflow.md
-- Verification: local pytest 103 passed; py_compile passed; git diff --check passed; GitHub CI all required checks passed
+### 2026-09-01 07:09 Codex
+- Summary: Cloud Run知識宇宙の表示復旧とSQLite/GCS固定をリモート保存
+- Chat Summary: Cloud Run知識宇宙の表示不足を修正・再デプロイし、Cloud SQL未使用方針に合わせてデプロイ設定をSQLite/GCS固定へ整理した。2コミットをフィーチャーブランチへpushし、専用一時worktreeを削除した。
+- Decisions: Cloud SQLは使用せず、Cloud RunはSQLite/GCS運用に固定する。知識宇宙は構造化スナップショットで索引未完時も表示を維持する。
+- Changes: api/routers/pipeline_misc.py; tests/test_knowledge_graph_vault_fallback.py; scripts/deploy_cloud_run.sh; scripts/deploy_cloud_run_api.sh; tests/test_cloud_run_sqlite_deploy_mode.py
+- Verification: 知識宇宙 notes=2805、関連テスト43件、SQLiteデプロイテスト、Cloud Run readiness PASS
 - Open Items: -
 
-### 2026-08-20 13:44 Codex
-- Summary: 判断資産候補が増えない原因を調査し、評価済み候補が日次Auto Research更新で消えないよう修正した
-- Chat Summary: Userから『判断資産が増えない原因を究明し修正せよ』と依頼。原因は候補JSONLの直近上書きで、人間評価済み候補が昇格画面から消えることだった。続けてgitshipを依頼された。
-- Decisions: Auto Research候補再生成時、人間が評価・編集・手入力した候補を保全する。active_rulesはdemotedを含めずtotal_rulesと分ける。
-- Changes: scripts/build_autoresearch_judgment_asset_candidates.py: preserve_reviewed_candidates追加 / scripts/auto_research_lease_judgment.py: 候補更新に保全処理を接続 / api/routers/feedback_loop.py, scripts/promote_canonical_judgment_rules.py: active count定義を修正
-- Verification: pytest関連40件 passed; py_compile passed; preflight_pr_guard warningなし
+### 2026-08-30 14:50 Codex
+- Summary: Cloud Runダッシュボードのデータ取得失敗を復旧し、DB接続設定の再発防止をGitship
+- Chat Summary: Cloud Runデプロイ後にグラフデータが取得できないとの報告を受け、HTTP 200のまま集計値がnullになるDB設定不整合を調査・修正した。Gitship依頼により変更3ファイルだけをPR化し、CI修正後にマージした。
+- Decisions: Cloud SQLインスタンス未指定時はDATABASE_URL参照も明示的に外し、GCS復元済みSQLiteを使う。DATABASE_URLとCloud SQLインスタンスは必ず対で扱う。
+- Changes: scripts/cloud_run_database_deploy_args.sh、scripts/deploy_cloud_run_api.sh、tests/test_cloud_run_database_deploy_args.py
+- Verification: 本番で総成約数1172件・平均信用スコア65.9%・案件履歴表示を確認。ローカル2283 passed/3 skipped。PR CI 10項目すべて成功。
 - Open Items: -
 
-### 2026-08-20 13:19 Codex
-- Summary: RAG基盤のOSS活用を進め、LocalVectorDBをChromaDB優先、RAGキャッシュをcachetools優先へ変更した。
-- Chat Summary: UserからOSS活用余地の確認と実装、続いてGitshipを依頼された。master保護により直接pushは拒否されたため、作業ブランチをpushしてPRを作成した。
-- Decisions: masterは保護されているためPR経由に切り替えた。既存の大量未コミット変更はコミット対象から除外し、今回触った6ファイルだけをPR化した。
-- Changes: mobile_app/vector_db.py: ChromaDB backend優先と決定的hash embeddingを追加 / mobile_app/rag_cache_layer.py: cachetools.TTLCacheへ移行 / mobile_app/obsidian_bridge_enhancements.py: score_range解析と日本語BM25 n-gramを修正
-- Verification: python -m py_compile mobile_app/vector_db.py mobile_app/rag_cache_layer.py mobile_app/obsidian_bridge_enhancements.py / python -m pytest mobile_app/test_phase2_improvements.py mobile_app/test_obsidian_enhancements.py: 11 passed
+### 2026-08-30 08:30 Codex
+- Summary: 通常画面の主要導線を5つへ整理しPR #903でマージ
+- Chat Summary: 通常メニューを審査・相談・案件・結果・運用の5導線へ固定し、専門機能を折りたたみに残した上でgit shipを完了した。
+- Decisions: 通常時は5導線だけを開き、最小化時も5アイコンに限定。利用履歴による自動導線追加は廃止する
+- Changes: frontend Sidebarナビゲーション
+- Verification: production build 76 pages; TypeScript pass; ESLint 0 errors; GitHub CI 10 checks passed
 - Open Items: -
 
-### 2026-08-15 07:53 Codex
-- Summary: PR #761 の追加Codexレビュー指摘を修正し、PR #762を作成
-- Chat Summary: ユーザーの『次は』に対し、PR #761の追加Codexレビューを確認。コピー後経過時間をawait前に固定し、提出率の分母をコピー済みセッションへ揃えた。
-- Decisions: PR #761はmerge済みのため、追加レビュー対応はPR #762として提出
-- Changes: api/routers/feedback_loop.py: submitted_after_copy_rateをコピー済みセッション分母に補正 / frontend/src/app/screening/page.tsx: copy-to-submit elapsedをscore API await前に取得 / tests/test_screening_input_assist_summary.py: 同一セッション複数コピーの分母テストを追加
-- Verification: pytest tests/test_screening_input_assist_summary.py; python -m py_compile api/routers/feedback_loop.py; npm run typecheck; eslint screening; npm run build; git merge-tree origin/master HEAD
+### 2026-08-30 04:47 Codex
+- Summary: 実績日と予測の突合を東京時間の暦日基準へ修正しPR #899でマージ
+- Chat Summary: UTC午前0時基準で同日予測が除外されるレビュー指摘を受け、Asia/Tokyoの日付比較へ統一しgit shipまで完了した。
+- Decisions: date-onlyの実績日は東京時間の暦日ポリシーとし、同日JSTを含め翌日JSTを除外する
+- Changes: prediction actual日付検証・予測レポート突合・ドキュメント・境界テスト
+- Verification: 2278 passed, 2 skipped, 1 deselected; master取り込み後focused 25 passed; GitHub CI 10 checks passed
 - Open Items: -
 
-### 2026-08-15 07:47 Codex
-- Summary: PR #760 のCodexレビュー指摘を修正し、PR #761を作成
-- Chat Summary: ユーザーの依頼でCodex git reviewを確認。optional metrics failure、copy-scoped平均、成功後submit記録、copy-to-submit時間の4指摘を修正し、追加PR化した。
-- Decisions: PR #760は既にmerge済みのため、レビュー対応はPR #761として追加提出
-- Changes: api/routers/feedback_loop.py: コピー済みセッションに限定した集計へ修正 / frontend/src/app/screening/page.tsx: score_submittedをスコア成功後に記録 / frontend/src/app/improvement-log/page.tsx: optional metrics取得失敗を本体ログから分離
-- Verification: pytest tests/test_screening_input_assist_summary.py; python -m py_compile api/routers/feedback_loop.py; npm run typecheck; eslint対象ページ; npm run build; git merge-tree origin/master HEAD
-- Open Items: -
-
-### 2026-08-15 07:40 Codex
-- Summary: 審査入力補助の効果測定パネルを追加し、PR #760 を作成
-- Chat Summary: ユーザーの『git ship』依頼に対し、/improvement-log の効果測定パネル、/screening からの効果測定導線、入力補助集計テストを3ファイルに絞ってコミット・PR化した。
-- Decisions: masterは保護ブランチのためPR #760で取り込む
-- Changes: frontend/src/app/improvement-log/page.tsx: 入力補助の効果測定と採用/保留/却下候補判定 / frontend/src/app/screening/page.tsx: 効果測定への導線 / tests/test_screening_input_assist_summary.py: 集計ロジックテスト
-- Verification: pytest tests/test_screening_input_assist_summary.py; python -m py_compile api/routers/feedback_loop.py; npm run typecheck; eslint対象ページ; npm run build
+### 2026-08-30 04:30 Codex
+- Summary: PR #896のCodex P1レビュー指摘を修正しPR #897でマージ
+- Chat Summary: 実績入力後に生成された予測がshadow校正へ混入する問題を修正し、ユーザー依頼でgit shipまで完了した。
+- Decisions: 実績日を必須化し、未来日を拒否。実績日以前に固定された予測だけを採点する
+- Changes: prediction actual API・将来実績入力UI・予測レポート・回帰テスト
+- Verification: 2278 passed, 2 skipped, 1 deselected; GitHub CI 10 checks passed
 - Open Items: -
