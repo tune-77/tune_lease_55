@@ -96,12 +96,15 @@ if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
 fi
 
-# Web境界は公開（--allow-unauthenticated）。実際の保護はAPI側のREQUIRE_API_ACCESS_KEY
-# （app層のfail-closedキー検証）が担い、Next.jsのserver-side proxyがそのキーを
-# 代理付与する。2026-09-06に一時IAM必須へ変更したが、実際にCloud Runへ反映された
-# 2026-09-08、これまで使っていた公開URLが直接ブラウザから繋がらなくなる実害が出た
-# ため公開に戻した（コスト急増インシデントの原因はAPI側にあり、Web側の公開自体は
-# 安全）。
-deploy_args+=(--allow-unauthenticated)
+# Web境界はIAM認証必須（--no-allow-unauthenticated --invoker-iam-check）。
+# 2026-09-08、UX上の理由から一時 --allow-unauthenticated に変更したが、
+# frontend/src/proxy.ts は Web境界のIAM有無に関係なく全ての未認証 /api/* リクエストへ
+# 特権的な API_ACCESS_KEY を代理付与するため、Webを公開にすると誰でもそのプロキシ
+# 経由でAPIの鍵付きエンドポイント（コスト発生するchat・案件削除等）を叩けてしまい、
+# 元のコスト急増インシデントと同種の穴を別URLで再現していた（Codexレビューで指摘、
+# PR #983 で一度マージされたが直後に本コミットで巻き戻し）。
+# Web単体を安全に公開したい場合は、IAMロックを外すのではなく
+# frontend/src/proxy.ts 側で未認証キャラーへのキー代理付与自体を止める実装が必要。
+deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
 
 gcloud "${deploy_args[@]}"

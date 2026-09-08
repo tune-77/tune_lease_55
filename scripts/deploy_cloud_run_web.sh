@@ -65,11 +65,13 @@ deploy_args=(
 api_access_key_ref="$(require_api_access_key_secret "$PROJECT_ID" "Web")" || exit 1
 deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref}")
 
-# Web境界は公開（--allow-unauthenticated）。実際の保護はAPI側のREQUIRE_API_ACCESS_KEY
-# （app層のfail-closedキー検証、上のAPI_ACCESS_KEY配線）が担う。2026-09-06に一時IAM
-# 必須へ変更したが、実際にCloud Runへ反映された2026-09-08、これまで使っていた
-# 公開URLが直接ブラウザから繋がらなくなる実害が出たため公開に戻した（コスト急増
-# インシデントの原因はAPI側にあり、Web側の公開自体は安全）。
-deploy_args+=(--allow-unauthenticated)
+# Web境界はIAM認証必須（--no-allow-unauthenticated --invoker-iam-check）。
+# 2026-09-08、UX上の理由から一時 --allow-unauthenticated に変更したが、
+# frontend/src/proxy.ts は Web境界のIAM有無に関係なく全ての未認証 /api/* リクエストへ
+# 上で配線した特権的な API_ACCESS_KEY を代理付与するため、Webを公開にすると誰でも
+# そのプロキシ経由でAPIの鍵付きエンドポイント（コスト発生するchat・案件削除等）を
+# 叩けてしまい、元のコスト急増インシデントと同種の穴を別URLで再現していた
+# （Codexレビューで指摘、PR #983 で一度マージされたが直後に巻き戻し）。
+deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
 
 gcloud "${deploy_args[@]}"
