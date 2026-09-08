@@ -287,9 +287,12 @@ jobs:
           submit_cloud_build_and_wait "${PROJECT_ID}" cloudbuild.web.yaml "_IMAGE_URI=${IMAGE_URI},_FASTAPI_URL=${API_URL}" frontend/
 
       # ── Cloud Run にデプロイ ─────────────────────────────────────────
-      # Web境界はデータモードにかかわらずIAM認証必須（scripts/deploy_cloud_run_web.sh と
-      # 同じ方針、2026-09-06の "fix: authenticate public web entry points" 参照）。
-      # API_ACCESS_KEY はNext.jsのserver-side proxyがAPIへX-API-Keyを自動付与するために必須。
+      # Web境界は公開（--allow-unauthenticated）。実際の保護はAPI側のREQUIRE_API_ACCESS_KEY
+      # （app層のfail-closedキー検証）が担い、Next.jsのserver-side proxyがそのキーを
+      # 代理付与する。2026-09-06に一時IAM必須へ変更したが、実際にCloud Runへ反映された
+      # 2026-09-08、これまで使っていた公開URLが直接ブラウザから繋がらなくなる実害が出た
+      # ため公開に戻した（コスト急増インシデントの原因はAPI側にあり、Web側の公開自体は
+      # 安全）。
       - name: Deploy to Cloud Run
         run: |
           set -Eeuo pipefail
@@ -311,8 +314,7 @@ jobs:
             --min-instances 0
             --max-instances 1
             --set-env-vars "FASTAPI_URL=${API_URL}"
-            --no-allow-unauthenticated
-            --invoker-iam-check
+            --allow-unauthenticated
             --set-secrets "API_ACCESS_KEY=${api_access_key_ref}"
           )
 

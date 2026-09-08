@@ -96,7 +96,12 @@ if [[ -n "$SERVICE_ACCOUNT" ]]; then
   deploy_args+=(--service-account "$SERVICE_ACCOUNT")
 fi
 
-# Next.jsが内部APIキーを代理付与するため、Web境界はデータモードにかかわらずIAM認証必須。
-deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
+# Web境界は公開（--allow-unauthenticated）。実際の保護はAPI側のREQUIRE_API_ACCESS_KEY
+# （app層のfail-closedキー検証）が担い、Next.jsのserver-side proxyがそのキーを
+# 代理付与する。2026-09-06に一時IAM必須へ変更したが、実際にCloud Runへ反映された
+# 2026-09-08、これまで使っていた公開URLが直接ブラウザから繋がらなくなる実害が出た
+# ため公開に戻した（コスト急増インシデントの原因はAPI側にあり、Web側の公開自体は
+# 安全）。
+deploy_args+=(--allow-unauthenticated)
 
 gcloud "${deploy_args[@]}"

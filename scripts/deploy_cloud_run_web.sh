@@ -65,7 +65,11 @@ deploy_args=(
 api_access_key_ref="$(require_api_access_key_secret "$PROJECT_ID" "Web")" || exit 1
 deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref}")
 
-# APIキーの自動付与より前に、Cloud Run IAMで利用者を認証する。
-deploy_args+=(--no-allow-unauthenticated --invoker-iam-check)
+# Web境界は公開（--allow-unauthenticated）。実際の保護はAPI側のREQUIRE_API_ACCESS_KEY
+# （app層のfail-closedキー検証、上のAPI_ACCESS_KEY配線）が担う。2026-09-06に一時IAM
+# 必須へ変更したが、実際にCloud Runへ反映された2026-09-08、これまで使っていた
+# 公開URLが直接ブラウザから繋がらなくなる実害が出たため公開に戻した（コスト急増
+# インシデントの原因はAPI側にあり、Web側の公開自体は安全）。
+deploy_args+=(--allow-unauthenticated)
 
 gcloud "${deploy_args[@]}"
