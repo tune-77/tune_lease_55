@@ -13,10 +13,9 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8; 885 session age (minutes) exceed threshold 120",
+    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8",
     "reasons": [
-      "20 recent edit count exceed threshold 8",
-      "885 session age (minutes) exceed threshold 120"
+      "20 recent edit count exceed threshold 8"
     ],
     "candidates": [
       {
@@ -50,9 +49,9 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 885,
+        "actual": 52,
         "threshold": 120,
-        "triggered": true
+        "triggered": false
       }
     ],
     "counters": {
@@ -60,7 +59,7 @@
       "blockedTasks": 0,
       "recentEdits": 20,
       "failedChecks": 0,
-      "sessionAgeMinutes": 885
+      "sessionAgeMinutes": 52
     }
   },
   "continuity": {
@@ -72,6 +71,7 @@
   "legacy_version": "1.0.0",
   "metrics": null,
   "recentEdits": [
+    ".agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py",
     ".claude/memory/session-log.md",
     ".claude/reports/api-health/latest.md",
     ".claude/reports/build/latest.md",
@@ -82,19 +82,18 @@
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
     ".claude/state/session.events.jsonl",
-    "CLAUDE.md",
-    "api/routers/recipes.py",
+    "WEEKLY_LOG.md",
     "api/rule_engine/ledger_rules.json",
     "data/aurion_daily/latest.json",
-    "data/demo.db",
+    "data/coeff_auto.json",
     "data/news_judgment_signals_latest.json",
-    "data/pdca_ai_rules.json",
     "data/shion_monitor_report_state.json",
-    "frontend/.claude/state/instructions-loaded.jsonl",
-    "frontend/src/app/improvement-log/page.tsx"
+    "data/training_meta.json",
+    "frontend/public/generated/judgment-asset-graph/index.html",
+    "frontend/public/lease-grumble/2026-07-26.webp"
   ],
   "sessionId": "",
-  "timestamp": "2026-08-23T09:34:40Z",
+  "timestamp": "2026-09-08T12:57:10Z",
   "version": "1.0.0",
   "wipTasks": null
 }

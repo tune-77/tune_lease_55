@@ -1,6 +1,6 @@
 # Agent Sidecar Brief
 
-> Generated: 2026-08-24 04:15 | source: `.claude/reports` | mode: read-only advisory
+> Generated: 2026-09-08 04:16 | source: `.claude/reports` | mode: read-only advisory
 
 ## Operating Boundary
 - This brief is advisory context only.
@@ -13,7 +13,7 @@
 ### scoring-audit (failure)
 - Source: `.claude/reports/scoring-audit/latest.md`
 - Task: 自動監査
-- Timestamp: 2026-08-24 04:15
+- Timestamp: 2026-09-08 04:16
 
 **Summary:**
 監査を完了できなかった: 想定外の例外: '<' not supported between instances of 'str' and 'NoneType'
@@ -27,13 +27,13 @@
 ### data-quality-checker (partial)
 - Source: `.claude/reports/data-quality/latest.md`
 - Task: SQLite 審査データの件数・異常値チェック
-- Timestamp: 2026-08-24 04:15
+- Timestamp: 2026-09-08 04:16
 
 **Summary:**
-29 テーブルを確認し、要確認事項を 1 件検出した。
+33 テーブルを確認し、要確認事項を 1 件検出した。
 
 **Risks:**
-- 空のテーブル: emotion_feedback, judgment_asset_candidates, judgment_lifecycle_events, payment_history, phrase_weights, sync_log
+- 空のテーブル: case_deletion_event_items, case_deletion_events, emotion_feedback, judgment_lifecycle_events, payment_history, phrase_weights, shion_followup_impact_feedback, shion_followup_sessions, sync_log
 
 **Handoff:**
 なし
@@ -41,7 +41,7 @@
 ### rule-validator (partial)
 - Source: `.claude/reports/rule-validation/latest.md`
 - Task: ウェイト合計・グレード閾値の整合性チェック
-- Timestamp: 2026-08-24 04:15
+- Timestamp: 2026-09-08 04:16
 
 **Summary:**
 整合性の逸脱を 1 件検出した。
@@ -55,7 +55,7 @@
 ### build-runner (success)
 - Source: `.claude/reports/build/latest.md`
 - Task: コアモジュールのインポート確認
-- Timestamp: 2026-08-24 04:15
+- Timestamp: 2026-09-08 04:16
 
 **Summary:**
 コアモジュール 6 件すべて import できる。
@@ -69,7 +69,7 @@
 ### api-health-checker (partial)
 - Source: `.claude/reports/api-health/latest.md`
 - Task: 依存サービスの設定・到達性確認
-- Timestamp: 2026-08-24 04:15
+- Timestamp: 2026-09-08 04:16
 
 **Summary:**
 依存サービスに要確認事項を 2 件検出した。
@@ -88,10 +88,10 @@
 ### log-file-analyzer (partial)
 - Source: `.claude/reports/log-analysis/latest.md`
 - Task: ログのエラー・警告抽出
-- Timestamp: 2026-08-24 04:15
+- Timestamp: 2026-09-08 04:16
 
 **Summary:**
-12 ファイルから ERROR 165 行、WARNING 57 行を検出した。
+12 ファイルから ERROR 167 行、WARNING 57 行を検出した。
 
 **Risks:**
 - なし
