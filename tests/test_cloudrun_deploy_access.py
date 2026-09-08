@@ -67,12 +67,20 @@ if a[:2] == ["run", "deploy"]:
 
 @pytest.mark.parametrize("script", ["deploy_cloud_run.sh", "deploy_cloud_run_web.sh"])
 @pytest.mark.parametrize("mode", ["production", "demo"])
-def test_web_boundary_always_requires_iam(deploy, script, mode):
+def test_web_boundary_is_public_and_api_key_still_wired(deploy, script, mode):
+    """Web境界は公開（--allow-unauthenticated）。
+
+    2026-09-06に一時IAM必須（--no-allow-unauthenticated --invoker-iam-check）へ
+    変更したが、実際にCloud Runへ反映された2026-09-08、それまで使っていた公開URLが
+    直接ブラウザから繋がらなくなる実害が出たため公開へ戻した。保護の実体はAPI側の
+    REQUIRE_API_ACCESS_KEY（app層のfail-closedキー検証）であり、Web境界のIAM有無とは
+    独立して効き続けるため、Webを公開にしても安全。
+    """
     result, args = deploy(script, mode)
     assert result.returncode == 0, result.stderr
-    assert "--allow-unauthenticated" not in args
-    assert "--no-allow-unauthenticated" in args
-    assert "--invoker-iam-check" in args
+    assert "--allow-unauthenticated" in args
+    assert "--no-allow-unauthenticated" not in args
+    assert "--invoker-iam-check" not in args
     assert "API_ACCESS_KEY=API_ACCESS_KEY:latest" in args
     if script == "deploy_cloud_run.sh":
         env = args[args.index("--set-env-vars") + 1]
@@ -108,12 +116,6 @@ def test_real_gcloud_error_is_surfaced_when_secret_is_missing(deploy, script):
     result, _ = deploy(script, "production", secret="missing")
 
     assert "NOT_FOUND" in result.stderr
-
-
-def test_unknown_api_mode_keeps_web_private(deploy):
-    result, args = deploy("deploy_cloud_run_web.sh", "")
-    assert result.returncode == 0, result.stderr
-    assert "--no-allow-unauthenticated" in args
 
 
 def test_public_tunnel_requires_web_auth_and_same_origin_api_proxy():
