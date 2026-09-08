@@ -7,11 +7,15 @@ GitHub Actions の自動デプロイ(.github/workflows/deploy.yml) は別実装�
 状態へ戻していた（2026-09のCloud Runコスト急増調査で判明。REQUIRE_API_ACCESS_KEY/
 API_ACCESS_KEY secretが無く、Webも --allow-unauthenticated のままだった）。
 
-なお Web境界自体は常に --allow-unauthenticated（公開）で運用する。2026-09-06に
-一時 --no-allow-unauthenticated --invoker-iam-check（IAM認証必須）へ変更したが、
-実際にCloud Runへ反映された2026-09-08、それまで使っていた公開URLが直接ブラウザ
-から繋がらなくなる実害が出たため公開へ戻した。保護の実体はAPI側の
-REQUIRE_API_ACCESS_KEYであり、Web境界のIAM有無とは独立して効き続ける。
+なお Web境界は常に --no-allow-unauthenticated --invoker-iam-check（IAM認証必須）で
+運用する。2026-09-08、公開URLが直接ブラウザから繋がらなくなる実害を理由に一時
+--allow-unauthenticated へ変更したが（PR #983）、frontend/src/proxy.ts はWeb境界の
+IAM有無に関係なく全ての未認証 /api/* リクエストへ特権的な API_ACCESS_KEY を代理
+付与する実装のため、Webを公開にすると誰でもそのプロキシ経由でAPIの鍵付き
+エンドポイント（コスト発生するchat・案件削除等）を叩けてしまい、元のコスト急増
+インシデントと同種の穴を別URLで再現していた（Codexレビューで指摘）。マージ直後に
+本ファイルを含めて巻き戻した。Web単体を安全に公開したい場合は、IAMロックを外す
+のではなく proxy.ts 側で未認証キャラーへのキー代理付与自体を止める実装が必要。
 """
 
 from __future__ import annotations
@@ -47,20 +51,23 @@ def test_api_deploy_requires_access_key_fail_closed() -> None:
     assert "|| exit 1" in script, "API_ACCESS_KEY secret が無い時にfail-closedしていない"
 
 
-def test_web_deploy_is_public_but_still_wires_the_api_key() -> None:
-    """Web境界は公開（--allow-unauthenticated）。
+def test_web_deploy_always_requires_iam() -> None:
+    """Web境界はIAM認証必須（--no-allow-unauthenticated --invoker-iam-check）。
 
-    2026-09-06に一時IAM必須へ変更したが、実際にCloud Runへ反映された2026-09-08、
-    それまで使っていた公開URLが直接ブラウザから繋がらなくなる実害が出たため公開へ
-    戻した。保護の実体はAPI側のREQUIRE_API_ACCESS_KEY（app層のfail-closedキー検証）
-    であり、Web境界のIAM有無とは独立して効き続ける。
+    2026-09-08、公開URLが直接ブラウザから繋がらなくなる実害を理由に一時
+    --allow-unauthenticated へ変更したが（PR #983）、frontend/src/proxy.ts は
+    Web境界のIAM有無に関係なく全ての未認証 /api/* リクエストへ特権的な
+    API_ACCESS_KEY を代理付与する実装のため、Webを公開にすると誰でもそのプロキシ
+    経由でAPIの鍵付きエンドポイント（コスト発生するchat・案件削除等）を叩けて
+    しまい、元のコスト急増インシデントと同種の穴を別URLで再現していた
+    （Codexレビューで指摘、マージ直後に巻き戻し）。
     """
     workflow = _load()
     script = _run_script(workflow["jobs"]["deploy-web"], "Deploy to Cloud Run")
 
-    assert "--allow-unauthenticated" in script
-    assert "--no-allow-unauthenticated" not in script
-    assert "--invoker-iam-check" not in script
+    assert "--allow-unauthenticated" not in script
+    assert "--no-allow-unauthenticated" in script
+    assert "--invoker-iam-check" in script
     assert "source scripts/lib/require_api_access_key_secret.sh" in script
     assert 'require_api_access_key_secret "${PROJECT_ID}" "Web"' in script
     assert "|| exit 1" in script, "API_ACCESS_KEY secret が無い時にfail-closedしていない"

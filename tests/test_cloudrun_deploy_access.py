@@ -67,20 +67,23 @@ if a[:2] == ["run", "deploy"]:
 
 @pytest.mark.parametrize("script", ["deploy_cloud_run.sh", "deploy_cloud_run_web.sh"])
 @pytest.mark.parametrize("mode", ["production", "demo"])
-def test_web_boundary_is_public_and_api_key_still_wired(deploy, script, mode):
-    """Web境界は公開（--allow-unauthenticated）。
+def test_web_boundary_always_requires_iam(deploy, script, mode):
+    """Web境界はIAM認証必須（--no-allow-unauthenticated --invoker-iam-check）。
 
-    2026-09-06に一時IAM必須（--no-allow-unauthenticated --invoker-iam-check）へ
-    変更したが、実際にCloud Runへ反映された2026-09-08、それまで使っていた公開URLが
-    直接ブラウザから繋がらなくなる実害が出たため公開へ戻した。保護の実体はAPI側の
-    REQUIRE_API_ACCESS_KEY（app層のfail-closedキー検証）であり、Web境界のIAM有無とは
-    独立して効き続けるため、Webを公開にしても安全。
+    2026-09-08、UX上の理由から一時 --allow-unauthenticated に変更したが、
+    frontend/src/proxy.ts は Web境界のIAM有無に関係なく全ての未認証 /api/* リクエスト
+    へ特権的な API_ACCESS_KEY を代理付与する実装のため、Webを公開にすると誰でも
+    そのプロキシ経由でAPIの鍵付きエンドポイント（コスト発生するchat・案件削除等）を
+    叩けてしまい、元のコスト急増インシデントと同種の穴を別URLで再現していた
+    （Codexレビューで指摘、PR #983 で一度マージされたが直後に巻き戻し）。
+    Web単体を安全に公開するには、IAMロックを外すのではなく proxy.ts 側で
+    未認証キャラーへのキー代理付与自体を止める実装が別途必要。
     """
     result, args = deploy(script, mode)
     assert result.returncode == 0, result.stderr
-    assert "--allow-unauthenticated" in args
-    assert "--no-allow-unauthenticated" not in args
-    assert "--invoker-iam-check" not in args
+    assert "--allow-unauthenticated" not in args
+    assert "--no-allow-unauthenticated" in args
+    assert "--invoker-iam-check" in args
     assert "API_ACCESS_KEY=API_ACCESS_KEY:latest" in args
     if script == "deploy_cloud_run.sh":
         env = args[args.index("--set-env-vars") + 1]
