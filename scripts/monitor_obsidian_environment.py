@@ -130,6 +130,23 @@ def _read_text(path: Path, limit: int = 100_000) -> str:
         return ""
 
 
+def _read_text_tail(path: Path, limit: int = 500_000) -> str:
+    """ローテーションされない追記型ログ向け。先頭ではなく末尾を読む。
+
+    reindexログのように無期限に肥大化するファイルで `_read_text`（先頭切り取り）を
+    使うと、直近の完了行がlimitの外に押し出されて「stale」誤検知になる
+    （2026-09-08: 598,324文字中、当日分は589,205文字目以降にしか無かった）。
+    """
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as f:
+            if size > limit:
+                f.seek(size - limit)
+            return f.read().decode("utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
 def _status(ok: bool, warn: bool = False) -> str:
     if ok:
         return "ok"
@@ -285,7 +302,7 @@ def check_reindex_and_chroma(max_age_hours: int) -> MonitorCheck:
     if not log_path.exists():
         problems.append("missing reindex log")
     else:
-        text = _read_text(log_path, 500_000)
+        text = _read_text_tail(log_path, 500_000)
         completions: list[tuple[datetime, str, int | None]] = []
         for ts_text, total_text in REINDEX_DONE_RE.findall(text):
             completions.append((
@@ -431,7 +448,10 @@ def check_self_reference_loop() -> MonitorCheck:
     )
 
 
-def recent_notes(vault: Path, max_age_hours: int, limit: int = 120) -> list[Path]:
+def recent_notes(vault: Path, max_age_hours: int, limit: int = 1000) -> list[Path]:
+    # limit=120だとwikilinksチェックの母集団（7日以内更新ファイル）が容易に超過し、
+    # 古い順に切り詰められたファイルがサイレントにチェック対象外になり偽陰性化する
+    # （2026-09-08: 198件中139位のファイルが枠外に落ち、17件の未解決リンクが検出0件になった）。
     cutoff = _now() - timedelta(hours=max_age_hours)
     notes: list[Path] = []
     for path in list_vault_md_files(vault):
