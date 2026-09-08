@@ -8,6 +8,7 @@ git diff 収集層（subprocess）は対象外とし、AST / Import / Circuit Br
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -71,6 +72,16 @@ def test_import_sanitizer_warns_only_on_unknown_imports():
     # 正当な import は警告しない
     assert not any("import os" == w.detail for w in warnings)
     assert not any("import pandas as pd" == w.detail for w in warnings)
+
+
+def test_circuit_breaker_ignores_optional_pyflakes_warning():
+    pyflakes = g.Warning_(guard="import", message="pyflakes", detail="unused import")
+    hallucinated = g.Warning_(guard="import", message="幻覚 import の疑い")
+    syntax = g.Warning_(guard="ast", message="SyntaxError")
+
+    assert g.is_circuit_breaker_quality_warning(pyflakes) is False
+    assert g.is_circuit_breaker_quality_warning(hallucinated) is True
+    assert g.is_circuit_breaker_quality_warning(syntax) is True
 
 
 def test_local_top_level_modules_include_agents_subtree():
@@ -175,3 +186,34 @@ def test_run_circuit_breaker_uses_state_file(tmp_path):
     assert tripped is not None and tripped.guard == "circuit_breaker"
     # 警告が解消したらリセットされ、発火しない
     assert g.run_circuit_breaker(sig, False, 2, state) is None
+    saved = json.loads(state.read_text(encoding="utf-8"))
+    assert sig not in saved
+
+
+def test_run_circuit_breaker_prunes_legacy_and_stale_entries(tmp_path):
+    state = tmp_path / "retries.json"
+    state.write_text(json.dumps({
+        "legacy": {"count": 8},
+        "stale": {"count": 5, "updated_at": "2020-01-01T00:00:00"},
+    }), encoding="utf-8")
+
+    assert g.run_circuit_breaker("current", True, 2, state) is None
+
+    saved = json.loads(state.read_text(encoding="utf-8"))
+    assert set(saved) == {"current"}
+    assert saved["current"]["count"] == 1
+    assert saved["current"]["updated_at"]
+
+
+def test_run_circuit_breaker_resets_stale_matching_signature_before_increment(tmp_path):
+    state = tmp_path / "retries.json"
+    sig = "stale-signature"
+    state.write_text(json.dumps({
+        sig: {"count": 8, "updated_at": "2020-01-01T00:00:00"},
+    }), encoding="utf-8")
+
+    assert g.run_circuit_breaker(sig, True, 2, state) is None
+
+    saved = json.loads(state.read_text(encoding="utf-8"))
+    assert saved[sig]["count"] == 1
+    assert saved[sig]["updated_at"] != "2020-01-01T00:00:00"

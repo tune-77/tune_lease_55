@@ -371,7 +371,8 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
 
   const handleOpenShionChat = () => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('lease-gunshi-context', JSON.stringify({
+    window.localStorage.removeItem('lease-gunshi-context');
+    window.sessionStorage.setItem('lease-gunshi-context', JSON.stringify({
       score,
       hantei: normalizedModelDecision,
       company_name: formData.company_name || '',

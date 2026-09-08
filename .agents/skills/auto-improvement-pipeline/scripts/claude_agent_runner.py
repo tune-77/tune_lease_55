@@ -12,6 +12,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from implementation_verifier import IndependentImprovementVerifier
+from loop_constraints import evaluate_execution_constraints, load_loop_constraints
+
 logger = logging.getLogger(__name__)
 
 _GEMINI_TIMEOUT_SECONDS = 90
@@ -251,6 +254,22 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "message": f"対象ファイルが特定できません: {improvement.get('target_module')}",
         }
 
+    constraints = load_loop_constraints()
+    relative_target = target_file.relative_to(workspace)
+    execution_gate = evaluate_execution_constraints(
+        improvement,
+        [relative_target],
+        constraints=constraints,
+    )
+    if not execution_gate["allowed"]:
+        return {
+            "success": False,
+            "pr_number": None,
+            "pr_url": None,
+            "merged": False,
+            "message": f"loop constraint: {execution_gate['reason']}",
+        }
+
     date_str = datetime.now().strftime("%Y%m%d-%H%M%S")
     branch_slug = re.sub(r'[^\w-]', '-', improvement.get("title", "improvement")[:40])
     branch_name = f"feature/agent-{date_str}-{branch_slug}"
@@ -293,6 +312,23 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
             "pr_url": None,
             "merged": False,
             "message": "Gemini 出力からコードを抽出できませんでした",
+        }
+
+    verification = IndependentImprovementVerifier(workspace).verify(
+        target_file,
+        current_code,
+        new_code,
+        allow_syntax_only=True,
+    )
+    if verification.passed is not True:
+        _cleanup_branch(workspace, branch_name)
+        return {
+            "success": False,
+            "pr_number": None,
+            "pr_url": None,
+            "merged": False,
+            "message": f"独立verifier失敗: {verification.summary}",
+            "verification": verification.as_dict(),
         }
 
     target_file.write_text(new_code, encoding="utf-8")
@@ -388,6 +424,7 @@ def run_claude_agent(improvement: dict[str, Any], size: str) -> dict[str, Any]:
         "pr_url": pr_url,
         "merged": merged,
         "message": f"PR 作成完了（承認待ち・自動マージなし）: {pr_url}",
+        "verification": verification.as_dict(),
     }
 
 

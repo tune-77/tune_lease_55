@@ -30,7 +30,7 @@
         ]
       },
       {
-        "matcher": "Bash|mcp__graft__",
+        "matcher": "Bash|mcp__graft__|Read|Grep|Glob",
         "hooks": [
           {
             "type": "command",
@@ -52,6 +52,15 @@
       }
     ],
     "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\"",
+            "timeout": 600
+          }
+        ]
+      },
       {
         "hooks": [
           {

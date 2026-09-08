@@ -6,6 +6,10 @@ from pathlib import Path
 from scripts import build_instruction_debt_report as debt
 
 
+def test_default_scan_paths_include_canonical_shared_skills():
+    assert "shared-ai/skills" in debt.DEFAULT_SCAN_PATHS
+
+
 def test_instruction_debt_detects_missing_rationale_scope_and_retirement(tmp_path):
     agents = tmp_path / "AGENTS.md"
     agents.write_text(

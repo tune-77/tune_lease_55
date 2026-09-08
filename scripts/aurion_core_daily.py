@@ -336,6 +336,108 @@ def _query(conn: sqlite3.Connection, sql: str) -> list[dict[str, Any]]:
     return [dict(row) for row in cur.fetchall()]
 
 
+# 件数が何日据え置きなら「止まっている」とみなすか。
+# 1日の据え置きは通常営業（土日・案件なしの日）なので、3日連続を閾値にする。
+STAGNATION_ALERT_DAYS = 3
+
+
+def _delta_label(delta: int | None) -> str:
+    if delta is None:
+        return "—"
+    if delta > 0:
+        return f"+{delta}"
+    if delta < 0:
+        return str(delta)
+    return "±0"
+
+
+def _count_history(limit: int = 14) -> list[dict[str, int]]:
+    """過去の日次 state から table_name -> 件数 を新しい順に返す（当日分は除く）。
+
+    当日の state は midnight 実行時に書かれるため、朝報から読むと
+    「同じ日の数時間前」と比較することになり前日比にならない。
+    """
+    today_name = f"state_{date_str()}.json"
+    try:
+        paths = sorted(
+            (p for p in STATE_DIR.glob("state_*.json") if p.name != today_name),
+            reverse=True,
+        )[:limit]
+    except Exception:
+        return []
+
+    history: list[dict[str, int]] = []
+    for path in paths:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        rows = (payload.get("db") or {}).get("counts") or []
+        snapshot = {
+            str(row["table_name"]): int(row["n"])
+            for row in rows
+            if isinstance(row, dict)
+            and row.get("table_name") is not None
+            and isinstance(row.get("n"), int)
+        }
+        if snapshot:
+            history.append(snapshot)
+    return history
+
+
+def annotate_count_deltas(
+    counts: list[dict[str, Any]],
+    history: list[dict[str, int]] | None = None,
+) -> list[dict[str, Any]]:
+    """件数行に前日比（delta）と据置日数（flat_days）を付ける。
+
+    水位だけを毎日報告しても「止まったこと」には気づけない。
+    screening_records が API 移行で書き込まれなくなった件（REV-369）は、
+    件数自体は毎朝 Slack に出ていたのに数ヶ月気づけなかった。
+    """
+    history = _count_history() if history is None else history
+    previous = history[0] if history else {}
+
+    annotated: list[dict[str, Any]] = []
+    for row in counts:
+        table = str(row.get("table_name"))
+        n = row.get("n")
+        prev = previous.get(table)
+        delta = n - prev if isinstance(n, int) and isinstance(prev, int) else None
+
+        flat_days = 0
+        if isinstance(n, int):
+            for snapshot in history:
+                if snapshot.get(table) != n:
+                    break
+                flat_days += 1
+
+        annotated.append(
+            {**row, "delta": delta, "delta_label": _delta_label(delta), "flat_days": flat_days}
+        )
+    return annotated
+
+
+def stagnant_tables(
+    counts: list[dict[str, Any]],
+    threshold: int = STAGNATION_ALERT_DAYS,
+) -> list[dict[str, Any]]:
+    """据置日数が閾値以上のテーブルを返す（記録経路が切れている疑い）。"""
+    return [row for row in counts if (row.get("flat_days") or 0) >= threshold]
+
+
+def _stagnation_note(counts: list[dict[str, Any]]) -> str:
+    """据え置きテーブルがあれば朝報の DB Audit 冒頭に出す警告文。"""
+    stagnant = stagnant_tables(counts)
+    if not stagnant:
+        return "_件数はいずれも直近で動いています。_"
+    detail = " / ".join(f"`{row['table_name']}` {row['flat_days']}日" for row in stagnant)
+    return (
+        f"> ⚠️ **{STAGNATION_ALERT_DAYS}日以上件数が動いていないテーブルがあります**: {detail}\n"
+        "> 記録経路が切れていないか確認してください（過去に screening_records で発生・REV-369）。"
+    )
+
+
 def audit_db() -> dict[str, Any]:
     if not DB_PATH.exists():
         return {"status": "failed", "reason": f"missing DB: {DB_PATH}"}
@@ -404,7 +506,7 @@ def audit_db() -> dict[str, Any]:
     return {
         "status": "completed",
         "db_path": str(DB_PATH),
-        "counts": counts,
+        "counts": annotate_count_deltas(counts),
         "top_industries": top_industries,
         "statuses": statuses,
         "score_bands": score_bands,
@@ -1119,7 +1221,9 @@ def write_morning_report(
         "",
         "## DB Audit",
         "",
-        _md_table(db_counts, ["table_name", "n"]),
+        _stagnation_note(db_counts),
+        "",
+        _md_table(db_counts, ["table_name", "n", "delta_label", "flat_days"]),
         "",
         "### Top Industries",
         "",
@@ -1543,10 +1647,22 @@ def run_morning_report(dry_run: bool = False) -> int:
         f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; quota {codex_queue.get('blocked_by_quota_count', 0)}; gaps {declaration_gaps.get('count', 0)}; insight: {insight.name}",
     )
 
-    db_counts = {row["table_name"]: row["n"] for row in db.get("counts") or []}
+    db_count_rows = db.get("counts") or []
+    db_counts = {row["table_name"]: row["n"] for row in db_count_rows}
+    db_deltas = {row["table_name"]: row.get("delta_label", "—") for row in db_count_rows}
+
+    def _count_text(table: str) -> str:
+        return f"{db_counts.get(table, '?')}件 ({db_deltas.get(table, '—')})"
+
     slack_lines = [
         f"*AURION CORE 朝報 {date_str()}*",
-        f"📊 past_cases: {db_counts.get('past_cases', '?')}件 / screening_records: {db_counts.get('screening_records', '?')}件",
+        f"📊 past_cases: {_count_text('past_cases')} / screening_records: {_count_text('screening_records')}",
+    ]
+    stagnant = stagnant_tables(db_count_rows)
+    if stagnant:
+        detail = " / ".join(f"{row['table_name']} {row['flat_days']}日" for row in stagnant)
+        slack_lines.append(f"⚠️ 件数が据え置き（記録経路の断線を疑う）: {detail}")
+    slack_lines += [
         f"🤖 Codex候補: {codex_queue.get('queued_count', 0)}件 (safe={codex_queue.get('codex_auto_safe_count', 0)}, quota超={codex_queue.get('blocked_by_quota_count', 0)})",
         f"🔍 登録漏れ疑い: {declaration_gaps.get('count', 0)}件",
         f"📋 {report.name}",

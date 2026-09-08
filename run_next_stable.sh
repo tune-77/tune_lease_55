@@ -22,12 +22,38 @@ NEXT_PORT="${NEXT_PORT:-3000}"
 API_HOST="${API_HOST:-127.0.0.1}"
 NEXT_HOST="${NEXT_HOST:-127.0.0.1}"
 PUBLIC_TUNNEL="${PUBLIC_TUNNEL:-0}"
+PUBLIC_TUNNEL_AUTH_FILE="${PUBLIC_TUNNEL_AUTH_FILE:-${HOME:-}/Library/Application Support/tune_lease_55/public_tunnel_auth}"
 # Named Tunnel（固定URL・認証あり）を使う場合はこの2つを設定する。
 # 未設定なら従来どおり quick tunnel（認証不要・URL変動・本番非推奨）にフォールバックする。
 CLOUDFLARE_TUNNEL_CONFIG="${CLOUDFLARE_TUNNEL_CONFIG:-}"
 CLOUDFLARE_TUNNEL_HOSTNAME="${CLOUDFLARE_TUNNEL_HOSTNAME:-}"
 LOG_DIR="logs/next"
 mkdir -p "$LOG_DIR"
+
+# An internet-facing tunnel must never inherit local development's auth opt-out.
+# Generate an ephemeral server-side key when the operator did not provide one;
+# FastAPI and Next.js inherit the same value without exposing it to the browser.
+if [ "$PUBLIC_TUNNEL" = "1" ]; then
+  if [ -z "${PUBLIC_TUNNEL_AUTH:-}" ] && [ -n "$PUBLIC_TUNNEL_AUTH_FILE" ] && [ -r "$PUBLIC_TUNNEL_AUTH_FILE" ]; then
+    IFS= read -r PUBLIC_TUNNEL_AUTH < "$PUBLIC_TUNNEL_AUTH_FILE" || true
+  fi
+  if [ -z "${PUBLIC_TUNNEL_AUTH:-}" ]; then
+    echo "PUBLIC_TUNNEL=1 requires PUBLIC_TUNNEL_AUTH or a readable PUBLIC_TUNNEL_AUTH_FILE." >&2
+    echo "Run scripts/install_next_launchagent.sh to provision the persistent launcher credential." >&2
+    exit 1
+  fi
+  export PUBLIC_TUNNEL PUBLIC_TUNNEL_AUTH
+  export REQUIRE_API_ACCESS_KEY=1
+  if [ -z "${API_ACCESS_KEY:-}" ]; then
+    if ! command -v openssl >/dev/null 2>&1; then
+      echo "PUBLIC_TUNNEL=1 requires API_ACCESS_KEY or openssl for secure key generation." >&2
+      exit 1
+    fi
+    export API_ACCESS_KEY="$(openssl rand -hex 32)"
+    FORCE_RESTART=1
+    echo "Generated an ephemeral API access key for this public tunnel session."
+  fi
+fi
 
 named_tunnel_active() {
   [ -n "$CLOUDFLARE_TUNNEL_CONFIG" ] && [ -f "$CLOUDFLARE_TUNNEL_CONFIG" ]
@@ -100,7 +126,7 @@ print_status() {
   local api_state="DOWN"
   local next_state="DOWN"
   local tunnel_url
-  if curl -fsS --max-time 2 "http://${API_HOST}:${API_PORT}/docs" >/dev/null 2>&1; then
+  if curl -fsS --max-time 2 "http://${API_HOST}:${API_PORT}/healthz" >/dev/null 2>&1; then
     api_state="OK"
   elif lsof -ti :"$API_PORT" >/dev/null 2>&1; then
     api_state="LISTENING"
@@ -116,6 +142,7 @@ print_status() {
   echo "  Next : ${next_state} http://${NEXT_HOST}:${NEXT_PORT}"
   if [ -n "$tunnel_url" ]; then
     echo "  Tunnel: ${tunnel_url}"
+    echo "  Login : user 'lease' with the PUBLIC_TUNNEL_AUTH password"
   else
     echo "  Tunnel: not found"
   fi
@@ -358,7 +385,7 @@ trap cleanup INT TERM
 if [ "$FORCE_RESTART" != "1" ] && [ "$REUSE_RUNNING" = "1" ]; then
   sync_standalone_assets
   if port_is_listening "$API_PORT" && port_is_listening "$NEXT_PORT" \
-      && http_ok "http://${API_HOST}:${API_PORT}/docs" \
+      && http_ok "http://${API_HOST}:${API_PORT}/healthz" \
       && http_ok "http://${NEXT_HOST}:${NEXT_PORT}/"; then
     echo "FastAPI and Next.js are already running. No restart/build needed."
     echo "  API  : http://${API_HOST}:${API_PORT}"

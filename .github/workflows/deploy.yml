@@ -121,6 +121,15 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      # シークレット検証はビルドより前に置く。ビルドの後に置くと、キーの設定漏れや
+      # 権限不足が17分のビルドを待たないと分からず、1回の切り分けに17分かかる
+      # （2026-09-07、実際にこれで何度も空費した）。
+      - name: Preflight - verify API access key secret
+        run: |
+          set -Eeuo pipefail
+          source scripts/lib/require_api_access_key_secret.sh
+          require_api_access_key_secret "${PROJECT_ID}" "API" >/dev/null
+
       # Dockerfile.api は COPY .cloudrun_bundle/ /app/.cloudrun_bundle/ を無条件で
       # 実行するため、ビルドコンテキストに .cloudrun_bundle/ が存在しないと
       # COPY failed: file not found で毎回ビルド自体が失敗する。
@@ -132,18 +141,19 @@ jobs:
         run: mkdir -p .cloudrun_bundle
 
       # ── Cloud Build でイメージをビルド ──────────────────────────────
+      # ビルド完了待ちの方式は scripts/lib/submit_cloud_build_and_wait.sh 参照
+      # （ログバケット読み取りに依存する gcloud builds submit の同期待ちが
+      # WIF環境で失敗し続けた問題の回避）。
       - name: Build API image
         run: |
+          set -Eeuo pipefail
+          source scripts/lib/submit_cloud_build_and_wait.sh
+
           SHORT_SHA="${GITHUB_SHA::7}"
           IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}/${SERVICE_NAME}:${SHORT_SHA}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 
-          gcloud builds submit \
-            --project "${PROJECT_ID}" \
-            --config cloudbuild.api.yaml \
-            --substitutions "_IMAGE_URI=${IMAGE_URI}" \
-            --suppress-logs \
-            .
+          submit_cloud_build_and_wait "${PROJECT_ID}" cloudbuild.api.yaml "_IMAGE_URI=${IMAGE_URI}" .
 
       # ── Cloud Run にデプロイ ─────────────────────────────────────────
       # CLOUDRUN_DATA_MODE=demo / DB_PATH=demo.db は固定しない。デモ用の
@@ -153,12 +163,19 @@ jobs:
       # GitHub Secret CLOUDSQL_INSTANCE があれば Secret Manager の DATABASE_URL
       # を注入し、同じデプロイで Cloud SQL ソケットもマウントする。
       # 未設定なら Cloud SQL は明示的に外し、ローカルDB既定で起動する。
+      #
+      # インターネット公開するCloud RunはAPIキー必須（fail-closed、scripts/deploy_cloud_run_api.sh
+      # と同じ方針）。これが欠けていると api/** への push のたびに未認証で
+      # GEMINI_API_KEY 付きAPIが公開され、悪用による課金急増につながる
+      # （2026-09の突発的なコスト増の原因調査で判明）。
       - name: Deploy to Cloud Run
         env:
           DATABASE_SECRET_NAME: DATABASE_URL
           CLOUDSQL_INSTANCE: ${{ secrets.CLOUDSQL_INSTANCE }}
         run: |
           set -Eeuo pipefail
+          source scripts/lib/require_api_access_key_secret.sh
+
           deploy_args=(
             run deploy "${SERVICE_NAME}"
             --image "${IMAGE_URI}"
@@ -172,13 +189,15 @@ jobs:
             --concurrency 1
             --min-instances 0
             --max-instances 1
-            --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=1,TZ=Asia/Tokyo"
-            --set-secrets "GEMINI_API_KEY=GEMINI_API_KEY:latest"
+            --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=1,REQUIRE_API_ACCESS_KEY=1,TZ=Asia/Tokyo"
             --allow-unauthenticated
           )
 
+          api_access_key_ref="$(require_api_access_key_secret "${PROJECT_ID}" "API")" || exit 1
+          secret_args=("GEMINI_API_KEY=GEMINI_API_KEY:latest" "API_ACCESS_KEY=${api_access_key_ref}")
+
           if [ -n "${CLOUDSQL_INSTANCE}" ]; then
-            deploy_args+=(--set-secrets "DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
+            secret_args+=("DATABASE_URL=${DATABASE_SECRET_NAME}:latest")
             deploy_args+=(--add-cloudsql-instances "${CLOUDSQL_INSTANCE}")
           else
             echo "::warning::GitHub Secret CLOUDSQL_INSTANCE が未設定のため、${DATABASE_SECRET_NAME} は注入せず Cloud SQL も接続しません。DB_PATH既定（data/lease_data.db）で起動します。"
@@ -186,6 +205,8 @@ jobs:
             # 未設定時は古い接続を持ち越さないよう明示的にクリアする。
             deploy_args+=(--clear-cloudsql-instances)
           fi
+
+          IFS=,; deploy_args+=(--set-secrets "${secret_args[*]}"); unset IFS
 
           gcloud "${deploy_args[@]}"
 
@@ -226,6 +247,14 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      # シークレット検証はビルドより前に置く（API側と同じ理由。deploy-api ジョブの
+      # 同名ステップのコメント参照）。
+      - name: Preflight - verify API access key secret
+        run: |
+          set -Eeuo pipefail
+          source scripts/lib/require_api_access_key_secret.sh
+          require_api_access_key_secret "${PROJECT_ID}" "Web" >/dev/null
+
       # ── API URL を取得（Next.js ビルド時の FASTAPI_URL として渡す） ──
       - name: Resolve API service URL
         run: |
@@ -243,36 +272,51 @@ jobs:
           echo "API_URL=${API_URL}"
 
       # ── Cloud Build でイメージをビルド ──────────────────────────────
+      # ビルド完了待ちの方式は scripts/lib/submit_cloud_build_and_wait.sh 参照
+      # （ログバケット読み取りに依存する gcloud builds submit の同期待ちが
+      # WIF環境で失敗し続けた問題の回避）。
       - name: Build frontend image
         run: |
+          set -Eeuo pipefail
+          source scripts/lib/submit_cloud_build_and_wait.sh
+
           SHORT_SHA="${GITHUB_SHA::7}"
           IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}/${SERVICE_NAME}:${SHORT_SHA}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 
-          gcloud builds submit \
-            --project "${PROJECT_ID}" \
-            --config cloudbuild.web.yaml \
-            --substitutions "_IMAGE_URI=${IMAGE_URI},_FASTAPI_URL=${API_URL}" \
-            --suppress-logs \
-            frontend/
+          submit_cloud_build_and_wait "${PROJECT_ID}" cloudbuild.web.yaml "_IMAGE_URI=${IMAGE_URI},_FASTAPI_URL=${API_URL}" frontend/
 
       # ── Cloud Run にデプロイ ─────────────────────────────────────────
+      # Web境界はデータモードにかかわらずIAM認証必須（scripts/deploy_cloud_run_web.sh と
+      # 同じ方針、2026-09-06の "fix: authenticate public web entry points" 参照）。
+      # API_ACCESS_KEY はNext.jsのserver-side proxyがAPIへX-API-Keyを自動付与するために必須。
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy "${SERVICE_NAME}" \
-            --image "${IMAGE_URI}" \
-            --project "${PROJECT_ID}" \
-            --region "${REGION}" \
-            --execution-environment gen2 \
-            --port 8080 \
-            --memory 2Gi \
-            --cpu 1 \
-            --timeout 900 \
-            --concurrency 80 \
-            --min-instances 0 \
-            --max-instances 1 \
-            --set-env-vars "FASTAPI_URL=${API_URL}" \
-            --allow-unauthenticated
+          set -Eeuo pipefail
+          source scripts/lib/require_api_access_key_secret.sh
+
+          api_access_key_ref="$(require_api_access_key_secret "${PROJECT_ID}" "Web")" || exit 1
+
+          deploy_args=(
+            run deploy "${SERVICE_NAME}"
+            --image "${IMAGE_URI}"
+            --project "${PROJECT_ID}"
+            --region "${REGION}"
+            --execution-environment gen2
+            --port 8080
+            --memory 2Gi
+            --cpu 1
+            --timeout 900
+            --concurrency 80
+            --min-instances 0
+            --max-instances 1
+            --set-env-vars "FASTAPI_URL=${API_URL}"
+            --no-allow-unauthenticated
+            --invoker-iam-check
+            --set-secrets "API_ACCESS_KEY=${api_access_key_ref}"
+          )
+
+          gcloud "${deploy_args[@]}"
 
       - name: Show deployed URL
         run: |

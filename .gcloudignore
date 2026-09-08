@@ -1,5 +1,12 @@
 .git
-.github
+# .github全体は除外するが、pr-checks.ymlだけは
+# api/cloudrun_data_safety_audit.py の本番自己監査（ci_job_present /
+# ci_runs_required_tests）が読めるようバンドルに含める。秘密情報は含まない。
+# 親ディレクトリごと除外すると子ファイルを個別に復活できないため段階的に除外する。
+.github/*
+!.github/workflows/
+.github/workflows/*
+!.github/workflows/pr-checks.yml
 .venv
 __pycache__
 *.pyc

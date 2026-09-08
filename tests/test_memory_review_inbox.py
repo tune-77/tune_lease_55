@@ -100,6 +100,64 @@ def test_list_inbox_auto_rejects_similar_unreviewed_candidates(tmp_path, monkeyp
     assert auto_rejected["auto_reject_matched_inbox_id"] == "test_source__old"
 
 
+def test_list_inbox_carries_over_decision_for_similar_re_emitted_candidate(tmp_path, monkeypatch):
+    # Simulates a source pipeline (e.g. prediction_error_loop) that mints a fresh
+    # row id per detection run instead of per underlying claim, so the same
+    # already-adopted claim re-emits under a new id.
+    source = tmp_path / "candidates.jsonl"
+    _write_jsonl(
+        source,
+        [
+            {
+                "id": "pe-20260901-1200-case1",
+                "claim": "与信スコアの乖離が大きい案件は次回から追加資料を要求する",
+                "candidate_type": "prediction_error",
+                "topic": "credit_score",
+            },
+            {
+                "id": "pe-20260905-0900-case1",
+                "claim": "与信スコアの乖離が大きい案件は次回から追加資料を要求する",
+                "candidate_type": "prediction_error",
+                "topic": "credit_score",
+            },
+        ],
+    )
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "reviews": {
+                    "test_source__pe-20260901-1200-case1": {
+                        "status": "adopted",
+                        "note": "採用済み",
+                        "edited_claim": "",
+                        "reviewed_at": "2026-09-01T12:00:00",
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(inbox, "SOURCE_PATHS", {"test_source": source})
+    monkeypatch.setattr(inbox, "REVIEW_STATE_PATH", state_path)
+
+    payload = inbox.list_inbox(status="all")
+
+    assert payload["summary"]["open"] == 0
+    assert payload["summary"]["by_status"]["adopted"] == 2
+
+    carried = next(
+        item
+        for item in payload["items"]
+        if item["source_item_id"] == "pe-20260905-0900-case1"
+    )
+    assert carried["status"] == "adopted"
+    assert carried["auto_carried_over"] is True
+    assert carried["auto_carried_over_matched_inbox_id"] == "test_source__pe-20260901-1200-case1"
+
+
 def test_review_candidate_persists_rejection_pattern_and_forgets_on_override(tmp_path, monkeypatch):
     source = tmp_path / "candidates.jsonl"
     _write_jsonl(source, [{"id": "a1", "claim": "同じノイズ候補を次回から隠す", "candidate_type": "noise"}])

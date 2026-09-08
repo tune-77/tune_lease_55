@@ -39,9 +39,14 @@ description: 自律型改善リファクタリング・パイプライン。チ�
   - UI文言・FAQ・ヘルプ・軽い設定値など低リスクだけを自動修正候補にする
   - スコアリング・DB/API・外部連携・認証・複数ファイル・インフラは needs_review
     ↓
+【Step 2.7】Loop Engineering 機械制約
+  - loop_constraints.json の denylist / human gate / 最大3試行を全経路へ適用
+  - 1ファイルを超える変更と高リスク領域は実装開始前に停止
+    ↓
 【Step 3】自動修正・デプロイ
-  - コード自動適用
-  - ローカルテスト実行
+  - implementer がコード候補を生成
+  - 別責務の verifier が detached git worktree で検証
+  - verifier 証跡がある候補だけを自動適用
   - Obsidian ナレッジ同期
   - Git コミット・プッシュ
     ↓
@@ -61,7 +66,14 @@ description: 自律型改善リファクタリング・パイプライン。チ�
 - **実装順の明示**: recommended_order で「改善できる順」をレポート化
 - **Obsidian共通経路の確認**: `obsidian_query.py` / `obsidian_ai_context.py` / `mobile_app/obsidian_bridge.py` の利用を前提にチェック
 - **小規模自動修正限定**: AI diff 生成は `auto_fix_policy` が許可した1ファイル・低リスク変更だけに限定
+- **機械制約の単一真実源**: `.agents/skills/auto-improvement-pipeline/loop_constraints.json` を通常Step 3とGemini agent経路の両方が読む
+- **最大試行数**: 改善ごとの試行を `.claude/state/auto_improvement_attempts.json` に記録し、3回到達後は実装前に人間へ移管
+- **Maker / Checker分離**: implementerは自分の候補を完了扱いにできない。`implementation_verifier.py` が隔離worktreeで検証IDを発行した場合だけ次へ進む
 - **改善済み登録**: 実装後は `pipeline_ledger.record(..., status="applied", canonical_key=...)` と Obsidian の実装済みメモを残し、次回抽出から除外する
+
+理由: 自動実装経路ごとにdenylist・再試行・検証方法が分散すると、安全判定を迂回できるため。
+適用条件: 自動改善がファイル変更、外部agent起動、commitまたはPR作成へ進む時。
+削除条件: リポジトリ共通のpolicy engineが同等のdenylist、人間ゲート、試行台帳、独立検証を強制する時。
 
 ---
 

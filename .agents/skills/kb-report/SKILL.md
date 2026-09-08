@@ -1,6 +1,6 @@
 ---
 name: kb-report
-description: Obsidian wiki/knowledge notesを根拠に、問いへの回答をreportsへMarkdown保存する。ユーザーが「kb-report」「wikiだけを使って」「根拠付きレポート」「reportsに残す」と言った時に使用する。
+description: promoted済みのObsidian wiki/knowledge notesだけを根拠に回答し、追跡可能なMarkdownレポートとして保存する時に使用する。「kb-report」「wikiだけを使って根拠付きレポート」「参照ノート付きでreportsに残す」が対象。短い回答、通常のVault保存・検索、Wikiリンク整理には使用しない。
 ---
 
 # kb-report

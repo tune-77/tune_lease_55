@@ -11,6 +11,18 @@
 
 どちらも `cleanup_improvement_reviews.py` の同じロジックが書き込むが、宛先は環境変数 `LEDGER_PATH` で切り替わる（ローカル実行時はホームディレクトリ、CI実行時は `scripts/improvement_ledger.jsonl` に上書き）。**両者は自動では同期されない** — CI台帳はPRマージ起点の反映のみ、ローカル台帳は日次パイプラインの全ステータス遷移を持つため、内容が食い違いうる。
 
+⚠️ **ledger-sync は master へ直pushできない。** master はブランチ保護されているため、CI台帳の更新は必ずPR経由で入る。
+一方でリポジトリ設定上 GitHub Actions によるPR作成は禁止されている（`GitHub Actions is not permitted to create or approve pull requests`）ため、
+ワークフローは更新をブランチ `chore/ledger-sync` に置くところまでしかできない。この状態を旧構成は `exit 0`（緑）で終えていたので、
+PR #797 以降127回のマージで台帳がmasterへ入っていないことに誰も気づかず、`chore/ledger-sync-pr-<番号>` が132本まで積み上がった（対応: 2026-09-02, REV-357 / REV-362）。
+
+現在の挙動:
+
+- 更新先はPRごとではなく **常に1本 `chore/ledger-sync`**（毎回 master から全再計算するため force push で上書きしてよい）
+- そのブランチのPRが既に開いていれば、pushだけで内容が更新される（ジョブは緑）
+- PRが無く、作成もできない場合は **ジョブを赤にする**。滞留が静かに続くことを防ぐのがこの赤の役割
+- 恒久対応: Settings → Actions → General → Workflow permissions →「Allow GitHub Actions to create and approve pull requests」を有効化すると全自動になる
+
 ⚠️ **REV番号の採番はこの2系統とは別に、さらに `api/rule_engine/ledger_rules.json`（ビジネスルール台帳、後述4節）とも空間を共有している。** `analyze_error_logs.py` 等5スクリプトは `ledger_rules.json` だけを見て次のREV番号を決め、`step1_extract_and_structure.py` は `improvement_ledger.jsonl` だけを見て決めていたため、片方にしか記録が無い番号を「空き番号」と誤認して重複発行する事故があった（REV-292が別々の改善案に2回発行されたケース）。再発防止として `scripts/rev_ledger_utils.py` に `load_all_rev_sources()` を追加し、両ファイルを横断した上で採番するように6スクリプト全てを統一した（対応: 2026-08-20）。新しいREV発行元スクリプトを追加する場合も、独自に片方の台帳だけを読んで採番せず、必ずこの関数を経由すること。
 
 ⚠️ **`scripts/improvement_ledger.jsonl` は「CIの内部ファイル」ではなく本番稼働中の読み取り対象。** リネームや構造変更は以下に直接影響する:

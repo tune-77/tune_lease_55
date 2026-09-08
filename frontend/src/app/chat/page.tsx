@@ -17,6 +17,7 @@ import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import { buildShionEntryGreeting, type ShionEntryGreeting } from "@/lib/shionEntryGreeting";
 import { isImeComposing } from "@/lib/keyboard";
 import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
+import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 
 interface ChatMessage {
   id: number;
@@ -330,10 +331,12 @@ export default function ChatPage() {
         setInput("この件は後で話し合おう");
         window.setTimeout(resizeTextarea, 0);
       }
-      const raw = window.localStorage.getItem("lease-gunshi-context");
-      setHasScreeningReturn(Boolean(raw || window.localStorage.getItem(SCREENING_RETURN_STATE_KEY)));
+      window.localStorage.removeItem("lease-gunshi-context");
+      window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+      const raw = window.sessionStorage.getItem("lease-gunshi-context");
+      setHasScreeningReturn(Boolean(raw || window.sessionStorage.getItem(SCREENING_RETURN_STATE_KEY)));
       if (raw) {
-        window.localStorage.removeItem("lease-gunshi-context");
+        window.sessionStorage.removeItem("lease-gunshi-context");
         try {
           const ctx = JSON.parse(raw) as ChatContext;
           setChatContext(ctx);
@@ -1213,6 +1216,14 @@ export default function ChatPage() {
                 )}
                 {msg.role === "assistant" && (
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {!msg.memory_recall?.refs?.length && (
+                      <ResponseUsefulnessButtons
+                        question={[...messages.slice(0, index)].reverse().find((item) => item.role === "user")?.content}
+                        response={msg.content}
+                        route="next_chat"
+                        userId={userId}
+                      />
+                    )}
                     <button
                       onClick={() => {
                         const previousUser = [...messages.slice(0, index)].reverse().find((item) => item.role === "user");

@@ -50,7 +50,9 @@ TEXT_SUFFIXES = {
 
 TERM_PATTERNS: dict[str, list[re.Pattern[str]]] = {
     "actual_pd": [
-        re.compile(r"PD(?!CA|F)"),
+        # UPDATE/UPDATED/CPD等、英字識別子の一部としての"PD"を誤検知しないよう
+        # 前後がASCII英字でない場合のみPD単体として扱う（PDCA/PDFはこれで自然に除外される）。
+        re.compile(r"(?<![A-Za-z])PD(?![A-Za-z])"),
         re.compile(r"result\.pd\b"),
         re.compile(r"pd_percent"),
         re.compile(r"default_prob"),

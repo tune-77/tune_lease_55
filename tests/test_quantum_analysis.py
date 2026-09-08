@@ -21,6 +21,8 @@ from quantum_analysis_module import (
     QuantumGate,
     QuantumInterferenceAnalyzer,
     _extract_features,
+    _R2_SEVERITY_CAP,
+    compute_simple_q_risk,
 )
 
 
@@ -403,3 +405,91 @@ def test_residual_signal_equals_entropy_risk():
     gate.fit([])
     r = gate.predict(_base_case())
     assert r["residual_signal"] == r["entropy_risk"]
+
+
+# ── compute_simple_q_risk の内訳（REV-359） ─────────────────────────────────
+# 内訳は表示専用の追加であり、quantum_risk の値そのものは変えてはならない。
+
+_BREAKDOWN_CASES = {
+    # 加点ルールに触れない健全案件
+    "clean": (
+        dict(nenshu=500000, op_profit=30000, ord_profit=28000, net_income=20000,
+             grade="①A格", machines=50000, industry_major="E 製造業"),
+        0.0,
+    ),
+    # R2（上限40点で頭打ち） + R3。REV-360 の severity 上限導入前は素点 649.5 → clip(100) だった
+    "deficit": (
+        dict(nenshu=200000, op_profit=-30000, ord_profit=-32000, net_income=-35000,
+             grade="④無格付", machines=1000, industry_major="D 建設業"),
+        69.5,
+    ),
+    # R1 + R4 + R5（建設業）
+    "low_grade_high_margin": (
+        dict(nenshu=100000, op_profit=25000, ord_profit=24000, net_income=5000,
+             grade="⑤D格", machines=100, industry_major="D 建設業"),
+        55.0,
+    ),
+    # R2 のみ
+    "thin_margin": (
+        dict(nenshu=2000000, op_profit=2000, ord_profit=1500, net_income=1000,
+             grade="②B格", machines=100000, industry_major="I 卸売業"),
+        16.0,
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_BREAKDOWN_CASES))
+def test_simple_q_risk_value_unchanged(name):
+    """quantum_risk の値を固定する回帰（R2 上限導入後のゴールデン値）"""
+    inputs, expected = _BREAKDOWN_CASES[name]
+    assert compute_simple_q_risk(inputs)["quantum_risk"] == pytest.approx(expected, abs=0.01)
+
+
+@pytest.mark.parametrize("name", sorted(_BREAKDOWN_CASES))
+def test_simple_q_risk_breakdown_consistent(name):
+    """内訳の総和が素点と一致し、按分後の weighted 合計が表示 Q_risk と一致する"""
+    inputs, expected = _BREAKDOWN_CASES[name]
+    result = compute_simple_q_risk(inputs)
+    breakdown = result["q_risk_breakdown"]
+
+    assert breakdown["total"] == pytest.approx(result["quantum_risk"], abs=0.01)
+    items = breakdown["items"]
+    if not items:
+        assert breakdown["raw_total"] == pytest.approx(0.0, abs=0.01)
+        return
+
+    raw_sum = sum(item["contribution"] for item in items)
+    assert raw_sum == pytest.approx(breakdown["raw_total"], abs=0.05)
+    weighted_sum = sum(item["weighted"] for item in items)
+    assert weighted_sum == pytest.approx(breakdown["total"], abs=0.05)
+    # 寄与度の降順で返す
+    assert items == sorted(items, key=lambda item: item["contribution"], reverse=True)
+    # 内訳の detail は既存の explanation と同じ文言を使う
+    assert {item["detail"] for item in items} == set(result["explanation"])
+
+
+def test_simple_q_risk_breakdown_empty_when_no_rule_fires():
+    """加点ゼロの案件では内訳が空リストになる"""
+    inputs, _ = _BREAKDOWN_CASES["clean"]
+    breakdown = compute_simple_q_risk(inputs)["q_risk_breakdown"]
+    assert breakdown["items"] == []
+    assert breakdown["clipped"] is False
+
+
+def test_r2_contribution_is_capped():
+    """R2 は severity 上限により頭打ちする（内訳が R2 一色になる歪みを防ぐ）
+
+    上限導入前は営業赤字案件で severity が 31 倍まで伸び、R2 単独で 620 点＝
+    素点の 95% を占めていた。上限後は 20点 × _R2_SEVERITY_CAP が最大値。
+    """
+    max_contrib = 20.0 * _R2_SEVERITY_CAP
+    # 営業赤字が深いほど severity は伸びるが、寄与は上限で止まる
+    for op_profit in (-30000, -100000, -1000000):
+        inputs = dict(nenshu=200000, op_profit=op_profit, ord_profit=-1000,
+                      net_income=-2000, grade="④無格付", machines=1000,
+                      industry_major="D 建設業")
+        breakdown = compute_simple_q_risk(inputs)["q_risk_breakdown"]
+        r2 = next(item for item in breakdown["items"] if item["code"] == "R2")
+        assert r2["contribution"] <= max_contrib + 0.01
+    # 頭打ちにより素点が 100 を超えなくなり、按分表示も不要になる
+    assert breakdown["clipped"] is False

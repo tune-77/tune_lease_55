@@ -157,6 +157,7 @@ def list_pending_approvals(unnotified_only: bool = False) -> list[dict]:
 
 
 _DISPATCH_QUEUE_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "dispatch_queue.jsonl"
+_PENDING_CANDIDATES_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "pending_dispatch_candidates.json"
 _MORNING_CANDIDATE_LIMIT = 3
 
 _CATEGORY_KEYWORDS: dict[str, list[str]] = {
@@ -228,6 +229,65 @@ def notify_improvement_candidates(improvements: list[dict], report_date: str) ->
         _send_slack_message(slack_text)
 
     return record
+
+
+def _load_pending_candidates() -> list[dict]:
+    """積み上げ中の未ディスパッチ改善案を読み込む。ファイル不在・壊れたJSONは空リスト扱い。"""
+    if not _PENDING_CANDIDATES_PATH.exists():
+        return []
+    try:
+        data = json.loads(_PENDING_CANDIDATES_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+        return []
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("pending_dispatch_candidates.json 読み込みエラー: %s", e)
+        return []
+
+
+def _save_pending_candidates(candidates: list[dict]) -> None:
+    """積み上げ中の未ディスパッチ改善案を保存する。"""
+    _ensure_log_dir()
+    try:
+        _PENDING_CANDIDATES_PATH.write_text(
+            json.dumps(candidates, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError as e:
+        logger.warning("pending_dispatch_candidates.json 書き込みエラー: %s", e)
+
+
+def accumulate_and_maybe_dispatch(approved_improvements: list[dict], report_date: str) -> dict | None:
+    """
+    承認済み改善案を日をまたいで積み上げ、ノイズ防止しきい値
+    （small_ui カテゴリ >= 5件 または large カテゴリ >= 1件）に達した時点で
+    まとめて notify_improvement_candidates() を呼びディスパッチする。
+
+    id で重複排除するため、同じ改善案が複数日にわたって承認され続けても
+    積み上げ件数は二重カウントされない。
+
+    Returns:
+        しきい値に達してディスパッチした場合は notify_improvement_candidates() の戻り値。
+        まだ積み上げ中の場合は None。
+    """
+    pending = _load_pending_candidates()
+    pending_ids = {p.get("id") for p in pending}
+    for imp in approved_improvements:
+        if imp.get("id") in pending_ids:
+            continue
+        pending.append(imp)
+        pending_ids.add(imp.get("id"))
+
+    categories = [classify_candidate(imp) for imp in pending]
+    small_ui_count = categories.count("small_ui")
+    large_count = categories.count("large")
+
+    if small_ui_count >= 5 or large_count >= 1:
+        record = notify_improvement_candidates(pending, report_date)
+        _save_pending_candidates([])
+        return record
+
+    _save_pending_candidates(pending)
+    return None
 
 
 if __name__ == "__main__":

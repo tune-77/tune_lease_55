@@ -1032,9 +1032,14 @@ def run_quick_scoring(inputs: dict) -> dict:
     credit_risk_warnings = credit_risk_group.get("reasons", []) if credit_risk_group.get("flag") else []
     try:
         from quantum_analysis_module import compute_simple_q_risk
-        quantum_risk_score = float(compute_simple_q_risk(inputs).get("quantum_risk", 0.0))
+
+        _quantum_result = compute_simple_q_risk(inputs)
+        quantum_risk_score = float(_quantum_result.get("quantum_risk", 0.0))
+        # ルール別寄与の内訳（表示専用・スコアには影響しない）
+        q_risk_breakdown = _quantum_result.get("q_risk_breakdown")
     except Exception:
         quantum_risk_score = None
+        q_risk_breakdown = None
 
     mahalanobis_score: float | None = None
     mahalanobis_advice: list | None = None
@@ -1175,6 +1180,7 @@ def run_quick_scoring(inputs: dict) -> dict:
         "credit_risk_group_reasons": credit_risk_group.get("reasons", []),
         "credit_risk_warnings": credit_risk_warnings,
         "quantum_risk": quantum_risk_score,
+        "q_risk_breakdown": q_risk_breakdown,
         "credit_quantum_strong_warning": credit_quantum_strong_warning,
         "mahalanobis_score": mahalanobis_score,
         "mahalanobis_advice": mahalanobis_advice,

@@ -517,7 +517,8 @@ export default function DebatePage() {
   const streamAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    const raw = window.localStorage.getItem("lease-debate-context");
+    window.localStorage.removeItem("lease-debate-context");
+    const raw = window.sessionStorage.getItem("lease-debate-context");
     if (raw) {
       try {
         const data = JSON.parse(raw) as DebateHandoffContext;
@@ -535,10 +536,10 @@ export default function DebatePage() {
           lease_amount: Number(data.lease_amount ?? prev.lease_amount),
         }));
         setAutoFilled(true);
-        window.localStorage.removeItem("lease-debate-context");
+        window.sessionStorage.removeItem("lease-debate-context");
         return;
       } catch {
-        window.localStorage.removeItem("lease-debate-context");
+        window.sessionStorage.removeItem("lease-debate-context");
       }
     }
     apiClient.get("/api/latest-screening")

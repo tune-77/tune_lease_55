@@ -27,6 +27,7 @@ DEFAULT_SCAN_PATHS = (
     "CLAUDE.md",
     "MEMORY.md",
     ".agents/skills",
+    "shared-ai/skills",
 )
 
 RATIONALE_RE = re.compile(

@@ -9,6 +9,7 @@ import {
 import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
+import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 import LeasePaymentSimulator from "@/components/analysis/LeasePaymentSimulator";
 import { isImeComposing } from "@/lib/keyboard";
 
@@ -2205,7 +2206,13 @@ export default function LeaseIntelligencePage() {
                     </div>
                   )}
                   {message.role === "assistant" && (
-                    <div className="mt-2 flex items-center gap-1.5">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <ResponseUsefulnessButtons
+                        question={message.query}
+                        response={message.content}
+                        route="lease_intelligence_dialogue"
+                      />
+                      <span className="mx-0.5 h-5 w-px bg-violet-200" aria-hidden="true" />
                       <button
                         onClick={() => submitFeedback(message, "shion_like")}
                         disabled={Boolean(feedbackGiven[message.id])}

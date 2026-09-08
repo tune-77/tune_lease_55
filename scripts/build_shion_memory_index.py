@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import tempfile
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -661,9 +663,18 @@ def main() -> int:
         return 0
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    tmp = args.output.with_suffix(args.output.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(args.output)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{args.output.name}.",
+        suffix=".tmp",
+        dir=args.output.parent,
+    )
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(args.output)
+    finally:
+        tmp.unlink(missing_ok=True)
     print(f"wrote={args.output}")
     print(f"total_records={index['summary']['total_records']}")
     return 0

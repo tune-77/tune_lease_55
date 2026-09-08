@@ -80,6 +80,10 @@ type MemoryReviewItem = {
   auto_reject_reason?: string;
   auto_reject_matched_inbox_id?: string;
   auto_reject_score?: number;
+  auto_carried_over?: boolean;
+  auto_carried_over_reason?: string;
+  auto_carried_over_matched_inbox_id?: string;
+  auto_carried_over_score?: number;
 };
 
 type MemoryReviewInboxResponse = {
@@ -478,6 +482,11 @@ function MemoryReviewInbox() {
                         自動却下
                       </span>
                     )}
+                    {item.auto_carried_over && (
+                      <span className="rounded bg-amber-100 px-2 py-1 text-[11px] font-black text-amber-700">
+                        前回判断を引き継ぎ
+                      </span>
+                    )}
                   </div>
                   <h3 className="mt-3 text-base font-black text-slate-950">{item.title}</h3>
                   <p className="mt-2 text-sm font-bold leading-7 text-slate-700">{item.claim}</p>
@@ -485,6 +494,12 @@ function MemoryReviewInbox() {
                     <p className="mt-2 text-xs font-bold leading-6 text-rose-700">
                       {item.auto_reject_reason}
                       {item.auto_reject_score ? ` / 一致度 ${item.auto_reject_score}` : ""}
+                    </p>
+                  )}
+                  {item.auto_carried_over && (
+                    <p className="mt-2 text-xs font-bold leading-6 text-amber-700">
+                      {item.auto_carried_over_reason}
+                      {item.auto_carried_over_score ? ` / 一致度 ${item.auto_carried_over_score}` : ""}
                     </p>
                   )}
                   <p className="mt-2 text-xs font-bold text-slate-500">{item.evidence_path}</p>

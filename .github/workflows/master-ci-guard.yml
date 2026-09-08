@@ -1,0 +1,69 @@
+name: Master CI Guard
+
+# pr-checks.yml が一度も走らないまま master に入ったコミットを回収する。
+#
+# GitHub は GITHUB_TOKEN 起因のイベントでは再帰防止のためワークフローを起動しない
+# （例外は workflow_dispatch / repository_dispatch）。ledger-sync.yml は GITHUB_TOKEN で
+# 台帳PRを作り auto-merge を有効化するため、そのマージコミットは
+#   - bot が作ったPRなので pull_request が発火せず
+#   - bot がマージしたので push も発火しない
+# となり、pr-checks.yml が一度も走らないまま master に入る（実例: 2320ffd
+# "Merge pull request #939 from tune-77/chore/ledger-sync" は github-actions[bot] 名義）。
+# Phase 0.5 で push トリガーを足して塞いだはずの「未検査のまま master」が
+# auto-merge 経路で開いたままだった。
+#
+# ここでは master HEAD に対する pr-checks.yml の run が存在するかだけを見て、
+# 無ければ workflow_dispatch で走らせ直す（workflow_dispatch は GITHUB_TOKEN でも発火する）。
+# 起動できた run は head_sha = master HEAD で記録されるため、次回以降は二重起動しない。
+
+on:
+  schedule:
+    - cron: "20 */3 * * *"  # 3時間ごと。台帳PRの auto-merge は数分〜数十分で起きる
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: write  # pr-checks.yml を workflow_dispatch で起動するため
+
+jobs:
+  ensure-master-checked:
+    name: master HEAD が pr-checks を通っているか確認
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_WORKFLOW: pr-checks.yml
+    steps:
+      - name: Ensure pr-checks ran for master HEAD
+        run: |
+          set -euo pipefail
+
+          SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/master" --jq '.sha')"
+          RUNS="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/${TARGET_WORKFLOW}/runs?head_sha=${SHA}&per_page=1" \
+            --jq '.total_count')"
+          echo "master HEAD: ${SHA} / pr-checks runs: ${RUNS}"
+
+          if [ "${RUNS}" -gt 0 ]; then
+            echo "OK: master HEAD \`${SHA}\` は pr-checks を通っています" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if ! gh workflow run "${TARGET_WORKFLOW}" --ref master; then
+            {
+              echo "### master が未検査のまま滞留しています"
+              echo ""
+              echo "master HEAD \`${SHA}\` に対する pr-checks の run が無く、起動もできませんでした。"
+              echo "Actions から pr-checks.yml を master 指定で手動実行してください。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::master HEAD ${SHA} が未検査で、pr-checks を起動できませんでした"
+            exit 1
+          fi
+
+          {
+            echo "### 未検査の master コミットを検知したため pr-checks を起動しました"
+            echo ""
+            echo "master HEAD \`${SHA}\` は pull_request / push のどちらでも pr-checks が走っていませんでした。"
+            echo "bot（GITHUB_TOKEN）による auto-merge が原因の可能性が高いです。"
+            echo "起動した run: https://github.com/${GITHUB_REPOSITORY}/actions/workflows/${TARGET_WORKFLOW}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::master HEAD ${SHA} が未検査だったため pr-checks を起動しました"

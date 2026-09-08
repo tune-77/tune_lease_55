@@ -948,6 +948,15 @@ def _rank_screening_judgment_asset_candidate(item: dict[str, Any], context_terms
     return (score, overlap, -len(claim), claim)
 
 
+def _is_canonical_judgment_asset_item(item: dict[str, Any]) -> bool:
+    """昇格済み（正規）の判断資産かどうか。候補選定の足切り除外と重複判定で共用する."""
+    return (
+        str(item.get("source") or "") == "canonical_judgment_rules"
+        or str(item.get("promotion_status") or "") in {"active", "promoted"}
+        or str(item.get("verified_status") or "") == "canonical"
+    )
+
+
 def _is_generic_autoresearch_candidate(item: dict[str, Any]) -> bool:
     if str(item.get("source") or "") == "canonical_judgment_rules":
         return False
@@ -1002,19 +1011,27 @@ def _select_screening_judgment_asset_candidates(
         rank = _rank_screening_judgment_asset_candidate(item, context_terms)
         signal = signal_for_candidate(item, bandit_signals)
         rank = (rank[0] + signal.rank_bonus, rank[1], rank[2], rank[3])
-        if context_terms and rank[1] <= 0 and int(item.get("useful_count") or 0) <= 0 and int(item.get("edit_count") or 0) <= 0:
+        # 単語overlap 0 の足切りは正規判断資産には掛けない。正規資産は
+        # _load_canonical_judgment_asset_candidates() が useful_count / edit_count を
+        # 常に0で読み込むため、逃げ道の2条件を自力で満たせない。結果として
+        # 「overlap 0 → 候補に出ない → 引用されない → 評価が付かない → useful_count 0 の
+        # まま → また overlap 0 で足切り」という閉ループになり、能動ルールが
+        # 永久に眠る（field_validation 0 の主因）。順位付けは _rank_... の
+        # canonical_bonus と limit に任せ、汎用的に書かれた判断資産を不利にしない。
+        if (
+            context_terms
+            and rank[1] <= 0
+            and int(item.get("useful_count") or 0) <= 0
+            and int(item.get("edit_count") or 0) <= 0
+            and not _is_canonical_judgment_asset_item(item)
+        ):
             continue
         if rank[0] <= 0 and context_terms:
             continue
         ranked.append((rank, item))
     ranked.sort(key=lambda pair: pair[0], reverse=True)
 
-    def _is_promoted_judgment_asset(item: dict[str, Any]) -> bool:
-        return (
-            str(item.get("source") or "") == "canonical_judgment_rules"
-            or str(item.get("promotion_status") or "") in {"active", "promoted"}
-            or str(item.get("verified_status") or "") == "canonical"
-        )
+    _is_promoted_judgment_asset = _is_canonical_judgment_asset_item
 
     def _to_screening_judgment_asset_response(item: dict[str, Any]) -> dict[str, Any]:
         claim = str(item.get("claim") or "")
@@ -1362,7 +1379,9 @@ def _judgment_asset_promotion_lock():
         lock.release()
 
 
-def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[str, Any]:
+def _promote_judgment_asset_candidate_to_canonical(
+    candidate_id: str, *, promoted_by: str = "judgment_asset_review_gate"
+) -> dict[str, Any]:
     import datetime as _dt
     import hashlib as _hashlib
 
@@ -1421,7 +1440,7 @@ def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[st
                 "evidence_paths": [str(candidate.get("evidence_path") or f"judgment_asset_candidate_state:{candidate_id}")],
                 "created_at": now,
                 "updated_at": now,
-                "promotion_source": "judgment_asset_review_gate",
+                "promotion_source": promoted_by,
                 "private": False,
                 "material_types": [material_type],
                 "domains": ["lease_screening"],
@@ -1456,6 +1475,7 @@ def _promote_judgment_asset_candidate_to_canonical(candidate_id: str) -> dict[st
         current["promotion_status"] = "promoted"
         current["promoted_at"] = now
         current["promoted_rule_id"] = str(promoted_rule.get("id") or "")
+        current["promoted_by"] = promoted_by
         current["verified_status"] = "canonical"
         state[candidate_id] = current
         _write_judgment_asset_candidate_state(state)

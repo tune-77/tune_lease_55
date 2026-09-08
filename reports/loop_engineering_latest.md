@@ -1,8 +1,8 @@
 # Loop Engineering Health
 
-- Generated at: `2026-08-24T04:17:29`
-- Status: `warn`
-- Source coverage: 100.0%
+- Generated at: `2026-09-08T04:19:03`
+- Status: `attention`
+- Source coverage: 66.7%
 
 ## Improvement Loop
 - Applied: 0
@@ -11,18 +11,19 @@
 - Review pressure: 0.0%
 
 ## Recursive Loop
-- Canonical candidates: 7
+- Canonical candidates: 0
 - Ranked queue: 0
-- Suppressed: 7
+- Suppressed: 0
 - Repeat issue rate: 0.0%
-- Reuse rate: 100.0%
-- Noise rate: 100.0%
-- Churn rate: 100.0% (healthy dedup: 0, churn: 7)
+- Reuse rate: 0.0%
+- Noise rate: 0.0%
+- Churn rate: 0.0% (healthy dedup: 0, churn: 0)
+- Actionable churn rate: 0.0% (code actionable: 0, conversational/non-code: 0)
 
 ## Prompt Feedback Loop
-- Total: 369
-- PDCA applied: 369 (100.0%)
-- Previous response diffs: 130 (35.2%)
+- Total: 385
+- PDCA applied: 385 (100.0%)
+- Previous response diffs: 132 (34.3%)
 
 ## Scoring Coefficients
 - Status: `ok`
@@ -33,19 +34,19 @@
 - No coefficient/model issues detected
 
 ## Guard / Safety
-- Status: `warn`
+- Status: `ok`
 - Codex queue: failed 0/1, carried over 0, aborted=False
-- Preflight retries: over-budget 6 (max count 7 / limit 2)
-- [warn] プリフライトのリトライ枠超過が 6 箇所（上限 2）— 人間へのバトンタッチを検討
+- Preflight retries: over-budget 0 (max count 0 / limit 2)
+- Preflight state: fresh 0, stale ignored 0 (max age 7d)
+- No guard activations detected
 
 ## Outcome Loops
 - Status: `ok`
 - outcome_drift: 0 proposals (latest n/a)
-- feedback_pattern: 68 proposals (latest 2026-08-24T03:00:23)
+- feedback_pattern: 114 proposals (latest 2026-09-08T03:00:26)
 - judgment_divergence: 3 proposals (latest 2026-08-01T07:42:08)
 - knowledge_gap: 3 proposals (latest 2026-07-03T07:21:31)
-- PDCA effect: measured 1687, improved 1583, worsened 104, avg delta -0.143
+- PDCA effect: measured 4498, improved 2613, worsened 1838, avg delta -0.071
 
 ## Recommendations
-- 抑制の滞留(churn)が高いため、needs_review/suppressed のクールダウン固着や台帳の suppressed 再記録を確認する（健全な重複排除は含めない）
-- 安全ガードに警告: 日次上限の繰り越しやプリフライトのリトライ枠超過を確認する
+- reports/latest.json を生成して改善候補ループの正本を確認する

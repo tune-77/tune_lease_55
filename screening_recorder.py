@@ -164,6 +164,52 @@ def record_screening_result(
         return ScreeningRecordResult(record_id=-1, success=False, error=str(e))
 
 
+def clear_screening_outcome(
+    case_id: str,
+    db_path: str = "data/lease_data.db",
+) -> ScreeningRecordResult:
+    """case_id に紐づく最新レコードの outcome を NULL に戻す。
+
+    案件ステータスが確定状態から「未登録」等へ差し戻されたときに使う。
+    outcome を残したままにすると、確定していない案件が再学習の教師データに
+    混ざる（retraining_pipeline は `outcome IS NOT NULL` で対象を選ぶ）。
+    """
+    if not case_id:
+        return ScreeningRecordResult(
+            record_id=-1,
+            success=False,
+            error="missing required field: case_id",
+        )
+    try:
+        with sqlite3.connect(db_path) as conn:
+            _ensure_table(conn)
+            conn.execute(
+                """
+                UPDATE screening_records
+                   SET outcome    = NULL,
+                       updated_at = datetime('now')
+                 WHERE id = (
+                     SELECT id FROM screening_records
+                      WHERE case_id = ?
+                      ORDER BY id DESC
+                      LIMIT 1
+                 )
+                """,
+                (case_id,),
+            )
+            row = conn.execute(
+                "SELECT id FROM screening_records WHERE case_id=? ORDER BY id DESC LIMIT 1",
+                (case_id,),
+            ).fetchone()
+            record_id = row[0] if row else -1
+
+        return ScreeningRecordResult(record_id=record_id, success=True, error=None)
+
+    except Exception as e:
+        logger.error("[screening_recorder] ERROR in clear: %s", e)
+        return ScreeningRecordResult(record_id=-1, success=False, error=str(e))
+
+
 def update_screening_outcome(
     case_id: str,
     outcome: str,

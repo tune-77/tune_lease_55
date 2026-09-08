@@ -134,6 +134,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "judgment_asset_promotions_applied": 0,
         "judgment_asset_candidates_new": 0,
         "prompt_feedback_new": 0,
+        "human_response_feedback_new": 0,
     }
     assert wizard_rows[0]["surface"] == "cloudrun_score_calculated"
     assert "asset_name" in wizard_rows[0]["empty_fields"]
@@ -190,6 +191,37 @@ def test_materialize_events_writes_prompt_feedback_log(tmp_path, monkeypatch) ->
     assert result2["prompt_feedback_new"] == 0
     rows_after = prompt_feedback_log.read_text(encoding="utf-8").splitlines()
     assert len(rows_after) == 1
+
+
+def test_materialize_events_writes_human_response_feedback_log(tmp_path, monkeypatch) -> None:
+    feedback_log = tmp_path / "human_response_feedback.jsonl"
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "HUMAN_RESPONSE_FEEDBACK_LOG", feedback_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+    event = {
+        "event_id": "human-feedback-1",
+        "ts": "2026-08-31T15:05:00+00:00",
+        "event_type": "human_response_feedback",
+        "surface": "next_chat",
+        "payload": {
+            "rating": "good",
+            "route": "next_chat",
+            "message_preview": "質問",
+            "response_start": "回答",
+        },
+    }
+
+    result = syncer.materialize_events([event])
+
+    assert result["human_response_feedback_new"] == 1
+    rows = [json.loads(line) for line in feedback_log.read_text(encoding="utf-8").splitlines()]
+    assert rows == [{
+        **event["payload"],
+        "event_id": "human-feedback-1",
+        "ts": "2026-08-31T15:05:00+00:00",
+        "source": "cloudrun_input_writeback",
+    }]
+    assert syncer.materialize_events([event])["human_response_feedback_new"] == 0
 
 
 def test_materialize_events_restores_shion_agent_consultation_queue(tmp_path, monkeypatch) -> None:

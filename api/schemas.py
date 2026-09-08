@@ -81,6 +81,7 @@ class ScoringResponse(BaseModel):
     asset_bonuses: Optional[list] = None       # 物件プラス評価（換金性・残存価値優位）
     default_warnings: list = Field(default_factory=list)  # 高リスク財務パターン警告（実PDではない・スコア非影響）
     quantum_risk: Optional[float] = None       # 量子干渉リスクスコア 0-100（財務矛盾検出）
+    q_risk_breakdown: Optional[dict] = None    # Q_riskのルール別寄与内訳（表示専用・スコア非影響）
     financial_consistency_score: Optional[float] = None  # 旧Q_risk: 財務・入力整合性チェック 0-100
     financial_consistency_risk: Optional[dict] = None  # 旧Q_risk詳細 {score, level, patterns, pattern_details}
     credit_quantum_strong_warning: bool = False  # 信用リスク群×Q_risk の強警戒フラグ

@@ -30,6 +30,7 @@ SCREENING_LOOP_FEEDBACK_LOG = PROJECT_ROOT / "data" / "screening_loop_feedback.j
 CLOUDRUN_IMPROVEMENT_LOG = PROJECT_ROOT / "data" / "cloudrun_improvement_log.jsonl"
 CLOUDRUN_CHAT_LOG = PROJECT_ROOT / "data" / "cloudrun_chat_log.jsonl"
 PROMPT_FEEDBACK_LOG = PROJECT_ROOT / "data" / "prompt_feedback_log.jsonl"
+HUMAN_RESPONSE_FEEDBACK_LOG = PROJECT_ROOT / "data" / "human_response_feedback.jsonl"
 SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
 JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = PROJECT_ROOT / "data" / "judgment_asset_feedback_drops.jsonl"
 SHION_HYPOTHESIS_COLLISION_LOG = PROJECT_ROOT / "data" / "shion_hypothesis_collision_log.jsonl"
@@ -657,6 +658,20 @@ def _screening_loop_feedback_from_event(event: dict) -> dict | None:
     }
 
 
+def _human_response_feedback_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "human_response_feedback":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    if not payload:
+        return None
+    return {
+        **payload,
+        "event_id": event.get("event_id"),
+        "ts": payload.get("ts") or event.get("ts"),
+        "source": "cloudrun_input_writeback",
+    }
+
+
 def _first_text(*values: Any, limit: int = 900) -> str:
     for value in values:
         text = str(value or "").strip()
@@ -1112,6 +1127,9 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     improvement_rows = [row for event in events if (row := _improvement_entry_from_event(event))]
     chat_rows = [row for event in events if (row := _chat_entry_from_event(event))]
     prompt_feedback_rows = [row for event in events if (row := _prompt_feedback_entry_from_event(event))]
+    human_response_feedback_rows = [
+        row for event in events if (row := _human_response_feedback_from_event(event))
+    ]
     hypothesis_collision_rows = _build_hypothesis_collision_rows(chat_rows)
     shion_memory_usage_rows = [row for event in events if (row := _shion_memory_usage_from_event(event))]
     shion_memory_usage_rows.extend(
@@ -1156,6 +1174,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "improvement_new": _append_jsonl_dedup(CLOUDRUN_IMPROVEMENT_LOG, improvement_rows) if improvement_rows else 0,
         "chat_new": _append_jsonl_dedup(CLOUDRUN_CHAT_LOG, chat_rows) if chat_rows else 0,
         "prompt_feedback_new": _append_jsonl_dedup(PROMPT_FEEDBACK_LOG, prompt_feedback_rows) if prompt_feedback_rows else 0,
+        "human_response_feedback_new": _append_jsonl_dedup(HUMAN_RESPONSE_FEEDBACK_LOG, human_response_feedback_rows) if human_response_feedback_rows else 0,
         "hypothesis_collision_new": _append_jsonl_dedup(SHION_HYPOTHESIS_COLLISION_LOG, hypothesis_collision_rows) if hypothesis_collision_rows else 0,
         "shion_memory_usage_new": _append_jsonl_dedup(SHION_MEMORY_USAGE_LOG, shion_memory_usage_rows) if shion_memory_usage_rows else 0,
         "shion_agent_consultations_new": _append_jsonl_dedup(SHION_AGENT_CONSULTATION_QUEUE, shion_agent_consultation_rows) if shion_agent_consultation_rows else 0,

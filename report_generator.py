@@ -171,6 +171,41 @@ def generate_approval_checklist(risk_level: str) -> str:
 
 
 # =====================
+# 3b. 参考情報（補助金・規制）
+# =====================
+def generate_reference_info(industry: str) -> str:
+    """業種に関連する補助金・規制ノートをVaultの既存資産から参考情報として提示する。
+
+    スコア・承認判定には一切使わない。新規スクレイピングやAPI呼び出しは行わず、
+    共通検索経路（mobile_app.obsidian_bridge.search_notes）で既にVaultにある
+    ノートだけを対象にする。Vault未接続・検索失敗時は空文字を返して黙って省略する。
+    """
+    industry = (industry or "").strip()
+    if not industry:
+        return ""
+    try:
+        from mobile_app.obsidian_bridge import search_notes
+
+        hits = search_notes(f"{industry} 補助金 規制 制度", limit=3, max_chars=200)
+    except Exception:
+        return ""
+    lines = [item for item in (
+        f"  - {str(hit.get('path') or '').strip()}"
+        + (f": {str(hit.get('snippet') or '').strip()[:120]}" if hit.get("snippet") else "")
+        for hit in hits
+        if str(hit.get("path") or "").strip()
+    )]
+    if not lines:
+        return ""
+    return (
+        "\n【参考情報：補助金・規制】\n"
+        "  （スコア・承認判定には反映していません。担当者の確認用参考情報です）\n"
+        + "\n".join(lines)
+        + "\n"
+    )
+
+
+# =====================
 # 4. 今後の見込み
 # =====================
 def generate_outlook(result) -> str:
@@ -303,6 +338,7 @@ def generate_full_report(
         f"{load_industry_trends(result.company.industry, industry_trends_file)}\n"
     )
     report += generate_approval_checklist(result.risk_level)
+    report += generate_reference_info(result.company.industry)
     report += generate_outlook(result)
     report += generate_humor_comment(result, style=style)
 

@@ -1,6 +1,6 @@
 ---
 name: tune-lease-55-obsidian-wiki
-description: Obsidian wiki/linking and maintenance workflow for tune_lease_55. Use when the user asks to "obdisian wiki", "Obsidian wiki", "wiki", "Obsidian", "connect notes", "search terms", "Related links", "related sections", or to make the project easier to search across daily notes and project notes.
+description: tune_lease_55の既存Obsidianノートを、Wiki hub・検索語索引・Relatedリンクで整理する時に使用する。「Wikiを整える」「ノートを繋げる」「検索語インデックス」「Relatedリンクを整理」が対象。単独ノートの保存・追記、通常検索、RAGコード変更、根拠付きレポート作成には使用しない。
 ---
 
 # tune-lease-55 Obsidian Wiki
@@ -9,11 +9,13 @@ Use this skill to turn project work into searchable Obsidian notes and keep the 
 
 ## When to use
 
-- The user asks to "wikiして", "Obsidianにまとめて", "検索しやすくして", or "関連ノートを繋げて".
+- The user asks to "wikiを整えて", "検索しやすくして", or "関連ノートを繋げて".
 - The work spans multiple project notes and should be navigable later.
 - The user wants searchability, bidirectional links, or a reusable note structure.
 - The user wants to normalize note entrances, Related sections, or search-term indexes.
 - The user wants periodic wiki maintenance, not just a one-off note update.
+
+Do not use this skill for a one-off note save, ordinary Vault search, RAG implementation change, or a source-traceable report. Route those to `obsidian`, `obsidian-search-rule`, or `kb-report` as appropriate.
 
 ## Core workflow
 

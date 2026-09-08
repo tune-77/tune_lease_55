@@ -96,22 +96,25 @@ def test_intake_feeds_recursive_ranker(tmp_path, monkeypatch):
     assert bundle["ranked_queue"][0]["target_module"] == "frontend/src/app/faq/page.tsx"
 
 
-def test_load_intake_preserves_original_source(tmp_path):
-    """shion_promise 等の元 source を保持し、改善ログUIで出所を辿れるようにする。"""
+def test_load_intake_excludes_shion_promises_and_preserves_quick_fix_source(tmp_path):
+    """調査約束は専用 pending 台帳で扱い、コード改善キューを汚さない。"""
     from scripts import recursive_self_improvement as rsi
 
     intake = tmp_path / "chat_quick_fix_intake.jsonl"
     intake.write_text(
         json.dumps({"id": "promise_x", "title": "残価の根拠を調べる", "source": "shion_promise"})
         + "\n"
-        + json.dumps({"id": "chat_y", "title": "タイポ修正"})  # source 未指定
+        + json.dumps({"id": "chat_y", "title": "タイポ修正", "source": "chat"})
+        + "\n"
+        + json.dumps({"id": "chat_z", "title": "表示修正"})  # source 未指定
         + "\n",
         encoding="utf-8",
     )
 
     items = {i["id"]: i for i in rsi.load_chat_quick_fix_intake(intake)}
-    assert items["promise_x"]["source"] == "shion_promise"
-    assert items["chat_y"]["source"] == "chat_quick_fix"  # 未指定は従来どおり
+    assert "promise_x" not in items
+    assert items["chat_y"]["source"] == "chat"
+    assert items["chat_z"]["source"] == "chat_quick_fix"  # 未指定は従来どおり
 
 
 def test_load_intake_excludes_already_executed_ids(tmp_path):

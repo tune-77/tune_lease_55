@@ -1,6 +1,6 @@
 ---
 name: obsidian
-description: Obsidian Vault とCodex作業を連携するスキル。Vault探索、Markdownノート作成、日次ノート追記、プロジェクト作業ログ・決定事項・TODOのObsidian保存、既存ノート検索、機密情報を避けた要約保存を依頼されたときに使用する。「Obsidianに書いて」「Vaultへ保存」「今日のノートに追記」「codex-obsidian」「作業ログをノート化」などで必ず使用する。
+description: ローカルObsidian Vaultのノートを検索・閲覧・作成・追記し、日次メモや作業ログを保存する時に使用する。「今日のノートに追記」「Vault内を検索」「作業ログをノート化」などが対象。RAG検索コードの実装変更、promoted knowledgeだけを使う保存レポート、Wiki索引・Relatedリンク整理には使用しない。
 ---
 
 # Codex Obsidian Skill
@@ -8,6 +8,14 @@ description: Obsidian Vault とCodex作業を連携するスキル。Vault探索
 ## 目的
 
 Codexの作業結果、意思決定、TODO、検証ログをObsidian VaultへMarkdownとして保存・追記する。
+
+## ルーティング境界
+
+- 単に「Obsidian/Vaultへ保存」: `obsidian-save` の保存先判定を適用し、本skillで書き込む。
+- AIチャットのRAG・Vault検索コード変更: `obsidian-search-rule`。
+- promoted knowledgeだけを根拠にMarkdownレポートを保存: `kb-report`。
+- Wiki hub、検索語索引、`Related`リンクの整理: `tune-lease-55-obsidian-wiki`。
+- 通常のノート検索・作成・追記・作業ログ: 本skill。
 
 ## 原則
 

@@ -22,6 +22,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -473,10 +474,15 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
 # 共有シークレットによる API アクセス制御（api/api_key_auth.py に実装。多層防御）。
-from api.api_key_auth import ApiKeyAuthMiddleware, api_access_key_required, get_api_access_key
+from api.api_key_auth import (
+    ApiKeyAuthMiddleware,
+    api_access_key_required,
+    api_docs_enabled,
+    get_api_access_key,
+)
 # 公開デモ用の削除保護（api/demo_guard.py に実装）。
 from api.demo_guard import DemoReadonlyMiddleware, is_demo_readonly
-from api.security_headers import SecurityHeadersMiddleware
+from api.security_headers import SecurityHeadersMiddleware, get_trusted_hosts
 
 
 _ALLOWED_ORIGINS = [
@@ -488,16 +494,22 @@ for _origin in [o.strip() for o in _extra_cors_origins.split(",") if o.strip()]:
     if _origin not in _ALLOWED_ORIGINS:
         _ALLOWED_ORIGINS.append(_origin)
 
+_API_DOCS_ENABLED = api_docs_enabled()
+
 app = FastAPI(
     title="Lease Scoring API",
     description="リース審査ロジックのバックエンドAPI",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if _API_DOCS_ENABLED else None,
+    redoc_url="/redoc" if _API_DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _API_DOCS_ENABLED else None,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=get_trusted_hosts())
 app.add_middleware(SecurityHeadersMiddleware)
 # 公開デモの削除保護（DEMO_READONLY 設定時のみ有効）
 app.add_middleware(DemoReadonlyMiddleware)
@@ -587,6 +599,9 @@ app.include_router(vault_hub_router)
 
 from api.routers.screening_misc import router as screening_misc_router
 app.include_router(screening_misc_router)
+
+from api.routers.screening_report import router as screening_report_router
+app.include_router(screening_report_router)
 
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
@@ -1426,6 +1441,37 @@ def _log_wizard_input_task(inputs: dict) -> None:
             _f.write(entry)
 
 
+def _record_screening_result_task(case_id: str, result: dict) -> None:
+    """審査結果を screening_records に記録する（P4-001 サイドカー）。
+
+    Streamlit 側 (`components/score_calculation.py`) は `_api_mode` のとき記録を
+    スキップし、API 側に委ねている。API経由の審査はここが唯一の記録経路になる。
+    スコア・判定・レスポンスには一切影響させない（例外は握り潰す）。
+    input_snapshot は company_name 等が screening_recorder の PII_KEYS に含まれず
+    素通りするため、スコアだけを記録して渡さない。
+    """
+    try:
+        from datetime import datetime, timezone
+
+        from screening_recorder import record_screening_result
+
+        def _clamp(value: object, default: float = 0.0) -> float:
+            return min(max(_score_float(value, default), 0.0), 100.0)
+
+        record_screening_result(
+            case_id=str(case_id),
+            screened_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            total_score=_clamp(result.get("score")),
+            asset_score=_clamp(result.get("asset_score")),
+            tenant_score=_clamp(result.get("score_borrower")),
+            q_risk_score=_clamp(result.get("quantum_risk")),
+            source="api",
+            db_path=_LEASE_DB_PATH,
+        )
+    except Exception as exc:  # 記録失敗は審査を止めない
+        print(f"[WARNING] screening_records 記録をスキップしました: {exc}")
+
+
 @app.post("/api/score/calculate", response_model=ScoringResponse)
 def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
     try:
@@ -1574,6 +1620,9 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
                 final_status=case_data.get("final_status", ""),
                 source="score_full",
             )
+            background_tasks.add_task(
+                _record_screening_result_task, case_id, result
+            )
         background_tasks.add_task(
             record_cloudrun_input_event,
             event_type="score_full_calculated",
@@ -1646,6 +1695,7 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             asset_bonuses=result.get("asset_bonuses", []),
             default_warnings=result.get("default_warnings", []),
             quantum_risk=result.get("quantum_risk"),
+            q_risk_breakdown=result.get("q_risk_breakdown"),
             financial_consistency_score=result.get("financial_consistency_score"),
             financial_consistency_risk=result.get("financial_consistency_risk"),
             credit_quantum_strong_warning=result.get("credit_quantum_strong_warning", False),
@@ -1971,6 +2021,12 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
     }
 
 
+@app.get("/api/health/auth")
+def authenticated_health():
+    """起動時に認証設定も含めて確認する軽量なAPI。"""
+    return {"ok": True}
+
+
 @app.delete("/api/cases/operation/clear-all")
 def clear_all_pending_cases(background_tasks: BackgroundTasks):
     """未登録案件をすべて削除する（一括クリア）"""
@@ -2000,12 +2056,19 @@ def delete_case(case_id: str, background_tasks: BackgroundTasks):
     """案件を past_cases から削除する"""
     from data_cases import delete_case as delete_case_from_db
     try:
-        if not _reject_cloudrun_score_pending_case(str(case_id)) and not _reject_cloudrun_event_pending_case(str(case_id)):
-            delete_case_from_db(str(case_id))
+        if _parse_cloudrun_score_case_id(case_id) is not None:
+            deleted = _reject_cloudrun_score_pending_case(case_id, raise_on_error=True)
+        elif _parse_cloudrun_event_case_id(case_id):
+            deleted = _reject_cloudrun_event_pending_case(case_id, raise_on_error=True)
+        else:
+            deleted = delete_case_from_db(case_id, raise_on_error=True)
     except Exception:
-        pass
+        logger.exception("case deletion failed: %s", case_id)
+        raise HTTPException(status_code=503, detail="案件の削除に失敗しました。再試行してください。")
+    if not deleted:
+        raise HTTPException(status_code=404, detail="削除対象の案件が見つかりません。")
     background_tasks.add_task(_git_push_db)
-    return {"message": "Deleted if existed", "case_id": case_id}
+    return {"message": "Deleted", "case_id": case_id}
 @app.get("/api/dashboard/stats")
 def get_dashboard_stats():
     try:
@@ -5502,7 +5565,7 @@ def _promote_cloudrun_score_input_to_pending_case(score_input_id: int) -> str | 
     return str(new_case_id)
 
 
-def _reject_cloudrun_score_pending_case(case_id: str) -> bool:
+def _reject_cloudrun_score_pending_case(case_id: str, *, raise_on_error: bool = False) -> bool:
     score_id = _parse_cloudrun_score_case_id(case_id)
     if score_id is None or not _CLOUDRUN_RETURN_DB.exists():
         return False
@@ -5524,10 +5587,12 @@ def _reject_cloudrun_score_pending_case(case_id: str) -> bool:
             return cur.rowcount > 0
     except Exception as exc:
         logger.warning("cloudrun score pending reject skipped: %s", exc)
+        if raise_on_error:
+            raise
         return False
 
 
-def _reject_cloudrun_event_pending_case(case_id: str) -> bool:
+def _reject_cloudrun_event_pending_case(case_id: str, *, raise_on_error: bool = False) -> bool:
     event_id = _parse_cloudrun_event_case_id(case_id)
     if not event_id:
         return False
@@ -5539,6 +5604,8 @@ def _reject_cloudrun_event_pending_case(case_id: str) -> bool:
     if result.get("ok") is True:
         _invalidate_cloudrun_input_events_cache()
         return True
+    if raise_on_error:
+        raise RuntimeError("Failed to persist pending case rejection")
     return False
 
 

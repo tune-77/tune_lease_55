@@ -549,4 +549,13 @@ echo "[反映] Cloud Run検疫データ（shion_review/judgment_asset/ocr_result
     --apply --allow-main-db
 log_step "promote_cloudrun_return_data" $? || true
 
+# 統計ビュー screening_records（data/screening_db.sqlite）を past_cases から再構築。
+# 全削除→全件INSERTの冪等な洗い替えで、審査サイドカーが書く
+# data/lease_data.db の同名テーブルとは別DB・別系統なので消し合わない。
+# 追記のみ・失敗しても FINAL_EXIT は変えない（統計の遅れで朝報告を止めない）。
+echo ""
+echo "[集計] past_cases から統計ビュー screening_records を再構築中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/aggregate_stats_from_past_cases.py"
+log_step "aggregate_stats_from_past_cases" $? || true
+
 exit "${FINAL_EXIT}"

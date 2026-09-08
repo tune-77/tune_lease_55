@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Brain, Search, Copy } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Brain, Search, Copy, FileDown } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
@@ -31,6 +31,7 @@ import {
   normalizeReviewText,
   buildShionReviewPrompt,
   buildShionReviewFallback,
+  ensureJudgmentAssetCitations,
   parseExperienceSnapshot,
   normalizeExperienceCase,
   buildExperienceCaseQuery,
@@ -323,6 +324,34 @@ function AiHeroCard({
   data?: Partial<ScoringFormData>;
   onOpenKnowledge?: () => void;
 }) {
+  const [exportingReport, setExportingReport] = useState(false);
+
+  const handleExportReport = async () => {
+    if (!result || exportingReport) return;
+    setExportingReport(true);
+    try {
+      const res = await apiClient.post<string>(
+        "/api/screening/report",
+        { result, case_label: data?.company_name || "" },
+        { responseType: "text" }
+      );
+      const blob = new Blob([res.data], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `審査分析レポート_${data?.company_name || "case"}.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to export screening report", err);
+      window.alert("分析レポートの出力に失敗しました。");
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   if (!result) return null;
   const score = getScreeningScore(result);
   const hantei: string = result.hantei ?? "";
@@ -381,6 +410,15 @@ function AiHeroCard({
               関連知識を見る
             </button>
           )}
+          <button
+            type="button"
+            onClick={handleExportReport}
+            disabled={exportingReport}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-[11px] font-black text-white backdrop-blur-sm transition hover:bg-white/25 disabled:opacity-50"
+          >
+            <FileDown className="h-3.5 w-3.5" />
+            {exportingReport ? "出力中…" : "分析レポートを出力"}
+          </button>
         </div>
       </div>
       {data && (
@@ -1555,7 +1593,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("case_id")) return;
-    const raw = window.localStorage.getItem(SCREENING_RETURN_STATE_KEY);
+    window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+    const raw = window.sessionStorage.getItem(SCREENING_RETURN_STATE_KEY);
     if (!raw) {
       setDraftRestored(true);
       return;
@@ -1586,7 +1625,7 @@ export default function Dashboard() {
         if (!Number.isNaN(savedDate.getTime())) setLastDraftSavedAt(savedDate);
       }
     } catch {
-      window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+      window.sessionStorage.removeItem(SCREENING_RETURN_STATE_KEY);
     } finally {
       setDraftRestored(true);
     }
@@ -1601,7 +1640,7 @@ export default function Dashboard() {
     const timer = window.setTimeout(() => {
       try {
         const savedAt = new Date();
-        window.localStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
+        window.sessionStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
           version: SCREENING_DRAFT_VERSION,
           formData,
           result,
@@ -2004,7 +2043,7 @@ export default function Dashboard() {
       const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0;
       const memoryRefs = Array.isArray(memoryRecall.refs) ? memoryRecall.refs.length : 0;
       const nextReview: ShionScreeningReview = {
-        reply: String(res.data?.reply || "紫苑レビューが空でした。"),
+        reply: ensureJudgmentAssetCitations(String(res.data?.reply || "紫苑レビューが空でした。"), candidates),
         memoryRefs,
         knowledgeRefs,
         identityUsed: Boolean(identityMemory.used),
@@ -2085,6 +2124,7 @@ export default function Dashboard() {
     setJudgmentAssetFeedbackSavingId("");
     setActiveTab("input");
     window.localStorage.removeItem(SCREENING_RETURN_STATE_KEY);
+    window.sessionStorage.removeItem(SCREENING_RETURN_STATE_KEY);
     setLastDraftSavedAt(null);
   };
 
@@ -2194,7 +2234,7 @@ export default function Dashboard() {
       quantum_risk: result.quantum_risk,
       case_id: result.case_id,
     };
-    window.localStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
+    window.sessionStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
       version: SCREENING_DRAFT_VERSION,
       formData,
       result,
@@ -2206,7 +2246,7 @@ export default function Dashboard() {
       activeTab: "analysis",
       savedAt: new Date().toISOString(),
     }));
-    window.localStorage.setItem("lease-gunshi-context", JSON.stringify(chatContext));
+    window.sessionStorage.setItem("lease-gunshi-context", JSON.stringify(chatContext));
     router.push("/chat");
   };
 
@@ -2242,7 +2282,7 @@ export default function Dashboard() {
       lease_amount: formData.acquisition_cost,
       reason: "screening_handoff",
     };
-    window.localStorage.setItem("lease-debate-context", JSON.stringify(debateContext));
+    window.sessionStorage.setItem("lease-debate-context", JSON.stringify(debateContext));
     router.push("/debate");
   };
 
