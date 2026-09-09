@@ -194,6 +194,22 @@ def get_cloud_status():
     }
 
 
+@router.get("/api/system/knowledge-sync-health")
+def get_knowledge_sync_health():
+    """Return only the non-sensitive Vault-to-ChromaDB sync status.
+
+    This narrow response is safe for the external GitHub Actions monitor.  The
+    full cloud-status response remains behind the Web Basic-auth gate because
+    it contains runtime paths, database configuration, and service metadata.
+    """
+    return {
+        "knowledge_sync": _knowledge_sync_status(
+            _cloud_gcs_vault_status(),
+            _cloud_chroma_status(),
+        )
+    }
+
+
 @router.get("/api/loop-proof")
 def get_loop_proof():
     """審査員向け「ループが閉じた証拠」の集計値。

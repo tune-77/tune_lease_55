@@ -165,6 +165,8 @@ def test_public_tunnel_requires_web_auth_and_same_origin_api_proxy():
     assert "EnvironmentVariables.PUBLIC_TUNNEL_AUTH_FILE" in installer
     assert "process.env.PUBLIC_TUNNEL_AUTH" in proxy
     assert 'matcher: "/:path*"' in proxy
+    assert '=== "/api/system/knowledge-sync-health"' in proxy
+    assert "&& !isPublicKnowledgeSyncProbe" in proxy
     assert 'return "http://127.0.0.1:8000"' not in api_client
     assert judgment_drill.count("internalApiAuthHeaders()") == 3
 
