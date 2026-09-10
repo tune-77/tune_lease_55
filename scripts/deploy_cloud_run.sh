@@ -86,7 +86,17 @@ api_access_key_ref="$(require_api_access_key_secret "$PROJECT_ID" "service")" ||
 tunnel_auth_ref="$(require_public_tunnel_auth_secret "$PROJECT_ID" "service")" || exit 1
 # API_ACCESS_KEYとPUBLIC_TUNNEL_AUTHは1つの--set-secretsにまとめる。gcloudは
 # --set-secretsを複数回指定すると後勝ちで上書きするため、分けると片方が消える。
-deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_auth_ref}")
+secrets_value="API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_auth_ref}"
+
+# GitHub Actionsの knowledge-sync-health 監視専用シークレット（frontend/src/proxy.ts
+# がBasic認証の代わりにX-Sync-Probe-Keyヘッダで要求する）。無くてもデプロイは止めない
+# ―― 未設定ならproxy.tsがそのプローブパスを401にするだけで、安全側に倒れるため。
+if gcloud secrets describe KNOWLEDGE_SYNC_PROBE_TOKEN --project "$PROJECT_ID" >/dev/null 2>&1; then
+  secrets_value+=",KNOWLEDGE_SYNC_PROBE_TOKEN=KNOWLEDGE_SYNC_PROBE_TOKEN:latest"
+else
+  echo "Warning: Secret Manager secret KNOWLEDGE_SYNC_PROBE_TOKEN was not found; /api/system/knowledge-sync-health will 401 for the external monitor until it is created." >&2
+fi
+deploy_args+=(--set-secrets "$secrets_value")
 has_replacement_secrets=1
 
 if (( has_replacement_secrets == 0 )); then

@@ -65,7 +65,17 @@ deploy_args=(
 # デプロイされると全APIが503になるため、設定漏れはfail-closedで止める。
 api_access_key_ref="$(require_api_access_key_secret "$PROJECT_ID" "Web")" || exit 1
 tunnel_auth_ref="$(require_public_tunnel_auth_secret "$PROJECT_ID" "Web")" || exit 1
-deploy_args+=(--set-secrets "API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_auth_ref}")
+secrets_value="API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_auth_ref}"
+
+# GitHub Actionsの knowledge-sync-health 監視専用シークレット（frontend/src/proxy.ts
+# がBasic認証の代わりにX-Sync-Probe-Keyヘッダで要求する）。無くてもデプロイは止めない
+# ―― 未設定ならproxy.tsがそのプローブパスを401にするだけで、安全側に倒れるため。
+if gcloud secrets describe KNOWLEDGE_SYNC_PROBE_TOKEN --project "$PROJECT_ID" >/dev/null 2>&1; then
+  secrets_value+=",KNOWLEDGE_SYNC_PROBE_TOKEN=KNOWLEDGE_SYNC_PROBE_TOKEN:latest"
+else
+  echo "Warning: Secret Manager secret KNOWLEDGE_SYNC_PROBE_TOKEN was not found; /api/system/knowledge-sync-health will 401 for the external monitor until it is created." >&2
+fi
+deploy_args+=(--set-secrets "$secrets_value")
 
 # Web境界は公開（--allow-unauthenticated）。2026-09-06にIAM認証必須へ変更し、
 # 2026-09-08にPR #983で一時公開へ戻したが、frontend/src/proxy.ts は Web境界の
