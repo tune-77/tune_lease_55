@@ -36,6 +36,13 @@ def test_daily_pipeline_has_single_run_lock(tmp_path):
     lock_dir = tmp_path / "pipeline.lock"
     lock_dir.mkdir()
     (lock_dir / "pid").write_text(f"{os.getpid()}\n", encoding="utf-8")
+    process_start = subprocess.run(
+        ["ps", "-p", str(os.getpid()), "-o", "lstart="],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    (lock_dir / "process_start").write_text(f"{process_start}\n", encoding="utf-8")
     env = os.environ.copy()
     env["PIPELINE_LOCK_DIR"] = str(lock_dir)
     result = subprocess.run(
@@ -50,9 +57,22 @@ def test_daily_pipeline_has_single_run_lock(tmp_path):
     assert "二重起動を正常スキップ" in result.stdout
 
 
-def test_daily_pipeline_does_not_publish_to_gist():
+def test_daily_pipeline_uses_metadata_only_external_heartbeat():
     core_script = Path("scripts/run_daily_improvement_core.sh").read_text(encoding="utf-8")
+    wrapper_script = Path("scripts/run_daily_improvement_pipeline.sh").read_text(encoding="utf-8")
+    heartbeat_workflow = Path(".github/workflows/pipeline_heartbeat.yml").read_text(encoding="utf-8")
 
     assert "gh gist" not in core_script
     assert "GIST_ID" not in core_script
-    assert not Path(".github/workflows/pipeline_heartbeat.yml").exists()
+    assert "daily-improvement-completed" in wrapper_script
+    assert "repository_dispatch" in heartbeat_workflow
+    assert "daily-improvement-completed" in heartbeat_workflow
+    assert "GIST_ID" not in heartbeat_workflow
+
+
+def test_daily_pipeline_lock_validates_process_start_time():
+    script = Path("scripts/run_daily_improvement_pipeline.sh").read_text(encoding="utf-8")
+
+    assert "PIPELINE_LOCK_START_FILE" in script
+    assert 'ps -p "$1" -o lstart=' in script
+    assert '[ "${owner_start}" = "${current_start}" ]' in script

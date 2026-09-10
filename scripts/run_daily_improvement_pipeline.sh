@@ -17,6 +17,7 @@ EXPORT_FILE="/tmp/obsidian_improvements_export.txt"
 # PROJECT_ROOT/PYTHON と同じ理由（別プロセス起動のため export が無いと子スクリプトへ
 # 渡らない）。値自体は core.sh 側の既定値と同一だが、将来ズレたときに気づけるようにする。
 export EXPORT_FILE
+source "${PROJECT_ROOT}/scripts/pipeline_log_step.sh"
 
 # launchd と手動/別スケジューラが同時に入口を起動しても、成果物・SQLite・
 # ChromaDB を二重更新しない。mkdir は同一Mac上で原子的なので、先着1本だけを
@@ -24,9 +25,15 @@ export EXPORT_FILE
 # 起動元ごとに TMPDIR が異なると排他できないため、全経路で同じ固定パスを使う。
 PIPELINE_LOCK_DIR="${PIPELINE_LOCK_DIR:-/tmp/tunelease-daily-improvement.lock}"
 PIPELINE_LOCK_PID_FILE="${PIPELINE_LOCK_DIR}/pid"
+PIPELINE_LOCK_START_FILE="${PIPELINE_LOCK_DIR}/process_start"
+
+process_start_token() {
+    ps -p "$1" -o lstart= 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
 
 cleanup_pipeline_lock() {
     rm -f "${PIPELINE_LOCK_PID_FILE}"
+    rm -f "${PIPELINE_LOCK_START_FILE}"
     rmdir "${PIPELINE_LOCK_DIR}" 2>/dev/null || true
 }
 
@@ -40,27 +47,39 @@ install_pipeline_lock_traps() {
 acquire_pipeline_lock() {
     if mkdir "${PIPELINE_LOCK_DIR}" 2>/dev/null; then
         printf '%s\n' "$$" > "${PIPELINE_LOCK_PID_FILE}"
+        process_start_token "$$" > "${PIPELINE_LOCK_START_FILE}"
         install_pipeline_lock_traps
         return 0
     fi
 
     local owner_pid=""
+    local owner_start=""
+    local current_start=""
     # mkdir 直後・PID書き込み直前のごく短い競合窓では、正当な先行実行の
     # ロックを残存扱いしないよう一度だけ待って読み直す。
-    if [ ! -s "${PIPELINE_LOCK_PID_FILE}" ]; then
+    if [ ! -s "${PIPELINE_LOCK_PID_FILE}" ] || [ ! -s "${PIPELINE_LOCK_START_FILE}" ]; then
         sleep 1
     fi
     owner_pid="$(sed -n '1p' "${PIPELINE_LOCK_PID_FILE}" 2>/dev/null || true)"
-    if [[ "${owner_pid}" =~ ^[0-9]+$ ]] && kill -0 "${owner_pid}" 2>/dev/null; then
+    owner_start="$(sed -n '1p' "${PIPELINE_LOCK_START_FILE}" 2>/dev/null || true)"
+    if [[ "${owner_pid}" =~ ^[0-9]+$ ]]; then
+        current_start="$(process_start_token "${owner_pid}")"
+    fi
+    if [[ "${owner_pid}" =~ ^[0-9]+$ ]] \
+        && kill -0 "${owner_pid}" 2>/dev/null \
+        && [ -n "${owner_start}" ] \
+        && [ "${owner_start}" = "${current_start}" ]; then
         echo "改善パイプラインは既に実行中です（PID ${owner_pid}）。二重起動を正常スキップします。"
         return 1
     fi
 
     echo "警告: 残存した改善パイプラインロックを回収します: ${PIPELINE_LOCK_DIR}"
     rm -f "${PIPELINE_LOCK_PID_FILE}"
+    rm -f "${PIPELINE_LOCK_START_FILE}"
     rmdir "${PIPELINE_LOCK_DIR}" 2>/dev/null || return 1
     mkdir "${PIPELINE_LOCK_DIR}" 2>/dev/null || return 1
     printf '%s\n' "$$" > "${PIPELINE_LOCK_PID_FILE}"
+    process_start_token "$$" > "${PIPELINE_LOCK_START_FILE}"
     install_pipeline_lock_traps
     return 0
 }
@@ -103,6 +122,31 @@ POST_EXIT=$?
 FINAL_EXIT=${CORE_EXIT}
 if [ ${FINAL_EXIT} -eq 0 ] && [ ${POST_EXIT} -ne 0 ]; then
     FINAL_EXIT=${POST_EXIT}
+fi
+
+# 公開レポートをGistへ配布せず、成功時刻だけをGitHub Actionsへ通知する。
+# repository_dispatch は機微情報を含まず、Mac/launchd停止をGitHub側の定期監視で検知できる。
+if [ ${FINAL_EXIT} -eq 0 ]; then
+    echo ""
+    echo "[監視] 外部パイプラインheartbeatをGitHub Actionsへ通知中..."
+    HEARTBEAT_EXIT=1
+    if command -v gh >/dev/null 2>&1; then
+        for HEARTBEAT_ATTEMPT in 1 2 3; do
+            gh api --method POST repos/tune-77/tune_lease_55/dispatches \
+                -f event_type=daily-improvement-completed
+            HEARTBEAT_EXIT=$?
+            if [ ${HEARTBEAT_EXIT} -eq 0 ]; then
+                break
+            fi
+            echo "警告: heartbeat通知に失敗しました（試行 ${HEARTBEAT_ATTEMPT}/3）"
+            if [ ${HEARTBEAT_ATTEMPT} -lt 3 ]; then
+                sleep $((HEARTBEAT_ATTEMPT * 5))
+            fi
+        done
+    else
+        echo "警告: gh コマンドが見つからないためheartbeat通知を送れません"
+    fi
+    log_step "pipeline_heartbeat_dispatch" ${HEARTBEAT_EXIT}
 fi
 
 echo ""
