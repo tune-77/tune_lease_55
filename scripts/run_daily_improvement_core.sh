@@ -151,17 +151,6 @@ if [ ${MEMORY_HEALTH_EXIT} -ne 0 ]; then
 fi
 
 echo ""
-echo "[記憶] 記憶想起の回帰評価（評価セット）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/eval_shion_memory_recall.py" \
-    --index "${PROJECT_ROOT}/data/shion_memory_index.json" \
-    --min-pass-rate 0.9
-MEMORY_EVAL_EXIT=$?
-log_step "eval_shion_memory_recall" ${MEMORY_EVAL_EXIT}
-if [ ${MEMORY_EVAL_EXIT} -ne 0 ]; then
-    echo "警告: 記憶想起の回帰評価が基準を下回りました（終了コード ${MEMORY_EVAL_EXIT}）"
-fi
-
-echo ""
 echo "[回帰] Cloud Runニュース/記憶レイヤーの回帰テスト..."
 MEMORY_CHAT_REGRESSION_START=$(date +%s)
 "${PYTHON}" -m pytest -q \
@@ -243,7 +232,6 @@ PIPELINE_EXIT=$?
 log_step "auto_improvement_pipeline" ${PIPELINE_EXIT}
 
 LATEST_FILE="${PROJECT_ROOT}/reports/latest.json"
-GIST_ID="3980215df65cf75e972471f048b10d15"
 FINAL_EXIT="${PIPELINE_EXIT}"
 if [ -f "${RESULT_FILE}" ]; then
     cp "${RESULT_FILE}" "${LATEST_FILE}"
@@ -492,52 +480,6 @@ echo "[最適化] 30日以上前の未登録ケースを失注補完 → 重み�
 echo ""
 echo "[学習] スコア乖離パターンを検出して台帳に追記中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/learn_from_case_differences.py"; log_step "learn_from_case_differences" $?
-
-if [ -f "${LATEST_FILE}" ]; then
-    echo ""
-    echo "[配布] Gist に最終結果を更新中..."
-    if [ ${FINAL_EXIT} -eq 0 ]; then
-        # 公開前の機微情報チェック（Cloud Run由来の自由文が混ざるため）。
-        # 検出時はGist更新のみスキップし、パイプラインは失敗させない
-        if ! "${PYTHON}" "${PROJECT_ROOT}/scripts/check_gist_payload_safety.py" --file "${LATEST_FILE}"; then
-            echo "警告: 機微情報の疑いを検出したため Gist 更新をスキップします（ローカル結果は保存済み）"
-            log_step "gist_safety_block" 1
-        elif command -v gh >/dev/null 2>&1; then
-            # gh gist edit は GitHub API 呼び出しのため単発のネットワーク瞬断で失敗しやすい。
-            # 他の外形監視スクリプト（check_cloudrun_knowledge_sync.py 等）と同じ
-            # リトライ+バックオフの方針に合わせ、最大3回まで再試行する。
-            GIST_EXIT=1
-            GIST_RETRY_DELAY=5
-            for GIST_ATTEMPT in 1 2 3; do
-                GIST_ERR_OUTPUT="$(gh gist edit "${GIST_ID}" "${LATEST_FILE}" 2>&1)"
-                GIST_EXIT=$?
-                if [ ${GIST_EXIT} -eq 0 ]; then
-                    echo "Gist 更新完了: https://gist.github.com/tune-77/${GIST_ID}"
-                    break
-                fi
-                echo "警告: Gist 更新に失敗しました（試行 ${GIST_ATTEMPT}/3）: ${GIST_ERR_OUTPUT}"
-                if [ ${GIST_ATTEMPT} -lt 3 ]; then
-                    sleep "${GIST_RETRY_DELAY}"
-                    GIST_RETRY_DELAY=$((GIST_RETRY_DELAY * 2))
-                fi
-            done
-            if [ ${GIST_EXIT} -ne 0 ]; then
-                echo "警告: Gist 更新は3回試行後も失敗しました（ローカル結果は保存済み）"
-            fi
-            log_step "gist_update" ${GIST_EXIT}
-            if [ ${GIST_EXIT} -ne 0 ] && [ ${FINAL_EXIT} -eq 0 ]; then
-                FINAL_EXIT=${GIST_EXIT}
-            fi
-        else
-            echo "警告: gh コマンドが見つかりません（Gist 更新スキップ）"
-            if [ ${FINAL_EXIT} -eq 0 ]; then
-                FINAL_EXIT=1
-            fi
-        fi
-    else
-        echo "警告: 前段で失敗したため Gist 更新をスキップします"
-    fi
-fi
 
 # Cloud Run検疫DBの承認済みデータをlease_data.dbへ昇格
 # score_inputは対象外（企業名が[REDACTED]のプレースホルダー案件が無人で増えるのを防ぐため、

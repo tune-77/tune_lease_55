@@ -74,6 +74,30 @@ def test_resolve_recovered_entries_marks_active_alert_stale_resolved():
     assert ledger[0]["pending_review"] is False
 
 
+def test_resolve_recovered_entries_closes_retired_non_blocking_step():
+    ledger = [
+        {
+            "rev_id": "REV-358a",
+            "status": "pending_review",
+            "pending_review": True,
+            "source": "analyze_pipeline_health",
+            "description": "[パイプライン自動検出] gist_update が過去7日で失敗率50%",
+        }
+    ]
+    counts = {
+        "gist_update": {
+            "latest_exit_code": 1,
+        }
+    }
+
+    resolved = health_mod.resolve_recovered_entries(ledger, counts, "2026-09-10T10:32:50Z")
+
+    assert resolved == 1
+    assert ledger[0]["status"] == "stale_resolved"
+    assert ledger[0]["pending_review"] is False
+    assert "任意配布ステップ" in ledger[0]["resolution_reason"]
+
+
 def test_main_persists_recovered_entries_even_without_new_penalties(tmp_path, monkeypatch):
     """復旧済み整理は、新規の失敗率超過がない日にも保存される。"""
     log_path = tmp_path / "pipeline_step_log.jsonl"

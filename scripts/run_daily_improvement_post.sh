@@ -189,6 +189,19 @@ echo ""
 echo "[育成] 自動昇格後の紫苑記憶インデックスを再構築..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_index.py"; log_step "build_shion_memory_index_after_auto_promotions" $?
 
+# 想起評価は、当日分の安全な記憶昇格と最終インデックス再構築が終わった状態を
+# 評価する。core 前半で測ると、同じ日の post で直る一時状態を障害扱いしていた。
+echo ""
+echo "[記憶] 最終記憶インデックスの想起回帰評価（評価セット）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/eval_shion_memory_recall.py" \
+    --index "${PROJECT_ROOT}/data/shion_memory_index.json" \
+    --min-pass-rate 0.9
+MEMORY_EVAL_EXIT=$?
+log_step "eval_shion_memory_recall" ${MEMORY_EVAL_EXIT}
+if [ ${MEMORY_EVAL_EXIT} -ne 0 ]; then
+    echo "警告: 最終記憶インデックスの想起回帰評価が基準を下回りました（終了コード ${MEMORY_EVAL_EXIT}）"
+fi
+
 echo ""
 echo "[番人] Mana Obsidian Curator を生成（読み取り専用・暴走防止判定）..."
 MANA_REPAIR_ATTEMPT=0
