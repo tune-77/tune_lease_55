@@ -37,18 +37,40 @@ const hasValidTunnelCredentials = (request: NextRequest, password: string) => {
   }
 };
 
+const hasValidSyncProbeToken = (request: NextRequest, token: string) => {
+  const provided = request.headers.get("x-sync-probe-key") || "";
+  return provided.length > 0 && constantTimeEqual(provided, token);
+};
+
 export function proxy(request: NextRequest) {
   const key = process.env.API_ACCESS_KEY;
   const tunnelPassword = process.env.PUBLIC_TUNNEL_AUTH;
+  const syncProbeToken = process.env.KNOWLEDGE_SYNC_PROBE_TOKEN;
   const hostname = request.nextUrl.hostname;
   const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+  // GitHub Actions runs one read-only sync-health probe on a schedule. It used
+  // to skip Basic auth entirely for this path, but this proxy still attaches
+  // the privileged x-api-key afterwards, so an external caller that just kept
+  // requesting the path anonymously could reach FastAPI (Vault scan + Chroma
+  // count) for free and keep the scale-to-zero, concurrency=1 API billable or
+  // monopolized. It now needs its own dedicated secret (X-Sync-Probe-Key)
+  // instead of the browser Basic-auth password, so the probe stays
+  // authenticated without depending on copying that password into GitHub
+  // Secrets. The full cloud-status response still requires Basic auth.
+  const isKnowledgeSyncProbe = request.nextUrl.pathname
+    === "/api/system/knowledge-sync-health";
   const isTunnelRequest = process.env.PUBLIC_TUNNEL === "1"
     && (request.headers.has("cf-connecting-ip") || !isLocalHost);
-  if (isTunnelRequest && (!tunnelPassword || !hasValidTunnelCredentials(request, tunnelPassword))) {
-    return new NextResponse("Authentication required", {
-      status: 401,
-      headers: { "WWW-Authenticate": 'Basic realm="Tune Lease 55"' },
-    });
+  if (isTunnelRequest) {
+    const isAuthorized = isKnowledgeSyncProbe
+      ? !!syncProbeToken && hasValidSyncProbeToken(request, syncProbeToken)
+      : !!tunnelPassword && hasValidTunnelCredentials(request, tunnelPassword);
+    if (!isAuthorized) {
+      return new NextResponse("Authentication required", {
+        status: 401,
+        headers: { "WWW-Authenticate": 'Basic realm="Tune Lease 55"' },
+      });
+    }
   }
   if (!request.nextUrl.pathname.startsWith("/api/")) {
     return NextResponse.next();

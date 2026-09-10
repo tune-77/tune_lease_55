@@ -248,12 +248,16 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       # シークレット検証はビルドより前に置く（API側と同じ理由。deploy-api ジョブの
-      # 同名ステップのコメント参照）。
+      # 同名ステップのコメント参照）。PUBLIC_TUNNEL_AUTHもここで検証するのは、
+      # Web公開がBasic認証ゲート(proxy.ts)前提であり、これが無いと誰も使えない
+      # デプロイになってしまうため。
       - name: Preflight - verify API access key secret
         run: |
           set -Eeuo pipefail
           source scripts/lib/require_api_access_key_secret.sh
+          source scripts/lib/require_public_tunnel_auth_secret.sh
           require_api_access_key_secret "${PROJECT_ID}" "Web" >/dev/null
+          require_public_tunnel_auth_secret "${PROJECT_ID}" "Web" >/dev/null
 
       # ── API URL を取得（Next.js ビルド時の FASTAPI_URL として渡す） ──
       - name: Resolve API service URL
@@ -287,15 +291,33 @@ jobs:
           submit_cloud_build_and_wait "${PROJECT_ID}" cloudbuild.web.yaml "_IMAGE_URI=${IMAGE_URI},_FASTAPI_URL=${API_URL}" frontend/
 
       # ── Cloud Run にデプロイ ─────────────────────────────────────────
-      # Web境界はデータモードにかかわらずIAM認証必須（scripts/deploy_cloud_run_web.sh と
-      # 同じ方針、2026-09-06の "fix: authenticate public web entry points" 参照）。
-      # API_ACCESS_KEY はNext.jsのserver-side proxyがAPIへX-API-Keyを自動付与するために必須。
+      # Web境界は公開（--allow-unauthenticated）。単純にIAMを外すだけだと、
+      # frontend/src/proxy.ts が Web境界のIAM有無に関係なく全ての未認証 /api/* リクエストへ
+      # 特権的な API_ACCESS_KEY を代理付与するため、誰でもそのプロキシ経由でAPIの鍵付き
+      # エンドポイント（コスト発生するchat・案件削除等）を叩けてしまい、元のコスト急増
+      # インシデントと同種の穴を別URLで再現する（Codexレビューで指摘、PR #983 で一度
+      # 発生）。そのため PUBLIC_TUNNEL=1 と PUBLIC_TUNNEL_AUTH を必ずセットで配線する。
+      # proxy.ts はこの2つが揃っている時、Basic認証（ID: lease）を通らない限り
+      # /api/* を含む全パスを401で拒否するため、未認証の第三者はAPIへ到達できない。
       - name: Deploy to Cloud Run
         run: |
           set -Eeuo pipefail
           source scripts/lib/require_api_access_key_secret.sh
+          source scripts/lib/require_public_tunnel_auth_secret.sh
 
           api_access_key_ref="$(require_api_access_key_secret "${PROJECT_ID}" "Web")" || exit 1
+          tunnel_auth_ref="$(require_public_tunnel_auth_secret "${PROJECT_ID}" "Web")" || exit 1
+          secrets_value="API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_auth_ref}"
+
+          # GitHub Actionsの knowledge-sync-health 監視専用シークレット
+          # （frontend/src/proxy.ts がBasic認証の代わりにX-Sync-Probe-Keyヘッダで
+          # 要求する）。無くてもデプロイは止めない ―― 未設定ならproxy.tsがそのプローブ
+          # パスを401にするだけで、安全側に倒れるため。
+          if gcloud secrets describe KNOWLEDGE_SYNC_PROBE_TOKEN --project "${PROJECT_ID}" >/dev/null 2>&1; then
+            secrets_value+=",KNOWLEDGE_SYNC_PROBE_TOKEN=KNOWLEDGE_SYNC_PROBE_TOKEN:latest"
+          else
+            echo "Warning: Secret Manager secret KNOWLEDGE_SYNC_PROBE_TOKEN was not found; /api/system/knowledge-sync-health will 401 for the external monitor until it is created." >&2
+          fi
 
           deploy_args=(
             run deploy "${SERVICE_NAME}"
@@ -310,10 +332,9 @@ jobs:
             --concurrency 80
             --min-instances 0
             --max-instances 1
-            --set-env-vars "FASTAPI_URL=${API_URL}"
-            --no-allow-unauthenticated
-            --invoker-iam-check
-            --set-secrets "API_ACCESS_KEY=${api_access_key_ref}"
+            --set-env-vars "FASTAPI_URL=${API_URL},PUBLIC_TUNNEL=1"
+            --allow-unauthenticated
+            --set-secrets "${secrets_value}"
           )
 
           gcloud "${deploy_args[@]}"

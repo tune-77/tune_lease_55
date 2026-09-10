@@ -10,6 +10,7 @@ import sys
 import json
 import logging
 import datetime
+import threading
 from typing import Optional
 import numpy as np
 import pandas as pd
@@ -36,6 +37,8 @@ CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
 CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
 DASHBOARD_STATS_CACHE_FILE = os.path.join(_DATA_DIR, "dashboard_stats_cache.json")
 DEPARTMENT_STATS_CACHE_FILE = os.path.join(_DATA_DIR, "department_stats_cache.json")
+_DASHBOARD_STATS_CACHE_LOCK = threading.Lock()
+_DEPARTMENT_STATS_CACHE_LOCK = threading.Lock()
 
 import hashlib
 import base64
@@ -661,7 +664,7 @@ def load_dashboard_stats_cache() -> dict | None:
         return None
 
 
-def refresh_dashboard_stats_cache() -> dict | None:
+def _write_dashboard_stats_cache_locked() -> dict | None:
     payload = build_dashboard_stats_cache()
     try:
         os.makedirs(os.path.dirname(DASHBOARD_STATS_CACHE_FILE), exist_ok=True)
@@ -674,6 +677,18 @@ def refresh_dashboard_stats_cache() -> dict | None:
     return payload
 
 
+def refresh_dashboard_stats_cache() -> dict | None:
+    with _DASHBOARD_STATS_CACHE_LOCK:
+        return _write_dashboard_stats_cache_locked()
+
+
+def refresh_dashboard_stats_cache_if_missing() -> dict | None:
+    with _DASHBOARD_STATS_CACHE_LOCK:
+        if os.path.exists(DASHBOARD_STATS_CACHE_FILE):
+            return None
+        return _write_dashboard_stats_cache_locked()
+
+
 def load_department_stats_cache() -> dict | None:
     if not os.path.exists(DEPARTMENT_STATS_CACHE_FILE):
         return None
@@ -684,7 +699,7 @@ def load_department_stats_cache() -> dict | None:
         return None
 
 
-def refresh_department_stats_cache() -> dict | None:
+def _write_department_stats_cache_locked() -> dict | None:
     payload = build_department_stats_cache()
     try:
         os.makedirs(os.path.dirname(DEPARTMENT_STATS_CACHE_FILE), exist_ok=True)
@@ -695,6 +710,18 @@ def refresh_department_stats_cache() -> dict | None:
     except Exception as e:
         print(f"[Error in refresh_department_stats_cache]: {e}", file=sys.stderr)
     return payload
+
+
+def refresh_department_stats_cache() -> dict | None:
+    with _DEPARTMENT_STATS_CACHE_LOCK:
+        return _write_department_stats_cache_locked()
+
+
+def refresh_department_stats_cache_if_missing() -> dict | None:
+    with _DEPARTMENT_STATS_CACHE_LOCK:
+        if os.path.exists(DEPARTMENT_STATS_CACHE_FILE):
+            return None
+        return _write_department_stats_cache_locked()
 
 
 def refresh_stats_caches() -> None:
