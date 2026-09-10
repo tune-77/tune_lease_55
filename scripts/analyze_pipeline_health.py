@@ -27,6 +27,10 @@ FAILURE_RATE_THRESHOLD = 0.5
 MIN_TOTAL_RUNS = 3
 LOOKBACK_DAYS = 7
 
+# 2026-09-10に外部Gist配布を廃止。過去7日ログがウィンドウから抜けるまで、
+# 廃止済みステップを新しいパイプライン障害として再起票しない。
+NON_BLOCKING_STEPS = {"gist_update"}
+
 # auto_fix_allowed=true にするための条件
 AUTO_FIX_MIN_FAILURE_DAYS = 5   # 7日中5日以上失敗していること
 AUTO_FIX_RULE_TYPES = {"patch_json", "config_value"}  # 対応ルール型
@@ -105,11 +109,15 @@ def resolve_recovered_entries(ledger: list, counts: dict, now_iso: str) -> int:
         for step, c in counts.items():
             if step not in description:
                 continue
-            if c.get("latest_exit_code") == 0:
+            if c.get("latest_exit_code") == 0 or step in NON_BLOCKING_STEPS:
                 entry["status"] = "stale_resolved"
                 entry["pending_review"] = False
                 entry["resolved_at"] = now_iso
-                entry["resolution_reason"] = "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
+                entry["resolution_reason"] = (
+                    "任意配布ステップであり、ローカルの改善適用・朝レポート生成を停止しないため解決済みに更新"
+                    if step in NON_BLOCKING_STEPS
+                    else "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
+                )
                 resolved += 1
             break
     return resolved
@@ -124,6 +132,8 @@ def main():
 
     penalty_steps = []
     for step, c in counts.items():
+        if step in NON_BLOCKING_STEPS:
+            continue
         total = c["good"] + c["bad"]
         if total < MIN_TOTAL_RUNS:
             continue

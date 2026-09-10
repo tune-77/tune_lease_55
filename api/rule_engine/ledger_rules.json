@@ -1214,27 +1214,31 @@
   {
     "rev_id": "REV-304a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] eval_shion_memory_recall が過去7日で失敗率75%（12/16件, 6日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-09-06T19:06:38Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-09-10T10:32:50Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
   },
   {
     "rev_id": "REV-358a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] gist_update が過去7日で失敗率50%（5/10件, 5日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-09-07T19:06:33Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-09-10T10:32:50Z",
+    "resolution_reason": "任意配布ステップであり、ローカルの改善適用・朝レポート生成を停止しないため解決済みに更新"
   }
 ]
