@@ -307,6 +307,17 @@ jobs:
 
           api_access_key_ref="$(require_api_access_key_secret "${PROJECT_ID}" "Web")" || exit 1
           tunnel_auth_ref="$(require_public_tunnel_auth_secret "${PROJECT_ID}" "Web")" || exit 1
+          secrets_value="API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_auth_ref}"
+
+          # GitHub Actionsの knowledge-sync-health 監視専用シークレット
+          # （frontend/src/proxy.ts がBasic認証の代わりにX-Sync-Probe-Keyヘッダで
+          # 要求する）。無くてもデプロイは止めない ―― 未設定ならproxy.tsがそのプローブ
+          # パスを401にするだけで、安全側に倒れるため。
+          if gcloud secrets describe KNOWLEDGE_SYNC_PROBE_TOKEN --project "${PROJECT_ID}" >/dev/null 2>&1; then
+            secrets_value+=",KNOWLEDGE_SYNC_PROBE_TOKEN=KNOWLEDGE_SYNC_PROBE_TOKEN:latest"
+          else
+            echo "Warning: Secret Manager secret KNOWLEDGE_SYNC_PROBE_TOKEN was not found; /api/system/knowledge-sync-health will 401 for the external monitor until it is created." >&2
+          fi
 
           deploy_args=(
             run deploy "${SERVICE_NAME}"
@@ -323,7 +334,7 @@ jobs:
             --max-instances 1
             --set-env-vars "FASTAPI_URL=${API_URL},PUBLIC_TUNNEL=1"
             --allow-unauthenticated
-            --set-secrets "API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_auth_ref}"
+            --set-secrets "${secrets_value}"
           )
 
           gcloud "${deploy_args[@]}"

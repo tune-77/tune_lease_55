@@ -26,6 +26,8 @@ jobs:
           python-version: "3.11"
 
       - name: Check production knowledge sync
+        env:
+          KNOWLEDGE_SYNC_PROBE_TOKEN: ${{ secrets.KNOWLEDGE_SYNC_PROBE_TOKEN }}
         run: |
           python scripts/check_cloudrun_knowledge_sync.py \
             --base-url "https://tune-lease-55-web-6mijhyebkq-an.a.run.app" \

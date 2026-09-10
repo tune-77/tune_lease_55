@@ -166,7 +166,15 @@ def test_public_tunnel_requires_web_auth_and_same_origin_api_proxy():
     assert "process.env.PUBLIC_TUNNEL_AUTH" in proxy
     assert 'matcher: "/:path*"' in proxy
     assert '=== "/api/system/knowledge-sync-health"' in proxy
-    assert "&& !isPublicKnowledgeSyncProbe" in proxy
+    # 2026-09-10: この探査パスは以前 Basic 認証ゲートを完全にスキップして匿名公開
+    # されていたが、このプロキシがその後も特権的な x-api-key を付与するため、
+    # 外部から繰り返し叩かれると scale-to-zero + concurrency=1 の API を課金・
+    # 占有させ続けられる穴になっていた。ブラウザのBasic認証パスワードの代わりに
+    # 専用シークレット（KNOWLEDGE_SYNC_PROBE_TOKEN、X-Sync-Probe-Keyヘッダ）を
+    # 要求するよう修正済み（匿名バイパスの再発防止）。
+    assert "isPublicKnowledgeSyncProbe" not in proxy
+    assert "process.env.KNOWLEDGE_SYNC_PROBE_TOKEN" in proxy
+    assert "x-sync-probe-key" in proxy
     assert 'return "http://127.0.0.1:8000"' not in api_client
     assert judgment_drill.count("internalApiAuthHeaders()") == 3
 
