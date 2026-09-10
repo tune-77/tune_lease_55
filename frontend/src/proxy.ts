@@ -42,9 +42,18 @@ export function proxy(request: NextRequest) {
   const tunnelPassword = process.env.PUBLIC_TUNNEL_AUTH;
   const hostname = request.nextUrl.hostname;
   const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+  // GitHub Actions needs one read-only probe that does not depend on copying
+  // the browser password into GitHub Secrets. The endpoint exposes only sync
+  // counts/state; the full cloud-status response stays behind Basic auth.
+  const isPublicKnowledgeSyncProbe = request.nextUrl.pathname
+    === "/api/system/knowledge-sync-health";
   const isTunnelRequest = process.env.PUBLIC_TUNNEL === "1"
     && (request.headers.has("cf-connecting-ip") || !isLocalHost);
-  if (isTunnelRequest && (!tunnelPassword || !hasValidTunnelCredentials(request, tunnelPassword))) {
+  if (
+    isTunnelRequest
+    && !isPublicKnowledgeSyncProbe
+    && (!tunnelPassword || !hasValidTunnelCredentials(request, tunnelPassword))
+  ) {
     return new NextResponse("Authentication required", {
       status: 401,
       headers: { "WWW-Authenticate": 'Basic realm="Tune Lease 55"' },

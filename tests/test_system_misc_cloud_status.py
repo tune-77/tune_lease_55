@@ -61,3 +61,23 @@ def test_knowledge_sync_reports_empty_chroma():
     assert status["ready"] is False
     assert status["state"] == "empty"
     assert status["coverage_ratio"] == 0.0
+
+
+def test_public_knowledge_sync_health_returns_only_sync_status(monkeypatch):
+    monkeypatch.setattr(
+        system_misc,
+        "_cloud_gcs_vault_status",
+        lambda: {"markdown_count": 98},
+    )
+    monkeypatch.setattr(
+        system_misc,
+        "_cloud_chroma_status",
+        lambda: {"indexing_enabled": True, "document_count": 581},
+    )
+
+    response = system_misc.get_knowledge_sync_health()
+
+    assert set(response) == {"knowledge_sync"}
+    assert response["knowledge_sync"]["ready"] is True
+    assert response["knowledge_sync"]["vault_markdown_count"] == 98
+    assert response["knowledge_sync"]["chroma_document_count"] == 581
