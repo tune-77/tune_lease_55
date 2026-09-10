@@ -29,6 +29,7 @@ jobs:
         run: |
           python scripts/check_cloudrun_knowledge_sync.py \
             --base-url "https://tune-lease-55-web-6mijhyebkq-an.a.run.app" \
+            --path "/api/system/knowledge-sync-health" \
             --attempts 3 \
             --retry-delay 15 \
             --timeout 20
