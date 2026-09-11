@@ -70,6 +70,29 @@ def test_same_event_id_is_idempotent(feedback_store):
     assert duplicate["duplicate"] is True
 
 
+def test_cloudrun_writeback_preserves_comment_and_edited_claim(feedback_store):
+    captured: dict = {}
+
+    class BackgroundTasksCapture:
+        def add_task(self, _function, **kwargs):
+            captured.update(kwargs)
+
+    request = _request("neutral", EVENT_1)
+    request.comment = "案件実績に合わせた補足"
+    request.edited_claim = "受注実績と稼働率を合わせて確認する。"
+
+    feedback_loop.post_judgment_asset_candidate_feedback(
+        CANDIDATE_ID,
+        request,
+        BackgroundTasksCapture(),
+    )
+
+    assert captured["event_type"] == "judgment_asset_candidate_feedback"
+    assert captured["payload"]["comment"] == "案件実績に合わせた補足"
+    assert captured["payload"]["edited_claim"] == "受注実績と稼働率を合わせて確認する。"
+    assert captured["payload"]["recorded_at"] == "2026-09-11T00:00:00Z"
+
+
 def test_correction_supersedes_old_effectiveness(feedback_store):
     state_path, feedback_path = feedback_store
     feedback_loop._update_autoresearch_judgment_asset_candidate_feedback(

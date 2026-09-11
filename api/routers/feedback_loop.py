@@ -3280,6 +3280,9 @@ def post_judgment_asset_candidate_feedback(
                 "case_id": req.case_id,
                 "review_id": req.review_id,
                 "source": req.source,
+                "comment": str(req.comment or "")[:500],
+                "edited_claim": str(req.edited_claim or "")[:500],
+                "recorded_at": feedback_event["recorded_at"],
             },
         )
     return {"status": "ok", **result}

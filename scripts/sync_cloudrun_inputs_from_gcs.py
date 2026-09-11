@@ -665,8 +665,92 @@ def _judgment_asset_usage_feedback_from_event(event: dict) -> dict | None:
         "case_id": str(payload.get("case_id") or "")[:120],
         "review_id": payload.get("review_id"),
         "source": str(payload.get("source") or "real_case"),
+        "comment": str(payload.get("comment") or "")[:500],
+        "edited_claim": str(payload.get("edited_claim") or "")[:500],
         "used_at": str(payload.get("recorded_at") or event.get("ts") or ""),
     }
+
+
+def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> int:
+    """Rebuild candidate counters and edits from the durable feedback event chain."""
+    affected_ids = {
+        str(row.get("rule_id") or "").strip()
+        for row in rows
+        if str(row.get("rule_id") or "").strip()
+    }
+    if not affected_ids:
+        return 0
+
+    try:
+        raw_state = json.loads(JUDGMENT_ASSET_CANDIDATE_STATE_JSON.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        raw_state = {}
+    state = raw_state if isinstance(raw_state, dict) else {}
+    superseded_ids = {
+        str(row.get("supersedes_event_id") or "").strip()
+        for row in rows
+        if str(row.get("supersedes_event_id") or "").strip()
+    }
+    current_rows = [
+        row for row in rows
+        if str(row.get("event_id") or "").strip() not in superseded_ids
+    ]
+
+    for candidate_id in affected_ids:
+        candidate_rows = [row for row in rows if str(row.get("rule_id") or "").strip() == candidate_id]
+        candidate_heads = [row for row in current_rows if str(row.get("rule_id") or "").strip() == candidate_id]
+        current = dict(state.get(candidate_id) or {})
+        counts = {"useful": 0, "neutral": 0, "rejected": 0}
+        for row in candidate_heads:
+            feedback = str(row.get("feedback") or "").strip()
+            if feedback in counts:
+                counts[feedback] += 1
+        current.update(
+            {
+                "use_count": sum(counts.values()),
+                "useful_count": counts["useful"],
+                "neutral_count": counts["neutral"],
+                "rejected_count": counts["rejected"],
+            }
+        )
+
+        ordered_rows = sorted(candidate_rows, key=lambda row: str(row.get("used_at") or ""))
+        if ordered_rows:
+            latest = ordered_rows[-1]
+            latest_at = str(latest.get("used_at") or "")
+            current["last_used_at"] = latest_at
+            current["last_feedback_at"] = latest_at
+            note_bits = [
+                f"feedback={str(latest.get('feedback') or '')}",
+                f"case_id={str(latest.get('case_id') or '')[:80]}",
+            ]
+            if latest.get("review_id"):
+                note_bits.append(f"review_id={latest['review_id']}")
+            if latest.get("comment"):
+                note_bits.append(f"comment={str(latest['comment'])[:160]}")
+            current["verification_note"] = " / ".join(note_bits)
+
+        edit_count = 0
+        last_edit = ""
+        last_edited_at = ""
+        for row in ordered_rows:
+            edited_claim = str(row.get("edited_claim") or "").strip()
+            if edited_claim and edited_claim != last_edit:
+                edit_count += 1
+                last_edit = edited_claim
+                last_edited_at = str(row.get("used_at") or "")
+        if last_edit:
+            current["edited_claim"] = last_edit[:500]
+            current["edit_count"] = edit_count
+            current["last_edited_at"] = last_edited_at
+        state[candidate_id] = current
+
+    JUDGMENT_ASSET_CANDIDATE_STATE_JSON.parent.mkdir(parents=True, exist_ok=True)
+    JUDGMENT_ASSET_CANDIDATE_STATE_JSON.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return len(affected_ids)
 
 
 def _screening_loop_feedback_from_event(event: dict) -> dict | None:
@@ -1191,6 +1275,12 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "judgment_asset_promotions_applied": 0,
         "judgment_asset_candidates_new": 0,
     }
+    judgment_asset_usage_feedback_new = (
+        _append_jsonl_dedup(JUDGMENT_ASSET_USAGE_FEEDBACK_LOG, judgment_asset_usage_feedback_rows)
+        if judgment_asset_usage_feedback_rows else 0
+    )
+    if judgment_asset_usage_feedback_rows:
+        _materialize_judgment_asset_candidate_feedback_state(_load_jsonl(JUDGMENT_ASSET_USAGE_FEEDBACK_LOG))
     return {
         "all_events_new": all_events_new,
         "wizard_new": _append_jsonl_dedup(WIZARD_INPUT_LOG, wizard_rows) if wizard_rows else 0,
@@ -1198,7 +1288,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "rag_hit_new": _append_jsonl_dedup(RAG_HIT_LOG, rag_hit_rows) if rag_hit_rows else 0,
         "screening_loop_feedback_new": _append_jsonl_dedup(SCREENING_LOOP_FEEDBACK_LOG, screening_loop_rows) if screening_loop_rows else 0,
         "judgment_asset_feedback_drop_new": _append_jsonl_dedup(JUDGMENT_ASSET_FEEDBACK_DROPS_LOG, judgment_asset_feedback_drop_rows) if judgment_asset_feedback_drop_rows else 0,
-        "judgment_asset_usage_feedback_new": _append_jsonl_dedup(JUDGMENT_ASSET_USAGE_FEEDBACK_LOG, judgment_asset_usage_feedback_rows) if judgment_asset_usage_feedback_rows else 0,
+        "judgment_asset_usage_feedback_new": judgment_asset_usage_feedback_new,
         "improvement_new": _append_jsonl_dedup(CLOUDRUN_IMPROVEMENT_LOG, improvement_rows) if improvement_rows else 0,
         "chat_new": _append_jsonl_dedup(CLOUDRUN_CHAT_LOG, chat_rows) if chat_rows else 0,
         "prompt_feedback_new": _append_jsonl_dedup(PROMPT_FEEDBACK_LOG, prompt_feedback_rows) if prompt_feedback_rows else 0,

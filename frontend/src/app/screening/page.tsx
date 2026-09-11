@@ -539,6 +539,7 @@ function JudgmentAssetCandidateCard({
   loading,
   feedbackSavingId,
   feedbackRetryId,
+  feedbackReady,
   adaptationMode,
   onAdaptationModeChange,
   onFeedback,
@@ -549,6 +550,7 @@ function JudgmentAssetCandidateCard({
   loading: boolean;
   feedbackSavingId: string;
   feedbackRetryId: string;
+  feedbackReady: boolean;
   adaptationMode: JudgmentAssetAdaptationMode;
   onAdaptationModeChange: (mode: JudgmentAssetAdaptationMode) => void;
   onFeedback: (candidate: JudgmentAssetCandidate, feedback: JudgmentAssetCandidateFeedback, editedClaim?: string) => void;
@@ -592,6 +594,9 @@ function JudgmentAssetCandidateCard({
           <p className="mt-1 text-[11px] font-bold leading-relaxed text-amber-700">
             役に立った/修正/違うの評価が、次の判断資産更新へ戻ります。
           </p>
+          {!feedbackReady && (
+            <p className="mt-1 text-[11px] font-bold text-slate-500">レビュー保存後に評価できます。</p>
+          )}
         </div>
         {loading && <Activity className="h-4 w-4 animate-spin text-amber-700" />}
       </div>
@@ -693,7 +698,7 @@ function JudgmentAssetCandidateCard({
                   <button
                     type="button"
                     onClick={() => onFeedback(candidate, "neutral", draft.trim())}
-                    disabled={feedbackSavingId === candidate.id || !isChanged}
+                    disabled={!feedbackReady || feedbackSavingId === candidate.id || !isChanged}
                     className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Save className="h-3.5 w-3.5" />
@@ -740,7 +745,7 @@ function JudgmentAssetCandidateCard({
                   key={key}
                   type="button"
                   onClick={() => onFeedback(candidate, key)}
-                  disabled={feedbackSavingId === candidate.id}
+                  disabled={!feedbackReady || feedbackSavingId === candidate.id}
                   className={`rounded-lg border px-3 py-1.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     candidate.userFeedback === key
                       ? "border-emerald-300 bg-emerald-50 text-emerald-700"
@@ -757,7 +762,7 @@ function JudgmentAssetCandidateCard({
                 <button
                   type="button"
                   onClick={() => onRetryFeedback(candidate)}
-                  disabled={feedbackSavingId === candidate.id}
+                  disabled={!feedbackReady || feedbackSavingId === candidate.id}
                   className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[11px] font-black text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                 >
                   再試行
@@ -2003,7 +2008,7 @@ export default function Dashboard() {
     editedClaim?: string,
     retryPayload?: JudgmentAssetFeedbackPayload,
   ) => {
-    if (!candidate.id || judgmentAssetFeedbackSavingId) return;
+    if (!candidate.id || !shionReview?.savedId || judgmentAssetFeedbackSavingId) return;
     const previous = judgmentAssetCandidates;
     const normalizedEditedClaim = String(editedClaim || "").trim();
     const payload: JudgmentAssetFeedbackPayload = retryPayload || {
@@ -2793,6 +2798,7 @@ export default function Dashboard() {
                       loading={judgmentAssetCandidatesLoading}
                       feedbackSavingId={judgmentAssetFeedbackSavingId}
                       feedbackRetryId={judgmentAssetFeedbackRetry?.candidateId || ""}
+                      feedbackReady={Boolean(shionReview?.savedId)}
                       adaptationMode={judgmentAssetAdaptationMode}
                       onAdaptationModeChange={setJudgmentAssetAdaptationMode}
                       onFeedback={submitJudgmentAssetCandidateFeedback}

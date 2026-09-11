@@ -612,7 +612,9 @@ def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatc
 def test_materialize_events_preserves_candidate_feedback_event_chain(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
     feedback_log = tmp_path / "judgment_asset_usage_feedback.jsonl"
+    state_path = tmp_path / "candidate_state.json"
     monkeypatch.setattr(syncer, "JUDGMENT_ASSET_USAGE_FEEDBACK_LOG", feedback_log)
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_CANDIDATE_STATE_JSON", state_path)
     monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
     event = {
         "event_id": "cloud-wrapper-1",
@@ -629,6 +631,8 @@ def test_materialize_events_preserves_candidate_feedback_event_chain(tmp_path, m
             "case_id": "case-1",
             "review_id": 7,
             "source": "real_case",
+            "comment": "稼働実績に合わせて補正",
+            "edited_claim": "受注実績と稼働率を合わせて確認する。",
         },
     }
 
@@ -643,6 +647,8 @@ def test_materialize_events_preserves_candidate_feedback_event_chain(tmp_path, m
             "case_id": "case-1",
             "event_id": "11111111-1111-4111-8111-111111111111",
             "feedback": "useful",
+            "comment": "稼働実績に合わせて補正",
+            "edited_claim": "受注実績と稼働率を合わせて確認する。",
             "outcome": "helped",
             "review_id": 7,
             "rule_id": "cr-rule-1",
@@ -652,6 +658,50 @@ def test_materialize_events_preserves_candidate_feedback_event_chain(tmp_path, m
             "used_at": "2026-09-11T00:00:00Z",
         }
     ]
+    state = json.loads(state_path.read_text(encoding="utf-8"))["cr-rule-1"]
+    assert state["use_count"] == 1
+    assert state["useful_count"] == 1
+    assert state["edited_claim"] == "受注実績と稼働率を合わせて確認する。"
+    assert state["edit_count"] == 1
+
+
+def test_materialize_events_replays_feedback_correction_into_candidate_state(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    feedback_log = tmp_path / "judgment_asset_usage_feedback.jsonl"
+    state_path = tmp_path / "candidate_state.json"
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_USAGE_FEEDBACK_LOG", feedback_log)
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_CANDIDATE_STATE_JSON", state_path)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+    first_id = "11111111-1111-4111-8111-111111111111"
+    second_id = "22222222-2222-4222-8222-222222222222"
+    events = [
+        {
+            "event_id": "wrapper-1",
+            "ts": "2026-09-11T00:00:00Z",
+            "event_type": "judgment_asset_candidate_feedback",
+            "payload": {
+                "candidate_id": "cr-rule-1", "event_id": first_id, "feedback": "useful",
+                "disposition": "helped", "case_id": "case-1", "review_id": 7,
+            },
+        },
+        {
+            "event_id": "wrapper-2",
+            "ts": "2026-09-11T00:01:00Z",
+            "event_type": "judgment_asset_candidate_feedback",
+            "payload": {
+                "candidate_id": "cr-rule-1", "event_id": second_id,
+                "supersedes_event_id": first_id, "feedback": "rejected",
+                "disposition": "rejected", "case_id": "case-1", "review_id": 7,
+            },
+        },
+    ]
+
+    syncer.materialize_events(events)
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))["cr-rule-1"]
+    assert state["use_count"] == 1
+    assert state["useful_count"] == 0
+    assert state["rejected_count"] == 1
 
 
 def test_materialize_events_appends_judgment_asset_feedback_drop(tmp_path, monkeypatch) -> None:
