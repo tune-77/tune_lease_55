@@ -356,14 +356,23 @@ function AiHeroCard({
   const score = getScreeningScore(result);
   const hantei: string = result.hantei ?? "";
   const approvalLine: number = typeof result.approval_line === "number" ? result.approval_line : 71;
-  const isApproved = score >= approvalLine;
-  const isConditional = score >= 60 && score < approvalLine;
+  const requiresRiskReview = result.risk_review_required === true;
+  const riskReviewReasons = Array.isArray(result.risk_review_reasons)
+    ? result.risk_review_reasons.filter((reason): reason is string => typeof reason === "string" && reason.length > 0)
+    : [];
+  const isApproved = !requiresRiskReview && score >= approvalLine;
+  const isConditional = !requiresRiskReview && score >= 60 && score < approvalLine;
 
   let gradientClass = "from-rose-500 to-rose-600";
   let shadowClass = "shadow-rose-200";
   let badge = "否決";
   let BadgeIcon = XCircle;
-  if (isApproved) {
+  if (requiresRiskReview) {
+    gradientClass = "from-amber-500 to-orange-600";
+    shadowClass = "shadow-amber-200";
+    badge = "要審議";
+    BadgeIcon = AlertTriangle;
+  } else if (isApproved) {
     gradientClass = "from-emerald-500 to-teal-600";
     shadowClass = "shadow-emerald-200";
     badge = "承認";
@@ -390,6 +399,13 @@ function AiHeroCard({
             <p className="mt-2 text-sm font-bold text-white/80 leading-relaxed max-w-xl">
               {hantei}
             </p>
+          )}
+          {requiresRiskReview && riskReviewReasons.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm font-bold text-white/90">
+              {riskReviewReasons.map((reason) => (
+                <li key={reason}>・{reason}</li>
+              ))}
+            </ul>
           )}
         </div>
         <div className="flex flex-col items-center gap-2">
