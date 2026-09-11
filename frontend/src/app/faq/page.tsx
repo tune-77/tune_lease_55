@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   HelpCircle, ChevronDown, ChevronUp, BookOpen, Cpu, Zap,
   Building2, TrendingDown, Clock, RefreshCw, Wrench,
-  Ban, RotateCcw, Factory, Percent, Landmark, Trash2, HardHat, ArrowLeft
+  Ban, RotateCcw, Factory, Percent, Landmark, Package, Trash2, HardHat, ArrowLeft
 } from 'lucide-react';
 
 type FaqItem = {

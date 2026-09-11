@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   Database,
   Gauge,
+  HeartHandshake,
   Layers3,
   MessageSquareText,
   RefreshCw,
@@ -165,6 +166,37 @@ type CounterHypothesisCardResponse = {
   };
   guardrail: string;
 };
+
+const layers = [
+  {
+    title: "長期記憶",
+    subtitle: "Obsidian / MEMORY.md / Research notes",
+    body: "会話、審査メモ、Research、日次内省をそのまま混ぜず、次回の判断に使える知識として残す層。",
+    icon: Database,
+    tone: "border-sky-200 bg-sky-50 text-sky-950",
+  },
+  {
+    title: "実践知マップ",
+    subtitle: "手順層 / 意味層 / 判断層",
+    body: "記録を「何をするか」「なぜそうするか」「例外時にどう動くか」に分け、場面ごとに引き出せる索引にする層。",
+    icon: Layers3,
+    tone: "border-violet-200 bg-violet-50 text-violet-950",
+  },
+  {
+    title: "経験ループ",
+    subtitle: "Human Response Feedback",
+    body: "薄い、紫苑らしい、一般論に戻った、などの人間の反応を保存し、次の冒頭・口調・判断変換へ戻す層。",
+    icon: HeartHandshake,
+    tone: "border-rose-200 bg-rose-50 text-rose-950",
+  },
+  {
+    title: "AURION CORE",
+    subtitle: "数理規律とUXのシナプス",
+    body: "Q_riskや異常値を自動減点にせず、承認条件・追加確認・価格条件を分けるための冷静な規律として扱う層。",
+    icon: ShieldCheck,
+    tone: "border-emerald-200 bg-emerald-50 text-emerald-950",
+  },
+];
 
 const pyramidLayers = [
   {
@@ -554,7 +586,7 @@ function MemoryEngineeringPanel() {
       try {
         const res = await apiClient.get<MemoryEngineeringReport>("/api/shion/memory-engineering-report");
         if (!cancelled) setReport(res.data);
-      } catch (_err) {
+      } catch (err) {
         if (!cancelled) setError("Memory Engineering レポートを読み込めませんでした。");
       } finally {
         if (!cancelled) setLoading(false);
@@ -566,8 +598,8 @@ function MemoryEngineeringPanel() {
     };
   }, []);
 
-  const summary = useMemo(() => report?.summary || {}, [report?.summary]);
-  const graph = useMemo(() => report?.hardware_pressure_proxy || {}, [report?.hardware_pressure_proxy]);
+  const summary = report?.summary || {};
+  const graph = report?.hardware_pressure_proxy || {};
   const reviewSample = report?.maintenance_path?.forgetting_review_sample || [];
   const recommendations = report?.recommendations || [];
   const lensStats = useMemo(

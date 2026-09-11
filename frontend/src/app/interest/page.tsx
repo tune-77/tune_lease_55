@@ -106,7 +106,7 @@ export default function InterestPage() {
       // フォームのデフォルト月: 当月未登録→当月, 登録済→来月
       const defaultMonth = cur.current_rate_5y === null ? cur.current_month : cur.next_month;
       setForm(makeDefaultForm(cur.latest, defaultMonth));
-    } catch (_err) {
+    } catch (err) {
       triggerMebuki('reject', '金利データの取得に失敗しました。');
     } finally {
       setLoading(false);

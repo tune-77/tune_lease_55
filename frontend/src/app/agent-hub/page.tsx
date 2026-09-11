@@ -15,6 +15,8 @@ import {
   BookOpen, 
   Zap, 
   Cpu, 
+  Network,
+  History,
   Play,
   CheckCircle2,
   AlertCircle,

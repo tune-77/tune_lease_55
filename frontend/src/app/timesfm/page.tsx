@@ -4,7 +4,7 @@ import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Activity, Clock, TrendingUp, Search, BarChart3, Calendar } from 'lucide-react';
 import {
-  ResponsiveContainer, ComposedChart, LineChart,
+  ResponsiveContainer, ComposedChart, AreaChart, LineChart,
   Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine
 } from 'recharts';
 

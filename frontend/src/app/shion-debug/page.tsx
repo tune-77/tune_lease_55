@@ -174,7 +174,7 @@ export default function ShionDebugPage() {
   }, []);
 
   const feedback = data?.human_feedback_summary || {};
-  const scenes = useMemo(() => data?.practical_scenes || [], [data?.practical_scenes]);
+  const scenes = data?.practical_scenes || [];
   const selectedScene = useMemo(
     () => scenes.find((scene) => scene.id === activeScene) || scenes[0],
     [activeScene, scenes],

@@ -319,6 +319,16 @@ function personaForPrediction(prediction: PredictedAction, activity: ActivityIte
   return selectPersona(last?.title || prediction.label, prediction.href);
 }
 
+function formatActivityTime(ts: number) {
+  if (!ts) return "";
+  return new Date(ts).toLocaleString("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function etaForHref(href: string) {
   if (href === "/chat" || href === "/operations" || href === "/system-overview") return "2分";
   if (href === "/screening") return "5分";

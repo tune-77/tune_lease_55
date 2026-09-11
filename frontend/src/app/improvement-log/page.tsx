@@ -875,7 +875,7 @@ export default function ImprovementLogPage() {
       setPendingRecipes(res.data.recipes ?? []);
       setRecipeStatus(statusRes.data ?? null);
       setActionLedgerSummary(actionLedgerRes?.data ?? null);
-    } catch (_error) {
+    } catch (error) {
       setPendingRecipes([]);
       setRecipeStatus(null);
       setActionLedgerSummary(null);
@@ -892,7 +892,7 @@ export default function ImprovementLogPage() {
         await apiClient.post(`/api/recipes/${recipe.id}/${action}`);
         setDismissedRecipes((prev) => new Set(prev).add(recipe.id));
         await fetchRecipes();
-      } catch (_error) {
+      } catch (error) {
         setRecipeError(action === "approve" ? "今回の修正案を適用待ちへ送れませんでした" : "今回の修正案の破棄に失敗しました");
       }
     },

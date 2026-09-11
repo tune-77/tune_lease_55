@@ -47,7 +47,7 @@ export default function IndustryWinratePage() {
     try {
       const res = await apiClient.get<WinrateData>("/api/cases/industry-winrate");
       setData(res.data);
-    } catch (_e) {
+    } catch (e) {
       setError("データの取得に失敗しました");
     } finally {
       setLoading(false);
@@ -78,6 +78,8 @@ export default function IndustryWinratePage() {
       </div>
     );
   }
+
+  const totalAll = data.total_won + data.total_lost;
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">

@@ -146,6 +146,8 @@ type SimilarNotesResult = {
 
 type EvidenceBucket = "used_market" | "residual_risk" | "approval_basis" | "cautions";
 
+const ASSET_TYPES: AssetType[] = ["建機", "工作機械", "PC/IT", "医療機器", "ドローン", "車両"];
+
 const ASSET_DEFAULT_USEFUL_LIFE: Record<AssetType, number> = {
   "建機": 6,
   "工作機械": 10,

@@ -991,6 +991,7 @@ export default function KnowledgeSpacePage() {
       setSearchTerm(nextEvidence);
       setMode("evidence");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchKnowledgeGraph]);
 
   const graph = knowledgeGraph;
@@ -1038,6 +1039,8 @@ export default function KnowledgeSpacePage() {
       .slice(0, 4) || []
   ), [graph]);
   const evidenceRoutes = useMemo(() => buildEvidenceRoutes(graph, selected), [graph, selected]);
+  const nodeById = useMemo(() => new Map((graph?.nodes || []).map((node) => [node.id, node])), [graph]);
+
   const visibleNodeCount = useMemo(() => {
     if (!graph) return 0;
     if (categoryFilter) return graph.nodes.filter(n => n.category === categoryFilter).length;

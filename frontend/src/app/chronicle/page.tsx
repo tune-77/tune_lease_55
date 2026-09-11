@@ -3,19 +3,32 @@
 import React, { useState, useEffect } from "react";
 import { apiClient } from "@/lib/api";
 import { 
+  Milestone, 
   History, 
   Globe, 
+  Wind, 
+  Orbit, 
   Rewind, 
   Play, 
+  AlertCircle, 
+  CheckCircle, 
   Waves, 
+  Layers, 
   Ghost,
+  Sun,
+  Telescope,
+  MessageCircle,
+  Database,
+  ArrowRight,
   TrendingDown,
   TrendingUp,
   Activity,
+  Infinity as InfinityIcon,
   Loader2,
   Clock,
   Sparkles
 } from "lucide-react";
+import { triggerMebuki } from "../../components/layout/FloatingMebuki";
 
 interface Snap {
   id: string;
@@ -115,7 +128,7 @@ export default function ChroniclePage() {
       } else {
         alert("Rollback Failed");
       }
-    } catch {
+    } catch (err) {
       alert("Error during rollback");
     }
   };

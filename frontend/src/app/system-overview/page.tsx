@@ -408,6 +408,12 @@ const demoAppeals: DemoAppeal[] = [
 ];
 
 export default function SystemOverviewPage() {
+  const [isCloudRunHost, setIsCloudRunHost] = useState(true);
+
+  useEffect(() => {
+    setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
+  }, []);
+
   return (
     <div className="min-h-screen" style={{ background: "#0a0e1a", color: "#e2e8f0" }}>
       <style>{`

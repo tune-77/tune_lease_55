@@ -344,9 +344,11 @@ export default function HomeDashboard() {
       // ignore
     }
 
+    let initialPrefecture = "";
     try {
       const rawPref = window.localStorage.getItem("lease-news-prefecture-hint") || "";
       if (rawPref) {
+        initialPrefecture = rawPref;
         setNewsPrefecture(rawPref);
       }
     } catch {
