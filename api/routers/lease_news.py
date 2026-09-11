@@ -1,8 +1,10 @@
 """Read-only lease-news endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel, Field
 
+from api.cloudrun_writeback import record_cloudrun_input_event
 from api.knowledge.news_classifier import (
     build_classified_news_summary_from_vault,
     load_latest_classified_news_summary,
@@ -22,6 +24,21 @@ from lease_news_digest import (
 )
 
 router = APIRouter(prefix="/api/lease-news", tags=["lease-news"])
+
+
+class LeaseNewsJudgmentChangeRequest(BaseModel):
+    case_id: str = ""
+    company_name: str = ""
+    score: float | None = None
+    model_decision: str = ""
+    final_decision: str = ""
+    news_focus: list[str] = Field(default_factory=list)
+    news_focus_summary: str = ""
+    news_focus_tag_summary: str = ""
+    news_focus_note_path: str = ""
+    news_focus_note_date: str = ""
+    reason: str = ""
+    input_snapshot: dict = Field(default_factory=dict)
 
 
 @router.get("/focus")
@@ -108,3 +125,58 @@ def get_lease_news_trend_summary_api(
             load_latest_classified_news_summary(),
             use_vertex=use_vertex,
         )
+
+
+@router.post("/judgment-change")
+def record_lease_news_judgment_change_api(
+    req: LeaseNewsJudgmentChangeRequest,
+    background_tasks: BackgroundTasks,
+):
+    """ニュース参照後の判断変更を記録する。"""
+    import datetime as dt
+
+    from judgment_feedback import record_judgment_feedback
+    from lease_news_digest import record_lease_news_judgment_change
+
+    try:
+        feedback = record_judgment_feedback(
+            case_id=req.case_id or f"news-{dt.datetime.now().isoformat()}",
+            model_decision=req.model_decision,
+            human_decision=req.final_decision,
+            reason=req.reason,
+            source="lease_news_debate",
+            score=req.score,
+            input_snapshot=req.input_snapshot,
+            evidence_snapshot={
+                "news_focus": req.news_focus,
+                "summary": req.news_focus_summary,
+                "tags": req.news_focus_tag_summary,
+                "note_path": req.news_focus_note_path,
+                "note_date": req.news_focus_note_date,
+            },
+        )
+        if not feedback.get("success"):
+            raise HTTPException(status_code=422, detail=feedback.get("error"))
+        background_tasks.add_task(
+            record_cloudrun_input_event,
+            event_type="lease_news_judgment_change",
+            surface="lease_news_judgment_change",
+            payload=req.model_dump(),
+        )
+        bucket = record_lease_news_judgment_change(
+            date_str=dt.date.today().isoformat(),
+            note_path=req.news_focus_note_path or "",
+            source_note_date=req.news_focus_note_date or "",
+            company_name=req.company_name or "",
+            score=req.score,
+            final_decision=req.final_decision or "",
+            reason=req.reason or "",
+            focus_lines=tuple(req.news_focus or []),
+            theme_summary=req.news_focus_summary or "",
+            tag_summary=req.news_focus_tag_summary or "",
+        )
+        return {"status": "recorded", "metrics": bucket, "model_improvement": feedback}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -147,7 +147,6 @@ from lease_news_digest import (
     get_latest_lease_news_actions,
     lease_news_actions_as_text,
     record_lease_news_collection,
-    record_lease_news_judgment_change,
     lease_news_focus_as_text,
 )
 from api.knowledge.news_classifier import (
@@ -550,12 +549,14 @@ from api.routers.dashboard import get_dashboard_data_health  # noqa: F401 - back
 from api.routers.lease_news import router as lease_news_router
 app.include_router(lease_news_router)
 from api.routers.lease_news import (  # noqa: F401 - back-compat exports
+    LeaseNewsJudgmentChangeRequest,
     get_lease_news_actions_api,
     get_lease_news_brief_api,
     get_lease_news_classified_summary_api,
     get_lease_news_daily_digest_api,
     get_lease_news_focus_api,
     get_lease_news_trend_summary_api,
+    record_lease_news_judgment_change_api,
 )
 
 from api.routers.pipeline_misc import router as pipeline_misc_router
@@ -7791,21 +7792,6 @@ def save_chat_to_obsidian(req: SaveToObsidianRequest):
     return {"path": relative_path, "message_count": len(messages)}
 
 
-class LeaseNewsJudgmentChangeRequest(BaseModel):
-    case_id: str = ""
-    company_name: str = ""
-    score: Optional[float] = None
-    model_decision: str = ""
-    final_decision: str = ""
-    news_focus: List[str] = Field(default_factory=list)
-    news_focus_summary: str = ""
-    news_focus_tag_summary: str = ""
-    news_focus_note_path: str = ""
-    news_focus_note_date: str = ""
-    reason: str = ""
-    input_snapshot: dict = Field(default_factory=dict)
-
-
 class LeaseIntelligenceActivityRequest(BaseModel):
     surface: str
     action: str = "page_view"
@@ -7834,58 +7820,6 @@ def get_lease_intelligence_related_suggestion_api():
     from lease_intelligence_activity import suggest_related_feature
 
     return {"suggestion": suggest_related_feature()}
-
-
-@app.post("/api/lease-news/judgment-change")
-def record_lease_news_judgment_change_api(req: LeaseNewsJudgmentChangeRequest, background_tasks: BackgroundTasks):
-    """ニュース参照後の判断変更を記録する。"""
-    import datetime as _dt
-    from judgment_feedback import record_judgment_feedback
-
-    try:
-        feedback = record_judgment_feedback(
-            case_id=req.case_id or f"news-{_dt.datetime.now().isoformat()}",
-            model_decision=req.model_decision,
-            human_decision=req.final_decision,
-            reason=req.reason,
-            source="lease_news_debate",
-            score=req.score,
-            input_snapshot=req.input_snapshot,
-            evidence_snapshot={
-                "news_focus": req.news_focus,
-                "summary": req.news_focus_summary,
-                "tags": req.news_focus_tag_summary,
-                "note_path": req.news_focus_note_path,
-                "note_date": req.news_focus_note_date,
-            },
-        )
-        if not feedback.get("success"):
-            raise HTTPException(status_code=422, detail=feedback.get("error"))
-        background_tasks.add_task(
-            record_cloudrun_input_event,
-            event_type="lease_news_judgment_change",
-            surface="lease_news_judgment_change",
-            payload=req.model_dump(),
-        )
-        bucket = record_lease_news_judgment_change(
-            date_str=_dt.date.today().isoformat(),
-            note_path=req.news_focus_note_path or "",
-            source_note_date=req.news_focus_note_date or "",
-            company_name=req.company_name or "",
-            score=req.score,
-            final_decision=req.final_decision or "",
-            reason=req.reason or "",
-            focus_lines=tuple(req.news_focus or []),
-            theme_summary=req.news_focus_summary or "",
-            tag_summary=req.news_focus_tag_summary or "",
-        )
-        return {"status": "recorded", "metrics": bucket, "model_improvement": feedback}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 
 
 # ── 業界リスクニュース要約・保存 ──────────────────────────────────────
