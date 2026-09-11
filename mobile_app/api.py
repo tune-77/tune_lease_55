@@ -1322,11 +1322,12 @@ def predict():
         ).start()
 
     _latency = int((time.time() - _t_start) * 1000)
-    threading.Thread(
-        target=_insert_flask_case,
-        args=(dict(response_payload), dict(data), _latency),
-        daemon=True,
-    ).start()
+    if not app.config.get("TESTING"):
+        threading.Thread(
+            target=_insert_flask_case,
+            args=(dict(response_payload), dict(data), _latency),
+            daemon=True,
+        ).start()
 
     return jsonify(response_payload)
 
