@@ -92,6 +92,16 @@ def test_legacy_vault_used_when_only_legacy_exists(monkeypatch, tmp_path):
     assert resolution.warnings == []
 
 
+def test_registered_vault_is_discovered_when_defaults_are_missing(monkeypatch, tmp_path):
+    discovered = tmp_path / "registered"
+    discovered.mkdir()
+    monkeypatch.setattr(runtime_paths, "DEFAULT_OBSIDIAN_VAULT", tmp_path / "missing-default")
+    monkeypatch.setattr(runtime_paths, "LEGACY_OBSIDIAN_VAULT", tmp_path / "missing-legacy")
+    monkeypatch.setattr(runtime_paths, "_discover_obsidian_vault", lambda: discovered)
+    resolution = runtime_paths.describe_obsidian_vault_resolution({})
+    assert (resolution.path, resolution.source, resolution.exists) == (discovered, "discovered", True)
+
+
 def test_get_obsidian_vault_path_returns_str(monkeypatch):
     monkeypatch.setenv("OBSIDIAN_VAULT_PATH", "/c/vault")
     value = runtime_paths.get_obsidian_vault_path()

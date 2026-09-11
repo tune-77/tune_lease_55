@@ -81,11 +81,7 @@ def test_cloudrun_writeback_preserves_comment_and_edited_claim(feedback_store):
     request.comment = "案件実績に合わせた補足"
     request.edited_claim = "受注実績と稼働率を合わせて確認する。"
 
-    feedback_loop.post_judgment_asset_candidate_feedback(
-        CANDIDATE_ID,
-        request,
-        BackgroundTasksCapture(),
-    )
+    feedback_loop.post_judgment_asset_candidate_feedback(CANDIDATE_ID, request, BackgroundTasksCapture())
     feedback_loop.post_judgment_asset_candidate_feedback(CANDIDATE_ID, request, BackgroundTasksCapture())
 
     assert len(captured) == 2

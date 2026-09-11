@@ -1,6 +1,7 @@
 """Shared path helpers for local and Cloud Run execution."""
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sqlite3
@@ -27,6 +28,28 @@ OBSIDIAN_VAULT_ENV_VARS: tuple[str, ...] = ("OBSIDIAN_VAULT_PATH", "OBSIDIAN_VAU
 
 # lease-wiki-vault は Obsidian Vault の入れ子に置く（`resolve_lease_wiki_vault` 参照）。
 LEASE_WIKI_VAULT_DIRNAME = "lease-wiki-vault"
+
+
+def _discover_obsidian_vault() -> Path | None:
+    """Find a registered or conventional Vault when canonical defaults are absent."""
+    config = Path.home() / "Library/Application Support/obsidian/obsidian.json"
+    try:
+        entries = json.loads(config.read_text(encoding="utf-8")).get("vaults", {}).values()
+        registered = [Path(row["path"]) for row in sorted(entries, key=lambda row: (not row.get("open"), -row.get("ts", 0))) if row.get("path")]
+    except (OSError, json.JSONDecodeError, AttributeError, TypeError, KeyError):
+        registered = []
+    home = Path.home()
+    roots = registered + [home / "Documents/Obsidian Vault", home / "Documents", home / "Obsidian", ICLOUD_OBSIDIAN_DOCS, home / "Library/Mobile Documents/com~apple~CloudDocs"]
+    for root in roots:
+        if (root / ".obsidian").is_dir():
+            return root.resolve()
+        try:
+            marker = next((path for path in root.rglob(".obsidian") if path.is_dir()), None) if root.is_dir() else None
+        except OSError:
+            continue
+        if marker:
+            return marker.parent.resolve()
+    return None
 
 
 def get_data_dir() -> Path:
@@ -189,6 +212,10 @@ def describe_obsidian_vault_resolution(
         elif LEGACY_OBSIDIAN_VAULT.exists():
             resolution = ObsidianVaultResolution(
                 path=LEGACY_OBSIDIAN_VAULT, source="legacy", exists=True, warnings=warnings
+            )
+        elif discovered := _discover_obsidian_vault():
+            resolution = ObsidianVaultResolution(
+                path=discovered, source="discovered", exists=True, warnings=warnings
             )
         else:
             resolution = ObsidianVaultResolution(

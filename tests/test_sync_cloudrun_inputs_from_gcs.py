@@ -677,18 +677,14 @@ def test_materialize_events_replays_feedback_correction_into_candidate_state(tmp
     second_id = "22222222-2222-4222-8222-222222222222"
     events = [
         {
-            "event_id": "wrapper-1",
-            "ts": "2026-09-11T00:00:00Z",
-            "event_type": "judgment_asset_candidate_feedback",
+            "event_id": "wrapper-1", "ts": "2026-09-11T00:00:00Z", "event_type": "judgment_asset_candidate_feedback",
             "payload": {
                 "candidate_id": "cr-rule-1", "event_id": first_id, "feedback": "useful",
                 "disposition": "helped", "case_id": "case-1", "review_id": 7,
             },
         },
         {
-            "event_id": "wrapper-2",
-            "ts": "2026-09-11T00:01:00Z",
-            "event_type": "judgment_asset_candidate_feedback",
+            "event_id": "wrapper-2", "ts": "2026-09-11T00:01:00Z", "event_type": "judgment_asset_candidate_feedback",
             "payload": {
                 "candidate_id": "cr-rule-1", "event_id": second_id,
                 "supersedes_event_id": first_id, "feedback": "rejected",
