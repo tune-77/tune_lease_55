@@ -118,10 +118,12 @@ class HybridSearchEngine:
         self.documents = documents
         self.document_id_map = {doc.get('path', doc.get('id')): doc for doc in documents}
 
-        # SemanticRAGRetriever は Obsidian から自動的にドキュメントを読み込むため、
-        # 明示的なインデックスは不要（既にロード済み）
+        # Hybrid検索ではBM25とSemanticが同じ文書集合を評価する必要がある。
+        # Retriever初期化時のVaultスナップショットではなく、呼び出し元が明示した
+        # 最新の文書集合へ揃える（ベクトル化はretrieve時に行う）。
         if self.semantic_available:
-            logger.info(f"✅ Semantic Search: {len(self.semantic_retriever.obsidian_documents)} ドキュメント（Obsidian から自動ロード）")
+            self.semantic_retriever.obsidian_documents = list(documents)
+            logger.info(f"✅ Semantic Search: {len(documents)} ドキュメント")
 
         # BM25 検索エンジンにインデックス
         if self.bm25_available:

@@ -80,6 +80,12 @@ class ScoringResponse(BaseModel):
     asset_warnings: Optional[list] = None      # 物件リスク警告フラグ（BEP・換金性・残存価値）
     asset_bonuses: Optional[list] = None       # 物件プラス評価（換金性・残存価値優位）
     default_warnings: list = Field(default_factory=list)  # 高リスク財務パターン警告（実PDではない・スコア非影響）
+    score_based_hantei: Optional[str] = None  # 強制審議ゲート適用前のスコア判定
+    risk_review_required: bool = False  # 強い信用リスクによる人間審議の必須フラグ
+    risk_review_reasons: list[str] = Field(default_factory=list)  # 強制審議の理由
+    credit_risk_group_score: Optional[float] = None
+    credit_risk_group_level: Optional[str] = None
+    credit_risk_group_flags: list = Field(default_factory=list)
     quantum_risk: Optional[float] = None       # 量子干渉リスクスコア 0-100（財務矛盾検出）
     q_risk_breakdown: Optional[dict] = None    # Q_riskのルール別寄与内訳（表示専用・スコア非影響）
     financial_consistency_score: Optional[float] = None  # 旧Q_risk: 財務・入力整合性チェック 0-100

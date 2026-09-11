@@ -7,7 +7,12 @@ set -uo pipefail
 LOG=$(mktemp)
 trap 'rm -f "$LOG"' EXIT
 
-python3 -m pytest tests/ -q --tb=no "$@" >"$LOG" 2>&1
+PYTHON_BIN="python3"
+if [ -x ".venv/bin/python" ]; then
+    PYTHON_BIN=".venv/bin/python"
+fi
+
+"$PYTHON_BIN" -m pytest tests/ -q --tb=no "$@" >"$LOG" 2>&1
 STATUS=$?
 
 if [ "$STATUS" -eq 0 ]; then
@@ -18,5 +23,5 @@ fi
 echo "=== テスト失敗を検出。失敗したテストのみ詳細再実行 ==="
 tail -n 15 "$LOG"
 echo
-python3 -m pytest tests/ --lf -v --tb=short --color=yes "$@"
+"$PYTHON_BIN" -m pytest tests/ --lf -v --tb=short --color=yes "$@"
 exit $?

@@ -965,8 +965,11 @@ def generate_private_reflection(vault: str | Path, date_str: str) -> str:
         **dict(state.get("private_reflection", {})),
     }
     reflection["text"] = text
+    # 日次経験の記録時点で同日の内省回数は進んでいる。同日再生成では文章だけ
+    # 更新し、回数を二重加算しない。単独で新しい日を生成した時だけ1回進める。
+    if str(reflection.get("last_reflected_date", "")) != date_str:
+        reflection["reflection_count"] = int(reflection.get("reflection_count", 0)) + 1
     reflection["last_reflected_date"] = date_str
-    reflection["reflection_count"] = int(reflection.get("reflection_count", 0)) + 1
     state["private_reflection"] = reflection
     _write_state(vault, state)
     _write_reflection_note(vault, date_str, text)
