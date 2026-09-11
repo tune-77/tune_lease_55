@@ -7,6 +7,7 @@ import re
 import datetime as dt
 from pathlib import Path
 from typing import Any, Literal, Optional
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
@@ -38,6 +39,7 @@ _NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signal
 _CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment_rules.json"
 _JUDGMENT_ASSET_USAGE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_usage_feedback.jsonl"
 _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_feedback_drops.jsonl"
+_JUDGMENT_ASSET_CANDIDATE_FEEDBACK_LOCK = Path(_REPO_ROOT) / "data" / ".judgment_asset_candidate_feedback.lock"
 _LANGUAGE_JUDGMENT_MATERIALS_JSONL = Path(_REPO_ROOT) / "data" / "language_judgment_materials.jsonl"
 _RESPONSE_IMPACT_PREDICTIONS_JSONL = Path(_REPO_ROOT) / "data" / "response_impact_predictions.jsonl"
 _SCREENING_INPUT_ASSIST_EVENTS_JSONL = Path(_REPO_ROOT) / "data" / "screening_input_assist_events.jsonl"
@@ -182,11 +184,15 @@ class ShionFollowupImpactFeedbackRequest(BaseModel):
 
 
 class JudgmentAssetCandidateFeedbackRequest(BaseModel):
-    feedback: Literal["useful", "neutral", "rejected"]
+    feedback: Literal["useful", "neutral", "rejected", "not_applied"]
     case_id: str = ""
     review_id: Optional[int] = None
     comment: str = ""
     edited_claim: str = ""
+    event_id: str = ""
+    supersedes_event_id: str = ""
+    recorded_at: str = ""
+    source: Literal["real_case"] = "real_case"
 
 
 class JudgmentAssetCandidateManualRequest(BaseModel):
@@ -1112,6 +1118,77 @@ def _select_screening_judgment_asset_candidates(
     return selected
 
 
+def _candidate_feedback_lock():
+    if not _FILELOCK_AVAILABLE:
+        return contextlib.nullcontext()
+    return FileLock(str(_JUDGMENT_ASSET_CANDIDATE_FEEDBACK_LOCK), timeout=5)
+
+
+def _normalize_candidate_feedback_event(req: JudgmentAssetCandidateFeedbackRequest) -> dict[str, Any]:
+    event_id = str(req.event_id or "").strip() or str(uuid4())
+    try:
+        event_id = str(UUID(event_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="event_id must be a UUID") from exc
+
+    supersedes_event_id = str(req.supersedes_event_id or "").strip()
+    if supersedes_event_id:
+        try:
+            supersedes_event_id = str(UUID(supersedes_event_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="supersedes_event_id must be a UUID") from exc
+        if supersedes_event_id == event_id:
+            raise HTTPException(status_code=422, detail="event cannot supersede itself")
+
+    recorded_at = str(req.recorded_at or "").strip()
+    if recorded_at:
+        try:
+            dt.datetime.fromisoformat(recorded_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="recorded_at must be ISO-8601") from exc
+    else:
+        recorded_at = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+    return {
+        "event_id": event_id,
+        "supersedes_event_id": supersedes_event_id,
+        "recorded_at": recorded_at,
+    }
+
+
+def _candidate_feedback_counter(feedback: str) -> str:
+    return {
+        "useful": "useful_count",
+        "neutral": "neutral_count",
+        "rejected": "rejected_count",
+    }.get(feedback, "")
+
+
+def _candidate_feedback_heads(case_id: str, review_id: Optional[int]) -> dict[str, dict[str, Any]]:
+    clean_case_id = str(case_id or "").strip()
+    if not clean_case_id:
+        return {}
+    rows = [
+        row for row in read_feedback_rows(_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG)
+        if str(row.get("event_id") or "").strip()
+        and str(row.get("case_id") or "").strip() == clean_case_id
+        and row.get("review_id") == review_id
+    ]
+    superseded_ids = {
+        str(row.get("supersedes_event_id") or "").strip()
+        for row in rows
+        if str(row.get("supersedes_event_id") or "").strip()
+    }
+    heads: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if str(row.get("event_id") or "").strip() in superseded_ids:
+            continue
+        rule_id = str(row.get("rule_id") or "").strip()
+        if rule_id:
+            heads[rule_id] = row
+    return heads
+
+
 def _update_autoresearch_judgment_asset_candidate_feedback(
     candidate_id: str,
     req: JudgmentAssetCandidateFeedbackRequest,
@@ -1129,75 +1206,186 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"candidate state tools unavailable: {exc}")
 
-    state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
-    current = dict(state.get(candidate_id) or {})
-    for key, default in {
-        "use_count": 0,
-        "useful_count": 0,
-        "rejected_count": 0,
-        "neutral_count": 0,
-        "last_used_at": "",
-        "last_feedback_at": "",
-        "verified_status": "unverified",
-        "verification_note": "",
-        "edited_claim": "",
-        "edit_count": 0,
-        "last_edited_at": "",
-    }.items():
-        current.setdefault(key, default)
-    current["use_count"] = int(current.get("use_count") or 0) + 1
-    if req.feedback == "useful":
-        current["useful_count"] = int(current.get("useful_count") or 0) + 1
-    elif req.feedback == "rejected":
-        current["rejected_count"] = int(current.get("rejected_count") or 0) + 1
-    else:
-        current["neutral_count"] = int(current.get("neutral_count") or 0) + 1
-    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
-    current["last_used_at"] = now
-    current["last_feedback_at"] = now
-    note_bits = [
-        f"feedback={req.feedback}",
-        f"case_id={str(req.case_id or '')[:80]}",
-    ]
-    if req.review_id:
-        note_bits.append(f"review_id={req.review_id}")
-    if req.comment:
-        note_bits.append(f"comment={str(req.comment)[:160]}")
-    edited_claim = str(req.edited_claim or "").strip()
-    if edited_claim:
-        original_claim = ""
-        for item in candidates:
-            if str(item.get("id") or "") == candidate_id:
-                original_claim = str(item.get("claim") or "")
-                break
-        if edited_claim != original_claim and edited_claim != str(current.get("edited_claim") or ""):
-            current["edited_claim"] = edited_claim[:500]
-            current["edit_count"] = int(current.get("edit_count") or 0) + 1
-            current["last_edited_at"] = now
-            note_bits.append("edited_claim=updated")
-    current["verification_note"] = " / ".join(note_bits)
-    state[candidate_id] = current
-    write_state(
-        _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON,
-        [{"id": candidate_id, **current}],
-        state,
-    )
+    case_id = str(req.case_id or "").strip()
+    if not case_id:
+        raise HTTPException(status_code=422, detail="case_id is required for real-case feedback")
+    normalized_event = _normalize_candidate_feedback_event(req)
     feedback_outcome = {
         "useful": "helped",
-        "neutral": "neutral",
+        "neutral": "challenged",
         "rejected": "rejected",
-    }.get(req.feedback, "neutral")
+        "not_applied": "not_applied",
+    }[req.feedback]
+
     try:
-        append_feedback_event(
-            asset_id=candidate_id,
-            outcome=feedback_outcome,
-            case_id=req.case_id,
-            note=req.comment or current.get("verification_note") or "",
-            source="judgment_asset_candidate_feedback",
-        )
-    except Exception:
-        pass
-    return {"id": candidate_id, **current}
+        lock_context = _candidate_feedback_lock()
+        with lock_context:
+            feedback_rows = read_feedback_rows(_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG)
+            same_id = next(
+                (row for row in feedback_rows if str(row.get("event_id") or "") == normalized_event["event_id"]),
+                None,
+            )
+            semantic_key = (
+                candidate_id,
+                case_id,
+                req.review_id,
+                req.feedback,
+                normalized_event["supersedes_event_id"],
+            )
+            if same_id:
+                existing_key = (
+                    str(same_id.get("rule_id") or ""),
+                    str(same_id.get("case_id") or ""),
+                    same_id.get("review_id"),
+                    str(same_id.get("feedback") or ""),
+                    str(same_id.get("supersedes_event_id") or ""),
+                )
+                if existing_key != semantic_key:
+                    raise HTTPException(status_code=409, detail="event_id already used for different feedback")
+                state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
+                return {
+                    "candidate": {"id": candidate_id, **dict(state.get(candidate_id) or {})},
+                    "feedback_event": same_id,
+                    "duplicate": True,
+                }
+
+            related_rows = [
+                row for row in feedback_rows
+                if str(row.get("event_id") or "")
+                and str(row.get("rule_id") or "") == candidate_id
+                and str(row.get("case_id") or "") == case_id
+                and row.get("review_id") == req.review_id
+            ]
+            superseded_ids = {
+                str(row.get("supersedes_event_id") or "")
+                for row in related_rows
+                if str(row.get("supersedes_event_id") or "")
+            }
+            heads = [row for row in related_rows if str(row.get("event_id") or "") not in superseded_ids]
+            superseded_row = None
+            if normalized_event["supersedes_event_id"]:
+                superseded_row = next(
+                    (
+                        row for row in related_rows
+                        if str(row.get("event_id") or "") == normalized_event["supersedes_event_id"]
+                    ),
+                    None,
+                )
+                if superseded_row is None:
+                    raise HTTPException(status_code=409, detail="superseded feedback event was not found")
+                if superseded_row not in heads:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "message": "feedback changed elsewhere; reload and evaluate again",
+                            "current_event_id": str(heads[-1].get("event_id") or "") if heads else "",
+                        },
+                    )
+            elif heads:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "feedback already exists; supersedes_event_id is required",
+                        "current_event_id": str(heads[-1].get("event_id") or ""),
+                    },
+                )
+
+            state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
+            original_state = {key: dict(value) for key, value in state.items()}
+            current = dict(state.get(candidate_id) or {})
+            for key, default in {
+                "use_count": 0,
+                "useful_count": 0,
+                "rejected_count": 0,
+                "neutral_count": 0,
+                "last_used_at": "",
+                "last_feedback_at": "",
+                "verified_status": "unverified",
+                "verification_note": "",
+                "edited_claim": "",
+                "edit_count": 0,
+                "last_edited_at": "",
+            }.items():
+                current.setdefault(key, default)
+
+            if superseded_row:
+                prior_feedback = str(superseded_row.get("feedback") or "")
+                prior_counter = _candidate_feedback_counter(prior_feedback)
+                if prior_counter:
+                    current[prior_counter] = max(0, int(current.get(prior_counter) or 0) - 1)
+                    current["use_count"] = max(0, int(current.get("use_count") or 0) - 1)
+
+            counter = _candidate_feedback_counter(req.feedback)
+            if counter:
+                current[counter] = int(current.get(counter) or 0) + 1
+                current["use_count"] = int(current.get("use_count") or 0) + 1
+
+            now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+            current["last_used_at"] = now
+            current["last_feedback_at"] = now
+            note_bits = [f"feedback={req.feedback}", f"case_id={case_id[:80]}"]
+            if req.review_id:
+                note_bits.append(f"review_id={req.review_id}")
+            if req.comment:
+                note_bits.append(f"comment={str(req.comment)[:160]}")
+            edited_claim = str(req.edited_claim or "").strip()
+            if edited_claim:
+                original_claim = next(
+                    (str(item.get("claim") or "") for item in candidates if str(item.get("id") or "") == candidate_id),
+                    "",
+                )
+                if edited_claim != original_claim and edited_claim != str(current.get("edited_claim") or ""):
+                    current["edited_claim"] = edited_claim[:500]
+                    current["edit_count"] = int(current.get("edit_count") or 0) + 1
+                    current["last_edited_at"] = now
+                    note_bits.append("edited_claim=updated")
+            current["verification_note"] = " / ".join(note_bits)
+            state[candidate_id] = current
+            write_state(
+                _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON,
+                [{"id": candidate_id, **current}],
+                state,
+            )
+            try:
+                appended = append_feedback_event(
+                    asset_id=candidate_id,
+                    outcome=feedback_outcome,
+                    case_id=case_id,
+                    note=req.comment or current.get("verification_note") or "",
+                    source=req.source,
+                    feedback=req.feedback,
+                    event_id=normalized_event["event_id"],
+                    supersedes_event_id=normalized_event["supersedes_event_id"],
+                    review_id=req.review_id,
+                    recorded_at=normalized_event["recorded_at"],
+                    path=_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG,
+                )
+                if not appended:
+                    raise OSError("feedback event was rejected")
+            except Exception:
+                write_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON, [], original_state)
+                raise
+
+            feedback_event = {
+                "event_id": normalized_event["event_id"],
+                "supersedes_event_id": normalized_event["supersedes_event_id"],
+                "recorded_at": normalized_event["recorded_at"],
+                "feedback": req.feedback,
+                "disposition": feedback_outcome,
+                "case_id": case_id,
+                "review_id": req.review_id,
+                "rule_id": candidate_id,
+                "source": req.source,
+            }
+            return {
+                "candidate": {"id": candidate_id, **current},
+                "feedback_event": feedback_event,
+                "duplicate": False,
+            }
+    except _FileLockTimeout as exc:
+        if not _FILELOCK_AVAILABLE:
+            raise
+        raise HTTPException(status_code=503, detail="feedback store is busy; retry") from exc
 
 
 
@@ -2970,6 +3158,8 @@ def get_screening_judgment_asset_candidates(
     hantei: str = "",
     score: Optional[float] = None,
     limit: int = 3,
+    case_id: str = "",
+    review_id: Optional[int] = None,
 ) -> dict:
     candidates = _select_screening_judgment_asset_candidates(
         industry_major=industry_major,
@@ -2980,6 +3170,13 @@ def get_screening_judgment_asset_candidates(
         score=score,
         limit=limit,
     )
+    feedback_heads = _candidate_feedback_heads(case_id, review_id)
+    for candidate in candidates:
+        head = feedback_heads.get(str(candidate.get("id") or ""))
+        if not head:
+            continue
+        candidate["user_feedback"] = str(head.get("feedback") or "")
+        candidate["last_feedback_event_id"] = str(head.get("event_id") or "")
     return {"count": len(candidates), "candidates": candidates}
 
 
@@ -3066,14 +3263,26 @@ def post_judgment_asset_candidate_feedback(
     req: JudgmentAssetCandidateFeedbackRequest,
     background_tasks: BackgroundTasks,
 ) -> dict:
-    entry = _update_autoresearch_judgment_asset_candidate_feedback(candidate_id, req)
-    background_tasks.add_task(
-        record_cloudrun_input_event,
-        event_type="judgment_asset_candidate_feedback",
-        surface="screening",
-        payload={**entry, "schema_version": 1, "feedback": req.feedback, "case_id": req.case_id, "review_id": req.review_id},
-    )
-    return {"status": "ok", "candidate": entry}
+    result = _update_autoresearch_judgment_asset_candidate_feedback(candidate_id, req)
+    feedback_event = result["feedback_event"]
+    if not result["duplicate"]:
+        background_tasks.add_task(
+            record_cloudrun_input_event,
+            event_type="judgment_asset_candidate_feedback",
+            surface="screening",
+            payload={
+                "schema_version": 2,
+                "candidate_id": candidate_id,
+                "event_id": feedback_event["event_id"],
+                "supersedes_event_id": feedback_event["supersedes_event_id"],
+                "feedback": req.feedback,
+                "disposition": feedback_event["disposition"],
+                "case_id": req.case_id,
+                "review_id": req.review_id,
+                "source": req.source,
+            },
+        )
+    return {"status": "ok", **result}
 
 
 @router.get("/api/screening-experience-cases")

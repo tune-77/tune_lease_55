@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
-import { PieChart, TrendingUp, Users, Target, Activity, DollarSign, Award } from 'lucide-react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
+import { PieChart, Target, Activity, DollarSign, Award } from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 
 export default function HistoryDashPage() {
   const [data, setData] = useState<any>(null);
@@ -35,12 +35,6 @@ export default function HistoryDashPage() {
       </div>
     </div>
   );
-
-  const radarData = data?.avg_financials ? Object.entries(data.avg_financials).map(([name, value]) => ({
-    subject: name,
-    A: value,
-    fullMark: 1000000,
-  })) : [];
 
   return (
     <div className="p-8 min-h-[calc(100vh-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">

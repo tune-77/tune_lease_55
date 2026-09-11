@@ -52,6 +52,12 @@ sys.path.insert(0, _REPO_ROOT)
 from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
 from api.db_connection import current_backend, get_connection, placeholder
 from api.cloudrun_writeback import record_cloudrun_input_event
+from api.data_git_sync import (
+    DATA_GIT_DIR as _DATA_GIT_DIR,
+    git_push_db as _git_push_db,
+    init_sync_log_table as _init_sync_log_table,
+    record_sync_log as _record_sync_log,
+)
 logger = logging.getLogger(__name__)
 
 # fire-and-forget なバックグラウンド処理（チャット後の記憶保存・ログ記録等）用の共有プール。
@@ -79,13 +85,6 @@ sys.modules["base_rate_master"] = _brm_mod
 _brm_spec.loader.exec_module(_brm_mod)
 
 _LEASE_DB_PATH = get_db_path()
-_DATA_GIT_DIR = os.environ.get("DATA_GIT_DIR", "/app/data-git")
-_git_lock = asyncio.Lock()
-
-
-def _db_available() -> bool:
-    """Cloud SQL ではローカル SQLite ファイルがなくても DB 利用可能とみなす。"""
-    return current_backend() == "postgresql" or os.path.exists(_LEASE_DB_PATH)
 
 
 def _table_exists(cur, table_name: str) -> bool:
@@ -152,10 +151,14 @@ from lease_news_digest import (
     lease_news_focus_as_text,
 )
 from api.knowledge.news_classifier import (
-    build_classified_news_summary_from_vault,
     load_latest_classified_news_summary,
 )
-from api.knowledge.news_vertex_summary import build_vertex_assisted_news_trend_summary
+from api.lease_news_presenters import (
+    lease_news_actions_to_dict as _lease_news_actions_to_dict,
+    lease_news_brief_to_dict as _lease_news_brief_to_dict,
+    lease_news_focus_to_dict as _lease_news_focus_to_dict,
+    lease_news_reflection_to_dict as _lease_news_reflection_to_dict,
+)
 from obsidian_daily_intelligence import (
     obsidian_daily_intelligence_as_text,
     record_obsidian_daily_intelligence_event,
@@ -203,91 +206,6 @@ def _get_obsidian_collection():
         print(f"[RAG] ChromaDB init failed: {e}")
         _chroma_collection = None
     return _chroma_collection
-
-
-def _init_sync_log_table() -> None:
-    """sync_log テーブルを冪等に作成する（Cloud Run git push 結果記録用）。"""
-    if not _db_available():
-        return
-    try:
-        with get_connection() as conn:
-            cur = conn.cursor()
-            if current_backend() == "postgresql":
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS sync_log (
-                        id SERIAL PRIMARY KEY,
-                        pushed_at TEXT NOT NULL,
-                        success INTEGER NOT NULL,
-                        error TEXT
-                    )
-                """)
-            else:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS sync_log (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        pushed_at TEXT NOT NULL,
-                        success INTEGER NOT NULL,
-                        error TEXT
-                    )
-                """)
-    except Exception as e:
-        print(f"[sync_log] テーブル作成失敗（非致命的）: {e}")
-
-
-def _record_sync_log(success: bool, error: str = "") -> None:
-    """sync_log テーブルに git push 結果を記録する。"""
-    if not _db_available():
-        return
-    import datetime
-    _ph = placeholder()
-    try:
-        with get_connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                f"INSERT INTO sync_log (pushed_at, success, error) VALUES ({_ph}, {_ph}, {_ph})",
-                (datetime.datetime.utcnow().isoformat(), 1 if success else 0, error),
-            )
-    except Exception as e:
-        print(f"[sync_log] 記録失敗（非致命的）: {e}")
-
-
-async def _git_push_db() -> None:
-    """DB_PATH の実DB + mind.json を data-git にコピーして git push する（BackgroundTask 用）。"""
-    if not os.path.isdir(os.path.join(_DATA_GIT_DIR, ".git")):
-        return
-    db_name = os.path.basename(_LEASE_DB_PATH)
-    db_dst = os.path.join(_DATA_GIT_DIR, "data", db_name)
-    mind_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "mind.json")
-    mind_dst = os.path.join(_DATA_GIT_DIR, "data", "mind.json")
-    success = False
-    error_msg = ""
-    try:
-        async with _git_lock:
-            if os.path.exists(_LEASE_DB_PATH):
-                shutil.copy2(_LEASE_DB_PATH, db_dst)
-            if os.path.exists(mind_src):
-                shutil.copy2(mind_src, mind_dst)
-            db_name_q = shlex.quote(f"data/{db_name}")
-            proc = await asyncio.create_subprocess_exec(
-                "bash", "-c",
-                f"git add {db_name_q} data/mind.json 2>/dev/null; "
-                "git diff --cached --quiet || "
-                "git commit -m 'auto: update from cloud-run'; "
-                "git push",
-                cwd=_DATA_GIT_DIR,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
-            success = proc.returncode == 0
-            error_msg = stderr.decode(errors="replace") if not success else ""
-    except asyncio.TimeoutError:
-        error_msg = "git push timeout"
-    except Exception as exc:
-        error_msg = str(exc)
-    _record_sync_log(success, error_msg)
-    if not success:
-        print(f"[git-push] 失敗: {error_msg}")
 
 
 @asynccontextmanager
@@ -625,10 +543,26 @@ app.include_router(misc_endpoints_router)
 from api.routers.analytics import router as analytics_router
 app.include_router(analytics_router)
 
+from api.routers.dashboard import router as dashboard_router
+app.include_router(dashboard_router)
+from api.routers.dashboard import get_dashboard_data_health  # noqa: F401 - back-compat export
+
+from api.routers.lease_news import router as lease_news_router
+app.include_router(lease_news_router)
+from api.routers.lease_news import (  # noqa: F401 - back-compat exports
+    get_lease_news_actions_api,
+    get_lease_news_brief_api,
+    get_lease_news_classified_summary_api,
+    get_lease_news_daily_digest_api,
+    get_lease_news_focus_api,
+    get_lease_news_trend_summary_api,
+)
+
 from api.routers.pipeline_misc import router as pipeline_misc_router
 app.include_router(pipeline_misc_router)
 from api.routers.system_misc import router as system_misc_router
 app.include_router(system_misc_router)
+from api.routers.system_misc import authenticated_health  # noqa: F401 - back-compat export
 from api.routers.screening_emotions import router as screening_emotions_router
 app.include_router(screening_emotions_router)
 from api.routers.judgment_assets import router as judgment_assets_router
@@ -2039,12 +1973,6 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
     }
 
 
-@app.get("/api/health/auth")
-def authenticated_health():
-    """起動時に認証設定も含めて確認する軽量なAPI。"""
-    return {"ok": True}
-
-
 @app.delete("/api/cases/operation/clear-all")
 def clear_all_pending_cases(background_tasks: BackgroundTasks):
     """未登録案件をすべて削除する（一括クリア）"""
@@ -2108,128 +2036,6 @@ def get_dashboard_stats():
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/dashboard/data-health")
-def get_dashboard_data_health():
-    """Return only dashboard health metadata, never case or aggregate contents."""
-    try:
-        from api.dashboard_data_health import evaluate_dashboard_data_health
-        from data_cases import load_dashboard_stats_cache, refresh_dashboard_stats_cache
-
-        payload = load_dashboard_stats_cache()
-        if payload is None:
-            payload = refresh_dashboard_stats_cache()
-        healthy, reason = evaluate_dashboard_data_health(payload)
-        return {"healthy": healthy, "reason": reason}
-    except Exception:
-        logger.exception("dashboard data health check failed")
-        return {"healthy": False, "reason": "health_check_error"}
-
-
-def _lease_news_focus_to_dict(focus):
-    if not focus or not getattr(focus, "available", False):
-        return {"available": False}
-    return {
-        "available": True,
-        "note_path": getattr(focus, "note_path", ""),
-        "note_date": getattr(focus, "note_date", ""),
-        "profile": getattr(focus, "profile", ""),
-        "theme_summary": getattr(focus, "theme_summary", ""),
-        "bucket_summary": getattr(focus, "bucket_summary", ""),
-        "tag_summary": getattr(focus, "tag_summary", ""),
-        "focus_lines": list(getattr(focus, "focus_lines", ()) or ()),
-        "memo_lines": list(getattr(focus, "memo_lines", ()) or ()),
-        "metrics_lines": list(getattr(focus, "metrics_lines", ()) or ()),
-        "article_titles": list(getattr(focus, "article_titles", ()) or ()),
-        "headline": getattr(focus, "headline", ""),
-    }
-
-
-def _lease_news_brief_to_dict(brief):
-    if not brief or not getattr(brief, "available", False):
-        return {"available": False}
-    return {
-        "available": True,
-        "prefecture": getattr(brief, "prefecture", ""),
-        "region": getattr(brief, "region", ""),
-        "geo_context": getattr(brief, "geo_context", ""),
-        "national_headline": getattr(brief, "national_headline", ""),
-        "national_focus_lines": list(getattr(brief, "national_focus_lines", ()) or ()),
-        "regional_available": getattr(brief, "regional_available", False),
-        "regional_title": getattr(brief, "regional_title", ""),
-        "regional_summary_lines": list(getattr(brief, "regional_summary_lines", ()) or ()),
-        "regional_usage_memo": getattr(brief, "regional_usage_memo", ""),
-        "regional_tags": list(getattr(brief, "regional_tags", ()) or ()),
-        "regional_source": getattr(brief, "regional_source", ""),
-        "opening_line": getattr(brief, "opening_line", ""),
-        "question_line": getattr(brief, "question_line", ""),
-        "note_date": getattr(brief, "note_date", ""),
-        "note_path": getattr(brief, "note_path", ""),
-    }
-
-
-def _lease_news_reflection_to_dict(reflection):
-    if not reflection or not getattr(reflection, "available", False):
-        return {"available": False}
-    return {
-        "available": True,
-        "note_path": getattr(reflection, "note_path", ""),
-        "note_date": getattr(reflection, "note_date", ""),
-        "theme_summary": getattr(reflection, "theme_summary", ""),
-        "tag_summary": getattr(reflection, "tag_summary", ""),
-        "headline": getattr(reflection, "headline", ""),
-        "thought_lines": list(getattr(reflection, "thought_lines", ()) or ()),
-        "tomorrow_lines": list(getattr(reflection, "tomorrow_lines", ()) or ()),
-        "illustration_url": getattr(reflection, "illustration_url", ""),
-        "continuity_days": getattr(reflection, "continuity_days", 0),
-        "dominant_mood": getattr(reflection, "dominant_mood", ""),
-        "self_narrative": getattr(reflection, "self_narrative", ""),
-        "current_question": getattr(reflection, "current_question", ""),
-        "memory_excerpt": getattr(reflection, "memory_excerpt", ""),
-        "user_understanding": getattr(reflection, "user_understanding", ""),
-        "user_curiosity": getattr(reflection, "user_curiosity", ""),
-        "user_interests": list(getattr(reflection, "user_interests", ()) or ()),
-        "observed_days": getattr(reflection, "observed_days", 0),
-        "primary_goal": getattr(reflection, "primary_goal", ""),
-        "secondary_goal": getattr(reflection, "secondary_goal", ""),
-        "ultimate_goal": getattr(reflection, "ultimate_goal", ""),
-        "ultimate_goal_status": getattr(reflection, "ultimate_goal_status", ""),
-        "knowledge_available": getattr(reflection, "knowledge_available", False),
-        "knowledge_scope": getattr(reflection, "knowledge_scope", ""),
-        "indexed_notes": getattr(reflection, "indexed_notes", 0),
-        "knowledge_source_count": getattr(reflection, "knowledge_source_count", 0),
-        "knowledge_sources": list(getattr(reflection, "knowledge_sources", ()) or ()),
-    }
-
-
-def _lease_news_actions_to_dict(actions):
-    if not actions or not getattr(actions, "available", False):
-        return {"available": False}
-    return {
-        "available": True,
-        "date": getattr(actions, "date", ""),
-        "note_path": getattr(actions, "note_path", ""),
-        "json_path": getattr(actions, "json_path", ""),
-        "summary": getattr(actions, "summary", ""),
-        "action_items": [
-            {
-                "signal": getattr(item, "signal", ""),
-                "affected_industries": list(getattr(item, "affected_industries", ()) or ()),
-                "affected_assets": list(getattr(item, "affected_assets", ()) or ()),
-                "risk_flags": list(getattr(item, "risk_flags", ()) or ()),
-                "recommended_checks": list(getattr(item, "recommended_checks", ()) or ()),
-                "condition_impacts": list(getattr(item, "condition_impacts", ()) or ()),
-                "source_title": getattr(item, "source_title", ""),
-                "source_path": getattr(item, "source_path", ""),
-                "valid_until": getattr(item, "valid_until", ""),
-                "confidence": getattr(item, "confidence", 0.0),
-                "noise_score": getattr(item, "noise_score", 0.0),
-            }
-            for item in (getattr(actions, "action_items", ()) or ())
-        ],
-        "ignored_titles": list(getattr(actions, "ignored_titles", ()) or ()),
-    }
 
 
 def _daily_greeting_read_json(path: Path) -> dict:
@@ -2346,94 +2152,6 @@ def _daily_greeting_opening(now) -> dict:
         "time_band": "late_night",
     }
 
-
-
-@app.get("/api/lease-news/focus")
-def get_lease_news_focus_api():
-    """ホーム画面とAICHATで共通利用する最新ニュースの注目論点を返す。"""
-    try:
-        return _lease_news_focus_to_dict(get_latest_lease_news_focus())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/lease-news/brief")
-def get_lease_news_brief_api(prefecture: str = "", industry: str = ""):
-    """AICHATとホームで共通利用する、全国+地域のニュースブリーフを返す。"""
-    try:
-        return _lease_news_brief_to_dict(build_lease_news_brief(prefecture=prefecture, industry=industry))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/lease-news/actions")
-def get_lease_news_actions_api():
-    """日次ニュースを審査アクションへ変換した一覧を返す。"""
-    try:
-        return _lease_news_actions_to_dict(get_latest_lease_news_actions())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/lease-news/daily-digest")
-def get_lease_news_daily_digest_api(limit: int = 3):
-    """Obsidianの日次ニュースを、対話室の朝報向けに短く返す。"""
-    try:
-        return build_daily_news_digest(limit=max(1, min(int(limit), 5)))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/lease-news/classified-summary")
-def get_lease_news_classified_summary_api(limit: int = 30, days: int = 14, refresh: bool = False):
-    """ニュースを業種別・社会情勢・金融情報の軸で束ね、審査示唆つきで返す。"""
-    try:
-        vault = find_vault()
-        summary = build_classified_news_summary_from_vault(
-            vault,
-            limit=max(1, min(int(limit), 80)),
-            days=max(1, min(int(days), 60)),
-        )
-        if summary.get("available") or refresh:
-            return summary
-        latest = load_latest_classified_news_summary()
-        if latest.get("available"):
-            return latest
-        return summary
-    except Exception as e:
-        if refresh:
-            raise HTTPException(status_code=500, detail=str(e))
-        latest = load_latest_classified_news_summary()
-        if latest.get("available"):
-            return latest
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/lease-news/trend-summary")
-def get_lease_news_trend_summary_api(
-    limit: int = 30,
-    days: int = 14,
-    refresh: bool = False,
-    use_vertex: bool = True,
-):
-    """分類済みニュースから、Vertex補助つきの傾向・要約・注意点を返す。"""
-    try:
-        vault = find_vault()
-        summary = build_classified_news_summary_from_vault(
-            vault,
-            limit=max(1, min(int(limit), 80)),
-            days=max(1, min(int(days), 60)),
-        )
-        if not summary.get("available") and not refresh:
-            latest = load_latest_classified_news_summary()
-            if latest.get("available"):
-                summary = latest
-        return build_vertex_assisted_news_trend_summary(summary, use_vertex=use_vertex)
-    except Exception as e:
-        if refresh:
-            raise HTTPException(status_code=500, detail=str(e))
-        latest = load_latest_classified_news_summary()
-        return build_vertex_assisted_news_trend_summary(latest, use_vertex=use_vertex)
 
 
 def _candidate_report_dirs() -> list[Path]:

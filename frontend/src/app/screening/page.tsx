@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
-import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Brain, Search, Copy, FileDown } from "lucide-react";
+import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Search, Copy, FileDown } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
 import { ScoringFormData, defaultFormData } from "../../types";
 import FormGeneral from "../../components/form/FormGeneral";
@@ -28,11 +28,9 @@ import { ShionScreeningReviewCard } from "../../components/analysis/ShionReviewC
 import { triggerMebuki } from "../../components/layout/FloatingMebuki";
 import {
   isCanonicalJudgmentAsset,
-  normalizeReviewText,
   buildShionReviewPrompt,
   buildShionReviewFallback,
   ensureJudgmentAssetCitations,
-  parseExperienceSnapshot,
   normalizeExperienceCase,
   buildExperienceCaseQuery,
   hasExperienceSearchContext,
@@ -128,9 +126,14 @@ const JUDGMENT_ASSET_FEEDBACK_TONES: Record<JudgmentAssetCandidateFeedback | "no
     ring: "ring-2 ring-indigo-200",
   },
   rejected: {
-    label: "見送り",
+    label: "今回には違う",
+    badge: "bg-rose-100 text-rose-800",
+    ring: "ring-2 ring-rose-200",
+  },
+  not_applied: {
+    label: "今回は未使用",
     badge: "bg-slate-200 text-slate-700",
-    ring: "ring-1 ring-slate-200",
+    ring: "ring-1 ring-slate-300",
   },
   none: {
     label: "未評価",
@@ -150,6 +153,43 @@ const getJudgmentAssetTypeTone = (type: string) =>
 const SCREENING_RETURN_STATE_KEY = "lease-screening-return-state";
 const SCREENING_DRAFT_VERSION = 1;
 const SCREENING_DRAFT_SAVE_DELAY_MS = 300;
+const JUDGMENT_ASSET_FEEDBACK_OUTBOX_KEY = "judgment-asset-feedback-diagnostic-outbox-v1";
+
+type JudgmentAssetFeedbackPayload = {
+  feedback: JudgmentAssetCandidateFeedback;
+  case_id: string;
+  review_id: number | null;
+  edited_claim: string;
+  event_id: string;
+  supersedes_event_id: string;
+  recorded_at: string;
+  source: "real_case";
+};
+
+type JudgmentAssetFeedbackRetry = {
+  candidateId: string;
+  payload: JudgmentAssetFeedbackPayload;
+};
+
+const updateJudgmentAssetFeedbackOutbox = (
+  eventId: string,
+  ruleId: string,
+  reasonCode: string,
+  remove = false,
+) => {
+  if (typeof window === "undefined") return;
+  try {
+    const stored = window.sessionStorage.getItem(JUDGMENT_ASSET_FEEDBACK_OUTBOX_KEY);
+    const parsed = stored ? JSON.parse(stored) as Array<Record<string, string>> : [];
+    const rows = Array.isArray(parsed) ? parsed.filter((row) => row.event_id !== eventId) : [];
+    if (!remove) {
+      rows.push({ event_id: eventId, rule_id: ruleId, reason_code: reasonCode, attempted_at: new Date().toISOString() });
+    }
+    window.sessionStorage.setItem(JUDGMENT_ASSET_FEEDBACK_OUTBOX_KEY, JSON.stringify(rows.slice(-50)));
+  } catch {
+    // 診断outboxは保存処理を妨げない。案件情報や自由記述は保存しない。
+  }
+};
 
 const SCREENING_COPY_EXCLUDED_FIELDS = new Set<keyof ScoringFormData>([
   "company_no",
@@ -314,7 +354,6 @@ const getScreeningErrorMessage = (error: unknown) => {
 const getResultSnapshotScore = (snapshot?: Record<string, any>, fallback = 0) =>
   Number(snapshot?.score ?? snapshot?.score_base ?? fallback);
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function AiHeroCard({
   result,
   data,
@@ -499,17 +538,21 @@ function JudgmentAssetCandidateCard({
   candidates,
   loading,
   feedbackSavingId,
+  feedbackRetryId,
   adaptationMode,
   onAdaptationModeChange,
   onFeedback,
+  onRetryFeedback,
   onCreate,
 }: {
   candidates: JudgmentAssetCandidate[];
   loading: boolean;
   feedbackSavingId: string;
+  feedbackRetryId: string;
   adaptationMode: JudgmentAssetAdaptationMode;
   onAdaptationModeChange: (mode: JudgmentAssetAdaptationMode) => void;
   onFeedback: (candidate: JudgmentAssetCandidate, feedback: JudgmentAssetCandidateFeedback, editedClaim?: string) => void;
+  onRetryFeedback: (candidate: JudgmentAssetCandidate) => void;
   onCreate: (claim: string, candidateType: string) => void;
 }) {
   const [editingId, setEditingId] = useState("");
@@ -518,8 +561,9 @@ function JudgmentAssetCandidateCard({
   const [newType, setNewType] = useState("confirmation_question");
   const labels: Record<JudgmentAssetCandidateFeedback, string> = {
     useful: "効いた",
-    neutral: "微妙",
-    rejected: "外した",
+    neutral: "要修正",
+    rejected: "違う",
+    not_applied: "今回は使わなかった",
   };
   const adaptationLabels: Record<JudgmentAssetAdaptationMode, string> = {
     conservative: "保守的",
@@ -674,40 +718,52 @@ function JudgmentAssetCandidateCard({
               出典: {candidate.evidence_path || "manual"} / 元ID: {candidate.id}
             </p>
             <div className="mt-3 flex flex-wrap gap-2 pl-1">
-              {isCanonical ? (
+              {isCanonical && (
                 <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black text-emerald-700">
                   昇格済みのため昇格対象外
                 </span>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingId(candidate.id);
-                      setDrafts((current) => ({ ...current, [candidate.id]: current[candidate.id] ?? displayClaim }));
-                    }}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-700 transition hover:bg-slate-50"
-                  >
-                    文面修正
-                  </button>
-                  {(Object.keys(labels) as JudgmentAssetCandidateFeedback[]).map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => onFeedback(candidate, key)}
-                      disabled={feedbackSavingId === candidate.id}
-                      className={`rounded-lg border px-3 py-1.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        candidate.userFeedback === key
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                          : "border-white/80 bg-white/80 text-slate-700 hover:bg-white"
-                      }`}
-                    >
-                      {feedbackSavingId === candidate.id && candidate.userFeedback === key ? "保存中" : labels[key]}
-                    </button>
-                  ))}
-                </>
               )}
+              {!isCanonical && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingId(candidate.id);
+                    setDrafts((current) => ({ ...current, [candidate.id]: current[candidate.id] ?? displayClaim }));
+                  }}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-700 transition hover:bg-slate-50"
+                >
+                  文面修正
+                </button>
+              )}
+              {(Object.keys(labels) as JudgmentAssetCandidateFeedback[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onFeedback(candidate, key)}
+                  disabled={feedbackSavingId === candidate.id}
+                  className={`rounded-lg border px-3 py-1.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    candidate.userFeedback === key
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                      : "border-white/80 bg-white/80 text-slate-700 hover:bg-white"
+                  }`}
+                >
+                  {feedbackSavingId === candidate.id && candidate.userFeedback === key ? "保存中" : labels[key]}
+                </button>
+              ))}
             </div>
+            {feedbackRetryId === candidate.id && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 pl-1" role="alert">
+                <span className="text-[11px] font-bold text-rose-700">評価を保存できませんでした。</span>
+                <button
+                  type="button"
+                  onClick={() => onRetryFeedback(candidate)}
+                  disabled={feedbackSavingId === candidate.id}
+                  className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[11px] font-black text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                >
+                  再試行
+                </button>
+              </div>
+            )}
                 </>
               );
             })()}
@@ -798,7 +854,6 @@ function InputJudgmentAssetPreview({
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const formatExperienceValue = (value: unknown) => {
   if (value === null || value === undefined || value === "") return "未記録";
   if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString("ja-JP") : "未記録";
@@ -1550,6 +1605,7 @@ export default function Dashboard() {
   const [inputJudgmentAssetLoading, setInputJudgmentAssetLoading] = useState(false);
   const [inputJudgmentAssetSearched, setInputJudgmentAssetSearched] = useState(false);
   const [judgmentAssetFeedbackSavingId, setJudgmentAssetFeedbackSavingId] = useState("");
+  const [judgmentAssetFeedbackRetry, setJudgmentAssetFeedbackRetry] = useState<JudgmentAssetFeedbackRetry | null>(null);
   const [judgmentAssetAdaptationMode, setJudgmentAssetAdaptationMode] = useState<JudgmentAssetAdaptationMode>("standard");
   const [draftRestored, setDraftRestored] = useState(false);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
@@ -1838,6 +1894,7 @@ export default function Dashboard() {
 
   const fetchJudgmentAssetCandidatesForScreening = async (targetResult: any, targetFormData: ScoringFormData) => {
     setJudgmentAssetCandidatesLoading(true);
+    setJudgmentAssetFeedbackRetry(null);
     try {
       const res = await apiClient.get("/api/judgment-asset-candidates/screening", {
         params: {
@@ -1848,9 +1905,17 @@ export default function Dashboard() {
           hantei: targetResult?.hantei || "",
           score: getScreeningScore(targetResult),
           limit: 3,
+          case_id: targetResult?.case_id || targetFormData.company_no || "",
+          review_id: shionReview?.savedId || "",
         },
       });
-      const candidates = Array.isArray(res.data?.candidates) ? res.data.candidates as JudgmentAssetCandidate[] : [];
+      const candidates = Array.isArray(res.data?.candidates)
+        ? (res.data.candidates as JudgmentAssetCandidate[]).map((candidate) => ({
+            ...candidate,
+            userFeedback: candidate.user_feedback,
+            lastFeedbackEventId: candidate.last_feedback_event_id,
+          }))
+        : [];
       setJudgmentAssetCandidates(candidates);
       return candidates;
     } catch (error) {
@@ -1936,33 +2001,47 @@ export default function Dashboard() {
     candidate: JudgmentAssetCandidate,
     feedback: JudgmentAssetCandidateFeedback,
     editedClaim?: string,
+    retryPayload?: JudgmentAssetFeedbackPayload,
   ) => {
     if (!candidate.id || judgmentAssetFeedbackSavingId) return;
     const previous = judgmentAssetCandidates;
     const normalizedEditedClaim = String(editedClaim || "").trim();
+    const payload: JudgmentAssetFeedbackPayload = retryPayload || {
+      feedback,
+      case_id: result?.case_id || formData.company_no || "",
+      review_id: shionReview?.savedId || null,
+      edited_claim: normalizedEditedClaim,
+      event_id: window.crypto.randomUUID(),
+      supersedes_event_id: candidate.lastFeedbackEventId || candidate.last_feedback_event_id || "",
+      recorded_at: new Date().toISOString(),
+      source: "real_case",
+    };
+    if (!payload.case_id) {
+      setShionReviewError("案件IDがないため、判断資産の評価を保存できませんでした。");
+      return;
+    }
     setJudgmentAssetCandidates((current) => current.map((item) => (
       item.id === candidate.id
         ? {
             ...item,
-            userFeedback: feedback,
-            ...(normalizedEditedClaim ? { edited_claim: normalizedEditedClaim, effective_claim: normalizedEditedClaim } : {}),
+            userFeedback: payload.feedback,
+            ...(payload.edited_claim ? { edited_claim: payload.edited_claim, effective_claim: payload.edited_claim } : {}),
           }
         : item
     )));
+    setJudgmentAssetFeedbackRetry(null);
     setJudgmentAssetFeedbackSavingId(candidate.id);
+    updateJudgmentAssetFeedbackOutbox(payload.event_id, candidate.id, "pending");
     try {
-      const res = await apiClient.post(`/api/judgment-asset-candidates/${candidate.id}/feedback`, {
-        feedback,
-        case_id: result?.case_id || formData.company_no || formData.company_name || "",
-        review_id: shionReview?.savedId || null,
-        edited_claim: normalizedEditedClaim,
-      });
+      const res = await apiClient.post(`/api/judgment-asset-candidates/${candidate.id}/feedback`, payload);
       const updated = res.data?.candidate || {};
+      const feedbackEventId = String(res.data?.feedback_event?.event_id || payload.event_id);
       setJudgmentAssetCandidates((current) => current.map((item) => (
         item.id === candidate.id
           ? {
               ...item,
-              userFeedback: feedback,
+              userFeedback: payload.feedback,
+              lastFeedbackEventId: feedbackEventId,
               use_count: Number(updated.use_count ?? item.use_count ?? 0),
               useful_count: Number(updated.useful_count ?? item.useful_count ?? 0),
               rejected_count: Number(updated.rejected_count ?? item.rejected_count ?? 0),
@@ -1973,13 +2052,30 @@ export default function Dashboard() {
             }
           : item
       )));
+      updateJudgmentAssetFeedbackOutbox(payload.event_id, candidate.id, "saved", true);
     } catch (error) {
       console.error("Judgment asset candidate feedback save failed", error);
       setJudgmentAssetCandidates(previous);
-      setShionReviewError("判断資産候補の評価を保存できませんでした。");
+      const response = (error as { response?: { status?: number; data?: { detail?: string | { current_event_id?: string } } } }).response;
+      const detail = response?.data?.detail;
+      const currentEventId = typeof detail === "object" ? String(detail.current_event_id || "") : "";
+      const nextPayload = currentEventId ? { ...payload, supersedes_event_id: currentEventId } : payload;
+      setJudgmentAssetFeedbackRetry({ candidateId: candidate.id, payload: nextPayload });
+      updateJudgmentAssetFeedbackOutbox(payload.event_id, candidate.id, response?.status === 409 ? "conflict" : "network_or_server_error");
+      setShionReviewError(
+        response?.status === 409
+          ? "別画面で評価が更新されました。内容を確認してから再試行してください。"
+          : "判断資産候補の評価を保存できませんでした。再試行できます。",
+      );
     } finally {
       setJudgmentAssetFeedbackSavingId("");
     }
+  };
+
+  const retryJudgmentAssetCandidateFeedback = (candidate: JudgmentAssetCandidate) => {
+    if (!judgmentAssetFeedbackRetry || judgmentAssetFeedbackRetry.candidateId !== candidate.id) return;
+    const { payload } = judgmentAssetFeedbackRetry;
+    void submitJudgmentAssetCandidateFeedback(candidate, payload.feedback, payload.edited_claim, payload);
   };
 
   const createManualJudgmentAssetCandidate = async (claim: string, candidateType: string) => {
@@ -1991,7 +2087,7 @@ export default function Dashboard() {
         claim: normalizedClaim,
         candidate_type: candidateType,
         research_topic: "manual-screening",
-        case_id: result?.case_id || formData.company_no || formData.company_name || "",
+        case_id: result?.case_id || formData.company_no || "",
         review_id: shionReview?.savedId || null,
       });
       const candidate = res.data?.candidate as JudgmentAssetCandidate | undefined;
@@ -2696,9 +2792,11 @@ export default function Dashboard() {
                       candidates={judgmentAssetCandidates}
                       loading={judgmentAssetCandidatesLoading}
                       feedbackSavingId={judgmentAssetFeedbackSavingId}
+                      feedbackRetryId={judgmentAssetFeedbackRetry?.candidateId || ""}
                       adaptationMode={judgmentAssetAdaptationMode}
                       onAdaptationModeChange={setJudgmentAssetAdaptationMode}
                       onFeedback={submitJudgmentAssetCandidateFeedback}
+                      onRetryFeedback={retryJudgmentAssetCandidateFeedback}
                       onCreate={createManualJudgmentAssetCandidate}
                     />
                     <CurrentIssueCard result={result} data={formData} />

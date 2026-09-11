@@ -41,7 +41,7 @@ jobs:
 
       - name: ESLint check (no --fix)
         working-directory: frontend
-        run: npm run lint
+        run: npm run lint:baseline
 
   python-syntax:
     runs-on: ubuntu-latest

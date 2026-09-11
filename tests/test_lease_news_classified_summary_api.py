@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def test_classified_summary_api_refreshes_vault_before_cache(monkeypatch, tmp_path: Path):
-    from api import main
+    from api.routers import lease_news
 
     calls: list[str] = []
 
@@ -19,11 +19,11 @@ def test_classified_summary_api_refreshes_vault_before_cache(monkeypatch, tmp_pa
     def fail_cache_load() -> dict:
         raise AssertionError("cache should not be used before refreshing the Vault")
 
-    monkeypatch.setattr(main, "find_vault", fake_find_vault)
-    monkeypatch.setattr(main, "build_classified_news_summary_from_vault", fake_build_summary)
-    monkeypatch.setattr(main, "load_latest_classified_news_summary", fail_cache_load)
+    monkeypatch.setattr(lease_news, "find_vault", fake_find_vault)
+    monkeypatch.setattr(lease_news, "build_classified_news_summary_from_vault", fake_build_summary)
+    monkeypatch.setattr(lease_news, "load_latest_classified_news_summary", fail_cache_load)
 
-    result = main.get_lease_news_classified_summary_api(limit=999, days=999)
+    result = lease_news.get_lease_news_classified_summary_api(limit=999, days=999)
 
     assert result["article_count"] == 1
     assert calls == ["find_vault", f"build:{tmp_path}:80:60"]

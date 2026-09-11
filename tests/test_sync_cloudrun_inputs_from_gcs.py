@@ -118,6 +118,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "rag_hit_new": 1,
         "screening_loop_feedback_new": 0,
         "judgment_asset_feedback_drop_new": 0,
+        "judgment_asset_usage_feedback_new": 0,
         "improvement_new": 0,
         "chat_new": 0,
         "hypothesis_collision_new": 0,
@@ -606,6 +607,51 @@ def test_materialize_events_appends_screening_loop_feedback(tmp_path, monkeypatc
         asset = conn.execute("SELECT * FROM cloudrun_judgment_asset_candidates").fetchone()
         assert asset["asset_type"] == "screening_loop_feedback"
         assert asset["signal"] == "合っている"
+
+
+def test_materialize_events_preserves_candidate_feedback_event_chain(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    feedback_log = tmp_path / "judgment_asset_usage_feedback.jsonl"
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_USAGE_FEEDBACK_LOG", feedback_log)
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+    event = {
+        "event_id": "cloud-wrapper-1",
+        "ts": "2026-09-11T00:00:00Z",
+        "event_type": "judgment_asset_candidate_feedback",
+        "surface": "screening",
+        "payload": {
+            "schema_version": 2,
+            "candidate_id": "cr-rule-1",
+            "event_id": "11111111-1111-4111-8111-111111111111",
+            "supersedes_event_id": "",
+            "feedback": "useful",
+            "disposition": "helped",
+            "case_id": "case-1",
+            "review_id": 7,
+            "source": "real_case",
+        },
+    }
+
+    first = syncer.materialize_events([event])
+    second = syncer.materialize_events([event])
+
+    rows = [json.loads(line) for line in feedback_log.read_text(encoding="utf-8").splitlines()]
+    assert first["judgment_asset_usage_feedback_new"] == 1
+    assert second["judgment_asset_usage_feedback_new"] == 0
+    assert rows == [
+        {
+            "case_id": "case-1",
+            "event_id": "11111111-1111-4111-8111-111111111111",
+            "feedback": "useful",
+            "outcome": "helped",
+            "review_id": 7,
+            "rule_id": "cr-rule-1",
+            "schema_version": "1",
+            "source": "real_case",
+            "supersedes_event_id": "",
+            "used_at": "2026-09-11T00:00:00Z",
+        }
+    ]
 
 
 def test_materialize_events_appends_judgment_asset_feedback_drop(tmp_path, monkeypatch) -> None:

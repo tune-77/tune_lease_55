@@ -9,7 +9,7 @@
 // 経験ケースパネル（screening/page.tsx）の側にのみ残す。
 
 export type ShionReviewFeedback = "useful" | "needs_fix" | "wrong" | "specific" | "thin" | "discomfort_hit" | "over_inferred";
-export type JudgmentAssetCandidateFeedback = "useful" | "neutral" | "rejected";
+export type JudgmentAssetCandidateFeedback = "useful" | "neutral" | "rejected" | "not_applied";
 export type JudgmentAssetAdaptationMode = "conservative" | "standard" | "exploratory" | "aggressive";
 
 export type ShionScreeningReview = {
@@ -46,6 +46,9 @@ export type JudgmentAssetCandidate = {
   rejected_count: number;
   verified_status: string;
   userFeedback?: JudgmentAssetCandidateFeedback;
+  lastFeedbackEventId?: string;
+  user_feedback?: JudgmentAssetCandidateFeedback;
+  last_feedback_event_id?: string;
 };
 
 // 紫苑レビューの人間評価だけを読むための最小形。

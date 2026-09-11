@@ -33,6 +33,7 @@ PROMPT_FEEDBACK_LOG = PROJECT_ROOT / "data" / "prompt_feedback_log.jsonl"
 HUMAN_RESPONSE_FEEDBACK_LOG = PROJECT_ROOT / "data" / "human_response_feedback.jsonl"
 SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
 JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = PROJECT_ROOT / "data" / "judgment_asset_feedback_drops.jsonl"
+JUDGMENT_ASSET_USAGE_FEEDBACK_LOG = PROJECT_ROOT / "data" / "judgment_asset_usage_feedback.jsonl"
 SHION_HYPOTHESIS_COLLISION_LOG = PROJECT_ROOT / "data" / "shion_hypothesis_collision_log.jsonl"
 SHION_AGENT_CONSULTATION_QUEUE = PROJECT_ROOT / "data" / "shion_agent_consultation_queue.jsonl"
 SHION_REASONER_CONSULTATION_QUEUE = PROJECT_ROOT / "data" / "shion_reasoner_consultation_queue.jsonl"
@@ -645,6 +646,29 @@ def _judgment_asset_feedback_drop_from_event(event: dict) -> dict | None:
     }
 
 
+def _judgment_asset_usage_feedback_from_event(event: dict) -> dict | None:
+    if event.get("event_type") != "judgment_asset_candidate_feedback":
+        return None
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    event_id = str(payload.get("event_id") or "").strip()
+    rule_id = str(payload.get("candidate_id") or payload.get("rule_id") or "").strip()
+    disposition = str(payload.get("disposition") or "").strip().lower()
+    if not event_id or not rule_id or disposition not in {"helped", "challenged", "rejected", "not_applied"}:
+        return None
+    return {
+        "schema_version": "1",
+        "event_id": event_id,
+        "supersedes_event_id": str(payload.get("supersedes_event_id") or "").strip(),
+        "rule_id": rule_id,
+        "feedback": str(payload.get("feedback") or "").strip(),
+        "outcome": disposition,
+        "case_id": str(payload.get("case_id") or "")[:120],
+        "review_id": payload.get("review_id"),
+        "source": str(payload.get("source") or "real_case"),
+        "used_at": str(payload.get("recorded_at") or event.get("ts") or ""),
+    }
+
+
 def _screening_loop_feedback_from_event(event: dict) -> dict | None:
     if event.get("event_type") != "screening_loop_feedback":
         return None
@@ -1124,6 +1148,9 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
     wizard_rows = [row for event in events if (row := _wizard_entry_from_event(event))]
     screening_loop_rows = [row for event in events if (row := _screening_loop_feedback_from_event(event))]
     judgment_asset_feedback_drop_rows = [row for event in events if (row := _judgment_asset_feedback_drop_from_event(event))]
+    judgment_asset_usage_feedback_rows = [
+        row for event in events if (row := _judgment_asset_usage_feedback_from_event(event))
+    ]
     improvement_rows = [row for event in events if (row := _improvement_entry_from_event(event))]
     chat_rows = [row for event in events if (row := _chat_entry_from_event(event))]
     prompt_feedback_rows = [row for event in events if (row := _prompt_feedback_entry_from_event(event))]
@@ -1171,6 +1198,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "rag_hit_new": _append_jsonl_dedup(RAG_HIT_LOG, rag_hit_rows) if rag_hit_rows else 0,
         "screening_loop_feedback_new": _append_jsonl_dedup(SCREENING_LOOP_FEEDBACK_LOG, screening_loop_rows) if screening_loop_rows else 0,
         "judgment_asset_feedback_drop_new": _append_jsonl_dedup(JUDGMENT_ASSET_FEEDBACK_DROPS_LOG, judgment_asset_feedback_drop_rows) if judgment_asset_feedback_drop_rows else 0,
+        "judgment_asset_usage_feedback_new": _append_jsonl_dedup(JUDGMENT_ASSET_USAGE_FEEDBACK_LOG, judgment_asset_usage_feedback_rows) if judgment_asset_usage_feedback_rows else 0,
         "improvement_new": _append_jsonl_dedup(CLOUDRUN_IMPROVEMENT_LOG, improvement_rows) if improvement_rows else 0,
         "chat_new": _append_jsonl_dedup(CLOUDRUN_CHAT_LOG, chat_rows) if chat_rows else 0,
         "prompt_feedback_new": _append_jsonl_dedup(PROMPT_FEEDBACK_LOG, prompt_feedback_rows) if prompt_feedback_rows else 0,

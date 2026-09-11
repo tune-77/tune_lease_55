@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Brain, Sparkles, RefreshCw, BarChart2, MessageSquare, Clipboard,
+  Brain, Sparkles, RefreshCw, MessageSquare, Clipboard,
   Clock, ArrowLeft, ShieldAlert, Award, Activity, Heart, Eye, Database
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
