@@ -1170,7 +1170,7 @@ def _read_candidate_feedback_rows(refresh: bool = False) -> list[dict[str, Any]]
     if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
         return rows
     try:
-        events = _recent_cloudrun_input_events_reader(days=45, refresh=refresh)
+        events = _recent_cloudrun_input_events_reader(days=0, refresh=refresh)
     except Exception:
         return rows
     for event in events:

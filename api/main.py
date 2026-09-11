@@ -5192,9 +5192,11 @@ def _read_recent_cloudrun_input_events_from_gcs(days: int = 14, refresh: bool = 
         client = storage.Client()
         bucket = client.bucket(bucket_name)
         events: list[dict] = []
-        for offset in range(max(1, min(int(days or 14), 45))):
-            day = today - _timedelta(days=offset)
-            blob = bucket.blob(f"{prefix}/{day.isoformat()}/events.jsonl")
+        if int(days or 0) <= 0:
+            blobs = (blob for blob in bucket.list_blobs(prefix=f"{prefix}/") if blob.name.endswith("/events.jsonl"))
+        else:
+            blobs = (bucket.blob(f"{prefix}/{(today - _timedelta(days=offset)).isoformat()}/events.jsonl") for offset in range(min(int(days), 45)))
+        for blob in blobs:
             try:
                 text = blob.download_as_text()
             except NotFound:
