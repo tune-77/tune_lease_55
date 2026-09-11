@@ -672,6 +672,7 @@ def test_materialize_events_replays_feedback_correction_into_candidate_state(tmp
     monkeypatch.setattr(syncer, "JUDGMENT_ASSET_USAGE_FEEDBACK_LOG", feedback_log)
     monkeypatch.setattr(syncer, "JUDGMENT_ASSET_CANDIDATE_STATE_JSON", state_path)
     monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+    feedback_log.write_text(json.dumps({"rule_id": "cr-rule-1", "outcome": "helped", "used_at": "2026-09-10T00:00:00Z"}) + "\n", encoding="utf-8")
     first_id = "11111111-1111-4111-8111-111111111111"
     second_id = "22222222-2222-4222-8222-222222222222"
     events = [
@@ -699,8 +700,8 @@ def test_materialize_events_replays_feedback_correction_into_candidate_state(tmp
     syncer.materialize_events(events)
 
     state = json.loads(state_path.read_text(encoding="utf-8"))["cr-rule-1"]
-    assert state["use_count"] == 1
-    assert state["useful_count"] == 0
+    assert state["use_count"] == 2
+    assert state["useful_count"] == 1
     assert state["rejected_count"] == 1
 
 

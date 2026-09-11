@@ -689,9 +689,11 @@ def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> No
         candidate_rows = [row for row in rows if str(row.get("rule_id") or "").strip() == candidate_id]
         candidate_heads = [row for row in current_rows if str(row.get("rule_id") or "").strip() == candidate_id]
         current = dict(state.get(candidate_id) or {})
-        counts = {"useful": 0, "neutral": 0, "rejected": 0}
+        counts = {"useful": 0, "neutral": 0, "rejected": 0, "used": 0}
         for row in candidate_heads:
             feedback = str(row.get("feedback") or "").strip()
+            if not feedback:
+                feedback = {"helped": "useful", "challenged": "neutral", "neutral": "neutral", "rejected": "rejected", "used": "used"}.get(str(row.get("outcome") or "").strip(), "")
             if feedback in counts:
                 counts[feedback] += 1
         current.update({
