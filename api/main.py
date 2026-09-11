@@ -523,6 +523,7 @@ app.include_router(screening_misc_router)
 from api.routers.screening_report import router as screening_report_router
 app.include_router(screening_report_router)
 
+from api.routers import feedback_loop as _feedback_loop_router
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
 from api.routers.shion_memory_feedback import router as shion_memory_feedback_router
@@ -5216,6 +5217,8 @@ def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
     except Exception as exc:
         logger.warning("cloudrun input gcs read skipped: %s", exc)
         return []
+
+_feedback_loop_router._recent_cloudrun_input_events_reader = _read_recent_cloudrun_input_events_from_gcs
 
 
 def _list_cloudrun_score_pending_cases_from_gcs(limit: int = 50) -> list[dict]:

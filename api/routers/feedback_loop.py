@@ -33,6 +33,7 @@ _REPO_ROOT = str(Path(_SCRIPT_DIR).parent.parent)
 
 _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedback.jsonl"
 _SCREENING_LOOP_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "screening_loop_feedback.jsonl"
+_recent_cloudrun_input_events_reader = lambda days: []
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidates.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidate_state.json"
 _NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signals.jsonl"
@@ -1164,12 +1165,29 @@ def _candidate_feedback_counter(feedback: str) -> str:
     }.get(feedback, "")
 
 
+def _read_candidate_feedback_rows() -> list[dict[str, Any]]:
+    rows = read_feedback_rows(_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG)
+    if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
+        return rows
+    try:
+        events = _recent_cloudrun_input_events_reader(days=45)
+    except Exception:
+        return rows
+    for event in events:
+        if event.get("event_type") != "judgment_asset_candidate_feedback":
+            continue
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        rows.append({"event_id": payload.get("event_id"), "supersedes_event_id": payload.get("supersedes_event_id"), "rule_id": payload.get("candidate_id"), "feedback": payload.get("feedback"), "outcome": payload.get("disposition"), "case_id": payload.get("case_id"), "review_id": payload.get("review_id"), "used_at": payload.get("recorded_at") or event.get("ts")})
+    deduped = {str(row.get("event_id") or f"legacy:{index}"): row for index, row in enumerate(rows)}
+    return list(deduped.values())
+
+
 def _candidate_feedback_heads(case_id: str, review_id: Optional[int]) -> dict[str, dict[str, Any]]:
     clean_case_id = str(case_id or "").strip()
     if not clean_case_id:
         return {}
     rows = [
-        row for row in read_feedback_rows(_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG)
+        row for row in _read_candidate_feedback_rows()
         if str(row.get("event_id") or "").strip()
         and str(row.get("case_id") or "").strip() == clean_case_id
         and row.get("review_id") == review_id
@@ -1220,7 +1238,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
     try:
         lock_context = _candidate_feedback_lock()
         with lock_context:
-            feedback_rows = read_feedback_rows(_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG)
+            feedback_rows = _read_candidate_feedback_rows()
             same_id = next(
                 (row for row in feedback_rows if str(row.get("event_id") or "") == normalized_event["event_id"]),
                 None,

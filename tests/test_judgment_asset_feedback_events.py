@@ -189,13 +189,19 @@ def test_second_root_requires_explicit_supersedes(feedback_store):
     assert exc_info.value.detail["current_event_id"] == EVENT_1
 
 
-def test_current_head_can_be_restored_after_page_reload(feedback_store):
+def test_current_head_can_be_restored_after_page_reload(feedback_store, monkeypatch):
+    _state_path, feedback_path = feedback_store
     feedback_loop._update_autoresearch_judgment_asset_candidate_feedback(
         CANDIDATE_ID, _request("useful", EVENT_1)
     )
     feedback_loop._update_autoresearch_judgment_asset_candidate_feedback(
         CANDIDATE_ID, _request("neutral", EVENT_2, supersedes_event_id=EVENT_1)
     )
+    durable_rows = read_feedback_rows(feedback_path)
+    feedback_path.unlink()
+    durable_events = [{"event_type": "judgment_asset_candidate_feedback", "payload": {**row, "candidate_id": row["rule_id"], "disposition": row["outcome"]}} for row in durable_rows]
+    monkeypatch.setenv("K_SERVICE", "test-service")
+    monkeypatch.setattr(feedback_loop, "_recent_cloudrun_input_events_reader", lambda days: durable_events)
 
     heads = feedback_loop._candidate_feedback_heads("case-1", 7)
 
