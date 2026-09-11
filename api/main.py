@@ -523,7 +523,6 @@ app.include_router(screening_misc_router)
 from api.routers.screening_report import router as screening_report_router
 app.include_router(screening_report_router)
 
-from api.routers import feedback_loop as _feedback_loop_router
 from api.routers.feedback_loop import router as feedback_loop_router
 app.include_router(feedback_loop_router)
 from api.routers.shion_memory_feedback import router as shion_memory_feedback_router
@@ -5164,9 +5163,7 @@ def _gcs_ledger_entries() -> list[dict]:
         return []
 
 
-def _read_recent_cloudrun_input_events_from_gcs(days: int = 14, refresh: bool = False) -> list[dict]:
-    if refresh:
-        _invalidate_cloudrun_input_events_cache()
+def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
     if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
         return []
     try:
@@ -5192,11 +5189,9 @@ def _read_recent_cloudrun_input_events_from_gcs(days: int = 14, refresh: bool = 
         client = storage.Client()
         bucket = client.bucket(bucket_name)
         events: list[dict] = []
-        if int(days or 0) <= 0:
-            blobs = (blob for blob in bucket.list_blobs(prefix=f"{prefix}/") if blob.name.endswith("/events.jsonl"))
-        else:
-            blobs = (bucket.blob(f"{prefix}/{(today - _timedelta(days=offset)).isoformat()}/events.jsonl") for offset in range(min(int(days), 45)))
-        for blob in blobs:
+        for offset in range(max(1, min(int(days or 14), 45))):
+            day = today - _timedelta(days=offset)
+            blob = bucket.blob(f"{prefix}/{day.isoformat()}/events.jsonl")
             try:
                 text = blob.download_as_text()
             except NotFound:
@@ -5221,9 +5216,6 @@ def _read_recent_cloudrun_input_events_from_gcs(days: int = 14, refresh: bool = 
     except Exception as exc:
         logger.warning("cloudrun input gcs read skipped: %s", exc)
         return []
-
-_feedback_loop_router._recent_cloudrun_input_events_reader = _read_recent_cloudrun_input_events_from_gcs
-
 
 def _list_cloudrun_score_pending_cases_from_gcs(limit: int = 50) -> list[dict]:
     from api.cloudrun_pending_cases import list_cloudrun_score_pending_cases_from_events

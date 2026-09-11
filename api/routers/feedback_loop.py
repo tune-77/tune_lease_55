@@ -13,7 +13,11 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from api.db_connection import current_backend, get_connection, placeholder
-from api.cloudrun_writeback import record_cloudrun_input_event
+from api.cloudrun_writeback import (
+    read_judgment_asset_feedback_events,
+    record_cloudrun_input_event,
+    record_judgment_asset_feedback_event,
+)
 from judgment_asset_bandit import (
     append_feedback_event,
     build_bandit_signals,
@@ -33,7 +37,6 @@ _REPO_ROOT = str(Path(_SCRIPT_DIR).parent.parent)
 
 _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedback.jsonl"
 _SCREENING_LOOP_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "screening_loop_feedback.jsonl"
-_recent_cloudrun_input_events_reader = lambda days, refresh=False: []
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidates.jsonl"
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidate_state.json"
 _NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signals.jsonl"
@@ -1165,12 +1168,12 @@ def _candidate_feedback_counter(feedback: str) -> str:
     }.get(feedback, "")
 
 
-def _read_candidate_feedback_rows(refresh: bool = False) -> list[dict[str, Any]]:
+def _read_candidate_feedback_rows(case_id: str = "", review_id: Optional[int] = None) -> list[dict[str, Any]]:
     rows = read_feedback_rows(_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG)
     if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
         return rows
     try:
-        events = _recent_cloudrun_input_events_reader(days=0, refresh=refresh)
+        events = read_judgment_asset_feedback_events(case_id, review_id)
     except Exception:
         return rows
     for event in events:
@@ -1182,12 +1185,22 @@ def _read_candidate_feedback_rows(refresh: bool = False) -> list[dict[str, Any]]
     return list(deduped.values())
 
 
+def _record_durable_candidate_feedback(payload: dict[str, Any]) -> bool:
+    if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
+        return False
+    result = record_judgment_asset_feedback_event(payload)
+    if not result.get("ok"):
+        status = 409 if result.get("conflict") else 503
+        raise HTTPException(status_code=status, detail={"message": result.get("reason") or "feedback changed elsewhere", "current_event_id": result.get("current_event_id", "")})
+    return True
+
+
 def _candidate_feedback_heads(case_id: str, review_id: Optional[int]) -> dict[str, dict[str, Any]]:
     clean_case_id = str(case_id or "").strip()
     if not clean_case_id:
         return {}
     rows = [
-        row for row in _read_candidate_feedback_rows()
+        row for row in _read_candidate_feedback_rows(clean_case_id, review_id)
         if str(row.get("event_id") or "").strip()
         and str(row.get("case_id") or "").strip() == clean_case_id
         and row.get("review_id") == review_id
@@ -1234,11 +1247,13 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
         "rejected": "rejected",
         "not_applied": "not_applied",
     }[req.feedback]
+    feedback_event = {"event_id": normalized_event["event_id"], "supersedes_event_id": normalized_event["supersedes_event_id"], "recorded_at": normalized_event["recorded_at"], "feedback": req.feedback, "disposition": feedback_outcome, "case_id": case_id, "review_id": req.review_id, "rule_id": candidate_id, "source": req.source}
+    cloud_payload = {**feedback_event, "schema_version": 2, "candidate_id": candidate_id, "comment": str(req.comment or "")[:500], "edited_claim": str(req.edited_claim or "")[:500]}
 
     try:
         lock_context = _candidate_feedback_lock()
         with lock_context:
-            feedback_rows = _read_candidate_feedback_rows(refresh=bool(normalized_event["supersedes_event_id"]))
+            feedback_rows = _read_candidate_feedback_rows(case_id, req.review_id)
             same_id = next(
                 (row for row in feedback_rows if str(row.get("event_id") or "") == normalized_event["event_id"]),
                 None,
@@ -1261,10 +1276,13 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                 if existing_key != semantic_key:
                     raise HTTPException(status_code=409, detail="event_id already used for different feedback")
                 state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
+                durable_recorded = _record_durable_candidate_feedback(cloud_payload)
                 return {
                     "candidate": {"id": candidate_id, **dict(state.get(candidate_id) or {})},
                     "feedback_event": same_id,
                     "duplicate": True,
+                    "_cloud_payload": cloud_payload,
+                    "_durable_recorded": durable_recorded,
                 }
 
             related_rows = [
@@ -1307,6 +1325,8 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                         "current_event_id": str(heads[-1].get("event_id") or ""),
                     },
                 )
+
+            durable_recorded = _record_durable_candidate_feedback(cloud_payload)
 
             state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
             original_state = {key: dict(value) for key, value in state.items()}
@@ -1380,21 +1400,12 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                 write_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON, [], original_state)
                 raise
 
-            feedback_event = {
-                "event_id": normalized_event["event_id"],
-                "supersedes_event_id": normalized_event["supersedes_event_id"],
-                "recorded_at": normalized_event["recorded_at"],
-                "feedback": req.feedback,
-                "disposition": feedback_outcome,
-                "case_id": case_id,
-                "review_id": req.review_id,
-                "rule_id": candidate_id,
-                "source": req.source,
-            }
             return {
                 "candidate": {"id": candidate_id, **current},
                 "feedback_event": feedback_event,
                 "duplicate": False,
+                "_cloud_payload": cloud_payload,
+                "_durable_recorded": durable_recorded,
             }
     except _FileLockTimeout as exc:
         if not _FILELOCK_AVAILABLE:
@@ -3278,26 +3289,9 @@ def post_judgment_asset_candidate_feedback(
     background_tasks: BackgroundTasks,
 ) -> dict:
     result = _update_autoresearch_judgment_asset_candidate_feedback(candidate_id, req)
-    feedback_event = result["feedback_event"]
-    background_tasks.add_task(
-        record_cloudrun_input_event,
-        event_type="judgment_asset_candidate_feedback",
-        surface="screening",
-        payload={
-            "schema_version": 2,
-            "candidate_id": candidate_id,
-            "event_id": feedback_event["event_id"],
-            "supersedes_event_id": str(feedback_event.get("supersedes_event_id") or ""),
-            "feedback": req.feedback,
-            "disposition": str(feedback_event.get("disposition") or feedback_event.get("outcome") or ""),
-            "case_id": req.case_id,
-            "review_id": req.review_id,
-            "source": req.source,
-            "comment": str(req.comment or "")[:500],
-            "edited_claim": str(req.edited_claim or "")[:500],
-            "recorded_at": str(feedback_event.get("recorded_at") or feedback_event.get("used_at") or ""),
-        },
-    )
+    cloud_payload = result.pop("_cloud_payload")
+    if not result.pop("_durable_recorded"):
+        background_tasks.add_task(record_cloudrun_input_event, event_type="judgment_asset_candidate_feedback", surface="screening", payload=cloud_payload)
     return {"status": "ok", **result}
 
 
