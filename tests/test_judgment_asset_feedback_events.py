@@ -190,7 +190,7 @@ def test_second_root_requires_explicit_supersedes(feedback_store):
 
 
 def test_current_head_can_be_restored_after_page_reload(feedback_store, monkeypatch):
-    _state_path, feedback_path = feedback_store
+    state_path, feedback_path = feedback_store
     feedback_loop._update_autoresearch_judgment_asset_candidate_feedback(
         CANDIDATE_ID, _request("useful", EVENT_1)
     )
@@ -211,6 +211,10 @@ def test_current_head_can_be_restored_after_page_reload(feedback_store, monkeypa
 
     assert heads[CANDIDATE_ID]["event_id"] == EVENT_2
     assert heads[CANDIDATE_ID]["feedback"] == "neutral"
+    state_path.write_text(json.dumps({CANDIDATE_ID: {"use_count": 5, "useful_count": 5}}))
+    feedback_loop._update_autoresearch_judgment_asset_candidate_feedback(CANDIDATE_ID, _request("rejected", EVENT_3, supersedes_event_id=EVENT_2))
+    state = json.loads(state_path.read_text())
+    assert (state[CANDIDATE_ID]["useful_count"], state[CANDIDATE_ID]["rejected_count"]) == (5, 1)
 
 
 def test_real_case_feedback_requires_case_id(feedback_store):

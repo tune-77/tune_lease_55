@@ -667,7 +667,7 @@ def _judgment_asset_usage_feedback_from_event(event: dict) -> dict | None:
         "source": str(payload.get("source") or "real_case"),
         "comment": str(payload.get("comment") or "")[:500],
         "edited_claim": str(payload.get("edited_claim") or "")[:500],
-        "used_at": str(payload.get("recorded_at") or event.get("ts") or ""),
+        "used_at": str(event.get("ts") or payload.get("recorded_at") or ""),
     }
 
 

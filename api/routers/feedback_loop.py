@@ -1253,6 +1253,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
     try:
         lock_context = _candidate_feedback_lock()
         with lock_context:
+            local_event_ids = {str(row.get("event_id") or "") for row in read_feedback_rows(_JUDGMENT_ASSET_USAGE_FEEDBACK_LOG)}
             feedback_rows = _read_candidate_feedback_rows(case_id, req.review_id)
             same_id = next(
                 (row for row in feedback_rows if str(row.get("event_id") or "") == normalized_event["event_id"]),
@@ -1346,7 +1347,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
             }.items():
                 current.setdefault(key, default)
 
-            if superseded_row:
+            if superseded_row and normalized_event["supersedes_event_id"] in local_event_ids:
                 prior_feedback = str(superseded_row.get("feedback") or "")
                 prior_counter = _candidate_feedback_counter(prior_feedback)
                 if prior_counter:
