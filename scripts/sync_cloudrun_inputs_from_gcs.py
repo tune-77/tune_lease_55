@@ -673,11 +673,7 @@ def _judgment_asset_usage_feedback_from_event(event: dict) -> dict | None:
 
 def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> int:
     """Rebuild candidate counters and edits from the durable feedback event chain."""
-    affected_ids = {
-        str(row.get("rule_id") or "").strip()
-        for row in rows
-        if str(row.get("rule_id") or "").strip()
-    }
+    affected_ids = {str(row.get("rule_id") or "").strip() for row in rows if str(row.get("rule_id") or "").strip()}
     if not affected_ids:
         return 0
 
@@ -686,15 +682,8 @@ def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> in
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         raw_state = {}
     state = raw_state if isinstance(raw_state, dict) else {}
-    superseded_ids = {
-        str(row.get("supersedes_event_id") or "").strip()
-        for row in rows
-        if str(row.get("supersedes_event_id") or "").strip()
-    }
-    current_rows = [
-        row for row in rows
-        if str(row.get("event_id") or "").strip() not in superseded_ids
-    ]
+    superseded_ids = {str(row.get("supersedes_event_id") or "").strip() for row in rows if str(row.get("supersedes_event_id") or "").strip()}
+    current_rows = [row for row in rows if str(row.get("event_id") or "").strip() not in superseded_ids]
 
     for candidate_id in affected_ids:
         candidate_rows = [row for row in rows if str(row.get("rule_id") or "").strip() == candidate_id]
@@ -705,14 +694,12 @@ def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> in
             feedback = str(row.get("feedback") or "").strip()
             if feedback in counts:
                 counts[feedback] += 1
-        current.update(
-            {
-                "use_count": sum(counts.values()),
-                "useful_count": counts["useful"],
-                "neutral_count": counts["neutral"],
-                "rejected_count": counts["rejected"],
-            }
-        )
+        current.update({
+            "use_count": sum(counts.values()),
+            "useful_count": counts["useful"],
+            "neutral_count": counts["neutral"],
+            "rejected_count": counts["rejected"],
+        })
 
         ordered_rows = sorted(candidate_rows, key=lambda row: str(row.get("used_at") or ""))
         if ordered_rows:
@@ -746,10 +733,8 @@ def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> in
         state[candidate_id] = current
 
     JUDGMENT_ASSET_CANDIDATE_STATE_JSON.parent.mkdir(parents=True, exist_ok=True)
-    JUDGMENT_ASSET_CANDIDATE_STATE_JSON.write_text(
-        json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    state_text = json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    JUDGMENT_ASSET_CANDIDATE_STATE_JSON.write_text(state_text, encoding="utf-8")
     return len(affected_ids)
 
 

@@ -75,12 +75,7 @@ test("feedback stays disabled until the review has a stable saved id", async ({ 
     window.sessionStorage.setItem("lease-screening-return-state", JSON.stringify({
       version: 1,
       result: { case_id: "case-e2e-1", score: 72, hantei: "条件付き承認" },
-      shionReview: {
-        reply: "今回案件では受注根拠の確認が重要です。",
-        memoryRefs: 0,
-        knowledgeRefs: 0,
-        identityUsed: false,
-      },
+      shionReview: { reply: "今回案件では受注根拠の確認が重要です。", memoryRefs: 0, knowledgeRefs: 0, identityUsed: false },
       judgmentAssetCandidates: [draftCandidate],
       judgmentAssetAdaptationMode: "standard",
       currentExperienceCases: [],
