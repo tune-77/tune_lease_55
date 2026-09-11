@@ -5164,7 +5164,9 @@ def _gcs_ledger_entries() -> list[dict]:
         return []
 
 
-def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
+def _read_recent_cloudrun_input_events_from_gcs(days: int = 14, refresh: bool = False) -> list[dict]:
+    if refresh:
+        _invalidate_cloudrun_input_events_cache()
     if not (os.environ.get("K_SERVICE") or os.environ.get("CLOUDRUN_PENDING_GCS_ENABLED") == "1"):
         return []
     try:

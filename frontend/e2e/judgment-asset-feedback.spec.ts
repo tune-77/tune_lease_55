@@ -1,18 +1,14 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const candidate = {
-  id: "cr-b259411afb954d6d", candidate_type: "application_rule", research_topic: "business_plan_specificity",
-  claim: "受注根拠と返済原資を合わせて確認する。", evidence_path: "test-fixture", promotion_status: "active",
-  source: "canonical_judgment_rules", use_count: 0, useful_count: 0, rejected_count: 0, verified_status: "unverified",
+  id: "cr-b259411afb954d6d", candidate_type: "application_rule", research_topic: "business_plan_specificity", claim: "受注根拠と返済原資を合わせて確認する。", evidence_path: "test-fixture", promotion_status: "active", source: "canonical_judgment_rules", use_count: 0, useful_count: 0, rejected_count: 0, verified_status: "unverified",
 };
-
 const installScreeningDraft = async (page: Page, savedId: number | null = 7) => {
   await page.addInitScript(({ draftCandidate, savedId }) => {
     window.sessionStorage.setItem("lease-screening-return-state", JSON.stringify({
       version: 1,
       result: { case_id: "case-e2e-1", score: 72, hantei: "条件付き承認" },
-      shionReview: { reply: "今回案件では受注根拠の確認が重要です。", memoryRefs: 0,
-        knowledgeRefs: 0, identityUsed: false, ...(savedId ? { savedId } : {}) },
+      shionReview: { reply: "今回案件では受注根拠の確認が重要です。", memoryRefs: 0, knowledgeRefs: 0, identityUsed: false, ...(savedId ? { savedId } : {}) },
       judgmentAssetCandidates: [draftCandidate],
       judgmentAssetAdaptationMode: "standard",
       currentExperienceCases: [],
