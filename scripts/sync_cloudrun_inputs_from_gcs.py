@@ -671,11 +671,11 @@ def _judgment_asset_usage_feedback_from_event(event: dict) -> dict | None:
     }
 
 
-def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> int:
+def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> None:
     """Rebuild candidate counters and edits from the durable feedback event chain."""
     affected_ids = {str(row.get("rule_id") or "").strip() for row in rows if str(row.get("rule_id") or "").strip()}
     if not affected_ids:
-        return 0
+        return
 
     try:
         raw_state = json.loads(JUDGMENT_ASSET_CANDIDATE_STATE_JSON.read_text(encoding="utf-8"))
@@ -707,10 +707,7 @@ def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> in
             latest_at = str(latest.get("used_at") or "")
             current["last_used_at"] = latest_at
             current["last_feedback_at"] = latest_at
-            note_bits = [
-                f"feedback={str(latest.get('feedback') or '')}",
-                f"case_id={str(latest.get('case_id') or '')[:80]}",
-            ]
+            note_bits = [f"feedback={str(latest.get('feedback') or '')}", f"case_id={str(latest.get('case_id') or '')[:80]}"]
             if latest.get("review_id"):
                 note_bits.append(f"review_id={latest['review_id']}")
             if latest.get("comment"):
@@ -735,7 +732,6 @@ def _materialize_judgment_asset_candidate_feedback_state(rows: list[dict]) -> in
     JUDGMENT_ASSET_CANDIDATE_STATE_JSON.parent.mkdir(parents=True, exist_ok=True)
     state_text = json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     JUDGMENT_ASSET_CANDIDATE_STATE_JSON.write_text(state_text, encoding="utf-8")
-    return len(affected_ids)
 
 
 def _screening_loop_feedback_from_event(event: dict) -> dict | None:

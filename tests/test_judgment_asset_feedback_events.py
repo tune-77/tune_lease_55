@@ -71,11 +71,11 @@ def test_same_event_id_is_idempotent(feedback_store):
 
 
 def test_cloudrun_writeback_preserves_comment_and_edited_claim(feedback_store):
-    captured: dict = {}
+    captured: list[dict] = []
 
     class BackgroundTasksCapture:
         def add_task(self, _function, **kwargs):
-            captured.update(kwargs)
+            captured.append(kwargs)
 
     request = _request("neutral", EVENT_1)
     request.comment = "案件実績に合わせた補足"
@@ -86,26 +86,31 @@ def test_cloudrun_writeback_preserves_comment_and_edited_claim(feedback_store):
         request,
         BackgroundTasksCapture(),
     )
+    feedback_loop.post_judgment_asset_candidate_feedback(CANDIDATE_ID, request, BackgroundTasksCapture())
 
-    assert captured["event_type"] == "judgment_asset_candidate_feedback"
-    assert captured["payload"]["comment"] == "案件実績に合わせた補足"
-    assert captured["payload"]["edited_claim"] == "受注実績と稼働率を合わせて確認する。"
-    assert captured["payload"]["recorded_at"] == "2026-09-11T00:00:00Z"
+    assert len(captured) == 2
+    assert captured[-1]["event_type"] == "judgment_asset_candidate_feedback"
+    assert captured[-1]["payload"]["comment"] == "案件実績に合わせた補足"
+    assert captured[-1]["payload"]["edited_claim"] == "受注実績と稼働率を合わせて確認する。"
+    assert captured[-1]["payload"]["recorded_at"] == "2026-09-11T00:00:00Z"
 
 
 def test_correction_supersedes_old_effectiveness(feedback_store):
     state_path, feedback_path = feedback_store
-    feedback_loop._update_autoresearch_judgment_asset_candidate_feedback(
-        CANDIDATE_ID, _request("useful", EVENT_1)
-    )
+    initial = _request("useful", EVENT_1)
+    initial.edited_claim = "受注見込みだけを確認する。"
+    feedback_loop._update_autoresearch_judgment_asset_candidate_feedback(CANDIDATE_ID, initial)
+    correction = _request("neutral", EVENT_2, supersedes_event_id=EVENT_1)
+    correction.edited_claim = "受注根拠と返済原資を確認する。"
     corrected = feedback_loop._update_autoresearch_judgment_asset_candidate_feedback(
-        CANDIDATE_ID, _request("neutral", EVENT_2, supersedes_event_id=EVENT_1)
+        CANDIDATE_ID, correction
     )
 
     state = json.loads(state_path.read_text(encoding="utf-8"))[CANDIDATE_ID]
     assert state["use_count"] == 1
     assert state["useful_count"] == 0
     assert state["neutral_count"] == 1
+    assert state["edited_claim"] == "受注根拠と返済原資を確認する。"
     current = select_current_feedback_rows(read_feedback_rows(feedback_path))
     assert [row["event_id"] for row in current] == [EVENT_2]
     assert corrected["feedback_event"]["disposition"] == "challenged"

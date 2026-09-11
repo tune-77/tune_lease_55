@@ -1330,11 +1330,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                 note_bits.append(f"comment={str(req.comment)[:160]}")
             edited_claim = str(req.edited_claim or "").strip()
             if edited_claim:
-                original_claim = next(
-                    (str(item.get("claim") or "") for item in candidates if str(item.get("id") or "") == candidate_id),
-                    "",
-                )
-                if edited_claim != original_claim and edited_claim != str(current.get("edited_claim") or ""):
+                if edited_claim != str(current.get("edited_claim") or ""):
                     current["edited_claim"] = edited_claim[:500]
                     current["edit_count"] = int(current.get("edit_count") or 0) + 1
                     current["last_edited_at"] = now
@@ -3265,26 +3261,25 @@ def post_judgment_asset_candidate_feedback(
 ) -> dict:
     result = _update_autoresearch_judgment_asset_candidate_feedback(candidate_id, req)
     feedback_event = result["feedback_event"]
-    if not result["duplicate"]:
-        background_tasks.add_task(
-            record_cloudrun_input_event,
-            event_type="judgment_asset_candidate_feedback",
-            surface="screening",
-            payload={
-                "schema_version": 2,
-                "candidate_id": candidate_id,
-                "event_id": feedback_event["event_id"],
-                "supersedes_event_id": feedback_event["supersedes_event_id"],
-                "feedback": req.feedback,
-                "disposition": feedback_event["disposition"],
-                "case_id": req.case_id,
-                "review_id": req.review_id,
-                "source": req.source,
-                "comment": str(req.comment or "")[:500],
-                "edited_claim": str(req.edited_claim or "")[:500],
-                "recorded_at": feedback_event["recorded_at"],
-            },
-        )
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="judgment_asset_candidate_feedback",
+        surface="screening",
+        payload={
+            "schema_version": 2,
+            "candidate_id": candidate_id,
+            "event_id": feedback_event["event_id"],
+            "supersedes_event_id": str(feedback_event.get("supersedes_event_id") or ""),
+            "feedback": req.feedback,
+            "disposition": str(feedback_event.get("disposition") or feedback_event.get("outcome") or ""),
+            "case_id": req.case_id,
+            "review_id": req.review_id,
+            "source": req.source,
+            "comment": str(req.comment or "")[:500],
+            "edited_claim": str(req.edited_claim or "")[:500],
+            "recorded_at": str(feedback_event.get("recorded_at") or feedback_event.get("used_at") or ""),
+        },
+    )
     return {"status": "ok", **result}
 
 
