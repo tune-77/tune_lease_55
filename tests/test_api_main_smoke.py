@@ -49,8 +49,11 @@ def test_get_endpoint_returns_200(path):
 
 
 def test_app_has_expected_route_count():
-    """ルート数が大きく減っていないか（抽出時の mount 漏れ検知用の粗いガード）。"""
-    assert len(main_module.app.routes) >= 60
+    """FastAPI の直ルートと遅延 include_router が十分に登録されている。"""
+    # 公開 method/path の完全性は test_api_route_contract.py の274件署名で検証する。
+    # FastAPI の遅延 router は複数APIを1要素として保持するため、ここでは構成の
+    # 全消失だけを検知する粗い下限に留める。
+    assert len(main_module.app.routes) >= 50
 
 
 def test_no_duplicate_method_path_routes():
