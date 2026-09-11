@@ -1911,7 +1911,7 @@ export default function Dashboard() {
           score: getScreeningScore(targetResult),
           limit: 3,
           case_id: targetResult?.case_id || targetFormData.company_no || "",
-          review_id: shionReview?.savedId || "",
+          review_id: shionReview?.savedId || undefined,
         },
       });
       const candidates = Array.isArray(res.data?.candidates)
