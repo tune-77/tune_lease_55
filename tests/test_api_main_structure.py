@@ -36,3 +36,23 @@ def test_external_app_contract_remains_module_level() -> None:
     }
 
     assert "app" in assignments
+
+
+def test_composition_root_size_can_only_ratchet_down() -> None:
+    """New behavior belongs in routers/services, not in the composition root."""
+
+    main_path = REPO_ROOT / "api" / "main.py"
+    source = main_path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(main_path))
+    direct_routes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "app"
+        and node.func.attr in {"get", "post", "put", "patch", "delete"}
+    ]
+
+    assert len(source.splitlines()) <= 8_200
+    assert len(direct_routes) <= 21
