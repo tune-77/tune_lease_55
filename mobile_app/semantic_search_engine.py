@@ -10,14 +10,13 @@
 
 import os
 import json
+import hashlib
 import logging
 import sys
-import uuid
 from pathlib import Path
 from typing import Any
 from functools import lru_cache
 import numpy as np
-import chromadb
 from datetime import datetime
 
 try:
@@ -67,14 +66,13 @@ class SemanticSearchEngine:
         """
         self.model_name = model_name or _default_model_name()
         self.embeddings_cache = {}
+        self._document_embedding_cache: dict[str, np.ndarray] = {}
+        self._query_embedding_cache: dict[str, np.ndarray] = {}
         self.embedding_model = None
         # 索引先は runtime_paths の解決結果に従う（env → iCloud）。
         # ここを直書きすると RAG の索引先だけ他モジュールとずれる。
         self.vault_path = str(resolve_obsidian_vault())
         self.cache_file = "mobile_app/.embeddings_cache.json"
-        # 検索専用のインメモリ chromadb クライアント（永続化しない・Obsidian Vault の共有DBとは無関係）
-        self._chroma_client = chromadb.EphemeralClient()
-
         if EMBEDDING_AVAILABLE:
             try:
                 logger.info(f"📦 Embedding モデル読み込み中: {self.model_name}")
@@ -149,13 +147,23 @@ class SemanticSearchEngine:
         """
         if not EMBEDDING_AVAILABLE or self.embedding_model is None:
             return None
-        
+
         try:
-            embedding = self.embedding_model.encode(text, convert_to_numpy=True)
-            return embedding
+            return self.embedding_model.encode(text, convert_to_numpy=True)
         except Exception as e:
             logger.error(f"❌ Embedding 生成エラー: {e}")
             return None
+
+    def _query_embedding(self, text: str) -> np.ndarray | None:
+        cached = self._query_embedding_cache.get(text)
+        if cached is not None:
+            return cached
+        embedding = self.generate_embedding(text)
+        if embedding is not None:
+            if len(self._query_embedding_cache) >= 256:
+                self._query_embedding_cache.pop(next(iter(self._query_embedding_cache)))
+            self._query_embedding_cache[text] = embedding
+        return embedding
     
     def cosine_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
         """
@@ -200,7 +208,7 @@ class SemanticSearchEngine:
             logger.warning("⚠️  Embedding 機能が利用できません")
             return documents[:top_k]
 
-        query_embedding = self.generate_embedding(query)
+        query_embedding = self._query_embedding(query)
         if query_embedding is None:
             return documents[:top_k]
 
@@ -208,35 +216,51 @@ class SemanticSearchEngine:
             return []
 
         scores: dict[int, float] = {}
-        ids: list[str] = []
-        embeddings: list[list[float]] = []
+        embeddings: list[np.ndarray | None] = [None] * len(documents)
+        missing_indices: list[int] = []
+        missing_texts: list[str] = []
+        cache_keys: list[str] = []
         for i, doc in enumerate(documents):
             doc_text = f"{doc.get('title', '')} {doc.get('content', '')}"
-            doc_embedding = self.generate_embedding(doc_text)
-            if doc_embedding is None:
-                scores[i] = 0.0
-                continue
-            ids.append(str(i))
-            embeddings.append(doc_embedding.tolist())
+            identity = str(doc.get("path") or doc.get("id") or i)
+            digest = hashlib.sha1(doc_text.encode("utf-8")).hexdigest()
+            cache_key = f"{identity}:{digest}"
+            cache_keys.append(cache_key)
+            cached = self._document_embedding_cache.get(cache_key)
+            if cached is not None:
+                embeddings[i] = cached
+            else:
+                missing_indices.append(i)
+                missing_texts.append(doc_text)
 
-        if embeddings:
-            # chromadb（インメモリ）で cosine 類似度検索
-            collection_name = f"search_{uuid.uuid4().hex}"
-            collection = self._chroma_client.create_collection(
-                collection_name, metadata={"hnsw:space": "cosine"}
-            )
+        if missing_texts and self.embedding_model is not None:
             try:
-                collection.add(ids=ids, embeddings=embeddings)
-                result = collection.query(
-                    query_embeddings=[query_embedding.tolist()],
-                    n_results=len(ids),
-                    include=["distances"],
+                encoded = self.embedding_model.encode(
+                    missing_texts,
+                    convert_to_numpy=True,
+                    show_progress_bar=False,
                 )
-            finally:
-                self._chroma_client.delete_collection(collection_name)
+                for idx, vector in zip(missing_indices, encoded):
+                    array = np.asarray(vector, dtype=float)
+                    embeddings[idx] = array
+                    self._document_embedding_cache[cache_keys[idx]] = array
+            except Exception as exc:
+                logger.warning(f"⚠️ 文書Embeddingの一括生成に失敗: {exc}")
 
-            for doc_id, distance in zip(result["ids"][0], result["distances"][0]):
-                scores[int(doc_id)] = float(max(0.0, min(1.0, 1.0 - distance)))
+        valid_indices = [i for i, vector in enumerate(embeddings) if vector is not None]
+        if valid_indices:
+            matrix = np.vstack([embeddings[i] for i in valid_indices])
+            query_norm = np.linalg.norm(query_embedding)
+            row_norms = np.linalg.norm(matrix, axis=1)
+            denominators = row_norms * query_norm
+            similarities = np.divide(
+                matrix @ query_embedding,
+                denominators,
+                out=np.zeros(len(valid_indices), dtype=float),
+                where=denominators != 0,
+            )
+            for idx, similarity in zip(valid_indices, similarities):
+                scores[idx] = float(np.clip(similarity, 0.0, 1.0))
 
         results = [
             {**doc, "similarity_score": scores.get(i, 0.0)}

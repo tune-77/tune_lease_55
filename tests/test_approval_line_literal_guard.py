@@ -87,6 +87,17 @@ def _scan() -> dict[str, int]:
     for path in sorted(_REPO_ROOT.rglob("*.py")):
         if any(part in _SKIP_PARTS for part in path.parts):
             continue
+        # リポジトリ配下に一時worktree/checkoutが置かれていても、その複製を
+        # 現在のソースとして二重走査しない（worktreeの .git はファイル）。
+        inside_nested_checkout = False
+        for parent in path.parents:
+            if parent == _REPO_ROOT:
+                break
+            if (parent / ".git").exists():
+                inside_nested_checkout = True
+                break
+        if inside_nested_checkout:
+            continue
         n = _count_approval_literals(path, value)
         if n:
             found[str(path.relative_to(_REPO_ROOT))] = n

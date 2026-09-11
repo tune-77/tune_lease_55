@@ -111,6 +111,16 @@ _VERDICT_LITERAL_ALLOWLIST = {
 }
 
 
+def _inside_nested_checkout(path: Path) -> bool:
+    """リポジトリ配下に置かれた別worktree/checkoutならTrueを返す。"""
+    for parent in path.parents:
+        if parent == _REPO_ROOT:
+            return False
+        if (parent / ".git").exists():
+            return True
+    return False
+
+
 def _numeric_verdict_branches(py_path: Path) -> list[str]:
     """判定ライン相当の数値リテラルで判定文字列を決めている箇所を返す。"""
     try:
@@ -149,6 +159,8 @@ def test_no_numeric_literal_decides_a_verdict():
     hits: list[str] = []
     for path in sorted(_REPO_ROOT.rglob("*.py")):
         if any(part in skip_parts for part in path.parts):
+            continue
+        if _inside_nested_checkout(path):
             continue
         if str(path.relative_to(_REPO_ROOT)) in _VERDICT_LITERAL_ALLOWLIST:
             continue

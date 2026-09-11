@@ -983,11 +983,6 @@ def run_quick_scoring(inputs: dict) -> dict:
     # モデル本体は変えず、ハッカソン用デモケースだけを即時警戒帯に固定する。
     final_score, demo_score_adj = _apply_demo_food_service_score_cap(inputs, final_score)
 
-    hantei = "承認圏内" if final_score >= APPROVAL_LINE else "要審議"
-
-    # 直感スコアが高いのに要審議 → 上長確認フラグ
-    manager_review_flag = (intuition_score >= 4.0) and (final_score < APPROVAL_LINE)
-
     # ── SHAP近似: 各特徴量の寄与度を計算 ──
     score_contributions = compute_score_contributions(data_scoring, coeffs)
 
@@ -1114,6 +1109,29 @@ def run_quick_scoring(inputs: dict) -> dict:
     score_gap = abs(float(final_score) - float(score_borrower))
     warning_count = len(default_warnings) + len(credit_risk_warnings)
 
+    # 点数だけでは見落とせない強い信用リスクは、承認圏表示を止めて人間審議へ送る。
+    # スコア値は比較・検証用に維持し、ここでは自動否決や追加減点を行わない。
+    risk_review_reasons: list[str] = []
+    if user_equity_ratio < 0:
+        risk_review_reasons.append(f"債務超過（自己資本比率 {user_equity_ratio:.1f}%）")
+    if default_warnings:
+        risk_review_reasons.append("高リスク財務パターンとの類似警告")
+    if credit_risk_group.get("flag"):
+        risk_review_reasons.append(
+            f"信用リスク群判定 {credit_risk_group.get('level', 'watch')}"
+        )
+    if q_risk_value >= 60:
+        risk_review_reasons.append(f"Q_risk 強警戒（{q_risk_value:.1f}）")
+
+    risk_review_required = bool(risk_review_reasons)
+    score_based_hantei = "承認圏内" if final_score >= APPROVAL_LINE else "要審議"
+    hantei = "要審議" if risk_review_required else score_based_hantei
+
+    # 担当者が前向きでも、点数不足または強制審議ゲートなら上長確認を促す。
+    manager_review_flag = (intuition_score >= 4.0) and (
+        final_score < APPROVAL_LINE or risk_review_required
+    )
+
     mahalanobis_reasons: list[str] = []
     if warning_count:
         mahalanobis_reasons.append("財務・信用警戒フラグが出ている")
@@ -1172,6 +1190,9 @@ def run_quick_scoring(inputs: dict) -> dict:
         "industry_sub": industry_sub,
         "industry_major": industry_major,
         "approval_line": APPROVAL_LINE,
+        "score_based_hantei": score_based_hantei,
+        "risk_review_required": risk_review_required,
+        "risk_review_reasons": risk_review_reasons,
         "used_default_asset_score": used_default_asset_score,
         "asset_score_warnings": asset_score_warnings,
         "credit_risk_group_score": credit_risk_group.get("score", 0.0),

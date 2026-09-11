@@ -82,6 +82,7 @@ SAMPLE_CASES: list[dict[str, Any]] = [
     {
         "case_id": "negative_equity_alert",
         "name": "Negative equity case should still return a bounded result",
+        "expected_hantei": "要審議",
         "inputs": {
             "customer_type": "既存先",
             "industry_major": "D 建設業",
@@ -144,7 +145,13 @@ def validate_scoring_result(result: dict[str, Any]) -> list[str]:
         failures.append(f"hantei is invalid: {hantei!r}")
 
     if _is_finite_number(result.get("score")) and _is_finite_number(result.get("approval_line")):
-        expected = "承認圏内" if float(result["score"]) >= float(result["approval_line"]) else "要審議"
+        expected = (
+            "要審議"
+            if result.get("risk_review_required")
+            else "承認圏内"
+            if float(result["score"]) >= float(result["approval_line"])
+            else "要審議"
+        )
         if hantei != expected:
             failures.append(f"hantei mismatch: expected {expected}, got {hantei}")
 
@@ -169,6 +176,12 @@ def run_harness(cases: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         try:
             result = run_quick_scoring(case["inputs"])
             failures = validate_scoring_result(result)
+            expected_hantei = case.get("expected_hantei")
+            if expected_hantei and result.get("hantei") != expected_hantei:
+                failures.append(
+                    f"business hantei mismatch: expected {expected_hantei}, "
+                    f"got {result.get('hantei')}"
+                )
             case_results.append(
                 {
                     "case_id": case["case_id"],
