@@ -894,7 +894,7 @@ function ExperienceCaseDetailModal({
     ["取得価額", pickExperienceValue(item.formSnapshot, currentData, ["acquisition_cost"])],
     ["リース期間", pickExperienceValue(item.formSnapshot, currentData, ["lease_term", "lease_term_months"])],
   ];
-  const resultRows = [
+  const resultRows: Array<[string, unknown]> = [
     ["総合スコア", getResultSnapshotScore(item.resultSnapshot, item.score)],
     ["判定", item.resultSnapshot?.hantei ?? item.decision],
     ["Q_risk", item.resultSnapshot?.quantum_risk],

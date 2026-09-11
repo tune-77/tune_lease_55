@@ -1,9 +1,9 @@
 import { ESLint } from "eslint";
 
 const BASELINE = Object.freeze({
-  totalWarnings: 262,
+  totalWarnings: 240,
   byRule: {
-    "@typescript-eslint/no-explicit-any": 227,
+    "@typescript-eslint/no-explicit-any": 205,
     "@next/next/no-img-element": 17,
     "react-hooks/set-state-in-effect": 11,
     "react-hooks/exhaustive-deps": 7,
