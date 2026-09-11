@@ -93,8 +93,7 @@ def test_legacy_vault_used_when_only_legacy_exists(monkeypatch, tmp_path):
 
 
 def test_registered_vault_is_discovered_when_defaults_are_missing(monkeypatch, tmp_path):
-    discovered = tmp_path / "registered"
-    discovered.mkdir()
+    discovered = tmp_path / "registered"; discovered.mkdir()
     monkeypatch.setattr(runtime_paths, "DEFAULT_OBSIDIAN_VAULT", tmp_path / "missing-default")
     monkeypatch.setattr(runtime_paths, "LEGACY_OBSIDIAN_VAULT", tmp_path / "missing-legacy")
     monkeypatch.setattr(runtime_paths, "_discover_obsidian_vault", lambda: discovered)

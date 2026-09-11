@@ -31,7 +31,6 @@ LEASE_WIKI_VAULT_DIRNAME = "lease-wiki-vault"
 
 
 def _discover_obsidian_vault() -> Path | None:
-    """Find a registered or conventional Vault when canonical defaults are absent."""
     config = Path.home() / "Library/Application Support/obsidian/obsidian.json"
     try:
         entries = json.loads(config.read_text(encoding="utf-8")).get("vaults", {}).values()
@@ -41,14 +40,12 @@ def _discover_obsidian_vault() -> Path | None:
     home = Path.home()
     roots = registered + [home / "Documents/Obsidian Vault", home / "Documents", home / "Obsidian", ICLOUD_OBSIDIAN_DOCS, home / "Library/Mobile Documents/com~apple~CloudDocs"]
     for root in roots:
-        if (root / ".obsidian").is_dir():
-            return root.resolve()
         try:
-            marker = next((path for path in root.rglob(".obsidian") if path.is_dir()), None) if root.is_dir() else None
+            marker = root / ".obsidian" if (root / ".obsidian").is_dir() else next((path for path in root.rglob(".obsidian") if path.is_dir()), None) if root.is_dir() else None
         except OSError:
             continue
         if marker:
-            return marker.parent.resolve()
+            return root.resolve() if marker == root / ".obsidian" else marker.parent.resolve()
     return None
 
 
@@ -214,9 +211,7 @@ def describe_obsidian_vault_resolution(
                 path=LEGACY_OBSIDIAN_VAULT, source="legacy", exists=True, warnings=warnings
             )
         elif discovered := _discover_obsidian_vault():
-            resolution = ObsidianVaultResolution(
-                path=discovered, source="discovered", exists=True, warnings=warnings
-            )
+            resolution = ObsidianVaultResolution(path=discovered, source="discovered", exists=True, warnings=warnings)
         else:
             resolution = ObsidianVaultResolution(
                 path=DEFAULT_OBSIDIAN_VAULT, source="fallback", exists=False, warnings=warnings
