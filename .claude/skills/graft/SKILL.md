@@ -131,6 +131,19 @@ tally summing those numbers across every graft call you made, e.g.
 skip it. This is the per-turn figure; the statusline carries the running
 session total.
 
+Once a turn has been billed, each line also states what that call was worth in
+dollars, at the rate this session is actually paying for input tokens — include
+that total alongside the tokens, e.g. `🌱 graft saved ~12,400 tokens (~$0.04)
+this turn`. When a line carries no dollar figure, report tokens alone rather
+than pricing them yourself.
+
+Reason: a token count alone is hard to weigh against the cost of an unnecessary
+file read; pricing it against the session's actual rate keeps the savings claim
+concrete instead of abstract.
+Retirement: drop this dollar-figure requirement once graft's own output reports
+per-call cost natively, or if it no longer has access to the session's live
+token rate.
+
 **Never pipe a graft command through `head`, `tail`, or `sed -n`.** Every tool
 is already capped and states what it dropped; clipping it costs you hits you
 asked for, and it silently drops the savings line the statusline's running
