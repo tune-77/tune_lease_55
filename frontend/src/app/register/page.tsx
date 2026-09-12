@@ -79,7 +79,7 @@ export default function RegisterPage() {
       await apiClient.delete(`/api/cases/${caseId}`);
       triggerMebuki('guide', '案件を削除しました。');
       fetchPendingCases();
-    } catch (err) {
+    } catch (_err) {
       triggerMebuki('reject', '削除に失敗しました。');
     }
   };
@@ -90,7 +90,7 @@ export default function RegisterPage() {
       await apiClient.delete(`/api/cases/operation/clear-all`);
       triggerMebuki('guide', '全ての未登録案件を削除しました。');
       fetchPendingCases();
-    } catch (err) {
+    } catch (_err) {
       triggerMebuki('reject', '一括削除に失敗しました。');
     }
   };
@@ -119,7 +119,7 @@ export default function RegisterPage() {
       if (typeof p === 'number') setLiveClosureProb(p);
       triggerMebuki('approve', `${eventType === 'estimate_sent' ? '見積提示' : '顧客反応'}を記録しました。`);
       fetchPendingCases();
-    } catch (err) {
+    } catch (_err) {
       triggerMebuki('reject', 'タイムスタンプ記録に失敗しました。');
     } finally {
       setProgressStampingCaseId(null);

@@ -1,14 +1,12 @@
 import { ESLint } from "eslint";
 
 const BASELINE = Object.freeze({
-  totalWarnings: 304,
+  totalWarnings: 240,
   byRule: {
     "@typescript-eslint/no-explicit-any": 205,
-    "@typescript-eslint/no-unused-vars": 59,
     "@next/next/no-img-element": 17,
-    "react-hooks/set-state-in-effect": 12,
-    "react-hooks/exhaustive-deps": 10,
-    "<eslint>": 1,
+    "react-hooks/set-state-in-effect": 11,
+    "react-hooks/exhaustive-deps": 7,
   },
 });
 

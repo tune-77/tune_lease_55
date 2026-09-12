@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/lib/api';
 import * as d3 from 'd3';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
-import { Share2, Users, Activity, Target, Zap, MousePointer2 } from 'lucide-react';
+import { Share2, Activity, Zap, MousePointer2 } from 'lucide-react';
 
 export default function CompetitorPage() {
   const containerRef = useRef<HTMLDivElement>(null);
