@@ -927,7 +927,7 @@ function KnowledgeSpaceScene({
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [graph, onSelect, selectedId, searchTerm, timePercent, mode, visualMode, categoryFilter, flightMode]);
+  }, [graph, onSelect, onHover, selectedId, searchTerm, timePercent, mode, visualMode, categoryFilter, categoryOrder, flightMode]);
 
   return <div ref={mountRef} className="absolute inset-0" />;
 }

@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import {
@@ -639,9 +640,11 @@ export default function HomeDashboard() {
         {/* めぶきちゃんの画像 */}
         <div className="absolute right-0 bottom-0 h-full w-[40%] hidden lg:block select-none pointer-events-none">
           <div className="relative h-full w-full">
-            <img 
+            <Image
               src="/mebuki.png" 
               alt="Mebuki" 
+              width={600}
+              height={800}
               className="absolute bottom-0 right-10 h-[110%] object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.3)] group-hover:scale-105 transition-transform duration-700 ease-out"
             />
           </div>
@@ -1167,9 +1170,12 @@ export default function HomeDashboard() {
                 </div>
                 <div className="space-y-4">
                   {leaseNewsReflection.illustration_url && (
-                    <img
+                    <Image
                       src={leaseNewsReflection.illustration_url}
                       alt="紫苑の観察ログ"
+                      width={1200}
+                      height={675}
+                      unoptimized
                       className="aspect-[16/9] w-full rounded-xl border border-amber-100 object-cover"
                     />
                   )}

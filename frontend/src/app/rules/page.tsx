@@ -4,8 +4,13 @@ import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Settings, ShieldCheck, Save, Activity, Sliders, Info } from 'lucide-react';
 
+type ScreeningRules = {
+  thresholds: { approval: number; consultation: number };
+  pricing: { target_spread: number; expected_win_rate: number };
+};
+
 export default function RulesPage() {
-  const [rules, setRules] = useState<any>(null);
+  const [rules, setRules] = useState<ScreeningRules | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -17,7 +22,7 @@ export default function RulesPage() {
   const fetchRules = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get(`/api/settings/rules`);
+      const res = await apiClient.get<ScreeningRules>(`/api/settings/rules`);
       setRules(res.data);
     } catch (err) {
       console.error(err);
@@ -40,7 +45,7 @@ export default function RulesPage() {
     }
   };
 
-  if (loading) return (
+  if (loading || !rules) return (
     <div className="p-8 flex items-center justify-center min-h-screen">
       <Activity className="w-12 h-12 text-indigo-500 animate-spin" />
     </div>

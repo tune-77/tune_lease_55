@@ -1,5 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import Image from "next/image";
 import { Activity, Bot, Brain, ChevronDown, MessageSquare } from "lucide-react";
 import {
   judgmentAssetHighlightTerms,
@@ -7,6 +8,8 @@ import {
   buildShionThoughtProcessSteps,
   SHION_REVIEW_IMAGE,
   type JudgmentAssetCandidate,
+  type ScreeningFormRecord,
+  type ScreeningResultRecord,
   type QRiskBreakdown,
   type ShionReviewFeedback,
   type ShionScreeningReview,
@@ -112,8 +115,8 @@ export function ShionScreeningReviewCard({
   onFeedback: (feedback: ShionReviewFeedback) => void;
   feedbackSaving: boolean;
   judgmentAssetCandidates: JudgmentAssetCandidate[];
-  result: Record<string, any> | null;
-  formData: Record<string, any>;
+  result: ScreeningResultRecord | null;
+  formData: ScreeningFormRecord;
 }) {
   const feedbackOptions: { key: ShionReviewFeedback; label: string }[] = [
     { key: "specific", label: "具体的" },
@@ -136,7 +139,7 @@ export function ShionScreeningReviewCard({
     <section className="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm">
       <div className="grid gap-0 lg:grid-cols-[150px_minmax(0,1fr)]">
         <div className="relative min-h-36 bg-violet-950">
-          <img src={SHION_REVIEW_IMAGE} alt="審査レビュー中の紫苑" className="h-full w-full object-cover object-top opacity-95" />
+          <Image src={SHION_REVIEW_IMAGE} alt="審査レビュー中の紫苑" fill sizes="150px" className="object-cover object-top opacity-95" />
           <div className="absolute inset-x-0 bottom-0 bg-violet-950/80 px-3 py-2 text-center text-[10px] font-black tracking-[0.25em] text-violet-100">
             SHION REVIEW
           </div>

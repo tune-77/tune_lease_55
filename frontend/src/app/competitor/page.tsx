@@ -5,10 +5,35 @@ import * as d3 from 'd3';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Share2, Activity, Zap, MousePointer2 } from 'lucide-react';
 
+type CompetitorNode = d3.SimulationNodeDatum & {
+  id: string;
+  type: 'industry' | 'competitor' | 'case';
+  label: string;
+  radius: number;
+  color: string;
+  win_rate?: number;
+};
+
+type CompetitorEdge = d3.SimulationLinkDatum<CompetitorNode> & {
+  type: 'competed' | 'belongs';
+  width?: number;
+};
+
+type CompetitorGraph = {
+  nodes: CompetitorNode[];
+  edges: CompetitorEdge[];
+  summary?: {
+    industries?: number;
+    competitors?: number;
+    total_cases?: number;
+    total_won: number;
+  };
+};
+
 export default function CompetitorPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<CompetitorGraph | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,7 +43,7 @@ export default function CompetitorPage() {
 
   const fetchData = async () => {
     try {
-      const res = await apiClient.get(`/api/analysis/competitor_graph`);
+      const res = await apiClient.get<CompetitorGraph>(`/api/analysis/competitor_graph`);
       setData(res.data);
     } catch (err) {
       console.error(err);
@@ -41,9 +66,9 @@ export default function CompetitorPage() {
     const g = svg.append('g');
 
     // Zoom
-    svg.call(d3.zoom<SVGSVGElement, any>()
+    svg.call(d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.2, 5])
-      .on('zoom', (event: any) => g.attr('transform', event.transform))
+      .on('zoom', (event) => g.attr('transform', event.transform))
     );
 
     // Arrow markers
@@ -63,47 +88,47 @@ export default function CompetitorPage() {
       .attr('fill', d => d === 'competed' ? '#94a3b8' : '#cbd5e1');
 
     // Force Simulation
-    const simulation = d3.forceSimulation(data.nodes)
-      .force('link', d3.forceLink(data.edges)
-        .id((d: any) => d.id)
-        .distance((d: any) => d.type === 'belongs' ? 90 : 180)
-        .strength((d: any) => d.type === 'belongs' ? 0.4 : 0.7)
+    const simulation = d3.forceSimulation<CompetitorNode>(data.nodes)
+      .force('link', d3.forceLink<CompetitorNode, CompetitorEdge>(data.edges)
+        .id((d) => d.id)
+        .distance((d) => d.type === 'belongs' ? 90 : 180)
+        .strength((d) => d.type === 'belongs' ? 0.4 : 0.7)
       )
-      .force('charge', d3.forceManyBody().strength((d: any) => d.type === 'industry' ? -500 : -200))
+      .force('charge', d3.forceManyBody<CompetitorNode>().strength((d) => d.type === 'industry' ? -500 : -200))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide().radius((d: any) => (d.radius || 15) + 15))
+      .force('collide', d3.forceCollide<CompetitorNode>().radius((d) => (d.radius || 15) + 15))
       .force('x', d3.forceX(width / 2).strength(0.05))
       .force('y', d3.forceY(height / 2).strength(0.05));
 
     // Links
-    const link = g.append('g').selectAll('line')
+    const link = g.append('g').selectAll<SVGLineElement, CompetitorEdge>('line')
       .data(data.edges)
       .join('line')
-      .attr('stroke', (d: any) => d.type === 'competed' ? '#94a3b8' : '#cbd5e1')
-      .attr('stroke-width', (d: any) => d.width || 1)
-      .attr('stroke-dasharray', (d: any) => d.type === 'belongs' ? '4,4' : null)
+      .attr('stroke', (d) => d.type === 'competed' ? '#94a3b8' : '#cbd5e1')
+      .attr('stroke-width', (d) => d.width || 1)
+      .attr('stroke-dasharray', (d) => d.type === 'belongs' ? '4,4' : null)
       .attr('opacity', 0.6)
-      .attr('marker-end', (d: any) => d.type === 'competed' ? 'url(#arrow-competed)' : null);
+      .attr('marker-end', (d) => d.type === 'competed' ? 'url(#arrow-competed)' : null);
 
     // Nodes
-    const node = g.append('g').selectAll('g')
+    const node = g.append('g').selectAll<SVGGElement, CompetitorNode>('g')
       .data(data.nodes)
       .join('g')
       .attr('cursor', 'grab')
-      .call(d3.drag<SVGGElement, any>()
-        .on('start', (event: any, d: any) => {
+      .call(d3.drag<SVGGElement, CompetitorNode>()
+        .on('start', (event, d) => {
           if (!event.active) simulation.alphaTarget(0.3).restart();
           d.fx = d.x; d.fy = d.y;
         })
-        .on('drag', (event: any, d: any) => { d.fx = event.x; d.fy = event.y; })
-        .on('end', (event: any, d: any) => {
+        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+        .on('end', (event, d) => {
           if (!event.active) simulation.alphaTarget(0);
           d.fx = null; d.fy = null;
-        }) as any
+        })
       );
 
     // Node Shape
-    node.each(function(d: any) {
+    node.each(function(d) {
       const el = d3.select(this);
       if (d.type === 'competitor') {
         const r = d.radius || 20;
@@ -136,31 +161,31 @@ export default function CompetitorPage() {
     });
 
     // Labels
-    node.filter((d: any) => d.type !== 'case').append('text')
+    node.filter((d) => d.type !== 'case').append('text')
       .attr('text-anchor', 'middle')
-      .attr('dy', (d: any) => (d.radius || 20) + 20)
+      .attr('dy', (d) => (d.radius || 20) + 20)
       .attr('font-size', 11)
       .attr('font-weight', 'black')
       .attr('fill', '#1e293b')
-      .text((d: any) => d.label);
+      .text((d) => d.label);
 
     // Win Rate in Industrial Nodes
-    node.filter((d: any) => d.type === 'industry').append('text')
+    node.filter((d) => d.type === 'industry').append('text')
       .attr('text-anchor', 'middle')
       .attr('dy', 4)
       .attr('font-size', 10)
       .attr('font-weight', 'black')
       .attr('fill', '#fff')
-      .text((d: any) => `${Math.round(d.win_rate * 100)}%`);
+      .text((d) => `${Math.round((d.win_rate ?? 0) * 100)}%`);
 
     simulation.on('tick', () => {
       link
-        .attr('x1', (d: any) => d.source.x)
-        .attr('y1', (d: any) => d.source.y)
-        .attr('x2', (d: any) => d.target.x)
-        .attr('y2', (d: any) => d.target.y);
+        .attr('x1', (d) => (d.source as CompetitorNode).x ?? 0)
+        .attr('y1', (d) => (d.source as CompetitorNode).y ?? 0)
+        .attr('x2', (d) => (d.target as CompetitorNode).x ?? 0)
+        .attr('y2', (d) => (d.target as CompetitorNode).y ?? 0);
 
-      node.attr('transform', (d: any) => `translate(${d.x},${d.y})`);
+      node.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
 
     return () => { simulation.stop(); };

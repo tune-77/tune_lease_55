@@ -82,7 +82,7 @@ export default function ShionInnerDebugPage() {
       if (res.data.practical_scenes && res.data.practical_scenes.length > 0) {
         setActiveSceneTab(res.data.practical_scenes[0].id);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError("紫苑の内面データのロードに失敗しました。APIサーバーが起動しているか確認してください。");
     } finally {

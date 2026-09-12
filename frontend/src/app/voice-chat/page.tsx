@@ -30,12 +30,29 @@ type SpeechRecognitionInstance = {
   interimResults: boolean;
   maxAlternatives: number;
   onstart: (() => void) | null;
-  onresult: ((event: any) => void) | null;
-  onerror: ((event: any) => void) | null;
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
   abort: () => void;
+};
+
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  [index: number]: { transcript?: string };
+};
+
+type SpeechRecognitionResultEventLike = {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+
+type SpeechRecognitionErrorEventLike = { error: string };
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
 };
 
 type KnowledgeRef = {
@@ -151,12 +168,13 @@ export default function VoiceChatPage() {
   }, [state]);
 
   useEffect(() => {
+    const voiceWindow = window as SpeechRecognitionWindow;
     const SpeechRecognitionApi =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      voiceWindow.SpeechRecognition || voiceWindow.webkitSpeechRecognition;
     const hasRecognition = Boolean(SpeechRecognitionApi);
     const hasSynthesis = typeof window !== "undefined" && Boolean(window.speechSynthesis);
     setSupported({ recognition: hasRecognition, synthesis: hasSynthesis });
-    if (!hasRecognition) {
+    if (!SpeechRecognitionApi) {
       setError("このブラウザは音声認識に対応していません。ChromeまたはSafariで試してください。");
       return;
     }
@@ -175,7 +193,7 @@ export default function VoiceChatPage() {
       pendingFinalRef.current = "";
     };
 
-    rec.onresult = (event: any) => {
+    rec.onresult = (event) => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -197,7 +215,7 @@ export default function VoiceChatPage() {
       }
     };
 
-    rec.onerror = (event: any) => {
+    rec.onerror = (event) => {
       if (event.error === "no-speech") {
         setState("idle");
         setTranscript("");

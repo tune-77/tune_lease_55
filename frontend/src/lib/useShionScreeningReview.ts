@@ -8,6 +8,8 @@ import {
   ensureJudgmentAssetCitations,
   getScreeningScore,
   type JudgmentAssetCandidate,
+  type ScreeningFormRecord,
+  type ScreeningResultRecord,
   type ShionReviewFeedbackSample,
   type ShionReviewFeedback,
   type ShionScreeningReview,
@@ -35,7 +37,7 @@ export function useShionScreeningReview() {
     }
   };
 
-  const fetchJudgmentAssetCandidates = async (targetResult: any, targetFormData: Record<string, any>) => {
+  const fetchJudgmentAssetCandidates = async (targetResult: ScreeningResultRecord, targetFormData: ScreeningFormRecord) => {
     try {
       const res = await apiClient.get("/api/judgment-asset-candidates/screening", {
         params: {
@@ -59,8 +61,8 @@ export function useShionScreeningReview() {
   };
 
   const saveReview = async (
-    targetResult: any,
-    targetFormData: Record<string, any>,
+    targetResult: ScreeningResultRecord,
+    targetFormData: ScreeningFormRecord,
     promptText: string,
     nextReview: ShionScreeningReview,
   ) => {
@@ -85,7 +87,7 @@ export function useShionScreeningReview() {
     return Number(res.data?.review?.id || 0) || undefined;
   };
 
-  const requestReview = async (targetResult: Record<string, any>, targetFormData: Record<string, any>) => {
+  const requestReview = async (targetResult: ScreeningResultRecord, targetFormData: ScreeningFormRecord) => {
     if (!targetResult) return;
     const seq = ++requestSeq.current;
     let promptText = "";

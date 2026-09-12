@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { apiClient } from "@/lib/api";
+import { apiClient, getApiErrorDetail } from "@/lib/api";
 import { 
   Bot, 
   Terminal, 
@@ -170,7 +170,7 @@ export default function AgentHubPage() {
       const res = await apiClient.post(`/api/agent_hub/script/generate`);
       setLatestPlot(res.data);
       fetchThoughts();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to generate plot", err);
     } finally {
       setIsGeneratingPlot(false);
@@ -183,7 +183,7 @@ export default function AgentHubPage() {
       const res = await apiClient.get(`/api/obsidian/notes`);
       setObsidianNotes((res.data || []).slice(0, 20));
       setShowObsidianPanel(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to fetch obsidian notes", err);
       setObsidianNotes([]);
       setShowObsidianPanel(true);
@@ -209,7 +209,7 @@ export default function AgentHubPage() {
       fetchLatestNovel();
       fetchEpisodes();
       fetchThoughts();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to write novel", err);
     } finally {
       setIsWritingNovel(false);
@@ -237,8 +237,8 @@ export default function AgentHubPage() {
         setResult(res.data.result);
         fetchThoughts();
       }
-    } catch (err: any) {
-      setResult({ error: err.response?.data?.detail || "実行に失敗しました" });
+    } catch (err: unknown) {
+      setResult({ error: getApiErrorDetail(err, "実行に失敗しました") });
     } finally {
       setIsRunning(false);
     }
@@ -394,14 +394,14 @@ export default function AgentHubPage() {
                           <div className="text-rose-300 text-sm">{result.error}<br/><span className="text-slate-500 text-xs">{result.raw}</span></div>
                         ) : (
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {Object.entries(result).filter(([key]) => key !== "_source").map(([key, val]: [string, any]) => {
+                            {Object.entries(result).filter(([key]) => key !== "_source").map(([key, val]) => {
                               const label = BENCHMARK_LABELS[key] || key;
                               const unit = key === "dscr" ? "倍" : "%";
                               return (
                                 <div key={key} className="p-5 bg-slate-800/60 border border-slate-700/50 rounded-xl">
                                   <div className="text-xs text-blue-300 font-bold mb-2">{label}</div>
                                   <div className="text-3xl font-black text-white">
-                                    {typeof val === 'number' ? val.toFixed(1) : val}
+                                    {typeof val === 'number' ? val.toFixed(1) : String(val ?? "")}
                                     <span className="text-sm text-slate-400 ml-1">{unit}</span>
                                   </div>
                                 </div>

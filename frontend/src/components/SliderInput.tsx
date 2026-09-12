@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { focusNextScreeningNumber, isDraftNumericText, parseHumanNumberInput } from '../lib/numberInput';
 
 interface SliderInputProps {
@@ -30,12 +30,7 @@ export default function SliderInput({
   const [inputStr, setInputStr] = useState(value.toString());
   const [isFocused, setIsFocused] = useState(false);
 
-  // スライダー操作など外部からvalueが変わったとき、フォーカス中でなければ同期する
-  useEffect(() => {
-    if (!isFocused) {
-      setInputStr(value.toString());
-    }
-  }, [value, isFocused]);
+  const displayedInput = isFocused ? inputStr : value.toString();
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange(name, Number(e.target.value));
@@ -137,7 +132,7 @@ export default function SliderInput({
             min={min}
             max={max}
             step={step}
-            value={inputStr}
+            value={displayedInput}
             onChange={handleNumberChange}
             onFocus={handleFocus}
             onBlur={handleBlur}

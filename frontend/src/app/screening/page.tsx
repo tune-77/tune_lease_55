@@ -42,7 +42,83 @@ import {
   type JudgmentAssetCandidate,
   type ShionReviewFeedbackSample,
   type DemoSimilarPastCase,
+  type LooseRecord,
+  type ScreeningResultRecord,
 } from "../../lib/shionReview";
+
+type RateProposal = {
+  proposed_rate?: number;
+  monthly_payment?: number;
+  guidance?: string;
+  breakdown?: Partial<Record<"base_rate" | "asset_spread" | "grade_spread" | "risk_adjustment", number>>;
+};
+
+type AurionFlag = { key?: string; title: string; detail?: string };
+type AurionCore = {
+  severity?: string;
+  shion_ux_message?: string;
+  discipline_flags?: AurionFlag[];
+  next_actions?: string[];
+  signals?: { q_risk?: number };
+  emotion_synapse?: { tone?: string; shion_line?: string; vigilance?: number };
+};
+
+type IndustryBankruptcyBench = {
+  risk_level?: string;
+  risk_stars?: number;
+  matched_category?: string;
+  relative_risk?: string;
+  rate?: number;
+  per_10k?: number;
+  note?: string;
+};
+
+type BayesFactor = { label: string; delta_pct?: number; detail?: string };
+type BayesReverseStrategy = {
+  available?: boolean;
+  stance?: string;
+  headline?: string;
+  prior_percent?: number;
+  posterior_percent?: number;
+  lift_percent?: number;
+  factors?: BayesFactor[];
+  moves?: string[];
+  phrases?: string[];
+  disclaimer?: string;
+};
+
+type DataSourceSummary = {
+  primary_source?: string;
+  manual_input_count?: number;
+  manual_input_fields?: string[];
+  model_sources?: string[];
+  asset_clarity: {
+    status?: string;
+    filled_count?: number;
+    required_count?: number;
+    warnings?: string[];
+  };
+};
+
+type GameTheoryResult = {
+  risk_level?: string;
+  manipulation_suspicion_score: number;
+  dominant_strategy_analysis?: {
+    nash_equilibrium?: string;
+    honest_expected_payoff?: number;
+    manipulated_expected_payoff?: number;
+  };
+  strategy_flags?: Array<{ suspicion?: number; message?: string }>;
+  flag_count?: number;
+};
+
+type DiagnosticRecommendation = {
+  diagnostic?: string;
+  label?: string;
+  status?: string;
+  reason?: string;
+  use_as?: string;
+};
 
 const DATA_SOURCE_FIELD_LABELS: Record<string, string> = {
   company_no: "企業番号",
@@ -351,7 +427,7 @@ const getScreeningErrorMessage = (error: unknown) => {
   return detailText || "審査を実行できませんでした。入力内容を確認してください。";
 };
 
-const getResultSnapshotScore = (snapshot?: Record<string, any>, fallback = 0) =>
+const getResultSnapshotScore = (snapshot?: LooseRecord, fallback = 0) =>
   Number(snapshot?.score ?? snapshot?.score_base ?? fallback);
 
 function AiHeroCard({
@@ -359,7 +435,7 @@ function AiHeroCard({
   data,
   onOpenKnowledge,
 }: {
-  result?: Record<string, any>;
+  result?: ScreeningResultRecord;
   data?: Partial<ScoringFormData>;
   onOpenKnowledge?: () => void;
 }) {
@@ -868,8 +944,8 @@ const formatExperienceValue = (value: unknown) => {
 };
 
 const pickExperienceValue = (
-  primary: Record<string, any> | undefined,
-  fallback: Record<string, any>,
+  primary: LooseRecord | undefined,
+  fallback: LooseRecord,
   keys: string[],
 ) => {
   for (const key of keys) {
@@ -888,8 +964,8 @@ function ExperienceCaseDetailModal({
   data: ScoringFormData;
   onClose: () => void;
 }) {
-  const currentData = data as unknown as Record<string, any>;
-  const formRows = [
+  const currentData = data as unknown as LooseRecord;
+  const formRows: Array<[string, unknown]> = [
     ["企業番号", pickExperienceValue(item.formSnapshot, currentData, ["company_no"])],
     ["営業部", pickExperienceValue(item.formSnapshot, currentData, ["sales_dept"])],
     ["取引区分", pickExperienceValue(item.formSnapshot, currentData, ["customer_type"])],
@@ -1266,7 +1342,7 @@ function ScreeningLoopFeedbackPanel({ result, data }: { result: Record<string, a
   );
 }
 
-function RateProposalCard({ proposal }: { proposal?: any }) {
+function RateProposalCard({ proposal }: { proposal?: RateProposal }) {
   if (!proposal?.proposed_rate) return null;
   const breakdown = proposal.breakdown || {};
   const rows = [
@@ -1306,7 +1382,7 @@ function RateProposalCard({ proposal }: { proposal?: any }) {
   );
 }
 
-function AurionCoreCard({ core }: { core?: any }) {
+function AurionCoreCard({ core }: { core?: AurionCore }) {
   if (!core) return null;
   const severity = core.severity || "clear";
   const tone = core.emotion_synapse?.tone || "落ち着いた確認";
@@ -1356,7 +1432,7 @@ function AurionCoreCard({ core }: { core?: any }) {
       </div>
       {flags.length > 0 && (
         <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {flags.slice(0, 4).map((flag: any) => (
+          {flags.slice(0, 4).map((flag) => (
             <div key={flag.key || flag.title} className="rounded-xl border border-current/10 bg-white/70 px-3 py-2">
               <div className="text-xs font-black">{flag.title}</div>
               <div className="mt-1 text-[11px] font-medium leading-relaxed opacity-75">{flag.detail}</div>
@@ -1381,7 +1457,7 @@ function AurionCoreCard({ core }: { core?: any }) {
   );
 }
 
-function IndustryBankruptcyBenchCard({ bench }: { bench?: any }) {
+function IndustryBankruptcyBenchCard({ bench }: { bench?: IndustryBankruptcyBench }) {
   if (!bench) return null;
   const levelStyles: Record<string, string> = {
     "高": "border-rose-200 bg-rose-50 text-rose-900",
@@ -1389,7 +1465,7 @@ function IndustryBankruptcyBenchCard({ bench }: { bench?: any }) {
     "中": "border-amber-200 bg-amber-50 text-amber-900",
     "低": "border-emerald-200 bg-emerald-50 text-emerald-900",
   };
-  const style = levelStyles[bench.risk_level] || "border-slate-200 bg-slate-50 text-slate-900";
+  const style = levelStyles[bench.risk_level || ""] || "border-slate-200 bg-slate-50 text-slate-900";
   const stars = "●".repeat(bench.risk_stars || 0) + "○".repeat(4 - (bench.risk_stars || 0));
   return (
     <section className={`rounded-2xl border p-4 shadow-sm ${style}`}>
@@ -1429,7 +1505,7 @@ function IndustryBankruptcyBenchCard({ bench }: { bench?: any }) {
   );
 }
 
-function BayesReverseStrategyCard({ strategy }: { strategy?: any }) {
+function BayesReverseStrategyCard({ strategy }: { strategy?: BayesReverseStrategy }) {
   if (!strategy?.available) return null;
   const prior = Number(strategy.prior_percent ?? 0);
   const posterior = Number(strategy.posterior_percent ?? 0);
@@ -1480,7 +1556,7 @@ function BayesReverseStrategyCard({ strategy }: { strategy?: any }) {
 
       {factors.length > 0 && (
         <div className="mt-3 grid gap-2 md:grid-cols-3">
-          {factors.slice(1, 4).map((factor: any) => (
+          {factors.slice(1, 4).map((factor) => (
             <div key={factor.label} className="rounded-xl border border-indigo-100 bg-white px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-[11px] font-black text-slate-700">{factor.label}</div>
@@ -1521,7 +1597,7 @@ function BayesReverseStrategyCard({ strategy }: { strategy?: any }) {
   );
 }
 
-function DataSourceSummaryCard({ summary }: { summary?: any }) {
+function DataSourceSummaryCard({ summary }: { summary?: DataSourceSummary }) {
   if (!summary) return null;
   const assetClarity = summary.asset_clarity;
   const manualFields = summary.manual_input_fields || [];
@@ -1597,7 +1673,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [result, setResult] = useState<any>(null);
-  const [gameTheoryResult, setGameTheoryResult] = useState<any>(null);
+  const [gameTheoryResult, setGameTheoryResult] = useState<GameTheoryResult | null>(null);
   const [formData, setFormData] = useState<ScoringFormData>(defaultFormData);
   const [gunshiText, setGunshiText] = useState<string>("");
   const [shionReview, setShionReview] = useState<ShionScreeningReview | null>(null);
@@ -1629,6 +1705,7 @@ export default function Dashboard() {
   const lastCopiedFields = useRef<(keyof ScoringFormData)[]>([]);
   const shionReviewRequestSeq = useRef(0);
   const suppressNextDraftSave = useRef(false);
+  const handleSubmitRef = useRef<(targetFormData: ScoringFormData) => Promise<void>>(async () => {});
 
   // タブ管理
   const [activeTab, setActiveTab] = useState<"input" | "analysis">("input");
@@ -1660,13 +1737,13 @@ export default function Dashboard() {
         setFormData(nextFormData);
         setActiveTab("input");
         router.replace("/screening");
-        void handleSubmit(nextFormData);
+        void handleSubmitRef.current(nextFormData);
       } catch (error) {
         console.error("Failed to load case from case_id", error);
         alert("案件の読み込みに失敗しました。");
       }
     })();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("case_id")) return;
@@ -1680,7 +1757,7 @@ export default function Dashboard() {
       const saved = JSON.parse(raw) as {
         version?: number;
         formData?: ScoringFormData;
-        result?: any;
+        result?: ScreeningResultRecord;
         gunshiText?: string;
         shionReview?: ShionScreeningReview | null;
         judgmentAssetCandidates?: JudgmentAssetCandidate[];
@@ -1742,7 +1819,7 @@ export default function Dashboard() {
   const fetchExperienceCasesForContext = async (
     demoCaseId: string,
     targetFormData: Partial<ScoringFormData> = {},
-    targetResult: any = null,
+    targetResult: ScreeningResultRecord | null = null,
   ) => {
     if (!demoCaseId && !hasExperienceSearchContext(targetFormData, targetResult)) return [];
     try {
@@ -1897,7 +1974,7 @@ export default function Dashboard() {
     }
   };
 
-  const fetchJudgmentAssetCandidatesForScreening = async (targetResult: any, targetFormData: ScoringFormData) => {
+  const fetchJudgmentAssetCandidatesForScreening = async (targetResult: ScreeningResultRecord, targetFormData: ScoringFormData) => {
     setJudgmentAssetCandidatesLoading(true);
     setJudgmentAssetFeedbackRetry(null);
     try {
@@ -1958,7 +2035,7 @@ export default function Dashboard() {
   };
 
   const saveShionScreeningReview = async (
-    targetResult: any,
+    targetResult: ScreeningResultRecord,
     targetFormData: ScoringFormData,
     promptText: string,
     review: ShionScreeningReview,
@@ -2303,6 +2380,10 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  });
 
   const saveCurrentExperienceCase = async () => {
     if (!result || experienceSaving) return;
@@ -2723,6 +2804,7 @@ export default function Dashboard() {
                   <FormGeneral data={formData} onChange={handleFieldChange} />
                 </section>
                 <LeasePaymentSimulator
+                  key={`input-simulator-${Number(formData.acquisition_cost) || 10}-${Number(formData.lease_term) || 5}`}
                   source="screening"
                   initialPriceMillion={Number(formData.acquisition_cost) || 10}
                   initialYears={Number(formData.lease_term) || 5}
@@ -2817,6 +2899,7 @@ export default function Dashboard() {
                     />
                     <ScreeningLoopFeedbackPanel result={result} data={formData} />
                     <LeasePaymentSimulator
+                      key={`analysis-simulator-${Number(formData.acquisition_cost) || 10}-${Number(formData.lease_term) || 5}`}
                       source="screening"
                       initialPriceMillion={Number(formData.acquisition_cost) || 10}
                       initialYears={Number(formData.lease_term) || 5}
@@ -2876,12 +2959,12 @@ export default function Dashboard() {
                         </div>
 
                         {/* フラグ一覧 */}
-                        {gameTheoryResult.strategy_flags?.length > 0 && (
+                        {(gameTheoryResult.strategy_flags?.length ?? 0) > 0 && (
                           <div className="space-y-1.5">
                             <div className="text-[10px] font-black uppercase tracking-wider text-amber-700">
                               検出シグナル ({gameTheoryResult.flag_count}件)
                             </div>
-                            {gameTheoryResult.strategy_flags.slice(0, 4).map((flag: any, i: number) => (
+                            {(gameTheoryResult.strategy_flags ?? []).slice(0, 4).map((flag, i) => (
                               <div key={i} className="flex items-start gap-2 rounded-lg bg-white border border-amber-100 px-3 py-2">
                                 <AlertTriangle className={`h-3 w-3 mt-0.5 shrink-0 ${
                                   (flag.suspicion ?? 0) >= 0.4 ? "text-rose-500" : "text-amber-400"
@@ -3023,7 +3106,7 @@ export default function Dashboard() {
                                 UMAP / マハラノビスは常時使用ではありません。紫苑が必要性を示し、人間が実行判断します。結果は自動減点ではなく、確認論点・稟議補足に使います。
                               </p>
                               <div className="space-y-2">
-                                {result.diagnostic_recommendations.map((rec: any, index: number) => (
+                                {(result.diagnostic_recommendations as DiagnosticRecommendation[]).map((rec, index) => (
                                   <div key={`${rec?.diagnostic || "diagnostic"}-${index}`} className="rounded-lg border border-amber-200 bg-white/70 p-3">
                                     <div className="flex items-center justify-between gap-3">
                                       <div className="text-sm font-black text-slate-900">{rec?.label || rec?.diagnostic || "補助診断"}</div>

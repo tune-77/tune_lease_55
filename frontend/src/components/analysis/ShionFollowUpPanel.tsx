@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, BarChart3, CheckCircle2, HelpCircle, RefreshCw, Send } from "lucide-react";
 import { apiClient } from "../../lib/api";
-import type { JudgmentAssetCandidate } from "../../lib/shionReview";
+import type { JudgmentAssetCandidate, LooseRecord } from "../../lib/shionReview";
 
 type AnswerStatus = "confirmed" | "partial" | "concern";
 
@@ -96,8 +96,8 @@ export default function ShionFollowUpPanel({
 }: {
   caseId: string;
   reviewId?: number;
-  formSnapshot: Record<string, any>;
-  resultSnapshot: Record<string, any>;
+  formSnapshot: LooseRecord;
+  resultSnapshot: LooseRecord;
   judgmentAssets: JudgmentAssetCandidate[];
 }) {
   const [session, setSession] = useState<FollowupSession | null>(null);

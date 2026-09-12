@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import type { ElementType } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/lib/api";
@@ -385,7 +386,10 @@ export default function ShionConciergeHome() {
   // SSRとの不一致を避けるため、初期値は固定しマウント後にランダム化する
   const [introVideo, setIntroVideo] = useState(SHION_INTRO_VIDEOS[0]);
   useEffect(() => {
-    setIntroVideo(SHION_INTRO_VIDEOS[Math.floor(Math.random() * SHION_INTRO_VIDEOS.length)]);
+    const frame = window.requestAnimationFrame(() => {
+      setIntroVideo(SHION_INTRO_VIDEOS[Math.floor(Math.random() * SHION_INTRO_VIDEOS.length)]);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -400,6 +404,7 @@ export default function ShionConciergeHome() {
   const activeQueueItem = workQueue.find((item) => queueState[item.id] !== "done" && queueState[item.id] !== "later") || workQueue[0];
 
   useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
     try {
       const raw = window.localStorage.getItem(ACTIVITY_KEY);
       const parsed = raw ? (JSON.parse(raw) as ActivityItem[]) : [];
@@ -407,6 +412,8 @@ export default function ShionConciergeHome() {
     } catch {
       setActivity([]);
     }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -431,6 +438,7 @@ export default function ShionConciergeHome() {
   }, []);
 
   useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
     try {
       const raw = window.localStorage.getItem(QUEUE_STATE_KEY);
       const parsed = raw ? (JSON.parse(raw) as { date?: string; items?: Record<string, QueueStatus> }) : null;
@@ -438,6 +446,8 @@ export default function ShionConciergeHome() {
     } catch {
       setQueueState({});
     }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [queueDate]);
 
   const submit = () => {
@@ -482,7 +492,7 @@ export default function ShionConciergeHome() {
                 className="aspect-square w-full object-cover"
                 aria-label="リース知性体 紫苑システム"
               >
-                <img src={SHION_AVATAR_IMAGE} alt="リース知性体 紫苑システム" className="aspect-square w-full object-cover" />
+                <Image src={SHION_AVATAR_IMAGE} alt="リース知性体 紫苑システム" width={320} height={320} className="aspect-square w-full object-cover" />
               </video>
             </div>
             <div>
@@ -521,9 +531,11 @@ export default function ShionConciergeHome() {
                         <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50 p-4">
                           <div className="text-[10px] font-black uppercase tracking-widest text-violet-500">Shion Routing</div>
                           <div className="mt-2 flex items-center gap-3 rounded-xl border border-violet-100 bg-white p-3">
-                            <img
+                            <Image
                               src={message.guidance.persona.image}
                               alt={message.guidance.persona.name}
+                              width={48}
+                              height={48}
                               className="h-12 w-12 rounded-xl bg-white object-cover"
                             />
                             <div>
@@ -653,7 +665,7 @@ export default function ShionConciergeHome() {
 
             <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4">
               <div className="flex gap-3">
-                <img src={activeQueueItem.persona.image} alt={activeQueueItem.persona.name} className="h-12 w-12 rounded-xl bg-white object-cover shadow-sm" />
+                <Image src={activeQueueItem.persona.image} alt={activeQueueItem.persona.name} width={48} height={48} className="h-12 w-12 rounded-xl bg-white object-cover shadow-sm" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-cyan-700">主提案</span>

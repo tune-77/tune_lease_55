@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { apiClient } from "@/lib/api";
+import { apiClient, getApiErrorDetail } from "@/lib/api";
 import { 
   History, 
   Globe, 
@@ -21,14 +21,35 @@ interface Snap {
   id: string;
   ts: string;
   comment: string;
-  overrides: any;
+  overrides: Record<string, unknown>;
+}
+
+interface ChronicleSummary {
+  baseline_rate?: number;
+  recent_rate?: number;
+  total_cases?: number;
+  drift?: number;
+  warn_threshold: number;
+}
+
+interface ChronicleHistoryEntry {
+  timestamp: string;
+  change_type: string;
+  comment?: string;
+  changed_keys?: Record<string, unknown>;
+}
+
+interface SimEvent {
+  title?: string;
+  event_type?: string;
+  civ?: string;
 }
 
 interface SimRound {
   round_no: number;
   year: number;
   summary: string;
-  events: any[];
+  events: SimEvent[];
   created_at: string;
 }
 
@@ -41,8 +62,8 @@ interface ArchaiaLog {
 }
 
 export default function ChroniclePage() {
-  const [summary, setSummary] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
+  const [summary, setSummary] = useState<ChronicleSummary | null>(null);
+  const [history, setHistory] = useState<ChronicleHistoryEntry[]>([]);
   const [snapshots, setSnapshots] = useState<Snap[]>([]);
   const [simHistory, setSimHistory] = useState<SimRound[]>([]);
   const [archaiaLogs, setArchaiaLogs] = useState<ArchaiaLog[]>([]);
@@ -51,12 +72,12 @@ export default function ChroniclePage() {
   const [simulating, setSimulating] = useState(false);
 
   // 安全な数値フォーマッター
-  const pct = (v: any) => {
+  const pct = (v: unknown) => {
     const n = Number(v);
     if (!isFinite(n)) return "---";
     return (n * 100).toFixed(1);
   };
-  const pctRaw = (v: any) => {
+  const pctRaw = (v: unknown) => {
     const n = Number(v);
     if (!isFinite(n)) return 0;
     return n * 100;
@@ -69,23 +90,23 @@ export default function ChroniclePage() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const safe = async (promise: Promise<any>, fallback: any) => {
-        try { const res = await promise; return res; }
-        catch { return { data: fallback }; }
+      const safe = async <T,>(promise: Promise<{ data: T }>, fallback: T): Promise<T> => {
+        try { return (await promise).data; }
+        catch { return fallback; }
       };
 
       const [sum, hist, snaps, sim, log] = await Promise.all([
-        safe(apiClient.get(`/api/chronicle/summary`), null),
-        safe(apiClient.get(`/api/chronicle/history`), { history: [] }),
-        safe(apiClient.get(`/api/chronicle/snapshots`), { snapshots: [] }),
-        safe(apiClient.get(`/api/chronicle/simulation/history`), { history: [] }),
-        safe(apiClient.get(`/api/chronicle/simulation/archaia_log`), { logs: [] }),
+        safe(apiClient.get<ChronicleSummary | null>(`/api/chronicle/summary`), null),
+        safe(apiClient.get<{ history: ChronicleHistoryEntry[] }>(`/api/chronicle/history`), { history: [] }),
+        safe(apiClient.get<{ snapshots: Snap[] }>(`/api/chronicle/snapshots`), { snapshots: [] }),
+        safe(apiClient.get<{ history: SimRound[] }>(`/api/chronicle/simulation/history`), { history: [] }),
+        safe(apiClient.get<{ logs: ArchaiaLog[] }>(`/api/chronicle/simulation/archaia_log`), { logs: [] }),
       ]);
-      if (sum.data) setSummary(sum.data);
-      setHistory(hist.data?.history || []);
-      setSnapshots(snaps.data?.snapshots || []);
-      setSimHistory(sim.data?.history || []);
-      setArchaiaLogs(log.data?.logs || []);
+      if (sum) setSummary(sum);
+      setHistory(hist.history);
+      setSnapshots(snaps.snapshots);
+      setSimHistory(sim.history);
+      setArchaiaLogs(log.logs);
     } catch (err) {
       console.error("Failed to fetch chronicle data", err);
     } finally {
@@ -98,8 +119,8 @@ export default function ChroniclePage() {
     try {
       await apiClient.post(`/api/chronicle/simulation/round`);
       await fetchAll();
-    } catch (err: any) {
-      alert("Simulation failed: " + (err.response?.data?.detail || err.message));
+    } catch (err: unknown) {
+      alert("Simulation failed: " + getApiErrorDetail(err, "unknown error"));
     } finally {
       setSimulating(false);
     }

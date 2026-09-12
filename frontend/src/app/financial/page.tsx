@@ -14,6 +14,17 @@ const INDUSTRY_OPTIONS = [
 const MILLION_TO_THOUSAND_YEN = 1000;
 const toThousandYen = (value: number) => Math.round(value * MILLION_TO_THOUSAND_YEN);
 
+type ForecastSeriesKey =
+  | 'sales_history' | 'sales_forecast'
+  | 'profit_history' | 'profit_forecast'
+  | 'net_assets_history' | 'net_assets_forecast';
+
+type ForecastData = Record<ForecastSeriesKey, number[]> & {
+  months_history: string[];
+  months_forecast: string[];
+  timesfm_available: boolean;
+};
+
 export default function FinancialPage() {
   // 入力欄は実務で使われる百万円単位（例: 500 = 5億円）。送信時に千円へ変換する
   const [sales, setSales] = useState(['500', '520', '550']);
@@ -22,7 +33,7 @@ export default function FinancialPage() {
   const [industry, setIndustry] = useState("サービス業");
   
   const [loading, setLoading] = useState(false);
-  const [forecastData, setForecastData] = useState<any>(null);
+  const [forecastData, setForecastData] = useState<ForecastData | null>(null);
 
   useEffect(() => {
     triggerMebuki('guide', '3期財務分析ですね！\n過去の決算を入力するとAIが12ヶ月後まで予測します！');
@@ -41,7 +52,7 @@ export default function FinancialPage() {
   const runForecast = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.post(`/api/forecast`, {
+      const res = await apiClient.post<ForecastData>(`/api/forecast`, {
         // 入力（百万円）を /api/forecast が期待する千円単位へ変換してから送信する
         sales: sales.map(v => toThousandYen(parseFloat(v) || 0)),
         profit: profit.map(v => toThousandYen(parseFloat(v) || 0)),
@@ -76,7 +87,7 @@ export default function FinancialPage() {
       return data;
   };
 
-  const renderChart = (title: string, histKey: string, foreKey: string, color: string) => {
+  const renderChart = (title: string, histKey: ForecastSeriesKey, foreKey: ForecastSeriesKey, color: string) => {
       if(!forecastData) return null;
       const chartData = formatChartData(
           forecastData.months_history, forecastData[histKey], 
@@ -96,7 +107,7 @@ export default function FinancialPage() {
                           <XAxis dataKey="label" scale="point" padding={{ left: 10, right: 10 }} tick={{ fontSize: 10 }} minTickGap={30} />
                           <YAxis tickFormatter={(val) => Math.round(val / 1000) + ' 百万円'} width={60} />
                           <Tooltip
-                            formatter={(value: any) => new Intl.NumberFormat('ja-JP').format(value / 1000) + ' 百万円'}
+                            formatter={(value) => new Intl.NumberFormat('ja-JP').format(Number(value) / 1000) + ' 百万円'}
                             contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                           />
                           <Legend />

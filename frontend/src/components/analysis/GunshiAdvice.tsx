@@ -337,6 +337,11 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
     }
   };
 
+  const fetchStreamChatRef = useRef(fetchStreamChat);
+  useEffect(() => {
+    fetchStreamChatRef.current = fetchStreamChat;
+  });
+
   useEffect(() => {
     if (score === 0) return;
     const fetchKey = [
@@ -366,7 +371,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
 
     const nextHistory: ChatMessage[] = [{ role: 'user', text: initialStrategyQuestion }];
     setChatHistory(nextHistory);
-    fetchStreamChat(nextHistory);
+    void fetchStreamChatRef.current(nextHistory);
   }, [score, industry_major, formData, estatContext, initialStrategyQuestion, humorMode]);
 
   const handleOpenShionChat = () => {

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { apiClient, API_BASE } from "@/lib/api";
+import { apiClient, API_BASE, getApiErrorDetail } from "@/lib/api";
 import {
   Brain, Orbit, Crown, ChevronDown, ChevronUp,
   Loader2, CheckCircle2, XCircle, AlertTriangle, Info, Clock, BookMarked, PenLine, Users, Zap, ShieldCheck, Sparkles, ClipboardList,
@@ -643,9 +643,9 @@ export default function DebatePage() {
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (idleTimer) clearTimeout(idleTimer);
-      if (err?.name === "AbortError") {
+      if (err instanceof DOMException && err.name === "AbortError") {
         throw new Error("討論が一定時間応答を返さなかったため打ち切りました。もう一度お試しください。");
       }
       return false;
@@ -699,8 +699,8 @@ export default function DebatePage() {
         let readResult: ReadableStreamReadResult<Uint8Array>;
         try {
           readResult = await reader.read();
-        } catch (err: any) {
-          if (err?.name === "AbortError") {
+        } catch (err: unknown) {
+          if (err instanceof DOMException && err.name === "AbortError") {
             throw new Error("討論が一定時間応答を返さなかったため打ち切りました。もう一度お試しください。");
           }
           throw err;
@@ -765,8 +765,8 @@ export default function DebatePage() {
         const { data } = await apiClient.post("/api/multi-agent-screening", payload);
         applyResult(data, capturedParticipants);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || "エラーが発生しました");
+    } catch (err: unknown) {
+      setError(getApiErrorDetail(err, "エラーが発生しました"));
     } finally {
       setLoading(false);
       setLiveStatus("");
@@ -801,9 +801,8 @@ export default function DebatePage() {
         screened_at: new Date().toISOString(),
       });
       setObsidianToast("success");
-    } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setObsidianError(Array.isArray(detail) ? JSON.stringify(detail) : detail || err.message || "保存に失敗しました");
+    } catch (err: unknown) {
+      setObsidianError(getApiErrorDetail(err, "保存に失敗しました"));
       setObsidianToast("error");
     } finally {
       setObsidianSaving(false);
@@ -837,9 +836,8 @@ export default function DebatePage() {
       });
       setRegisteredCaseId(data.case_id);
       setCaseRegisterToast("success");
-    } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setCaseRegisterError(Array.isArray(detail) ? JSON.stringify(detail) : detail || err.message || "案件登録に失敗しました");
+    } catch (err: unknown) {
+      setCaseRegisterError(getApiErrorDetail(err, "案件登録に失敗しました"));
       setCaseRegisterToast("error");
     } finally {
       setCaseRegistering(false);
@@ -890,9 +888,8 @@ export default function DebatePage() {
         },
       });
       setJudgmentToast("success");
-    } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      setJudgmentError(Array.isArray(detail) ? JSON.stringify(detail) : detail || err.message || "記録に失敗しました");
+    } catch (err: unknown) {
+      setJudgmentError(getApiErrorDetail(err, "記録に失敗しました"));
       setJudgmentToast("error");
     } finally {
       setJudgmentSaving(false);

@@ -116,18 +116,6 @@ export default function LeasePaymentSimulator({
     recordSimulatorActivity(source, "simulator_view");
   }, [source]);
 
-  useEffect(() => {
-    if (initialPriceMillion && initialPriceMillion > 0) {
-      setPriceMillion(initialPriceMillion);
-    }
-  }, [initialPriceMillion]);
-
-  useEffect(() => {
-    if (initialYears && LEASE_RATE_FACTORS[initialYears]) {
-      setYears(initialYears);
-    }
-  }, [initialYears]);
-
   const recordInteraction = () => {
     if (interactionRecordedRef.current) return;
     interactionRecordedRef.current = true;
