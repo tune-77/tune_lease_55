@@ -85,7 +85,8 @@ class ScoringResponse(BaseModel):
     risk_review_reasons: list[str] = Field(default_factory=list)  # 強制審議の理由
     credit_risk_group_score: Optional[float] = None
     credit_risk_group_level: Optional[str] = None
-    credit_risk_group_flags: list = Field(default_factory=list)
+    credit_risk_group_flag: bool = False
+    credit_risk_group_reasons: list = Field(default_factory=list)
     quantum_risk: Optional[float] = None       # 量子干渉リスクスコア 0-100（財務矛盾検出）
     q_risk_breakdown: Optional[dict] = None    # Q_riskのルール別寄与内訳（表示専用・スコア非影響）
     financial_consistency_score: Optional[float] = None  # 旧Q_risk: 財務・入力整合性チェック 0-100
