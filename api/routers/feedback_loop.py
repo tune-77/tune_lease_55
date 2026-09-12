@@ -1266,6 +1266,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                 req.feedback,
                 normalized_event["supersedes_event_id"],
             )
+            repair_durable_duplicate = False
             if same_id:
                 existing_key = (
                     str(same_id.get("rule_id") or ""),
@@ -1276,15 +1277,17 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                 )
                 if existing_key != semantic_key:
                     raise HTTPException(status_code=409, detail="event_id already used for different feedback")
-                state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
                 durable_recorded = _record_durable_candidate_feedback(cloud_payload)
-                return {
-                    "candidate": {"id": candidate_id, **dict(state.get(candidate_id) or {})},
-                    "feedback_event": same_id,
-                    "duplicate": True,
-                    "_cloud_payload": cloud_payload,
-                    "_durable_recorded": durable_recorded,
-                }
+                if normalized_event["event_id"] in local_event_ids:
+                    state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
+                    return {
+                        "candidate": {"id": candidate_id, **dict(state.get(candidate_id) or {})},
+                        "feedback_event": same_id,
+                        "duplicate": True,
+                        "_cloud_payload": cloud_payload,
+                        "_durable_recorded": durable_recorded,
+                    }
+                repair_durable_duplicate = True
 
             related_rows = [
                 row for row in feedback_rows
@@ -1310,7 +1313,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                 )
                 if superseded_row is None:
                     raise HTTPException(status_code=409, detail="superseded feedback event was not found")
-                if superseded_row not in heads:
+                if not repair_durable_duplicate and superseded_row not in heads:
                     raise HTTPException(
                         status_code=409,
                         detail={
@@ -1318,7 +1321,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                             "current_event_id": str(heads[-1].get("event_id") or "") if heads else "",
                         },
                     )
-            elif heads:
+            elif heads and not repair_durable_duplicate:
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -1327,7 +1330,8 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                     },
                 )
 
-            durable_recorded = _record_durable_candidate_feedback(cloud_payload)
+            if not same_id:
+                durable_recorded = _record_durable_candidate_feedback(cloud_payload)
 
             state = load_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON)
             original_state = {key: dict(value) for key, value in state.items()}
@@ -1404,7 +1408,7 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
             return {
                 "candidate": {"id": candidate_id, **current},
                 "feedback_event": feedback_event,
-                "duplicate": False,
+                "duplicate": repair_durable_duplicate,
                 "_cloud_payload": cloud_payload,
                 "_durable_recorded": durable_recorded,
             }
