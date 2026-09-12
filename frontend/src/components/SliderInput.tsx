@@ -50,11 +50,13 @@ export default function SliderInput({
   };
 
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    const currentValue = value.toString();
     setIsFocused(true);
-    if (inputStr === '0') {
+    if (currentValue === '0') {
       setInputStr('');
       return;
     }
+    setInputStr(currentValue);
     e.currentTarget.select();
   };
 
