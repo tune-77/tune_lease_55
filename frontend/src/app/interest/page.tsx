@@ -22,6 +22,15 @@ type RateRow = {
 };
 
 type FormState = { month: string; note: string } & Record<string, string>;
+type RatePayload = Record<string, string | number | null>;
+type CurrentRate = {
+  current_rate_5y: number | null;
+  next_rate_5y?: number | null;
+  current_month: string;
+  next_month: string;
+  latest: RateRow | null;
+  prev?: Partial<RateRow>;
+};
 
 type BaseRateForecast = {
   term_col: string;
@@ -63,7 +72,7 @@ function makeDefaultForm(latest: RateRow | null, defaultMonth: string): FormStat
 
 export default function InterestPage() {
   const [rates, setRates] = useState<RateRow[]>([]);
-  const [current, setCurrent] = useState<any>(null);
+  const [current, setCurrent] = useState<CurrentRate | null>(null);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormState>({ month: '', note: '', ...Object.fromEntries(TERM_COLS.map(c => [c, ''])) });
   const [submitting, setSubmitting] = useState(false);
@@ -97,7 +106,7 @@ export default function InterestPage() {
     try {
       const [ratesRes, currentRes] = await Promise.all([
         apiClient.get(`/api/settings/interest`),
-        apiClient.get(`/api/settings/interest/current`),
+        apiClient.get<CurrentRate>(`/api/settings/interest/current`),
       ]);
       const rateData: RateRow[] = ratesRes.data;
       const cur = currentRes.data;
@@ -116,7 +125,7 @@ export default function InterestPage() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const payload: any = { month: form.month, note: form.note };
+      const payload: RatePayload = { month: form.month, note: form.note };
       for (const col of TERM_COLS) {
         payload[col] = form[col] !== '' ? parseFloat(form[col]) : null;
       }
@@ -146,7 +155,7 @@ export default function InterestPage() {
     try {
       for (const [month, patch] of changed) {
         const original = rates.find(r => r.month === month);
-        const payload: any = { month, note: original?.note ?? '' };
+        const payload: RatePayload = { month, note: original?.note ?? '' };
         for (const col of TERM_COLS) {
           payload[col] = patch[col] !== undefined ? patch[col] : original?.[col] ?? null;
         }
@@ -236,24 +245,24 @@ export default function InterestPage() {
 
       {/* Current/Next month status */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className={`p-5 rounded-2xl border flex items-center gap-4 ${currentRate5y === null ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
-          {currentRate5y === null
+        <div className={`p-5 rounded-2xl border flex items-center gap-4 ${currentRate5y == null ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+          {currentRate5y == null
             ? <AlertTriangle className="w-8 h-8 text-amber-500 shrink-0" />
             : <CheckCircle className="w-8 h-8 text-emerald-500 shrink-0" />
           }
           <div>
             <div className="text-xs font-black text-slate-400 uppercase tracking-widest">当月 ({current?.current_month})</div>
-            {currentRate5y === null
+            {currentRate5y == null
               ? <div className="text-sm font-bold text-amber-700 mt-0.5">⚠️ 未登録</div>
               : <div className="text-2xl font-black text-emerald-700">{currentRate5y.toFixed(2)}<span className="text-sm text-slate-400 ml-1">% (5年以内)</span></div>
             }
           </div>
         </div>
-        <div className={`p-5 rounded-2xl border flex items-center gap-4 ${nextRate5y === null ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
+        <div className={`p-5 rounded-2xl border flex items-center gap-4 ${nextRate5y == null ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-200'}`}>
           <ChevronRight className="w-8 h-8 text-slate-400 shrink-0" />
           <div>
             <div className="text-xs font-black text-slate-400 uppercase tracking-widest">来月 ({current?.next_month})</div>
-            {nextRate5y === null
+            {nextRate5y == null
               ? <div className="text-sm font-bold text-slate-500 mt-0.5">未登録</div>
               : <div className="text-2xl font-black text-slate-700">{nextRate5y.toFixed(2)}<span className="text-sm text-slate-400 ml-1">% (5年以内)</span></div>
             }

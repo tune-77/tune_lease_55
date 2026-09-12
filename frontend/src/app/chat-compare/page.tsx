@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { renderInline } from "@/lib/renderMarkdown";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowLeft,
   Bot,
@@ -379,7 +380,9 @@ export default function ChatComparePage() {
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
             {SHION_VARIANTS.map((variant) => (
               <div key={variant.key} className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                <img src={variant.image} alt={`紫苑 ${variant.label}`} className="aspect-square w-full object-cover object-top" />
+                <div className="relative aspect-square w-full">
+                  <Image src={variant.image} alt={`紫苑 ${variant.label}`} fill sizes="(min-width: 1024px) 12vw, 45vw" className="object-cover object-top" />
+                </div>
                 <div className="p-2">
                   <div className="text-xs font-black text-slate-900">{variant.label}</div>
                   <div className="mt-0.5 text-[10px] font-bold text-slate-500">{variant.caption}</div>
@@ -453,8 +456,8 @@ export default function ChatComparePage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     {meta.image ? (
-                      <div className="h-12 w-12 overflow-hidden rounded-lg border border-indigo-200 bg-white shadow-sm">
-                        <img src={meta.image} alt={meta.label} className="h-full w-full object-cover object-top" />
+                      <div className="relative h-12 w-12 overflow-hidden rounded-lg border border-indigo-200 bg-white shadow-sm">
+                        <Image src={meta.image} alt={meta.label} fill sizes="48px" className="object-cover object-top" />
                       </div>
                     ) : (
                       <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${meta.badge}`}>

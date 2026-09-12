@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { apiClient } from "@/lib/api";
+import { apiClient, getApiErrorDetail } from "@/lib/api";
 import {
   AlertCircle,
   AlertTriangle,
@@ -913,9 +913,8 @@ export default function ImprovementLogPage() {
           setRecipeError(`自動適用は完了しませんでした: ${status}${message ? ` / ${message}` : ""}`);
         }
         await fetchRecipes();
-      } catch (err: any) {
-        const detail = err?.response?.data?.detail || "承認後の自動適用に失敗しました。";
-        setRecipeError(String(detail));
+      } catch (err: unknown) {
+        setRecipeError(getApiErrorDetail(err, "承認後の自動適用に失敗しました。"));
       }
     },
     [fetchRecipes]

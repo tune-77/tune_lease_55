@@ -36,22 +36,17 @@ let _embeddingsCache: Point[] | null = null;
 
 export default function UMAPPanel({ score, umapX, umapY, similar, compact = false }: Props) {
   const [expanded, setExpanded] = useState(!compact);
-  const [wonPoints, setWonPoints] = useState<Point[]>([]);
-  const [lostPoints, setLostPoints] = useState<Point[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [wonPoints, setWonPoints] = useState<Point[]>(() => _embeddingsCache?.filter(p => p.s === '成約') ?? []);
+  const [lostPoints, setLostPoints] = useState<Point[]>(() => _embeddingsCache?.filter(p => p.s === '失注') ?? []);
+  const [loading, setLoading] = useState(!compact && !_embeddingsCache);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
     if (!expanded || fetchedRef.current) return;
     fetchedRef.current = true;
     if (_embeddingsCache) {
-      const won  = _embeddingsCache.filter(p => p.s === '成約');
-      const lost = _embeddingsCache.filter(p => p.s === '失注');
-      setWonPoints(won);
-      setLostPoints(lost);
       return;
     }
-    setLoading(true);
     axios.get<{ points: Point[] }>('/api/umap/embeddings')
       .then(res => {
         _embeddingsCache = res.data.points;
@@ -77,7 +72,14 @@ export default function UMAPPanel({ score, umapX, umapY, similar, compact = fals
           {cfg.label} {score.toFixed(1)}
         </span>
         {compact && (
-          <button onClick={() => setExpanded(e => !e)} className="ml-auto text-slate-400 hover:text-slate-600">
+          <button
+            onClick={() => setExpanded(current => {
+              const next = !current;
+              if (next && !_embeddingsCache) setLoading(true);
+              return next;
+            })}
+            className="ml-auto text-slate-400 hover:text-slate-600"
+          >
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
         )}

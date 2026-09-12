@@ -5,8 +5,17 @@ import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Target, MessageSquare, Award, BarChart3, Activity } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 
+type Coefficient = { name: string; value: number };
+type QualitativeAnalysis = {
+  n_cases: number;
+  lr_coef: [string, number][];
+  accuracy_lr: number;
+  auc_lr: number;
+  auc_lgb: number;
+};
+
 export default function QualitativePage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<QualitativeAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,7 +26,7 @@ export default function QualitativePage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.post(`/api/analysis/qualitative`);
+      const res = await apiClient.post<QualitativeAnalysis>(`/api/analysis/qualitative`);
       setData(res.data);
     } catch (err) {
       console.error(err);
@@ -31,7 +40,7 @@ export default function QualitativePage() {
     if (!data?.lr_coef) return [];
     return data.lr_coef
       .map(([name, value]: [string, number]) => ({ name, value }))
-      .sort((a: any, b: any) => Math.abs(b.value) - Math.abs(a.value));
+      .sort((a: Coefficient, b: Coefficient) => Math.abs(b.value) - Math.abs(a.value));
   };
 
   const shortAxisLabel = (value: unknown) => {
@@ -83,7 +92,7 @@ export default function QualitativePage() {
                    contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                  />
                  <Bar dataKey="value" name="回帰係数" radius={[0, 4, 4, 0]}>
-                   {getCoefData().map((entry: any, index: number) => (
+                   {getCoefData().map((entry, index) => (
                      <Cell key={`cell-${index}`} fill={entry.value > 0 ? '#ec4899' : '#94a3b8'} />
                    ))}
                  </Bar>
@@ -109,8 +118,8 @@ export default function QualitativePage() {
            <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Regression Accuracy</div>
               <div className="flex items-end justify-between">
-                 <div className="text-3xl font-black text-slate-800">{(data?.accuracy_lr * 100).toFixed(1)}%</div>
-                 <div className="text-sm font-bold text-slate-500">{(data?.auc_lr * 100).toFixed(1)} AUD-ROC</div>
+                 <div className="text-3xl font-black text-slate-800">{(Number(data?.accuracy_lr) * 100).toFixed(1)}%</div>
+                 <div className="text-sm font-bold text-slate-500">{(Number(data?.auc_lr) * 100).toFixed(1)} AUD-ROC</div>
               </div>
            </div>
            
@@ -120,7 +129,7 @@ export default function QualitativePage() {
               </div>
               <h4 className="text-white font-black mb-2">LightGBM 単体</h4>
               <p className="text-slate-400 text-sm mb-4">定性ページでは LR と LightGBM を個別に見ます。</p>
-              <div className="text-2xl font-black text-emerald-400">{(data?.auc_lgb * 100).toFixed(1)} AUC</div>
+              <div className="text-2xl font-black text-emerald-400">{(Number(data?.auc_lgb) * 100).toFixed(1)} AUC</div>
            </div>
         </div>
       </div>

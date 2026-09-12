@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import React, { useState, useEffect, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import {
@@ -1116,8 +1117,8 @@ export default function ChatPage() {
               className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               {msg.role === "assistant" && (
-                <div className="w-8 h-8 overflow-hidden rounded-full border border-indigo-200 bg-indigo-50 flex-shrink-0 mt-0.5 shadow">
-                  <img src={SHION_AVATAR} alt="紫苑" className="h-full w-full object-cover object-top" />
+                <div className="relative w-8 h-8 overflow-hidden rounded-full border border-indigo-200 bg-indigo-50 flex-shrink-0 mt-0.5 shadow">
+                  <Image src={SHION_AVATAR} alt="紫苑" fill sizes="32px" className="object-cover object-top" />
                 </div>
               )}
               <div
@@ -1333,8 +1334,8 @@ export default function ChatPage() {
 
         {loading && (
           <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 overflow-hidden rounded-full border border-indigo-200 bg-indigo-50 flex-shrink-0 mt-0.5 shadow">
-              <img src={SHION_THINKING_AVATAR} alt="思考中の紫苑" className="h-full w-full object-cover object-top" />
+            <div className="relative w-8 h-8 overflow-hidden rounded-full border border-indigo-200 bg-indigo-50 flex-shrink-0 mt-0.5 shadow">
+              <Image src={SHION_THINKING_AVATAR} alt="思考中の紫苑" fill sizes="32px" className="object-cover object-top" />
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
               <div className="flex gap-1.5 items-center h-5">

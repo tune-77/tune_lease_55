@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowDown, Brain, Check, ClipboardList, Clock, Copy, Database, History, Loader2, Mic, MicOff,
   HelpCircle, Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
@@ -1374,6 +1375,11 @@ export default function LeaseIntelligencePage() {
     speakNext(0);
   };
 
+  const speakTextRef = useRef(speakText);
+  useEffect(() => {
+    speakTextRef.current = speakText;
+  });
+
   // ── File attach ──────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1538,7 +1544,7 @@ export default function LeaseIntelligencePage() {
                 pipelineResult.status === "fulfilled" ? pipelineResult.value.data?.failed_count ?? 0 : 0,
               source: "dialogue_daily_report",
             }).catch(() => {});
-            speakText(report);
+            speakTextRef.current(report);
           }
         }
         setMessages(nextMessages);
@@ -1684,10 +1690,12 @@ export default function LeaseIntelligencePage() {
         {/* ── サイドパネル ── */}
         <aside className="order-2 space-y-4 lg:order-1">
           <section className="overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-sm">
-            <img
+            <Image
               key={shionMoodImage}
               src={shionMoodImage}
               alt={`リース知性体・${state.dominant_mood || "好奇心"}`}
+              width={640}
+              height={640}
               className="aspect-square w-full animate-[lease-mood-fade_400ms_ease-out] object-cover"
             />
             <div className="p-5">
@@ -2130,11 +2138,13 @@ export default function LeaseIntelligencePage() {
                   className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                 {message.role === "assistant" && (
-                  <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-violet-200 bg-violet-100 shadow-sm">
-                    <img
+                  <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-violet-200 bg-violet-100 shadow-sm">
+                    <Image
                       src={shionMoodImage}
                       alt="紫苑"
-                      className="h-full w-full scale-[1.65] object-cover object-[center_30%]"
+                      fill
+                      sizes="36px"
+                      className="scale-[1.65] object-cover object-[center_30%]"
                     />
                   </div>
                 )}

@@ -32,10 +32,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeId>('light');
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
-    const initial = saved && THEMES.some(t => t.id === saved) ? saved : 'light';
-    setThemeState(initial);
-    document.documentElement.setAttribute('data-theme', initial);
+    const frame = window.requestAnimationFrame(() => {
+      const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
+      const initial = saved && THEMES.some(t => t.id === saved) ? saved : 'light';
+      setThemeState(initial);
+      document.documentElement.setAttribute('data-theme', initial);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   const setTheme = (id: ThemeId) => {

@@ -12,8 +12,8 @@ export type ShionReviewFeedback = "useful" | "needs_fix" | "wrong" | "specific" 
 export type JudgmentAssetCandidateFeedback = "useful" | "neutral" | "rejected" | "not_applied";
 export type JudgmentAssetAdaptationMode = "conservative" | "standard" | "exploratory" | "aggressive";
 
-type LooseRecord = Record<string, unknown>;
-type ScreeningFormRecord = {
+export type LooseRecord = Record<string, unknown>;
+export type ScreeningFormRecord = {
   company_no?: unknown;
   company_name?: unknown;
   industry_major?: unknown;
@@ -33,8 +33,18 @@ type ScreeningFormRecord = {
   intuition?: unknown;
   competitor?: unknown;
 };
-type ScreeningResultRecord = LooseRecord & {
-  aurion_core?: { discipline_flags?: unknown[] };
+export type ScreeningResultRecord = LooseRecord & {
+  score?: number;
+  score_base?: number;
+  hantei?: string;
+  approval_line?: number;
+  risk_review_required?: boolean;
+  risk_review_reasons?: string[];
+  score_borrower?: number;
+  quantum_risk?: number;
+  umap_anomaly_score?: number;
+  mahalanobis_score?: number;
+  aurion_core?: { severity?: string; discipline_flags?: unknown[] };
   diagnostic_recommendations?: LooseRecord[];
   q_risk_breakdown?: QRiskBreakdown;
 };

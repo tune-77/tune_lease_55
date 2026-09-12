@@ -5,8 +5,16 @@ import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { PieChart, Target, Activity, DollarSign, Award } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 
+type ContractDriver = { direction: string; label: string; coef: number };
+type ContractDriversData = {
+  closed_count: number;
+  top3_drivers: ContractDriver[];
+  avg_financials: Record<string, string | number>;
+  tag_ranking: [string, number][];
+};
+
 export default function HistoryDashPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<ContractDriversData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,7 +25,7 @@ export default function HistoryDashPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get(`/api/analysis/contract_drivers`);
+      const res = await apiClient.get<ContractDriversData>(`/api/analysis/contract_drivers`);
       setData(res.data);
     } catch (err) {
       console.error(err);
@@ -47,7 +55,7 @@ export default function HistoryDashPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {data?.top3_drivers?.map((driver: any, i: number) => (
+        {data?.top3_drivers?.map((driver, i) => (
           <div key={i} className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group min-w-0">
             <div className={`absolute top-0 left-0 w-1 h-full ${driver.direction === 'プラス' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
             <div className="flex items-center gap-4 mb-4 min-w-0">
@@ -76,7 +84,7 @@ export default function HistoryDashPage() {
             成約案件の平均財務モデル
           </h3>
           <div className="space-y-4">
-            {data?.avg_financials && Object.entries(data.avg_financials).map(([name, value]: [any, any]) => (
+            {data?.avg_financials && Object.entries(data.avg_financials).map(([name, value]) => (
               <div key={name} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                 <span className="text-sm font-bold text-slate-600">{name}</span>
                 <span className="text-lg font-black text-slate-800">
@@ -100,7 +108,7 @@ export default function HistoryDashPage() {
                  <YAxis dataKey="0" type="category" width={100} tick={{fontSize: 10, fontWeight: 'bold'}} />
                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
                  <Bar dataKey="1" fill="#3b82f6" radius={[0, 4, 4, 0]}>
-                   {data?.tag_ranking?.map((entry: any, index: number) => (
+                   {data?.tag_ranking?.map((entry, index) => (
                      <Cell key={`cell-${index}`} fill={index < 3 ? '#3b82f6' : '#94a3b8'} />
                    ))}
                  </Bar>

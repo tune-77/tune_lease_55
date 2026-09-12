@@ -5,6 +5,28 @@ import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { LineChart, BarChart3, Zap, Info, BrainCircuit, Sigma } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 
+type ImportanceEntry = { name: string; value: number };
+type QuantitativeAnalysis = {
+  n_cases: number;
+  n_positive: number;
+  n_negative: number;
+  lgb_importance: [string, number][];
+  rf_importance: [string, number][];
+  lr_coef: [string, number][];
+  accuracy_lr?: number;
+  accuracy_rf?: number;
+  accuracy_lgb?: number;
+  accuracy_ensemble?: number;
+  auc_lr?: number;
+  auc_rf?: number;
+  auc_lgb?: number;
+  auc_ensemble?: number;
+  best_auc_model?: string;
+  best_auc_value?: number;
+  ensemble_alpha?: number;
+  gemini_comment?: { text?: string };
+};
+
 const FEATURE_LABELS: Record<string, string> = {
   intercept: "定数項",
   ind_medical: "業種: 医療・福祉",
@@ -69,7 +91,7 @@ const FEATURE_LABELS: Record<string, string> = {
 };
 
 export default function QuantitativePage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<QuantitativeAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -80,7 +102,7 @@ export default function QuantitativePage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get(`/api/analysis/quantitative`);
+      const res = await apiClient.get<QuantitativeAnalysis>(`/api/analysis/quantitative`);
       setData(res.data);
     } catch (err) {
       console.error(err);
@@ -102,7 +124,7 @@ export default function QuantitativePage() {
     if (!data?.[key]) return [];
     return data[key]
       .map(([name, value]: [string, number]) => ({ name: FEATURE_LABELS[name] ?? name, value }))
-      .sort((a: any, b: any) => (absolute ? Math.abs(b.value) - Math.abs(a.value) : b.value - a.value))
+      .sort((a: ImportanceEntry, b: ImportanceEntry) => (absolute ? Math.abs(b.value) - Math.abs(a.value) : b.value - a.value))
       .slice(0, 15);
   };
 
@@ -111,7 +133,7 @@ export default function QuantitativePage() {
     return text.length > 18 ? `${text.slice(0, 17)}...` : text;
   };
 
-  const modelCards = [
+  const modelCards: Array<{ label: string; key: 'lr' | 'rf' | 'lgb' | 'ensemble'; color: string }> = [
     { label: 'ロジスティック回帰', key: 'lr', color: 'text-emerald-600' },
     { label: 'ランダムフォレスト', key: 'rf', color: 'text-amber-600' },
     { label: 'LGBM', key: 'lgb', color: 'text-rose-600' },
@@ -204,7 +226,7 @@ export default function QuantitativePage() {
                    contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                  />
                  <Bar dataKey="value" fill="#f43f5e" radius={[0, 4, 4, 0]}>
-                   {getImportanceData('lgb_importance').map((entry: any, index: number) => (
+                   {getImportanceData('lgb_importance').map((entry, index) => (
                      <Cell key={`cell-${index}`} fillOpacity={1 - index * 0.05} />
                    ))}
                  </Bar>

@@ -4,10 +4,20 @@ import { apiClient } from '../../lib/api';
 import { FileText, Loader2, Printer, ShieldCheck } from 'lucide-react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar } from 'recharts';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
+import type { ScoringFormData } from '../../types';
+
+type ReportScoringResult = {
+  score?: number;
+  score_base?: number;
+  hantei?: string;
+  user_op_margin?: number;
+  user_equity_ratio?: number;
+  bench_op_margin?: number;
+} & Record<string, unknown>;
 
 interface ReportProps {
-  apiResult: any;
-  formData: any;
+  apiResult: ReportScoringResult | null;
+  formData: Partial<ScoringFormData> | null;
   gunshiText?: string;
 }
 
@@ -27,7 +37,7 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
     try {
       const res = await apiClient.post(`/api/report/generate`, {
         result_data: apiResult,
-        inputs: toThousandYenPayload(formData)
+        inputs: toThousandYenPayload(formData ?? {})
       });
       setReport(res.data.report_markdown);
     } catch (err) {
@@ -96,7 +106,7 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
                 <h1 className="text-3xl font-black text-slate-900">案件審査 稟議書</h1>
               </div>
               <div className="text-right">
-                <p className="font-bold text-lg">{formData.company_name || '新規案件（名称未設定）'} 御中</p>
+                <p className="font-bold text-lg">{formData?.company_name || '新規案件（名称未設定）'} 御中</p>
                 <p className="text-sm text-gray-500">作成日: {new Date().toLocaleDateString('ja-JP')}</p>
                 <div className="mt-2 inline-flex items-center gap-1 bg-green-50 text-green-700 px-3 py-1 rounded border border-green-200 font-bold text-sm">
                   <ShieldCheck className="w-4 h-4" />
@@ -135,7 +145,7 @@ export default function ReportGenerator({ apiResult, formData, gunshiText }: Rep
                    )}
                    <div className="flex justify-between items-center bg-white p-3 border rounded-lg shadow-sm">
                      <span className="text-xs font-bold text-slate-500">審査申請物件</span>
-                     <span className="text-sm font-black text-slate-800">{formData.asset_name || "未設定"}</span>
+                     <span className="text-sm font-black text-slate-800">{formData?.asset_name || "未設定"}</span>
                    </div>
                 </div>
               </div>

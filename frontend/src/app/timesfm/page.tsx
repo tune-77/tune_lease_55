@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Activity, Clock, TrendingUp, Search, BarChart3, Calendar } from 'lucide-react';
@@ -21,6 +21,35 @@ const TAB_TOOLTIP = {
   labelStyle: { color: '#94a3b8', fontWeight: 'bold' },
 };
 
+type ForecastData = {
+  months_history: string[];
+  months_forecast: string[];
+  avg_score_hist: number[];
+  avg_score_fore: number[];
+  score_history: number[];
+  score_forecast: number[];
+  rate_history: number[];
+  horizon_forecast: number[];
+  revenues: number[];
+  gbm_median: number[];
+  tfm_median?: number[];
+  band_low: number | number[];
+  band_high: number | number[];
+  rate_forecast: number;
+  method: string;
+  risk_signal: 'positive' | 'negative' | string;
+  trend: 'up' | 'down' | string;
+  term_label: string;
+  timesfm_available: boolean;
+  error?: string;
+};
+
+type BaseRateCollection = {
+  forecasts: Record<string, ForecastData>;
+};
+
+type ChartPoint = Record<string, string | number | null | number[]>;
+
 // ─── ファンチャート用データ構築 ─────────────────────────────────────────────
 
 function buildFanChartData(
@@ -28,7 +57,7 @@ function buildFanChartData(
   monthsFore: string[], foreVals: number[],
   bandLow: number, bandHigh: number
 ) {
-  const data: any[] = [];
+  const data: ChartPoint[] = [];
   monthsHist.forEach((m, i) => {
     data.push({ month: m, actual: histVals[i], forecast: null, low: null, high: null });
   });
@@ -49,11 +78,11 @@ function buildFanChartData(
 
 // ─── 業種トレンドチャート ────────────────────────────────────────────────────
 
-function IndustryChart({ data }: { data: any }) {
+function IndustryChart({ data }: { data: ForecastData }) {
   if (!data?.months_history) return null;
   const histLen = data.months_history.length;
   const foreLen = data.months_forecast.length;
-  const chartData: any[] = [];
+  const chartData: ChartPoint[] = [];
 
   for (let i = 0; i < histLen; i++) {
     chartData.push({ month: data.months_history[i], actual: data.avg_score_hist[i], forecast: null });
@@ -103,11 +132,13 @@ function IndustryChart({ data }: { data: any }) {
 
 // ─── 個別スコア予測チャート ─────────────────────────────────────────────────
 
-function CompanyScoreChart({ data }: { data: any }) {
+function CompanyScoreChart({ data }: { data: ForecastData }) {
   if (!data?.score_history) return null;
+  const bandLow = Array.isArray(data.band_low) ? data.band_low : [];
+  const bandHigh = Array.isArray(data.band_high) ? data.band_high : [];
   const histLen = data.score_history.length;
   const foreLen = data.score_forecast.length;
-  const chartData: any[] = [];
+  const chartData: ChartPoint[] = [];
 
   for (let i = 0; i < histLen; i++) {
     chartData.push({ idx: `T-${histLen - i}`, actual: data.score_history[i], forecast: null });
@@ -118,9 +149,9 @@ function CompanyScoreChart({ data }: { data: any }) {
       idx: `M+${i + 1}`,
       actual: i === 0 ? lastActual : null,
       forecast: data.score_forecast[i],
-      low: data.band_low[i],
-      high: data.band_high[i],
-      band: [data.band_low[i], data.band_high[i]],
+      low: bandLow[i],
+      high: bandHigh[i],
+      band: [bandLow[i], bandHigh[i]],
     });
   }
   const trend = data.trend;
@@ -159,15 +190,17 @@ function CompanyScoreChart({ data }: { data: any }) {
 
 // ─── 成約金利推移チャート ────────────────────────────────────────────────────
 
-function RateForecastChart({ data }: { data: any }) {
+function RateForecastChart({ data }: { data: ForecastData }) {
   if (!data?.rate_history) return null;
+  const bandLow = typeof data.band_low === 'number' ? data.band_low : 0;
+  const bandHigh = typeof data.band_high === 'number' ? data.band_high : 0;
   const chartData = buildFanChartData(
-    data.rate_history.map((_: any, i: number) => `T-${data.rate_history.length - i}`),
+    data.rate_history.map((_, i) => `T-${data.rate_history.length - i}`),
     data.rate_history,
-    data.horizon_forecast.map((_: any, i: number) => `M+${i + 1}`),
+    data.horizon_forecast.map((_, i) => `M+${i + 1}`),
     data.horizon_forecast,
-    data.band_low,
-    data.band_high,
+    bandLow,
+    bandHigh,
   );
 
   return (
@@ -175,8 +208,8 @@ function RateForecastChart({ data }: { data: any }) {
       <div className="flex gap-6 mb-4">
         {[
           { label: '将来中央金利', val: `${data.rate_forecast?.toFixed(2)}%` },
-          { label: '予測下限', val: `${data.band_low?.toFixed(2)}%` },
-          { label: '予測上限', val: `${data.band_high?.toFixed(2)}%` },
+          { label: '予測下限', val: `${bandLow.toFixed(2)}%` },
+          { label: '予測上限', val: `${bandHigh.toFixed(2)}%` },
         ].map(({ label, val }) => (
           <div key={label} className="bg-slate-800 px-5 py-3 rounded-xl">
             <div className="text-xs text-slate-400 font-bold mb-1">{label}</div>
@@ -204,10 +237,10 @@ function RateForecastChart({ data }: { data: any }) {
 
 // ─── GBM vs TimesFM チャート ─────────────────────────────────────────────────
 
-function CompareChart({ data }: { data: any }) {
+function CompareChart({ data }: { data: ForecastData }) {
   if (!data?.revenues) return null;
   const n = data.gbm_median?.length || 0;
-  const chartData = data.revenues.map((v: number, i: number) => ({ idx: `T-${data.revenues.length - i}`, actual: v / 1e6 }));
+  const chartData: ChartPoint[] = data.revenues.map((v, i) => ({ idx: `T-${data.revenues.length - i}`, actual: v / 1e6 }));
   for (let i = 0; i < n; i++) {
     chartData.push({
       idx: `M+${i + 1}`,
@@ -228,7 +261,7 @@ function CompareChart({ data }: { data: any }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
             <XAxis dataKey="idx" stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 11 }} />
             <YAxis stroke="#475569" tick={{ fill: '#94a3b8' }} unit="M" />
-            <Tooltip {...TAB_TOOLTIP} formatter={(v: any) => `${Number(v).toFixed(1)}M円`} />
+            <Tooltip {...TAB_TOOLTIP} formatter={(v) => `${Number(v).toFixed(1)}M円`} />
             <Line type="monotone" dataKey="actual" stroke="#94a3b8" strokeWidth={2} dot={false} name="実績" connectNulls={false} />
             <Line type="monotone" dataKey="gbm" stroke="#fb923c" strokeWidth={2} strokeDasharray="5 5" dot={false} name="GBM予測" connectNulls={false} />
             {data.timesfm_available && (
@@ -243,12 +276,14 @@ function CompareChart({ data }: { data: any }) {
 
 // ─── 基準金利予測チャート ────────────────────────────────────────────────────
 
-function BaseRateChart({ data }: { data: any }) {
+function BaseRateChart({ data }: { data: ForecastData }) {
   if (!data?.rate_history) return null;
+  const bandLow = typeof data.band_low === 'number' ? data.band_low : 0;
+  const bandHigh = typeof data.band_high === 'number' ? data.band_high : 0;
   const chartData = buildFanChartData(
     data.months_history, data.rate_history,
     data.months_forecast, data.horizon_forecast,
-    data.band_low, data.band_high,
+    bandLow, bandHigh,
   );
 
   return (
@@ -257,7 +292,7 @@ function BaseRateChart({ data }: { data: any }) {
         {[
           { label: `現在 (${data.months_history[data.months_history.length - 1]})`, val: `${data.rate_history[data.rate_history.length - 1]?.toFixed(2)}%` },
           { label: `${data.horizon_forecast.length}ヶ月後 予測`, val: `${data.rate_forecast?.toFixed(2)}%` },
-          { label: '予測変動幅', val: `±${((data.band_high - data.rate_forecast) || 0).toFixed(2)}%` },
+          { label: '予測変動幅', val: `±${((bandHigh - data.rate_forecast) || 0).toFixed(2)}%` },
         ].map(({ label, val }) => (
           <div key={label} className="bg-slate-800 px-5 py-3 rounded-xl">
             <div className="text-xs text-slate-400 font-bold mb-1">{label}</div>
@@ -271,7 +306,7 @@ function BaseRateChart({ data }: { data: any }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
             <XAxis dataKey="month" stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 10 }} minTickGap={20} />
             <YAxis stroke="#475569" tick={{ fill: '#94a3b8' }} />
-            <Tooltip {...TAB_TOOLTIP} formatter={(v: any) => `${Number(v).toFixed(2)}%`} />
+            <Tooltip {...TAB_TOOLTIP} formatter={(v) => `${Number(v).toFixed(2)}%`} />
             <Area type="monotone" dataKey="band" fill="#6366f1" fillOpacity={0.12} stroke="none" name="予測幅" />
             <Line type="monotone" dataKey="actual" stroke="#818cf8" strokeWidth={2} dot={false} name={`実績 (${data.term_label})`} connectNulls={false} />
             <Line type="monotone" dataKey="forecast" stroke="#a5b4fc" strokeWidth={2} strokeDasharray="5 5" dot={false} name="予測" connectNulls={false} />
@@ -285,11 +320,11 @@ function BaseRateChart({ data }: { data: any }) {
 
 // ─── 全期間一括比較チャート ─────────────────────────────────────────────────
 
-function BaseRateAllChart({ data }: { data: any }) {
+function BaseRateAllChart({ data }: { data: BaseRateCollection }) {
   if (!data?.forecasts) return null;
   const forecasts = data.forecasts;
   const allMonths = new Set<string>();
-  Object.values(forecasts).forEach((r: any) => {
+  Object.values(forecasts).forEach((r) => {
     r.months_history?.forEach((m: string) => allMonths.add(m));
     r.months_forecast?.forEach((m: string) => allMonths.add(m + '_f'));
   });
@@ -297,18 +332,18 @@ function BaseRateAllChart({ data }: { data: any }) {
   const histMonths = first?.months_history ?? [];
   const foreMonths = first?.months_forecast ?? [];
 
-  const chartData: any[] = histMonths.map((m: string, i: number) => {
-    const pt: any = { month: m };
+  const chartData: ChartPoint[] = histMonths.map((m, i) => {
+    const pt: ChartPoint = { month: m };
     TERM_COLS.forEach(col => {
-      const r: any = forecasts[col];
+      const r = forecasts[col];
       if (r) pt[col] = r.rate_history[i] ?? null;
     });
     return pt;
   });
-  foreMonths.forEach((m: string, i: number) => {
-    const pt: any = { month: m + '▶' };
+  foreMonths.forEach((m, i) => {
+    const pt: ChartPoint = { month: m + '▶' };
     TERM_COLS.forEach(col => {
-      const r: any = forecasts[col];
+      const r = forecasts[col];
       if (r) pt[col + '_f'] = r.horizon_forecast[i] ?? null;
     });
     chartData.push(pt);
@@ -321,7 +356,7 @@ function BaseRateAllChart({ data }: { data: any }) {
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
           <XAxis dataKey="month" stroke="#475569" tick={{ fill: '#94a3b8', fontSize: 9 }} minTickGap={25} />
           <YAxis stroke="#475569" tick={{ fill: '#94a3b8' }} />
-          <Tooltip {...TAB_TOOLTIP} formatter={(v: any) => `${Number(v).toFixed(2)}%`} />
+          <Tooltip {...TAB_TOOLTIP} formatter={(v) => `${Number(v).toFixed(2)}%`} />
           <Legend wrapperStyle={{ color: '#94a3b8', fontSize: 10 }} />
           {TERM_COLS.map((col, i) => (
             <React.Fragment key={col}>
@@ -349,51 +384,51 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 
 export default function TimesFMPage() {
   const [activeTab, setActiveTab] = useState<TabId>('industry');
-  const [data, setData] = useState<any>(null);
-  const [allData, setAllData] = useState<any>(null);
+  const [data, setData] = useState<ForecastData | null>(null);
+  const [allData, setAllData] = useState<BaseRateCollection | null>(null);
   const [loading, setLoading] = useState(false);
   const [target, setTarget] = useState('建設業');
   const [termCol, setTermCol] = useState('r_5y');
   const [horizon, setHorizon] = useState(6);
 
-  useEffect(() => {
-    triggerMebuki('guide', 'TimesFM時系列予測です！\n業種トレンドや基準金利の将来を先読みします！');
-    fetchData('industry');
-  }, []);
-
-  const fetchData = async (tab: TabId, tgt?: string, col?: string, h?: number) => {
+  const fetchData = useCallback(async (tab: TabId, tgt: string, col: string, h: number) => {
     setLoading(true);
     setData(null);
-    const t = tgt ?? target;
-    const c = col ?? termCol;
-    const hz = h ?? horizon;
     try {
       if (tab === 'industry') {
-        const res = await apiClient.post(`/api/timesfm/industry_trend`, { industry: t, horizon_months: 24 });
+        const res = await apiClient.post(`/api/timesfm/industry_trend`, { industry: tgt, horizon_months: 24 });
         setData(res.data);
       } else if (tab === 'company') {
-        const res = await apiClient.post(`/api/timesfm/company_score`, { company_name: t, horizon_months: 12 });
+        const res = await apiClient.post(`/api/timesfm/company_score`, { company_name: tgt, horizon_months: 12 });
         setData(res.data);
       } else if (tab === 'rate') {
-        const res = await apiClient.post(`/api/timesfm/final_rate`, { industry: t, horizon_months: hz });
+        const res = await apiClient.post(`/api/timesfm/final_rate`, { industry: tgt, horizon_months: h });
         setData(res.data);
       } else if (tab === 'compare') {
-        const res = await apiClient.post(`/api/timesfm/financial_paths`, { company_name: t, n_periods: 12 });
+        const res = await apiClient.post(`/api/timesfm/financial_paths`, { company_name: tgt, n_periods: 12 });
         setData(res.data);
       } else if (tab === 'baserate') {
         const [single, all] = await Promise.all([
-          apiClient.post(`/api/timesfm/base_rate`, { term_col: c, horizon_months: hz }),
-          apiClient.post(`/api/timesfm/base_rate_all`, { horizon_months: hz }),
+          apiClient.post(`/api/timesfm/base_rate`, { term_col: col, horizon_months: h }),
+          apiClient.post(`/api/timesfm/base_rate_all`, { horizon_months: h }),
         ]);
         setData(single.data);
         setAllData(all.data);
       }
-    } catch (err: any) {
-      setData({ error: err.response?.data?.detail || '取得に失敗しました' });
+    } catch (err: unknown) {
+      const detail = typeof err === 'object' && err !== null && 'response' in err
+        ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+        : undefined;
+      setData({ error: detail || '取得に失敗しました' } as ForecastData);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    triggerMebuki('guide', 'TimesFM時系列予測です！\n業種トレンドや基準金利の将来を先読みします！');
+    void fetchData('industry', '建設業', 'r_5y', 6);
+  }, [fetchData]);
 
   const handleTabChange = (t: TabId) => {
     setActiveTab(t);
@@ -401,7 +436,7 @@ export default function TimesFMPage() {
     setAllData(null);
     const newTarget = (t === 'industry' || t === 'rate') ? '建設業' : '株式会社ABC';
     setTarget(newTarget);
-    fetchData(t, newTarget);
+    void fetchData(t, newTarget, termCol, horizon);
   };
 
   const placeholderText = activeTab === 'company' || activeTab === 'compare'
@@ -471,7 +506,7 @@ export default function TimesFMPage() {
           </select>
         )}
         <button
-          onClick={() => fetchData(activeTab)}
+          onClick={() => void fetchData(activeTab, target, termCol, horizon)}
           disabled={loading}
           className="px-6 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-50 text-white font-black rounded-xl flex items-center gap-2 transition-colors"
         >
