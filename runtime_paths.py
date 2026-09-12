@@ -34,14 +34,14 @@ def _discover_obsidian_vault() -> Path | None:
     config = Path.home() / "Library/Application Support/obsidian/obsidian.json"
     try:
         entries = json.loads(config.read_text(encoding="utf-8")).get("vaults", {}).values()
-        registered = [Path(row["path"]) for row in sorted(entries, key=lambda row: (not row.get("open"), -row.get("ts", 0))) if row.get("path")]
+        registered = [Path(row["path"]) for row in sorted(entries, key=lambda row: (not row.get("open"), -row.get("ts", 0))) if row.get("path") and Path(row["path"]).name != LEASE_WIKI_VAULT_DIRNAME]
     except (OSError, json.JSONDecodeError, AttributeError, TypeError, KeyError):
         registered = []
     home = Path.home()
     roots = registered + [home / "Documents/Obsidian Vault", home / "Documents", home / "Obsidian", ICLOUD_OBSIDIAN_DOCS, home / "Library/Mobile Documents/com~apple~CloudDocs"]
     for root in roots:
         try:
-            marker = root / ".obsidian" if (root / ".obsidian").is_dir() else next((path for path in root.rglob(".obsidian") if path.is_dir()), None) if root.is_dir() else None
+            marker = root / ".obsidian" if (root / ".obsidian").is_dir() else next((path for path in root.rglob(".obsidian") if path.is_dir() and path.parent.name != LEASE_WIKI_VAULT_DIRNAME), None) if root.is_dir() else None
         except OSError:
             continue
         if marker:

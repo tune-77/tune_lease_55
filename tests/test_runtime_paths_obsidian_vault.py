@@ -5,6 +5,7 @@ Vault パスは「書き込み先」と「RAG 索引先」の両方を決める�
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -93,10 +94,13 @@ def test_legacy_vault_used_when_only_legacy_exists(monkeypatch, tmp_path):
 
 
 def test_registered_vault_is_discovered_when_defaults_are_missing(monkeypatch, tmp_path):
-    discovered = tmp_path / "registered"; discovered.mkdir()
+    discovered = tmp_path / "registered"; (discovered / ".obsidian").mkdir(parents=True)
+    lease_wiki = tmp_path / "lease-wiki-vault"; (lease_wiki / ".obsidian").mkdir(parents=True)
+    config = tmp_path / "Library/Application Support/obsidian/obsidian.json"; config.parent.mkdir(parents=True)
+    config.write_text(json.dumps({"vaults": {"wiki": {"path": str(lease_wiki), "open": True, "ts": 2}, "regular": {"path": str(discovered), "ts": 1}}}))
+    monkeypatch.setattr(runtime_paths.Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setattr(runtime_paths, "DEFAULT_OBSIDIAN_VAULT", tmp_path / "missing-default")
     monkeypatch.setattr(runtime_paths, "LEGACY_OBSIDIAN_VAULT", tmp_path / "missing-legacy")
-    monkeypatch.setattr(runtime_paths, "_discover_obsidian_vault", lambda: discovered)
     resolution = runtime_paths.describe_obsidian_vault_resolution({})
     assert (resolution.path, resolution.source, resolution.exists) == (discovered, "discovered", True)
 
