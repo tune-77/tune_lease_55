@@ -2804,7 +2804,6 @@ export default function Dashboard() {
                   <FormGeneral data={formData} onChange={handleFieldChange} />
                 </section>
                 <LeasePaymentSimulator
-                  key={`input-simulator-${Number(formData.acquisition_cost) || 10}-${Number(formData.lease_term) || 5}`}
                   source="screening"
                   initialPriceMillion={Number(formData.acquisition_cost) || 10}
                   initialYears={Number(formData.lease_term) || 5}
@@ -2899,7 +2898,6 @@ export default function Dashboard() {
                     />
                     <ScreeningLoopFeedbackPanel result={result} data={formData} />
                     <LeasePaymentSimulator
-                      key={`analysis-simulator-${Number(formData.acquisition_cost) || 10}-${Number(formData.lease_term) || 5}`}
                       source="screening"
                       initialPriceMillion={Number(formData.acquisition_cost) || 10}
                       initialYears={Number(formData.lease_term) || 5}

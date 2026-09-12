@@ -116,6 +116,18 @@ export default function LeasePaymentSimulator({
     recordSimulatorActivity(source, "simulator_view");
   }, [source]);
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (initialPriceMillion && initialPriceMillion > 0) {
+        setPriceMillion(initialPriceMillion);
+      }
+      if (initialYears && LEASE_RATE_FACTORS[initialYears]) {
+        setYears(initialYears);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialPriceMillion, initialYears]);
+
   const recordInteraction = () => {
     if (interactionRecordedRef.current) return;
     interactionRecordedRef.current = true;

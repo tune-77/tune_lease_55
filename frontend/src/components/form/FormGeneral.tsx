@@ -25,6 +25,11 @@ interface IndustrySuggestion {
   reason: string;
 }
 
+interface IndustrySuggestionResult {
+  hint: string;
+  items: IndustrySuggestion[];
+}
+
 function extractSubs(entry: IndustryMasterEntry | string[] | undefined): string[] {
   if (!entry) return [];
   if (Array.isArray(entry)) return entry.filter(Boolean);
@@ -35,13 +40,15 @@ function extractSubs(entry: IndustryMasterEntry | string[] | undefined): string[
 export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   const [industryMaster, setIndustryMaster] = useState<IndustryMaster>({});
   const [majors, setMajors] = useState<string[]>([]);
-  const [industrySuggestions, setIndustrySuggestions] = useState<IndustrySuggestion[]>([]);
+  const [industrySuggestionResult, setIndustrySuggestionResult] = useState<IndustrySuggestionResult>({ hint: '', items: [] });
   const subs = useMemo(
     () => extractSubs(industryMaster[data.industry_major]),
     [industryMaster, data.industry_major],
   );
   const industryHint = [data.asset_name, data.industry_detail, data.company_name].filter(Boolean).join(' ').trim();
-  const visibleIndustrySuggestions = industryHint.length >= 2 ? industrySuggestions : [];
+  const visibleIndustrySuggestions = industryHint.length >= 2 && industrySuggestionResult.hint === industryHint
+    ? industrySuggestionResult.items
+    : [];
 
   // マスターデータの取得
   useEffect(() => {
@@ -89,9 +96,12 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
         });
         if (!res.ok) return;
         const body = await res.json();
-        setIndustrySuggestions((body.suggestions || []).filter((item: IndustrySuggestion) => (
-          item.industry_major !== data.industry_major || item.industry_sub !== data.industry_sub
-        )));
+        setIndustrySuggestionResult({
+          hint: hintText,
+          items: (body.suggestions || []).filter((item: IndustrySuggestion) => (
+            item.industry_major !== data.industry_major || item.industry_sub !== data.industry_sub
+          )),
+        });
       } catch (err) {
         console.error('Failed to suggest industry:', err);
       }
