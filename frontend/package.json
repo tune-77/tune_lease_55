@@ -7,6 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint src/",
+    "lint:baseline": "node scripts/check-lint-baseline.mjs",
     "lint:fix": "echo 'ERROR: lint:fix は禁止されています。手動で修正してください。' && exit 1",
     "typecheck": "tsc --noEmit --project tsconfig.typecheck.json"
   },

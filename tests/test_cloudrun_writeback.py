@@ -80,7 +80,7 @@ class _FakeGCSLock:
         return False
 
 
-def _install_fake_gcs(monkeypatch, blob: MagicMock) -> None:
+def _install_fake_gcs(monkeypatch, blob: MagicMock) -> MagicMock:
     try:
         from google.cloud import storage
     except ImportError:
@@ -99,6 +99,7 @@ def _install_fake_gcs(monkeypatch, blob: MagicMock) -> None:
     lock_mod = ModuleType("scripts.gcs_lock")
     lock_mod.GCSLock = _FakeGCSLock
     monkeypatch.setitem(sys.modules, "scripts.gcs_lock", lock_mod)
+    return client_cls
 
 
 def test_record_cloudrun_input_event_appends_with_generation_match(monkeypatch) -> None:
@@ -159,3 +160,23 @@ def test_record_cloudrun_input_event_does_not_overwrite_on_read_error(tmp_path, 
         for line in writeback.LOCAL_FALLBACK_PATH.read_text(encoding="utf-8").splitlines()
     ]
     assert rows[0]["writeback_error"] == "temporary gcs failure"
+
+
+def test_judgment_feedback_transaction_rejects_competing_successor(monkeypatch) -> None:
+    monkeypatch.setenv("K_SERVICE", "lease-api")
+    index_blob, daily_blob = MagicMock(), MagicMock()
+    index_blob.generation = 7
+    daily_blob.reload.side_effect = NotFound("missing")
+    client = _install_fake_gcs(monkeypatch, index_blob)
+    client.return_value.bucket.return_value.blob.side_effect = lambda name: index_blob if "judgment-feedback" in name else daily_blob
+    root = {"candidate_id": "candidate-1", "case_id": "case-1", "review_id": 7, "event_id": "root", "supersedes_event_id": "", "feedback": "useful"}
+    root_entry = writeback.build_cloudrun_input_event(event_type="judgment_asset_candidate_feedback", surface="screening", payload=root)
+    index_blob.download_as_text.return_value = json.dumps(root_entry) + "\n"
+    first = {**root, "event_id": "first", "supersedes_event_id": "root", "feedback": "neutral"}
+    assert writeback.record_judgment_asset_feedback_event(first)["ok"] is True
+    index_blob.download_as_text.return_value = index_blob.upload_from_string.call_args.args[0]
+    second = {**root, "event_id": "second", "supersedes_event_id": "root", "feedback": "rejected"}
+    result = writeback.record_judgment_asset_feedback_event(second)
+    assert result["conflict"] is True
+    assert result["current_event_id"] == "first"
+    assert daily_blob.upload_from_string.call_count == 1

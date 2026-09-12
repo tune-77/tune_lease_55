@@ -115,6 +115,28 @@ def read_feedback_rows(path: Path | str = DEFAULT_FEEDBACK_PATH) -> list[dict[st
     return rows
 
 
+def select_current_feedback_rows(feedback_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return legacy rows plus the unsuperseded heads of append-only event chains.
+
+    Rows written before event IDs were introduced remain valid observations. Newer
+    rows are never mutated: a correction points at the event it supersedes. A
+    ``not_applied`` head deliberately remains in the returned audit history but is
+    ignored by outcome normalization and therefore by effectiveness metrics.
+    """
+    superseded_ids = {
+        str(row.get("supersedes_event_id") or "").strip()
+        for row in feedback_rows
+        if str(row.get("supersedes_event_id") or "").strip()
+    }
+    current: list[dict[str, Any]] = []
+    for row in feedback_rows:
+        event_id = str(row.get("event_id") or "").strip()
+        if event_id and event_id in superseded_ids:
+            continue
+        current.append(row)
+    return current
+
+
 def _latest_timestamp(rows: list[dict[str, Any]]) -> str:
     values = [
         str(row.get("used_at") or row.get("timestamp") or row.get("date") or row.get("created_at") or "").strip()
@@ -125,7 +147,7 @@ def _latest_timestamp(rows: list[dict[str, Any]]) -> str:
 
 def build_bandit_signals(feedback_rows: list[dict[str, Any]]) -> dict[str, BanditSignal]:
     rows_by_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in feedback_rows:
+    for row in select_current_feedback_rows(feedback_rows):
         outcome = normalize_outcome(row)
         if not outcome:
             continue
@@ -181,23 +203,37 @@ def append_feedback_event(
     case_id: str = "",
     note: str = "",
     source: str = "screening",
+    feedback: str = "",
+    event_id: str = "",
+    supersedes_event_id: str = "",
+    review_id: int | None = None,
+    recorded_at: str = "",
     path: Path | str = DEFAULT_FEEDBACK_PATH,
 ) -> bool:
-    normalized = normalize_outcome({"outcome": outcome})
+    raw_outcome = str(outcome or "").strip().lower()
+    normalized = normalize_outcome({"outcome": raw_outcome})
     clean_id = str(asset_id or "").strip()
-    if not clean_id or normalized not in VALID_OUTCOMES:
+    if not clean_id or (normalized not in VALID_OUTCOMES and raw_outcome != "not_applied"):
         return False
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "schema_version": "1",
         "rule_id": clean_id,
-        "outcome": normalized,
+        "outcome": normalized or "not_applied",
         "case_id": str(case_id or "")[:120],
         "note": str(note or "")[:240],
         "source": source,
-        "used_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "used_at": recorded_at or datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+    if event_id:
+        entry["event_id"] = str(event_id)
+    if feedback:
+        entry["feedback"] = str(feedback)
+    if supersedes_event_id:
+        entry["supersedes_event_id"] = str(supersedes_event_id)
+    if review_id is not None:
+        entry["review_id"] = int(review_id)
     with target.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
     return True

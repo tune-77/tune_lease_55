@@ -157,6 +157,12 @@ def _get_build_loop_proof():
 
 # ── endpoints ───────────────────────────────────────────────────────────────
 
+@router.get("/api/health/auth")
+def authenticated_health():
+    """起動時に認証設定も含めて確認する軽量なAPI。"""
+    return {"ok": True}
+
+
 @router.get("/health")
 @router.get("/healthz", include_in_schema=False)
 def health():

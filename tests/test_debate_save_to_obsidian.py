@@ -2,11 +2,11 @@ from pathlib import Path
 
 
 def test_debate_save_to_obsidian_accepts_decimal_score(tmp_path, monkeypatch):
-    import api.main as main
+    from api.routers import debate
 
-    monkeypatch.setattr(main, "_OBSIDIAN_VAULT_PATH", str(tmp_path))
+    monkeypatch.setattr(debate, "get_obsidian_vault_path", lambda: str(tmp_path))
 
-    req = main.SaveDebateToObsidianRequest(
+    req = debate.SaveDebateToObsidianRequest(
         company_name="デモ精密工業",
         score=56.5,
         grade="C",
@@ -18,7 +18,7 @@ def test_debate_save_to_obsidian_accepts_decimal_score(tmp_path, monkeypatch):
         debate_log="紫苑（懐疑）: 条件付承認",
     )
 
-    result = main.save_debate_to_obsidian(req)
+    result = debate.save_debate_to_obsidian(req)
 
     saved = tmp_path / result["path"]
     assert saved.exists()

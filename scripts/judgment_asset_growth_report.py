@@ -156,14 +156,24 @@ def _feedback_outcome(row: dict[str, Any]) -> str:
 
 
 def summarize_field_feedback(feedback_rows: list[dict[str, Any]], rules: list[dict[str, Any]]) -> dict[str, Any]:
-    active_ids = {str(rule.get("id") or "").strip() for rule in rules if rule.get("status") == "active" and rule.get("id")}
-    id_to_concept = {str(rule.get("id") or "").strip(): str(rule.get("concept") or "").strip() for rule in rules if rule.get("id")}
+    from judgment_asset_bandit import normalize_asset_id, select_current_feedback_rows
+
+    active_ids = {
+        normalize_asset_id(str(rule.get("id") or ""))
+        for rule in rules
+        if rule.get("status") == "active" and rule.get("id")
+    }
+    id_to_concept = {
+        normalize_asset_id(str(rule.get("id") or "")): str(rule.get("concept") or "").strip()
+        for rule in rules
+        if rule.get("id")
+    }
     concept_to_active_id: dict[str, str] = {}
     for rule in rules:
         if rule.get("status") != "active":
             continue
         concept = str(rule.get("concept") or "").strip()
-        rule_id = str(rule.get("id") or "").strip()
+        rule_id = normalize_asset_id(str(rule.get("id") or ""))
         if concept and rule_id and concept not in concept_to_active_id:
             concept_to_active_id[concept] = rule_id
     by_rule: dict[str, dict[str, Any]] = {}
@@ -177,13 +187,13 @@ def summarize_field_feedback(feedback_rows: list[dict[str, Any]], rules: list[di
         "remapped_by_concept": 0,
         "simulation_skipped": 0,
     }
-    for row in feedback_rows:
+    for row in select_current_feedback_rows(feedback_rows):
         source = str(row.get("source") or "").strip().lower()
         case_id = str(row.get("case_id") or row.get("case") or "").strip()
         if source == "simulation" or case_id.startswith("sim-"):
             totals["simulation_skipped"] += 1
             continue
-        rule_id = _feedback_rule_id(row)
+        rule_id = normalize_asset_id(_feedback_rule_id(row))
         outcome = _feedback_outcome(row)
         if not rule_id or not outcome:
             continue

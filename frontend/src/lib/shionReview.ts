@@ -9,8 +9,35 @@
 // 経験ケースパネル（screening/page.tsx）の側にのみ残す。
 
 export type ShionReviewFeedback = "useful" | "needs_fix" | "wrong" | "specific" | "thin" | "discomfort_hit" | "over_inferred";
-export type JudgmentAssetCandidateFeedback = "useful" | "neutral" | "rejected";
+export type JudgmentAssetCandidateFeedback = "useful" | "neutral" | "rejected" | "not_applied";
 export type JudgmentAssetAdaptationMode = "conservative" | "standard" | "exploratory" | "aggressive";
+
+type LooseRecord = Record<string, unknown>;
+type ScreeningFormRecord = {
+  company_no?: unknown;
+  company_name?: unknown;
+  industry_major?: unknown;
+  industry_sub?: unknown;
+  industry_detail?: unknown;
+  sales_dept?: unknown;
+  asset_name?: unknown;
+  asset_detail?: unknown;
+  asset_purpose?: unknown;
+  acquisition_cost?: unknown;
+  lease_term?: unknown;
+  contract_type?: unknown;
+  customer_type?: unknown;
+  main_bank?: unknown;
+  deal_source?: unknown;
+  passion_text?: unknown;
+  intuition?: unknown;
+  competitor?: unknown;
+};
+type ScreeningResultRecord = LooseRecord & {
+  aurion_core?: { discipline_flags?: unknown[] };
+  diagnostic_recommendations?: LooseRecord[];
+  q_risk_breakdown?: QRiskBreakdown;
+};
 
 export type ShionScreeningReview = {
   reply: string;
@@ -46,6 +73,9 @@ export type JudgmentAssetCandidate = {
   rejected_count: number;
   verified_status: string;
   userFeedback?: JudgmentAssetCandidateFeedback;
+  lastFeedbackEventId?: string;
+  user_feedback?: JudgmentAssetCandidateFeedback;
+  last_feedback_event_id?: string;
 };
 
 // 紫苑レビューの人間評価だけを読むための最小形。
@@ -75,8 +105,8 @@ export type DemoSimilarPastCase = {
   source?: string;
   similarityScore?: number;
   similarityReasons?: string[];
-  formSnapshot?: Record<string, any>;
-  resultSnapshot?: Record<string, any>;
+  formSnapshot?: LooseRecord;
+  resultSnapshot?: LooseRecord;
 };
 
 // Q_risk のルール別寄与内訳（API: /api/score/full の q_risk_breakdown）。
@@ -122,7 +152,7 @@ export const isCanonicalJudgmentAsset = (candidate: JudgmentAssetCandidate) => (
   candidate.id.startsWith("cr-")
 );
 
-export const getScreeningScore = (result?: Record<string, any> | null) =>
+export const getScreeningScore = (result?: LooseRecord | null) =>
   Number(result?.score ?? result?.score_base ?? 0);
 
 // プロンプトが LLM に渡す判断資産の件数。出典の補完もこの件数に揃える。
@@ -217,7 +247,7 @@ export const buildReviewQualityFeedbackBlock = (
   ].join("\n");
 };
 
-export const buildVertexSearchHint = (result: Record<string, any>, data: Record<string, any>) => {
+export const buildVertexSearchHint = (result: ScreeningResultRecord, data: ScreeningFormRecord) => {
   const terms = [
     result.industry_sub || data.industry_sub || result.industry_major || data.industry_major,
     data.asset_name,
@@ -250,8 +280,8 @@ export const formatQRiskBreakdown = (breakdown?: QRiskBreakdown | null, limit = 
 };
 
 export const buildShionReviewPrompt = (
-  result: Record<string, any>,
-  data: Record<string, any>,
+  result: ScreeningResultRecord,
+  data: ScreeningFormRecord,
   judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
   judgmentAssetAdaptationMode: JudgmentAssetAdaptationMode = "standard",
   recentReviewFeedbacks: (ShionReviewFeedback | "" | undefined)[] = [],
@@ -376,8 +406,8 @@ export const buildShionReviewPrompt = (
 // LLM 応答が得られなかったときの簡易生成。定型文なので、カード側で「簡易生成」バッジを出して
 // 紫苑が書いた本文と区別できるようにしている（ShionScreeningReviewCard の isFallback）。
 export const buildShionReviewFallback = (
-  result: Record<string, any>,
-  data: Record<string, any>,
+  result: ScreeningResultRecord,
+  data: ScreeningFormRecord,
   judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
 ) => {
   const score = getScreeningScore(result);
@@ -414,7 +444,7 @@ export const buildShionReviewFallback = (
 };
 
 export const buildShionThoughtProcessSteps = (
-  result: Record<string, any>,
+  result: ScreeningResultRecord,
   judgmentAssetCandidates: JudgmentAssetCandidate[],
   review: ShionScreeningReview | null,
 ): ShionThoughtStep[] => {
@@ -442,7 +472,7 @@ export const buildShionThoughtProcessSteps = (
   const flagItems: string[] = Array.isArray(result.aurion_core?.discipline_flags)
     ? result.aurion_core.discipline_flags
         .slice(0, 5)
-        .map((f: any) => (typeof f === "string" ? f : f?.title ?? ""))
+        .map((flag) => (typeof flag === "string" ? flag : (flag as { title?: string })?.title ?? ""))
         .filter(Boolean)
     : [];
   if (flagItems.length) {
@@ -450,7 +480,7 @@ export const buildShionThoughtProcessSteps = (
   }
 
   const diagItems: string[] = Array.isArray(result.diagnostic_recommendations)
-    ? result.diagnostic_recommendations.slice(0, 3).map((rec: any) => {
+    ? result.diagnostic_recommendations.slice(0, 3).map((rec) => {
         const label = String(rec?.label || rec?.diagnostic || "補助診断");
         const status = rec?.status === "calculated" ? "算出済み" : "推奨";
         const reason = rec?.reason ? `（理由: ${rec.reason}）` : "";
@@ -481,21 +511,25 @@ export const buildShionThoughtProcessSteps = (
   return steps;
 };
 
-export const parseExperienceSnapshot = (value: unknown): Record<string, any> | undefined => {
+export const parseExperienceSnapshot = (value: unknown): LooseRecord | undefined => {
   if (!value) return undefined;
-  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, any>;
+  if (typeof value === "object" && !Array.isArray(value)) return value as LooseRecord;
   if (typeof value !== "string") return undefined;
   try {
     const parsed = JSON.parse(value);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, any>
+      ? parsed as LooseRecord
       : undefined;
   } catch {
     return undefined;
   }
 };
 
-export const normalizeExperienceCase = (raw: any): DemoSimilarPastCase => ({
+export const normalizeExperienceCase = (rawValue: unknown): DemoSimilarPastCase => {
+  const raw = rawValue && typeof rawValue === "object" && !Array.isArray(rawValue)
+    ? rawValue as LooseRecord
+    : {};
+  return ({
   id: Number(raw?.id || 0) || undefined,
   demoCaseId: String(raw?.demo_case_id || raw?.demoCaseId || ""),
   sourceCaseId: String(raw?.source_case_id || raw?.sourceCaseId || ""),
@@ -519,23 +553,24 @@ export const normalizeExperienceCase = (raw: any): DemoSimilarPastCase => ({
     : [],
   formSnapshot: parseExperienceSnapshot(raw?.form_snapshot ?? raw?.formSnapshot),
   resultSnapshot: parseExperienceSnapshot(raw?.result_snapshot ?? raw?.resultSnapshot),
-});
+  });
+};
 
 export const buildExperienceCaseQuery = (
   demoCaseId: string,
-  targetFormData: Record<string, any>,
-  targetResult: any = null,
+  targetFormData: ScreeningFormRecord,
+  targetResult: LooseRecord | null = null,
 ) => {
   const query: Record<string, string | number> = {
     demo_case_id: demoCaseId,
-    industry_major: targetResult?.industry_major || targetFormData.industry_major || "",
-    industry_sub: targetResult?.industry_sub || targetFormData.industry_sub || "",
-    company_name: targetFormData.company_name || "",
-    asset_name: targetFormData.asset_name || targetFormData.asset_detail || "",
-    customer_type: targetFormData.customer_type || "",
-    main_bank: targetFormData.main_bank || "",
-    competitor: targetFormData.competitor || "",
-    outcome_status: targetResult?.final_status || targetResult?.result_status || targetResult?.hantei || "",
+    industry_major: String(targetResult?.industry_major || targetFormData.industry_major || ""),
+    industry_sub: String(targetResult?.industry_sub || targetFormData.industry_sub || ""),
+    company_name: String(targetFormData.company_name || ""),
+    asset_name: String(targetFormData.asset_name || targetFormData.asset_detail || ""),
+    customer_type: String(targetFormData.customer_type || ""),
+    main_bank: String(targetFormData.main_bank || ""),
+    competitor: String(targetFormData.competitor || ""),
+    outcome_status: String(targetResult?.final_status || targetResult?.result_status || targetResult?.hantei || ""),
     limit: 8,
   };
   // score は数値のときだけ送る。空文字を送ると FastAPI の Optional[float] が 422 を返す
@@ -546,7 +581,7 @@ export const buildExperienceCaseQuery = (
   return query;
 };
 
-export const hasExperienceSearchContext = (targetFormData: Record<string, any>, targetResult: any = null) =>
+export const hasExperienceSearchContext = (targetFormData: ScreeningFormRecord, targetResult: LooseRecord | null = null) =>
   Boolean(
     targetFormData.industry_sub ||
     targetFormData.industry_major ||
@@ -559,7 +594,7 @@ export const hasExperienceSearchContext = (targetFormData: Record<string, any>, 
     targetResult?.score,
   );
 
-export const buildShionReviewUserId = (targetResult: any, targetFormData: Record<string, any>) => {
+export const buildShionReviewUserId = (targetResult: LooseRecord | null, targetFormData: ScreeningFormRecord) => {
   const rawId = String(targetResult?.case_id || targetFormData.company_no || targetFormData.company_name || "draft");
   const safeId = rawId.replace(/[^\w\-ぁ-んァ-ヶ一-龠ー]/g, "_").slice(0, 64);
   return `screening-shion-review:${safeId || "draft"}`;

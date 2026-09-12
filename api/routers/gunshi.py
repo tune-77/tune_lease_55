@@ -6,7 +6,7 @@ import os
 import sys
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -281,18 +281,27 @@ def _normalize_yukikaze_datalink_reply(reply_text: str, user_message: str) -> st
         "RX: ROGER. COPY. PILOT QUERY RECEIVED.",
     ])
 
+def _record_information_weighting_shadow(message: str) -> None:
+    try:
+        from api.shion_information_weighting import record_information_weighting_shadow_log
+
+        record_information_weighting_shadow_log(
+            message,
+            source="gunshi_chat_user_message",
+            surface="gunshi_chat",
+        )
+    except Exception as exc:
+        print(f"[InformationWeightingShadow] 記録失敗（非致命）: {exc}")
+
+
 @router.post("/api/gunshi/chat")
-def generate_gunshi_chat(req: GunshiChatRequest):
+def generate_gunshi_chat(req: GunshiChatRequest, background_tasks: BackgroundTasks):
     from shinsa_gunshi import PHRASES_100, build_gunshi_prompt
-    from api.main import _log_information_weighting_shadow, _classify_question
+    from api.chat_routing import classify_question
     try:
         _mode = (req.mode or "gunshi").lower()
         if (req.message or "").strip():
-            _log_information_weighting_shadow(
-                req.message,
-                source="gunshi_chat_user_message",
-                surface="gunshi_chat",
-            )
+            background_tasks.add_task(_record_information_weighting_shadow, req.message)
         is_yukikaze = (req.humor_style or "").lower() == "yukikaze"
         if _mode == "chat" and (req.message or "").strip() and not is_yukikaze:
             try:
@@ -361,7 +370,7 @@ def generate_gunshi_chat(req: GunshiChatRequest):
             }
 
         # general カテゴリの質問は Obsidian/案件コンテキストをスキップして直接回答
-        if (req.message or "").strip() and _classify_question(req.message) == "general":
+        if (req.message or "").strip() and classify_question(req.message) == "general":
             try:
                 from api.chat_memory import call_gemini_chat as _gchat
                 _sys = _YUKIKAZE_GENERAL_CHAT_PROMPT if is_yukikaze else _GUNSHI_GENERAL_CHAT_PROMPT

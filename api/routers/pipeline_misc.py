@@ -731,9 +731,10 @@ def _run_batch_scoring(req: BatchScoreRequest, save_to_db: bool = False):
 
 
 async def _proxy_git_push_db() -> None:
-    """batch/save バックグラウンドタスク用: main の _git_push_db を遅延呼び出し。"""
-    from api.main import _git_push_db  # noqa: PLC0415  (lazy to avoid circular import)
-    await _git_push_db()
+    """batch/save バックグラウンドタスク用: 共通data-git同期を呼び出す。"""
+    from api.data_git_sync import git_push_db
+
+    await git_push_db()
 
 
 # ── endpoints ───────────────────────────────────────────────────────────────

@@ -54,18 +54,12 @@ class ResearchOrganRunRequest(BaseModel):
 def _get_vault_path() -> str:
     """Vaultパスを取得する。
 
-    api.main の解決結果（環境変数 → 未設定時は find_vault() による自動検索）を
-    優先する。ここで環境変数の生値だけを見ると、OBSIDIAN_VAULT_PATH が明示設定
-    されていない起動経路（例: .zshrc を読まない uvicorn 起動）でノート一覧が
-    常に空になるため、debate.py 等と同じく api.main の解決済み値に揃える。
+    runtime_paths の正準解決（環境変数 → 既定/legacy Vault）を使う。
+    composition rootへ逆importせず、全routerで同じ優先順位を共有する。
     """
-    try:
-        from api.main import _OBSIDIAN_VAULT_PATH as _resolved_vault_path
-        if _resolved_vault_path:
-            return _resolved_vault_path
-    except Exception:
-        pass
-    return os.environ.get("OBSIDIAN_VAULT_PATH", "")
+    from runtime_paths import get_obsidian_vault_path
+
+    return get_obsidian_vault_path()
 
 
 def _read_obsidian_files(vault_path: str, rel_paths: list[str], max_bytes: int = 10_240) -> tuple[str, list[str]]:
