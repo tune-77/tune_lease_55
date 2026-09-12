@@ -4,7 +4,6 @@ import { apiClient } from '../../lib/api';
 import { Table2, RefreshCw, Trash2, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const LOSS_REASONS = ['設備見合わせ', '他社競合', '調達方法変更', 'その他'];
-const VALID_STATUSES = ['成約', '失注', '未登録', 'スコアリングのみ', '検収', '検収完了'];
 
 type Case = {
   id: string;

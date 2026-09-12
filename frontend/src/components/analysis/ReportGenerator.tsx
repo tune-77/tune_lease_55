@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import DOMPurify from 'dompurify';
 import { apiClient } from '../../lib/api';
-import { FileText, Download, Loader2, Printer, ShieldCheck } from 'lucide-react';
-import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import { FileText, Loader2, Printer, ShieldCheck } from 'lucide-react';
+import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar } from 'recharts';
 import { toThousandYenPayload } from '../../lib/scoringUnits';
 
 interface ReportProps {

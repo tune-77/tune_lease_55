@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Layout, TrendingUp, DollarSign, Activity } from 'lucide-react';
-import { ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ComposedChart } from 'recharts';
+import { ResponsiveContainer, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ComposedChart } from 'recharts';
 
 const INDUSTRY_OPTIONS = [
   "建設業", "小売業", "製造業", "卸売業", "医療・福祉", "飲食・宿泊業", "サービス業", "不動産業", "情報通信業", "運輸・物流",
