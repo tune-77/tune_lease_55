@@ -356,11 +356,45 @@ _REFLECTION_SYSTEM_PROMPT = """あなたはリース知性体「紫苑」であ�
 """
 
 
+def _load_debate_disagreement_signal_items(date_str: str) -> list[str]:
+    """api/multi_agent_screening.py が既に書いている討論メトリクスから、その日
+    懐疑派/楽観派の意見が割れた件だけを短い一行ずつに要約する。
+
+    新しいログ/スキーマは作らず、既存の data/multi_agent_debate_metrics.jsonl
+    （同一ファイルに same_opinion_r1/r2 として一致・不一致が記録済み）を読むだけ。
+    """
+    path = REPO_ROOT / "data" / "multi_agent_debate_metrics.jsonl"
+    if not path.exists():
+        return []
+    items: list[str] = []
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not str(entry.get("ts") or "").startswith(date_str):
+            continue
+        if entry.get("same_opinion_r1") is False or entry.get("same_opinion_r2") is False:
+            opinions = entry.get("opinions") or {}
+            skeptic = opinions.get("skeptic", "?")
+            optimist = opinions.get("optimist", "?")
+            final = entry.get("final", "?")
+            score = entry.get("score", "?")
+            items.append(f"懐疑派:{skeptic} / 楽観派:{optimist} → 最終判定:{final}（スコア{score}）")
+    return items
+
+
 def _build_local_context(date_str: str) -> str:
     parts: list[str] = []
     daily_text = _read_file_safe(REPO_ROOT / "memory" / f"{date_str}.md", max_chars=3500)
     if daily_text:
         parts.extend(["【今日の作業メモ】", daily_text])
+    debate_disagreements = _load_debate_disagreement_signal_items(date_str)
+    if debate_disagreements:
+        parts.extend(["", "【今日の討論で意見が割れた件（人間向け画面には出していない内部記録）】"])
+        parts.extend(f"- {item}" for item in debate_disagreements[:5])
     introspection_path = REPO_ROOT / "reports" / "introspection_latest.md"
     if not _introspection_is_stale(introspection_path):
         introspection_text = _read_file_safe(introspection_path, max_chars=2500)

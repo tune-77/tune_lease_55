@@ -936,3 +936,74 @@ def test_extract_sidecar_findings_skips_preamble_and_stale_section():
 
 def test_extract_sidecar_findings_handles_empty_input():
     assert reflection._extract_sidecar_findings("") == []
+
+
+def test_load_debate_disagreement_signal_items_filters_by_date_and_disagreement(tmp_path, monkeypatch):
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-09-12"
+    entries = [
+        # 対象日・意見割れ → 含まれる
+        {
+            "ts": "2026-09-12T10:00:00",
+            "score": 62,
+            "final": "条件付承認",
+            "opinions": {"skeptic": "否決", "optimist": "条件付承認"},
+            "same_opinion_r1": False,
+            "same_opinion_r2": False,
+        },
+        # 対象日・意見一致 → 含まれない
+        {
+            "ts": "2026-09-12T11:00:00",
+            "score": 80,
+            "final": "承認",
+            "opinions": {"skeptic": "承認", "optimist": "承認"},
+            "same_opinion_r1": True,
+            "same_opinion_r2": True,
+        },
+        # 別日・意見割れ → 含まれない
+        {
+            "ts": "2026-09-11T10:00:00",
+            "score": 50,
+            "final": "否決",
+            "opinions": {"skeptic": "否決", "optimist": "条件付承認"},
+            "same_opinion_r1": False,
+            "same_opinion_r2": False,
+        },
+    ]
+    metrics_path = tmp_path / "data" / "multi_agent_debate_metrics.jsonl"
+    _write(metrics_path, "\n".join(json.dumps(e, ensure_ascii=False) for e in entries) + "\n")
+
+    items = reflection._load_debate_disagreement_signal_items(date_str)
+
+    assert len(items) == 1
+    assert "懐疑派:否決" in items[0]
+    assert "楽観派:条件付承認" in items[0]
+    assert "条件付承認" in items[0]  # final
+    assert "62" in items[0]  # score
+
+
+def test_load_debate_disagreement_signal_items_missing_file_returns_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    assert reflection._load_debate_disagreement_signal_items("2026-09-12") == []
+
+
+def test_build_local_context_includes_debate_disagreement_section(tmp_path, monkeypatch):
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-09-12"
+    entry = {
+        "ts": "2026-09-12T10:00:00",
+        "score": 62,
+        "final": "条件付承認",
+        "opinions": {"skeptic": "否決", "optimist": "条件付承認"},
+        "same_opinion_r1": False,
+        "same_opinion_r2": False,
+    }
+    _write(
+        tmp_path / "data" / "multi_agent_debate_metrics.jsonl",
+        json.dumps(entry, ensure_ascii=False) + "\n",
+    )
+
+    context = reflection._build_local_context(date_str)
+
+    assert "【今日の討論で意見が割れた件（人間向け画面には出していない内部記録）】" in context
+    assert "懐疑派:否決" in context
