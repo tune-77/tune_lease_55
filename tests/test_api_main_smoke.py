@@ -30,6 +30,7 @@ SMOKE_GET_PATHS = [
     "/api/improvement-log",
     "/api/vertex-search/widget-config",
     "/api/relationship/state",
+    "/api/shion/daily-greeting",
     "/api/lease-news/focus",
     "/api/lease-news/brief",
     "/api/lease-news/actions",
