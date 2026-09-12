@@ -113,6 +113,54 @@ def test_durable_duplicate_repairs_missing_local_materialization(feedback_store,
     assert duplicate["duplicate"] is True
 
 
+def test_durable_duplicate_does_not_reapply_saved_state(feedback_store, monkeypatch):
+    state_path, feedback_path = feedback_store
+    state_path.write_text(
+        json.dumps({
+            CANDIDATE_ID: {
+                "use_count": 1,
+                "useful_count": 1,
+                "last_feedback_event_id": EVENT_1,
+            }
+        }),
+        encoding="utf-8",
+    )
+    durable_event = {
+        "event_type": "judgment_asset_candidate_feedback",
+        "payload": {
+            "event_id": EVENT_1,
+            "supersedes_event_id": "",
+            "candidate_id": CANDIDATE_ID,
+            "feedback": "useful",
+            "disposition": "helped",
+            "case_id": "case-1",
+            "review_id": 7,
+            "recorded_at": "2026-09-11T00:00:00Z",
+        },
+    }
+    monkeypatch.setenv("K_SERVICE", "test-service")
+    monkeypatch.setattr(
+        feedback_loop,
+        "read_judgment_asset_feedback_events",
+        lambda _case_id, _review_id: [durable_event],
+    )
+    monkeypatch.setattr(
+        feedback_loop,
+        "record_judgment_asset_feedback_event",
+        lambda _payload: {"ok": True, "duplicate": True},
+    )
+
+    repaired = feedback_loop._update_autoresearch_judgment_asset_candidate_feedback(
+        CANDIDATE_ID, _request("useful", EVENT_1)
+    )
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))[CANDIDATE_ID]
+    assert state["use_count"] == 1
+    assert state["useful_count"] == 1
+    assert [row["event_id"] for row in read_feedback_rows(feedback_path)] == [EVENT_1]
+    assert repaired["duplicate"] is True
+
+
 def test_cloudrun_writeback_preserves_comment_and_edited_claim(feedback_store):
     captured: list[dict] = []
 

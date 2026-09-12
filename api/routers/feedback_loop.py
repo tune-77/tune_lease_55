@@ -1348,43 +1348,50 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                 "edited_claim": "",
                 "edit_count": 0,
                 "last_edited_at": "",
+                "last_feedback_event_id": "",
             }.items():
                 current.setdefault(key, default)
 
-            if superseded_row and normalized_event["supersedes_event_id"] in local_event_ids:
-                prior_feedback = str(superseded_row.get("feedback") or "")
-                prior_counter = _candidate_feedback_counter(prior_feedback)
-                if prior_counter:
-                    current[prior_counter] = max(0, int(current.get(prior_counter) or 0) - 1)
-                    current["use_count"] = max(0, int(current.get("use_count") or 0) - 1)
-
-            counter = _candidate_feedback_counter(req.feedback)
-            if counter:
-                current[counter] = int(current.get(counter) or 0) + 1
-                current["use_count"] = int(current.get("use_count") or 0) + 1
-
-            now = _dt.datetime.now(_dt.timezone.utc).isoformat()
-            current["last_used_at"] = now
-            current["last_feedback_at"] = now
-            note_bits = [f"feedback={req.feedback}", f"case_id={case_id[:80]}"]
-            if req.review_id:
-                note_bits.append(f"review_id={req.review_id}")
-            if req.comment:
-                note_bits.append(f"comment={str(req.comment)[:160]}")
-            edited_claim = str(req.edited_claim or "").strip()
-            if edited_claim:
-                if edited_claim != str(current.get("edited_claim") or ""):
-                    current["edited_claim"] = edited_claim[:500]
-                    current["edit_count"] = int(current.get("edit_count") or 0) + 1
-                    current["last_edited_at"] = now
-                    note_bits.append("edited_claim=updated")
-            current["verification_note"] = " / ".join(note_bits)
-            state[candidate_id] = current
-            write_state(
-                _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON,
-                [{"id": candidate_id, **current}],
-                state,
+            state_already_applied = (
+                str(current.get("last_feedback_event_id") or "")
+                == normalized_event["event_id"]
             )
+            if not state_already_applied:
+                if superseded_row and normalized_event["supersedes_event_id"] in local_event_ids:
+                    prior_feedback = str(superseded_row.get("feedback") or "")
+                    prior_counter = _candidate_feedback_counter(prior_feedback)
+                    if prior_counter:
+                        current[prior_counter] = max(0, int(current.get(prior_counter) or 0) - 1)
+                        current["use_count"] = max(0, int(current.get("use_count") or 0) - 1)
+
+                counter = _candidate_feedback_counter(req.feedback)
+                if counter:
+                    current[counter] = int(current.get(counter) or 0) + 1
+                    current["use_count"] = int(current.get("use_count") or 0) + 1
+
+                now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+                current["last_used_at"] = now
+                current["last_feedback_at"] = now
+                current["last_feedback_event_id"] = normalized_event["event_id"]
+                note_bits = [f"feedback={req.feedback}", f"case_id={case_id[:80]}"]
+                if req.review_id:
+                    note_bits.append(f"review_id={req.review_id}")
+                if req.comment:
+                    note_bits.append(f"comment={str(req.comment)[:160]}")
+                edited_claim = str(req.edited_claim or "").strip()
+                if edited_claim:
+                    if edited_claim != str(current.get("edited_claim") or ""):
+                        current["edited_claim"] = edited_claim[:500]
+                        current["edit_count"] = int(current.get("edit_count") or 0) + 1
+                        current["last_edited_at"] = now
+                        note_bits.append("edited_claim=updated")
+                current["verification_note"] = " / ".join(note_bits)
+                state[candidate_id] = current
+                write_state(
+                    _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON,
+                    [{"id": candidate_id, **current}],
+                    state,
+                )
             try:
                 appended = append_feedback_event(
                     asset_id=candidate_id,

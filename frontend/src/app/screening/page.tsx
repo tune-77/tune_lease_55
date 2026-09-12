@@ -2062,14 +2062,16 @@ export default function Dashboard() {
       console.error("Judgment asset candidate feedback save failed", error);
       setJudgmentAssetCandidates(previous);
       const response = (error as { response?: { status?: number; data?: { detail?: string | { current_event_id?: string } } } }).response;
-      const detail = response?.data?.detail;
-      const currentEventId = typeof detail === "object" ? String(detail.current_event_id || "") : "";
-      const nextPayload = currentEventId ? { ...payload, supersedes_event_id: currentEventId } : payload;
-      setJudgmentAssetFeedbackRetry({ candidateId: candidate.id, payload: nextPayload });
+      if (response?.status === 409) {
+        setJudgmentAssetFeedbackRetry(null);
+        await fetchJudgmentAssetCandidatesForScreening(result, formData);
+      } else {
+        setJudgmentAssetFeedbackRetry({ candidateId: candidate.id, payload });
+      }
       updateJudgmentAssetFeedbackOutbox(payload.event_id, candidate.id, response?.status === 409 ? "conflict" : "network_or_server_error");
       setShionReviewError(
         response?.status === 409
-          ? "別画面で評価が更新されました。内容を確認してから再試行してください。"
+          ? "別画面で評価が更新されたため、最新内容を読み込みました。確認してもう一度評価してください。"
           : "判断資産候補の評価を保存できませんでした。再試行できます。",
       );
     } finally {

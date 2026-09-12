@@ -90,3 +90,44 @@ test("failed save rolls back and explicit retry reuses the event without storing
   const clearedOutbox = await page.evaluate(() => window.sessionStorage.getItem("judgment-asset-feedback-diagnostic-outbox-v1"));
   expect(clearedOutbox).toBe("[]");
 });
+
+test("conflict reloads the latest candidate and does not offer a blind retry", async ({ page }) => {
+  await installScreeningDraft(page);
+  let posts = 0;
+  await page.route("**/api/**", fulfillGenericApi);
+  await page.route("**/api/judgment-asset-candidates/screening*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        candidates: [{
+          ...candidate,
+          claim: "競合後の最新確認内容を確認する。",
+          effective_claim: "競合後の最新確認内容を確認する。",
+          user_feedback: "neutral",
+          last_feedback_event_id: "33333333-3333-4333-8333-333333333333",
+        }],
+      }),
+    });
+  });
+  await page.route("**/api/judgment-asset-candidates/*/feedback", async (route) => {
+    posts += 1;
+    await route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: { message: "feedback changed elsewhere", current_event_id: "33333333-3333-4333-8333-333333333333" },
+      }),
+    });
+  });
+
+  await page.goto("/screening");
+  const feedbackSection = page.locator("section").filter({ hasText: "今回レビューに渡す判断資産" }).last();
+  await feedbackSection.getByRole("button", { name: "効いた", exact: true }).click();
+
+  await expect(page.getByText(/最新内容を読み込みました/)).toBeVisible();
+  const refreshedSection = page.locator("section").filter({ hasText: "今回レビューに渡す判断資産" }).last();
+  await expect(refreshedSection).toContainText("競合後の最新確認内容を確認する。");
+  await expect(refreshedSection.getByRole("button", { name: "再試行" })).toHaveCount(0);
+  await expect.poll(() => posts).toBe(1);
+});
