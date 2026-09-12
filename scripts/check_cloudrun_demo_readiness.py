@@ -438,12 +438,25 @@ def check_access_control(checks: CheckRun) -> None:
         checks.warn("scripts/deploy_cloud_run_api.sh missing (cannot verify access control wiring)")
         return
     api_text = api_path.read_text(encoding="utf-8", errors="replace")
-    required = (
-        "API_ACCESS_KEY",
-        "REQUIRE_API_ACCESS_KEY",
-        "Refusing to deploy non-demo (real data) without an access key",
+    helper_path = ROOT / "scripts" / "lib" / "require_api_access_key_secret.sh"
+    helper_text = (
+        helper_path.read_text(encoding="utf-8", errors="replace")
+        if helper_path.exists()
+        else ""
     )
-    missing = [needle for needle in required if needle not in api_text]
+    required = {
+        "REQUIRE_API_ACCESS_KEY": "REQUIRE_API_ACCESS_KEY" in api_text,
+        "shared API access-key guard": (
+            "require_api_access_key_secret" in api_text
+            and "require_api_access_key_secret" in helper_text
+            and "NOT_FOUND" in helper_text
+        ),
+        "API_ACCESS_KEY secret wiring": (
+            "API_ACCESS_KEY=${api_access_key_ref}" in api_text
+            and "API_ACCESS_KEY:latest" in helper_text
+        ),
+    }
+    missing = [label for label, present in required.items() if not present]
     if missing:
         checks.fail(
             "scripts/deploy_cloud_run_api.sh is missing access-control safeguards: "
@@ -457,7 +470,11 @@ def check_access_control(checks: CheckRun) -> None:
         checks.warn("scripts/deploy_cloud_run_web.sh missing (cannot verify access control wiring)")
         return
     web_text = web_path.read_text(encoding="utf-8", errors="replace")
-    if "API_ACCESS_KEY=API_ACCESS_KEY:latest" in web_text:
+    if (
+        "require_api_access_key_secret" in web_text
+        and "API_ACCESS_KEY=${api_access_key_ref}" in web_text
+        and "API_ACCESS_KEY:latest" in helper_text
+    ):
         checks.info("scripts/deploy_cloud_run_web.sh wires API_ACCESS_KEY to the Web service")
     else:
         checks.fail("scripts/deploy_cloud_run_web.sh does not wire API_ACCESS_KEY as a secret")

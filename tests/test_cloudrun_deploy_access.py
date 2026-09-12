@@ -151,6 +151,15 @@ def test_real_gcloud_error_is_surfaced_when_secret_is_missing(deploy, script):
     assert "NOT_FOUND" in result.stderr
 
 
+def test_readiness_check_accepts_shared_secret_helper_wiring():
+    from scripts.check_cloudrun_demo_readiness import CheckRun, check_access_control
+
+    checks = CheckRun()
+    check_access_control(checks)
+
+    assert not checks.failures
+
+
 def test_public_tunnel_requires_web_auth_and_same_origin_api_proxy():
     root = Path(__file__).resolve().parents[1]
     launcher = (root / "run_next_stable.sh").read_text()
