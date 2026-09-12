@@ -2365,7 +2365,12 @@ export default function Dashboard() {
       //（バッジ側も同じフォールバックなので文言と表示が食い違わない）
       const score = getScreeningScore(res.data);
       const approvalLine = typeof res.data.approval_line === "number" ? res.data.approval_line : 71;
-      if (score >= approvalLine) {
+      if (res.data.risk_review_required === true) {
+        const reasons = Array.isArray(res.data.risk_review_reasons)
+          ? res.data.risk_review_reasons.filter((reason: unknown) => typeof reason === "string").slice(0, 2).join(" / ")
+          : "";
+        triggerMebuki('challenge', `スコア ${score.toFixed(1)} 点ですが要審議です。\n${reasons || "強い信用リスクシグナルがあります。"}\n理由と追加確認項目を確認してください。`);
+      } else if (score >= approvalLine) {
         triggerMebuki('approve', `スコア ${score.toFixed(1)} 点！\n素晴らしい内容です。\nこのまま稟議に掛けましょう！`);
       } else if (score >= 60) {
         triggerMebuki('challenge', `スコア ${score.toFixed(1)} 点。\n条件付き承認圏です。\n軍師のアドバイスを確認してください。`);

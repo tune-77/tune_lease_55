@@ -86,7 +86,8 @@ def test_calculate_score_exposes_forced_review_reason(monkeypatch):
         "risk_review_reasons": ["Q_risk 強警戒（65.0）"],
         "credit_risk_group_score": 72.0,
         "credit_risk_group_level": "high",
-        "credit_risk_group_flags": ["high_q_risk"],
+        "credit_risk_group_flag": True,
+        "credit_risk_group_reasons": ["high_q_risk"],
         "quantum_risk": 65.0,
         "q_risk_breakdown": {"total": 65.0},
         "credit_quantum_strong_warning": True,
@@ -111,3 +112,5 @@ def test_calculate_score_exposes_forced_review_reason(monkeypatch):
     assert response.risk_review_reasons == ["Q_risk 強警戒（65.0）"]
     assert response.quantum_risk == 65.0
     assert response.credit_risk_group_level == "high"
+    assert response.credit_risk_group_flag is True
+    assert response.credit_risk_group_reasons == ["high_q_risk"]
