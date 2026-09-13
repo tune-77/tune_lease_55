@@ -57,6 +57,14 @@ def test_build_shion_vague_information_request_prompt_block_handles_thin_request
     assert "Userの意図を具体化する質問1つ" in block
 
 
+def test_build_shion_vague_information_request_prompt_block_handles_tool_constrained_scale_inquiry():
+    block = build_shion_vague_information_request_prompt_block("今pythonで何行くらいある？")
+
+    assert "できません" in block
+    assert "件数・行数など今のツールでは直接集計できない照会" in block
+    assert "Userの意図を推測" in block
+
+
 def test_build_shion_vague_information_request_prompt_block_skips_specific_case_question():
     block = build_shion_vague_information_request_prompt_block(
         "製造業の工作機械リースで取得額5000万円、期間5年の場合の確認点を教えて"

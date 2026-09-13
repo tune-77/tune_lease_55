@@ -55,6 +55,7 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 - **Graft → Serena**: 先にGraftで変更範囲・caller・依存を絞り、対象確定後はSerenaの `get_symbols_overview` / `find_symbol` / `replace_symbol_body` を広いReadより優先。Graftが利用不能・未索引の場合だけ `rg` / Readへfallback
 - **ブランチ/PR**: `feature/rev-<番号>-<説明>` / `fix/...` / `chore/...`。一括shipは `/git-ship`
 - **出典明記**: 提案前に `static_data/` か `notes/` の具体ファイル名を引用。出典がなければ「これは推測です」と明示
+- **前提の明示**: 指示が確認不要なほど明確でも、実装上の解釈・前提を置いた場合は着手前に一言明示する（例:「〇〇という前提で進めます」）。指示が曖昧で進行不可な場合の確認手順は上記「絶対厳守」参照
 - **計画確認**: `scoring_core.py` / `analysis_*.py` / フロントエンド変更前に3文の変更計画を提示し承認を得る
 - **矛盾チェック**: 3ヶ月以上前の`ledger.jsonl`決定事項やCLAUDE.mdの方針と矛盾する変更前に必ず確認を取る（最新が正しいとは限らない）
 
