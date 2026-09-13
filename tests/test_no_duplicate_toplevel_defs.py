@@ -44,6 +44,10 @@ EXTRACTED_LEASE_INTELLIGENCE_MIND_SYMBOLS = {
     "post_lease_intelligence_self_audit",
     "get_knowledge_gaps",
 }
+EXTRACTED_CHAT_HISTORY_SYMBOLS = {
+    "get_chat_history",
+    "delete_chat_history",
+}
 
 
 def test_api_main_has_no_duplicate_toplevel_definitions():
@@ -113,3 +117,16 @@ def test_lease_intelligence_mind_stays_out_of_api_main():
     }
 
     assert names.isdisjoint(EXTRACTED_LEASE_INTELLIGENCE_MIND_SYMBOLS)
+
+
+def test_chat_history_stays_out_of_api_main():
+    """chat_history routerへ移した実装をmain.pyへ再コピーしない。"""
+    source = (REPO_ROOT / "api" / "main.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    names = {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+
+    assert names.isdisjoint(EXTRACTED_CHAT_HISTORY_SYMBOLS)
