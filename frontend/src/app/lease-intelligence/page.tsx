@@ -2289,7 +2289,7 @@ export default function LeaseIntelligencePage() {
             <button
               type="button"
               onClick={() => scrollToLatest()}
-              className="absolute bottom-28 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 shadow-lg transition hover:bg-violet-50"
+              className="absolute bottom-44 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 shadow-lg transition hover:bg-violet-50 sm:bottom-28"
               aria-label="最新の発言へ移動"
             >
               <ArrowDown className="h-4 w-4" />
