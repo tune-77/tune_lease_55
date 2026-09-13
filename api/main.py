@@ -27,18 +27,15 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import asyncio
-import ipaddress
 import json
 import logging
 import re
 import shlex
 import shutil
-import socket
 import sys
 import os
 from pathlib import Path
-from urllib.parse import urlparse
-from runtime_paths import get_data_path, get_db_path, resolve_obsidian_vault
+from runtime_paths import get_data_path, get_db_path
 
 # プロジェクトルートをPYTHONPATHに追加して、既存モジュール(scoring_core)をインポート可能にする
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -49,7 +46,7 @@ while _REPO_ROOT in sys.path:
     sys.path.remove(_REPO_ROOT)
 sys.path.insert(0, _REPO_ROOT)
 
-from api.llm_json_guard import extract_candidate_text, parse_or_recover_json, with_retry_tokens
+from api.background_executor import background_executor as _background_executor
 from api.db_connection import current_backend, get_connection, placeholder
 from api.cloudrun_writeback import record_cloudrun_input_event
 from api.data_git_sync import (
@@ -64,9 +61,6 @@ logger = logging.getLogger(__name__)
 # 生の threading.Thread を都度spawnすると高負荷時にOSスレッドが際限なく積み上がり、
 # ファイル冒頭のOMP/MPS対策コメントが警告するネイティブライブラリ競合・SIGSEGVの
 # リスクが再燃するため、ワーカー数を固定して総スレッド数に上限を設ける。
-from concurrent.futures import ThreadPoolExecutor
-_background_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="bg-task")
-
 # PDCA反省バッチはGemini呼び出しを含む重い処理で、デバウンスなしだと未処理フィードバックが
 # 5件以上残る間は案件登録のたびに多重起動しうる。実行中は新規起動をスキップする。
 import threading
@@ -138,7 +132,6 @@ from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE,
 from scoring_anomaly_monitor import record_scoring_anomalies
 from api.scoring_full import run_full_scoring_api
 from lease_news_digest import (
-    find_vault,
     build_lease_news_brief,
     build_daily_news_digest,
     daily_news_digest_as_text,
@@ -146,7 +139,6 @@ from lease_news_digest import (
     get_latest_lease_news_reflection,
     get_latest_lease_news_actions,
     lease_news_actions_as_text,
-    record_lease_news_collection,
     lease_news_focus_as_text,
 )
 from api.knowledge.news_classifier import (
@@ -550,6 +542,8 @@ from api.routers.lease_news import router as lease_news_router
 app.include_router(lease_news_router)
 from api.routers.lease_news import (  # noqa: F401 - back-compat exports
     LeaseNewsJudgmentChangeRequest,
+    _validate_public_http_url,
+    get_recent_lease_news,
     get_lease_news_actions_api,
     get_lease_news_brief_api,
     get_lease_news_classified_summary_api,
@@ -557,6 +551,7 @@ from api.routers.lease_news import (  # noqa: F401 - back-compat exports
     get_lease_news_focus_api,
     get_lease_news_trend_summary_api,
     record_lease_news_judgment_change_api,
+    summarize_lease_news,
 )
 
 from api.routers.pipeline_misc import router as pipeline_misc_router
@@ -7705,349 +7700,3 @@ def get_lease_intelligence_related_suggestion_api():
     from lease_intelligence_activity import suggest_related_feature
 
     return {"suggestion": suggest_related_feature()}
-
-
-# ── 業界リスクニュース要約・保存 ──────────────────────────────────────
-
-_NEWS_OBSIDIAN_DIR = "05-クリップ_記事/業界リスクニュース"
-_NEWS_OBSIDIAN_DIR_ALIASES = (
-    "05-クリップ_記事/業界リスクニュース",
-    "業界リスクニュース",
-    "05-クリップ_記事/リースニュース",
-    "リースニュース",
-)
-
-
-def _news_vault_root() -> Path | None:
-    vault = find_vault()
-    if vault and vault.is_dir():
-        return vault
-    fallback = resolve_obsidian_vault()
-    return fallback if fallback.is_dir() else None
-
-
-def _safe_news_filename(text: str, max_len: int = 40) -> str:
-    from api.lease_news_summary_render import safe_news_filename
-
-    return safe_news_filename(text, max_len=max_len)
-
-
-def _lease_news_dir(vault: Path, create: bool = False) -> Path | None:
-    """Return the Obsidian folder used for industry-risk news notes.
-
-    Existing notes may live under the old lease-news folders. Keep those
-    readable for compatibility, but create new notes under 業界リスクニュース.
-    """
-    for rel in _NEWS_OBSIDIAN_DIR_ALIASES:
-        candidate = vault / rel
-        if candidate.exists():
-            return candidate
-    if create:
-        candidate = vault / _NEWS_OBSIDIAN_DIR
-        candidate.mkdir(parents=True, exist_ok=True)
-        return candidate
-    return None
-
-
-def _fetch_url_text(url: str) -> str:
-    import requests as _req
-    _validate_public_http_url(url)
-    resp = _req.get(url, timeout=15, headers={"User-Agent": "TuneLeaseBot/1.0"})
-    resp.raise_for_status()
-    _validate_public_http_url(resp.url)
-    from html.parser import HTMLParser
-
-    class _TextExtractor(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self._parts: list[str] = []
-            self._skip = False
-
-        def handle_starttag(self, tag, attrs):
-            if tag in ("script", "style", "nav", "header", "footer"):
-                self._skip = True
-
-        def handle_endtag(self, tag):
-            if tag in ("script", "style", "nav", "header", "footer"):
-                self._skip = False
-
-        def handle_data(self, data):
-            if not self._skip:
-                stripped = data.strip()
-                if stripped:
-                    self._parts.append(stripped)
-
-    parser = _TextExtractor()
-    parser.feed(resp.text)
-    return "\n".join(parser._parts)[:6000]
-
-
-def _validate_public_http_url(url: str) -> None:
-    """Reject URLs that could reach local/private infrastructure."""
-    parsed = urlparse((url or "").strip())
-    if parsed.scheme not in {"http", "https"}:
-        raise HTTPException(status_code=400, detail="URLは http/https のみ指定できます")
-    if parsed.username or parsed.password:
-        raise HTTPException(status_code=400, detail="認証情報を含むURLは指定できません")
-    host = parsed.hostname
-    if not host:
-        raise HTTPException(status_code=400, detail="URLのホスト名が不正です")
-    if host.lower() in {"localhost", "metadata.google.internal"} or host.lower().endswith(".local"):
-        raise HTTPException(status_code=400, detail="ローカル/内部ホストは指定できません")
-    try:
-        addresses = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
-    except socket.gaierror as exc:
-        raise HTTPException(status_code=400, detail=f"URLの名前解決に失敗: {exc}") from exc
-    for addr in addresses:
-        ip = ipaddress.ip_address(addr[4][0])
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
-            raise HTTPException(status_code=400, detail="ローカル/内部ネットワーク宛のURLは指定できません")
-
-
-def _normalize_code_list(values: object, allowed: set[str], limit: int) -> list[str]:
-    from api.lease_news_summary_render import normalize_code_list
-
-    return normalize_code_list(values, allowed, limit)
-
-
-def _normalize_phrase_list(values: object, limit: int = 5) -> list[str]:
-    from api.lease_news_summary_render import normalize_phrase_list
-
-    return normalize_phrase_list(values, limit=limit)
-
-
-def _render_news_summary(result: dict, source: str) -> dict:
-    from api.lease_news_summary_render import render_news_summary
-
-    return render_news_summary(result, source)
-
-
-def _summarize_news_with_gemini(text: str, source: str) -> dict:
-    from api.chat_memory import _get_gemini_api_key as _chat_get_gemini_api_key
-
-    api_key = _chat_get_gemini_api_key()
-    if not api_key:
-        raise HTTPException(status_code=503, detail="Gemini APIキーが未設定です")
-
-    prompt = f"""あなたはリース審査担当向けに、顧客業界・物件・市況ニュースを分類するアシスタントです。
-以下のニュース記事を読み、短い構造JSONだけを出力してください。説明文は不要です。
-
-{{
-  "title": "ニュースタイトル（15文字〜30文字）",
-  "summary_codes": ["CAPEX/RATE/REGULATION/MARKET/RISK/TECH/ASSET から最大3件"],
-  "key_phrases": ["記事内の重要語句を最大5件、各40文字以内"],
-  "usage_codes": ["PROPOSAL_TIMING/RATE_EXPLAIN/RISK_CHECK/ASSET_MATCH/INDUSTRY_TALK/FOLLOW_UP から最大2件"],
-  "tags": ["タグ1", "タグ2", "タグ3"],
-  "region": "国内/米国/欧州/アジア のいずれか1つ",
-  "importance": "高/中/低"
-}}
-
-タグは顧客業界（製造、建設、運送等）、物件（工作機械、建機、車両等）、トピック（金利動向、倒産、設備投資、補助金、中古価格等）から選んでください。
-リース会社そのもののニュースではなく、借手の返済力、設備稼働、投資回収、物件価値に影響する論点を優先してください。
-regionは記事の主な対象地域を判定してください。日本国内のニュースは「国内」、米国は「米国」、欧州は「欧州」、中国・東南アジア等は「アジア」。複数地域にまたがる場合は主な地域を1つ選んでください。
-summary_codes と usage_codes は必ず上記の英字コードだけを返してください。
-
-ニュース記事:
-{text[:4000]}
-"""
-
-    defaults = {
-        "title": "業界リスクニュース",
-        "summary_lines": [
-            "ニュース本文の自動要約が一部不完全です。",
-            "原文を確認して営業活用可否を判断してください。",
-            f"情報源: {source[:80] or '不明'}",
-        ],
-        "usage_memo": "要約の自動生成が不完全なため、原文確認後に提案材料として扱ってください。",
-        "summary_codes": ["MARKET"],
-        "usage_codes": ["INDUSTRY_TALK"],
-        "key_phrases": [],
-        "tags": ["要確認"],
-        "region": "国内",
-        "importance": "中",
-    }
-
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 1024,
-            "responseMimeType": "application/json",
-        },
-    }
-
-    import requests as _req
-    url = _gemini_generate_url()
-    result = defaults
-    raw = ""
-    finish_reason = ""
-    for current_payload in (payload, with_retry_tokens(payload, 2048)):
-        response = _req.post(
-            url,
-            json=current_payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=30,
-        )
-        response.raise_for_status()
-        raw, finish_reason = extract_candidate_text(response.json())
-        result, recovered = parse_or_recover_json(
-            raw,
-            defaults=defaults,
-            string_fields={"title", "usage_memo", "region", "importance"},
-            array_fields={"summary_codes", "key_phrases", "usage_codes", "summary_lines", "tags"},
-        )
-        if not recovered and finish_reason != "MAX_TOKENS":
-            break
-        if current_payload["generationConfig"]["maxOutputTokens"] >= 2048:
-            break
-    valid_regions = {"国内", "米国", "欧州", "アジア"}
-    if result.get("region") not in valid_regions:
-        result["region"] = "国内"
-    if result.get("importance") not in {"高", "中", "低"}:
-        result["importance"] = "中"
-    if not isinstance(result.get("summary_lines"), list) or not result["summary_lines"]:
-        result["summary_lines"] = defaults["summary_lines"]
-    if not isinstance(result.get("tags"), list) or not result["tags"]:
-        result["tags"] = defaults["tags"]
-    if finish_reason == "MAX_TOKENS":
-        result["_finish_reason"] = finish_reason
-    return _render_news_summary(result, source)
-
-
-def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
-    vault = _news_vault_root()
-    if not vault:
-        return None
-
-    news_dir = _lease_news_dir(vault, create=True)
-    if not news_dir:
-        return None
-
-    from api.lease_news_summary_render import render_news_obsidian_note
-
-    note = render_news_obsidian_note(summary, source)
-    fpath = news_dir / note["filename"]
-    fpath.write_text(note["content"], encoding="utf-8")
-
-    try:
-        record_lease_news_collection(
-            date_str=note["date"],
-            note_path=str(fpath.relative_to(vault)) if vault else note["filename"],
-            article_count=1,
-            source_summary=source[:100],
-            tag_summary=", ".join(summary.get("tags", [])),
-        )
-    except Exception:
-        pass
-
-    try:
-        from api.knowledge.news_classifier import write_classified_news_summary
-
-        _background_executor.submit(lambda: write_classified_news_summary(vault, limit=30, days=14))
-    except Exception:
-        pass
-
-    try:
-        from api.knowledge.obsidian_loader import _chunk_by_h2, _parse_frontmatter
-        from api.knowledge.vector_store import get_store
-
-        raw = fpath.read_text(encoding="utf-8")
-        meta, body = _parse_frontmatter(raw)
-        chunks = _chunk_by_h2(body, str(fpath), fpath.name, meta, fpath.stat().st_mtime)
-        if chunks:
-            _background_executor.submit(lambda: get_store().upsert_chunks(chunks))
-    except Exception:
-        pass
-
-    try:
-        import sys as _sys
-        _scripts_dir = str(Path(__file__).resolve().parent.parent / "scripts")
-
-        def _run_wikilink():
-            if _scripts_dir not in _sys.path:
-                _sys.path.insert(0, _scripts_dir)
-            try:
-                from auto_wikilink import run_on_files
-                run_on_files([fpath], vault)
-            except Exception:
-                pass
-
-        _background_executor.submit(_run_wikilink)
-    except Exception:
-        pass
-
-    return str(fpath)
-
-
-@app.post("/api/lease-news/summarize")
-def summarize_lease_news(req: LeaseNewsSummarizeRequest):
-    """ニュースURL or 本文テキストをAI要約し、Obsidianに保存する。"""
-    source = req.url or "手動入力"
-    if req.url and req.url.strip():
-        try:
-            text = _fetch_url_text(req.url.strip())
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"URLの取得に失敗: {e}")
-    elif req.body_text and req.body_text.strip():
-        text = req.body_text.strip()
-    else:
-        raise HTTPException(status_code=400, detail="URLまたは本文テキストを入力してください")
-
-    summary = _summarize_news_with_gemini(text, source)
-    saved_path = _save_news_to_obsidian(summary, source)
-
-    return {
-        "status": "ok",
-        "title": summary.get("title", ""),
-        "summary_lines": summary.get("summary_lines", []),
-        "usage_memo": summary.get("usage_memo", ""),
-        "summary_codes": summary.get("summary_codes", []),
-        "usage_codes": summary.get("usage_codes", []),
-        "key_phrases": summary.get("key_phrases", []),
-        "tags": summary.get("tags", []),
-        "region": summary.get("region", "国内"),
-        "importance": summary.get("importance", "中"),
-        "saved_path": saved_path,
-    }
-
-
-
-@app.get("/api/lease-news/recent")
-def get_recent_lease_news(limit: int = 5):
-    """Obsidianの 業界リスクニュース/ フォルダから直近N件のニュース要約を返す。"""
-    vault = _news_vault_root()
-    if not vault:
-        return {"items": []}
-
-    news_dir = _lease_news_dir(vault)
-    if not news_dir:
-        return {"items": []}
-
-    md_files = sorted(news_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
-    items: list[dict] = []
-    seen_keys: set[str] = set()
-    from api.lease_news_summary_render import parse_recent_news_note, recent_news_dedupe_key
-
-    for fpath in md_files:
-        try:
-            raw = fpath.read_text(encoding="utf-8")
-        except Exception:
-            continue
-
-        item = parse_recent_news_note(raw, file_path=str(fpath), file_stem=fpath.stem)
-        dedupe_key = recent_news_dedupe_key(item)
-        if dedupe_key in seen_keys:
-            continue
-        seen_keys.add(dedupe_key)
-        items.append(item)
-        if len(items) >= max(1, min(int(limit), 20)):
-            break
-
-    return {"items": items}
