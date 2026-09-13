@@ -49,5 +49,6 @@ def test_canonical_judgment_rules_become_judgment_memory_records(tmp_path, monke
     assert records[0]["memory_type"] == "judgment_memory"
     assert records[0]["source"] == "canonical_judgment_rules"
     assert records[0]["topic"] == "support_specificity"
+    assert records[0]["judgment_asset_id"] == "rule_1"
     assert records[0]["evidence_count"] == 3
     assert records[0]["user_evidence_count"] == 1
