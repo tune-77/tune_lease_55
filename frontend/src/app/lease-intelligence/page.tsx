@@ -2297,7 +2297,7 @@ export default function LeaseIntelligencePage() {
             </button>
           )}
 
-          <footer className="shrink-0 border-t border-violet-100 bg-white p-4">
+          <footer className="shrink-0 border-t border-violet-100 bg-white p-3 sm:p-4">
             {error && <p className="mb-2 text-xs font-bold text-red-600">{error}</p>}
             {voiceError && <p className="mb-2 text-xs font-bold text-orange-600">🎤 {voiceError}</p>}
             {fileError && <p className="mb-2 text-xs font-bold text-orange-600">📎 {fileError}</p>}
@@ -2323,7 +2323,7 @@ export default function LeaseIntelligencePage() {
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 sm:flex-nowrap">
               {/* 音声入力ボタン */}
               <button
                 type="button"
@@ -2374,7 +2374,7 @@ export default function LeaseIntelligencePage() {
                 }}
                 placeholder="リース知性体に話しかける…"
                 rows={2}
-                className="min-h-[48px] flex-1 resize-none rounded-2xl border border-violet-200 px-4 py-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                className="order-first min-h-[88px] w-full basis-full resize-none rounded-2xl border border-violet-200 px-4 py-3 text-base leading-relaxed outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 sm:order-none sm:min-h-[48px] sm:min-w-0 sm:flex-1 sm:basis-auto sm:text-sm"
               />
 
               {/* 音声読み上げ ON/OFF */}
@@ -2404,10 +2404,10 @@ export default function LeaseIntelligencePage() {
                 onClick={send}
                 disabled={loading || (!input.trim() && !attachedFile)}
                 aria-label="リース知性体へ送信"
-                className="flex h-12 min-w-20 shrink-0 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-12 min-w-20 flex-1 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:shrink-0"
               >
                 <Send className="h-5 w-5" />
-                <span className="hidden sm:inline">送信</span>
+                <span>送信</span>
               </button>
             </div>
           </footer>
