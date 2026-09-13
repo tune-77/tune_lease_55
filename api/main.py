@@ -584,6 +584,13 @@ from api.routers.lease_intelligence_mind import (  # noqa: F401 - back-compat ex
     post_lease_intelligence_self_audit,
 )
 
+from api.routers.chat_history import router as chat_history_router
+app.include_router(chat_history_router)
+from api.routers.chat_history import (  # noqa: F401 - back-compat exports
+    delete_chat_history,
+    get_chat_history,
+)
+
 from api.routers.vertex_search import router as vertex_search_router
 app.include_router(vertex_search_router)
 
@@ -7557,28 +7564,6 @@ def post_chat(req: ChatRequest):
         raise HTTPException(status_code=500, detail="内部エラーが発生しました")
 
 
-
-
-@app.get("/api/chat/history")
-def get_chat_history(user_id: str = "default", limit: int = 50, since: Optional[str] = None):
-    """汎用チャット履歴を取得する。"""
-    try:
-        from api.chat_memory import get_recent_messages
-        messages = get_recent_messages(user_id, limit=min(limit, 200), since=since)
-        return {"user_id": user_id, "count": len(messages), "messages": messages}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/chat/history")
-def delete_chat_history(user_id: str = "default"):
-    """汎用チャット履歴を全削除する。"""
-    try:
-        from api.chat_memory import delete_history
-        deleted = delete_history(user_id)
-        return {"deleted": deleted, "user_id": user_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 class SaveToObsidianRequest(BaseModel):
