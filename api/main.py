@@ -577,6 +577,13 @@ from api.routers.lease_intelligence_activity import (  # noqa: F401 - back-compa
     record_lease_intelligence_activity_api,
 )
 
+from api.routers.lease_intelligence_mind import router as lease_intelligence_mind_router
+app.include_router(lease_intelligence_mind_router)
+from api.routers.lease_intelligence_mind import (  # noqa: F401 - back-compat exports
+    get_knowledge_gaps,
+    post_lease_intelligence_self_audit,
+)
+
 from api.routers.vertex_search import router as vertex_search_router
 app.include_router(vertex_search_router)
 
@@ -6276,46 +6283,6 @@ def delete_lease_intelligence_dialogue_history():
         "deleted": deleted,
         "note": "画面の会話履歴だけを削除しました。Obsidianの対話記録は保持されます。",
     }
-
-
-@app.post("/api/lease-intelligence/self-audit")
-def post_lease_intelligence_self_audit():
-    """紫苑の自律検証ループを即時実行する（REV-080）。週次 cron からも呼ばれる。"""
-    from lease_intelligence_mind import run_self_audit
-    from lease_news_digest import find_vault
-
-    vault = find_vault()
-    if not vault:
-        raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
-
-    try:
-        result = run_self_audit(vault)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"self-audit 実行エラー: {exc}")
-
-    return result
-
-
-@app.get("/api/lease-intelligence/knowledge-gaps")
-def get_knowledge_gaps():
-    """紫苑の知識ギャップ一覧を返す（REV-082）。"""
-    from lease_intelligence_mind import load_lease_intelligence_mind
-    from lease_news_digest import find_vault
-
-    vault = find_vault()
-    if not vault:
-        raise HTTPException(status_code=503, detail="Obsidian Vaultが見つかりません")
-
-    try:
-        mind = load_lease_intelligence_mind(vault)
-        gaps = mind.get("knowledge_gaps", [])
-        open_gaps = [g for g in gaps if g.get("status") == "open"]
-        return {
-            "total": len(open_gaps),
-            "gaps": open_gaps,
-        }
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
 
 
 def _cap_system_prompt(prompt: str, *, surface: str) -> str:
