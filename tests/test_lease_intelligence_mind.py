@@ -1,5 +1,4 @@
 import datetime as dt
-from pathlib import Path
 
 from lease_intelligence_mind import (
     build_gunshi_dissonance_section,
@@ -16,6 +15,29 @@ from lease_intelligence_mind import (
     self_state_summary,
     update_user_model,
 )
+from api.routers.lease_intelligence_mind import get_knowledge_gaps
+
+
+def test_knowledge_gaps_endpoint_returns_only_open_items(monkeypatch, tmp_path):
+    import lease_intelligence_mind as mind_module
+    import lease_news_digest
+
+    monkeypatch.setattr(lease_news_digest, "find_vault", lambda: tmp_path)
+    monkeypatch.setattr(
+        mind_module,
+        "load_lease_intelligence_mind",
+        lambda _vault: {
+            "knowledge_gaps": [
+                {"status": "open", "question": "未確認"},
+                {"status": "resolved", "question": "確認済み"},
+            ]
+        },
+    )
+
+    assert get_knowledge_gaps() == {
+        "total": 1,
+        "gaps": [{"status": "open", "question": "未確認"}],
+    }
 
 
 def test_daily_experience_persists_memory_and_self_state(tmp_path):
