@@ -2103,11 +2103,12 @@ export default function LeaseIntelligencePage() {
             </div>
           )}
 
-          <div
-            ref={messageListRef}
-            onScroll={handleMessageScroll}
-            className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5"
-          >
+          <div className="relative min-h-0 flex-1">
+            <div
+              ref={messageListRef}
+              onScroll={handleMessageScroll}
+              className="h-full space-y-4 overflow-y-auto overscroll-contain p-5"
+            >
             {initializing && <Loader2 className="mx-auto mt-20 h-7 w-7 animate-spin text-violet-500" />}
             {!initializing && messages.length === 0 && (
               <div className="mx-auto mt-16 max-w-lg rounded-2xl bg-violet-50 p-6 text-center">
@@ -2282,20 +2283,21 @@ export default function LeaseIntelligencePage() {
                 <Loader2 className="h-5 w-5 animate-spin" /> 考えています…
               </div>
             )}
-            <div />
-          </div>
+              <div />
+            </div>
 
-          {showLatestButton && (
-            <button
-              type="button"
-              onClick={() => scrollToLatest()}
-              className="absolute bottom-44 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 shadow-lg transition hover:bg-violet-50 sm:bottom-28"
-              aria-label="最新の発言へ移動"
-            >
-              <ArrowDown className="h-4 w-4" />
-              最新の発言へ
-            </button>
-          )}
+            {showLatestButton && (
+              <button
+                type="button"
+                onClick={() => scrollToLatest()}
+                className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 shadow-lg transition hover:bg-violet-50"
+                aria-label="最新の発言へ移動"
+              >
+                <ArrowDown className="h-4 w-4" />
+                最新の発言へ
+              </button>
+            )}
+          </div>
 
           <footer className="shrink-0 border-t border-violet-100 bg-white p-3 sm:p-4">
             {error && <p className="mb-2 text-xs font-bold text-red-600">{error}</p>}
