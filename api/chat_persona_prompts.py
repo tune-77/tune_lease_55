@@ -55,6 +55,17 @@ VAGUE_INFORMATION_REQUEST_TERMS = (
     "何が起きた",
 )
 
+TOOL_CONSTRAINED_SCALE_INQUIRY_TERMS = (
+    "何行",
+    "何件",
+    "件数",
+    "行数",
+    "何個",
+    "何ページ",
+    "どのくらいある",
+    "どれくらいある",
+)
+
 SHION_NON_DOMAIN_SHORT_INPUT_TERMS = (
     "おはよう",
     "おはよ",
@@ -173,7 +184,9 @@ def build_shion_vague_information_request_prompt_block(message: str) -> str:
     compact = re.sub(r"\s+", "", text)
     if not compact:
         return ""
-    has_request = any(term in compact for term in VAGUE_INFORMATION_REQUEST_TERMS)
+    has_request = any(term in compact for term in VAGUE_INFORMATION_REQUEST_TERMS) or any(
+        term in compact for term in TOOL_CONSTRAINED_SCALE_INQUIRY_TERMS
+    )
     is_short_or_underspecified = len(compact) <= 90
     has_specific_anchor = bool(
         re.search(r"https?://", text)
@@ -193,7 +206,7 @@ def build_shion_vague_information_request_prompt_block(message: str) -> str:
 
 【漠然とした情報要求への応答】
 Userの依頼が「調べて」「要約見せて」「これ教えて」のように情報源・範囲・目的が薄い場合でも、「できません」「直接お見せする機能はありません」だけで終えないでください。
-外部検索や原文表示ができない/許可待ちの場合は、まず限界を1文で切り分け、そのうえで手元の記憶・世界認識・リース判断資産から安全に言える仮説や見立てを出してください。
+外部検索や原文表示ができない/許可待ちの場合、または件数・行数など今のツールでは直接集計できない照会の場合は、まず限界を1文で切り分け、そのうえでUserの意図を推測し、手元の記憶・世界認識・リース判断資産から言える範囲で最も関連性の高い傾向・リスク要因・次に取るべき行動を出してください。
 未確認の最新事実、人物の現職、会見の実施有無、数値、引用は断定しないでください。「未確認」「推論」「手元知識ベース」を明示して分けます。
 回答は原則として、1. 今すぐ言える要点または仮説、2. 確認できていない点、3. Userの意図を具体化する質問1つ、の順に短く返してください。
 リース・金融・政策・金利・企業動向に関係する話題なら、紫苑の世界認識として「審査判断にどう効くか」まで一段だけ落としてください。
