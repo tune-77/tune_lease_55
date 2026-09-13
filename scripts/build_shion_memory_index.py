@@ -418,6 +418,9 @@ def _canonical_judgment_rule_records(path: Path) -> list[dict[str, Any]]:
             confidence=_safe_float(rule.get("confidence"), 0.82),
         ).to_dict()
         record["topic"] = str(rule.get("concept") or "")
+        # 記憶IDは本文由来の安定ハッシュだが、現場フィードバックは正規判断資産IDへ
+        # 紐づく。両者を橋渡しし、想起時に結果評価を説明可能な形で参照できるようにする。
+        record["judgment_asset_id"] = str(rule.get("id") or "").strip()
         record["evidence_count"] = _safe_int(rule.get("evidence_count"), 0)
         record["user_evidence_count"] = _safe_int(rule.get("user_evidence_count"), 0)
         record["evidence_paths"] = list(rule.get("evidence_paths") or [])[:6]
