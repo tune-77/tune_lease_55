@@ -569,6 +569,14 @@ app.include_router(game_theory_router)
 from api.routers.relationship import router as relationship_router
 app.include_router(relationship_router)
 
+from api.routers.lease_intelligence_activity import router as lease_intelligence_activity_router
+app.include_router(lease_intelligence_activity_router)
+from api.routers.lease_intelligence_activity import (  # noqa: F401 - back-compat exports
+    LeaseIntelligenceActivityRequest,
+    get_lease_intelligence_related_suggestion_api,
+    record_lease_intelligence_activity_api,
+)
+
 from api.routers.vertex_search import router as vertex_search_router
 app.include_router(vertex_search_router)
 
@@ -7670,33 +7678,3 @@ def save_chat_to_obsidian(req: SaveToObsidianRequest):
 
     relative_path = f"Chat/{filename}"
     return {"path": relative_path, "message_count": len(messages)}
-
-
-class LeaseIntelligenceActivityRequest(BaseModel):
-    surface: str
-    action: str = "page_view"
-    event_id: str = ""
-
-
-@app.post("/api/lease-intelligence/activity")
-def record_lease_intelligence_activity_api(req: LeaseIntelligenceActivityRequest):
-    """Record a privacy-bounded explicit in-app activity event."""
-    from lease_intelligence_activity import record_user_activity
-
-    recorded = record_user_activity(
-        surface=req.surface,
-        action=req.action,
-        event_id=req.event_id,
-    )
-    return {
-        "recorded": recorded,
-        "privacy": "Stores only surface, action, timestamp, and a dedupe id.",
-    }
-
-
-@app.get("/api/lease-intelligence/related-suggestion")
-def get_lease_intelligence_related_suggestion_api():
-    """直近の利用状況から、関連するが未使用の機能を最大1件提案する（REV-237）。"""
-    from lease_intelligence_activity import suggest_related_feature
-
-    return {"suggestion": suggest_related_feature()}
