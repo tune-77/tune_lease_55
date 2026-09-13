@@ -258,21 +258,27 @@ def load_judgment_asset_outcome_signals(path: Path | None = None) -> dict[str, d
     1件だけの評価で順位が固定されないよう `n + 2` で縮約し、最大でも +/-1.2点に
     制限する。壊れた行は無視し、想起本体を止めない。
     """
+    from judgment_asset_bandit import (
+        normalize_asset_id,
+        normalize_outcome,
+        read_feedback_rows,
+        select_current_feedback_rows,
+    )
+
     feedback_path = path or resolve_judgment_feedback_path()
     totals: dict[str, dict[str, Any]] = {}
-    try:
-        lines = feedback_path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return {}
-    for line in lines:
-        try:
-            row = json.loads(line)
-        except (json.JSONDecodeError, TypeError):
+    for row in select_current_feedback_rows(read_feedback_rows(feedback_path)):
+        source = str(row.get("source") or "").strip().lower()
+        case_id = str(row.get("case_id") or row.get("case") or "").strip().lower()
+        if source == "simulation" or case_id.startswith("sim-"):
             continue
-        if not isinstance(row, dict):
-            continue
-        rule_id = str(row.get("rule_id") or "").strip()
-        outcome = str(row.get("outcome") or "").strip().lower()
+        rule_id = normalize_asset_id(
+            row.get("rule_id")
+            or row.get("judgment_asset_id")
+            or row.get("asset_id")
+            or row.get("candidate_id")
+        )
+        outcome = normalize_outcome(row)
         if not rule_id or outcome not in _OUTCOME_WEIGHTS:
             continue
         item = totals.setdefault(

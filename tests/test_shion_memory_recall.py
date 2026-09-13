@@ -238,6 +238,51 @@ def test_load_judgment_asset_outcome_signals_shrinks_human_feedback(tmp_path):
     assert signals["rule_helped"]["last_feedback_at"] == "2026-09-11"
 
 
+def test_outcome_signals_normalize_ids_and_ignore_superseded_and_simulation(tmp_path):
+    path = tmp_path / "feedback.jsonl"
+    rows = [
+        {
+            "event_id": "evt-old",
+            "rule_id": "cr-rule_current",
+            "outcome": "helped",
+            "case_id": "case-1",
+        },
+        {
+            "event_id": "evt-new",
+            "supersedes_event_id": "evt-old",
+            "rule_id": "cr-rule_current",
+            "outcome": "rejected",
+            "case_id": "case-1",
+        },
+        {
+            "event_id": "evt-sim-source",
+            "rule_id": "cr-rule_current",
+            "outcome": "helped",
+            "source": "simulation",
+            "case_id": "case-2",
+        },
+        {
+            "event_id": "evt-sim-case",
+            "rule_id": "cr-rule_current",
+            "outcome": "helped",
+            "source": "screening",
+            "case_id": "sim-123",
+        },
+    ]
+    path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows),
+        encoding="utf-8",
+    )
+
+    signals = load_judgment_asset_outcome_signals(path)
+
+    assert set(signals) == {"rule_current"}
+    assert signals["rule_current"]["evidence_count"] == 1
+    assert signals["rule_current"]["helped_count"] == 0
+    assert signals["rule_current"]["rejected_count"] == 1
+    assert signals["rule_current"]["recall_adjustment"] < 0
+
+
 def test_case_recall_uses_bounded_human_outcome_weighting(tmp_path):
     index = {
         "records": [
