@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────
+# GitHub Actions CI用: cloudrun-data-safety / judgment-asset-loop
+# （pr-checks.yml・daily-test.yml）の危険域専用ガード用の軽量依存一覧。
+# 3箇所でべた書きされていた重複を1ファイルに集約したもの
+# （.claude/rules 棚卸しレポート「依存インストールの重複」対応）。
+# requirements-ci-full.txt と違い chromadb/google-adk等の重い依存を含まない。
+# ─────────────────────────────────────────────────────────────
+pytest
+fastapi
+uvicorn
+pydantic
+slowapi
+httpx
+python-multipart
+requests
+numpy
+pandas
+matplotlib
+seaborn
+scipy
+scikit-learn
+joblib
+python-dateutil
+pyyaml

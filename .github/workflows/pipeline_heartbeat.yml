@@ -31,6 +31,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       MAX_AGE_HOURS: "36"
     steps:
+      - uses: actions/checkout@v4
+
       - name: Check latest completion signal
         run: |
           set -euo pipefail
@@ -51,3 +53,10 @@ jobs:
             echo "::error::日次改善パイプラインの成功通知が ${AGE_H}h 届いていません（閾値 ${MAX_AGE_HOURS}h）。Mac、launchd、またはpipeline_heartbeat_dispatchを確認してください。"
             exit 1
           fi
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Pipeline Heartbeat"

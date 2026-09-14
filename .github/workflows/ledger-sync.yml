@@ -218,3 +218,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::error::台帳PR #${PR_NUM} が ${AGE_MIN} 分マージされていません（台帳が master に届いていない）"
           exit 1
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Ledger Sync"
