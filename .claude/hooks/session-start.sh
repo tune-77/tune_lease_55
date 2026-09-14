@@ -27,12 +27,12 @@ cd "$PROJECT_DIR" || exit 0
 # もう片方も必ず更新すること。
 PY_PIP_PACKAGES=(
   pytest fastapi uvicorn pydantic slowapi httpx python-multipart
-  requests numpy pandas matplotlib seaborn scipy scikit-learn==1.7.2 joblib
+  requests numpy pandas matplotlib seaborn plotly scipy scikit-learn==1.7.2 joblib
   python-dateutil pyyaml beautifulsoup4 filelock bcrypt flask flask-cors
   google-api-core lxml toml chromadb google-adk apscheduler pyflakes
 )
 PY_IMPORT_NAMES="pytest fastapi uvicorn pydantic slowapi httpx multipart \
-requests numpy pandas matplotlib seaborn scipy sklearn joblib \
+requests numpy pandas matplotlib seaborn plotly scipy sklearn joblib \
 dateutil yaml bs4 filelock bcrypt flask flask_cors \
 google.api_core lxml toml chromadb google.adk apscheduler pyflakes"
 
