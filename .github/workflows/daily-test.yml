@@ -18,11 +18,7 @@ jobs:
           cache: pip
 
       - name: Install test dependencies
-        run: >
-          pip install -q pytest pytest-cov fastapi uvicorn pydantic slowapi httpx python-multipart
-          requests numpy pandas matplotlib seaborn scipy scikit-learn==1.7.2 joblib
-          python-dateutil pyyaml beautifulsoup4 filelock bcrypt flask flask-cors
-          google-api-core lxml toml chromadb google-adk apscheduler
+        run: pip install -q -r requirements-ci-full.txt pytest-cov
 
       - name: Run full test suite with coverage
         run: |
@@ -70,10 +66,7 @@ jobs:
           cache: pip
 
       - name: Install judgment asset loop test dependencies
-        run: >
-          pip install -q pytest fastapi uvicorn pydantic slowapi httpx python-multipart
-          requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
-          python-dateutil pyyaml
+        run: pip install -q -r requirements-ci-light.txt
 
       - name: Run judgment asset feedback loop suite
         run: |
