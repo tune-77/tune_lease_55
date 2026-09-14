@@ -44,6 +44,8 @@ if a[:3] == ["secrets", "describe", "API_ACCESS_KEY"]:
     describe_result("API_ACCESS_KEY", os.environ["SECRET_STATE"])
 if a[:3] == ["secrets", "describe", "PUBLIC_TUNNEL_AUTH"]:
     describe_result("PUBLIC_TUNNEL_AUTH", os.environ.get("TUNNEL_SECRET_STATE", "ok"))
+if a[:3] == ["secrets", "describe", "DASHBOARD_HEALTH_PROBE_TOKEN"]:
+    describe_result("DASHBOARD_HEALTH_PROBE_TOKEN", os.environ.get("DASHBOARD_HEALTH_SECRET_STATE", "ok"))
 if a[:3] == ["run", "services", "describe"]:
     if "--format=json" in a:
         mode = os.environ["API_MODE"]
@@ -56,12 +58,13 @@ if a[:2] == ["run", "deploy"]:
 ''')
     gcloud.chmod(0o755)
     log = tmp_path / "args.json"
-    def run(script, mode, secret="ok", tunnel_secret="ok"):
+    def run(script, mode, secret="ok", tunnel_secret="ok", dashboard_health_secret="ok"):
         log.unlink(missing_ok=True)
         result = subprocess.run(["bash", str(scripts / script)], env={**os.environ,
             "PATH": f"{tmp_path}:{os.environ['PATH']}", "PROJECT_ID": "test-project",
             "SHORT_SHA": "test", "CLOUDRUN_DATA_MODE": mode, "API_MODE": mode,
-            "SECRET_STATE": secret, "TUNNEL_SECRET_STATE": tunnel_secret, "DEPLOY_ARGS": str(log),
+            "SECRET_STATE": secret, "TUNNEL_SECRET_STATE": tunnel_secret,
+            "DASHBOARD_HEALTH_SECRET_STATE": dashboard_health_secret, "DEPLOY_ARGS": str(log),
         }, capture_output=True, text=True, timeout=20)
         return result, json.loads(log.read_text()) if log.exists() else []
     return run
@@ -149,6 +152,35 @@ def test_real_gcloud_error_is_surfaced_when_secret_is_missing(deploy, script):
     result, _ = deploy(script, "production", secret="missing")
 
     assert "NOT_FOUND" in result.stderr
+
+
+def test_dashboard_health_probe_token_wired_despite_permission_denied(deploy):
+    """DASHBOARD_HEALTH_PROBE_TOKEN describeがPERMISSION_DENIEDの時も配線する。
+
+    デプロイ用サービスアカウントはsecretmanager.secrets.getを持たず、実在する
+    シークレットでもdescribeはPERMISSION_DENIEDになる（API_ACCESS_KEY/
+    PUBLIC_TUNNEL_AUTHと同じ）。それをNOT_FOUNDと誤認して配線しない実装だと、
+    実在するシークレットが永久に反映されず/api/dashboard/data-healthが401の
+    ままになる（2026-09-14に実際に発生）。
+    """
+    result, args = deploy("deploy_cloud_run_web.sh", "production", dashboard_health_secret="denied")
+
+    assert result.returncode == 0, result.stderr
+    secrets_indices = [i for i, v in enumerate(args) if v == "--set-secrets"]
+    last_secrets_value = args[secrets_indices[-1] + 1]
+    assert "DASHBOARD_HEALTH_PROBE_TOKEN=DASHBOARD_HEALTH_PROBE_TOKEN:latest" in last_secrets_value
+    assert "PERMISSION_DENIED" in result.stderr, "本当のgcloudエラーが出ていない"
+
+
+def test_dashboard_health_probe_token_skipped_when_truly_missing(deploy):
+    """本当にNOT_FOUNDの時だけ配線をスキップし、デプロイ自体は止めない（任意扱い）。"""
+    result, args = deploy("deploy_cloud_run_web.sh", "production", dashboard_health_secret="missing")
+
+    assert result.returncode == 0, result.stderr
+    secrets_indices = [i for i, v in enumerate(args) if v == "--set-secrets"]
+    last_secrets_value = args[secrets_indices[-1] + 1]
+    assert "DASHBOARD_HEALTH_PROBE_TOKEN" not in last_secrets_value
+    assert "Secret Manager secret DASHBOARD_HEALTH_PROBE_TOKEN was not found" in result.stderr
 
 
 def test_readiness_check_accepts_shared_secret_helper_wiring():
