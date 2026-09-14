@@ -29,8 +29,12 @@ jobs:
       - name: Check Python dependencies
         run: |
           echo "🔍 Python パッケージの脆弱性チェック..."
-          safety check --json --output report.json || true
+          set +e
+          safety check --json --output report.json
+          status=$?
+          set -e
           cat report.json || echo "No vulnerabilities found"
+          exit "${status}"
 
       - name: Notify Slack on failure
         if: failure()
@@ -57,7 +61,7 @@ jobs:
 
       - name: Audit dependencies
         working-directory: frontend
-        run: npm audit --production --audit-level=moderate || true
+        run: npm audit --production --audit-level=moderate
 
       - name: Notify Slack on failure
         if: failure()
@@ -73,7 +77,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Dependency-Check
-        uses: dependency-check/Dependency-Check_Action@main
+        # main は未タグのブランチ参照で、上流の破壊的変更が無警告でCIを壊しうるため
+        # 具体的なコミットSHAに固定する（2026-09-14時点のmain HEAD）。
+        # 更新する場合: git ls-remote https://github.com/dependency-check/Dependency-Check_Action.git main
+        uses: dependency-check/Dependency-Check_Action@1e54355a8b4c8abaa8cc7d0b70aa655a3bb15a6c
         with:
           project: 'tune-lease-55'
           path: '.'
