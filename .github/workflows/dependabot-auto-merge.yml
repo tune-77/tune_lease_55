@@ -1,0 +1,60 @@
+name: Dependabot Auto-Merge
+
+# Dependabotが作るPR（npm/pip/github-actionsの依存更新、.github/dependabot.yml参照）
+# のうち、パッチ・マイナー更新だけを自動マージする。メジャー更新は破壊的変更の
+# 可能性があるため対象外にし、コメントを残して人間のレビューに委ねる。
+#
+# 前提（リポジトリ設定・手動で一度だけ行う必要がある。ワークフローからは変更不可）:
+#   1. Settings → General → Pull Requests → "Allow auto-merge" を有効化する。
+#      無効なままだと enable_pr_auto_merge 相当のAPIが失敗し、このジョブは
+#      失敗する（Slack通知で気づける）。
+#   2. Settings → Branches → master の branch protection で、pr-checks.yml の
+#      主要ジョブ（frontend/pytest-core等）を Required status checks に
+#      設定しておくこと。未設定だとGitHubの auto-merge はチェック完了を待たず
+#      即マージするため、このワークフローの意味が薄れる。
+#
+# dependabotが作るPRは（ledger-sync.ymlの台帳PRと違い）GITHUB_TOKEN起因では
+# ないため、pull_requestイベントは通常どおり発火しpr-checks.ymlも走る。
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Enable auto-merge (patch/minor updates only)
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --merge "$PR_URL"
+
+      - name: Flag major updates for manual review
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr comment "$PR_URL" --body "メジャーバージョン更新のため自動マージ対象外です。互換性を確認してから手動でマージしてください。"
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Dependabot Auto-Merge"
