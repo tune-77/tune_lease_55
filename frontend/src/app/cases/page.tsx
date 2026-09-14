@@ -14,8 +14,12 @@ type Case = {
   judgment: string | null;
   final_status: string;
   industry_sub: string;
+  industry_major?: string | null;
+  contract_type?: string | null;
   source?: string;
 };
+
+const CONTRACT_TYPE_OPTIONS = ['自動車', '一般'];
 
 type ResultForm = {
   final_status: string;
@@ -42,13 +46,18 @@ export default function CasesPage() {
   const [form, setForm] = useState<ResultForm>({ final_status: '', competitor_rate: '', loss_reason: '', final_result_date: '' });
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [industryMajorFilter, setIndustryMajorFilter] = useState('');
+  const [contractTypeFilter, setContractTypeFilter] = useState('');
   const LIMIT = 30;
 
   const fetchCases = useCallback(async (newOffset = 0) => {
     setLoading(true);
     setMsg(null);
     try {
-      const res = await apiClient.get(`/api/cases?limit=${LIMIT}&offset=${newOffset}&sort=desc`);
+      const params = new URLSearchParams({ limit: String(LIMIT), offset: String(newOffset), sort: 'desc' });
+      if (industryMajorFilter.trim()) params.set('industry_major', industryMajorFilter.trim());
+      if (contractTypeFilter) params.set('contract_type', contractTypeFilter);
+      const res = await apiClient.get(`/api/cases?${params.toString()}`);
       const data: Case[] = res.data;
       setCases(data);
       setOffset(newOffset);
@@ -58,7 +67,7 @@ export default function CasesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [industryMajorFilter, contractTypeFilter]);
 
   useEffect(() => { fetchCases(0); }, [fetchCases]);
 
@@ -118,14 +127,31 @@ export default function CasesPage() {
           <Table2 className="w-8 h-8 text-cyan-500" />
           過去案件一覧
         </h1>
-        <button
-          onClick={() => fetchCases(offset)}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-all disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          更新
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={industryMajorFilter}
+            onChange={e => setIndustryMajorFilter(e.target.value)}
+            placeholder="業種で絞り込み"
+            className="w-40 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-cyan-500/20"
+          />
+          <select
+            value={contractTypeFilter}
+            onChange={e => setContractTypeFilter(e.target.value)}
+            className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-cyan-500/20"
+          >
+            <option value="">物件区分: すべて</option>
+            {CONTRACT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <button
+            onClick={() => fetchCases(offset)}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            更新
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -159,10 +185,20 @@ export default function CasesPage() {
                       <td className="px-4 py-3">
                         <div className="font-bold text-slate-800 truncate max-w-[160px]">{c.company_name || '—'}</div>
                         <div className="text-xs text-slate-400 font-mono">{c.company_no || c.id.slice(0, 8)}</div>
-                        <div className="mt-1">
+                        <div className="mt-1 flex flex-wrap gap-1">
                           <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">
                             {c.source || 'past_cases'}
                           </span>
+                          {c.industry_major && (
+                            <span className="inline-flex rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-black text-cyan-600">
+                              {c.industry_major}
+                            </span>
+                          )}
+                          {c.contract_type && c.contract_type !== '一般' && (
+                            <span className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-black text-violet-600">
+                              {c.contract_type}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{c.timestamp?.slice(0, 10) || '—'}</td>
