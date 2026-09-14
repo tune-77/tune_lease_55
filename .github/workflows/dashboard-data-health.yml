@@ -34,3 +34,10 @@ jobs:
             --attempts 3 \
             --retry-delay 10 \
             --timeout 20
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Dashboard Data Health"

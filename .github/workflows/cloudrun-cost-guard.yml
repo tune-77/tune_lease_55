@@ -102,3 +102,10 @@ jobs:
           if [ "${left_on}" != "0" ]; then
             exit 1
           fi
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Cloud Run Cost Guard"

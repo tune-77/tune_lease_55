@@ -32,6 +32,13 @@ jobs:
           safety check --json --output report.json || true
           cat report.json || echo "No vulnerabilities found"
 
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Security Scan / python-security"
+
   npm-security:
     name: NPM Dependency Scan
     runs-on: ubuntu-latest
@@ -52,6 +59,13 @@ jobs:
         working-directory: frontend
         run: npm audit --production --audit-level=moderate || true
 
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Security Scan / npm-security"
+
   dependency-check:
     name: OWASP Dependency Check
     runs-on: ubuntu-latest
@@ -67,3 +81,10 @@ jobs:
           args: >
             --scan .
             --exclude "node_modules,venv,.venv,tests,__pycache__,.git"
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Security Scan / dependency-check"

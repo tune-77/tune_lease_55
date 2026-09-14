@@ -49,6 +49,13 @@ jobs:
           echo "🔍 Docker Scout スキャンを実行..."
           docker scout cves tune-lease-55:latest --format=list 2>&1 || true
 
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Docker Image Security Scan / build-and-scan"
+
   scan-dockerfile:
     name: Dockerfile Best Practices
     runs-on: ubuntu-latest
@@ -66,3 +73,10 @@ jobs:
         with:
           dockerfile: Dockerfile.api
           ignore: DL3008,DL3009
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Docker Image Security Scan / scan-dockerfile"

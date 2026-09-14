@@ -56,3 +56,10 @@ jobs:
           echo "📊 ブランチクリーンアップ完了" >> $GITHUB_STEP_SUMMARY
           git fetch -q
           echo "現在のブランチ数: $(git branch -r | wc -l)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Cleanup Old Branches"

@@ -217,6 +217,13 @@ jobs:
             --region "${REGION}" \
             --format="value(status.url)"
 
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Deploy to Cloud Run / deploy-api"
+
   # ────────────────────────────────────────────────────────────────────
   # Job 2b: Frontend → tune-lease-55-web
   # ────────────────────────────────────────────────────────────────────
@@ -378,3 +385,10 @@ jobs:
             --project "${PROJECT_ID}" \
             --region "${REGION}" \
             --format="value(status.url)"
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Deploy to Cloud Run / deploy-web"
