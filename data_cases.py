@@ -55,13 +55,13 @@ def _open_db(path: str | None = None):
     if path is None:
         path = DB_PATH
     ensure_cloudrun_demo_db_seeded()
-    conn = sqlite3.connect(path, timeout=10)
+    conn = sqlite3.connect(path, timeout=20)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
     except sqlite3.OperationalError as exc:
         if "readonly" not in str(exc).lower():
             raise
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA busy_timeout=20000")
     try:
         conn.execute("PRAGMA synchronous=NORMAL")
     except sqlite3.OperationalError as exc:
