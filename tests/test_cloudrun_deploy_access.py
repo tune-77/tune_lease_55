@@ -46,6 +46,8 @@ if a[:3] == ["secrets", "describe", "PUBLIC_TUNNEL_AUTH"]:
     describe_result("PUBLIC_TUNNEL_AUTH", os.environ.get("TUNNEL_SECRET_STATE", "ok"))
 if a[:3] == ["secrets", "describe", "DASHBOARD_HEALTH_PROBE_TOKEN"]:
     describe_result("DASHBOARD_HEALTH_PROBE_TOKEN", os.environ.get("DASHBOARD_HEALTH_SECRET_STATE", "ok"))
+if a[:3] == ["secrets", "describe", "KNOWLEDGE_SYNC_PROBE_TOKEN"]:
+    describe_result("KNOWLEDGE_SYNC_PROBE_TOKEN", os.environ.get("KNOWLEDGE_SYNC_SECRET_STATE", "ok"))
 if a[:3] == ["run", "services", "describe"]:
     if "--format=json" in a:
         mode = os.environ["API_MODE"]
@@ -58,13 +60,14 @@ if a[:2] == ["run", "deploy"]:
 ''')
     gcloud.chmod(0o755)
     log = tmp_path / "args.json"
-    def run(script, mode, secret="ok", tunnel_secret="ok", dashboard_health_secret="ok"):
+    def run(script, mode, secret="ok", tunnel_secret="ok", dashboard_health_secret="ok", knowledge_sync_secret="ok"):
         log.unlink(missing_ok=True)
         result = subprocess.run(["bash", str(scripts / script)], env={**os.environ,
             "PATH": f"{tmp_path}:{os.environ['PATH']}", "PROJECT_ID": "test-project",
             "SHORT_SHA": "test", "CLOUDRUN_DATA_MODE": mode, "API_MODE": mode,
             "SECRET_STATE": secret, "TUNNEL_SECRET_STATE": tunnel_secret,
-            "DASHBOARD_HEALTH_SECRET_STATE": dashboard_health_secret, "DEPLOY_ARGS": str(log),
+            "DASHBOARD_HEALTH_SECRET_STATE": dashboard_health_secret,
+            "KNOWLEDGE_SYNC_SECRET_STATE": knowledge_sync_secret, "DEPLOY_ARGS": str(log),
         }, capture_output=True, text=True, timeout=20)
         return result, json.loads(log.read_text()) if log.exists() else []
     return run
@@ -181,6 +184,31 @@ def test_dashboard_health_probe_token_skipped_when_truly_missing(deploy):
     last_secrets_value = args[secrets_indices[-1] + 1]
     assert "DASHBOARD_HEALTH_PROBE_TOKEN" not in last_secrets_value
     assert "Secret Manager secret DASHBOARD_HEALTH_PROBE_TOKEN was not found" in result.stderr
+
+
+def test_knowledge_sync_probe_token_wired_despite_permission_denied(deploy):
+    """KNOWLEDGE_SYNC_PROBE_TOKENも同じ理由(describe権限が無いだけ)で配線を
+    諦めない。DASHBOARD_HEALTH_PROBE_TOKENと全く同じ構造のバグが
+    KNOWLEDGE_SYNC_PROBE_TOKEN側にもあったため同じ修正を適用した。
+    """
+    result, args = deploy("deploy_cloud_run_web.sh", "production", knowledge_sync_secret="denied")
+
+    assert result.returncode == 0, result.stderr
+    secrets_indices = [i for i, v in enumerate(args) if v == "--set-secrets"]
+    last_secrets_value = args[secrets_indices[-1] + 1]
+    assert "KNOWLEDGE_SYNC_PROBE_TOKEN=KNOWLEDGE_SYNC_PROBE_TOKEN:latest" in last_secrets_value
+    assert "PERMISSION_DENIED" in result.stderr, "本当のgcloudエラーが出ていない"
+
+
+def test_knowledge_sync_probe_token_skipped_when_truly_missing(deploy):
+    """本当にNOT_FOUNDの時だけ配線をスキップし、デプロイ自体は止めない（任意扱い）。"""
+    result, args = deploy("deploy_cloud_run_web.sh", "production", knowledge_sync_secret="missing")
+
+    assert result.returncode == 0, result.stderr
+    secrets_indices = [i for i, v in enumerate(args) if v == "--set-secrets"]
+    last_secrets_value = args[secrets_indices[-1] + 1]
+    assert "KNOWLEDGE_SYNC_PROBE_TOKEN" not in last_secrets_value
+    assert "Secret Manager secret KNOWLEDGE_SYNC_PROBE_TOKEN was not found" in result.stderr
 
 
 def test_readiness_check_accepts_shared_secret_helper_wiring():
