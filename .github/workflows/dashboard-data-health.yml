@@ -26,6 +26,8 @@ jobs:
           python-version: "3.11"
 
       - name: Check production dashboard health
+        env:
+          DASHBOARD_HEALTH_PROBE_TOKEN: ${{ secrets.DASHBOARD_HEALTH_PROBE_TOKEN }}
         run: |
           python scripts/check_dashboard_stats_health.py \
             --base-url "https://tune-lease-55-web-6mijhyebkq-an.a.run.app" \
