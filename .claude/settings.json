@@ -1,6 +1,7 @@
 {
   "enabledPlugins": {
-    "claude-code-harness@claude-code-harness-marketplace": true
+    "claude-code-harness@claude-code-harness-marketplace": true,
+    "security-guidance@knowledge-work-plugins": true
   },
   "hooks": {
     "PreToolUse": [
