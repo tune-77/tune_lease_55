@@ -33,7 +33,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TARGET_WORKFLOW: pr-checks.yml
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Ensure pr-checks ran for master HEAD
         run: |
