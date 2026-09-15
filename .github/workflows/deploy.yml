@@ -119,7 +119,7 @@ jobs:
           # credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # シークレット検証はビルドより前に置く。ビルドの後に置くと、キーの設定漏れや
       # 権限不足が17分のビルドを待たないと分からず、1回の切り分けに17分かかる
@@ -252,7 +252,7 @@ jobs:
           # credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # シークレット検証はビルドより前に置く（API側と同じ理由。deploy-api ジョブの
       # 同名ステップのコメント参照）。PUBLIC_TUNNEL_AUTHもここで検証するのは、
