@@ -23,7 +23,7 @@ jobs:
       - name: Run full test suite with coverage
         run: |
           set -o pipefail
-          python -m pytest tests/ -m "not external" \
+          python -m pytest tests/ -m "not external" -n auto \
             -v --tb=short --cov=. --cov-report=term-missing \
             --cov-report=json --cov-report=html \
             2>&1 | tee test-report.txt
