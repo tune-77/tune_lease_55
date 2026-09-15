@@ -55,7 +55,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       wif: ${{ steps.wif.outputs.configured }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -107,7 +107,7 @@ jobs:
       SERVICE_NAME: tune-lease-55-api
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── GCP 認証 (WIF) ──────────────────────────────────────────────
       - name: Authenticate to GCP
@@ -241,7 +241,7 @@ jobs:
       API_SERVICE_NAME: tune-lease-55-api
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── GCP 認証 (WIF) ──────────────────────────────────────────────
       - name: Authenticate to GCP
