@@ -1427,6 +1427,38 @@ def _record_screening_result_task(case_id: str, result: dict) -> None:
         print(f"[WARNING] screening_records 記録をスキップしました: {exc}")
 
 
+def _lease_intelligence_ignition_task(result: dict) -> None:
+    """リース知性体の着火: サブエージェント間の不整合を検知したら内省を起動する。
+
+    既存スコアリング結果のフィールドを読むだけ・審査レスポンスには影響しない。
+    PII混入を避けるため会社名等は渡さず、数値フィールドのみで判定する。
+    """
+    try:
+        from lease_intelligence_mind import detect_dissonance, register_ignition
+        from lease_news_digest import find_vault as _find_vault
+
+        _vault = _find_vault()
+        if _vault:
+            _signals = detect_dissonance(result)
+            if _signals:
+                register_ignition(_vault, _signals)
+    except Exception as _ignite_err:
+        print(f"[WARNING] lease-intelligence ignition skipped: {_ignite_err}")
+
+
+def _emotion_trigger_scoring_complete_task(result: dict) -> None:
+    """感情トリガー（REV-101）: 審査完了 or 高リスク承認"""
+    try:
+        from api.emotion_trigger import trigger_scoring_complete
+        trigger_scoring_complete(
+            score=float(result.get("score", 0.0)),
+            quantum_risk=result.get("quantum_risk"),
+            credit_quantum_strong_warning=bool(result.get("credit_quantum_strong_warning", False)),
+        )
+    except Exception as _et_err:
+        print(f"[EmotionTrigger] scoring skipped: {_et_err}")
+
+
 @app.post("/api/score/calculate", response_model=ScoringResponse)
 def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
     try:
@@ -1613,31 +1645,10 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
         )
         _record_scoring_memory_usage("score_full", inputs, result)
 
-        # リース知性体の着火: サブエージェント間の不整合を検知したら内省を起動する。
-        # 既存スコアリング結果のフィールドを読むだけ・審査レスポンスには影響しない完全非ブロッキング。
-        # PII混入を避けるため会社名等は渡さず、数値フィールドのみで判定する。
-        try:
-            from lease_intelligence_mind import detect_dissonance, register_ignition
-            from lease_news_digest import find_vault as _find_vault
-
-            _vault = _find_vault()
-            if _vault:
-                _signals = detect_dissonance(result)
-                if _signals:
-                    register_ignition(_vault, _signals)
-        except Exception as _ignite_err:
-            print(f"[WARNING] lease-intelligence ignition skipped: {_ignite_err}")
-
-        # 感情トリガー（REV-101）: 審査完了 or 高リスク承認
-        try:
-            from api.emotion_trigger import trigger_scoring_complete
-            trigger_scoring_complete(
-                score=float(result.get("score", 0.0)),
-                quantum_risk=result.get("quantum_risk"),
-                credit_quantum_strong_warning=bool(result.get("credit_quantum_strong_warning", False)),
-            )
-        except Exception as _et_err:
-            print(f"[EmotionTrigger] scoring skipped: {_et_err}")
+        # 審査レスポンスに影響しない後段処理はbackground_tasksへ退避し、
+        # プロキシのタイムアウト（120秒）までにレスポンスを返す時間を確保する。
+        background_tasks.add_task(_lease_intelligence_ignition_task, result)
+        background_tasks.add_task(_emotion_trigger_scoring_complete_task, result)
 
         return ScoringResponse(
             score=result.get("score", 0.0),
