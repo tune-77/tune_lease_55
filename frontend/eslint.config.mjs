@@ -51,6 +51,12 @@ const eslintConfig = defineConfig([
       // hooks の set-state in effect: 誤検知が多いため warn
       "react-hooks/set-state-in-effect": "warn",
 
+      // React Compiler系ルール（eslint-plugin-react-hooks 7.1.1で検出精度が上がり
+      // 既存コードでの検出が増えた。fixable=codeのため他ルールと同様warnに統一）
+      "react-hooks/immutability": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/static-components": "warn",
+
       // react/display-name: forwardRef 等で誤検知しやすいため off
       "react/display-name": "off",
 
