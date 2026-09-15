@@ -16,7 +16,7 @@ dependencies = [
     "umap-learn==0.5.7",
     # ── umap → pynndescent → llvmlite の macOS Intel wheel 制約 ──
     "llvmlite<0.44",
-    "numba<0.60",
+    "numba<0.68",
     "lightgbm==4.6.0",
     "reportlab==4.4.10",
     "requests==2.32.5",
