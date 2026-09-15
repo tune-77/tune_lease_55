@@ -59,7 +59,7 @@ jobs:
       contents: read
       id-token: write   # WIF に必須
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v3

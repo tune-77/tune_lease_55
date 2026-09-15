@@ -34,7 +34,7 @@ jobs:
       # 旧構成は PAT で checkout していたが、PAT の未設定/期限切れで
       # push が 403 になり 2026-08-15 以降のマージ全件（30回連続）で失敗し、
       # 台帳更新が毎回捨てられていた。シークレット1個の寿命に依存させない。
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: master
 
