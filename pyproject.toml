@@ -7,7 +7,7 @@ requires-python = ">=3.10,<3.13"
 dependencies = [
     # ── Streamlit メインアプリ ──
     "streamlit==1.54.0",
-    "pandas==2.3.0",
+    "pandas==2.3.3",
     "numpy==2.2.6",
     "plotly==6.3.0",
     "matplotlib==3.10.7",
