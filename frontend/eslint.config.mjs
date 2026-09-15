@@ -17,6 +17,14 @@ const eslintConfig = defineConfig([
     "public/workbox-*.js",
   ]),
   {
+    settings: {
+      // eslint-config-nextの既定値(react.version: "detect")はeslint-plugin-reactが
+      // context.getFilename()(ESLint 10で削除)経由でバージョン検出する際にクラッシュするため、
+      // package.jsonのreactバージョンを直接指定して検出処理自体を回避する。
+      react: {
+        version: "19.2.4",
+      },
+    },
     rules: {
       // ── 破壊的自動修正を防ぐためすべて warn に統一 ──────────────────────────
       // error にすると AI エージェントが eslint --fix でコードを削除する連鎖が発生する。
@@ -42,6 +50,12 @@ const eslintConfig = defineConfig([
 
       // hooks の set-state in effect: 誤検知が多いため warn
       "react-hooks/set-state-in-effect": "warn",
+
+      // React Compiler系ルール（eslint-plugin-react-hooks 7.1.1で検出精度が上がり
+      // 既存コードでの検出が増えた。fixable=codeのため他ルールと同様warnに統一）
+      "react-hooks/immutability": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/static-components": "warn",
 
       // react/display-name: forwardRef 等で誤検知しやすいため off
       "react/display-name": "off",

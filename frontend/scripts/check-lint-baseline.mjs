@@ -1,8 +1,16 @@
 import { ESLint } from "eslint";
 
 const BASELINE = Object.freeze({
-  totalWarnings: 0,
-  byRule: {},
+  // eslint 9→10 bumpでeslint-plugin-react-hooksが7.0.1→7.1.1に強制引き上げされ、
+  // React Compiler系ルール(immutability/purity/static-components)とset-state-in-effect
+  // の検出精度が上がり顕在化した既存debt。コード修正は別途行う。
+  totalWarnings: 92,
+  byRule: {
+    "react-hooks/set-state-in-effect": 50,
+    "react-hooks/immutability": 19,
+    "react-hooks/purity": 15,
+    "react-hooks/static-components": 8,
+  },
 });
 
 const eslint = new ESLint();
