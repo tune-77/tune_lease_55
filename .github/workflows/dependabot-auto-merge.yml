@@ -4,6 +4,10 @@ name: Dependabot Auto-Merge
 # のうち、パッチ・マイナー更新だけを自動マージする。メジャー更新は破壊的変更の
 # 可能性があるため対象外にし、コメントを残して人間のレビューに委ねる。
 #
+# 例外: package-ecosystem が github-actions のメジャー更新は自動マージ対象に含める。
+# .github/workflows/ で使うactions自体のバージョンはCIインフラのみに影響し、
+# アプリ実行時コードには触れないため。
+#
 # 前提（リポジトリ設定・手動で一度だけ行う必要がある。ワークフローからは変更不可）:
 #   1. Settings → General → Pull Requests → "Allow auto-merge" を有効化する。
 #      無効なままだと enable_pr_auto_merge 相当のAPIが失敗し、このジョブは
@@ -37,15 +41,15 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Enable auto-merge (patch/minor updates only)
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+      - name: Enable auto-merge (patch/minor, or GitHub Actions major updates)
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major' || steps.metadata.outputs.package-ecosystem == 'github-actions'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr merge --auto --merge "$PR_URL"
 
       - name: Flag major updates for manual review
-        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major' && steps.metadata.outputs.package-ecosystem != 'github-actions'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
