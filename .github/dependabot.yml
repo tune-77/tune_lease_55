@@ -9,7 +9,6 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
       - "frontend"
     commit-message:
       prefix: "chore"
@@ -23,7 +22,6 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
       - "backend"
     commit-message:
       prefix: "chore"
@@ -36,9 +34,6 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "ci"
     commit-message:
       prefix: "chore"
       include: "scope"
