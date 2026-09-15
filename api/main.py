@@ -1548,6 +1548,11 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             result["engine_source"] = "legacy_streamlit"
         else:
             result = run_full_api_scoring(inputs)
+        # BackgroundTasksは例外発生時に後続タスクの実行を打ち切るため（starlette.background.
+        # BackgroundTasks.__call__はタスクごとのtry/exceptを持たない）、他のタスクの成否に
+        # 依存させないよう最初に積む。
+        background_tasks.add_task(_lease_intelligence_ignition_task, result)
+        background_tasks.add_task(_emotion_trigger_scoring_complete_task, result)
         background_tasks.add_task(
             record_scoring_anomalies, result, inputs.get("company_no") or inputs.get("company_name") or ""
         )
@@ -1644,11 +1649,6 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
             },
         )
         _record_scoring_memory_usage("score_full", inputs, result)
-
-        # 審査レスポンスに影響しない後段処理はbackground_tasksへ退避し、
-        # プロキシのタイムアウト（120秒）までにレスポンスを返す時間を確保する。
-        background_tasks.add_task(_lease_intelligence_ignition_task, result)
-        background_tasks.add_task(_emotion_trigger_scoring_complete_task, result)
 
         return ScoringResponse(
             score=result.get("score", 0.0),
