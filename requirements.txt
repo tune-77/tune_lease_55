@@ -1,9 +1,9 @@
 # Streamlit アプリ依存パッケージ
 # バージョンは動作確認済み環境（2026-03）に固定
 streamlit==1.54.0
-pandas==2.3.0
-numpy==1.26.4
-plotly==6.3.0
+pandas==2.3.3
+numpy==2.2.6
+plotly==7.0.0
 matplotlib==3.10.7
 seaborn==0.13.2
 scikit-learn==1.7.2

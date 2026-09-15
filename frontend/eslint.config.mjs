@@ -17,6 +17,14 @@ const eslintConfig = defineConfig([
     "public/workbox-*.js",
   ]),
   {
+    settings: {
+      // eslint-config-nextの既定値(react.version: "detect")はeslint-plugin-reactが
+      // context.getFilename()(ESLint 10で削除)経由でバージョン検出する際にクラッシュするため、
+      // package.jsonのreactバージョンを直接指定して検出処理自体を回避する。
+      react: {
+        version: "19.2.4",
+      },
+    },
     rules: {
       // ── 破壊的自動修正を防ぐためすべて warn に統一 ──────────────────────────
       // error にすると AI エージェントが eslint --fix でコードを削除する連鎖が発生する。
