@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -136,6 +137,17 @@ def main() -> int:
         promote_fn=_promote_judgment_asset_candidate_to_canonical,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    # 昇格対象があったのに全件失敗した場合は、人間昇格と同じ経路
+    # （_promote_judgment_asset_candidate_to_canonical）が壊れているサインなので
+    # 異常終了にする。対象自体が0件の日は正常（厳しい昇格条件のため珍しくない）。
+    if result["eligible_count"] > 0 and result["promoted_count"] == 0:
+        print(
+            "警告: auto_apply対象があったのに1件も昇格できませんでした"
+            f"（eligible={result['eligible_count']}, errors={result['error_count']}）。"
+            "昇格経路（_promote_judgment_asset_candidate_to_canonical）を確認してください。",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
