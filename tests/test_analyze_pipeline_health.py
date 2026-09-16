@@ -98,6 +98,106 @@ def test_resolve_recovered_entries_closes_retired_non_blocking_step():
     assert "任意配布ステップ" in ledger[0]["resolution_reason"]
 
 
+def test_resolution_cutoff_picks_latest_matching_resolved_at():
+    ledger = [
+        {
+            "status": "stale_resolved",
+            "source": "analyze_pipeline_health",
+            "description": "[パイプライン自動検出] eval_shion_memory_recall が過去7日で失敗率75%",
+            "resolved_at": "2026-09-10T10:32:50Z",
+        },
+        {
+            "status": "stale_resolved",
+            "source": "analyze_pipeline_health",
+            "description": "[パイプライン自動検出] eval_shion_memory_recall が過去7日で失敗率69%",
+            "resolved_at": "2026-09-16T10:00:00Z",
+        },
+        {
+            "status": "pending_review",
+            "source": "analyze_pipeline_health",
+            "description": "[パイプライン自動検出] eval_shion_memory_recall が過去7日で失敗率69%",
+            "resolved_at": "2026-09-17T00:00:00Z",
+        },
+    ]
+
+    cutoff = health_mod.resolution_cutoff(ledger, "eval_shion_memory_recall")
+
+    assert cutoff == "2026-09-16T10:00:00Z"
+
+
+def test_resolution_cutoff_empty_when_no_resolution_recorded():
+    ledger = [
+        {
+            "status": "pending_review",
+            "source": "analyze_pipeline_health",
+            "description": "[パイプライン自動検出] eval_shion_memory_recall が過去7日で失敗率69%",
+        }
+    ]
+
+    assert health_mod.resolution_cutoff(ledger, "eval_shion_memory_recall") == ""
+
+
+def test_aggregate_ignores_entries_before_last_resolution_cutoff():
+    """REV-304a→REV-392a再発の再発防止: 解決(resolved_at)より前の失敗ログは、
+    コード修正後の再判定に持ち込まない。"""
+    entries = [
+        {"ts": "2026-09-05T19:00:00Z", "run_date": "20260906", "step": "eval_shion_memory_recall", "exit_code": 1},
+        {"ts": "2026-09-06T19:00:00Z", "run_date": "20260907", "step": "eval_shion_memory_recall", "exit_code": 1},
+        {"ts": "2026-09-17T19:00:00Z", "run_date": "20260918", "step": "eval_shion_memory_recall", "exit_code": 0},
+    ]
+    cutoffs = {"eval_shion_memory_recall": "2026-09-16T10:00:00Z"}
+
+    counts = health_mod.aggregate(entries, cutoffs)
+
+    assert counts["eval_shion_memory_recall"]["bad"] == 0
+    assert counts["eval_shion_memory_recall"]["good"] == 1
+
+
+def test_main_does_not_reopen_step_from_pre_resolution_failures(tmp_path, monkeypatch):
+    """すでにstale_resolvedなステップは、解決前の失敗ログだけが7日ウィンドウに
+    残っていても重複REVを起票しない（REV-304a→REV-392a型の重複再発防止）。"""
+    log_path = tmp_path / "pipeline_step_log.jsonl"
+    ledger_path = tmp_path / "ledger_rules.json"
+    step = "eval_shion_memory_recall"
+    run_date = datetime.now(timezone.utc).strftime("%Y%m%d")
+
+    entries = [
+        {"ts": "2026-09-05T19:00:00Z", "run_date": run_date, "step": step, "exit_code": 1},
+        {"ts": "2026-09-06T19:00:00Z", "run_date": run_date, "step": step, "exit_code": 1},
+        {"ts": "2026-09-07T19:00:00Z", "run_date": run_date, "step": step, "exit_code": 1},
+    ]
+    log_path.write_text(
+        "\n".join(json.dumps(e, ensure_ascii=False) for e in entries) + "\n",
+        encoding="utf-8",
+    )
+    ledger_path.write_text(
+        json.dumps(
+            [
+                {
+                    "rev_id": "REV-392a",
+                    "status": "stale_resolved",
+                    "pending_review": False,
+                    "source": "analyze_pipeline_health",
+                    "description": f"[パイプライン自動検出] {step} が過去7日で失敗率69%（9/13件, 5日失敗）",
+                    "resolved_at": "2099-01-01T00:00:00Z",
+                }
+            ],
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(health_mod, "LOG_FILE", log_path)
+    monkeypatch.setattr(health_mod, "LEDGER_FILE", ledger_path)
+
+    health_mod.main()
+
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    assert len(ledger) == 1
+    assert ledger[0]["rev_id"] == "REV-392a"
+
+
 def test_main_persists_recovered_entries_even_without_new_penalties(tmp_path, monkeypatch):
     """復旧済み整理は、新規の失敗率超過がない日にも保存される。"""
     log_path = tmp_path / "pipeline_step_log.jsonl"

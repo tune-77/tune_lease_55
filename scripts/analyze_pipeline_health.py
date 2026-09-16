@@ -57,16 +57,39 @@ def load_recent_logs():
     return entries
 
 
-def aggregate(entries):
+def resolution_cutoff(ledger: list, step: str) -> str:
+    """当該ステップについてledger上で直近に解決済みとされたresolved_atを返す（無ければ空文字）。
+
+    REV-304a→REV-392aのように、コード修正で直った後も7日ウィンドウに残る
+    修正前の失敗ログだけで同一ステップが再度penalty_stepsに乗り、重複REVが
+    起票される再発を防ぐためのアンカー。"""
+    latest = ""
+    for entry in ledger:
+        if entry.get("status") not in {"resolved", "stale_resolved"}:
+            continue
+        if step not in str(entry.get("description") or ""):
+            continue
+        resolved_at = str(entry.get("resolved_at") or "")
+        if resolved_at > latest:
+            latest = resolved_at
+    return latest
+
+
+def aggregate(entries, cutoffs: dict | None = None):
+    cutoffs = cutoffs or {}
     counts = defaultdict(lambda: {"good": 0, "bad": 0, "bad_days": set(), "latest_exit_code": None, "latest_ts": ""})
     for e in entries:
         step = e.get("step", "unknown")
+        ts = str(e.get("ts") or "")
+        cutoff = cutoffs.get(step, "")
+        if cutoff and ts and ts <= cutoff:
+            # 直近の解決（コード修正の反映含む）より前のログは再検出の判定に含めない
+            continue
         if e.get("exit_code", 1) == 0:
             counts[step]["good"] += 1
         else:
             counts[step]["bad"] += 1
             counts[step]["bad_days"].add(e.get("run_date", ""))
-        ts = str(e.get("ts") or "")
         if ts >= counts[step]["latest_ts"]:
             counts[step]["latest_ts"] = ts
             counts[step]["latest_exit_code"] = e.get("exit_code", 1)
@@ -128,7 +151,10 @@ def main():
     if not entries:
         return
 
-    counts = aggregate(entries)
+    ledger = load_ledger()
+    steps_seen = {e.get("step", "unknown") for e in entries}
+    cutoffs = {step: cutoff for step in steps_seen if (cutoff := resolution_cutoff(ledger, step))}
+    counts = aggregate(entries, cutoffs)
 
     penalty_steps = []
     for step, c in counts.items():
@@ -141,7 +167,6 @@ def main():
         if rate >= FAILURE_RATE_THRESHOLD:
             penalty_steps.append((step, c["bad"], total, rate, len(c["bad_days"])))
 
-    ledger = load_ledger()
     base_rev = max_rev_number(load_all_rev_sources())
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     resolved = resolve_recovered_entries(ledger, counts, now_iso)
