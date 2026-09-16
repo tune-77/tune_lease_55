@@ -24,6 +24,10 @@ MEMORY_FILE = PROJECT_ROOT / "MEMORY.md"
 PERSISTENT_MEMORY_FILE = PROJECT_ROOT / "PERSISTENT_MEMORY.md"
 STATE_FILE = MEMORY_DIR / "memory_sync_state.json"
 
+# この件数以上、直近日次ファイルに `## Promotable Items` が連続で無いと
+# 自動昇格が無音で止まる（2026-08-22〜09-12に3週間以上発生した実例）。
+STALE_STREAK_THRESHOLD = 3
+
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 _SECTION_RE = re.compile(
     r"^##\s+Promotable Items\s*$\n(.*?)(?=^##\s+|\Z)",
@@ -107,6 +111,37 @@ def _extract_promotions(path: Path) -> list[Promotion]:
     return promotions
 
 
+def _has_promotable_section(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return _SECTION_RE.search(text) is not None
+
+
+def _list_daily_paths() -> list[Path]:
+    paths = []
+    for path in sorted(MEMORY_DIR.glob("*.md")):
+        if path.name == "TEMPLATE.md":
+            continue
+        if path.name == MEMORY_FILE.name:
+            continue
+        if not _DATE_RE.match(path.name):
+            continue
+        paths.append(path)
+    return paths
+
+
+def _trailing_stale_streak(daily_paths: list[Path]) -> list[Path]:
+    """`## Promotable Items` を欠く直近日次ファイルを新しい順に返す（見つかった時点で止める）。"""
+    stale: list[Path] = []
+    for path in reversed(daily_paths):
+        if _has_promotable_section(path):
+            break
+        stale.append(path)
+    return stale
+
+
 def _extract_existing_keys(memory_text: str) -> set[str]:
     keys: set[str] = set()
     for line in memory_text.splitlines():
@@ -139,17 +174,12 @@ def sync_memory(dry_run: bool = False) -> dict[str, int]:
     persistent_text = _load_memory_text(PERSISTENT_MEMORY_FILE)
     existing_keys = _extract_existing_keys(memory_text) | _extract_existing_keys(persistent_text)
 
+    daily_paths = _list_daily_paths()
     promotions: list[Promotion] = []
-    scanned = 0
-    for path in sorted(MEMORY_DIR.glob("*.md")):
-        if path.name == "TEMPLATE.md":
-            continue
-        if path.name == MEMORY_FILE.name:
-            continue
-        if not _DATE_RE.match(path.name):
-            continue
-        scanned += 1
+    for path in daily_paths:
         promotions.extend(_extract_promotions(path))
+    scanned = len(daily_paths)
+    stale_paths = _trailing_stale_streak(daily_paths)
 
     new_promotions: list[Promotion] = []
     persistent_promotions: list[Promotion] = []
@@ -192,6 +222,8 @@ def sync_memory(dry_run: bool = False) -> dict[str, int]:
         "persistent_promoted": len(persistent_promotions),
         "judgment_asset_candidates": judgment_asset_candidates,
         "skipped": max(0, len(promotions) - len(new_promotions)),
+        "stale_note_streak": len(stale_paths),
+        "stale_note_files": [p.name for p in reversed(stale_paths)],
     }
 
 
@@ -202,6 +234,16 @@ def main() -> int:
 
     result = sync_memory(dry_run=args.dry_run)
     print(json.dumps(result, ensure_ascii=False))
+
+    streak = result.get("stale_note_streak", 0)
+    if streak >= STALE_STREAK_THRESHOLD:
+        files = ", ".join(result.get("stale_note_files", []))
+        print(
+            f"警告: 直近{streak}件の日次メモに `## Promotable Items` が無く、自動昇格が拾えていません: {files}"
+            "（memory-maintenance skillで手動棚卸しするか、memory/TEMPLATE.mdの形式に戻してください）",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
