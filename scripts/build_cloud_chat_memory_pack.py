@@ -244,12 +244,14 @@ def collect_mid_term_memory(limit: int = 6, days: int = 5) -> list[str]:
     """Cloud Runチャットに持たせる最近数日の継続論点を抽出する。"""
     try:
         from scripts.build_shion_timeline_delta import build_timeline_delta
-    except Exception:
+    except Exception as exc:
+        print(f"警告: build_shion_timeline_delta をimportできませんでした: {type(exc).__name__}", file=sys.stderr)
         return []
 
     try:
         payload = build_timeline_delta(STATE_DIR, datetime.now().date(), days=days)
-    except Exception:
+    except Exception as exc:
+        print(f"警告: build_timeline_delta が失敗しました（中期継続論点は今回0件扱い）: {type(exc).__name__}", file=sys.stderr)
         return []
 
     layer = payload.get("memory_layers") or {}
