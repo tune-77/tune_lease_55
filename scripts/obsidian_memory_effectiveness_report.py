@@ -375,8 +375,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    knowledge_dir = args.knowledge_dir.expanduser()
     payload = build_report(
-        knowledge_dir=args.knowledge_dir.expanduser(),
+        knowledge_dir=knowledge_dir,
         memory_index=_read_json(args.memory_index.expanduser()),
         feedback_rows=_read_jsonl(args.feedback_jsonl.expanduser()),
         okf_eval=_read_json(args.okf_eval_json.expanduser()),
@@ -393,6 +394,14 @@ def main() -> int:
         f"used={summary['used']} validated={summary['validated']} noisy={summary['noisy']}"
     )
     print(f"report: {args.output_md}")
+
+    if knowledge_dir.exists() and summary["total"] == 0:
+        print(
+            f"警告: knowledge_dir {knowledge_dir} は存在するがノートが1件も見つかりませんでした。"
+            "list_vault_md_filesの探索パスや命名規則のドリフトを疑ってください。",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

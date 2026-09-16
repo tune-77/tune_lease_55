@@ -502,7 +502,7 @@ def write_report(materials: list[dict[str, Any]], *, end_date: dt.date, days: in
     }
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description="Build judgment materials preview from recent Obsidian conversation notes")
     parser.add_argument("--date", default=dt.date.today().isoformat(), help="End date YYYY-MM-DD")
     parser.add_argument("--days", type=int, default=3)
@@ -513,6 +513,7 @@ def main() -> None:
     end_date = dt.date.fromisoformat(args.date)
     vault = Path(args.vault).expanduser() if args.vault else _vault_path()
     days = max(1, args.days)
+    source_files = _source_files(vault, end_date, days)
     materials = extract_materials(vault=vault, end_date=end_date, days=days)
     output_path = Path(args.output)
     write_jsonl(output_path, materials)
@@ -529,6 +530,16 @@ def main() -> None:
         )
     )
 
+    if len(source_files) >= 3 and not materials:
+        print(
+            f"警告: 会話ログ{len(source_files)}件を走査したがmaterialsが0件でした。"
+            "_extract_sections()の見出しパターン(`### User`/`### Assistant`等)や"
+            "分類用語リストのドリフトを疑ってください。",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

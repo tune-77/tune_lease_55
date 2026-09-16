@@ -135,13 +135,20 @@ def load_documents() -> list[dict[str, str]]:
     return iter_indexed_obsidian_documents(include_chat_logs=True, max_chars=1600)
 
 
+# この件数以上ドキュメントを読めているのに、CHAT_LOG_MARKERSに一致する
+# パスが1件もなければドリフトを疑う（パス命名規則の変更等）。
+MIN_DOCS_FOR_DRIFT_CHECK = 10
+
+
 def build_queue(limit: int) -> dict[str, Any]:
     docs = load_documents()
+    candidate_source_docs = 0
     candidates: list[dict[str, Any]] = []
     for doc in docs:
         path = str(doc.get("path") or "")
         if not path or not is_candidate_source(path):
             continue
+        candidate_source_docs += 1
         score, reasons = score_document(doc)
         if score < 20:
             continue
@@ -175,6 +182,8 @@ def build_queue(limit: int) -> dict[str, Any]:
         "status": "READY" if queued else "EMPTY",
         "items": queued,
         "skipped_source_notes": [item["source_note"] for item in candidates[limit:]],
+        "total_docs": len(docs),
+        "candidate_source_docs": candidate_source_docs,
     }
 
 
@@ -192,7 +201,7 @@ def update_latest(latest_path: Path, queue_path: Path, queue: dict[str, Any]) ->
     dump_json(latest_path, latest)
 
 
-def main() -> None:
+def main() -> int:
     root = repo_root()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--latest", type=Path, default=root / "reports" / "latest.json")
@@ -207,16 +216,24 @@ def main() -> None:
 
     if args.dry_run:
         print(json.dumps(queue, ensure_ascii=False, indent=2))
-        return
+    else:
+        dump_json(output_path, queue)
+        update_latest(args.latest, output_path, queue)
+        print(
+            "Wiki promotion queue: "
+            f"{queue['queued_count']} queued / {queue['candidate_count']} candidates "
+            f"({output_path})"
+        )
 
-    dump_json(output_path, queue)
-    update_latest(args.latest, output_path, queue)
-    print(
-        "Wiki promotion queue: "
-        f"{queue['queued_count']} queued / {queue['candidate_count']} candidates "
-        f"({output_path})"
-    )
+    if queue["total_docs"] >= MIN_DOCS_FOR_DRIFT_CHECK and queue["candidate_source_docs"] == 0:
+        print(
+            f"警告: ドキュメント{queue['total_docs']}件を読めたのにCHAT_LOG_MARKERSに一致した"
+            "パスが0件でした。パス命名規則のドリフトを疑ってください。",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
