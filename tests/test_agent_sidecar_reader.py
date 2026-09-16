@@ -253,6 +253,43 @@ def test_unparseable_timestamp_is_stale(monkeypatch):
     assert reader.is_stale_for("scoring-audit", "") is True
 
 
+def test_main_warns_and_exits_nonzero_when_no_reports_found(tmp_path, monkeypatch, capsys):
+    """REPORT_ROOTは存在するのにレポートが1件もない場合、無条件exitのまま
+    無音停止しないことを確認する回帰テスト。"""
+    from scripts import agent_sidecar_reader as reader
+
+    project = tmp_path / "project"
+    report_root = project / ".claude" / "reports"
+    report_root.mkdir(parents=True)
+    out_md = project / "reports" / "agent_sidecar_brief.md"
+    out_json = project / "reports" / "agent_sidecar_brief.json"
+    monkeypatch.setattr(reader, "PROJECT_ROOT", project)
+    monkeypatch.setattr(reader, "REPORT_ROOT", report_root)
+    monkeypatch.setattr(reader, "OUT_MD", out_md)
+    monkeypatch.setattr(reader, "OUT_JSON", out_json)
+
+    exit_code = reader.main()
+
+    assert exit_code == 1
+    assert "見つかりませんでした" in capsys.readouterr().err
+
+
+def test_main_returns_zero_when_report_root_missing(tmp_path, monkeypatch):
+    """REPORT_ROOT自体が無い（初回起動等）場合は誤検知せず正常終了する。"""
+    from scripts import agent_sidecar_reader as reader
+
+    project = tmp_path / "project"
+    report_root = project / ".claude" / "reports"
+    out_md = project / "reports" / "agent_sidecar_brief.md"
+    out_json = project / "reports" / "agent_sidecar_brief.json"
+    monkeypatch.setattr(reader, "PROJECT_ROOT", project)
+    monkeypatch.setattr(reader, "REPORT_ROOT", report_root)
+    monkeypatch.setattr(reader, "OUT_MD", out_md)
+    monkeypatch.setattr(reader, "OUT_JSON", out_json)
+
+    assert reader.main() == 0
+
+
 def test_trigger_paths_reference_existing_files():
     """担当ファイルの綴り間違いを検出する（glob 指定は対象外）。"""
     from scripts import agent_sidecar_reader as reader
