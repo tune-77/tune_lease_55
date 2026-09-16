@@ -424,11 +424,17 @@ const pushImprovementItemLines = (lines: string[], item: DialogueImprovementItem
 const classifyPmImprovementItems = (items: DialogueImprovementItem[]) => {
   const actionable: DialogueImprovementItem[] = [];
   const later: DialogueImprovementItem[] = [];
+  const seenKeys = new Set<string>();
   for (const item of items) {
     const status = String(item.status || "").toUpperCase();
     const text = `${item.title || ""} ${item.reason || ""} ${item.detail || ""} ${item.category || ""}`.toLowerCase();
     if (!["NEEDS_REVIEW", "AUTO_FIX_CANDIDATE", "RULE_REVIEW"].includes(status)) {
       continue;
+    }
+    const dedupeKey = String(item.canonical_key || item.title || item.id || "").trim().toLowerCase();
+    if (dedupeKey) {
+      if (seenKeys.has(dedupeKey)) continue;
+      seenKeys.add(dedupeKey);
     }
     const risky =
       text.includes("db") ||
