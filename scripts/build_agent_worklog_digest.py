@@ -148,6 +148,12 @@ def _summarize_log(log: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# この件数以上、日次ノートが見つかっているのに作業録が1件も拾えないと、
+# WORKLOG_HEADING_RE の書式ドリフトを疑う（sync_memory_from_daily.pyと同型の
+# 「無音の書式依存＋無条件exit 0」を防ぐ）。
+MIN_NOTES_FOR_DRIFT_CHECK = 3
+
+
 def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]:
     paths = _daily_note_paths(vault, days)
     logs: list[dict[str, Any]] = []
@@ -162,6 +168,7 @@ def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]
         "days": days,
         "count": len(items),
         "source_count": len(logs),
+        "note_files_scanned": len(paths),
         "items": items,
         "policy": {
             "raw_chat_logs_excluded": True,
@@ -218,6 +225,14 @@ def main() -> int:
     print(f"agent_worklog_digest={digest['count']} source={digest['source_count']}")
     print(args.json)
     print(args.md)
+
+    if digest["note_files_scanned"] >= MIN_NOTES_FOR_DRIFT_CHECK and digest["source_count"] == 0:
+        print(
+            f"警告: 日次ノート{digest['note_files_scanned']}件を走査したが作業録が0件でした。"
+            "WORKLOG_HEADING_RE (`## HH:MM Codex|Claude Work Log`) の書式ドリフトを疑ってください。",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

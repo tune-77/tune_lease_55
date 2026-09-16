@@ -144,6 +144,19 @@ def _domain(_claim: str) -> str:
     return "lease_screening"
 
 
+def _count_candidate_notes(vault: Path) -> int:
+    """review_status: needs_human_review のノート数（SECTION_PATTERNの書式ドリフト検知用）。"""
+    source_dir = vault / SOURCE_DIR
+    if not source_dir.exists():
+        return 0
+    count = 0
+    for path in source_dir.glob("*.md"):
+        frontmatter = _parse_frontmatter(_read_text(path))
+        if frontmatter.get("review_status") == "needs_human_review":
+            count += 1
+    return count
+
+
 def extract_materials(*, vault: Path) -> list[dict[str, Any]]:
     materials: list[dict[str, Any]] = []
     seen_claims: set[tuple[str, str]] = set()
@@ -245,7 +258,7 @@ def write_report(materials: list[dict[str, Any]]) -> dict[str, str]:
     return {"latest_markdown": str(latest_md)}
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Bridge Vertex Distilled needs_human_review notes into judgment materials preview"
     )
@@ -270,6 +283,17 @@ def main() -> None:
         )
     )
 
+    if not materials:
+        candidate_notes = _count_candidate_notes(vault)
+        if candidate_notes > 0:
+            print(
+                f"警告: needs_human_reviewノートが{candidate_notes}件あるのにmaterialsが0件でした。"
+                "SECTION_PATTERN (`## Answer Summary`) の書式ドリフトを疑ってください。",
+                file=sys.stderr,
+            )
+            return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
