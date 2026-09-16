@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from api.dashboard_data_health import evaluate_dashboard_data_health
@@ -69,12 +70,12 @@ def test_hourly_workflow_uses_privacy_preserving_health_endpoint() -> None:
     )
 
     assert 'cron: "17 * * * *"' in workflow
-    # actions/checkout・setup-pythonのバージョンは他の全ワークフローと同じ値に統一
-    # 済み（CI棚卸し対応）。この行はcron/スクリプト呼び出し/エンドポイントの配線が
-    # 消えていないことを保証するためのものであり、特定のaction versionを保証するもの
-    # ではない。
-    assert "actions/checkout@v7" in workflow
-    assert "actions/setup-python@v5" in workflow
+    # actions/checkout・actions/setup-pythonの配線がワークフローから消えていない
+    # ことだけを保証する。バージョン番号は他ワークフローとの追従対象であり
+    # Dependabotの更新のたびに変わるため、特定のaction versionはここで固定しない
+    # （2026-09にv5→v7更新でこの行がハードコード起因で壊れた事故の再発防止）。
+    assert re.search(r"actions/checkout@v\d+", workflow)
+    assert re.search(r"actions/setup-python@v\d+", workflow)
     assert "python scripts/check_dashboard_stats_health.py" in workflow
     assert "tune-lease-55-web-6mijhyebkq-an.a.run.app" in workflow
     assert 'DEFAULT_PATH = "/api/dashboard/data-health"' in checker_source
