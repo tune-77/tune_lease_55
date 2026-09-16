@@ -776,6 +776,16 @@ def main() -> int:
     )
     print(f"saved: {args.output_json.expanduser()}")
     print(f"saved: {args.output_md.expanduser()}")
+    # report["status"] は係数/ガード/結果ループの実異常を既に区別して判定済み
+    # （0件と未計測を取り違えないようbuild_loop_metrics側で作り込まれている）。
+    # "attention" はそのうち重大なものなので、監視に乗せるため異常終了にする。
+    if report["status"] == "attention":
+        print(
+            "警告: loop_engineering healthが attention です: "
+            + " / ".join(report.get("recommendations", [])),
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

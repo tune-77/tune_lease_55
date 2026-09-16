@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -473,13 +474,29 @@ def main() -> int:
     args = parse_args()
     end_date = args.end_date
     start_date = args.start_date or _default_start(end_date)
+    growth_rows = _read_jsonl(args.growth_history_jsonl)
     payload = build_growth_evaluation(
         start_date=start_date,
         end_date=end_date,
-        growth_rows=_read_jsonl(args.growth_history_jsonl),
+        growth_rows=growth_rows,
         latest_snapshot=_latest_snapshot_from_report(args.growth_latest_json),
         feedback_rows=_read_jsonl(args.feedback_jsonl),
     )
+
+    # growth_history_jsonl に過去の記録があるのに、直近の対象期間だけ1件も
+    # 拾えていない（days_measured=0）場合は、日付フィールドの形式ドリフト等で
+    # 夜間バッチが実質止まっているシグナル。スコアが低いだけの"insufficient"
+    # 判定（period自体は取れている）とは区別し、履歴が丸ごと無い（運用開始
+    # 直後）場合も正常系として区別する。
+    if payload["period"]["days_measured"] == 0 and growth_rows:
+        print(
+            f"警告: {args.growth_history_jsonl} に履歴はあるのに、"
+            f"対象期間 {start_date}..{end_date} 内の記録が0件でした。"
+            "日付フィールドの形式ドリフトの可能性があります。",
+            file=sys.stderr,
+        )
+        return 1
+
     _write_json(args.output_json, payload)
     args.output_md.parent.mkdir(parents=True, exist_ok=True)
     args.output_md.write_text(build_markdown(payload), encoding="utf-8")

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -271,6 +272,11 @@ def main() -> int:
         print(f"status={report['status']}")
         print(f"warn={report.get('counts', {}).get('warn', 0)}")
         print(f"review={report.get('counts', {}).get('review', 0)}")
+    # scanned_files=0 は「監査対象を1件も読めなかった」状態で、findings=0（クリーン）とは
+    # 別物。DEFAULT_SCAN_TARGETSのパスが移動/リネームされると静かにここへ落ちるため検知する。
+    if report["scanned_files"] == 0:
+        print("警告: 監査対象ファイルを1件もスキャンできませんでした。scan targetsのパスを確認してください。", file=sys.stderr)
+        return 1
     return 0
 
 

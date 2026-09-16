@@ -338,6 +338,55 @@ def test_loop_metrics_escalates_on_guard_attention(tmp_path):
     assert any("安全ガード" in item for item in report["recommendations"])
 
 
+def test_main_fails_when_status_is_attention(monkeypatch, capsys, tmp_path):
+    """report['status']がattentionなのに常にexit 0では、この監視レポート自体が無音停止する。"""
+    from scripts import loop_metrics
+
+    fake_report = {"status": "attention", "recommendations": ["スコアリング係数/モデルのヘルスチェックに重大な異常があります"]}
+    monkeypatch.setattr(loop_metrics, "build_loop_metrics", lambda **kwargs: fake_report)
+    monkeypatch.setattr(loop_metrics, "write_outputs", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "loop_metrics.py",
+            "--latest-report", str(tmp_path / "latest.json"),
+            "--recursive-report", str(tmp_path / "recursive.json"),
+            "--prompt-log", str(tmp_path / "prompt.jsonl"),
+            "--output-json", str(tmp_path / "out.json"),
+            "--output-md", str(tmp_path / "out.md"),
+        ],
+    )
+
+    exit_code = loop_metrics.main()
+
+    assert exit_code == 1
+    assert "attention" in capsys.readouterr().err
+
+
+def test_main_is_ok_when_status_is_warn_or_ok(monkeypatch, capsys, tmp_path):
+    """warn/okは正常な運用状態のバリエーションなので誤検知しない。"""
+    from scripts import loop_metrics
+
+    fake_report = {"status": "warn", "recommendations": ["needs_review が多いため棚卸しする"]}
+    monkeypatch.setattr(loop_metrics, "build_loop_metrics", lambda **kwargs: fake_report)
+    monkeypatch.setattr(loop_metrics, "write_outputs", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "loop_metrics.py",
+            "--latest-report", str(tmp_path / "latest.json"),
+            "--recursive-report", str(tmp_path / "recursive.json"),
+            "--prompt-log", str(tmp_path / "prompt.jsonl"),
+            "--output-json", str(tmp_path / "out.json"),
+            "--output-md", str(tmp_path / "out.md"),
+        ],
+    )
+
+    exit_code = loop_metrics.main()
+
+    assert exit_code == 0
+
+
 def test_build_outcome_health_counts_and_flags_net_worsening(tmp_path):
     from scripts.loop_metrics import build_outcome_health
 

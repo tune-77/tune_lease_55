@@ -6,6 +6,7 @@ from scripts.build_obsidian_memory_insight_report import (
     build_top_candidates,
     collect_candidates,
     load_notes,
+    main,
     render_markdown,
 )
 
@@ -116,6 +117,48 @@ def test_obsidian_memory_insight_limits_daily_to_user_preferences(tmp_path):
     assert candidates
     assert {item["candidate_type"] for item in candidates} == {"user_preference"}
     assert all(item["surface"] == "daily" for item in candidates)
+
+
+def test_main_warns_and_exits_nonzero_when_all_source_dirs_missing(tmp_path, monkeypatch, capsys):
+    """VaultのSOURCE_DIRS構成が丸ごとドリフトした（配下ディレクトリが1つも無い）場合、
+    無条件exit 0のまま無音停止しないことを確認する。"""
+    vault = tmp_path / "Obsidian Vault"
+    vault.mkdir()
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_obsidian_memory_insight_report.py",
+            "--vault", str(vault),
+            "--date", "2026-07-14",
+            "--output-jsonl", str(tmp_path / "out.jsonl"),
+            "--report", str(tmp_path / "report.md"),
+        ],
+    )
+
+    exit_code = main()
+
+    assert exit_code == 1
+    assert "想定ソースディレクトリが1つも見つかりません" in capsys.readouterr().err
+
+
+def test_main_returns_zero_when_source_dirs_exist_but_no_notes_in_range(tmp_path, monkeypatch):
+    """ソースディレクトリ自体はあるが、対象日付範囲にノートが単に無い日は誤検知せず正常終了する。"""
+    vault = tmp_path / "Obsidian Vault"
+    (vault / "Daily").mkdir(parents=True)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_obsidian_memory_insight_report.py",
+            "--vault", str(vault),
+            "--date", "2026-07-14",
+            "--output-jsonl", str(tmp_path / "out.jsonl"),
+            "--report", str(tmp_path / "report.md"),
+        ],
+    )
+
+    assert main() == 0
 
 
 def test_obsidian_memory_insight_skips_meta_operation_sentences(tmp_path):

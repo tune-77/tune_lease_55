@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -237,12 +238,24 @@ def main() -> int:
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
     args = parser.parse_args()
 
-    payload = build_checklist_candidates(load_report(args.historical_report.expanduser()))
+    report = load_report(args.historical_report.expanduser())
+    payload = build_checklist_candidates(report)
     write_outputs(payload, output_json=args.output_json.expanduser(), output_md=args.output_md.expanduser())
     print(
         "experience replay checklist candidates: "
         f"{payload['summary']['candidate_count']} -> {args.output_md.expanduser()}"
     )
+    # failed_cases=0 は「全件合格」の可能性があり良い意味のゼロなので検知しない。
+    # 検知するのは final.cases 自体が空/欠落しているケース（report は読めたのに
+    # 評価ケース総数が0件＝上位レポートのスキーマがドリフトして拾えていない疑い）。
+    all_cases = (report.get("final") or {}).get("cases") if isinstance(report.get("final"), dict) else None
+    if report and not all_cases:
+        print(
+            "[checklist_candidates] 警告: 履歴品質レポートは読めたが final.cases が空/欠落。"
+            "評価ケースの読み取りがドリフトした可能性がある",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

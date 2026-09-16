@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter, defaultdict
 from datetime import date, datetime
 from pathlib import Path
@@ -317,6 +318,7 @@ def build_review(
         }
         buckets[bucket].append(item)
 
+    mapped_feedback = sum(len(rows) for rows in rows_by_rule.values())
     summary = {
         "active_rules": len(rules),
         "grow": len(buckets["grow"]),
@@ -330,6 +332,10 @@ def build_review(
         "include_simulation": include_simulation,
         "feedback_drops": _feedback_drop_counts(feedback_drop_rows),
         "feedback_drops_total": len(feedback_drop_rows),
+        # rule_id/outcome の抽出に成功し、いずれかのactiveルールへ紐付いた件数。
+        # simulation除外後の行数がある程度あるのにこれが0なら抽出ロジックのドリフトを疑う。
+        "mapped_feedback": mapped_feedback,
+        "considered_feedback": mapped_feedback + unknown_feedback + invalid_feedback,
     }
     action_plan = _build_action_plan(buckets, summary, next_case_target_config)
     return {
@@ -457,6 +463,18 @@ def main() -> int:
     args.output_md.parent.mkdir(parents=True, exist_ok=True)
     args.output_md.write_text(build_markdown(payload), encoding="utf-8")
     print(f"wrote {args.output_md} and {args.output_json}")
+    summary = payload["summary"]
+    # フィードバック行はそれなりにあるのに、1件もactiveルールへ紐付かない（mapped=0）
+    # 場合は、rule_id/outcome の抽出ロジックが書式ドリフトで壊れている可能性が高い。
+    # フィードバック自体が少ない日は正常なので、一定件数以上の場合だけ検知する。
+    if summary["considered_feedback"] >= 5 and summary["mapped_feedback"] == 0:
+        print(
+            "警告: フィードバック行が"
+            f"{summary['considered_feedback']}件あるのに1件もactiveルールへ紐付きませんでした"
+            "（rule_id/outcome抽出の書式ドリフトの可能性）。",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

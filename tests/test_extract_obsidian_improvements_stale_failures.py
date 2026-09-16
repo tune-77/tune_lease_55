@@ -57,3 +57,43 @@ def test_non_failure_improvement_is_not_stale() -> None:
         "2026-06-13",
         today=dt.date(2026, 7, 15),
     )
+
+
+def _prepare_module_for_main(module, tmp_path, monkeypatch):
+    monkeypatch.setattr(module, "_get_vault_path", lambda: tmp_path)
+    monkeypatch.setattr(module, "OUTPUT_FILE", tmp_path / "obsidian_improvements_export.txt")
+    # AI統合は外部API依存なので、テストでは常に未使用(deduped素通し)にする
+    monkeypatch.setattr(module, "_load_consolidator", lambda: None)
+
+
+def test_main_exits_nonzero_when_index_has_content_but_extracts_nothing(tmp_path, monkeypatch, capsys) -> None:
+    # 見出し（未解決課題/Phase等）や絵文字マーカーに依存した抽出ロジックがドリフトすると、
+    # インデックスに実体があっても抽出結果が静かに0件になりうる。それを検知できること。
+    module = _load_module()
+    _prepare_module_for_main(module, tmp_path, monkeypatch)
+
+    index_file = tmp_path / "改善.md"
+    index_file.write_text(
+        "# 改善メモ\n\n"
+        + ("見出し形式が変わってしまい、抽出ロジックが拾えなくなった普通の説明文。" * 30)
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = module.main()
+
+    assert exit_code == 1
+    assert "警告" in capsys.readouterr().err
+
+
+def test_main_exits_zero_when_index_is_genuinely_empty(tmp_path, monkeypatch) -> None:
+    # インデックスファイル自体がほぼ空（新規/未使用）なら、抽出0件は誤検知ではなく正常。
+    module = _load_module()
+    _prepare_module_for_main(module, tmp_path, monkeypatch)
+
+    index_file = tmp_path / "改善.md"
+    index_file.write_text("# 改善策インデックス\n", encoding="utf-8")
+
+    exit_code = module.main()
+
+    assert exit_code == 0

@@ -1,3 +1,5 @@
+import sys
+
 from scripts import ops_friction_doctor as doctor
 
 
@@ -91,6 +93,39 @@ def test_write_report_creates_json_and_markdown(tmp_path, monkeypatch):
     assert json_path.exists()
     assert md_path.exists()
     assert "Ops Friction Doctor" in md_path.read_text(encoding="utf-8")
+
+
+def test_main_warns_and_exits_1_when_no_logs_scanned(tmp_path, monkeypatch, capsys):
+    """走査対象ログが1件も無い＝log-patternがドリフトした疑いを検知する。"""
+    monkeypatch.setattr(doctor, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["ops_friction_doctor.py", "--log-pattern", "nomatch/*.md"],
+    )
+
+    exit_code = doctor.main()
+
+    assert exit_code == 1
+    assert "log-pattern" in capsys.readouterr().err
+
+
+def test_main_returns_0_when_logs_scanned_but_no_friction_found(tmp_path, monkeypatch, capsys):
+    """findings=0（摩擦なし）は良い意味のゼロなので検知しない。"""
+    memory = tmp_path / "memory"
+    memory.mkdir()
+    (memory / "2026-08-25.md").write_text("今日は静かな一日でした\n", encoding="utf-8")
+    monkeypatch.setattr(doctor, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["ops_friction_doctor.py", "--log-pattern", "memory/*.md"],
+    )
+
+    exit_code = doctor.main()
+
+    assert exit_code == 0
+    assert capsys.readouterr().err == ""
 
 
 def test_cloudrun_sync_gap_ignores_plain_cloudrun_mentions(tmp_path, monkeypatch):
