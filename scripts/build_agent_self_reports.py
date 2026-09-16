@@ -442,6 +442,11 @@ def main() -> int:
         print(f"[self-report] {result.status:8} {report_dir} → {_rel(path)}")
 
     print(f"[self-report] 完了: {ok}/{len(targets)} 件が failure 以外")
+    # 個々の失敗理由はレポートファイルに書かれるだけで exit code には出ない設計。
+    # ただし全件 failure は「監査基盤ごと壊れている」signalなので、これだけは検知する。
+    if ok == 0:
+        print("[self-report] 警告: 対象監査が全件 failure。監査基盤自体が壊れている疑い", file=sys.stderr)
+        return 1
     return 0
 
 

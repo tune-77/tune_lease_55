@@ -3,6 +3,8 @@
 LLM も外部プロセスも使わないことが前提なので、監査本体は素直に検証できる。
 """
 
+import sys
+
 import pytest
 
 from scripts import build_agent_self_reports as selfrep
@@ -197,6 +199,41 @@ def test_no_previous_section_when_nothing_to_preserve(tmp_path):
     latest = (d / "latest.md").read_text(encoding="utf-8")
     assert selfrep.CARRIED_HEADING not in latest
     assert not (d / selfrep.PREVIOUS_NAME).exists()
+
+
+def test_main_warns_and_exits_1_when_every_check_fails(tmp_path, monkeypatch, capsys):
+    """全件failureは監査基盤ごと壊れている疑いなので検知する。"""
+    monkeypatch.setattr(selfrep, "REPORT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        selfrep,
+        "CHECKS",
+        {"broken-check": lambda: selfrep.CheckResult("broken", "t").fail("想定外")},
+    )
+    monkeypatch.setattr(sys, "argv", ["build_agent_self_reports.py"])
+
+    exit_code = selfrep.main()
+
+    assert exit_code == 1
+    assert "全件 failure" in capsys.readouterr().err
+
+
+def test_main_returns_0_when_some_checks_succeed(tmp_path, monkeypatch, capsys):
+    """一部failureは既存どおりレポートに書くだけで exit code は変えない。"""
+    monkeypatch.setattr(selfrep, "REPORT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        selfrep,
+        "CHECKS",
+        {
+            "ok-check": lambda: selfrep.CheckResult("ok", "t", summary="ok"),
+            "broken-check": lambda: selfrep.CheckResult("broken", "t").fail("想定外"),
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["build_agent_self_reports.py"])
+
+    exit_code = selfrep.main()
+
+    assert exit_code == 0
+    assert capsys.readouterr().err == ""
 
 
 def test_preserved_file_is_not_picked_up_as_a_report(tmp_path, monkeypatch):

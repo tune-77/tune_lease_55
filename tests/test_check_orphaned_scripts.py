@@ -1,6 +1,8 @@
 import subprocess
+import sys
 from pathlib import Path
 
+from scripts import check_orphaned_scripts as orphan_mod
 from scripts.check_orphaned_scripts import (
     build_report,
     discover_entry_point_scripts,
@@ -102,3 +104,46 @@ def test_build_report_flags_unwired_script_and_clears_once_wired(tmp_path: Path)
 
     report_after = build_report(root=root, generated_at="2026-01-01T00:00:00+00:00")
     assert report_after["summary"]["orphaned"] == 0
+
+
+def test_main_warns_and_exits_1_when_no_entry_point_scripts_found(tmp_path: Path, monkeypatch, capsys):
+    """scripts/*.py の走査自体が0件＝main guard正規表現/ディレクトリのドリフトを検知する。"""
+    root = tmp_path
+    (root / "scripts").mkdir()
+    (root / "tests").mkdir()
+    (root / "scripts" / "lib_only.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    _init_git_repo(root)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["check_orphaned_scripts.py", "--root", str(root), "--dry-run"],
+    )
+
+    exit_code = orphan_mod.main()
+
+    assert exit_code == 1
+    assert "エントリポイントスクリプト" in capsys.readouterr().err
+
+
+def test_main_returns_0_when_all_scripts_wired(tmp_path: Path, monkeypatch, capsys):
+    """orphaned=0（全件wired済み）は良い意味のゼロなので検知しない。"""
+    root = tmp_path
+    (root / "scripts").mkdir()
+    (root / "tests").mkdir()
+    script = root / "scripts" / "build_thing.py"
+    script.write_text("if __name__ == '__main__':\n    pass\n", encoding="utf-8")
+    (root / "tests" / "test_build_thing.py").write_text(
+        "from scripts.build_thing import main\n", encoding="utf-8"
+    )
+    (root / "scripts" / "run_daily.sh").write_text("python scripts/build_thing.py\n", encoding="utf-8")
+    _init_git_repo(root)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["check_orphaned_scripts.py", "--root", str(root), "--dry-run"],
+    )
+
+    exit_code = orphan_mod.main()
+
+    assert exit_code == 0
+    assert capsys.readouterr().err == ""

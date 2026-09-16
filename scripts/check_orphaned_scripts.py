@@ -18,6 +18,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -173,6 +174,16 @@ def main() -> int:
         f"wired={summary['wired']} "
         f"orphaned={summary['orphaned']}"
     )
+    # orphaned=0（孤児スクリプトなし）は良い意味のゼロなので検知しない。検知するのは
+    # scripts/*.py の走査自体が0件になるケース（main guard 正規表現やディレクトリが
+    # ドリフトして、何も走査できていない疑い）。
+    if summary["entry_point_scripts"] == 0:
+        print(
+            "[orphaned_scripts] 警告: エントリポイントスクリプトが1件も見つからなかった。"
+            "scripts/ 配下の走査がドリフトした疑い",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

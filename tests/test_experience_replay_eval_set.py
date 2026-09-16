@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from scripts import build_experience_replay_eval_set as replay
@@ -118,3 +119,64 @@ def test_write_outputs_and_daily_post_wiring(tmp_path):
     replay_pos = script.index("scripts/build_experience_replay_eval_set.py")
     ab_report_pos = script.index("scripts/build_judgment_asset_ab_report.py")
     assert flywheel_pos < replay_pos < ab_report_pos
+
+
+def test_main_warns_and_exits_1_when_candidates_produce_no_cases(tmp_path, monkeypatch, capsys):
+    """replay_eval_candidates は有るのにケース化が全滅＝関連語/query抽出のドリフトを検知する。"""
+    flywheel_path = tmp_path / "flywheel.json"
+    flywheel_path.write_text(
+        json.dumps(
+            {
+                "replay_eval_candidates": [
+                    {
+                        "id": "casual",
+                        "source": "prompt_feedback",
+                        "context": {"question": "横須賀に釣りに行く"},
+                        "scores": {"total": 8},
+                        "gate": {"priority": 70, "reason": "prompt changed"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    output_json = tmp_path / "eval.json"
+    output_md = tmp_path / "eval.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_experience_replay_eval_set.py",
+            "--flywheel-report", str(flywheel_path),
+            "--output-json", str(output_json),
+            "--output-md", str(output_md),
+        ],
+    )
+
+    exit_code = replay.main()
+
+    assert exit_code == 1
+    assert "ドリフト" in capsys.readouterr().err
+
+
+def test_main_returns_0_when_no_replay_candidates(tmp_path, monkeypatch, capsys):
+    """replay_eval_candidates 自体が無い日（ネガティブ/中立フィードバック無し）は正常。"""
+    flywheel_path = tmp_path / "flywheel.json"
+    flywheel_path.write_text(json.dumps({"replay_eval_candidates": []}), encoding="utf-8")
+    output_json = tmp_path / "eval.json"
+    output_md = tmp_path / "eval.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_experience_replay_eval_set.py",
+            "--flywheel-report", str(flywheel_path),
+            "--output-json", str(output_json),
+            "--output-md", str(output_md),
+        ],
+    )
+
+    exit_code = replay.main()
+
+    assert exit_code == 0
+    assert capsys.readouterr().err == ""

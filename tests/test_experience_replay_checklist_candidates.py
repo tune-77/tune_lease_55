@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from scripts import build_experience_replay_checklist_candidates as checklist
@@ -87,3 +88,60 @@ def test_checklist_outputs_and_daily_post_wiring(tmp_path):
     review_pos = script.index("scripts/review_experience_replay_checklist.py")
     ab_report_pos = script.index("scripts/build_judgment_asset_ab_report.py")
     assert historical_pos < checklist_pos < review_pos < ab_report_pos
+
+
+def test_main_warns_and_exits_1_when_final_cases_missing(tmp_path, monkeypatch, capsys):
+    """report は読めたのに final.cases が空/欠落＝上位レポートのドリフトを検知する。"""
+    report_path = tmp_path / "historical.json"
+    report_path.write_text(
+        json.dumps({"generated_at": "2026-09-01T00:00:00", "final": {"cases": []}}),
+        encoding="utf-8",
+    )
+    output_json = tmp_path / "out.json"
+    output_md = tmp_path / "out.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_experience_replay_checklist_candidates.py",
+            "--historical-report", str(report_path),
+            "--output-json", str(output_json),
+            "--output-md", str(output_md),
+        ],
+    )
+
+    exit_code = checklist.main()
+
+    assert exit_code == 1
+    assert "final.cases" in capsys.readouterr().err
+
+
+def test_main_returns_0_when_all_historical_cases_passed(tmp_path, monkeypatch, capsys):
+    """failed_cases=0 は「全件合格」の可能性がある良い意味のゼロなので検知しない。"""
+    report_path = tmp_path / "historical.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-09-01T00:00:00",
+                "final": {"cases": [{"id": "ok", "query": "通ったケース", "passed": True}]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    output_json = tmp_path / "out.json"
+    output_md = tmp_path / "out.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_experience_replay_checklist_candidates.py",
+            "--historical-report", str(report_path),
+            "--output-json", str(output_json),
+            "--output-md", str(output_md),
+        ],
+    )
+
+    exit_code = checklist.main()
+
+    assert exit_code == 0
+    assert capsys.readouterr().err == ""
