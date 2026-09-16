@@ -171,6 +171,10 @@ def llm_extract_candidates(
     - SHION_MEMORY_LLM_EXTRACT=0 で無効化。APIキー無し・失敗時は空を返す
     - kind="llm_extracted" で出すので、キューのMD上でルールベース抽出と
       拾い方の違いを比較できる。承認フローは同一（自動昇格しない）
+
+    Gemini呼び出しが例外で失敗した場合はstderrに警告を出す（無効化/対象
+    なしでの空とは区別できるようにする）。ルールベース抽出と並走する比較用
+    の補助機能のため、exit codeはこの失敗だけでは変えない。
     """
     if os.environ.get("SHION_MEMORY_LLM_EXTRACT", "1").strip().lower() in {"0", "false", "off"}:
         return []
@@ -202,7 +206,8 @@ def llm_extract_candidates(
         from api.loop_engineering_common import call_gemini_json
 
         result = call_gemini_json("\n".join(lines), temperature=0.2, max_output_tokens=2048)
-    except Exception:
+    except Exception as exc:
+        print(f"警告: llm_extract_candidates が失敗しました（LLM抽出は今回0件扱い）: {exc}", file=sys.stderr)
         return []
     if not isinstance(result, list):
         return []

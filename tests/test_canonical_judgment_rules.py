@@ -3,6 +3,61 @@ import json
 from scripts import build_canonical_judgment_rules as canonical
 
 
+def _write_jsonl(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
+
+
+def test_main_warns_and_exits_nonzero_when_concept_rules_drift(tmp_path, monkeypatch, capsys):
+    """CONCEPT_RULESのキーワードが実質的なmaterialsと噛み合わなくなり
+    canonical_rulesが0件になっても無音でexit 0にしないことを確認する。"""
+    input_path = tmp_path / "materials.jsonl"
+    _write_jsonl(
+        input_path,
+        [
+            {
+                "claim": "この文言はCONCEPT_RULESのどのキーワードにも一致しません。",
+                "material_type": "judgment_rule",
+                "domain": "lease_screening",
+                "source_role": "user",
+                "confidence": 0.8,
+                "risk_axis": [],
+                "evidence_path": "x.md",
+                "private": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_canonical_judgment_rules.py",
+            "--input", str(input_path),
+            "--output", str(tmp_path / "out.json"),
+        ],
+    )
+    monkeypatch.setattr(canonical, "REPORTS_DIR", tmp_path / "reports")
+
+    exit_code = canonical.main()
+
+    assert exit_code == 1
+    assert "CONCEPT_RULES" in capsys.readouterr().err
+
+
+def test_main_returns_zero_when_no_input_materials(tmp_path, monkeypatch):
+    """入力が単に無い日は誤検知せず正常終了する。"""
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_canonical_judgment_rules.py",
+            "--input", str(tmp_path / "missing.jsonl"),
+            "--output", str(tmp_path / "out.json"),
+        ],
+    )
+    monkeypatch.setattr(canonical, "REPORTS_DIR", tmp_path / "reports")
+
+    assert canonical.main() == 0
+
+
 def test_build_canonical_rules_groups_similar_materials():
     materials = [
         {

@@ -89,6 +89,53 @@ def test_challenged_more_than_helped_marks_noisy(tmp_path, monkeypatch):
     assert payload["records"][0]["state"] == "noisy"
 
 
+def test_main_warns_and_exits_nonzero_when_knowledge_dir_empty(tmp_path, monkeypatch, capsys):
+    """knowledge_dirは存在するのにノートが1件も見つからない場合、無音でexit 0
+    にしないことを確認する回帰テスト。"""
+    knowledge_dir = tmp_path / "knowledge_base" / "okf_lease_concepts"
+    knowledge_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "obsidian_memory_effectiveness_report.py",
+            "--knowledge-dir", str(knowledge_dir),
+            "--memory-index", str(tmp_path / "missing_index.json"),
+            "--feedback-jsonl", str(tmp_path / "missing_feedback.jsonl"),
+            "--okf-eval-json", str(tmp_path / "missing_eval.json"),
+            "--output-json", str(tmp_path / "out.json"),
+            "--output-md", str(tmp_path / "out.md"),
+            "--state-jsonl", str(tmp_path / "state.jsonl"),
+        ],
+    )
+
+    exit_code = memeff.main()
+
+    assert exit_code == 1
+    assert "見つかりませんでした" in capsys.readouterr().err
+
+
+def test_main_returns_zero_when_knowledge_dir_missing(tmp_path, monkeypatch):
+    """knowledge_dir自体が無い（初回起動等）場合は誤検知せず正常終了する。"""
+    knowledge_dir = tmp_path / "knowledge_base" / "does_not_exist"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "obsidian_memory_effectiveness_report.py",
+            "--knowledge-dir", str(knowledge_dir),
+            "--memory-index", str(tmp_path / "missing_index.json"),
+            "--feedback-jsonl", str(tmp_path / "missing_feedback.jsonl"),
+            "--okf-eval-json", str(tmp_path / "missing_eval.json"),
+            "--output-json", str(tmp_path / "out.json"),
+            "--output-md", str(tmp_path / "out.md"),
+            "--state-jsonl", str(tmp_path / "state.jsonl"),
+        ],
+    )
+
+    assert memeff.main() == 0
+
+
 def test_markdown_and_state_jsonl_are_stable(tmp_path):
     payload = {
         "date": "2026-07-25",

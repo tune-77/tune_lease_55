@@ -62,6 +62,61 @@ def test_extract_materials_from_cloudrun_and_dialogue_notes(tmp_path):
     assert all(item["private"] is False for item in materials)
 
 
+def test_main_warns_and_exits_nonzero_when_section_pattern_drifts(tmp_path, monkeypatch, capsys):
+    """_extract_sections()の見出しパターンがドリフトして会話ログはあるのに
+    materialsが0件になっても無音でexit 0にしないことを確認する。"""
+    vault = tmp_path / "vault"
+    end_date = dt.date(2026, 7, 12)
+    for offset in range(3):
+        day = end_date - dt.timedelta(days=offset)
+        note = (
+            vault
+            / "Projects"
+            / "tune_lease_55"
+            / "AI Chat"
+            / "Cloud Run Conversation Log"
+            / f"{day.isoformat()}.md"
+        )
+        _write(note, "これは旧来の見出し記法を使わない普通の地の文です。\n")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_judgment_materials_preview.py",
+            "--date", end_date.isoformat(),
+            "--days", "3",
+            "--vault", str(vault),
+            "--output", str(tmp_path / "out.jsonl"),
+        ],
+    )
+    monkeypatch.setattr(preview, "REPORTS_DIR", tmp_path / "reports")
+
+    exit_code = preview.main()
+
+    assert exit_code == 1
+    assert "ドリフト" in capsys.readouterr().err
+
+
+def test_main_returns_zero_when_no_source_notes_exist(tmp_path, monkeypatch):
+    """会話ログが単に無い日は誤検知せず正常終了する。"""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_judgment_materials_preview.py",
+            "--date", "2026-07-12",
+            "--days", "3",
+            "--vault", str(vault),
+            "--output", str(tmp_path / "out.jsonl"),
+        ],
+    )
+    monkeypatch.setattr(preview, "REPORTS_DIR", tmp_path / "reports")
+
+    assert preview.main() == 0
+
+
 def test_extract_materials_rejects_meta_ops_and_chatter_without_lease_decision(tmp_path):
     vault = tmp_path / "vault"
     cloud_log = (
