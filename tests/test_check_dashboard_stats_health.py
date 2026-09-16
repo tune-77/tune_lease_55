@@ -74,7 +74,7 @@ def test_hourly_workflow_uses_privacy_preserving_health_endpoint() -> None:
     # 消えていないことを保証するためのものであり、特定のaction versionを保証するもの
     # ではない。
     assert "actions/checkout@v7" in workflow
-    assert "actions/setup-python@v5" in workflow
+    assert "actions/setup-python@v7" in workflow
     assert "python scripts/check_dashboard_stats_health.py" in workflow
     assert "tune-lease-55-web-6mijhyebkq-an.a.run.app" in workflow
     assert 'DEFAULT_PATH = "/api/dashboard/data-health"' in checker_source
