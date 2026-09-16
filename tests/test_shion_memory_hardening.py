@@ -345,6 +345,20 @@ class TestLlmExtraction:
         monkeypatch.setattr(common, "call_gemini_json", boom)
         assert llm_extract_candidates(self._rows(), set(), set()) == []
 
+    def test_fail_open_without_api_warns_on_stderr(self, monkeypatch, capsys):
+        """Gemini呼び出し失敗を空リストへ握りつぶすだけでなく、無効化/対象なし
+        とは区別できるよう警告を出すことを確認する回帰テスト。"""
+        import api.loop_engineering_common as common
+        from scripts.build_shion_memory_promotion_queue import llm_extract_candidates
+
+        def boom(*a, **k):
+            raise RuntimeError("GEMINI_API_KEY が見つかりません")
+
+        monkeypatch.setattr(common, "call_gemini_json", boom)
+        llm_extract_candidates(self._rows(), set(), set())
+
+        assert "警告" in capsys.readouterr().err
+
     def test_disabled_by_env(self, monkeypatch):
         from scripts.build_shion_memory_promotion_queue import llm_extract_candidates
 

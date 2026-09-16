@@ -69,10 +69,22 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=5, help="1回に下調べする最大件数")
     args = parser.parse_args()
 
+    attempted = len([t for t in pending_mod.get_pending_tasks() if not t.get("finding")][: max(0, args.limit)])
     processed = investigate_pending(limit=args.limit)
     print(f"investigate_pending: {len(processed)} 件の約束を下調べしました")
     for task in processed:
         print(f"  - {str(task.get('topic'))[:50]} → {str(task.get('finding'))[:80]}")
+    # 未調査タスクは有ったのに1件も finding が付かないのは、search_lease_wiki が
+    # 例外を握りつぶして常に空を返している（RAG導線が壊れている）疑いが強い。
+    # open_tasks が0件（＝調べる約束が無い日）は正常なので検知しない。
+    if attempted > 0 and not processed:
+        print(
+            "[investigate_pending] 警告: 未調査タスクが"
+            f"{attempted}件あるのに1件も finding が付かなかった。"
+            "search_lease_wiki / RAG導線が壊れている疑い",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

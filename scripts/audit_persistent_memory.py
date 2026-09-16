@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -93,6 +94,16 @@ def main() -> int:
     args = parser.parse_args()
     text = args.persistent.read_text(encoding="utf-8", errors="ignore") if args.persistent.exists() else ""
     report = audit_text(text)
+    # 実質的な内容量があるのに箇条書き(- )が1件も抽出できない場合は、
+    # PERSISTENT_MEMORY.md の書式が変わって抽出ロジックが追随できていないサイン。
+    # 短い/空のファイルは正規の状態としてありうるため対象外にする。
+    if len(text.strip()) >= 200 and report["summary"]["bullets"] == 0:
+        print(
+            f"警告: {args.persistent} に内容があるのに箇条書き(- )が1件も抽出できませんでした。"
+            "書式が変わった可能性があります（extract_bulletsを確認してください）。",
+            file=sys.stderr,
+        )
+        return 1
     if args.dry_run:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0

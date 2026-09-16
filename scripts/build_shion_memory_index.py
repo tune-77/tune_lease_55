@@ -637,6 +637,21 @@ def build_index(
     }
 
 
+def _has_known_memory_sources() -> bool:
+    """build_index()が読む既知の記憶ソースのうち、どれか1つでも実在するか。"""
+    if (REPO_ROOT / "MEMORY.md").exists() or (REPO_ROOT / "PERSISTENT_MEMORY.md").exists():
+        return True
+    if (REPO_ROOT / "data" / "canonical_judgment_rules.json").exists():
+        return True
+    memory_dir = REPO_ROOT / "memory"
+    if memory_dir.exists() and any(memory_dir.glob("20*.md")):
+        return True
+    knowledge_dir = REPO_ROOT / "knowledge_base"
+    if knowledge_dir.exists() and any(knowledge_dir.rglob("*.md")):
+        return True
+    return False
+
+
 def _is_demo_unsafe(record: dict[str, Any]) -> bool:
     """公開デモバンドルへ載せてはいけない記憶か（対話・内省・private）。"""
     if record.get("private"):
@@ -660,6 +675,18 @@ def main() -> int:
     # 引き継ぎ元は出力先の既存索引。初回出力先（デモ用の別パス等）はローカル既定索引から引き継ぐ
     previous = args.output if args.output.exists() else None
     index = build_index(previous_index_path=previous, demo_safe=args.demo_safe)
+
+    # MEMORY.md/PERSISTENT_MEMORY.md/knowledge_base 等の入力ソースは常にどれかが
+    # 存在するため、それでも総件数0はほぼ全ソースの抽出ロジックが同時にドリフトした
+    # という強いシグナル（正常系の日次揺らぎでは起きない）。
+    if index["summary"]["total_records"] == 0 and _has_known_memory_sources():
+        print(
+            "警告: 記憶ソース（MEMORY.md/PERSISTENT_MEMORY.md/memory/knowledge_base等）は"
+            "存在するのに索引レコードが0件です。抽出ロジックのドリフトの可能性があります。",
+            file=sys.stderr,
+        )
+        return 1
+
     text = json.dumps(index, ensure_ascii=False, indent=2)
     if args.dry_run:
         print(text)

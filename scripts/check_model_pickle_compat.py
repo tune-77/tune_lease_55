@@ -174,6 +174,16 @@ def main() -> int:
         for item in report["results"]:
             if item["status"] == "fail":
                 print(f"  FAIL {item['path']}: {item['error']}")
+    # このチェックの存在理由そのもの（docstring参照）: pickleが壊れていても
+    # loaderのtry/exceptで隠れてしまうドリフトを検知すること。failed_count>0を
+    # 常にexit 0にしていては目的を果たせない。scanned_count==0はスキャン対象
+    # ディレクトリ自体が見つからない/移動した合図で、これも区別して検知する。
+    if report["scanned_count"] == 0:
+        print("警告: モデルファイルを1件もスキャンできませんでした。DEFAULT_SCAN_DIRSを確認してください。", file=sys.stderr)
+        return 1
+    if report["failed_count"] > 0:
+        print(f"警告: 読み込みに失敗したモデルファイルが{report['failed_count']}件あります。", file=sys.stderr)
+        return 1
     return 0
 
 

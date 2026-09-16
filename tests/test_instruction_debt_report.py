@@ -47,6 +47,46 @@ def test_instruction_debt_detects_missing_rationale_scope_and_retirement(tmp_pat
     ]
 
 
+def test_main_warns_and_exits_nonzero_when_no_scan_files_found(tmp_path, monkeypatch, capsys):
+    """scan_pathsが1件もファイルを見つけられない場合、無音でexit 0にしない
+    ことを確認する回帰テスト（instructions_found/debt_items 0件自体は正常な
+    改善結果でもあるため、files_scanned==0だけを検知対象にする）。"""
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_instruction_debt_report.py",
+            "--root", str(tmp_path),
+            "--scan-path", "DOES_NOT_EXIST.md",
+            "--output-json", str(tmp_path / "out.json"),
+            "--output-md", str(tmp_path / "out.md"),
+        ],
+    )
+
+    exit_code = debt.main()
+
+    assert exit_code == 1
+    assert "ドリフト" in capsys.readouterr().err
+
+
+def test_main_returns_zero_when_scan_files_found_with_zero_debt(tmp_path, monkeypatch):
+    """指示負債が0件（改善済み）は正常な結果であり誤検知しないことを確認する。"""
+    agents = tmp_path / "AGENTS.md"
+    agents.write_text("# Agent Rules\n\n何の指示も無い普通の文章。\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_instruction_debt_report.py",
+            "--root", str(tmp_path),
+            "--scan-path", "AGENTS.md",
+            "--output-json", str(tmp_path / "out.json"),
+            "--output-md", str(tmp_path / "out.md"),
+        ],
+    )
+
+    assert debt.main() == 0
+
+
 def test_instruction_debt_scans_skill_files_and_collapses_duplicate_text(tmp_path):
     skill_a = tmp_path / ".agents" / "skills" / "a" / "SKILL.md"
     skill_b = tmp_path / ".agents" / "skills" / "b" / "SKILL.md"

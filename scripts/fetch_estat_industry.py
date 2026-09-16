@@ -351,8 +351,12 @@ def main() -> int:
 
     raw = fetch_corporate_enterprise_stats(app_id)
     if raw is None:
-        print("[fetch_estat_industry] データ取得失敗 → スキップ（既存データを維持）")
-        return 0
+        print(
+            "[fetch_estat_industry] 警告: e-Stat API呼び出しが失敗したためスキップしました"
+            "（既存データを維持。ネットワーク/認証エラーの可能性）",
+            file=sys.stderr,
+        )
+        return 1
 
     metrics = _parse_metrics(raw)
     print(f"  取得した業種数: {len(metrics)}")
@@ -360,8 +364,14 @@ def main() -> int:
     save_cache(raw, metrics)
 
     if not metrics:
-        print("[fetch_estat_industry] 解析可能な指標なし → benchmarks 更新スキップ")
-        return 0
+        # raw は取得できたのに指標が0件 = e-Stat のレスポンス形式（@cat01等のキー）が
+        # ドリフトして _parse_metrics が解析できなくなった疑いが強い
+        print(
+            "[fetch_estat_industry] 警告: データは取得できたのに解析可能な指標が0件でした。"
+            "e-Stat APIレスポンス形式の変更で _parse_metrics が対応できていない可能性があります。",
+            file=sys.stderr,
+        )
+        return 1
 
     changes = update_benchmarks(metrics)
     if changes:
