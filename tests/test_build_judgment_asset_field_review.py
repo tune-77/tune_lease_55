@@ -261,3 +261,49 @@ def test_no_feedback_drops_omits_reason_breakdown_in_markdown():
     assert payload["summary"]["feedback_drops_total"] == 0
     markdown = review.build_markdown(payload)
     assert "Feedback drops (submitted but not recorded): 0" in markdown
+
+
+def _run_main(monkeypatch, *, feedback_rows, canonical_rows, tmp_path):
+    canonical_json = tmp_path / "canonical.json"
+    canonical_json.write_text(json.dumps({"rules": canonical_rows}, ensure_ascii=False), encoding="utf-8")
+    feedback_jsonl = tmp_path / "feedback.jsonl"
+    feedback_jsonl.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in feedback_rows) + ("\n" if feedback_rows else ""),
+        encoding="utf-8",
+    )
+    output_json = tmp_path / "out.json"
+    output_md = tmp_path / "out.md"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_judgment_asset_field_review.py",
+            "--canonical-json", str(canonical_json),
+            "--feedback-jsonl", str(feedback_jsonl),
+            "--feedback-drops-jsonl", str(tmp_path / "missing_drops.jsonl"),
+            "--next-case-targets-json", str(tmp_path / "missing_targets.json"),
+            "--output-json", str(output_json),
+            "--output-md", str(output_md),
+        ],
+    )
+    return review.main()
+
+
+def test_main_fails_when_many_feedback_rows_never_map_to_a_rule(monkeypatch, capsys, tmp_path):
+    """rule_id/outcomeキーが変わって全件が紐付かない場合はドリフトとして検知する。"""
+    canonical_rows = [{"id": "rule-1", "status": "active", "concept": "asset_exit"}]
+    # rule_id/outcome ではなく別キーを使った行だけを大量に用意し、抽出が壊れている状況を再現する。
+    feedback_rows = [{"asset": "rule-1", "result": "helped"} for _ in range(6)]
+
+    exit_code = _run_main(monkeypatch, feedback_rows=feedback_rows, canonical_rows=canonical_rows, tmp_path=tmp_path)
+
+    assert exit_code == 1
+    assert "rule_id/outcome抽出の書式ドリフト" in capsys.readouterr().err
+
+
+def test_main_is_ok_when_feedback_is_genuinely_sparse(monkeypatch, capsys, tmp_path):
+    """フィードバックがそもそも少ない/無い日は正常終了のまま。"""
+    canonical_rows = [{"id": "rule-1", "status": "active", "concept": "asset_exit"}]
+
+    exit_code = _run_main(monkeypatch, feedback_rows=[], canonical_rows=canonical_rows, tmp_path=tmp_path)
+
+    assert exit_code == 0

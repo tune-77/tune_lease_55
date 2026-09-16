@@ -333,6 +333,11 @@ def main(argv: list[str] | None = None) -> int:
         rag_search_rows=_read_jsonl(args.rag_search),
         rag_feedback_rows=_read_jsonl(args.rag_feedback),
     )
+    # Vaultパス（iCloud優先）が解決できないと scan_graph は静かに空グラフを返す。
+    # CLAUDE.mdの要注意領域どおり、パスドリフトはRAG/この観測を全壊させるので明示的に失敗させる。
+    if not report["summary"]["vault_exists"]:
+        print(f"警告: Obsidian Vaultが見つかりません: {args.vault}", file=sys.stderr)
+        return 1
     if args.dry_run:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
