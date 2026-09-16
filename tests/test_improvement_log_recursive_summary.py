@@ -585,6 +585,28 @@ def test_cloudrun_improvement_items_skip_shion_review_prompt_noise(monkeypatch):
     assert items[0]["source_event_id"] == "event-real-improvement"
 
 
+def test_normalize_improvement_report_dedupes_same_canonical_key_across_revs(monkeypatch):
+    """同一の改善アイデアが別REV番号で複数登録されていても、表示上は1件に
+    統合されることの回帰防止（改善PMレポート「今日やる候補」の重複表示バグ）。"""
+    import api.main as main
+
+    monkeypatch.setattr(main, "_latest_improvement_statuses", lambda: {})
+    monkeypatch.setattr(main, "_latest_improvement_statuses_by_title", lambda: {})
+
+    report = {
+        "needs_review": [
+            {"id": "REV-035", "title": "回答途切れの改善", "canonical_key": "misc_dup_key"},
+            {"id": "REV-094", "title": "AI回答が途中で切れる問題の修正", "canonical_key": "misc_dup_key"},
+        ],
+    }
+
+    result = main._normalize_improvement_report(report)
+
+    assert len(result["items"]) == 1
+    assert result["items"][0]["id"] == "REV-094"
+    assert result["needs_review"] == 1
+
+
 def test_normalize_improvement_report_skips_shion_review_prompt_noise(monkeypatch):
     import api.main as main
 
