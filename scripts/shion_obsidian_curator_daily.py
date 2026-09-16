@@ -200,6 +200,18 @@ def main(argv: list[str] | None = None) -> int:
     print(f"wrote={args.output_json}")
     print(f"wrote={args.output_md}")
     print(f"top_actions={len(report.get('top_actions') or [])}")
+
+    # review_obsidian_vault_health は graph_effect/retrieval_graph の両方が読めないと
+    # status="missing_reports" を返す。これを無視すると、上流レポート生成が壊れていても
+    # 「top_actions=0」の静かな成功として見過ごされる。
+    health = report.get("health") if isinstance(report.get("health"), dict) else {}
+    if health.get("status") == "missing_reports":
+        print(
+            "警告: 元になるレポート（obsidian_graph_judgment_effect_latest.json / "
+            "obsidian_retrieval_graph.json）が両方とも読めませんでした。",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

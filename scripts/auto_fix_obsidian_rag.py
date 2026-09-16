@@ -190,7 +190,16 @@ def _atomic_write_json(path: Path, data: dict) -> None:
     temp.replace(path)
 
 
-def main() -> None:
+def is_total_rag_collapse(baseline: dict) -> bool:
+    """baselineが「チューニング不足」ではなく「RAGが物理的に壊れている」ことを示すか判定する。
+
+    ChromaDB/Obsidianパス変更でRAG全壊すると全件0ヒットになる
+    （CLAUDE.md要注意領域参照）。部分的な不一致は通常のチューニング対象なので対象外。
+    """
+    return int(baseline.get("total", 0)) > 0 and int(baseline.get("hit_at_k", 0)) == 0
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--eval-set", type=Path, default=DEFAULT_EVAL_SET)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -229,6 +238,15 @@ def main() -> None:
         f"forbidden={baseline['forbidden_cases']}"
     )
 
+    if is_total_rag_collapse(baseline):
+        print(
+            "[rag-auto-fix] 警告: baseline が全件0ヒット。ChromaDB/Obsidianパスの破損など"
+            "RAG全壊の兆候の可能性があるため異常終了します（単なるチューニング不足とは区別）。",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
