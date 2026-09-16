@@ -42,8 +42,13 @@ def dump_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def gh_pr_list(state: str) -> list[dict[str, Any]]:
-    """Run gh pr list and return parsed JSON rows."""
+def gh_pr_list(state: str) -> tuple[list[dict[str, Any]], bool]:
+    """Run gh pr list and return (parsed JSON rows, succeeded).
+
+    succeeded=False は「gh コマンド自体が失敗した」ことを示す。これを呼び出し側で
+    「対象PRが0件だった」と区別できないと、gh認証切れ等でも無条件成功のまま
+    PRステータス同期が無音停止する（sync_memory_from_daily.pyと同型のバグ）。
+    """
     try:
         proc = subprocess.run(
             [
@@ -58,11 +63,11 @@ def gh_pr_list(state: str) -> list[dict[str, Any]]:
         )
         if proc.returncode != 0:
             print(f"gh pr list --state {state} failed: {proc.stderr.strip()}", flush=True)
-            return []
-        return json.loads(proc.stdout or "[]")
+            return [], False
+        return json.loads(proc.stdout or "[]"), True
     except Exception as exc:
         print(f"gh pr list error: {exc}", flush=True)
-        return []
+        return [], False
 
 
 def extract_rev_ids(title: str) -> list[str]:
@@ -80,7 +85,7 @@ def is_codex_pr(pr: dict[str, Any]) -> bool:
     return bool(REV_PATTERN.search(title))
 
 
-def main() -> None:
+def main() -> int:
     root = repo_root()
     status_file = root / "reports" / "codex_auto_execution_status.json"
     data = load_json(status_file)
@@ -89,7 +94,8 @@ def main() -> None:
     updated = 0
 
     # merged PRs
-    for pr in gh_pr_list("merged"):
+    merged_prs, merged_ok = gh_pr_list("merged")
+    for pr in merged_prs:
         if not is_codex_pr(pr):
             continue
         for rev_id in extract_rev_ids(str(pr.get("title") or "")):
@@ -110,7 +116,8 @@ def main() -> None:
             updated += 1
 
     # closed (not merged) = rejected
-    for pr in gh_pr_list("closed"):
+    closed_prs, closed_ok = gh_pr_list("closed")
+    for pr in closed_prs:
         if not is_codex_pr(pr):
             continue
         if pr.get("mergedAt"):
@@ -139,6 +146,15 @@ def main() -> None:
     else:
         print("同期対象の PR なし。", flush=True)
 
+    if not (merged_ok and closed_ok):
+        print(
+            "警告: gh pr list が失敗したため、今回はPRステータスを正しく同期できていません"
+            "（'同期対象のPRなし'は信用しないでください）。",
+            flush=True,
+        )
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    sys.exit(main() or 0)
+    sys.exit(main())

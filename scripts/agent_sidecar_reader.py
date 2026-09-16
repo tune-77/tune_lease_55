@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -336,11 +337,20 @@ def write_outputs() -> tuple[Path, Path]:
     return OUT_MD, OUT_JSON
 
 
-def main() -> None:
+def main() -> int:
     out_md, out_json = write_outputs()
     print(f"[agent_sidecar_reader] wrote: {out_md}")
     print(f"[agent_sidecar_reader] wrote: {out_json}")
 
+    if REPORT_ROOT.exists() and not _candidate_paths():
+        print(
+            f"警告: {REPORT_ROOT} は存在するがサイドカーレポートが1件も見つかりませんでした。"
+            "PREFERRED_REPORTSのパスやレポート命名規則のドリフトを疑ってください。",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
