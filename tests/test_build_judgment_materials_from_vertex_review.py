@@ -115,3 +115,57 @@ def test_markdown_declares_preview_only_and_source_provenance(tmp_path):
     assert "Preview only" in md
     assert "Not connected to RAG" in md
     assert "vertex_review, never user" in md
+
+
+def test_count_candidate_notes_counts_only_needs_human_review(tmp_path):
+    vault = tmp_path / "vault"
+    reviewed = vault / "Research" / "Vertex Distilled" / "2026-08-08-ev.md"
+    approved = vault / "Research" / "Vertex Distilled" / "2026-08-07-other.md"
+    _write(reviewed, _vertex_note(review_status="needs_human_review"))
+    _write(approved, _vertex_note(review_status="approved"))
+
+    assert bridge._count_candidate_notes(vault) == 1
+
+
+def test_main_warns_and_exits_nonzero_when_section_pattern_drifts(tmp_path, monkeypatch, capsys):
+    """SECTION_PATTERN(## Answer Summary)がドリフトしてneeds_human_reviewノートは
+    あるのにmaterialsが0件の場合、無条件exitのまま無音停止しないことを確認する。"""
+    vault = tmp_path / "vault"
+    note = vault / "Research" / "Vertex Distilled" / "2026-08-08-ev.md"
+    drifted_note = _vertex_note(review_status="needs_human_review").replace(
+        "## Answer Summary", "## 別形式の見出し"
+    )
+    _write(note, drifted_note)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_judgment_materials_from_vertex_review.py",
+            "--vault", str(vault),
+            "--output", str(tmp_path / "out.jsonl"),
+        ],
+    )
+    monkeypatch.setattr(bridge, "REPORTS_DIR", tmp_path / "reports")
+
+    exit_code = bridge.main()
+
+    assert exit_code == 1
+    assert "書式ドリフト" in capsys.readouterr().err
+
+
+def test_main_returns_zero_when_no_candidate_notes_exist(tmp_path, monkeypatch):
+    """レビュー待ちノートが単に無い日は、誤検知せず正常終了する。"""
+    vault = tmp_path / "vault"
+    (vault / "Research" / "Vertex Distilled").mkdir(parents=True)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_judgment_materials_from_vertex_review.py",
+            "--vault", str(vault),
+            "--output", str(tmp_path / "out.jsonl"),
+        ],
+    )
+    monkeypatch.setattr(bridge, "REPORTS_DIR", tmp_path / "reports")
+
+    assert bridge.main() == 0
