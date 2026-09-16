@@ -35,3 +35,33 @@ def test_sync_memory_routes_persistent_promotions(tmp_path, monkeypatch):
     assert "今後も" in (repo / "MEMORY.md").read_text(encoding="utf-8")
     state = json.loads((memory_dir / "memory_sync_state.json").read_text(encoding="utf-8"))
     assert len(state["promoted_keys"]) == 2
+
+
+def test_sync_memory_skips_items_already_rendered_in_memory_md_without_state_file(tmp_path, monkeypatch):
+    """MEMORY.mdに既に昇格済みの内容があれば、state fileが無くても再昇格しない
+    (`- [日付] 本文  (`path`)` の装飾で本文ハッシュが不一致になっていた回帰の再発防止)。"""
+    repo = tmp_path
+    memory_dir = repo / "memory"
+    memory_dir.mkdir()
+    already_promoted_text = "既に昇格済みの教訓はそのまま残す。"
+    (repo / "MEMORY.md").write_text(
+        "# Memory\n\n"
+        "## Auto Promotions 2026-07-16 04:06\n"
+        f"- [2026-07-15] {already_promoted_text}  (`memory/2026-07-15.md`)\n",
+        encoding="utf-8",
+    )
+    (repo / "PERSISTENT_MEMORY.md").write_text("# Persistent\n", encoding="utf-8")
+    (memory_dir / "2026-07-15.md").write_text(
+        "\n".join(["## Promotable Items", f"- {already_promoted_text}"]) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(syncer, "PROJECT_ROOT", repo)
+    monkeypatch.setattr(syncer, "MEMORY_DIR", memory_dir)
+    monkeypatch.setattr(syncer, "MEMORY_FILE", repo / "MEMORY.md")
+    monkeypatch.setattr(syncer, "PERSISTENT_MEMORY_FILE", repo / "PERSISTENT_MEMORY.md")
+    monkeypatch.setattr(syncer, "STATE_FILE", memory_dir / "memory_sync_state.json")
+
+    result = syncer.sync_memory()
+
+    assert result["promoted"] == 0
+    assert result["skipped"] == 1

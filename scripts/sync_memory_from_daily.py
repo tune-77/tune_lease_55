@@ -142,14 +142,29 @@ def _trailing_stale_streak(daily_paths: list[Path]) -> list[Path]:
     return stale
 
 
+_PROMOTED_DATE_PREFIX_RE = re.compile(r"^\[[^\]]+\]\s*")
+_PROMOTED_SOURCE_SUFFIX_RE = re.compile(r"\s*\([^()]*\)\s*$")
+
+
+def _strip_promotion_wrapper(bullet_body: str) -> str:
+    """`_render_section()`が付与する `[日付] ... (`path`)` の飾りを剥がし、
+    `Promotion.key` が見る生テキストと同じ粒度に戻す。"""
+    body = _PROMOTED_DATE_PREFIX_RE.sub("", bullet_body, count=1)
+    body = _PROMOTED_SOURCE_SUFFIX_RE.sub("", body)
+    return body
+
+
 def _extract_existing_keys(memory_text: str) -> set[str]:
     keys: set[str] = set()
     for line in memory_text.splitlines():
         if not line.startswith("- [") and not line.startswith("- "):
             continue
-        normalized = _normalize(line)
-        if normalized:
-            keys.add(hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:12])
+        body = line[len("- ") :].strip()
+        stripped = _strip_promotion_wrapper(body)
+        for candidate in (stripped, body):
+            normalized = _normalize(candidate)
+            if normalized:
+                keys.add(hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:12])
     return keys
 
 
