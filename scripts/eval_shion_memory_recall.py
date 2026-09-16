@@ -65,7 +65,12 @@ def evaluate_case(case: dict[str, Any], *, index_path: Path, limit: int = 5) -> 
     expected_any = [str(p) for p in case.get("expected_path_any") or []]
     forbidden_any = [str(p) for p in case.get("forbidden_path_any") or []]
 
-    recalled = recall_memories(query, limit=limit, index_path=index_path)
+    # outcome_signals={} で判断資産フィードバック（data/judgment_asset_usage_feedback.jsonl）
+    # による想起順位補正を無効化する。本番パイプラインでは直前の
+    # sync_cloudrun_inputs_from_gcs.py がこのファイルを更新するため、素通しにすると
+    # 索引・ルーティングの回帰ゲートのはずが日々のフィードバック量に左右され、
+    # CIでは再現しない断続的な失敗（REV-304a / REV-392a）を招いていた。
+    recalled = recall_memories(query, limit=limit, index_path=index_path, outcome_signals={})
     actual_route = str(recalled.get("route") or "")
     paths = [str(m.get("source_path") or "") for m in recalled.get("memories") or []]
 
