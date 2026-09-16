@@ -4039,8 +4039,26 @@ def _normalize_improvement_report(report: dict) -> dict:
                 item["park_reason"] = park_reason
                 item["reason"] = park_reason
 
+    # 同一canonical_keyで複数REV番号が発行されている場合（README_ledger.md記載の
+    # REV-230/237・REV-292のような事故）に表示上も重複しないよう、id単独マージ
+    # (items_by_id) の後段でcanonical_key単位に統合する。_load_improvement_ledger_summary
+    # と同じ「canonical_keyの最後の1件が有効」という統合基準に揃える。
+    deduped_by_key: dict[str, dict] = {}
+    deduped_items: list[dict] = []
+    for item in items_by_id.values():
+        if item.get("status") == "DELETED":
+            continue
+        canonical = item.get("canonical_key") or ""
+        if not canonical:
+            deduped_items.append(item)
+            continue
+        existing = deduped_by_key.get(canonical)
+        if existing is None or str(item.get("id") or "") > str(existing.get("id") or ""):
+            deduped_by_key[canonical] = item
+    deduped_items.extend(deduped_by_key.values())
+
     items = sorted(
-        [item for item in items_by_id.values() if item.get("status") != "DELETED"],
+        deduped_items,
         key=lambda item: (
             item.get("recommended_order") is None,
             item.get("recommended_order") or 9999,

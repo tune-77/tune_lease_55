@@ -27,36 +27,54 @@ def extract_improvements_from_chat_log(chat_log: str) -> list[dict[str, Any]]:
     
     improvements: list[dict[str, Any]] = []
     improvement_id = _max_ledger_rev_number() + 1
+    existing_keys = _existing_canonical_keys()
+    seen_keys_this_run: set[str] = set()
+
+    def _try_add(text: str) -> bool:
+        """textをパースしてimprovementsに追加する。戻り値はトリガーパターンとして
+        ヒットしたか（パース成功か）で、重複によりREV発行をスキップした場合もTrue。
+        呼び出し元はこれで「トリガーヒットの有無」を判定し、フォールバック検索の
+        要否を決める（重複でスキップ＝ヒット無しと誤認してフォールバックへ流れる
+        事故を防ぐ）。"""
+        nonlocal improvement_id
+        improvement = _parse_improvement_text(text, f"REV-{improvement_id:03d}")
+        if not improvement:
+            return False
+        key = _canonical_key_for(improvement["title"], improvement["description"])
+        if key and (key in existing_keys or key in seen_keys_this_run):
+            # 同一の改善アイデアに既にREVが発行済み（README_ledger.md記載の
+            # REV-230/237・REV-292のような重複発行事故の再発防止）。
+            return True
+        if key:
+            seen_keys_this_run.add(key)
+        improvements.append(improvement)
+        improvement_id += 1
+        return True
 
     # トリガーパターン：[改善], [TODO] など
     trigger_pattern = r'\[(?:改善|TODO|FIX|REFACTOR|バグ|問題)\]\s*(.+?)(?=\n\n|\Z)'
-    
+
     # 明示的な修正要求パターン
     explicit_fix_patterns = [
         r'(?:～を修正|～を改善|～をリファクタ|～の\s*問題を|～を対応)し',
         r'(?:修正すべき|改善すべき|対応すべき)[:：]?\s*(.+?)(?=\n|$)',
     ]
-    
+
     # トリガーパターンで検索
+    found_trigger_hit = False
     for match in re.finditer(trigger_pattern, chat_log, re.DOTALL):
         text = match.group(1).strip()
-        
-        improvement = _parse_improvement_text(text, f"REV-{improvement_id:03d}")
-        if improvement:
-            improvements.append(improvement)
-            improvement_id += 1
-    
-    # まだヒットがない場合、より柔軟に検索
-    if not improvements:
+        if _try_add(text):
+            found_trigger_hit = True
+
+    # トリガーパターンが1件もヒットしなかった場合のみ、より柔軟に検索
+    if not found_trigger_hit:
         # より緩いパターン：「～が必要」「～を～へ」など
         lines = chat_log.split('\n')
         for line in lines:
             if any(kw in line for kw in ['修正', '改善', 'バグ', '問題', 'リファクタ', '対応']):
-                improvement = _parse_improvement_text(line, f"REV-{improvement_id:03d}")
-                if improvement:
-                    improvements.append(improvement)
-                    improvement_id += 1
-    
+                _try_add(line)
+
     return improvements
 
 
@@ -154,6 +172,49 @@ def _max_ledger_rev_number() -> int:
 
     entries = load_all_rev_sources(repo_root)
     return max_rev_number(entries, fields=("rev_id", "key"))
+
+
+def _existing_canonical_keys() -> set[str]:
+    """台帳（load_all_rev_sources）に既に記録済みの canonical_key 集合を返す。
+
+    同一の改善アイデアに複数のREV番号が重複発行される事故
+    （scripts/README_ledger.md 記載の REV-230/237・REV-292）の再発防止用。
+    読み込みに失敗した場合は空集合を返し、重複チェックを無効化するだけに
+    留める（日次パイプラインを止めないためのフォールバック）。
+    """
+    repo_root = _find_repo_root()
+    if repo_root is None:
+        return set()
+    scripts_dir = repo_root / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    try:
+        from rev_ledger_utils import load_all_rev_sources
+        entries = load_all_rev_sources(repo_root)
+    except Exception:
+        return set()
+
+    keys: set[str] = set()
+    for entry in entries:
+        key = str(entry.get("canonical_key") or entry.get("key") or "").strip()
+        if key:
+            keys.add(key)
+    return keys
+
+
+def _canonical_key_for(title: str, description: str) -> str:
+    """improvement_identity.canonical_key() の薄いラッパー。
+    import に失敗した場合は空文字を返し、呼び出し元の重複チェックを
+    スキップさせる（日次パイプラインを止めないためのフォールバック）。
+    """
+    own_dir = Path(__file__).resolve().parent
+    if str(own_dir) not in sys.path:
+        sys.path.insert(0, str(own_dir))
+    try:
+        from improvement_identity import canonical_key
+        return canonical_key(title, description)
+    except Exception:
+        return ""
 
 
 def _extract_search_keywords(text: str) -> list[str]:
