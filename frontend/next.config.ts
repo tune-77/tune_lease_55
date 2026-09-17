@@ -1,6 +1,4 @@
 import type { NextConfig } from "next";
-// @ts-expect-error next-pwa v5 has no official TS types.
-import withPWAInit from "next-pwa";
 
 const API_URL = process.env.FASTAPI_URL || "http://127.0.0.1:8000";
 const BROWSER_FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || "";
@@ -72,11 +70,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-const withPWA = withPWAInit({
-  dest: "public",
-  disable: true,
-  register: false,
-  skipWaiting: true,
-});
-
-export default withPWA(nextConfig);
+export default nextConfig;

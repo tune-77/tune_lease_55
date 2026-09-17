@@ -30,7 +30,9 @@ jobs:
         run: |
           echo "🔍 Python パッケージの脆弱性チェック..."
           set +e
-          safety check --json --output report.json
+          # --output はファイルパスではなく出力形式(screen/text/json/bare/html)を
+          # 取る仕様に変わっている。ファイルへはstdoutをリダイレクトして書く。
+          safety check --output json > report.json
           status=$?
           set -e
           cat report.json || echo "No vulnerabilities found"
