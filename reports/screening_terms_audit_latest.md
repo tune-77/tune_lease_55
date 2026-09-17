@@ -1,15 +1,15 @@
 # Screening Terms Audit
 
-- generated_at: `2026-09-08T04:18:23`
+- generated_at: `2026-09-17T22:07:07`
 - status: `ok`
-- scanned_files: `568`
+- scanned_files: `588`
 - guardrail: `read_only_terms_audit_no_scoring_or_db_change`
 
 ## Counts
 
 - warn: `0`
-- review: `81`
-- ok: `2378`
+- review: `33`
+- ok: `2523`
 
 ## Glossary
 
@@ -20,78 +20,20 @@
 
 ## Warn / Review Findings
 
-- `review` `actual_pd` `api/chat_memory.py:319` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `ON CONFLICT (user_id) DO UPDATE SET`
-- `review` `actual_pd` `api/chat_reflection_prompts.py:120` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `候補重みはPDやスコアではなく、今回情報から見た検討優先度です。合計100%にして、低確率でも当たると重要な見立てを1つ残してください。`
-- `review` `score` `api/chat_reflection_prompts.py:120` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `候補重みはPDやスコアではなく、今回情報から見た検討優先度です。合計100%にして、低確率でも当たると重要な見立てを1つ残してください。`
 - `review` `actual_pd` `api/game_theory/negotiation.py:46` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `default_prob = max(0.0, 1 - (credit_score / 100) * 0.8 - collateral_ratio * 0.2)`
 - `review` `actual_pd` `api/game_theory/negotiation.py:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `safety_utility = 1.0 - default_prob`
-- `review` `actual_pd` `api/main.py:5490` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE cloudrun_score_inputs`
-- `review` `actual_pd` `api/main.py:5514` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE cloudrun_score_inputs`
 - `review` `actual_pd` `api/outcome_drift_loop.py:7` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `帯ごとの延滞・デフォルト率を集計する`
 - `review` `actual_pd` `api/outcome_drift_loop.py:89` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `この集計を見て、「本来低リスクなはずの帯で延滞・デフォルト率が高い」`
-- `review` `actual_pd` `api/routers/feedback_loop.py:577` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE shion_screening_reviews`
-- `review` `actual_pd` `api/routers/feedback_loop.py:589` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `f"UPDATE shion_screening_reviews SET user_feedback = {ph} WHERE id = {ph}",`
-- `review` `actual_pd` `api/routers/feedback_loop.py:2110` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE {table_name}`
-- `review` `actual_pd` `api/screening_followup.py:371` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE shion_followup_sessions`
-- `review` `actual_pd` `api/screening_followup.py:663` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE shion_followup_sessions`
-- `review` `actual_pd` `api/screening_followup.py:678` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE shion_followup_sessions`
 - `review` `actual_pd` `api/shion_conscience.py:85` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `cautions.append("デフォルト確率が高い場合は、承認可否より先に返済原資の説明可能性を見る。")`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:259` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `// REV-079: PD用語説明`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:262` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `title: 'PD（デフォルト確率）の解説',`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:267` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `q: 'PD（デフォルト確率）とは何ですか？',`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:270` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `<p><strong>PD（Probability of Default）</strong>とは、借手企業が将来一定期間内に<strong>債務不履行（デフォルト）を起こす確率</strong>を統計モデルで推定した指標です。</p>`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:276` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `q: 'PDの数値をどう解釈すればよいですか？',`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:293` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `<p className="text-xs text-slate-500">※ 上記は目安であり、物件・期間・保証条件によって判断が変わります。PDのみで機械的に判断せず、定性情報と合わせて総合判断してください。</p>`
 - `review` `actual_pd` `frontend/src/app/faq/page.tsx:298` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `q: 'PDとAIスコアの関係は？',`
 - `review` `score` `frontend/src/app/faq/page.tsx:298` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `q: 'PDとAIスコアの関係は？',`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:306` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `['60pt未満', '否決推奨', 'PD以外の財務・格付要因も確認'],`
-- `review` `actual_pd` `frontend/src/app/faq/page.tsx:320` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `q: 'スプレッドとPDの関係は？',`
-- `review` `actual_pd` `frontend/src/app/report/page.tsx:66` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `label: 'デフォルト確率（PD）',`
-- `review` `actual_pd` `frontend/src/app/report/page.tsx:180` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `if (labels.includes('デフォルト確率（PD）')) {`
-- `review` `actual_pd` `frontend/src/app/report/page.tsx:181` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `actions.push({ label: '信用保険（リース信用保険）の付保を検討', detail: 'PD高水準のリスクヘッジとして有効', priority: 'must' });`
-- `review` `actual_pd` `frontend/src/app/screening/page.tsx:1296` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `出典: TDB「倒産集計2025年度報」×中小企業庁データ。業種全体の母集団倒産率であり、個社の倒産確率（PD）ではありません。スコアには反映していません。`
-- `review` `score` `frontend/src/app/screening/page.tsx:1296` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `出典: TDB「倒産集計2025年度報」×中小企業庁データ。業種全体の母集団倒産率であり、個社の倒産確率（PD）ではありません。スコアには反映していません。`
-- `review` `actual_pd` `frontend/src/components/analysis/AdvancedAnalysis.tsx:112` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `// 審査スコアの見やすさを補う参考指数。実績デフォルトで校正したPDではない。`
-- `review` `score` `frontend/src/components/analysis/AdvancedAnalysis.tsx:112` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `// 審査スコアの見やすさを補う参考指数。実績デフォルトで校正したPDではない。`
-- `review` `actual_pd` `frontend/src/components/analysis/AdvancedAnalysis.tsx:184` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `PDではありません・5年後参考値`
-- `review` `actual_pd` `frontend/src/lib/shionReview.ts:227` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `"・候補重みはPDや信用スコアではなく、今回情報から見た検討優先度です。合計100%として扱ってください。",`
-- `review` `score` `frontend/src/lib/shionReview.ts:227` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `"・候補重みはPDや信用スコアではなく、今回情報から見た検討優先度です。合計100%として扱ってください。",`
 - `review` `actual_pd` `report_generator.py:17` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `result.time_series_default_prob : 累積デフォルト確率の時系列 (np.ndarray)`
 - `review` `actual_pd` `report_generator.py:46` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
@@ -100,83 +42,47 @@
   - `"""デフォルト確率・財務スコア・リース依存度等を文章化する（テンプレート方式）。"""`
 - `review` `actual_pd` `report_generator.py:48` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `prob = getattr(result, "default_prob", None)`
-- `review` `actual_pd` `report_generator.py:57` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `pd_line = f"  - デフォルト確率（PD）: {prob:.2%}\n"`
-- `review` `actual_pd` `report_generator.py:177` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:212` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"""モンテカルロシミュレーション結果（デフォルト確率）を文章化する（テンプレート方式）。"""`
-- `review` `actual_pd` `report_generator.py:178` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:213` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `prob = getattr(result, "default_prob", None)`
-- `review` `actual_pd` `report_generator.py:214` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:249` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `ts = getattr(result, "time_series_default_prob", None)`
-- `review` `actual_pd` `report_generator.py:219` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:254` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `f"\n  （参考）シミュレーション期間 {months}ヶ月後の累積デフォルト確率: "`
-- `review` `actual_pd` `report_generator.py:360` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:396` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `if default_prob < 0.05:`
-- `review` `actual_pd` `report_generator.py:362` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:398` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `elif default_prob < 0.15:`
-- `review` `actual_pd` `report_generator.py:364` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:400` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `elif default_prob < 0.30:`
-- `review` `actual_pd` `report_generator.py:369` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:405` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `risk_level, default_prob = "低リスク", None`
-- `review` `actual_pd` `report_generator.py:371` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:407` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `risk_level, default_prob = "中リスク", None`
-- `review` `actual_pd` `report_generator.py:373` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:409` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `risk_level, default_prob = "高リスク", None`
-- `review` `actual_pd` `report_generator.py:375` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:411` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `risk_level, default_prob = "極高リスク", None`
-- `review` `actual_pd` `report_generator.py:389` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:425` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `default_prob=default_prob,`
-- `review` `actual_pd` `report_generator.py:392` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `report_generator.py:428` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `time_series_default_prob=None,`
-- `review` `actual_pd` `scripts/.sync_state_icloud_gcs.json:470` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `"05-クリップ_記事/業界リスクニュース/2026-07-26_業界リスクニュース_DPF DPD DPR 三菱ふそう - 2026年最新Yah.md": "1785013239.1220667",`
-- `review` `actual_pd` `scripts/backfill_demo_qrisk.py:307` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE past_cases`
-- `review` `actual_pd` `scripts/backfill_demo_qrisk.py:386` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE screening_records`
-- `review` `actual_pd` `scripts/build_shion_memory_index.py:36` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/build_shion_memory_index.py:38` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"PD",`
-- `review` `actual_pd` `scripts/build_shion_memory_index.py:43` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `scripts/build_shion_memory_index.py:45` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"モデル性能、スコア差分、再学習方針、PD表示を確認する時",`
-- `review` `score` `scripts/build_shion_memory_index.py:43` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `score` `scripts/build_shion_memory_index.py:45` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"モデル性能、スコア差分、再学習方針、PD表示を確認する時",`
 - `review` `actual_pd` `scripts/cleanup_improvement_reviews_data.json:28` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-061": "PD表示の明確化",`
 - `review` `actual_pd` `scripts/cleanup_improvement_reviews_data.json:36` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-085": "PD表示色分け",`
-- `review` `actual_pd` `scripts/dogify_demo_company_names.py:148` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `conn.executemany("UPDATE past_cases SET data = ? WHERE id = ?", past_updates)`
-- `review` `actual_pd` `scripts/dogify_demo_company_names.py:149` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `conn.executemany("UPDATE conversation_history SET company_name = ? WHERE id = ?", conversation_updates)`
-- `review` `actual_pd` `scripts/fill_placeholder_company_names.py:160` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `"UPDATE past_cases SET data = ? WHERE id = ?",`
-- `review` `actual_pd` `scripts/fill_placeholder_company_names.py:187` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `mode = "DRY RUN" if args.dry_run else "UPDATED"`
-- `review` `actual_pd` `scripts/migrate_add_sales_dept.py:50` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `"UPDATE past_cases SET sales_dept = '未設定', data = ? WHERE id = ?",`
-- `review` `actual_pd` `scripts/normalize_lost_reasons.py:154` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `conn.executemany("UPDATE past_cases SET data = ? WHERE id = ?", updates)`
-- `review` `actual_pd` `scripts/normalize_lost_reasons.py:167` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `mode = "DRY RUN" if args.dry_run else "UPDATED"`
-- `review` `actual_pd` `scripts/promote_cloudrun_return_data.py:325` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `UPDATE {table}`
-- `review` `actual_pd` `scripts/promote_cloudrun_return_data.py:557` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `"UPDATE cloudrun_score_inputs SET return_registered_case_id = ? WHERE id = ?",`
-- `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:44` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `log "Cloud Run 新リビジョン起動: $CLOUD_RUN_SERVICE (CHROMADB_UPDATED_AT=$TIMESTAMP)"`
-- `review` `actual_pd` `scripts/sync_chromadb_to_gcs.sh:47` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `--update-env-vars "CHROMADB_UPDATED_AT=$TIMESTAMP" 2>&1 | tee -a "$LOG_FILE"; then`
-- `review` `actual_pd` `scripts/sync_cloudrun_inputs_from_gcs.py:545` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `"UPDATE shion_screening_reviews SET user_feedback = ? WHERE id = ?",`
 - `review` `actual_pd` `scripts/sync_implemented_to_obsidian.py:32` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"REV-041":             ["PD表示箇所の明確化"],`
-- `review` `actual_pd` `shinsa_gunshi_logic.py:393` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `# BN-CPD 自動学習: 実績件数の閾値`
-- `review` `actual_pd` `shinsa_gunshi_logic.py:394` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `_CPD_MIN_CASES = 20`
-- `review` `actual_pd` `shinsa_gunshi_logic.py:416` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
-  - `if len(rows) >= _CPD_MIN_CASES:`
-- `review` `actual_pd` `shinsa_gunshi_logic.py:507` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `actual_pd` `shinsa_gunshi_logic.py:508` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"""スコアと PD から事前確率を算出。"""`
-- `review` `score` `shinsa_gunshi_logic.py:507` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+- `review` `score` `shinsa_gunshi_logic.py:508` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
   - `"""スコアと PD から事前確率を算出。"""`
+- `review` `actual_pd` `shinsa_gunshi_logic.py:661` — PD表記だが、算出済みか補助指標かの区別が読み取りにくい
+  - `# ── 状況マッチ：PD高い（要審議・否決圏）→ 逆転・数値証明系を優先 ──`

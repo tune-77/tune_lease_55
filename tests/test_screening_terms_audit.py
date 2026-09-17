@@ -36,6 +36,25 @@ def test_screening_terms_audit_classifies_ambiguous_pd_as_review(tmp_path):
     assert report["findings"][0]["severity"] == "review"
 
 
+def test_screening_terms_audit_ok_for_explicit_pd_disclaimers(tmp_path):
+    target = tmp_path / "sample.tsx"
+    target.write_text(
+        "\n".join(
+            [
+                "const title = 'PD（デフォルト確率）の解説';",
+                "const note = '実績デフォルトで校正したPDではない。';",
+                "const hint = '候補重みはPDやスコアではなく、検討優先度です。';",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_audit([target])
+
+    assert report["counts"].get("review", 0) == 0
+    assert report["counts"].get("warn", 0) == 0
+
+
 def test_screening_terms_audit_ignores_pd_inside_unrelated_identifiers(tmp_path):
     target = tmp_path / "sample.py"
     target.write_text(
