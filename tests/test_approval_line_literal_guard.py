@@ -85,7 +85,8 @@ def _scan() -> dict[str, int]:
     value = float(constants.APPROVAL_LINE)
     found: dict[str, int] = defaultdict(int)
     for path in sorted(_REPO_ROOT.rglob("*.py")):
-        if any(part in _SKIP_PARTS for part in path.parts):
+        rel_parts = path.relative_to(_REPO_ROOT).parts
+        if any(part in _SKIP_PARTS for part in rel_parts):
             continue
         # リポジトリ配下に一時worktree/checkoutが置かれていても、その複製を
         # 現在のソースとして二重走査しない（worktreeの .git はファイル）。
