@@ -51,6 +51,7 @@ def _set_client_mock(client_mock: MagicMock) -> None:
 def _make_blob(name: str, content: bytes = b"# test") -> MagicMock:
     blob = MagicMock()
     blob.name = name
+
     def _download(filename: str, **_kwargs: object) -> None:
         Path(filename).write_bytes(content)
     blob.download_to_filename.side_effect = _download

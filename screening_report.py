@@ -20,20 +20,20 @@ from reportlab.pdfbase import pdfmetrics
 
 from scoring_core import APPROVAL_LINE, CONDITIONAL_LINE
 
-_JP  = "HeiseiKakuGo-W5"
+_JP = "HeiseiKakuGo-W5"
 pdfmetrics.registerFont(UnicodeCIDFont(_JP))
 
 # ── カラーパレット ─────────────────────────────────────────────────
-_NAVY   = (0x1a/255, 0x27/255, 0x44/255)
-_STEEL  = (0x2c/255, 0x5f/255, 0x8f/255)
+_NAVY = (0x1a/255, 0x27/255, 0x44/255)
+_STEEL = (0x2c/255, 0x5f/255, 0x8f/255)
 _ACCENT = (0x00/255, 0xb0/255, 0x9b/255)
-_WARN   = (1.00,     0.55,     0.00)
+_WARN = (1.00,     0.55,     0.00)
 _DANGER = (0.84,     0.14,     0.16)
-_GREEN  = (0.20,     0.70,     0.30)
-_LIGHT  = (0.94,     0.96,     0.98)
-_WHITE  = (1.0,      1.0,      1.0)
-_BLACK  = (0.0,      0.0,      0.0)
-_GRAY   = (0.55,     0.55,     0.55)
+_GREEN = (0.20,     0.70,     0.30)
+_LIGHT = (0.94,     0.96,     0.98)
+_WHITE = (1.0,      1.0,      1.0)
+_BLACK = (0.0,      0.0,      0.0)
+_GRAY = (0.55,     0.55,     0.55)
 
 
 def _score_rgb(score: float):
@@ -168,7 +168,7 @@ def _auto_comment(
         )
     else:
         lines.append(
-            f"■ 資産効率：ROAがマイナスです。資産運用の改善が急務です。"
+            "■ 資産効率：ROAがマイナスです。資産運用の改善が急務です。"
         )
 
     # ── 金利・採算コメント ─────────────────────────────────────
@@ -216,17 +216,17 @@ def _make_score_donut(score: float, sc_rgb: tuple):
     d = Drawing(w, h)
     cx = w / 2
     cy = h / 2 + 2 * mm
-    r  = 20 * mm
+    r = 20 * mm
 
     pie = Pie()
-    pie.x      = cx - r
-    pie.y      = cy - r
-    pie.width  = r * 2
+    pie.x = cx - r
+    pie.y = cy - r
+    pie.width = r * 2
     pie.height = r * 2
-    pie.data   = [max(score, 0.5), max(100.0 - score, 0.5)]
+    pie.data = [max(score, 0.5), max(100.0 - score, 0.5)]
     pie.labels = ['', '']  # ラベル非表示
-    pie.slices[0].fillColor   = _C(*sc_rgb)
-    pie.slices[1].fillColor   = colors.HexColor('#e2e8f0')
+    pie.slices[0].fillColor = _C(*sc_rgb)
+    pie.slices[1].fillColor = colors.HexColor('#e2e8f0')
     pie.slices[0].strokeColor = colors.white
     pie.slices[1].strokeColor = colors.white
     pie.slices[0].strokeWidth = 2
@@ -255,18 +255,18 @@ def _make_model_bars(scores: list, labels: list, bar_colors: list):
     from reportlab.lib.units import mm
     from reportlab.lib import colors
 
-    w, h    = 88 * mm, 44 * mm
-    d       = Drawing(w, h)
+    w, h = 88 * mm, 44 * mm
+    d = Drawing(w, h)
     label_w = 23 * mm
     bar_area = w - label_w - 14 * mm
-    n        = len(scores)
-    bh       = 9 * mm
-    gap      = 2.5 * mm
-    total_h  = n * bh + (n - 1) * gap
-    sy       = (h - total_h) / 2
+    n = len(scores)
+    bh = 9 * mm
+    gap = 2.5 * mm
+    total_h = n * bh + (n - 1) * gap
+    sy = (h - total_h) / 2
 
     for i, (sv, lbl, bc) in enumerate(zip(scores, labels, bar_colors)):
-        y  = sy + (n - 1 - i) * (bh + gap)
+        y = sy + (n - 1 - i) * (bh + gap)
         # 背景バー
         d.add(Rect(label_w, y, bar_area, bh,
                    fillColor=colors.HexColor('#e2e8f0'), strokeColor=None))
@@ -300,17 +300,17 @@ def _make_fin_metrics_chart(items: list, w_total: float, h_total: float):
     from reportlab.lib.units import mm
     from reportlab.lib import colors as rl_colors
 
-    d        = Drawing(w_total, h_total)
-    n        = len(items)
+    d = Drawing(w_total, h_total)
+    n = len(items)
     if n == 0:
         return d
 
-    col_w    = w_total / n
-    label_h  = 8 * mm
-    chart_h  = h_total - label_h - 8 * mm   # 上部に値テキスト用余白
-    base_y   = label_h
-    clamp    = 80.0
-    bar_w    = col_w * 0.30
+    col_w = w_total / n
+    label_h = 8 * mm
+    chart_h = h_total - label_h - 8 * mm   # 上部に値テキスト用余白
+    base_y = label_h
+    clamp = 80.0
+    bar_w = col_w * 0.30
 
     # ベースライン
     d.add(Line(2 * mm, base_y, w_total - 2 * mm, base_y,
@@ -333,18 +333,18 @@ def _make_fin_metrics_chart(items: list, w_total: float, h_total: float):
         # 業界棒（薄グレー・後ろ）
         if bv is not None:
             bh2 = chart_h * min(abs(bv), clamp) / clamp
-            bx  = cx - bar_w * 0.9
+            bx = cx - bar_w * 0.9
             d.add(Rect(bx, base_y, bar_w * 1.3, bh2,
                        fillColor=rl_colors.HexColor('#c0ccd8'), strokeColor=None))
 
         # 実績棒（カラー・前）
-        uh        = chart_h * min(abs(uv), clamp) / clamp
-        ux        = cx - bar_w / 2
+        uh = chart_h * min(abs(uv), clamp) / clamp
+        ux = cx - bar_w / 2
         bar_color = _C(*c) if uv >= 0 else _C(*_DANGER)
         d.add(Rect(ux, base_y, bar_w, uh, fillColor=bar_color, strokeColor=None))
 
         # 実績値テキスト（棒の上）
-        top_u  = base_y + uh
+        top_u = base_y + uh
         top_bv = base_y + (chart_h * min(abs(bv), clamp) / clamp if bv else uh)
         text_y = max(top_u, top_bv) + 1.5 * mm
         d.add(String(cx, text_y,
@@ -407,13 +407,13 @@ def build_screening_report_pdf(
             spaceBefore=sb, spaceAfter=sa,
         )
 
-    S_BODY  = ps("body",  8, _BLACK, leading=12)
+    S_BODY = ps("body",  8, _BLACK, leading=12)
     S_SMALL = ps("small", 7, _GRAY,  leading=10)
-    S_H2    = ps("h2",   10, _STEEL, sb=3*mm, sa=1*mm)
+    S_H2 = ps("h2",   10, _STEEL, sb=3*mm, sa=1*mm)
 
     # ── テーブルスタイル生成（ヘッダー白・データ黒）──────────
     def make_tbl_style(header_bg=None, row_data=None):
-        hbg  = header_bg or _C(*_NAVY)
+        hbg = header_bg or _C(*_NAVY)
         base = [
             ("FONTNAME",     (0, 0), (-1, -1), _JP),
             ("FONTSIZE",     (0, 0), (-1, -1), 7),
@@ -422,10 +422,10 @@ def build_screening_report_pdf(
             ("BACKGROUND",   (0, 0), (-1,  0), hbg),
             ("GRID",         (0, 0), (-1, -1), 0.3, colors.lightgrey),
             ("ALIGN",        (1, 0), (-1, -1), "RIGHT"),
-            ("ALIGN",        (0, 0), ( 0, -1), "LEFT"),
+            ("ALIGN",        (0, 0), (0, -1), "LEFT"),
             ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
             ("TOPPADDING",   (0, 0), (-1, -1), 1.5 * mm),
-            ("BOTTOMPADDING",(0, 0), (-1, -1), 1.5 * mm),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 * mm),
             ("LEFTPADDING",  (0, 0), (-1, -1), 2 * mm),
             ("RIGHTPADDING", (0, 0), (-1, -1), 2 * mm),
         ]
@@ -435,43 +435,43 @@ def build_screening_report_pdf(
         return base
 
     # ── データ取得 ────────────────────────────────────────────
-    extra        = extra or {}
-    score        = float(res.get("score",        0))
-    ind_score    = float(res.get("ind_score",    0))
-    bench_score  = float(res.get("bench_score",  0))
-    user_op      = float(res.get("user_op",      0))
-    bench_op     = float(res.get("bench_op",     0))
-    user_eq      = float(res.get("user_eq",      0))
-    bench_eq     = float(res.get("bench_eq",     0))
-    yield_pred   = float(res.get("yield_pred",   0))
-    contract_p   = float(res.get("contract_prob",0))
+    extra = extra or {}
+    score = float(res.get("score",        0))
+    ind_score = float(res.get("ind_score",    0))
+    bench_score = float(res.get("bench_score",  0))
+    user_op = float(res.get("user_op",      0))
+    bench_op = float(res.get("bench_op",     0))
+    user_eq = float(res.get("user_eq",      0))
+    bench_eq = float(res.get("bench_eq",     0))
+    yield_pred = float(res.get("yield_pred",   0))
+    contract_p = float(res.get("contract_prob", 0))
     industry_sub = res.get("industry_sub", "")
-    asset_name   = res.get("asset_name",   "") or ""
-    comparison   = res.get("comparison",   "") or ""
-    ai_factors   = res.get("ai_completed_factors", []) or []
-    hints        = res.get("hints",               {}) or {}
-    net_risk     = res.get("network_risk_summary", "") or ""
-    fin          = res.get("financials",           {}) or {}
-    nenshu       = float(fin.get("nenshu",       0) or 0)
-    rieki        = float(fin.get("rieki",        0) or 0)
-    gross        = float(fin.get("gross_profit", 0) or 0)
-    ord_profit   = float(fin.get("ord_profit",   0) or 0)
-    net_income   = float(fin.get("net_income",   0) or 0)
-    assets       = float(fin.get("assets",       0) or 0)
-    net_assets   = float(fin.get("net_assets",   0) or 0)
-    bank_credit  = float(fin.get("bank_credit",  0) or 0)
+    asset_name = res.get("asset_name",   "") or ""
+    comparison = res.get("comparison",   "") or ""
+    ai_factors = res.get("ai_completed_factors", []) or []
+    hints = res.get("hints",               {}) or {}
+    net_risk = res.get("network_risk_summary", "") or ""
+    fin = res.get("financials",           {}) or {}
+    nenshu = float(fin.get("nenshu",       0) or 0)
+    rieki = float(fin.get("rieki",        0) or 0)
+    gross = float(fin.get("gross_profit", 0) or 0)
+    ord_profit = float(fin.get("ord_profit",   0) or 0)
+    net_income = float(fin.get("net_income",   0) or 0)
+    assets = float(fin.get("assets",       0) or 0)
+    net_assets = float(fin.get("net_assets",   0) or 0)
+    bank_credit = float(fin.get("bank_credit",  0) or 0)
     lease_credit = float(fin.get("lease_credit", 0) or 0)
 
     company_name = extra.get("company_name", "（社名未入力）")
-    screener     = extra.get("screener", "")
-    note         = extra.get("note", "")
-    report_date  = datetime.now().strftime("%Y年%m月%d日  %H:%M")
-    sc_rgb       = _score_rgb(score)
-    judge_lbl    = _judge_label(score)
+    screener = extra.get("screener", "")
+    note = extra.get("note", "")
+    report_date = datetime.now().strftime("%Y年%m月%d日  %H:%M")
+    sc_rgb = _score_rgb(score)
+    judge_lbl = _judge_label(score)
 
     def fm(v):
         if not v: return "—"
-        v   = float(v)
+        v = float(v)
         man = v / 10
         if man >= 10000: return f"{man/10000:.2f}億円"
         return f"{man:,.0f}万円"
@@ -482,11 +482,11 @@ def build_screening_report_pdf(
         import re
         return re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text or "")
 
-    gross_m = (gross       / nenshu * 100) if nenshu else 0
-    ord_m   = (ord_profit  / nenshu * 100) if nenshu else 0
-    net_m   = (net_income  / nenshu * 100) if nenshu else 0
-    debt_r  = ((assets - net_assets) / assets * 100) if assets else 0
-    roa     = (net_income  / assets  * 100) if assets else 0
+    gross_m = (gross / nenshu * 100) if nenshu else 0
+    ord_m = (ord_profit / nenshu * 100) if nenshu else 0
+    net_m = (net_income / nenshu * 100) if nenshu else 0
+    debt_r = ((assets - net_assets) / assets * 100) if assets else 0
+    roa = (net_income / assets * 100) if assets else 0
 
     # ── ヘッダー描画関数 ──────────────────────────────────────
     def draw_header(canvas, doc):
@@ -518,8 +518,8 @@ def build_screening_report_pdf(
 
     # ── ドキュメント ──────────────────────────────────────────
     buffer = BytesIO()
-    ML     = 14 * mm
-    doc    = SimpleDocTemplate(
+    ML = 14 * mm
+    doc = SimpleDocTemplate(
         buffer, pagesize=A4,
         leftMargin=ML, rightMargin=ML,
         topMargin=42*mm, bottomMargin=16*mm,
@@ -533,7 +533,7 @@ def build_screening_report_pdf(
 
     # 左列: ドーナツチャート + 判定ラベル
     donut_chart = _make_score_donut(score, sc_rgb)
-    judge_para  = Paragraph(
+    judge_para = Paragraph(
         f"<b>{judge_lbl}</b>",
         ps("jl", 10, sc_rgb, "CENTER"),
     )
@@ -556,7 +556,7 @@ def build_screening_report_pdf(
         ("ALIGN",        (0, 0), (-1, -1), "CENTER"),
         ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING",   (0, 0), (-1, -1), 2 * mm),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 2 * mm),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
     ]))
 
     # 右列下: スコア横棒グラフ
@@ -566,7 +566,7 @@ def build_screening_report_pdf(
         [sc_rgb, _STEEL, _GRAY],
     )
 
-    left_col  = [donut_chart, judge_para]
+    left_col = [donut_chart, judge_para]
     right_col = [
         Paragraph("■ スコア内訳", S_H2),
         badge_tbl,
@@ -576,11 +576,11 @@ def build_screening_report_pdf(
     top_layout = Table([[left_col, right_col]], colWidths=[63*mm, 114*mm])
     top_layout.setStyle(TableStyle([
         ("VALIGN",       (0, 0), (-1, -1), "TOP"),
-        ("ALIGN",        (0, 0), ( 0, -1), "CENTER"),
+        ("ALIGN",        (0, 0), (0, -1), "CENTER"),
         ("LEFTPADDING",  (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING",   (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(top_layout)
     story.append(Spacer(1, 1.5 * mm))
@@ -609,7 +609,7 @@ def build_screening_report_pdf(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ⑧ BN逆転承認シミュレーター（審査結果レポート直下）
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    bn_result   = extra.get("bn_result")
+    bn_result = extra.get("bn_result")
     bn_evidence = extra.get("bn_evidence") or {}
     bn_reversal = extra.get("bn_reversal") or []
 
@@ -618,9 +618,9 @@ def build_screening_report_pdf(
         story.append(Spacer(1, 2 * mm))
         story.append(Paragraph("■ BN逆転承認シミュレーター", S_H2))
 
-        _bn_prob      = float(bn_result.get("approval_prob", 0))
-        _bn_dec       = bn_result.get("decision", "—")
-        _im           = bn_result.get("intermediate", {}) or {}
+        _bn_prob = float(bn_result.get("approval_prob", 0))
+        _bn_dec = bn_result.get("decision", "—")
+        _im = bn_result.get("intermediate", {}) or {}
         _bn_dec_color = _ACCENT if _bn_dec == "承認" else (_WARN if _bn_dec == "要審議" else _DANGER)
 
         _bn_kpi_rows = [
@@ -667,7 +667,7 @@ def build_screening_report_pdf(
             "Shorter_Lease_Term":  "リース期間を短縮",
             "One_Time_Deal":       "業況改善まで本件限り",
         }
-        _ev_on  = [_EV_LABELS.get(k, k) for k, v in bn_evidence.items() if v == 1]
+        _ev_on = [_EV_LABELS.get(k, k) for k, v in bn_evidence.items() if v == 1]
         _ev_off = [_EV_LABELS.get(k, k) for k, v in bn_evidence.items() if v == 0]
 
         if _ev_on or _ev_off:
@@ -722,9 +722,9 @@ def build_screening_report_pdf(
             _rev_style = make_tbl_style(_C(*_DANGER), _rev_data)
             _rev_style += [
                 ("BACKGROUND",  (0, 1), (-1, -1), colors.HexColor("#fff5f5")),
-                ("LINEBEFORE",  (0, 0), ( 0, -1), 2.0, _C(*_DANGER)),
-                ("LINEAFTER",   (-1, 0),(-1, -1), 2.0, _C(*_DANGER)),
-                ("LINEBELOW",   (0, -1),(-1, -1), 2.0, _C(*_DANGER)),
+                ("LINEBEFORE",  (0, 0), (0, -1), 2.0, _C(*_DANGER)),
+                ("LINEAFTER",   (-1, 0), (-1, -1), 2.0, _C(*_DANGER)),
+                ("LINEBELOW",   (0, -1), (-1, -1), 2.0, _C(*_DANGER)),
                 ("LINEABOVE",   (0, 1), (-1, -1), 0.4, _C(*_DANGER)),
             ]
             _rev_tbl.setStyle(TableStyle(_rev_style))
@@ -735,24 +735,25 @@ def build_screening_report_pdf(
     # ⑨ 軍師モード（承認奪取）推薦セクション
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     _gunshi = extra.get("gunshi") or {}
+
     def _safe(t):
         return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     if _gunshi:
-        _gu_prob    = float(_gunshi.get("display_prob", 0))
-        _gu_post    = float(_gunshi.get("posterior", 0))
-        _gu_prior   = float(_gunshi.get("prior", 0))
+        _gu_prob = float(_gunshi.get("display_prob", 0))
+        _gu_post = float(_gunshi.get("posterior", 0))
+        _gu_prior = float(_gunshi.get("prior", 0))
         _gu_phrases = _gunshi.get("top_phrases") or []
-        _gu_offers  = _gunshi.get("offers") or []
-        _gu_llm     = (_gunshi.get("llm_text") or "").strip()
-        _gu_resale  = _gunshi.get("resale", "中")
-        _gu_repeat  = int(_gunshi.get("repeat_cnt", 0))
-        _gu_sr      = float(_gunshi.get("success_ratio", 0))
-        _gu_wins    = int(_gunshi.get("similar_wins", 0))
-        _gu_cat     = _gunshi.get("industry_cat", "")
+        _gu_offers = _gunshi.get("offers") or []
+        _gu_llm = (_gunshi.get("llm_text") or "").strip()
+        _gu_resale = _gunshi.get("resale", "中")
+        _gu_repeat = int(_gunshi.get("repeat_cnt", 0))
+        _gu_sr = float(_gunshi.get("success_ratio", 0))
+        _gu_wins = int(_gunshi.get("similar_wins", 0))
+        _gu_cat = _gunshi.get("industry_cat", "")
         _gu_subsidy = bool(_gunshi.get("subsidy", False))
-        _gu_bank    = bool(_gunshi.get("bank", False))
+        _gu_bank = bool(_gunshi.get("bank", False))
         _gu_vehicle = _gunshi.get("vehicle_type", "")
-        _gu_vboost  = float(_gunshi.get("vehicle_boost", 0.0))
+        _gu_vboost = float(_gunshi.get("vehicle_boost", 0.0))
 
         _gu_pct = int(_gu_prob * 100)
         _gu_col = _ACCENT if _gu_pct >= 70 else (_WARN if _gu_pct >= 50 else _DANGER)
@@ -821,7 +822,7 @@ def build_screening_report_pdf(
                     Paragraph(f"<b>{_pi}</b>", ps(f"phi{_pi}", 8, _GREEN, "CENTER")),
                     Paragraph(_ph.get("category", ""), ps(f"phc{_pi}", 7, _GRAY)),
                     Paragraph(_safe(_ph.get("text", "")), ps(f"pht{_pi}", 7.5, _BLACK, leading=10)),
-                    Paragraph(f'+{int(_ph.get("prob_boost",0)*100)}%',
+                    Paragraph(f'+{int(_ph.get("prob_boost", 0)*100)}%',
                                ps(f"phb{_pi}", 8, _GREEN, "RIGHT")),
                 ])
             _ph_tbl = Table(_ph_data, colWidths=[8*mm, 22*mm, 130*mm, 17*mm])
@@ -842,7 +843,7 @@ def build_screening_report_pdf(
             for _oi, _of in enumerate(_gu_offers):
                 _of_data.append([
                     Paragraph(_safe(_of.get("title", "")), ps(f"ofttl{_oi}", 8, _DANGER)),
-                    Paragraph(f'+{int(_of.get("prob_gain",0)*100)}%pt',
+                    Paragraph(f'+{int(_of.get("prob_gain", 0)*100)}%pt',
                                ps(f"ofgn{_oi}", 8, _WARN, "CENTER")),
                     Paragraph(_safe(_of.get("detail", "")), ps(f"ofdt{_oi}", 7, _BLACK, leading=10)),
                 ])
@@ -879,9 +880,9 @@ def build_screening_report_pdf(
     chart_items = [
         ("粗利率",    gross_m, None,      _STEEL),
         ("営業利益率", user_op, bench_op, _ACCENT),
-        ("純利益率",   net_m,  None,      _GREEN),
+        ("純利益率",   net_m, None,      _GREEN),
         ("自己資本比", user_eq, bench_eq, _WARN),
-        ("ROA",        roa,    None,      _NAVY),
+        ("ROA",        roa, None,      _NAVY),
     ]
     fin_chart = _make_fin_metrics_chart(chart_items, 177 * mm, 46 * mm)
     story.append(fin_chart)
@@ -908,7 +909,7 @@ def build_screening_report_pdf(
         # "■ タイトル：" と本文を分離してスタイルを変える
         if "：" in line and line.startswith("■"):
             parts = line.split("：", 1)
-            tag_text  = parts[0].lstrip("■ ").strip()  # タイトル部
+            tag_text = parts[0].lstrip("■ ").strip()  # タイトル部
             body_text = parts[1].strip() if len(parts) > 1 else ""
             # タイトルの色はスコアに応じたものか STEEL
             if "収益性" in tag_text and user_op < 0:
@@ -934,13 +935,13 @@ def build_screening_report_pdf(
             ("FONTNAME",     (0, 0), (-1, -1), _JP),
             ("FONTSIZE",     (0, 0), (-1, -1), 7),
             ("VALIGN",       (0, 0), (-1, -1), "TOP"),
-            ("ALIGN",        (0, 0), ( 0, -1), "CENTER"),
+            ("ALIGN",        (0, 0), (0, -1), "CENTER"),
             ("GRID",         (0, 0), (-1, -1), 0.3, colors.lightgrey),
             ("TOPPADDING",   (0, 0), (-1, -1), 2 * mm),
-            ("BOTTOMPADDING",(0, 0), (-1, -1), 2 * mm),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
             ("LEFTPADDING",  (0, 0), (-1, -1), 2 * mm),
             ("RIGHTPADDING", (0, 0), (-1, -1), 2 * mm),
-            ("ROWBACKGROUNDS",(0, 0),(-1, -1),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1),
              [colors.white, _C(*_LIGHT)] * (len(comment_rows) // 2 + 1)),
         ]))
         story.append(ai_card)
@@ -955,9 +956,9 @@ def build_screening_report_pdf(
             return None
         try:
             import plotly.io as _pio
-            _dpi  = 150
-            _wpx  = int(w_mm / 25.4 * _dpi)
-            _hpx  = int(h_mm / 25.4 * _dpi)
+            _dpi = 150
+            _wpx = int(w_mm / 25.4 * _dpi)
+            _hpx = int(h_mm / 25.4 * _dpi)
             return _pio.to_image(fig, format="png", width=_wpx, height=_hpx, scale=1)
         except Exception:
             return None
@@ -999,7 +1000,7 @@ def build_screening_report_pdf(
 
         # 2列グリッドに並べる
         _grid_rows = []
-        _pair      = []
+        _pair = []
         for _title, _fig, _wm, _hm in _chart_defs:
             _png = _fig_to_png(_fig, _wm, _hm)
             if _png is None:
@@ -1059,8 +1060,8 @@ def build_screening_report_pdf(
         ["銀行与信（残高）",   fm(bank_credit),     "※残高",     "—"],
         ["リース与信（残高）", fm(lease_credit),    "※残高",     "—"],
         ["売上総利益率",       fp(gross_m),          "—",        _arrow(gross_m, 0)],
-        ["営業利益率",         fp(user_op),          fp(bench_op),_arrow(user_op, bench_op)],
-        ["自己資本比率",       fp(user_eq),          fp(bench_eq),_arrow(user_eq, bench_eq)],
+        ["営業利益率",         fp(user_op),          fp(bench_op), _arrow(user_op, bench_op)],
+        ["自己資本比率",       fp(user_eq),          fp(bench_eq), _arrow(user_eq, bench_eq)],
         ["負債比率",           fp(debt_r),           "—",        _arrow(-debt_r, 0)],
         ["ROA",                fp(roa),              "—",        _arrow(roa, 0)],
     ]
@@ -1103,7 +1104,7 @@ def build_screening_report_pdf(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # ⑥ 審査ポイント（業種別ヒント）
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    risks     = hints.get("risks",     []) or []
+    risks = hints.get("risks",     []) or []
     subsidies = hints.get("subsidies", []) or []
     story.append(Paragraph("■ 審査ポイント（業種別ヒント）", S_H2))
     if risks or subsidies:
@@ -1128,8 +1129,8 @@ def build_screening_report_pdf(
     story.append(Paragraph("■ 業界リスク情報", S_H2))
     _risk_ok = (net_risk
                 and "取得できません" not in net_risk
-                and "検索エラー"     not in net_risk
-                and "エラー"         not in net_risk)
+                and "検索エラー" not in net_risk
+                and "エラー" not in net_risk)
     if _risk_ok:
         story.append(Paragraph(
             net_risk[:350] + ("…" if len(net_risk) > 350 else ""), S_SMALL))
@@ -1152,10 +1153,10 @@ def build_screening_report_pdf(
         story.append(Spacer(1, 2 * mm))
 
         # ── KPI バッジ ───────────────────────────────────────────
-        _mc_wdp  = mc_summary.get("weighted_default_prob", 0)
-        _mc_cr   = mc_summary.get("concentration_risk",    0)
-        _mc_el   = mc_summary.get("expected_loss",         0)
-        _mc_var  = mc_summary.get("portfolio_var_95",      0)
+        _mc_wdp = mc_summary.get("weighted_default_prob", 0)
+        _mc_cr = mc_summary.get("concentration_risk",    0)
+        _mc_el = mc_summary.get("expected_loss",         0)
+        _mc_var = mc_summary.get("portfolio_var_95",      0)
 
         _mc_kpi_rows = [
             [Paragraph("加重平均デフォルト確率", S_SMALL),
@@ -1257,7 +1258,7 @@ def build_screening_report_pdf(
     if ai_advice or ai_byoki:
         story.append(PageBreak())
         story.append(Paragraph("■ AIアナリストによる追加見解", S_H2))
-        
+
         if ai_advice:
             story.append(Spacer(1, 2 * mm))
             story.append(Paragraph("【AI業界分析アドバイス】", ps("ai_adv_head", 9, _STEEL)))
@@ -1267,7 +1268,7 @@ def build_screening_report_pdf(
                     story.append(Spacer(1, 1 * mm))
                 else:
                     story.append(Paragraph(_md2rl(line), S_BODY))
-        
+
         if ai_byoki:
             story.append(Spacer(1, 3 * mm))
             story.append(Paragraph("【AIのぼやき（担当ベースの率直な所見）】", ps("ai_b_head", 9, _NAVY)))

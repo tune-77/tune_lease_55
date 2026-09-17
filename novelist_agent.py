@@ -29,10 +29,11 @@ import re
 from pathlib import Path
 
 
-_BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-_NOVEL_DB    = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
-_LEASE_DB    = os.path.join(_BASE_DIR, "data", "lease_data.db")
-_HUB_LOG     = os.path.join(_BASE_DIR, "data", "agent_hub_log.jsonl")
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_NOVEL_DB = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
+_LEASE_DB = os.path.join(_BASE_DIR, "data", "lease_data.db")
+_HUB_LOG = os.path.join(_BASE_DIR, "data", "agent_hub_log.jsonl")
+
 
 def _post_thought(thought: str, icon: str = "📖"):
     try:
@@ -44,6 +45,7 @@ def _post_thought(thought: str, icon: str = "📖"):
 # ══════════════════════════════════════════════════════════════════════════════
 # DB 初期化
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def init_novel_db() -> None:
     conn = sqlite3.connect(_NOVEL_DB)
@@ -101,24 +103,24 @@ def _collect_recent_screenings(n: int = 5) -> list[dict]:
             LIMIT ?
         """, (n,)).fetchall()
         conn.close()
-        
+
         results = []
         for r in rows:
             case_id = r["id"]
             score = r["score"] or 0.0
             industry = r["industry_sub"] or "不明業種"
             created_at = r["created_at"]
-            
+
             try:
                 data = json.loads(r["data"] or "{}")
             except Exception:
                 data = {}
-            
+
             company = data.get("company_name") or "某社"
             company_no = data.get("company_no") or ""
             res_dict = data.get("result", {})
             grade = res_dict.get("hantei", "—")
-            
+
             results.append({
                 "case_id": case_id,
                 "company_no": company_no,
@@ -973,7 +975,7 @@ def generate_novel(
     # ネタ収集
     screenings = _collect_recent_screenings(5)
     hub_events = _collect_hub_events(10)
-    math_hits  = _collect_math_discoveries(3)
+    math_hits = _collect_math_discoveries(3)
 
     # ネタまとめ
     neta_lines = [f"第{episode_no}話の執筆をお願いします。今週のネタ："]
@@ -1128,7 +1130,7 @@ def generate_novel(
         neta_lines.append("上記の話とは全く異なるテーマ・展開・オチにすること！同じネタの使い回しは厳禁！")
 
     neta_lines.append(f"\n【✍️ 今回の文体指定】\n{chosen_style}")
-    
+
     # ── 脚本家AI（Scriptwriter）のプロットを取得 ──
     plot_data = None
     try:
@@ -1139,11 +1141,11 @@ def generate_novel(
 
     if plot_data and not plot_data.get("error"):
         chosen_chaos = f"【ネットの話題連動プロット：{plot_data['title']}】\n{plot_data['plot_text']}"
-        chosen_arc   = plot_data.get("story_arc", random.choice(story_arcs))
+        chosen_arc = plot_data.get("story_arc", random.choice(story_arcs))
         killer_phrases = plot_data.get("killer_phrases", [])
     else:
         chosen_chaos = random.choice(chaos_events)
-        chosen_arc   = random.choice(story_arcs)
+        chosen_arc = random.choice(story_arcs)
         killer_phrases = []
 
     neta_lines.append(f"\n【🚨ランダム・カオス・インジェクション（今週の強制トラブル）】\n{chosen_chaos}")
@@ -1255,14 +1257,14 @@ def generate_novel(
 
     # タイトルと本文を分離
     title = f"第{episode_no}話"
-    body  = text
+    body = text
     if "タイトル：" in text:
         parts = text.split("タイトル：", 1)
-        rest  = parts[1]
+        rest = parts[1]
         if "\n" in rest:
             title_line, body = rest.split("\n", 1)
             title = title_line.strip().lstrip("【").rstrip("】")
-            body  = body.replace("本文：", "").strip()
+            body = body.replace("本文：", "").strip()
         else:
             title = rest.strip().lstrip("【").rstrip("】")
     elif "【" in text and "】" in text:
@@ -1333,10 +1335,9 @@ def _parse_and_save_civ_record(body: str, episode_no: int) -> None:
 def _fallback_novel(episode_no: int, week_label: str) -> dict:
     """AI未設定時・エラー時の代替処理。DBには保存しない。"""
     title = "通信エラー障害発生"
-    body  = "現在、LLMへの接続に失敗しているか、設定が未完了のため小説の生成ができませんでした。\n(※固定のサンプル小説が保存され続ける不具合は修正されました)"
-    
-    return {"title": title, "body": body, "week_label": week_label, "episode_no": episode_no}
+    body = "現在、LLMへの接続に失敗しているか、設定が未完了のため小説の生成ができませんでした。\n(※固定のサンプル小説が保存され続ける不具合は修正されました)"
 
+    return {"title": title, "body": body, "week_label": week_label, "episode_no": episode_no}
 
 
 def load_novels(limit: int = 20) -> list[dict]:
@@ -1520,12 +1521,12 @@ def _generate_civ_era_local(civ: dict) -> str:
     import random
     prefix = random.choice(_PHILOSOPHY_PREFIXES)
     suffix = random.choice(_PHILOSOPHY_SUFFIXES)
-    theme  = _industry_theme(civ.get("industry", ""))
+    theme = _industry_theme(civ.get("industry", ""))
     status = _STATUS_FLAVOR.get(civ.get("status", "active"), "")
     patterns = [
         f"{prefix}の{theme}時代・{suffix}",
         f"{theme}全盛{suffix} / {prefix}暦",
-        f"第{random.randint(2,9)}次{theme}期 — {suffix}",
+        f"第{random.randint(2, 9)}次{theme}期 — {suffix}",
         f"{prefix}・{theme}交差点",
     ]
     era = random.choice(patterns)
@@ -1705,10 +1706,10 @@ def get_original_cases_for_episode(episode_no: int) -> list[dict]:
         "SELECT DISTINCT civ_id FROM civ_appearances WHERE episode_no=?", (episode_no,)
     ).fetchall()]
     conn.close()
-    
+
     if not civ_ids:
         return []
-    
+
     results = []
     try:
         c2 = sqlite3.connect(_LEASE_DB)
@@ -1716,7 +1717,7 @@ def get_original_cases_for_episode(episode_no: int) -> list[dict]:
         placeholders = ",".join("?" for _ in civ_ids)
         rows = c2.execute(f"SELECT id, score, data FROM past_cases WHERE id IN ({placeholders})", tuple(civ_ids)).fetchall()
         c2.close()
-        
+
         for r in rows:
             data = json.loads(r["data"] or "{}")
             results.append({
@@ -1728,5 +1729,5 @@ def get_original_cases_for_episode(episode_no: int) -> list[dict]:
             })
     except Exception:
         pass
-        
+
     return results

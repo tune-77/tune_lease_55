@@ -755,7 +755,6 @@ def _screening_candidate_terms(*values: str) -> set[str]:
     return expanded
 
 
-
 def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[str, Any]]:
     state: dict[str, Any] = {}
     if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.exists():
@@ -786,7 +785,6 @@ def _load_autoresearch_judgment_asset_candidates(limit: int = 500) -> list[dict[
             rows = []
     rows = [row for row in rows if str(row.get("id") or "") != "demo-renewal-asset-candidate"]
     return rows[:limit]
-
 
 
 def _load_news_judgment_signals(limit: int = 100) -> list[dict[str, Any]]:
@@ -834,7 +832,6 @@ def _load_news_judgment_signals(limit: int = 100) -> list[dict[str, Any]]:
         reverse=True,
     )
     return rows[:limit]
-
 
 
 def _load_canonical_judgment_asset_candidates(limit: int = 100) -> list[dict[str, Any]]:
@@ -1425,7 +1422,6 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
         raise HTTPException(status_code=503, detail="feedback store is busy; retry") from exc
 
 
-
 def _create_manual_judgment_asset_candidate(req: JudgmentAssetCandidateManualRequest) -> dict[str, Any]:
     import datetime as _dt
     import hashlib as _hashlib
@@ -1758,7 +1754,6 @@ _CHAT_JUDGMENT_ASSET_ACTIONS = (
 )
 
 
-
 def _load_language_judgment_materials(limit: int = 100) -> list[dict[str, Any]]:
     if not _LANGUAGE_JUDGMENT_MATERIALS_JSONL.exists():
         return []
@@ -1776,7 +1771,6 @@ def _load_language_judgment_materials(limit: int = 100) -> list[dict[str, Any]]:
     except Exception:
         return []
     return rows[-max(1, min(limit, 500)):][::-1]
-
 
 
 def _load_response_impact_predictions(limit: int = 100) -> list[dict[str, Any]]:
@@ -1890,7 +1884,6 @@ _SCREENING_EXPERIENCE_DEMO_SEEDS: list[dict[str, Any]] = [
         "source": "demo_seed",
     },
 ]
-
 
 
 def _ensure_screening_experience_cases_table(seed_demo: bool = True) -> None:
@@ -2151,7 +2144,6 @@ def _score_screening_experience_case(row: dict, context: dict) -> dict:
     return row
 
 
-
 def _connect_cloudrun_return_db():
     import sqlite3
 
@@ -2399,8 +2391,6 @@ _CLOUDRUN_EVENT_CASE_PREFIX = "cloudrun_event:"
 _CLOUDRUN_INPUT_EVENTS_CACHE: dict[str, Any] = {"key": "", "expires_at": 0.0, "events": []}
 
 
-
-
 def _load_human_response_feedback(limit: int = 80) -> list[dict]:
     import json as _json
 
@@ -2417,7 +2407,6 @@ def _load_human_response_feedback(limit: int = 80) -> list[dict]:
         if isinstance(item, dict):
             rows.append(item)
     return rows
-
 
 
 def _summarize_human_response_feedback(route: str, limit: int = 80) -> dict:
@@ -2974,7 +2963,6 @@ def _build_reflection_gate_prompt_block(
 内省に触れる必要がある時も、「私はこう感じた」で止めず、リース審査AIとして何度も見てきた違和感・判断資産・過去案件からの学びのどれに当たるかを1つだけ示し、リース審査業務の改善提案、Userへの新たな情報提供、または次の確認軸として1〜2文に圧縮してください。
 自己言及は回答の主役にせず、結論・確認軸・判断分岐を薄めない範囲に留めてください。""".rstrip()
     return block, payload
-
 
 
 @router.post("/api/human-response-feedback")

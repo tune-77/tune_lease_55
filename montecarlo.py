@@ -57,6 +57,7 @@ except Exception:
     _RL_JP_FONT = "Helvetica"
     _RL_JP_FONT_BOLD = "Helvetica-Bold"
 
+
 # Matplotlib: OS別に日本語フォントを自動検出
 def _detect_jp_font_path() -> Optional[str]:
     """macOS / Linux / Windows で日本語TTFを探して返す。見つからなければ None。"""
@@ -90,6 +91,7 @@ def _detect_jp_font_path() -> Optional[str]:
             return p
     return None
 
+
 def _setup_matplotlib_jp():
     """matplotlibの基本設定のみ。フォントロードは行わない（macOSでのCoreTextクラッシュ回避）。"""
     try:
@@ -98,12 +100,15 @@ def _setup_matplotlib_jp():
     except Exception:
         pass
 
+
 _setup_matplotlib_jp()
+
 
 # 日本語テキスト用 FontProperties - macOSクラッシュ回避のため常にNoneを返す
 def _get_jp_font_prop(size: float = 10):
     """フォントロードをスキップ（macOS CoreTextクラッシュ回避）。"""
     return None
+
 
 def _w(text: str) -> str:
     """ASCII英数記号を全角に変換(日本語フォントで混在テキストを表示するため)。"""
@@ -118,6 +123,7 @@ def _w(text: str) -> str:
 # ============================================================
 # 1. 業種別ボラティリティ設定
 # ============================================================
+
 
 INDUSTRY_VOLATILITY = {
     "製造業": {
@@ -213,6 +219,7 @@ INDUSTRY_MAJOR_MAP: Dict[str, str] = {
     "T": "飲食・サービス",
 }
 
+
 def map_industry_from_major(industry_major: str) -> str:
     """既存システムの industry_major(例: 'D 建設業')をモンテカルロ業種名に変換。"""
     code = (industry_major or "").split(" ")[0].strip().upper()
@@ -221,6 +228,7 @@ def map_industry_from_major(industry_major: str) -> str:
 # ============================================================
 # 2. データクラス
 # ============================================================
+
 
 @dataclass
 class CompanyData:
@@ -287,9 +295,9 @@ class AdvancedMonteCarloEngine:
         return paths
 
     def _score(self, revenue, margin, equity, debt) -> np.ndarray:
-        rev_s  = np.clip(np.log1p(revenue) / np.log1p(1e10) * 25, 0, 25)
-        mar_s  = np.clip((margin + 0.10) / 0.30 * 25, 0, 25)
-        eq_s   = np.clip(equity / 0.60 * 25, 0, 25)
+        rev_s = np.clip(np.log1p(revenue) / np.log1p(1e10) * 25, 0, 25)
+        mar_s = np.clip((margin + 0.10) / 0.30 * 25, 0, 25)
+        eq_s = np.clip(equity / 0.60 * 25, 0, 25)
         debt_s = np.clip((1 - np.log1p(debt) / np.log1p(1e10)) * 25, 0, 25)
         return rev_s + mar_s + eq_s + debt_s
 
@@ -325,8 +333,8 @@ class AdvancedMonteCarloEngine:
             rev_paths = self._gbm_paths(company.revenue, vol["revenue_drift"], vol["revenue_vol"], T, dt)
         mar_paths = self._gbm_paths(company.operating_margin, 0.0, vol["margin_vol"], T, dt)
         mar_paths = np.clip(mar_paths, -0.30, 0.50)
-        eq_paths  = self._gbm_paths(company.equity_ratio, 0.005, vol["equity_vol"], T, dt)
-        eq_paths  = np.clip(eq_paths, 0.01, 0.99)
+        eq_paths = self._gbm_paths(company.equity_ratio, 0.005, vol["equity_vol"], T, dt)
+        eq_paths = np.clip(eq_paths, 0.01, 0.99)
         # 補助金は初期借入残高を圧縮する形でモデル化(補助分だけ調達不要になる)
         effective_debt = max(company.total_debt - company.subsidy_amount, 0.0)
         debt_paths = self._gbm_paths(effective_debt, -0.02, vol["debt_vol"], T, dt)
@@ -394,9 +402,9 @@ class AdvancedMonteCarloEngine:
         return out
 
     def _risk_level(self, prob: float) -> str:
-        if prob < 0.05:  return "低リスク"
-        if prob < 0.15:  return "中リスク"
-        if prob < 0.30:  return "高リスク"
+        if prob < 0.05: return "低リスク"
+        if prob < 0.15: return "中リスク"
+        if prob < 0.30: return "高リスク"
         return "極高リスク"
 
     def analyze_portfolio(self, companies: List[CompanyData]) -> PortfolioResult:
@@ -430,7 +438,7 @@ RISK_COLORS = {
 
 def make_company_chart(result: SimResult) -> bytes:
     """1社分の詳細チャート(PNG bytes)— 3行2列レイアウト"""
-    jp_fp    = _get_jp_font_prop(size=10)
+    jp_fp = _get_jp_font_prop(size=10)
     jp_fp_lg = _get_jp_font_prop(size=13)
 
     fig = plt.figure(figsize=(18, 17))
@@ -462,7 +470,7 @@ def make_company_chart(result: SimResult) -> bytes:
     # ── 2. 累積デフォルト確率(右上)────────────────────────────
     ax2 = fig.add_subplot(gs[0, 1])
     ts = result.time_series_default_prob
-    x  = np.arange(len(ts))
+    x = np.arange(len(ts))
     ax2.fill_between(x, ts * 100, alpha=0.25, color=col)
     ax2.plot(x, ts * 100, color=col, lw=2.5)
     ax2.axhline(15, color='orange', ls='--', lw=1.5, alpha=0.8, label='15% 警告')
@@ -535,10 +543,10 @@ def make_company_chart(result: SimResult) -> bytes:
     # ── 5. 感度分析(下段・全幅)────────────────────────────────
     ax4 = fig.add_subplot(gs[2, :])
     labels = list(result.sensitivity.keys())
-    vals   = list(result.sensitivity.values())
+    vals = list(result.sensitivity.values())
     bar_colors = ['#27ae60' if v >= 0 else '#e74c3c' for v in vals]
     y_pos = range(len(labels))
-    bars  = ax4.barh(list(y_pos), vals, color=bar_colors, alpha=0.85, height=0.55)
+    bars = ax4.barh(list(y_pos), vals, color=bar_colors, alpha=0.85, height=0.55)
     ax4.set_yticks(list(y_pos))
     ax4.set_yticklabels([""] * len(labels))
     ax4.axvline(0, color='black', lw=1)
@@ -607,11 +615,11 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
     ax2 = fig.add_subplot(gs_pf[0, 1])
     levels = ["低リスク", "中リスク", "高リスク", "極高リスク"]
     risk_amounts = {lv: 0 for lv in levels}
-    risk_counts  = {lv: 0 for lv in levels}
+    risk_counts = {lv: 0 for lv in levels}
     for r in results:
         lv = r.risk_level
         risk_amounts[lv] += r.company.lease_amount
-        risk_counts[lv]  += 1
+        risk_counts[lv] += 1
     amounts = [risk_amounts[lv] / 1e6 for lv in levels]
     cols = [RISK_COLORS[lv] for lv in levels]
     bars = ax2.bar(range(len(levels)), amounts, color=cols, alpha=0.8)
@@ -636,7 +644,7 @@ def make_portfolio_chart(portfolio: PortfolioResult) -> bytes:
         key=lambda x: x[1], reverse=True
     )
     el_names = [e[0] for e in el_list]
-    el_vals  = [e[1] for e in el_list]
+    el_vals = [e[1] for e in el_list]
     bar_cols = [RISK_COLORS.get(
         next((r.risk_level for r in results if r.company.name == n), "中リスク"), '#95a5a6')
         for n in el_names]
@@ -679,8 +687,8 @@ def _risk_color_rl(risk_level: str):
 
 
 def _pf_eval_text(prob: float) -> str:
-    if prob < 0.05:  return "良好"
-    if prob < 0.15:  return "要注意"
+    if prob < 0.05: return "良好"
+    if prob < 0.15: return "要注意"
     return "要精査"
 
 
@@ -913,14 +921,14 @@ def res_to_company_data(res: dict, company_name: str = "審査対象",
         lease_months:     リース期間(月)
     """
     fin = res.get("financials") or {}
-    nenshu       = (fin.get("nenshu", 0) or 0) * 1_000           # 千円 → 円
-    op_margin    = (res.get("user_op", 0) or 0) / 100            # % → 小数
-    eq_ratio     = max((res.get("user_eq", 0) or 0) / 100, 0.01) # % → 小数、最低1%
+    nenshu = (fin.get("nenshu", 0) or 0) * 1_000           # 千円 → 円
+    op_margin = (res.get("user_op", 0) or 0) / 100            # % → 小数
+    eq_ratio = max((res.get("user_eq", 0) or 0) / 100, 0.01)  # % → 小数、最低1%
     # 借入金残高 = 総資産 - 純資産(負債合計)。bank_credit/lease_creditは当社与信残高なので使わない
     total_assets = (fin.get("assets",     0) or 0) * 1_000       # 千円 → 円
     net_assets_v = (fin.get("net_assets", 0) or 0) * 1_000       # 千円 → 円
-    total_debt   = max(total_assets - net_assets_v, 0)
-    industry     = map_industry_from_major(res.get("industry_major", ""))
+    total_debt = max(total_assets - net_assets_v, 0)
+    industry = map_industry_from_major(res.get("industry_major", ""))
 
     return CompanyData(
         name=company_name,

@@ -168,7 +168,7 @@ def append_weekly_log(log_text: str) -> None:
 
     content = content.rstrip() + "\n" + log_text + "\n"
     WEEKLY_LOG_PATH.write_text(content, encoding="utf-8")
-    print(f"[weekly_self_management] Weekly Log を WEEKLY_LOG.md に追記しました")
+    print("[weekly_self_management] Weekly Log を WEEKLY_LOG.md に追記しました")
 
 
 def main() -> int:

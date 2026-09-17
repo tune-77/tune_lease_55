@@ -3,6 +3,7 @@ import json
 from typing import List, Dict, Any
 from sklearn.covariance import OAS
 
+
 class CaseSimilarityEngine:
     """
     案件間の類似度を計算し、過去事例から類似案件を抽出するエンジン。
@@ -11,7 +12,7 @@ class CaseSimilarityEngine:
     # 類似度計算に使用する財務・属性項目と重み
     FEATURES = {
         "sales_log": 0.20,       # 売上規模（対数）
-        "op_profit_margin": 0.15, # 営業利益率
+        "op_profit_margin": 0.15,  # 営業利益率
         "equity_ratio": 0.25,     # 自己資本比率
         "debt_to_sales": 0.15,    # 債務売上比率
         "industry_match": 0.25,   # 業種の一致度
@@ -36,9 +37,9 @@ class CaseSimilarityEngine:
 
         # 指標の計算と正規化（簡易的なクリッピングとスケーリング）
         f_sales = np.log1p(max(revenue, 0)) / 25.0  # 100億で約0.9
-        f_margin = np.clip(op_profit / (revenue + 1e-6), -0.2, 0.4) * 2.5 + 0.5 # -20%~40% -> 0~2
-        f_equity = np.clip(equity_ratio, -0.1, 0.8) * 1.2 + 0.1 # -10%~80% -> 0~1
-        f_debt = np.clip(total_debt / (revenue + 1e-6), 0, 2.0) / 2.0 # 0~200% -> 0~1
+        f_margin = np.clip(op_profit / (revenue + 1e-6), -0.2, 0.4) * 2.5 + 0.5  # -20%~40% -> 0~2
+        f_equity = np.clip(equity_ratio, -0.1, 0.8) * 1.2 + 0.1  # -10%~80% -> 0~1
+        f_debt = np.clip(total_debt / (revenue + 1e-6), 0, 2.0) / 2.0  # 0~200% -> 0~1
 
         return np.array([f_sales, f_margin, f_equity, f_debt])
 
@@ -66,12 +67,12 @@ class CaseSimilarityEngine:
         成約登録時に手動で入力された loan_conditions を最優先する。
         """
         conditions = []
-        
+
         # 1. 成約登録時に入力された確定条件を優先
         actual_conds = data.get("loan_conditions")
         if actual_conds and isinstance(actual_conds, list):
             conditions.extend(actual_conds)
-            
+
         # 既に抽出された条件（重複）を避けるためのセット
         existing = set(conditions)
 
@@ -84,12 +85,12 @@ class CaseSimilarityEngine:
             conditions.append("関連資産の担保/保全")
         if (data.get("Co_Lease") or data.get("bn_s_co_lease")) and "金融機関と協調" not in existing:
             conditions.append("協調リース（共同与信）")
-        
+
         # 期間短縮（例: 標準36ヶ月より短い）
         term = data.get("lease_term") or data.get("lease_months")
         if term and int(term) <= 24:
             conditions.append(f"期間短縮({term}ヶ月)")
-            
+
         # 自己資金投入（頭金相当）
         if data.get("down_payment") or data.get("bn_s_down_payment"):
             conditions.append("頭金/自己資金")
@@ -109,11 +110,11 @@ class CaseSimilarityEngine:
                 try: data = json.loads(data)
                 except: continue
             elif not data: data = p
-            
+
             status = data.get("final_status", "")
             if "成約" in status or "承認" in status:
                 success_cases.append(p)
-        
+
         if not success_cases:
             return []
 
@@ -146,7 +147,7 @@ class CaseSimilarityEngine:
 
             # 総合スコア（重み付け）
             total_sim = (financial_sim * 0.7) + (industry_sim * 0.3)
-            
+
             # 成約条件の分析
             status = data.get("final_status", "")
             is_success = "成約" in status or "承認" in status

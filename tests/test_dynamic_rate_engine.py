@@ -18,6 +18,7 @@ from dynamic_rate_engine import (
 
 # ─── compute_risk_premium ────────────────────────────────────────────────────
 
+
 class TestComputeRiskPremium:
     def test_zero_pd_gives_zero_rp(self):
         rp = compute_risk_premium(0.0)
@@ -30,7 +31,7 @@ class TestComputeRiskPremium:
 
     def test_longer_term_higher_rp(self):
         rp_short = compute_risk_premium(5.0, lease_term_months=24)
-        rp_long  = compute_risk_premium(5.0, lease_term_months=84)
+        rp_long = compute_risk_premium(5.0, lease_term_months=84)
         assert rp_long > rp_short, "長期ほどリスクプレミアムが高いこと"
 
     def test_non_negative(self):
@@ -70,7 +71,7 @@ class TestComputeDynamicRateProposal:
 
     def test_high_score_lower_rate_than_low_score(self):
         r_high = self._base_call(score=85.0).recommended_rate
-        r_low  = self._base_call(score=35.0).recommended_rate
+        r_low = self._base_call(score=35.0).recommended_rate
         assert r_high < r_low, "高スコアの方が低金利提案になること"
 
     def test_pd_unavailable_when_none(self):
@@ -100,7 +101,7 @@ class TestComputeDynamicRateProposal:
         assert probs[0] >= probs[2], "守りの成約確率が強気より高いこと"
 
     def test_competitor_rate_awareness(self):
-        r_no_comp   = self._base_call(competitor_rate=0.0).recommended_rate
+        r_no_comp = self._base_call(competitor_rate=0.0).recommended_rate
         r_with_comp = self._base_call(competitor_rate=3.5).recommended_rate
         # 競合があると Monte Carlo の計算が変わる（大小関係は条件依存なので変化を確認）
         assert r_no_comp != r_with_comp or True  # 計算が通ること自体を確認

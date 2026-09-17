@@ -28,11 +28,11 @@ from charts import _equity_ratio_display
 
 # ローカルではリポジトリ内 data/、Cloud Run等では DATA_DIR で差し替える。
 _DATA_DIR = str(get_data_dir())
-CASES_FILE = os.path.join(os.path.dirname(_DATA_DIR), "past_cases.jsonl") # obsolete
+CASES_FILE = os.path.join(os.path.dirname(_DATA_DIR), "past_cases.jsonl")  # obsolete
 DB_PATH = get_db_path()
 COEFF_OVERRIDES_FILE = os.path.join(_DATA_DIR, "coeff_overrides.json")
-COEFF_AUTO_FILE      = os.path.join(_DATA_DIR, "coeff_auto.json")
-COEFF_HISTORY_FILE   = os.path.join(_DATA_DIR, "coeff_history.jsonl")
+COEFF_AUTO_FILE = os.path.join(_DATA_DIR, "coeff_auto.json")
+COEFF_HISTORY_FILE = os.path.join(_DATA_DIR, "coeff_history.jsonl")
 CONSULTATION_MEMORY_FILE = os.path.join(_DATA_DIR, "consultation_memory.jsonl")
 CASE_NEWS_FILE = os.path.join(_DATA_DIR, "case_news.jsonl")
 DASHBOARD_STATS_CACHE_FILE = os.path.join(_DATA_DIR, "dashboard_stats_cache.json")
@@ -104,6 +104,7 @@ def hash_company_no(co_no: str) -> str:
     digest = hashlib.sha256(salted.encode()).digest()
     b64 = base64.urlsafe_b64encode(digest).decode().replace("_", "").replace("-", "")
     return b64[:6].upper()
+
 
 # スコア重みのデフォルト（借手/物件、総合/定性）。回帰最適化で上書き可能。
 DEFAULT_WEIGHT_BORROWER = 0.85
@@ -757,9 +758,9 @@ def find_similar_past_cases(current_case_data: dict, max_count: int = 3):
 
     from case_similarity import CaseSimilarityEngine
     engine = CaseSimilarityEngine(all_past)
-    
+
     similar_results = engine.find_similar(current_case_data, top_n=max_count)
-    
+
     # UI表示用に必要な情報を抽出して返す
     output = []
     for item in similar_results:
@@ -790,27 +791,27 @@ def analyze_lost_cases(industry_sub=None):
         status = c.get("final_status")
         if status == "失注":
             lost_cases.append(c)
-    
+
     if industry_sub:
         lost_cases = [c for c in lost_cases if c.get("industry_sub") == industry_sub]
-        
+
     reasons = {}
     competitors = {}
     comp_rates = []
-    
+
     for c in lost_cases:
         r = c.get("lost_reason", "不明")
         if not r: r = "不明"
         reasons[r] = reasons.get(r, 0) + 1
-        
+
         comp = c.get("competitor_name", "不明")
         if comp:
             competitors[comp] = competitors.get(comp, 0) + 1
-        
+
         rate = c.get("competitor_rate")
         if rate and isinstance(rate, (int, float)):
             comp_rates.append(rate)
-            
+
     return {
         "total": len(lost_cases),
         "reasons": reasons,
@@ -1115,15 +1116,15 @@ def get_score_weights():
     借手/物件・総合/定性の重みを返す。(w_borrower, w_asset, w_quant, w_qual)。
     優先順位: 手動設定 (coeff_overrides.json) > 自動最適化 (coeff_auto.json) > デフォルト値
     """
-    auto     = load_auto_coeffs()
-    manual   = load_coeff_overrides() or {}
+    auto = load_auto_coeffs()
+    manual = load_coeff_overrides() or {}
     # score_weights キー（手動）vs _auto_weight_* キー（自動）を統合
     sw = manual.get("score_weights") or {}
     # 借手/物件重み: 手動 > 自動 > デフォルト
-    w_b  = sw.get("borrower") or auto.get("_auto_weight_borrower")
-    w_a  = sw.get("asset")    or auto.get("_auto_weight_asset")
-    w_q  = sw.get("quant")    or auto.get("_auto_weight_quant")
-    w_q2 = sw.get("qual")     or auto.get("_auto_weight_qual")
+    w_b = sw.get("borrower") or auto.get("_auto_weight_borrower")
+    w_a = sw.get("asset") or auto.get("_auto_weight_asset")
+    w_q = sw.get("quant") or auto.get("_auto_weight_quant")
+    w_q2 = sw.get("qual") or auto.get("_auto_weight_qual")
     if w_b is not None and w_a is not None and (w_b + w_a) > 0:
         s_ba = w_b + w_a
         w_borrower, w_asset = w_b / s_ba, w_a / s_ba
@@ -1143,15 +1144,15 @@ def get_model_blend_weights():
     優先順位: 手動設定 (coeff_overrides.json) > 自動最適化 (coeff_auto.json) > デフォルト (0.5/0.3/0.2)
     戻り値: (w_main, w_bench, w_ind) — 合計 1.0
     """
-    _DEFAULT_MAIN  = 0.5
+    _DEFAULT_MAIN = 0.5
     _DEFAULT_BENCH = 0.3
-    _DEFAULT_IND   = 0.2
-    auto   = load_auto_coeffs()
+    _DEFAULT_IND = 0.2
+    auto = load_auto_coeffs()
     manual = load_coeff_overrides() or {}
     mw = manual.get("model_blend_weights") or {}
-    w_m  = mw.get("main")  or auto.get("_auto_blend_w_main")
-    w_b  = mw.get("bench") or auto.get("_auto_blend_w_bench")
-    w_i  = mw.get("ind")   or auto.get("_auto_blend_w_ind")
+    w_m = mw.get("main") or auto.get("_auto_blend_w_main")
+    w_b = mw.get("bench") or auto.get("_auto_blend_w_bench")
+    w_i = mw.get("ind") or auto.get("_auto_blend_w_ind")
     if w_m is not None and w_b is not None and w_i is not None:
         total = float(w_m) + float(w_b) + float(w_i)
         if total > 0:
@@ -1228,6 +1229,7 @@ class CustomJSONEncoder(json.JSONEncoder):
         except Exception:
             return str(obj)
 
+
 def save_case_log(data):
     """審査1件分のログをDBに追記し、生成した案件IDを返す。失敗時は None。"""
     import uuid
@@ -1243,13 +1245,13 @@ def save_case_log(data):
     if not data.get("registration_date"):
         data["registration_date"] = str(data.get("timestamp", ""))[:10] or datetime.datetime.now().strftime("%Y-%m-%d")
     _enrich_rate_fields(data)
-    
+
     industry_sub = data.get("industry_sub", "")
     score, user_eq = None, None
     res = data.get("result", {})
     if isinstance(res, dict):
         score, user_eq = res.get("score"), res.get("user_eq")
-        
+
     try:
         score_val = float(score) if score is not None else None
     except (TypeError, ValueError):
@@ -1259,12 +1261,12 @@ def save_case_log(data):
         user_eq_val = float(user_eq) if user_eq is not None else None
     except (TypeError, ValueError):
         user_eq_val = None
-        
+
     try:
         if not _cloud_db_enabled() and not os.path.exists(DB_PATH):
             from migrate_to_sqlite import init_db
             init_db()
-            
+
         json_str = json.dumps(data, ensure_ascii=False, cls=CustomJSONEncoder)
         ph = _db_placeholder()
         with _case_db_connection() as conn:
@@ -1446,12 +1448,13 @@ def save_excluded_grade_case(data):
 def _trigger_ml_features_update(case_id: str) -> None:
     """新規登録・更新後に ml_features を非同期で更新する。エラーは握りつぶす。"""
     try:
-        import importlib.util, os
+        import importlib.util
+        import os
         if not os.path.exists(os.path.join(_SCRIPT_DIR, "data", "ml_rf_v3.pkl")):
             return
         script = os.path.join(_SCRIPT_DIR, "scripts", "update_ml_features.py")
-        spec   = importlib.util.spec_from_file_location("update_ml_features", script)
-        mod    = importlib.util.module_from_spec(spec)
+        spec = importlib.util.spec_from_file_location("update_ml_features", script)
+        mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.update_ml_features(case_ids=[case_id])
     except Exception:

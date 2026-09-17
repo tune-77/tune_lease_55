@@ -15,4 +15,3 @@ def test_okf_rag_eval_set_covers_initial_pack():
         assert case["query"].strip()
         assert case["expected_path_any"]
         assert case["expected_path_any"][0].startswith("knowledge_base/okf_lease_concepts/")
-

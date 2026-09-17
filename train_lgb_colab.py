@@ -78,12 +78,14 @@ LGBM_PARAMS = dict(n_estimators=200, max_depth=4, learning_rate=0.05,
                    num_leaves=15, min_child_samples=5, subsample=0.8,
                    colsample_bytree=0.8, random_state=42, verbose=-1)
 
+
 # ---------- ヘルパー ----------
 def safe_float(v, default=0.0):
     try:
         return float(v) if v is not None else default
     except Exception:
         return default
+
 
 def ind_flags(major):
     m = major or ""
@@ -93,8 +95,9 @@ def ind_flags(major):
         "ind_construction":  1.0 if ("建設" in m or m.startswith("D")) else 0.0,
         "ind_manufacturing": 1.0 if ("製造" in m or m.startswith("E")) else 0.0,
         "ind_service":       1.0 if (any(x in m for x in ["卸売", "小売", "サービス"])
-                                     or (bool(m) and m[0] in ["I","K","M","R"])) else 0.0,
+                                     or (bool(m) and m[0] in ["I", "K", "M", "R"])) else 0.0,
     }
+
 
 # ---------- 定量モデル用行構築 ----------
 def build_quant_row(c):
@@ -102,9 +105,9 @@ def build_quant_row(c):
     res = c.get("result") or {}
     major = (inp.get("industry_major") or res.get("industry_major") or "").strip()
     grade = inp.get("grade") or res.get("grade") or "1-3"
-    nenshu      = safe_float(inp.get("nenshu"))
+    nenshu = safe_float(inp.get("nenshu"))
     bank_credit = safe_float(inp.get("bank_credit"))
-    lease_credit= safe_float(inp.get("lease_credit"))
+    lease_credit = safe_float(inp.get("lease_credit"))
     flags = ind_flags(major)
     row = [
         flags["ind_medical"], flags["ind_transport"], flags["ind_construction"],
@@ -164,20 +167,21 @@ def build_quant_row(c):
     row += [dscr, icr]
     return row
 
+
 # ---------- 定性モデル用行構築 ----------
 def build_qual_row(c, asset_to_idx):
     inp = c.get("inputs") or {}
     res = c.get("result") or {}
-    main_bank    = c.get("main_bank") or inp.get("main_bank") or "非メイン先"
-    competitor   = c.get("competitor") or inp.get("competitor") or "競合なし"
-    customer_type= c.get("customer_type") or inp.get("customer_type") or "既存先"
-    deal_source  = inp.get("deal_source") or "その他"
-    asset_id     = inp.get("lease_asset_id") or inp.get("lease_asset_name") or "未選択"
+    main_bank = c.get("main_bank") or inp.get("main_bank") or "非メイン先"
+    competitor = c.get("competitor") or inp.get("competitor") or "競合なし"
+    customer_type = c.get("customer_type") or inp.get("customer_type") or "既存先"
+    deal_source = inp.get("deal_source") or "その他"
+    asset_id = inp.get("lease_asset_id") or inp.get("lease_asset_name") or "未選択"
     row = [
-        1.0 if main_bank    == "メイン先"  else 0.0,
-        1.0 if competitor   == "競合あり"  else 0.0,
-        1.0 if customer_type == "新規先"  else 0.0,
-        1.0 if deal_source  == "銀行紹介" else 0.0,
+        1.0 if main_bank == "メイン先" else 0.0,
+        1.0 if competitor == "競合あり" else 0.0,
+        1.0 if customer_type == "新規先" else 0.0,
+        1.0 if deal_source == "銀行紹介" else 0.0,
         float(asset_to_idx.get(asset_id, 0)),
     ]
     qsc = (res.get("qualitative_scoring_correction")
@@ -188,6 +192,7 @@ def build_qual_row(c, asset_to_idx):
         v = val.get("value") if isinstance(val, dict) else None
         row.append(float(v) if isinstance(v, (int, float)) else -1.0)
     return row
+
 
 # ---------- アンサンブル alpha 最適化 ----------
 def optimize_alpha(p_lr, p_lgb, y):
@@ -200,6 +205,7 @@ def optimize_alpha(p_lr, p_lgb, y):
         if auc > best_auc:
             best_auc, best_a = auc, a
     return float(best_a), float(best_auc)
+
 
 # ============================================================
 # 定量モデル学習

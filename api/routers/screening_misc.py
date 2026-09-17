@@ -30,6 +30,7 @@ router = APIRouter(tags=["screening-misc"])
 # マルチエージェント審査 API (石橋 vs 風林火山 + 軍師調停)
 # =============================================================================
 
+
 class MultiAgentRequest(BaseModel):
     score: float
     company_name: str = ""

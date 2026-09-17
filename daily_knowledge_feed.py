@@ -297,7 +297,7 @@ TASKS: dict[str, tuple[str, Callable]] = {
     "estat":    ("e-Stat 法人企業統計（年次）",              task_estat_annual),
     "bench":    ("e-Stat 業種別財務指標",                    task_estat_benchmarks),
     "boj":      ("日銀金利 API",                            task_boj_rate),
-    "machinery":("機械受注統計 → lease-wiki-vault",          task_machinery_orders_to_vault),
+    "machinery": ("機械受注統計 → lease-wiki-vault",          task_machinery_orders_to_vault),
     "research": ("リース判断 Auto Research",                 task_lease_judgment_research),
     "news":     ("リース業界ニュース RSS",                    task_lease_news_rss),
     "drift":    ("コンセプトドリフト検知",                    task_macro_drift_check),

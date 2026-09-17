@@ -10,16 +10,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+
 class QuantumFinanceEngine:
     def __init__(self):
         # 業界別標準比率（e-Stat等の簡易ベンチマーク）
         # 比率の定義: [売上高/総資産, 純資産/総資産, 営業利益/総資産, 総負債/総資産]
         self.benchmarks = {
-            "D": {"sales_assets": 1.10, "equity_assets": 0.30, "profit_assets": 0.04, "debt_assets": 0.70}, # 建設業
-            "E": {"sales_assets": 0.90, "equity_assets": 0.40, "profit_assets": 0.05, "debt_assets": 0.60}, # 製造業
-            "H": {"sales_assets": 1.20, "equity_assets": 0.25, "profit_assets": 0.03, "debt_assets": 0.75}, # 運輸業
-            "P": {"sales_assets": 0.80, "equity_assets": 0.45, "profit_assets": 0.06, "debt_assets": 0.55}, # 医療・福祉
-            "I": {"sales_assets": 1.30, "equity_assets": 0.35, "profit_assets": 0.05, "debt_assets": 0.65}, # サービス業
+            "D": {"sales_assets": 1.10, "equity_assets": 0.30, "profit_assets": 0.04, "debt_assets": 0.70},  # 建設業
+            "E": {"sales_assets": 0.90, "equity_assets": 0.40, "profit_assets": 0.05, "debt_assets": 0.60},  # 製造業
+            "H": {"sales_assets": 1.20, "equity_assets": 0.25, "profit_assets": 0.03, "debt_assets": 0.75},  # 運輸業
+            "P": {"sales_assets": 0.80, "equity_assets": 0.45, "profit_assets": 0.06, "debt_assets": 0.55},  # 医療・福祉
+            "I": {"sales_assets": 1.30, "equity_assets": 0.35, "profit_assets": 0.05, "debt_assets": 0.65},  # サービス業
             "DEFAULT": {"sales_assets": 1.00, "equity_assets": 0.30, "profit_assets": 0.05, "debt_assets": 0.70}
         }
 
@@ -27,7 +28,7 @@ class QuantumFinanceEngine:
         """業種コードの先頭文字からマスタのキーを解決する"""
         if not industry_code or not isinstance(industry_code, str):
             return "DEFAULT"
-        
+
         code = industry_code.strip().upper()[0]
         if code in self.benchmarks:
             return code
@@ -49,7 +50,7 @@ class QuantumFinanceEngine:
         debt = max(0.0, assets - equity)
 
         if assets <= 0:
-            assets = 1.0 # ゼロ除算防御
+            assets = 1.0  # ゼロ除算防御
 
         # 実績比率
         r_sales = sales / assets
@@ -85,7 +86,7 @@ class QuantumFinanceEngine:
     def analyze_interference(self, row: pd.Series, industry_code: str) -> dict:
         """複素ベクトルの相殺的干渉から Q_risk を算出する。"""
         phasors = self.calculate_phasors(row, industry_code)
-        
+
         # 波の合成 (負債は差し引く方向で干渉させる)
         z_total = phasors["z_sales"] + phasors["z_equity"] + phasors["z_profit"] - phasors["z_debt"]
 
@@ -115,12 +116,12 @@ class QuantumFinanceEngine:
         """アルガン図（複素平面）上に波の相殺状態をプロットして返却する。"""
         analysis = self.analyze_interference(row, industry_code)
         phasors = analysis["phasors"]
-        
+
         z_sales = phasors["z_sales"]
         z_equity = phasors["z_equity"]
         z_profit = phasors["z_profit"]
         z_debt = phasors["z_debt"]
-        
+
         # 負債は差し引く方向で合成
         z_total = z_sales + z_equity + z_profit - z_debt
 
@@ -138,17 +139,17 @@ class QuantumFinanceEngine:
         p2 = (p1[0] + z_equity.real, p1[1] + z_equity.imag)
         p3 = (p2[0] + z_profit.real, p2[1] + z_profit.imag)
 
-        ax.quiver(0, 0, z_sales.real, z_sales.imag, angles='xy', scale_units='xy', scale=1, 
+        ax.quiver(0, 0, z_sales.real, z_sales.imag, angles='xy', scale_units='xy', scale=1,
                   color="#00F5FF", width=0.015, label="売上")
-        ax.quiver(p1[0], p1[1], z_equity.real, z_equity.imag, angles='xy', scale_units='xy', scale=1, 
+        ax.quiver(p1[0], p1[1], z_equity.real, z_equity.imag, angles='xy', scale_units='xy', scale=1,
                   color="#BD00FF", width=0.015, label="純資産")
-        ax.quiver(p2[0], p2[1], z_profit.real, z_profit.imag, angles='xy', scale_units='xy', scale=1, 
+        ax.quiver(p2[0], p2[1], z_profit.real, z_profit.imag, angles='xy', scale_units='xy', scale=1,
                   color="#00FF66", width=0.015, label="利益")
-        ax.quiver(p3[0], p3[1], -z_debt.real, -z_debt.imag, angles='xy', scale_units='xy', scale=1, 
+        ax.quiver(p3[0], p3[1], -z_debt.real, -z_debt.imag, angles='xy', scale_units='xy', scale=1,
                   color="#FFCC00", width=0.015, label="負債")
 
         # 合成結果のベクトル
-        ax.quiver(0, 0, z_total.real, z_total.imag, angles='xy', scale_units='xy', scale=1, 
+        ax.quiver(0, 0, z_total.real, z_total.imag, angles='xy', scale_units='xy', scale=1,
                   color="#FF007A", width=0.01, label="最終合成")
 
         # 理想最大（相殺なし）の円
@@ -188,13 +189,13 @@ class QuantumFinanceEngine:
 
         # 時間軸 (1周期分)
         t = np.linspace(0, 2 * np.pi, 500)
-        
+
         # 各波 (負債は差し引く方向で干渉)
         y_sales = amp_sales * np.sin(t + theta_sales)
         y_equity = amp_equity * np.sin(t + theta_equity)
         y_profit = amp_profit * np.sin(t + theta_profit)
         y_debt = amp_debt * np.sin(t + theta_debt)
-        
+
         y_total = y_sales + y_equity + y_profit - y_debt
 
         fig, ax = plt.subplots(figsize=(6, 3.5))
@@ -215,10 +216,10 @@ class QuantumFinanceEngine:
         ax.set_xlabel("位相 (Time/Phase)", color="#FFFFFF", fontsize=8)
         ax.set_ylabel("振幅 (Amplitude)", color="#FFFFFF", fontsize=8)
         ax.set_title(f"財務波動干渉シミュレーション (相殺率: {analysis['q_risk']}%)", color="#FFFFFF", pad=12, fontsize=10)
-        
+
         ax.tick_params(colors="#888888", labelsize=8)
         ax.grid(True, color="#31363F", alpha=0.4)
-        
+
         legend = ax.legend(facecolor="#0E1117", edgecolor="#31363F", loc="upper right", fontsize=8)
         plt.setp(legend.get_texts(), color="#FFFFFF")
 
@@ -247,24 +248,24 @@ class QuantumFinanceEngine:
         # 4量子ビット回路
         # Qubit 0:売上, Qubit 1:純資産, Qubit 2:営業利益, Qubit 3:総負債
         qc = QuantumCircuit(4)
-        
+
         metrics = [
             (phasors["amp_sales"], phasors["theta_sales"]),
             (phasors["amp_equity"], phasors["theta_equity"]),
             (phasors["amp_profit"], phasors["theta_profit"]),
             (phasors["amp_debt"], phasors["theta_debt"])
         ]
-        
+
         for i, (amp, theta) in enumerate(metrics):
             qc.ry(2 * np.arctan2(amp, 1.0), i)
             qc.p(theta, i)
-            
+
         # 4つの量子を絡み合わせる（干渉の生成）
         for i in range(4):
             qc.h(i)
         for i in range(3):
             qc.cx(i, i+1)
-            
+
         # 状態ベクトルのシミュレーション
         state = Statevector.from_instruction(qc)
         probs = state.probabilities_dict()
@@ -273,27 +274,27 @@ class QuantumFinanceEngine:
         if api_token and len(api_token.strip()) > 10:
             try:
                 from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
-                
+
                 # IBM Quantum サービスにログイン
                 service = QiskitRuntimeService(channel="ibm_quantum_platform", token=api_token)
-                
+
                 # 稼働中で最も待ち時間が少ない実機を取得
                 backend = service.least_busy(operational=True, simulator=False)
-                
+
                 # 測定ゲートの追加
                 qc_real = qc.copy()
                 qc_real.measure_all()
-                
+
                 # ⚠️ ISA (Instruction Set Architecture) トランスパイルの実行
                 # 近年のIBM実機はハードウェアが直接理解できるゲートのみを受け付けます
                 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
                 pm = generate_preset_pass_manager(optimization_level=1, backend=backend)
                 isa_circuit = pm.run(qc_real)
-                
+
                 # 実機への送信（非同期）
                 sampler = SamplerV2(mode=backend)
                 job = sampler.run([isa_circuit])
-                
+
                 msg = (
                     f"🚀 **IBM Quantum 実機 ({backend.name}) へジョブ送信成功！**\n\n"
                     f"- **Job ID**: `{job.job_id()}`\n"
@@ -302,7 +303,6 @@ class QuantumFinanceEngine:
                 )
             except Exception as e:
                 msg = f"⚠️ **実機送信エラー**: `{str(e)}` \n\nAPIキーまたは `qiskit-ibm-runtime` ライブラリの不足です。ローカルで代替シミュレートしました。"
-
 
         # 状態 '1111' (4指標すべてが反転している最悪状態) の確率を量子版のQ_riskとする
         qrisk_quantum = np.round(probs.get('1111', 0.0) * 100.0, 2)
@@ -319,17 +319,17 @@ class QuantumFinanceEngine:
         import numpy as np
         if not api_token or not job_id:
             return {"error": "APIトークンおよびJob IDが必要です。"}
-            
+
         try:
             from qiskit_ibm_runtime import QiskitRuntimeService
             service = QiskitRuntimeService(channel="ibm_quantum_platform", token=api_token)
             job = service.job(job_id.strip())
-            
+
             status = job.status()
-            
+
             # 文字列に変換して比較
             status_str = str(status)
-            
+
             if "DONE" in status_str:
                 result = job.result()
                 # SamplerV2 の結果パース
@@ -338,15 +338,15 @@ class QuantumFinanceEngine:
                 data_keys = list(pub_result.data.keys())
                 if not data_keys:
                     return {"error": "測定データが見つかりません。"}
-                    
+
                 counts = pub_result.data[data_keys[0]].get_counts()
-                
+
                 # 確率に変換
                 total_shots = sum(counts.values())
                 probs = {k: np.round(v / total_shots, 4) for k, v in counts.items()}
-                
+
                 qrisk = np.round(probs.get('1111', 0.0) * 100.0, 2)
-                
+
                 return {
                     "status": "DONE",
                     "probabilities": probs,
@@ -360,6 +360,3 @@ class QuantumFinanceEngine:
                 }
         except Exception as e:
             return {"error": f"結果の取得中にエラーが発生しました: {str(e)}"}
-
-
-

@@ -316,22 +316,22 @@ def _build_one_row_industry(log, data):
     combined = qsc.get("combined_score") or qsc.get("weighted_score")
     qualitative_combined = (float(combined) / 100.0) if combined is not None else 0.0
     # BNエンジン出力（スコア≤70の案件のみ値あり、未実行時は 0 で埋める）
-    bn      = log.get("bn_engine") or {}
-    bn_im   = bn.get("intermediate") or {}
+    bn = log.get("bn_engine") or {}
+    bn_im = bn.get("intermediate") or {}
     bn_approval_prob = float(bn.get("approval_prob") or 0)
-    bn_fc   = float(bn_im.get("Financial_Creditworthiness") or 0)
-    bn_hc   = float(bn_im.get("Hedge_Condition") or 0)
-    bn_av   = float(bn_im.get("Asset_Value") or 0)
+    bn_fc = float(bn_im.get("Financial_Creditworthiness") or 0)
+    bn_hc = float(bn_im.get("Hedge_Condition") or 0)
+    bn_av = float(bn_im.get("Asset_Value") or 0)
     # 定性スコアリング項目（sumaho13追加）
-    qsc_items  = qsc.get("items") or {}
-    qual_weighted   = (float(qsc.get("weighted_score") or 0) / 100.0)
-    qual_rank       = qsc.get("rank") or ""
-    qual_rank_good  = 1.0 if qual_rank in ("A", "B") else 0.0
-    repayment_val   = (qsc_items.get("repayment_history") or {}).get("value") or 0
-    qual_repayment  = float(repayment_val) / 4.0  # 最大4段階 → 0-1 正規化
-    dscr_approx     = _compute_dscr_approx_from_log(log)
+    qsc_items = qsc.get("items") or {}
+    qual_weighted = (float(qsc.get("weighted_score") or 0) / 100.0)
+    qual_rank = qsc.get("rank") or ""
+    qual_rank_good = 1.0 if qual_rank in ("A", "B") else 0.0
+    repayment_val = (qsc_items.get("repayment_history") or {}).get("value") or 0
+    qual_repayment = float(repayment_val) / 4.0  # 最大4段階 → 0-1 正規化
+    dscr_approx = _compute_dscr_approx_from_log(log)
     interest_coverage = _compute_interest_coverage_from_log(log)
-    
+
     # 量子矛盾スコア (Q_risk) のオンザフライ計算
     quantum_risk = 0.0
     try:
@@ -557,8 +557,6 @@ def _run_single_quant_analysis(X, y, feature_names, min_cases=50):
         out["best_auc_model"] = best_model_name
         out["best_auc_value"] = valid_candidates[best_model_name]
     return out
-
-
 
 
 def _compute_fisher_and_shrink(X, theta):
@@ -788,20 +786,20 @@ def _build_one_row_indicator(log, data):
     qsc_i = (res.get("qualitative_scoring_correction") or inp.get("qualitative_scoring")) or {}
     combined_i = qsc_i.get("combined_score") or qsc_i.get("weighted_score")
     qualitative_combined = (float(combined_i) / 100.0) if combined_i is not None else 0.0
-    
-    bn      = log.get("bn_engine") or {}
-    bn_im   = bn.get("intermediate") or {}
+
+    bn = log.get("bn_engine") or {}
+    bn_im = bn.get("intermediate") or {}
     bn_approval_prob = float(bn.get("approval_prob") or 0)
-    bn_fc   = float(bn_im.get("Financial_Creditworthiness") or 0)
-    bn_hc   = float(bn_im.get("Hedge_Condition") or 0)
-    bn_av   = float(bn_im.get("Asset_Value") or 0)
+    bn_fc = float(bn_im.get("Financial_Creditworthiness") or 0)
+    bn_hc = float(bn_im.get("Hedge_Condition") or 0)
+    bn_av = float(bn_im.get("Asset_Value") or 0)
 
     # 定性スコアリング項目（sumaho13追加）
     qsc_items_i = qsc_i.get("items") or {}
-    qual_weighted_i  = float(qsc_i.get("weighted_score") or 0) / 100.0
-    qual_rank_i      = qsc_i.get("rank") or ""
+    qual_weighted_i = float(qsc_i.get("weighted_score") or 0) / 100.0
+    qual_rank_i = qsc_i.get("rank") or ""
     qual_rank_good_i = 1.0 if qual_rank_i in ("A", "B") else 0.0
-    repayment_val_i  = (qsc_items_i.get("repayment_history") or {}).get("value") or 0
+    repayment_val_i = (qsc_items_i.get("repayment_history") or {}).get("value") or 0
     qual_repayment_i = float(repayment_val_i) / 4.0
     new_ctx_i = _build_new_customer_context_features({
         "main_bank": log.get("main_bank") or inp.get("main_bank") or "非メイン先",
@@ -813,7 +811,7 @@ def _build_one_row_indicator(log, data):
         "competitor_rate": log.get("competitor_rate") or inp.get("competitor_rate"),
         "customer_type": inp.get("customer_type") or log.get("customer_type") or "既存先",
     })
-    
+
     # 量子矛盾スコア (Q_risk) のオンザフライ計算
     quantum_risk_i = 0.0
     try:
@@ -1233,7 +1231,7 @@ def optimize_model_blend_weights():
     y_list = []
     for c in registered:
         res = c.get("result") or {}
-        sb  = res.get("score_borrower")   # ① 全体モデル (0-100)
+        sb = res.get("score_borrower")   # ① 全体モデル (0-100)
         bsc = res.get("bench_score")       # ② 指標モデル (0-100)
         isc = res.get("ind_score")         # ③ 業種別モデル (0-100)
         if sb is None or bsc is None or isc is None:
@@ -1417,7 +1415,8 @@ def run_qualitative_contract_analysis(qual_correction_items):
         out["lgb_importance"] = list(zip(feature_names, lgb_model.feature_importances_.tolist()))
         out["shap_importance"] = []
         try:
-            import joblib as _jbl, os as _os2
+            import joblib as _jbl
+            import os as _os2
             _mp = _os2.path.join(_os2.path.dirname(_os2.path.abspath(__file__)), "data", "lgb_qual_model.joblib")
             _jbl.dump({"model": lgb_model, "feature_names": feature_names, "asset_to_idx": asset_to_idx}, _mp)
         except Exception:
@@ -1539,7 +1538,8 @@ def run_quantitative_contract_analysis():
         out["lgb_importance"] = list(zip(feature_names, lgb_model.feature_importances_.tolist()))
         # LGB モデルを保存（スコア計算時の本体モデル）
         try:
-            import joblib as _jbl, os as _os2
+            import joblib as _jbl
+            import os as _os2
             _mp = _os2.path.join(_os2.path.dirname(_os2.path.abspath(__file__)), "data", "lgb_main_model.joblib")
             _jbl.dump({"model": lgb_model, "feature_names": feature_names}, _mp)
         except Exception:
@@ -1809,7 +1809,6 @@ def run_quantitative_by_indicator():
     return results
 
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Youden 指数で最適承認ラインを自動計算
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1840,7 +1839,7 @@ def calc_optimal_approval_line() -> dict | None:
     cases = load_all_cases()
     registered = [c for c in cases if c.get("final_status") in ["成約", "失注"]]
     closed = [c for c in registered if c.get("final_status") == "成約"]
-    lost   = [c for c in registered if c.get("final_status") == "失注"]
+    lost = [c for c in registered if c.get("final_status") == "失注"]
 
     if len(closed) < 3 or len(lost) < 3:
         return {
@@ -1867,7 +1866,7 @@ def calc_optimal_approval_line() -> dict | None:
 
     fpr, tpr, thresholds = roc_curve(labels_arr, scores_arr)
     youden_vals = tpr - fpr          # = 感度 + 特異度 - 1
-    best_idx   = int(np.argmax(youden_vals))
+    best_idx = int(np.argmax(youden_vals))
     best_thresh = float(thresholds[best_idx])
     best_thresh_int = int(round(best_thresh))
 

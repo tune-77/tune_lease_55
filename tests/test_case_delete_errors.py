@@ -30,6 +30,7 @@ def deletion(tmp_path, monkeypatch):
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE past_cases (id TEXT PRIMARY KEY)")
         conn.execute("INSERT INTO past_cases VALUES ('exists')")
+
     @contextmanager
     def connection():
         conn = sqlite3.connect(db)

@@ -19,27 +19,30 @@ def _gemini_generate_url() -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
+
 class AdviseRequest(BaseModel):
     score: float
     industry_major: str
+
 
 class AdviseResponseItem(BaseModel):
     id: str
     text: str
     score_boost: float
 
+
 @router.post("/api/gunshi/advise", response_model=List[AdviseResponseItem])
 def get_gunshi_advise(req: AdviseRequest):
     from shinsa_gunshi import PHRASES_100
     try:
         advices = PHRASES_100.get("逆転アドバイス", [])
-        
+
         # 確率ブーストから得点アップの目算に変換 (例: prob_boost 0.10 -> 10点相当)
         # ランダム性を持たせつつ、より状況に合ったものを本来はソートするが今回は上位3つを決定
         import random
         # 簡易的にシャッフルして上位を取り、スコアを計算
         sampled = random.sample(advices, min(3, len(advices)))
-        
+
         results = []
         for a in sampled:
             # 内部のprob_boost (0.08～0.12程度) を 100倍してスコア上昇幅とする
@@ -49,7 +52,7 @@ def get_gunshi_advise(req: AdviseRequest):
                 text=a["text"],
                 score_boost=boost_score
             ))
-            
+
         # スコアアップが高い順にソート
         results.sort(key=lambda x: x.score_boost, reverse=True)
         return results
@@ -280,6 +283,7 @@ def _normalize_yukikaze_datalink_reply(reply_text: str, user_message: str) -> st
         "TX: PANPANPAN // PILOT QUERY RECEIVED.",
         "RX: ROGER. COPY. PILOT QUERY RECEIVED.",
     ])
+
 
 def _record_information_weighting_shadow(message: str) -> None:
     try:
@@ -531,7 +535,7 @@ def generate_gunshi_chat(req: GunshiChatRequest, background_tasks: BackgroundTas
                             if "GEMINI_API_KEY" in line:
                                 api_key = line.split("=")[1].strip().strip('"').strip("'")
                                 break
-                                
+
             if api_key:
                 import requests
                 url = _gemini_generate_url()
@@ -549,7 +553,7 @@ def generate_gunshi_chat(req: GunshiChatRequest, background_tasks: BackgroundTas
             reply_text = f"【LLM接続エラー】\nGemini APIへの接続に失敗しました: {e}"
 
         return {"chat_text": reply_text, "reply": reply_text}
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()

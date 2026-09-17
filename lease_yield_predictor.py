@@ -51,14 +51,14 @@ _ASSET_SPREADS: dict[tuple[str, int], float] = {
     ("machinery",    7): 0.52, ("machinery",   10): 0.60,
     # 建設機械
     ("construction", 1): 0.32, ("construction", 3): 0.40, ("construction", 5): 0.48,
-    ("construction", 7): 0.55, ("construction",10): 0.65,
+    ("construction", 7): 0.55, ("construction", 10): 0.65,
 }
 _ASSET_DEFAULT: dict[int, float] = {1: 0.32, 3: 0.42, 5: 0.50, 7: 0.58, 10: 0.68}
 
 # ── 格付スプレッドテーブル（単位: %） ──────────────────────────────────────
 # 入力 grade は "①1-3 (優良)" / "②4-6 (標準)" / "③7-9 (注意)" など
 _GRADE_SPREADS: dict[str, float] = {
-    "s":  -0.10,
+    "s": -0.10,
     "①": -0.10,  # 優良
     "a":   0.10,
     "②":  0.25,  # 標準
@@ -176,24 +176,24 @@ def predict_yield(conn: sqlite3.Connection, inputs: dict) -> dict:
         "fallback_note":    str,    # フォールバック説明
     }
     """
-    year_month      = inputs["year_month"]
+    year_month = inputs["year_month"]
     lease_term_months = inputs["lease_term_months"]
-    asset_id        = inputs.get("lease_asset_id", "other")
-    grade           = inputs.get("grade", "")
-    borrower_score  = float(inputs.get("borrower_score", 70.0))
+    asset_id = inputs.get("lease_asset_id", "other")
+    grade = inputs.get("grade", "")
+    borrower_score = float(inputs.get("borrower_score", 70.0))
 
     # 将来分析用の3期分格付トレンド（安全網つきで取得）
     trend_grade_t0 = inputs.get("trend_grade_t0", grade)
     trend_grade_t1 = inputs.get("trend_grade_t1", trend_grade_t0)
     trend_grade_t2 = inputs.get("trend_grade_t2", trend_grade_t1)
 
-    term_years_raw  = lease_term_months / 12
-    term_years      = _nearest_term(term_years_raw)
+    term_years_raw = lease_term_months / 12
+    term_years = _nearest_term(term_years_raw)
 
     base, fallback = get_funding_rate(conn, year_month, term_years)
-    asset  = get_asset_spread(asset_id, term_years)
+    asset = get_asset_spread(asset_id, term_years)
     grade_ = get_grade_spread(grade)
-    risk   = get_risk_adjustment(borrower_score)
+    risk = get_risk_adjustment(borrower_score)
 
     total = round(base + asset + grade_ + risk, 4)
 

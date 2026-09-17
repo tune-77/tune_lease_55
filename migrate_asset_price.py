@@ -5,6 +5,7 @@ from runtime_paths import get_db_path
 
 DB_PATH = get_db_path()
 
+
 def run_migration():
     if not os.path.exists(os.path.dirname(DB_PATH)):
         os.makedirs(os.path.dirname(DB_PATH))
@@ -28,6 +29,7 @@ def run_migration():
     conn.commit()
     print("✅ Table 'asset_price_history' successfully created (or already exists).")
     conn.close()
+
 
 if __name__ == "__main__":
     run_migration()

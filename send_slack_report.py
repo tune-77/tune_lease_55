@@ -342,8 +342,8 @@ def main():
         print("   https://hooks.slack.com/services/... の形式が必要です")
         sys.exit(1)
 
-    print(f"📡 Slackにレポートを送信します...")
-    print(f"   ワークスペース: leasecorp")
+    print("📡 Slackにレポートを送信します...")
+    print("   ワークスペース: leasecorp")
     print(f"   改善項目数: {REPORT['summary']['total_items']}件")
     print(f"   高優先: {REPORT['summary']['high_priority']}件")
     print()

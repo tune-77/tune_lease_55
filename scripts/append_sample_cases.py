@@ -15,6 +15,7 @@ _DATA_DIR = os.path.join(_SCRIPT_DIR, "data")
 # 本体は触らない。サンプル専用ファイルにのみ出力する。
 SAMPLE_CASES_FILE = os.path.join(_DATA_DIR, "past_cases_sample.jsonl")
 
+
 # 業種中分類 → 大分類の簡易マッピング
 def _sub_to_major(industry_sub):
     if not industry_sub:

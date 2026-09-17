@@ -37,12 +37,12 @@ st.divider()
 # ウィジェットをインポート＆レンダリング
 try:
     from components.usage_period_widget import render_usage_period_widget
-    
+
     # ウィジェットの実行
     result = render_usage_period_widget(key_prefix="test_upw")
-    
+
     st.divider()
-    
+
     # 結果の表示（デバッグ用）
     if st.checkbox("🔍 JSON結果を表示"):
         st.json(result)

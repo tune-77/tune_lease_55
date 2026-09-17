@@ -9,13 +9,16 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["settings"])
 
+
 # ── 設定系 (企業番号設定API)
 class CorporateSettings(BaseModel):
     api_key: str = ""
     default_number: str = ""
     auto_fetch: bool = True
 
+
 _CORPORATE_CONFIG_FILE = "corporate_config.json"
+
 
 @router.get("/api/settings/corporate_number", response_model=CorporateSettings)
 def get_corporate_settings():
@@ -29,6 +32,7 @@ def get_corporate_settings():
             pass
     return CorporateSettings()
 
+
 @router.post("/api/settings/corporate_number")
 def save_corporate_settings(req: CorporateSettings):
     import json
@@ -36,11 +40,13 @@ def save_corporate_settings(req: CorporateSettings):
         json.dump(req.model_dump(), f, ensure_ascii=False, indent=2)
     return {"status": "success"}
 
+
 # ── マスタ系 (ビジネスルール設定)
 @router.get("/api/settings/rules")
 def get_rules():
     from rule_manager import load_business_rules
     return load_business_rules()
+
 
 @router.post("/api/settings/rules")
 def save_rules(rules: dict):
@@ -48,12 +54,12 @@ def save_rules(rules: dict):
     save_business_rules(rules)
     return {"status": "success"}
 
+
 # ── 係数変更履歴
 @router.get("/api/logs/coefficient")
 def get_coefficient_history():
     from category_config import get_recent_coefficient_edits
     return get_recent_coefficient_edits(limit=50)
-
 
 
 # =============================================================================
@@ -65,6 +71,7 @@ def get_coefficient_history():
 def get_interest_rates():
     from base_rate_master import list_base_rates
     return list_base_rates(limit=60)
+
 
 class InterestRateUpdate(BaseModel):
     month: str
@@ -80,6 +87,7 @@ class InterestRateUpdate(BaseModel):
     r_9y: float | None = None
     r_over9y: float | None = None
 
+
 @router.post("/api/settings/interest")
 def update_interest_rate(req: InterestRateUpdate):
     from base_rate_master import upsert_base_rate
@@ -91,11 +99,13 @@ def update_interest_rate(req: InterestRateUpdate):
     )
     return {"status": "success"}
 
+
 @router.post("/api/settings/interest/seed")
 def seed_interest_rates(overwrite: bool = False):
     from base_rate_master import seed_initial_data
     inserted, skipped = seed_initial_data(overwrite=overwrite)
     return {"inserted": inserted, "skipped": skipped}
+
 
 @router.get("/api/settings/interest/current")
 def get_current_interest():
@@ -113,4 +123,3 @@ def get_current_interest():
         "latest": recent[0] if recent else None,
         "prev": recent[1] if len(recent) > 1 else None,
     }
-

@@ -71,6 +71,7 @@ def test_web_context_parses_search_results(monkeypatch):
     class Resp:
         status_code = 200
         text = html
+
         def raise_for_status(self):
             return None
 

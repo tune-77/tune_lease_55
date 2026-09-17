@@ -28,9 +28,10 @@ import requests
 
 # ── パス ──────────────────────────────────────────────────────────────────────
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_MATH_DB     = os.path.join(_SCRIPT_DIR, "data", "math_discoveries.db")
-_LEASE_DB    = os.path.join(os.path.dirname(_SCRIPT_DIR), "tune_lease_55", "data", "lease_data.db")
+_MATH_DB = os.path.join(_SCRIPT_DIR, "data", "math_discoveries.db")
+_LEASE_DB = os.path.join(os.path.dirname(_SCRIPT_DIR), "tune_lease_55", "data", "lease_data.db")
 _PROPOSALS_JSON = os.path.join(_SCRIPT_DIR, "data", "math_proposals.json")
+
 
 def _post_thought(thought: str, icon: str = "🔬"):
     try:
@@ -38,6 +39,7 @@ def _post_thought(thought: str, icon: str = "🔬"):
         _post_agent_thought("🔬 Dr.Algo", thought, icon)
     except Exception:
         pass
+
 
 def save_parameter_proposal(method_name: str, changes: dict, reason: str) -> None:
     """数学的発見に基づいたパラメータ変更案を保存する"""
@@ -48,7 +50,7 @@ def save_parameter_proposal(method_name: str, changes: dict, reason: str) -> Non
                 proposals = json.load(f)
         except Exception:
             pass
-    
+
     # 重複チェック（同じメソッド名なら更新）
     proposals = [p for p in proposals if p["method_name"] != method_name]
     proposals.append({
@@ -58,10 +60,10 @@ def save_parameter_proposal(method_name: str, changes: dict, reason: str) -> Non
         "reason": reason,
         "status": "pending"
     })
-    
+
     with open(_PROPOSALS_JSON, "w", encoding="utf-8") as f:
         json.dump(proposals, f, ensure_ascii=False, indent=2)
-    
+
     import random as _rnd
     _proposal_lines = [
         f"新理論『{method_name}』に基づき、審査モデルの最適化案を策定した。管理者の承認を待つ。",
@@ -73,9 +75,10 @@ def save_parameter_proposal(method_name: str, changes: dict, reason: str) -> Non
     ]
     _post_thought(_rnd.choice(_proposal_lines), "💡")
 
+
 # ── arXiv ターゲットカテゴリ ────────────────────────────────────────────────────
 _ARXIV_CATEGORIES = ["cs.LG", "econ.GN", "q-fin.RM", "stat.ML"]
-_ARXIV_KEYWORDS   = [
+_ARXIV_KEYWORDS = [
     "credit scoring",
     "survival analysis default",
     "bayesian inference finance",
@@ -191,7 +194,7 @@ def _save_experiment(
     )
     conn.commit()
     conn.close()
-    
+
     # 改善効果が高い場合は自動提案を作成 (Phase 3)
     if auc_improvement >= 0.02:
         reason = f"理論『{method_name}』により精度向上が確認されました。モデルの最適化を推奨します。"
@@ -264,9 +267,9 @@ def _fetch_arxiv(keyword: str, max_results: int = 5) -> list[dict]:
         root = ET.fromstring(resp.text)
         papers = []
         for entry in root.findall("atom:entry", ns):
-            title   = (entry.findtext("atom:title", "", ns) or "").strip()
+            title = (entry.findtext("atom:title", "", ns) or "").strip()
             summary = (entry.findtext("atom:summary", "", ns) or "").strip()[:400]
-            link    = (entry.findtext("atom:id", "", ns) or "").strip()
+            link = (entry.findtext("atom:id", "", ns) or "").strip()
             authors = ", ".join(
                 (a.findtext("atom:name", "", ns) or "")
                 for a in entry.findall("atom:author", ns)
@@ -312,9 +315,9 @@ def _estimate_relevance(title: str, summary: str) -> tuple[float, str, str]:
     # 関連スコア
     score = 3.0
     high_kw = ["credit", "default", "bankruptcy", "loan", "scoring", "risk"]
-    mid_kw  = ["classification", "prediction", "regression", "finance", "economic"]
+    mid_kw = ["classification", "prediction", "regression", "finance", "economic"]
     score += sum(1.5 for w in high_kw if w in text)
-    score += sum(0.5 for w in mid_kw  if w in text)
+    score += sum(0.5 for w in mid_kw if w in text)
     score = min(10.0, score)
 
     # 数式ヒント
@@ -501,7 +504,7 @@ def _auc_simple(scores: list[float], labels: list[int]) -> float:
     if not pos or not neg:
         return 0.5
     concordant = sum(1 for p in pos for n in neg if p > n)
-    tied       = sum(0.5 for p in pos for n in neg if p == n)
+    tied = sum(0.5 for p in pos for n in neg if p == n)
     return (concordant + tied) / (len(pos) * len(neg))
 
 
@@ -539,15 +542,15 @@ def run_experiment_bayesian() -> dict:
 
         # 精度
         prec_prior = 1.0 / max(sigma_prior ** 2, 1.0)
-        prec_obs   = 1.0 / 100.0  # 観測誤差σ=10
+        prec_obs = 1.0 / 100.0  # 観測誤差σ=10
 
         bayes_score = (prec_prior * mu_prior + prec_obs * c["score"]) / (prec_prior + prec_obs)
         bayesian_scores.append(bayes_score)
 
     orig_scores, labels = _binary_labels(cases)
-    auc_orig  = _auc_simple(orig_scores, labels)
+    auc_orig = _auc_simple(orig_scores, labels)
     auc_bayes = _auc_simple(bayesian_scores, labels)
-    delta     = auc_bayes - auc_orig
+    delta = auc_bayes - auc_orig
 
     result = {
         "method": "ベイズ更新スコアリング",
@@ -592,15 +595,15 @@ def run_experiment_kalman() -> dict:
         x_pred = x_est
         P_pred = P_est + Q
         # 更新
-        K      = P_pred / (P_pred + R)
-        x_est  = x_pred + K * (z - x_pred)
-        P_est  = (1 - K) * P_pred
+        K = P_pred / (P_pred + R)
+        x_est = x_pred + K * (z - x_pred)
+        P_est = (1 - K) * P_pred
         filtered.append(x_est)
 
     orig_scores, labels = _binary_labels(cases)
-    auc_orig   = _auc_simple(orig_scores, labels)
+    auc_orig = _auc_simple(orig_scores, labels)
     auc_kalman = _auc_simple(filtered, labels)
-    delta      = auc_kalman - auc_orig
+    delta = auc_kalman - auc_orig
 
     result = {
         "method": "カルマンフィルタ（財務トレンド）",
@@ -632,10 +635,10 @@ def run_experiment_prospect_theory() -> dict:
     if len(cases) < 5:
         return _synthetic_experiment("プロスペクト理論スコア重み付け", base_auc=0.72, delta=0.025)
 
-    ALPHA  = 0.88  # 利益の凸性係数
-    BETA   = 0.88  # 損失の凸性係数
+    ALPHA = 0.88  # 利益の凸性係数
+    BETA = 0.88  # 損失の凸性係数
     LAMBDA = 2.25  # 損失回避係数
-    REF    = 71.0  # 参照点（承認ライン）
+    REF = 71.0  # 参照点（承認ライン）
 
     prospect_scores = []
     for c in cases:
@@ -648,9 +651,9 @@ def run_experiment_prospect_theory() -> dict:
         prospect_scores.append(REF + v)
 
     orig_scores, labels = _binary_labels(cases)
-    auc_orig     = _auc_simple(orig_scores, labels)
+    auc_orig = _auc_simple(orig_scores, labels)
     auc_prospect = _auc_simple(prospect_scores, labels)
-    delta        = auc_prospect - auc_orig
+    delta = auc_prospect - auc_orig
 
     result = {
         "method": "プロスペクト理論スコア重み付け",
@@ -683,9 +686,9 @@ def run_experiment_survival() -> dict:
         return _synthetic_experiment("コペルニクス原理（生存分析）", base_auc=0.72, delta=0.022)
 
     # Weibull パラメータ（k=1.5, λ=75 を初期値とした MLE 近似）
-    scores   = [c["score"] for c in cases]
-    k        = 1.5
-    lam      = float(np.mean(scores)) if scores else 70.0
+    scores = [c["score"] for c in cases]
+    k = 1.5
+    lam = float(np.mean(scores)) if scores else 70.0
 
     survival_scores = []
     for s in scores:
@@ -695,9 +698,9 @@ def run_experiment_survival() -> dict:
         survival_scores.append(surv * 100)
 
     orig_scores, labels = _binary_labels(cases)
-    auc_orig    = _auc_simple(orig_scores, labels)
+    auc_orig = _auc_simple(orig_scores, labels)
     auc_survival = _auc_simple(survival_scores, labels)
-    delta        = auc_survival - auc_orig
+    delta = auc_survival - auc_orig
 
     result = {
         "method": "コペルニクス原理（生存分析）",
@@ -743,9 +746,9 @@ def run_experiment_power_law() -> dict:
             corrected.append(s)
 
     orig_scores, labels = _binary_labels(cases)
-    auc_orig  = _auc_simple(orig_scores, labels)
+    auc_orig = _auc_simple(orig_scores, labels)
     auc_power = _auc_simple(corrected, labels)
-    delta     = auc_power - auc_orig
+    delta = auc_power - auc_orig
 
     result = {
         "method": "パワーロー倒産確率補正",
@@ -778,8 +781,8 @@ def run_experiment_granger() -> dict:
         return _synthetic_experiment("グランジャー因果性（業況→デフォルト）", base_auc=0.72, delta=0.011)
 
     scores = [c["score"] for c in cases]
-    n      = len(scores)
-    lag    = min(3, n // 4)
+    n = len(scores)
+    lag = min(3, n // 4)
 
     # 単純 OLS: score_t = β0 + β1 * score_{t-lag} + ε
     y = np.array(scores[lag:])
@@ -793,9 +796,9 @@ def run_experiment_granger() -> dict:
     granger_scores = [beta0 + beta1 * s for s in scores]
 
     orig_scores, labels = _binary_labels(cases)
-    auc_orig    = _auc_simple(orig_scores, labels)
+    auc_orig = _auc_simple(orig_scores, labels)
     auc_granger = _auc_simple(granger_scores, labels)
-    delta       = auc_granger - auc_orig
+    delta = auc_granger - auc_orig
 
     result = {
         "method": "グランジャー因果性（業況→デフォルト）",
@@ -846,16 +849,16 @@ def run_experiment_maxent() -> dict:
     # 高エントロピー業種は保守的に（スコアを少し引き下げ）
     maxent_scores = []
     for c in cases:
-        ind  = c.get("industry_sub") or "unknown"
-        ent  = industry_entropy.get(ind, 0.0)
+        ind = c.get("industry_sub") or "unknown"
+        ent = industry_entropy.get(ind, 0.0)
         # ペナルティ: entropy が最大値の75%超なら -3点
         penalty = 3.0 if ent > 0.75 * max_ent else 0.0
         maxent_scores.append(c["score"] - penalty)
 
     orig_scores, labels = _binary_labels(cases)
-    auc_orig   = _auc_simple(orig_scores, labels)
+    auc_orig = _auc_simple(orig_scores, labels)
     auc_maxent = _auc_simple(maxent_scores, labels)
-    delta      = auc_maxent - auc_orig
+    delta = auc_maxent - auc_orig
 
     result = {
         "method": "エントロピー最大化スコアリング",
@@ -879,7 +882,7 @@ def run_experiment_maxent() -> dict:
 def _synthetic_experiment(method_name: str, base_auc: float, delta: float) -> dict:
     """データ不足時のシミュレーション実験（デモ用）。"""
     np.random.seed(abs(hash(method_name)) % 2**31)
-    noise  = float(np.random.normal(0, 0.005))
+    noise = float(np.random.normal(0, 0.005))
     result = {
         "method": method_name,
         "auc_original": round(base_auc, 4),
@@ -917,16 +920,16 @@ def run_dynamic_llm_experiment(method_name: str) -> dict:
     init_math_db()
     conn = sqlite3.connect(_MATH_DB)
     row = conn.execute(
-        "SELECT summary, formula_latex, field_tag FROM math_discoveries WHERE method_name=?", 
+        "SELECT summary, formula_latex, field_tag FROM math_discoveries WHERE method_name=?",
         (method_name,)
     ).fetchone()
     conn.close()
 
     if not row:
         return {"method": method_name, "error": "手法が見つかりません"}
-    
+
     summary, formula, field_tag = row
-    
+
     # 仮想データの基礎
     try:
         cases = _load_screening_cases()
@@ -950,7 +953,7 @@ def run_dynamic_llm_experiment(method_name: str) -> dict:
         '{"auc_delta": 0.0125, "note": "外れ値に弱いため劇的な改善は望めないが、特定業種では有効"}\n'
         "※ auc_delta は -0.0500 から +0.0500 の範囲のfloat値としてください。"
     )
-    
+
     user_prompt = (
         f"【シミュレーション対象データ】\n"
         f"サンプル数: {n_cases}\n"
@@ -971,19 +974,19 @@ def run_dynamic_llm_experiment(method_name: str) -> dict:
                 {"role": "user", "content": user_prompt}
             ]
         )
-        
+
         # 不要なMarkdownを取り除く
         clean_text = resp_text.replace("```json", "").replace("```", "").strip()
         result_json = json.loads(clean_text)
-        
+
         delta = float(result_json.get("auc_delta", 0.0))
-        note  = str(result_json.get("note", "LLMによる理論的シミュレーション"))
-        
+        note = str(result_json.get("note", "LLMによる理論的シミュレーション"))
+
         # 軽くノイズを足す（シミュレーション感を出すため）
         np.random.seed(abs(hash(method_name)) % 2**31)
         noise = float(np.random.normal(0, 0.002))
         delta = delta + noise
-        
+
     except Exception as e:
         # LLM失敗時のフォールバック
         delta = 0.005
@@ -1043,7 +1046,7 @@ def generate_math_report() -> str:
     init_math_db()
     experiments = load_experiments()
     discoveries = load_discoveries()
-    ts          = datetime.datetime.now().strftime("%Y年%m月%d日 %H:%M")
+    ts = datetime.datetime.now().strftime("%Y年%m月%d日 %H:%M")
 
     lines = [
         "# 🔬 数学者レポート（Dr. Algo）",
@@ -1059,7 +1062,7 @@ def generate_math_report() -> str:
     ]
     for i, exp in enumerate(experiments[:10], 1):
         adopted = "✅ 採用済み" if exp.get("adopted") else "⏳ 候補"
-        delta   = exp.get("auc_improvement", 0)
+        delta = exp.get("auc_improvement", 0)
         lines.append(
             f"| {i} | {exp['method_name']} | {delta:+.4f} | {adopted} |"
         )
@@ -1073,7 +1076,7 @@ def generate_math_report() -> str:
     ]
     for d in discoveries[:10]:
         score = d.get("relevance_score", 0)
-        tag   = d.get("field_tag", "")
+        tag = d.get("field_tag", "")
         lines += [
             f"### {d['method_name']}",
             f"**分野:** `{tag}` | **転用可能性:** {score}/10",

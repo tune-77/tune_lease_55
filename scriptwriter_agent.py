@@ -16,10 +16,11 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-_BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-_PLOT_JSON  = os.path.join(_BASE_DIR, "data", "weekly_plot.json")
-_MATH_DB    = os.path.join(_BASE_DIR, "data", "math_discoveries.db")
-_NOVEL_DB   = os.path.join(_BASE_DIR, "data", "novel_records.db")
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PLOT_JSON = os.path.join(_BASE_DIR, "data", "weekly_plot.json")
+_MATH_DB = os.path.join(_BASE_DIR, "data", "math_discoveries.db")
+_NOVEL_DB = os.path.join(_BASE_DIR, "data", "novel_records.db")
+
 
 def get_recent_math_discoveries(limit: int = 2) -> list[dict]:
     """数学者エージェントが収集した最新の知見を取得する"""
@@ -36,6 +37,7 @@ def get_recent_math_discoveries(limit: int = 2) -> list[dict]:
     except Exception:
         return []
 
+
 def get_past_civ_entities(limit: int = 5) -> list[str]:
     """過去の小説（文明年代記）に登場した企業や団体を取得する"""
     if not os.path.exists(_NOVEL_DB):
@@ -49,6 +51,7 @@ def get_past_civ_entities(limit: int = 5) -> list[str]:
         return [r[0] for r in rows if r[0]]
     except Exception:
         return []
+
 
 def _backup_plot_before_write() -> None:
     """万が一の破損を防ぐためバックアップをとる"""
@@ -70,7 +73,7 @@ def fetch_internet_trends(num_items: int = 7) -> list[dict]:
     encoded_query = urllib.parse.quote(query)
     # Google News RSS (日本語)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ja&gl=JP&ceid=JP:ja"
-    
+
     news_items = []
     try:
         req = urllib.request.Request(
@@ -79,12 +82,12 @@ def fetch_internet_trends(num_items: int = 7) -> list[dict]:
         )
         with urllib.request.urlopen(req, timeout=10) as response:
             xml_data = response.read()
-            
+
         root = ET.fromstring(xml_data)
         # RSS2.0 の構造: <channel> -> <item> -> <title>, <link>, <pubDate>
         for item in root.findall('./channel/item'):
             title = item.findtext('title')
-            link  = item.findtext('link')
+            link = item.findtext('link')
             date_str = item.findtext('pubDate') or ""
             if title and link:
                 # 「 - 〇〇新聞」などのサフィックスをなるべく除去してすっきりさせる
@@ -100,7 +103,7 @@ def fetch_internet_trends(num_items: int = 7) -> list[dict]:
         print(f"[RSS Fetch Error] {e}")
         # フォールバック用のダミーニュース
         return [{"title": "最新のAIモデルが自我を持ち反乱か", "url": "", "date": "1時間前"}]
-        
+
     return news_items
 
 
@@ -109,12 +112,12 @@ def generate_weekly_plot() -> dict:
     LLMを呼び出し、取得したニュースから「今週のカオスなプロット」を生成する。
     """
     trends = fetch_internet_trends(5)
-    maths  = get_recent_math_discoveries(2)
-    civs   = get_past_civ_entities(5)
-    
+    maths = get_recent_math_discoveries(2)
+    civs = get_past_civ_entities(5)
+
     trends_text = "\n".join([f"・{t['title']}" for t in trends])
-    math_text   = "\n".join([f"・{m['method_name']}: {m['summary'][:100]}..." for m in maths]) if maths else "特になし"
-    civ_text    = ", ".join(civs) if civs else "特になし"
+    math_text = "\n".join([f"・{m['method_name']}: {m['summary'][:100]}..." for m in maths]) if maths else "特になし"
+    civ_text = ", ".join(civs) if civs else "特になし"
     system_prompt = """
 あなたは超一流の「AI脚本家」兼「審査戦略家」です。
 最新のネットトレンド、高度な数学理論、そして過去の因縁（エンティティ）を融合させ、
@@ -133,28 +136,28 @@ def generate_weekly_plot() -> dict:
   ]
 }
 """
-    
+
     user_prompt = (
         f"【最新ネット話題】\n{trends_text}\n\n"
         f"【Dr.Algoの最新発見（数式/理論）】\n{math_text}\n\n"
         f"【過去の因縁の企業・団体】\n{civ_text}\n\n"
         "これらの要素をすべて混ぜ合わせ、最高にカオスで知的なプロットを作成してください。"
     )
-    
+
     import ai_chat
     import traceback
-    
+
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
     try:
         from components.agent_hub import _get_ai_settings
         engine, model, api_key, gemini_model = _get_ai_settings()
-        
+
         # Force Gemini for stability during complex plot generation
         if gemini_model:
             engine = "gemini"
             model = gemini_model
-        
+
         import components.agent_hub as ah
         import random as _rnd
         _analyzing_lines = [
@@ -166,9 +169,9 @@ def generate_weekly_plot() -> dict:
             "取材開始。今週のネタはなかなか辛辣だな。昇華させてやる。",
         ]
         ah._post_agent_thought("📝 脚本家AI", _rnd.choice(_analyzing_lines), "📝")
-        
+
         resp_text = ai_chat._chat_for_thread(
-            engine, model, 
+            engine, model,
             [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -204,7 +207,7 @@ def generate_weekly_plot() -> dict:
                 "通信障害は想定内。予備のネタ帳から代替プロットを組んだ。",
             ]
             ah._post_agent_thought("📝 脚本家AI", _rnd2.choice(_err_lines), "⚠️")
-        
+
         plot_data = {
             "title": result_json.get("title", "無題のプロット"),
             "plot_text": result_json.get("plot_text", "プロットの生成に失敗しました。"),
@@ -241,7 +244,7 @@ def generate_weekly_plot() -> dict:
     _backup_plot_before_write()
     with open(_PLOT_JSON, "w", encoding="utf-8") as f:
         json.dump(plot_data, f, ensure_ascii=False, indent=2)
-        
+
     return plot_data
 
 

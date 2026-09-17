@@ -16,6 +16,7 @@ from pathlib import Path
 # Setup path
 sys.path.insert(0, str(Path(__file__).parent))
 
+
 def test_basic_caching():
     """Test basic caching operations"""
     print("\n" + "=" * 60)
@@ -84,7 +85,7 @@ def test_statistics():
     hit_rate = stats["hit_rate_percent"]
     assert 39 < hit_rate < 41, f"Expected ~40% hit rate, got {hit_rate}%"
 
-    print(f"✅ Statistics tracking works:")
+    print("✅ Statistics tracking works:")
     print(f"   Hits: {stats['hits']}, Misses: {stats['misses']}")
     print(f"   Hit rate: {hit_rate:.1f}%")
 
@@ -160,7 +161,7 @@ def test_thread_safety():
         t.join()
 
     assert len(errors) == 0, f"Errors in threads: {errors}"
-    print(f"✅ Thread-safe operations work (500 operations completed)")
+    print("✅ Thread-safe operations work (500 operations completed)")
 
     return True
 

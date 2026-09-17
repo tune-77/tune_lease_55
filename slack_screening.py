@@ -883,17 +883,17 @@ class ScreeningSession:
         def _en(key: str) -> float:
             return (d.get(key) or 0.0) * 1000
 
-        revenue             = _en("nenshu")
-        total_assets        = _en("total_assets")
-        equity              = _en("net_assets")
-        operating_profit    = _en("rieki")
-        net_income          = _en("item5_net_income")
+        revenue = _en("nenshu")
+        total_assets = _en("total_assets")
+        equity = _en("net_assets")
+        operating_profit = _en("rieki")
+        net_income = _en("item5_net_income")
         machinery_equipment = _en("item6_machine")
-        other_fixed_assets  = _en("item7_other")
-        depreciation        = _en("item10_dep")
-        rent_expense        = _en("item8_rent")
-        lease_amount_man    = (d.get("acquisition_cost") or 0) / 10  # 千円 → 万円表示
-        lease_term          = int(d.get("lease_term") or 36)
+        other_fixed_assets = _en("item7_other")
+        depreciation = _en("item10_dep")
+        rent_expense = _en("item8_rent")
+        lease_amount_man = (d.get("acquisition_cost") or 0) / 10  # 千円 → 万円表示
+        lease_term = int(d.get("lease_term") or 36)
 
         # AIモデル呼び出し
         result = None
@@ -927,7 +927,7 @@ class ScreeningSession:
         if result:
             hybrid = result.get("hybrid_prob", 0.5)
             ai_prob = result.get("ai_prob", 0.5)
-            legacy  = result.get("legacy_prob", 0.5)
+            legacy = result.get("legacy_prob", 0.5)
             decision = result.get("decision", "保留")
             top5 = result.get("top5_reasons", [])
             score = round((1 - hybrid) * 100, 1)

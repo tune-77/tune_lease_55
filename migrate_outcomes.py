@@ -75,8 +75,8 @@ _STATUS_TO_OUTCOME = {
     "成約":         "contracted",
     "検収完了":     "completed",
     "失注":         "lost",
-    "稟議中":       None,       # スキップ
-    "未登録":       None,
+    "稟議中": None,       # スキップ
+    "未登録": None,
     "スコアリングのみ": None,
 }
 

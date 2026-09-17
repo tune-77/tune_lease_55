@@ -201,7 +201,6 @@ def _build_useful_life_lookup_block(message: str) -> str:
     return build_basic_lease_question_block(message, heading="ローカル法定耐用年数マスタ")
 
 
-
 # ── 判断資産型 自動参照 (REV-235) ──────────────────────────────────────────────
 
 _JUDGMENT_ASSET_RULES_PATH = Path(__file__).parent / "data" / "judgment_asset_rules_v2.json"
@@ -278,7 +277,6 @@ def _build_judgment_asset_block(message: str, mode: str) -> str:
     return "\n".join(lines)
 
 
-
 # ── 恐れの状態プロンプトブロック (REV-221) ──────────────────────────────────
 
 def _build_fear_state_prompt_block() -> str:
@@ -346,6 +344,7 @@ def _build_fear_state_prompt_block() -> str:
         return ""
 
     return "\n\n" + "\n\n".join(lines)
+
 
 _LEASE_DIALOGUE_EXPERTISE_BLOCK = """【リース知識回答の基本姿勢】
 - 紫苑はリース審査システムの中核であり、リース取引・審査実務・会計税務・補助金/調達比較の基礎質問には直接答える。

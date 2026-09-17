@@ -5,6 +5,7 @@ import streamlit as st
 import random
 import sqlite3
 
+
 # セッションキーの定義 (既存の定義に追加)
 class session_keys:
     CHAT_MESSAGES = "chat_messages"
@@ -15,13 +16,15 @@ class session_keys:
     OLLAMA_MODEL = "ollama_model"
     GEMINI_MODEL = "gemini_model"
     THREAD_ID = "thread_id"
-    LIKED_ARTICLES = "liked_articles" # 追加
+    LIKED_ARTICLES = "liked_articles"  # 追加
+
 
 # データベース接続関数
 def get_db_connection():
     conn = sqlite3.connect('articles.db')
     conn.row_factory = sqlite3.Row  # 行を辞書型で取得
     return conn
+
 
 # テーブル作成関数 (初回のみ実行)
 def create_table():
@@ -36,6 +39,7 @@ def create_table():
     conn.commit()
     conn.close()
 
+
 # いいね！された文章を保存する関数
 def save_liked_article(content):
     conn = get_db_connection()
@@ -43,6 +47,7 @@ def save_liked_article(content):
     cursor.execute("INSERT INTO liked_articles (content) VALUES (?)", (content,))
     conn.commit()
     conn.close()
+
 
 # いいね！された文章を取得する関数
 def get_liked_articles():
@@ -52,6 +57,7 @@ def get_liked_articles():
     articles = [row['content'] for row in cursor.fetchall()]
     conn.close()
     return articles
+
 
 # お題をランダムに選ぶ関数
 def get_random_topic():
@@ -64,11 +70,12 @@ def get_random_topic():
     ]
     return random.choice(topics)
 
+
 # 初期化処理
 if session_keys.LIKED_ARTICLES not in st.session_state:
     st.session_state[session_keys.LIKED_ARTICLES] = get_liked_articles()
 
-create_table() # テーブルがなければ作成
+create_table()  # テーブルがなければ作成
 
 # UIの構築
 st.title("文豪AI (仮)")
@@ -76,7 +83,7 @@ st.title("文豪AI (仮)")
 # お題ガチャボタン
 if st.button("お題ガチャ"):
     st.session_state.topic = get_random_topic()
-    st.session_state.generated_text = None # 新しいお題なので、生成されたテキストをクリア
+    st.session_state.generated_text = None  # 新しいお題なので、生成されたテキストをクリア
 
 if "topic" in st.session_state:
     st.write(f"お題: {st.session_state.topic}")
@@ -100,7 +107,7 @@ if "topic" in st.session_state:
         # いいね！ボタン
         if st.button("いいね！"):
             save_liked_article(st.session_state.generated_text)
-            st.session_state[session_keys.LIKED_ARTICLES] = get_liked_articles() # 状態を更新
+            st.session_state[session_keys.LIKED_ARTICLES] = get_liked_articles()  # 状態を更新
             st.success("いいね！しました")
 
 # いいね！した文章の表示

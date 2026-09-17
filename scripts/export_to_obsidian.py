@@ -272,7 +272,7 @@ def build_markdown(
     lines = [
         "---",
         f"date: {date}",
-        f"tags: [チャット記録, 紫苑, 会話ログ]",
+        "tags: [チャット記録, 紫苑, 会話ログ]",
         f"source: {source_label}",
         f"total_messages: {total_msgs}",
         "---",

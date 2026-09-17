@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
+
 class ScoringRequest(BaseModel):
     company_no: Optional[str] = Field(default="", description="企業番号")
     company_name: Optional[str] = Field(default="", description="企業名")
@@ -17,30 +18,30 @@ class ScoringRequest(BaseModel):
     other_assets: float = Field(default=0.0, description="その他固定資産（千円）")
     net_assets: float = Field(default=0.0, description="純資産（千円）")
     total_assets: float = Field(default=1.0, description="総資産（千円）※0不可")
-    
+
     industry_major: str = Field(default="D 建設業", description="大分類業種")
     industry_sub: str = Field(default="06 総合工事業", description="小分類業種")
     industry_detail: str = Field(default="", description="詳細キーワード")
-    
+
     grade: str = Field(default="②4-6 (標準)", description="社内格付")
     customer_type: str = Field(default="既存先", description="新規先 or 既存先")
     main_bank: str = Field(default="メイン先", description="メイン先 or 非メイン先")
     competitor: str = Field(default="競合なし", description="競合状況")
     competitor_rate: Optional[float] = Field(default=None, description="競合提示金利")
-    
+
     num_competitors: str = Field(default="未入力", description="競合社数")
     deal_occurrence: str = Field(default="不明", description="発生経緯")
     deal_source: str = Field(default="銀行紹介", description="商談ソース")
     sales_dept: str = Field(default="未設定", description="営業部")
     contract_type: str = Field(default="一般", description="契約種類")
-    
+
     bank_credit: float = Field(default=0.0, description="銀行与信残高")
     lease_credit: float = Field(default=0.0, description="リース与信残高")
     contracts: int = Field(default=0, description="契約件数")
-    
+
     lease_term: int = Field(default=60, description="契約期間")
     acquisition_cost: float = Field(default=0, description="取得価格")
-    
+
     asset_score: Optional[float] = Field(default=50.0, description="物件スコア（0-100）")
     selected_asset_id: Optional[str] = Field(default="", description="選択物件ID")
     asset_name: Optional[str] = Field(default="", description="対象物件名")
@@ -48,7 +49,7 @@ class ScoringRequest(BaseModel):
     asset_purpose: Optional[str] = Field(default="", description="導入目的・用途")
     asset_location: Optional[str] = Field(default="", description="設置場所・使用場所")
     asset_evidence_level: Optional[str] = Field(default="", description="物件確認資料の充足度")
-    
+
     # 定性評価
     qual_corr_company_history: str = Field(default="未選択")
     qual_corr_customer_stability: str = Field(default="未選択")
@@ -56,9 +57,10 @@ class ScoringRequest(BaseModel):
     qual_corr_business_future: str = Field(default="未選択")
     qual_corr_equipment_purpose: str = Field(default="未選択")
     qual_corr_main_bank: str = Field(default="未選択")
-    
+
     passion_text: str = Field(default="")
     intuition: int = Field(default=3)
+
 
 class ScoringResponse(BaseModel):
     score: float
@@ -108,6 +110,7 @@ class ScoringResponse(BaseModel):
     aurion_core: Optional[dict] = None  # Q_risk/異常度を減点ではなく規律・UXへ翻訳するAURION CORE所見
     bayes_reverse_strategy: Optional[dict] = None  # BN逆転: ベイズ更新後の承認確率と軍師提案
     industry_bankruptcy_bench: Optional[dict] = None  # 業種別倒産率ベンチマーク（表示専用・スコア非影響）
+
 
 class CaseRegisterRequest(BaseModel):
     case_id: str

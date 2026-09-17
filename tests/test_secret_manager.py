@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from secret_manager import get_secret_value, get_gemini_api_key
 
+
 @patch('secret_manager.st')
 def test_get_secret_value_priority(mock_st):
     """優先順位テスト: 環境変数 > st.secrets > secrets.toml > fallback"""
@@ -20,6 +21,7 @@ def test_get_secret_value_priority(mock_st):
 
     # st.secretsがNoneを返す
     assert get_secret_value("NON_EXISTENT_KEY", "default") == "default"
+
 
 @patch('secret_manager.st')
 def test_get_gemini_api_key(mock_st):

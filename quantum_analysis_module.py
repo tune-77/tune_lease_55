@@ -20,7 +20,8 @@ _CONFIG_PATH = "data/quantum_config.json"
 
 
 def _load_config() -> dict:
-    import json, os
+    import json
+    import os
     if os.path.exists(_CONFIG_PATH):
         try:
             with open(_CONFIG_PATH, encoding="utf-8") as f:
@@ -35,27 +36,27 @@ _T = _CFG.get("thresholds", {})
 _M = _CFG.get("model", {})
 _S = _CFG.get("scoring", {})
 
-THRESHOLD_SECONDARY_REVIEW: float     = float(_T.get("secondary_review", 35.0))
+THRESHOLD_SECONDARY_REVIEW: float = float(_T.get("secondary_review", 35.0))
 THRESHOLD_SECONDARY_REVIEW_MID: float = float(_T.get("secondary_review_mid", 45.0))
-THRESHOLD_HIGH_RISK: float            = float(_T.get("high_risk", 60.0))
-SCORE_TRIGGER: int                    = int(_S.get("trigger_score", 70))
-SCORE_HIGH_THRESHOLD: int             = int(_S.get("high_score_threshold", 80))
+THRESHOLD_HIGH_RISK: float = float(_T.get("high_risk", 60.0))
+SCORE_TRIGGER: int = int(_S.get("trigger_score", 70))
+SCORE_HIGH_THRESHOLD: int = int(_S.get("high_score_threshold", 80))
 _WEIGHT_BOOST_INTERFERENCE: float = float(_T.get("weight_boost_interference", 0.6))
-_WEIGHT_BOOST_FACTOR: float       = float(_T.get("weight_boost_factor", 1.3))
-_WEIGHT_BOOST_MAX: float          = float(_T.get("weight_boost_max", 3.0))
-_ACTIVE_PAIR_MIN: float           = float(_T.get("active_pair_min_interference", 0.05))
-_ENTANGLE_ALPHA: float            = float(_M.get("entangle_alpha", 50.0))
-_ENTANGLE_RISK_FACTOR: float      = float(_M.get("entangle_risk_factor", 0.2))
-_MIN_INDUSTRY_CASES: int          = int(_CFG.get("training", {}).get("min_industry_cases", 2))
-_OOD_Z_THRESHOLD: float           = float(_T.get("ood_z_threshold", 2.0))
-_DISC_MIN_CASES: int              = int(_CFG.get("training", {}).get("disc_min_cases", 5))
-_DISC_WEIGHT_SCALE: float         = float(_T.get("disc_weight_scale", 2.0))
-_DISC_TRIGGER_N: int              = int(_CFG.get("training", {}).get("disc_trigger_n", 10))
+_WEIGHT_BOOST_FACTOR: float = float(_T.get("weight_boost_factor", 1.3))
+_WEIGHT_BOOST_MAX: float = float(_T.get("weight_boost_max", 3.0))
+_ACTIVE_PAIR_MIN: float = float(_T.get("active_pair_min_interference", 0.05))
+_ENTANGLE_ALPHA: float = float(_M.get("entangle_alpha", 50.0))
+_ENTANGLE_RISK_FACTOR: float = float(_M.get("entangle_risk_factor", 0.2))
+_MIN_INDUSTRY_CASES: int = int(_CFG.get("training", {}).get("min_industry_cases", 2))
+_OOD_Z_THRESHOLD: float = float(_T.get("ood_z_threshold", 2.0))
+_DISC_MIN_CASES: int = int(_CFG.get("training", {}).get("disc_min_cases", 5))
+_DISC_WEIGHT_SCALE: float = float(_T.get("disc_weight_scale", 2.0))
+_DISC_TRIGGER_N: int = int(_CFG.get("training", {}).get("disc_trigger_n", 10))
 # R2（売上規模対比の利益率異常）の severity 上限。
 # severity = (0.005 - op_margin)/0.005 は営業赤字案件で 30 倍以上に振り切れ、
 # 素点が 600 点超 → clip(100) となって内訳の寄与率が実態を表さなくなっていた。
 # 実案件 1,924 件で検証し、35/60 の判定帯が一切動かない上限として 2.0（R2 最大 40 点）を採用。
-_R2_SEVERITY_CAP: float           = float(_T.get("r2_severity_cap", 2.0))
+_R2_SEVERITY_CAP: float = float(_T.get("r2_severity_cap", 2.0))
 
 _GRADE_MAP: dict[str, float] = {
     "①A格": 9.0, "①a": 9.0, "A": 9.0,
@@ -746,22 +747,22 @@ def _infer_major_code(industry_sub: str) -> str:
         code = int(industry_sub.split(" ")[0].strip())
     except (ValueError, IndexError):
         return ""
-    if 1 <= code <= 2:    return "A"  # 農業
-    if 3 <= code <= 4:    return "B"  # 漁業
-    if code == 5:         return "C"  # 鉱業
-    if 6 <= code <= 11:   return "D"  # 建設業
-    if 12 <= code <= 35:  return "E"  # 製造業
-    if 36 <= code <= 38:  return "F"  # 電気・ガス・水道
-    if 39 <= code <= 43:  return "G"  # 情報通信
-    if 44 <= code <= 49:  return "H"  # 運輸・郵便
-    if 50 <= code <= 55:  return "I"  # 卸売業
-    if 56 <= code <= 61:  return "I"  # 小売業
-    if 62 <= code <= 69:  return "J"  # 金融・保険
-    if code == 70:        return "K"  # 不動産・物品賃貸
-    if 71 <= code <= 79:  return "L"  # 学術・専門サービス
-    if 80 <= code <= 82:  return "M"  # 宿泊・飲食
-    if 83 <= code <= 89:  return "P"  # 医療・福祉
-    if 90 <= code <= 99:  return "R"  # サービス業他
+    if 1 <= code <= 2: return "A"  # 農業
+    if 3 <= code <= 4: return "B"  # 漁業
+    if code == 5: return "C"  # 鉱業
+    if 6 <= code <= 11: return "D"  # 建設業
+    if 12 <= code <= 35: return "E"  # 製造業
+    if 36 <= code <= 38: return "F"  # 電気・ガス・水道
+    if 39 <= code <= 43: return "G"  # 情報通信
+    if 44 <= code <= 49: return "H"  # 運輸・郵便
+    if 50 <= code <= 55: return "I"  # 卸売業
+    if 56 <= code <= 61: return "I"  # 小売業
+    if 62 <= code <= 69: return "J"  # 金融・保険
+    if code == 70: return "K"  # 不動産・物品賃貸
+    if 71 <= code <= 79: return "L"  # 学術・専門サービス
+    if 80 <= code <= 82: return "M"  # 宿泊・飲食
+    if 83 <= code <= 89: return "P"  # 医療・福祉
+    if 90 <= code <= 99: return "R"  # サービス業他
     return ""
 
 
@@ -908,10 +909,10 @@ def compute_simple_q_risk(inputs: dict[str, Any]) -> dict[str, Any]:
         return float(v) if v is not None else d
 
     nenshu_k = _f("nenshu")
-    op_k     = _f("op_profit")
-    ord_k    = _f("ord_profit")
-    net_k    = _f("net_income")
-    mach_k   = _f("machines", _f("machinery_equipment"))
+    op_k = _f("op_profit")
+    ord_k = _f("ord_profit")
+    net_k = _f("net_income")
+    mach_k = _f("machines", _f("machinery_equipment"))
 
     grade_raw = str(inputs.get("grade") or "④無格付")
     grade_val = _grade_to_float(grade_raw)  # 9=A格(最良) / 1=D格(最悪)

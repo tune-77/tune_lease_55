@@ -95,7 +95,7 @@ def _extract_chunks() -> list[Chunk]:
     for item in (ss.get("qualitative_items") or []):
         label = item.get("label", "")
         for opt in (item.get("options") or []):
-            text = f"定性評価「{label}」{opt.get('score')}点: {opt.get('label')} — {opt.get('detail','')}"
+            text = f"定性評価「{label}」{opt.get('score')}点: {opt.get('label')} — {opt.get('detail', '')}"
             chunks.append(Chunk(text=text, source="scoring", title=f"定性項目/{label}"))
 
     # ─── 業種別ガイド ──────────────────────────────────────────────────────
@@ -132,10 +132,10 @@ def _extract_chunks() -> list[Chunk]:
     # ─── スコア改善ガイド ──────────────────────────────────────────────────
     guide = kb.get("improvement_guide") or {}
     for item in (guide.get("quick_wins") or []):
-        text = f"クイックウィン: {item.get('action','')} → {item.get('impact','')}（{item.get('timeline','')}）"
+        text = f"クイックウィン: {item.get('action', '')} → {item.get('impact', '')}（{item.get('timeline', '')}）"
         chunks.append(Chunk(text=text, source="improvement", title="スコア改善/クイックウィン"))
     for item in (guide.get("medium_term") or []):
-        text = f"中期改善: {item.get('action','')} → {item.get('impact','')}（{item.get('timeline','')}）"
+        text = f"中期改善: {item.get('action', '')} → {item.get('impact', '')}（{item.get('timeline', '')}）"
         chunks.append(Chunk(text=text, source="improvement", title="スコア改善/中期"))
 
     # ─── leasing_knowhow.json ──────────────────────────────────────────────

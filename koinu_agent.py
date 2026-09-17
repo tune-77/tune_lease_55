@@ -190,21 +190,21 @@ class KoinuAgent:
                     "comment": random.choice(_NEUTRAL_COMMENTS),
                     "dominant": "neutral"}
 
-        nenshu    = float(res.get("nenshu", 0) or 0)
-        rieki     = float(res.get("rieki", 0) or 0)
-        total     = float(res.get("total_assets", 0) or 0)
-        net       = float(res.get("net_assets", 0) or 0)
-        score     = float(res.get("score", 50) or 50)
-        grade     = str(res.get("grade", "") or "")
-        industry  = str(res.get("select_major", "") or "")
+        nenshu = float(res.get("nenshu", 0) or 0)
+        rieki = float(res.get("rieki", 0) or 0)
+        total = float(res.get("total_assets", 0) or 0)
+        net = float(res.get("net_assets", 0) or 0)
+        score = float(res.get("score", 50) or 50)
+        grade = str(res.get("grade", "") or "")
+        industry = str(res.get("select_major", "") or "")
 
         anxiety_factors: list[float] = []
         joy_factors: list[float] = []
         vigilance_factors: list[float] = []
 
         # ── 財務比率計算 ──────────────────────────────────────────────
-        profit_rate  = (rieki / nenshu * 100) if nenshu > 0 else 0.0
-        equity_ratio = (net / total * 100)    if total > 0 else 0.0
+        profit_rate = (rieki / nenshu * 100) if nenshu > 0 else 0.0
+        equity_ratio = (net / total * 100) if total > 0 else 0.0
 
         bench = self._get_benchmark(industry)
 
@@ -251,8 +251,8 @@ class KoinuAgent:
             vigilance_factors.append(pr_anomaly * 0.6)
 
         # スコア集計（平均 → 0-100 スケール）
-        anxiety  = int(min(100, (statistics.mean(anxiety_factors)  if anxiety_factors  else 0.1) * 100))
-        joy      = int(min(100, (statistics.mean(joy_factors)      if joy_factors      else 0.1) * 100))
+        anxiety = int(min(100, (statistics.mean(anxiety_factors) if anxiety_factors else 0.1) * 100))
+        joy = int(min(100, (statistics.mean(joy_factors) if joy_factors else 0.1) * 100))
         vigilance = int(min(100, (statistics.mean(vigilance_factors) if vigilance_factors else 0.1) * 100))
 
         # 支配的感情を決定
@@ -295,14 +295,14 @@ class KoinuAgent:
             return {"smell_level": "green", "smell_score": 0,
                     "reasons": [], "pochi_comment": "くんくん…においなし！だいじょうぶそう！わん！"}
 
-        nenshu   = float(res.get("nenshu", 0) or 0)
-        rieki    = float(res.get("rieki", 0) or 0)
-        total    = float(res.get("total_assets", 0) or 0)
-        net      = float(res.get("net_assets", 0) or 0)
-        acq      = float(res.get("acquisition_cost", 0) or 0)
-        term     = float(res.get("lease_term", 0) or 0)
+        nenshu = float(res.get("nenshu", 0) or 0)
+        rieki = float(res.get("rieki", 0) or 0)
+        total = float(res.get("total_assets", 0) or 0)
+        net = float(res.get("net_assets", 0) or 0)
+        acq = float(res.get("acquisition_cost", 0) or 0)
+        term = float(res.get("lease_term", 0) or 0)
         industry = str(res.get("select_major", "") or "")
-        grade    = str(res.get("grade", "") or "")
+        grade = str(res.get("grade", "") or "")
 
         smell_score = 0
         reasons: list[str] = []
@@ -411,8 +411,8 @@ class KoinuAgent:
 
         # 整合性チェック
         nenshu = float(res.get("nenshu", 0) or 0)
-        total  = float(res.get("total_assets", 0) or 0)
-        net    = float(res.get("net_assets", 0) or 0)
+        total = float(res.get("total_assets", 0) or 0)
+        net = float(res.get("net_assets", 0) or 0)
 
         # 純資産 > 総資産 は会計的に不整合
         if total > 0 and net > total:
@@ -493,7 +493,7 @@ class KoinuAgent:
         industry = str(res.get("select_major", "不明業種") or "不明業種")
         score = res.get("score", "?")
         nenshu = res.get("nenshu", 0) or 0
-        rieki  = res.get("rieki", 0) or 0
+        rieki = res.get("rieki", 0) or 0
 
         smell_data = self.get_smell_score(res)
         smell_level = {"green": "よい", "yellow": "ふつう", "orange": "あやしい", "red": "くさい"}[
@@ -537,8 +537,8 @@ class KoinuAgent:
             return random.choice(quick_reactions)
 
         emotion = self.get_emotion_scores(res)
-        smell   = self.get_smell_score(res)
-        tail    = self.get_tail_wag_score(res)
+        smell = self.get_smell_score(res)
+        tail = self.get_tail_wag_score(res)
 
         parts: list[str] = []
 

@@ -49,7 +49,7 @@ if not DATA_PATH.exists():
 
 cases = [json.loads(l) for l in open(DATA_PATH, encoding="utf-8")]
 cases = [c for c in cases if c.get("final_status") in ("成約", "失注")]
-print(f"分析対象: {len(cases)}件  成約:{sum(1 for c in cases if c['final_status']=='成約')}  失注:{sum(1 for c in cases if c['final_status']=='失注')}")
+print(f"分析対象: {len(cases)}件  成約:{sum(1 for c in cases if c['final_status'] == '成約')}  失注:{sum(1 for c in cases if c['final_status'] == '失注')}")
 
 # ==============================
 # 特徴量エンジニアリング
@@ -76,7 +76,7 @@ LABEL_JA = {
     "lease_credit":     "リース与信",
     "acquisition_cost": "取得価額",
     "contracts":        "契約件数",
-    "lease_asset_score":"物件スコア",
+    "lease_asset_score": "物件スコア",
     "score":            "総合スコア",
     "score_borrower":   "借手スコア",
     "pd_percent":       "デフォルト確率(%)",
@@ -89,7 +89,7 @@ def build_features(cases):
     for c in cases:
         inp = c.get("inputs", {})
         res = c.get("result", {})
-        qs  = inp.get("qualitative_scoring", {})
+        qs = inp.get("qualitative_scoring", {})
         rows.append({
             "target":           1 if c["final_status"] == "成約" else 0,
             "industry_major":   c.get("industry_major", "")[:3],
@@ -106,7 +106,7 @@ def build_features(cases):
             "lease_credit":     inp.get("lease_credit", 0),
             "acquisition_cost": inp.get("acquisition_cost", 0),
             "contracts":        inp.get("contracts", 0),
-            "lease_asset_score":inp.get("lease_asset_score", 0),
+            "lease_asset_score": inp.get("lease_asset_score", 0),
             "score":            res.get("score", 0),
             "score_borrower":   res.get("score_borrower", 0),
             "pd_percent":       res.get("pd_percent", 0),
@@ -153,7 +153,7 @@ print(f"交差検証 Accuracy: {cv_scores.mean():.3f} ± {cv_scores.std():.3f}  
 # ==============================
 # SHAP値計算
 # ==============================
-explainer   = shap.TreeExplainer(model)
+explainer = shap.TreeExplainer(model)
 shap_values = explainer(pd.DataFrame(X, columns=feature_names_ja))
 
 # ==============================
@@ -188,7 +188,7 @@ print(f"保存: {out}")
 for status, label in [("成約", "contract"), ("失注", "lost")]:
     idx_list = [i for i, c in enumerate(cases) if c["final_status"] == status]
     for rank, idx in enumerate(idx_list[:2]):
-        c    = cases[idx]
+        c = cases[idx]
         pred = model.predict_proba(X[idx:idx+1])[0][1]
         fig, ax = plt.subplots(figsize=(10, 6))
         shap.plots.waterfall(shap_values[idx], max_display=12, show=False)
@@ -211,7 +211,7 @@ print("\n" + "="*55)
 print("  SHAP 変数重要度サマリ（上位10変数）")
 print("="*55)
 mean_abs = np.abs(shap_values.values).mean(axis=0)
-ranking  = np.argsort(mean_abs)[::-1]
+ranking = np.argsort(mean_abs)[::-1]
 print(f"{'順位':>4} {'変数':<20} {'平均|SHAP|':>12}")
 print("-"*40)
 for rank, i in enumerate(ranking[:10]):

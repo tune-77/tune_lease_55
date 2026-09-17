@@ -240,8 +240,6 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
         return _handle_error(e)
 
 
-
-
 def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: int, api_key: str = "", gemini_model: str = "", max_output_tokens: int = 2048):
     """
     バックグラウンドスレッドから呼ぶ用。st.session_state を参照しない。
@@ -660,7 +658,7 @@ def _build_bench_summary(selected_sub: str, include_eq: bool = False) -> str:
             except Exception:
                 bench_parts.append(f"業界目安の自己資本比率: {web_bench['equity_ratio']}%")
         for s in (web_bench.get("snippets") or [])[:3]:
-            bench_parts.append(f"- {s.get('title','')}: {s.get('body','')[:150]}…")
+            bench_parts.append(f"- {s.get('title', '')}: {s.get('body', '')[:150]}…")
         return "\n".join(bench_parts) if bench_parts else "（業界目安は未取得）"
     except Exception as e:
         log_warning(f"ベンチマークサマリー生成失敗 ({selected_sub}): {e}", context="_build_bench_summary")
@@ -1439,6 +1437,8 @@ def get_ai_consultation_prompt(
             f"【質問】\n{q}",
         ]
     return "\n\n".join(p for p in parts if p)
+
+
 def get_ai_negotiation_strategy(res: dict, similar_cases: list, lost_stats: dict) -> Optional[str]:
     """
     現在の案件の弱点、類似成約事例、および失注理由を分析し、
@@ -1449,7 +1449,7 @@ def get_ai_negotiation_strategy(res: dict, similar_cases: list, lost_stats: dict
 
     score = res.get("score", 0)
     industry = res.get("industry_sub", "")
-    
+
     # 類似案件から「成約の決め手」を抽出
     success_factors = []
     for sc in similar_cases:
@@ -1458,9 +1458,9 @@ def get_ai_negotiation_strategy(res: dict, similar_cases: list, lost_stats: dict
             engine = CaseSimilarityEngine([])
             conds = engine._analyze_conditions(sc.get("data", {}))
             success_factors.extend(conds)
-    
-    success_factors = list(set(success_factors)) # 重複排除
-    
+
+    success_factors = list(set(success_factors))  # 重複排除
+
     # 失注理由
     lost_reasons = lost_stats.get("reasons", {})
     avg_lost_rate = lost_stats.get("avg_competitor_rate")
@@ -1502,10 +1502,12 @@ def get_ai_negotiation_strategy(res: dict, similar_cases: list, lost_stats: dict
         log_warning(f"交渉戦略生成失敗: {e}", context="get_ai_negotiation_strategy")
         return None
 
+
 # =====================================================================
 # メタ的なリアルタイムツッコミ（フェーズ3）
 # =====================================================================
 import streamlit as st
+
 
 def trigger_realtime_interjection(sales: float, profit: float, industry: str, net_assets: float = 0.0, rent: float = 0.0):
     """
@@ -1514,7 +1516,7 @@ def trigger_realtime_interjection(sales: float, profit: float, industry: str, ne
     """
     if not is_ai_available():
         return None
-        
+
     try:
         sales_val = float(sales)
         profit_val = float(profit)
@@ -1525,7 +1527,7 @@ def trigger_realtime_interjection(sales: float, profit: float, industry: str, ne
 
     if sales_val <= 0 and net_assets_val >= 0 and rent_val <= 0:
         return None
-    
+
     # トリガー条件の設定
     anomaly = ""
     if net_assets_val < 0:
@@ -1539,9 +1541,10 @@ def trigger_realtime_interjection(sales: float, profit: float, industry: str, ne
     elif profit_val > (sales_val * 0.5):
         anomaly = "売上の半分以上が営業利益という異常な超高収益（入力ミスの可能性あり）"
     else:
-        return None # 正常なら何も言わない
+        return None  # 正常なら何も言わない
 
     return _generate_cached_interjection(sales_val, profit_val, net_assets_val, rent_val, industry, anomaly)
+
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def _generate_cached_interjection(sales, profit, net_assets, rent, industry, anomaly):

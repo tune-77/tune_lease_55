@@ -93,7 +93,7 @@ def main() -> None:
                 to_revive.append(revived)
 
     if not to_park and not to_revive:
-        print(f"rotate_weekly_focus: 対象なし（park 0件、復活 0件）")
+        print("rotate_weekly_focus: 対象なし（park 0件、復活 0件）")
         return
 
     with _LEDGER_PATH.open("a", encoding="utf-8") as f:

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from base_rate_master import get_base_rate_by_term
 
+
 def simulate_optimal_yield(
     pd_percent: float,
     lease_term_months: int = 60,
@@ -21,7 +22,7 @@ def simulate_optimal_yield(
     """
     base_yield = get_base_rate_by_term(lease_term_months=lease_term_months)
     if base_yield is None:
-        base_yield = 2.66 
+        base_yield = 2.66
 
     pd_rate = np.clip(pd_percent / 100.0, 0.0, 1.0)
     lgd_rate = np.clip(lgd_percent / 100.0, 0.0, 1.0)
@@ -40,10 +41,10 @@ def simulate_optimal_yield(
 
     # 【実務制約】日本のリース市場における現実的な上限金利（スプレッド +5.0% 程度）
     market_ceiling = base_yield + 5.0
-    
+
     # テスト範囲を現実的な天井までに絞る
     test_yields = np.arange(base_yield + 0.1, market_ceiling + 0.1, 0.1)
-    
+
     best_yield = base_yield + 2.0
     max_expected_profit = -999.0
     best_success_prob = 0.0
@@ -52,7 +53,7 @@ def simulate_optimal_yield(
     for r in test_yields:
         # A. 顧客の成約確率
         success_prob = 1.0 / (1.0 + np.exp(k * (r - r_mid)))
-        
+
         # B. モンテカルロ試行
         defaults = np.random.rand(n_trials) < pd_rate
         scenario_profits = np.where(
@@ -60,15 +61,15 @@ def simulate_optimal_yield(
             -lgd_rate * 5,  # 損失のインパクトを実務に即して緩和
             (r - base_yield)
         )
-        
+
         expected_profit = success_prob * np.mean(scenario_profits)
-        
+
         yield_curves.append({
             "yield": np.round(r, 2),
             "success_prob": np.round(success_prob * 100.0, 2),
             "expected_profit": np.round(expected_profit, 4)
         })
-        
+
         if expected_profit > max_expected_profit:
             max_expected_profit = expected_profit
             best_yield = r

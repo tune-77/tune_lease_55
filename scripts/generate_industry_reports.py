@@ -12,6 +12,7 @@ JSIC_FILE = os.path.join(REPO_DIR, "static_data", "industry_trends_jsic.json")
 EXTENDED_TRENDS_FILE = os.path.join(REPO_DIR, "industry_trends_extended.json")
 OUTPUT_FILE = os.path.join(REPO_DIR, "industry_reports_a4.json")
 
+
 def load_json(filepath):
     if os.path.exists(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
@@ -21,7 +22,7 @@ def load_json(filepath):
 
 def generate_report_for_industry(industry_sub, basic_trend, web_trend):
     print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Generating report for: {industry_sub}")
-    
+
     prompt = f"""
 あなたは中堅・中小企業向けのリース審査プロセスを支援する、プロフェッショナルなリサーチャー兼アナリストです。
 以下の情報を基に、対象業種に関する「2025年 業界動向・課題・見通し」をまとめたA4サイズ（約1000〜1200文字程度）のレポートを作成してください。
@@ -64,20 +65,21 @@ def generate_report_for_industry(industry_sub, basic_trend, web_trend):
     except Exception as e:
         print(f"Error calling Ollama API for {industry_sub}: {e}")
         raise e
-    
+
     return ""
+
 
 def main():
     print("=== Start Generating Industry Reports ===")
-    
+
     jsic_data = load_json(JSIC_FILE)
     extended_data = load_json(EXTENDED_TRENDS_FILE)
-    
+
     # 既存の出力ファイルがあればロード
     output_data = load_json(OUTPUT_FILE)
-    
+
     total_generated = 0
-    
+
     for major_name, major_info in jsic_data.items():
         subs = major_info.get("sub", {})
         for sub_name, basic_trend in subs.items():
@@ -87,26 +89,27 @@ def main():
                 if cached.get("generated_at", "").startswith(str(datetime.date.today())):
                     print(f"Skip (Already generated today): {sub_name}")
                     continue
-            
+
             web_trend = extended_data.get(sub_name, {}).get("text", "")
-            
+
             try:
                 report_text = generate_report_for_industry(sub_name, basic_trend, web_trend)
-                
+
                 output_data[sub_name] = {
                     "generated_at": datetime.datetime.now().isoformat(),
                     "report_text": report_text
                 }
-                
+
                 # 1件ごとに保存
                 with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
                     json.dump(output_data, f, ensure_ascii=False, indent=2)
-                    
+
                 total_generated += 1
             except Exception as e:
                 print(f"[ERROR] Failed for {sub_name}: {e}")
-                
+
     print(f"=== Done. Total newly generated: {total_generated} ===")
+
 
 if __name__ == "__main__":
     main()

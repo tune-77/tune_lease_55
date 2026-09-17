@@ -199,7 +199,7 @@ class TestHybridSearch(unittest.TestCase):
         self.latency_measurements.append(latency_ms)
 
         logger.info(f"✅ Test 8: レイテンシ = {latency_ms:.2f}ms")
-        logger.info(f"   目標: < 2.0ms")
+        logger.info("   目標: < 2.0ms")
 
     def test_09_latency_batch(self):
         """テスト 9: 文書Embedding構築後のバッチ検索レイテンシ。"""

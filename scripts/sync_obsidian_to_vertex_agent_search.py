@@ -206,8 +206,8 @@ def main() -> None:
         report["skipped_reason"] = "export_signature_unchanged"
         write_report(args.report, report)
         print(f"exported={len(exported)}")
-        print(f"changed=false")
-        print(f"skipped=export_signature_unchanged")
+        print("changed=false")
+        print("skipped=export_signature_unchanged")
         print(f"report={args.report}")
         return
 
