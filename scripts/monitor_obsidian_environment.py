@@ -391,9 +391,13 @@ def check_self_reference_loop() -> MonitorCheck:
     candidates_path = REPO_ROOT / "data" / "obsidian_memory_insight_candidates.jsonl"
     rows = _load_jsonl(candidates_path)
     if not rows:
+        # 候補ゼロは「ループを検出できない」だけで、ループが起きている証拠ではない。
+        # ここを warn にすると Mana 側 (mana_obsidian_curator.evaluate_monitor) が
+        # self_reference_loop_risk (hold) として誤検知する。候補欠落自体は
+        # evaluate_candidates の memory_candidates_missing (watch) 側で別途報告される。
         return MonitorCheck(
             "self_reference_loop",
-            "warn",
+            "ok",
             "memory insight candidates are missing; worm guard cannot evaluate",
             {"candidate_path": str(candidates_path), "candidate_count": 0},
         )
