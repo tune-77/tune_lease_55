@@ -24,7 +24,11 @@ jobs:
           python-version: "3.11"
 
       - name: Install safety
-        run: pip install -q safety
+        run: |
+          # setuptoolsはrequirements.txtに含まれずPythonツールチェーン同梱のため、
+          # CVE-2026-59890（<83.0.0で影響）を避けて明示的に更新する。
+          pip install -q --upgrade "setuptools>=83.0.0"
+          pip install -q safety
 
       - name: Check Python dependencies
         run: |
