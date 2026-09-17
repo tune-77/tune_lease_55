@@ -27,6 +27,7 @@ FEATURE_DESCRIPTIONS = {
     "IMG_1797-e8623f08-8e0f-4467-b718-82b43a6a9c69.png": "着物ちび。悲しそうに膝を抱えて座る。緑の球に「めっ!」の文字。",
 }
 
+
 def get_image_metadata(img_path: Path) -> dict:
     """PILで画像の寸法・形式を取得。失敗時はNoneで返す。"""
     try:

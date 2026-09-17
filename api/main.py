@@ -90,6 +90,7 @@ def _table_exists(cur, table_name: str) -> bool:
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
     return bool(cur.fetchone())
 
+
 def _load_timesfm_engine():
     """timesfm_engine を遅延ロード（初回呼び出し時のみ）。PyTorchのMPS初期化をstartupから除外する。"""
     if "timesfm_engine" not in sys.modules:
@@ -98,6 +99,7 @@ def _load_timesfm_engine():
         sys.modules["timesfm_engine"] = _tfm_mod
         _tfm_spec.loader.exec_module(_tfm_mod)
     return sys.modules["timesfm_engine"]
+
 
 # ── .streamlit/secrets.toml から APIキー等を環境変数に自動注入 ─────────────────
 def _load_secrets_to_env():
@@ -121,12 +123,14 @@ def _load_secrets_to_env():
     except Exception as e:
         print(f"[API] secrets.toml load warning: {e}")
 
+
 _load_secrets_to_env()
 
 
 def _gemini_generate_url() -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
 
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from scoring_anomaly_monitor import record_scoring_anomalies
@@ -182,6 +186,7 @@ _chroma_client = None
 _chroma_collection = None
 _chroma_init_attempted = False
 
+
 def _get_obsidian_collection():
     global _chroma_client, _chroma_collection, _chroma_init_attempted
     if _chroma_init_attempted:
@@ -205,6 +210,7 @@ async def lifespan(app: FastAPI):
     # ダウンロードはネットワークI/Oでタイムアウトが効かず起動を長時間ブロックしうるため、
     # readiness確認（/docs）を先に通すためバックグラウンドスレッドで実行する。
     import threading as _gcs_th
+
     def _run_gcs_vault_sync():
         gcs_sync: dict = {"enabled": False, "status": "skipped"}
         try:
@@ -248,6 +254,7 @@ async def lifespan(app: FastAPI):
         print(f"[API] ensure_schema failed (non-fatal): {e}")
     # startup: ダッシュボードキャッシュのウォームアップ
     import threading
+
     def _warm_dashboard_stats_caches():
         try:
             from data_cases import (
@@ -329,6 +336,7 @@ async def lifespan(app: FastAPI):
     # startup: lease_data.db のGCS定期スナップショット（非demoモードのみ。REV-310）
     # Cloud Runのローカルディスクはコンテナ再起動のたびに消え、非demoモードで
     # ephemeral SQLiteに書いた審査結果登録が失われる問題への対策（api/cloudrun_db_snapshot.py）。
+
     def _periodic_db_snapshot():
         try:
             from api.cloudrun_db_snapshot import is_snapshot_enabled, snapshot_and_upload
@@ -625,7 +633,6 @@ def __getattr__(name: str) -> Any:
     value = getattr(importlib.import_module(module_name), attr_name)
     globals()[name] = value
     return value
-
 
 
 def _sync_gcs_vault_if_enabled() -> dict:
@@ -1365,7 +1372,8 @@ _WIZARD_FIELD_MAX_LEN = 500
 
 def _sanitize_wizard_str(value: object, max_len: int = _WIZARD_FIELD_MAX_LEN) -> str:
     """文字列フィールドを制御文字除去・長さ制限してサニタイズする。"""
-    import unicodedata as _uc, re as _re
+    import unicodedata as _uc
+    import re as _re
     text = str(value) if not isinstance(value, str) else value
     cleaned = "".join(
         ch for ch in text
@@ -1376,7 +1384,8 @@ def _sanitize_wizard_str(value: object, max_len: int = _WIZARD_FIELD_MAX_LEN) ->
 
 
 def _log_wizard_input_task(inputs: dict) -> None:
-    import datetime as _dt, json as _json
+    import datetime as _dt
+    import json as _json
     # 文字列フィールドをサニタイズしてから空欄チェック（制御文字のみのフィールドを「空」と正しく判定）
     sanitized = {
         f: _sanitize_wizard_str(inputs[f]) if isinstance(inputs.get(f), str) else inputs.get(f)
@@ -1496,7 +1505,7 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         aurion_core = build_aurion_core_guard(inputs, result)
         bayes_reverse_strategy = _build_bayes_reverse_strategy(inputs, result)
         _record_scoring_memory_usage("score_calculate", inputs, result)
-        
+
         # 期待する戻り値のキーにマッピング
         return ScoringResponse(
             score=result.get("score", 0.0),
@@ -1538,6 +1547,7 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/score/full", response_model=ScoringResponse)
 def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks):
@@ -1705,9 +1715,6 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-
-
 class CaseResultPatch(BaseModel):
     final_status: Optional[str] = None
     competitor_rate: Optional[float] = None
@@ -1840,8 +1847,6 @@ def _append_case_result_reflection_to_obsidian(case_id: str, case_data: dict, pa
     return {"status": "saved", "path": str(path), "relative_path": str(rel)}
 
 
-
-
 def _log_bigrams(s: str) -> set[str]:
     import re as _r
     s = _r.sub(r'\s+', '', s.lower())
@@ -1862,11 +1867,10 @@ def _is_implemented(title: str, impl_titles: set[str], threshold: float = 0.45) 
     return False
 
 
-
-
 def _find_similar_pipeline_items(text: str, threshold: float = 0.38) -> list[dict]:
     """テキストと類似するパイプライン改善候補（レポート＋ledger）を返す（上位5件）。"""
-    import glob as _g, json as _j
+    import glob as _g
+    import json as _j
     log_dir = os.path.expanduser("~/Library/Logs/tunelease")
     candidates: list[dict] = []
     seen_titles: set[str] = set()
@@ -1910,9 +1914,6 @@ def _find_similar_pipeline_items(text: str, threshold: float = 0.38) -> list[dic
         if len(matches) >= 5:
             break
     return matches
-
-
-
 
 
 @app.patch("/api/cases/{case_id}/result")
@@ -2028,6 +2029,7 @@ def clear_all_pending_cases(background_tasks: BackgroundTasks):
         logger.error("clear_all_pending_cases DB error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.delete("/api/cases/{case_id}")
 def delete_case(case_id: str, background_tasks: BackgroundTasks):
     """案件を past_cases から削除する"""
@@ -2046,6 +2048,8 @@ def delete_case(case_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=404, detail="削除対象の案件が見つかりません。")
     background_tasks.add_task(_git_push_db)
     return {"message": "Deleted", "case_id": case_id}
+
+
 @app.get("/api/dashboard/stats")
 def get_dashboard_stats():
     try:
@@ -3040,7 +3044,6 @@ def _load_lease_system_gap_analysis(limit: int | None = None) -> dict:
 # ── TimesFM 時系列予測 (timesfm) 関連 ──────────────────────────────────────────
 
 
-
 # ── 案件結果登録 (成約/失注)
 # ── 案件結果登録 (成約/失注) - 拡張版
 class CaseRegistration(BaseModel):
@@ -3104,13 +3107,13 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
     final_rate = float(req.final_rate or 0.0)
     base_rate_at_time = float(req.base_rate_at_time or 2.1)
     competitor_rate = float(req.competitor_rate or 0.0)
-    
+
     target_case_id = None
     target_case = None
     for c in cases:
         # ID, 企業番号, または企業名でマッチング（大文字小文字無視など不要なほど厳密に）
-        if (c.get("id") == req.case_id or 
-            c.get("company_no") == req.case_id or 
+        if (c.get("id") == req.case_id or
+            c.get("company_no") == req.case_id or
             c.get("company_name") == req.case_id or
             # inputsの中身も一応見る
             c.get("inputs", {}).get("company_no") == req.case_id or
@@ -3118,7 +3121,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
             target_case_id = c.get("id")
             target_case = c
             break
-            
+
     if not target_case_id:
         cloudrun_event_id = _parse_cloudrun_event_case_id(req.case_id)
         if cloudrun_event_id:
@@ -3221,7 +3224,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                     "cloudrun_event: prefix, cloudrun_score: prefix)"
                 ),
             )
-        
+
     import datetime
     now_iso = datetime.datetime.now().isoformat()
     now_date = now_iso[:10]
@@ -4290,8 +4293,6 @@ def get_improvement_log():
         raise HTTPException(status_code=500, detail=f"改善ログ読み込み失敗: {e}")
 
 
-
-
 # ── 汎用チャット（永続記憶）エンドポイント ─────────────────────────────────────
 
 _CHAT_SYSTEM_PROMPT = """あなたはtuneリース審査システムの専属AIアドバイザー「めぶきちゃん」です。
@@ -4390,7 +4391,8 @@ def _auto_save_chat_to_obsidian(user_message: str, reply: str) -> None:
     try:
         from api.chat_memory import call_gemini_chat as _gchat
         from mobile_app.obsidian_bridge import append_chat_note
-        import json as _json, re as _re
+        import json as _json
+        import re as _re
 
         exchange = f"ユーザー: {user_message[:600]}\n\nめぶき: {reply[:1000]}"
         raw = _gchat(_OBSIDIAN_AUTO_SAVE_JUDGE_PROMPT, [], exchange).strip()
@@ -4682,8 +4684,6 @@ def _build_chat_basic_lease_question_context(message: str) -> str:
     from api.chat_routing import build_chat_basic_lease_question_context
 
     return build_chat_basic_lease_question_context(message)
-
-
 
 
 _HUMAN_RESPONSE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "human_response_feedback.jsonl"
@@ -5001,6 +5001,7 @@ def _find_cloudrun_input_event(event_id: str) -> dict:
             return event
     return {}
 
+
 def _invalidate_cloudrun_input_events_cache() -> None:
     _CLOUDRUN_INPUT_EVENTS_CACHE["expires_at"] = 0.0
     _CLOUDRUN_INPUT_EVENTS_CACHE["events"] = []
@@ -5148,6 +5149,7 @@ def _read_recent_cloudrun_input_events_from_gcs(days: int = 14) -> list[dict]:
     except Exception as exc:
         logger.warning("cloudrun input gcs read skipped: %s", exc)
         return []
+
 
 def _list_cloudrun_score_pending_cases_from_gcs(limit: int = 50) -> list[dict]:
     from api.cloudrun_pending_cases import list_cloudrun_score_pending_cases_from_events
@@ -5435,8 +5437,6 @@ def _build_reflection_gate_prompt_block(
         memory_to_judgment=memory_to_judgment,
         message=message,
     )
-
-
 
 
 def _build_consciousness_ux_prompt_block() -> str:
@@ -7604,8 +7604,6 @@ def post_chat(req: ChatRequest):
                 detail="【AI応答エラー】\nGemini APIキー未設定またはクォータ超過のため、回答を生成できませんでした。",
             )
         raise HTTPException(status_code=500, detail="内部エラーが発生しました")
-
-
 
 
 class SaveToObsidianRequest(BaseModel):

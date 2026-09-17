@@ -16,6 +16,7 @@ from api.cloudrun_writeback import record_cloudrun_input_event
 router = APIRouter(tags=["shion"])
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+
 class ShionTaskCreateRequest(BaseModel):
     title: str
     due_at: str = ""

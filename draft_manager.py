@@ -7,8 +7,8 @@ import json
 import os
 from datetime import datetime, timedelta
 
-_SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
-_DRAFTS_DIR  = os.path.join(_SCRIPT_DIR, "data", "drafts")
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_DRAFTS_DIR = os.path.join(_SCRIPT_DIR, "data", "drafts")
 
 # 保存対象の session_state キー（フォーム入力項目）
 _DRAFT_KEYS = [

@@ -28,7 +28,7 @@ _LOG_DIR = _PKG_DIR / "logs"
 _LOG_FILE = _LOG_DIR / "app.log"
 
 # ログローテーション（10MB × 3世代）
-_MAX_BYTES   = 10 * 1024 * 1024
+_MAX_BYTES = 10 * 1024 * 1024
 _BACKUP_COUNT = 3
 
 

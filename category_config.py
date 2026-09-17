@@ -209,7 +209,7 @@ ASSET_ID_TO_CATEGORY = {
     "office_furniture":    "IT機器",      # OA機器・内装 → IT機器カテゴリで評価
     "restaurant":          "産業機械",    # 飲食店設備
     "renewable":           "産業機械",    # 太陽光・省エネ設備
-    "other":               None,          # その他: カテゴリ別スコアリング対象外
+    "other": None,          # その他: カテゴリ別スコアリング対象外
     # ── Slack ASSET_LIST の ID（lease_assets.json に未登録のもの） ────────────
     "machinery":           "産業機械",    # 機械設備
     "construction":        "産業機械",    # 建設

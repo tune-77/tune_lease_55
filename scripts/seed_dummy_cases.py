@@ -34,8 +34,8 @@ for c in dummy_cases:
     # Need to simulate the "inputs" dictionary format
     c["inputs"] = {"acquisition_cost": c["acquisition_cost"]}
     del c["acquisition_cost"]
-    
-    conn.execute("INSERT OR REPLACE INTO past_cases (id, timestamp, data) VALUES (?, ?, ?)", 
+
+    conn.execute("INSERT OR REPLACE INTO past_cases (id, timestamp, data) VALUES (?, ?, ?)",
                  (c["id"], c["timestamp"], json.dumps(c)))
 
 conn.commit()

@@ -52,9 +52,9 @@ TARGET_ITEMS = {
     "122": "equity_ratio",     # 自己資本比率
     "125": "roe",              # 自己資本経常利益率
     "126": "op_margin",        # 売上高営業利益率
-    "127": "ord_income_margin",# 売上高経常利益率
-    "136": "depreciation_rate",# 減価償却率（財務比率）
-    "143": "capex_efficiency", # 設備投資効率
+    "127": "ord_income_margin",  # 売上高経常利益率
+    "136": "depreciation_rate",  # 減価償却率（財務比率）
+    "143": "capex_efficiency",  # 設備投資効率
 }
 
 # e-Stat 業種コード（年度版0003060791）→ システムの JSIC 中分類名 マッピング
@@ -325,18 +325,18 @@ def build_capex_lease_data() -> dict:
         ind = raw[estat_code]
 
         # 基本数値（百万円）
-        sales         = ind.get("045", None)
-        depreciation  = ind.get("062", None)
-        lease_rent    = ind.get("069", None)
-        capex         = ind.get("086", None)
+        sales = ind.get("045", None)
+        depreciation = ind.get("062", None)
+        lease_rent = ind.get("069", None)
+        capex = ind.get("086", None)
 
         # 財務比率（%）
-        op_margin          = ind.get("126", None)
-        ord_income_margin  = ind.get("127", None)
-        equity_ratio       = ind.get("122", None)
-        roe                = ind.get("125", None)
-        depr_rate          = ind.get("136", None)  # 減価償却率（財務比率）
-        capex_eff          = ind.get("143", None)  # 設備投資効率
+        op_margin = ind.get("126", None)
+        ord_income_margin = ind.get("127", None)
+        equity_ratio = ind.get("122", None)
+        roe = ind.get("125", None)
+        depr_rate = ind.get("136", None)  # 減価償却率（財務比率）
+        capex_eff = ind.get("143", None)  # 設備投資効率
 
         # 計算指標（売上高がないと計算不能）
         entry: dict = {}

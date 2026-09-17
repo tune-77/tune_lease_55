@@ -336,7 +336,7 @@ def _build_user_text(params: dict) -> str:
         pd_pct = None
     pd_line = f"算出済みPD: {pd_pct:.2f}%" if pd_pct is not None and pd_pct > 0 else "算出済みPD: 未算出"
     lines = [
-        f"【案件情報】",
+        "【案件情報】",
         f"会社名: {params.get('company_name', '不明')}",
         f"業種: {params.get('industry_cat', '不明')}",
         f"物件: {params.get('asset_name', '不明')}",

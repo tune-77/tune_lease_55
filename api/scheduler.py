@@ -196,8 +196,6 @@ def run_shion_usage_loop() -> dict:
         return {"status": "error", "detail": str(e)}
 
 
-
-
 def run_shion_memory_decay() -> dict:
     """記憶減衰バッチ（毎日 04:00 / REV-219）。"""
     logger.info("[MemoryDecay] バッチ開始")
@@ -219,6 +217,7 @@ def run_shion_inactivity_decay() -> dict:
     except Exception as e:
         logger.error(f"[Relationship] エラー: {e}", exc_info=True)
         return {"status": "error", "detail": str(e)}
+
 
 def run_chat_summary_refresh() -> dict:
     """チャット会話要約キャッシュの再構築バッチ（毎日 04:10）。
@@ -277,7 +276,6 @@ def start_scheduler() -> BackgroundScheduler:
         replace_existing=True,
         misfire_grace_time=300,
     )
-
 
     # 記憶減衰バッチ（毎日 04:00 / REV-219）
     _scheduler.add_job(

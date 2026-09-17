@@ -166,14 +166,14 @@ def main() -> None:
     }
 
     before = calc_demo_score(ASSET_PRICE, 5, ANNUAL_SALES, ANNUAL_PROFIT, CORRECT_YEARS)
-    after  = calc_demo_score(ASSET_PRICE, CORRECT_YEARS, ANNUAL_SALES, ANNUAL_PROFIT, CORRECT_YEARS)
+    after = calc_demo_score(ASSET_PRICE, CORRECT_YEARS, ANNUAL_SALES, ANNUAL_PROFIT, CORRECT_YEARS)
 
     print_comparison(before, after, case)
 
     print()
     print("  【自動修正内容】")
-    print(f"    useful_life_equipment.json > ブルドーザー > years: 5 → 6")
-    print(f"    根拠: 国税庁耐用年数表 別表第二55号（自走式建設機械）")
+    print("    useful_life_equipment.json > ブルドーザー > years: 5 → 6")
+    print("    根拠: 国税庁耐用年数表 別表第二55号（自走式建設機械）")
     print()
     print("  ※このデモは REV-139 デモパイプラインで自動検出・修正された改善例です")
 

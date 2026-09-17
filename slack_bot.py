@@ -367,7 +367,7 @@ def _run_agent_discussion(theme: str) -> list[dict]:
         context = ""
         if thread:
             lines = [f"{m['name']}: {m['content'][:200]}" for m in thread]
-            context = f"\n\n【これまでの議論】\n" + "\n".join(lines) + "\n"
+            context = "\n\n【これまでの議論】\n" + "\n".join(lines) + "\n"
 
         prompt = (
             f"{agent['prompt_prefix']}\n\n"

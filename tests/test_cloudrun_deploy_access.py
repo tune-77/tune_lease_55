@@ -60,6 +60,7 @@ if a[:2] == ["run", "deploy"]:
 ''')
     gcloud.chmod(0o755)
     log = tmp_path / "args.json"
+
     def run(script, mode, secret="ok", tunnel_secret="ok", dashboard_health_secret="ok", knowledge_sync_secret="ok"):
         log.unlink(missing_ok=True)
         result = subprocess.run(["bash", str(scripts / script)], env={**os.environ,

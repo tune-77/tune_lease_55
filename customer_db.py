@@ -154,14 +154,14 @@ def save_record(result: dict, inputs: dict, memo: str = "") -> int:
     init_db()
 
     # 入力値（千円単位）
-    nenshu_k      = float(inputs.get("nenshu",      0) or 0)
-    ord_profit_k  = float(inputs.get("item4_ord_profit", 0) or
+    nenshu_k = float(inputs.get("nenshu",      0) or 0)
+    ord_profit_k = float(inputs.get("item4_ord_profit", 0) or
                           inputs.get("ord_profit", 0) or
                           inputs.get("rieki", 0) or 0)
     total_assets_k = float(inputs.get("total_assets", 0) or 0)
-    net_assets_k   = float(inputs.get("net_assets",   0) or 0)
+    net_assets_k = float(inputs.get("net_assets",   0) or 0)
     lease_credit_k = float(inputs.get("lease_credit", 0) or 0)
-    lease_term     = inputs.get("lease_term", 36)
+    lease_term = inputs.get("lease_term", 36)
 
     record = {
         "created_at":     datetime.datetime.now().isoformat(timespec="seconds"),

@@ -1,5 +1,8 @@
 """_fluid_retrain_worker.py — FluidPipeline から spawn される再学習ワーカー。"""
-import argparse, sys, os, json
+import argparse
+import sys
+import os
+import json
 sys.path.insert(0, os.path.dirname(__file__))
 
 parser = argparse.ArgumentParser()

@@ -26,6 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("test_phase1")
 
+
 def test_import():
     """Test if chat_assistant can be imported"""
     logger.info("=" * 60)
@@ -39,6 +40,7 @@ def test_import():
         logger.error(f"❌ Failed to import: {e}")
         return False
 
+
 def test_logging():
     """Test if logging is configured correctly"""
     logger.info("=" * 60)
@@ -49,6 +51,7 @@ def test_logging():
     test_logger.info("PHASE1_LATENCY | obsidian_search=0.123s | obsidian_digest=0.045s | web_search=0.010s | gemini=1.234s | total=1.412s | query_length=50 | hits=3")
     logger.info("✅ Logging configured correctly")
     return True
+
 
 def test_latency_calculation():
     """Test latency calculation logic"""
@@ -94,6 +97,7 @@ def test_latency_calculation():
         logger.error(f"❌ Latency calculation error (diff: {diff:.3f}s)")
         return False
 
+
 def test_phase1_features():
     """Test Phase 1 implementation checklist"""
     logger.info("=" * 60)
@@ -127,6 +131,7 @@ def test_phase1_features():
     except Exception as e:
         logger.error(f"❌ Phase 1 check failed: {e}")
         return False
+
 
 def main():
     logger.info("\n" + "=" * 60)
@@ -165,6 +170,7 @@ def main():
     else:
         logger.error("\n❌ Some tests failed. Please review the errors above.")
         return 1
+
 
 if __name__ == "__main__":
     exit(main())

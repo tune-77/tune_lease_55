@@ -157,28 +157,28 @@ def _inputs_to_feature_row(inputs: dict) -> list[float]:
     """
     major = str(inputs.get("industry_major") or "").strip()
 
-    ind_medical       = 1.0 if ("医療" in major or "福祉" in major) else 0.0
-    ind_transport     = 1.0 if "運輸" in major else 0.0
-    ind_construction  = 1.0 if "建設" in major else 0.0
+    ind_medical = 1.0 if ("医療" in major or "福祉" in major) else 0.0
+    ind_transport = 1.0 if "運輸" in major else 0.0
+    ind_construction = 1.0 if "建設" in major else 0.0
     ind_manufacturing = 1.0 if "製造" in major else 0.0
-    ind_service       = 1.0 if any(x in major for x in ["卸売", "小売", "サービス"]) else 0.0
+    ind_service = 1.0 if any(x in major for x in ["卸売", "小売", "サービス"]) else 0.0
 
-    nenshu       = max(_safe_float(inputs.get("nenshu")), 0.0)
-    bank_credit  = max(_safe_float(inputs.get("bank_credit")), 0.0)
+    nenshu = max(_safe_float(inputs.get("nenshu")), 0.0)
+    bank_credit = max(_safe_float(inputs.get("bank_credit")), 0.0)
     lease_credit = max(_safe_float(inputs.get("lease_credit")), 0.0)
 
     return [
         ind_medical, ind_transport, ind_construction, ind_manufacturing, ind_service,
         math.log1p(nenshu), math.log1p(bank_credit), math.log1p(lease_credit),
-        _safe_float(inputs.get("op_profit"))    / 1000.0,
-        _safe_float(inputs.get("ord_profit"))   / 1000.0,
-        _safe_float(inputs.get("net_income"))   / 1000.0,
-        _safe_float(inputs.get("machines"))     / 1000.0,
+        _safe_float(inputs.get("op_profit")) / 1000.0,
+        _safe_float(inputs.get("ord_profit")) / 1000.0,
+        _safe_float(inputs.get("net_income")) / 1000.0,
+        _safe_float(inputs.get("machines")) / 1000.0,
         _safe_float(inputs.get("other_assets")) / 1000.0,
-        _safe_float(inputs.get("rent"))         / 1000.0,
+        _safe_float(inputs.get("rent")) / 1000.0,
         _safe_float(inputs.get("gross_profit")) / 1000.0,
         _safe_float(inputs.get("depreciation")) / 1000.0,
-        _safe_float(inputs.get("dep_expense"))  / 1000.0,
+        _safe_float(inputs.get("dep_expense")) / 1000.0,
         _safe_float(inputs.get("rent_expense")) / 1000.0,
         _safe_float(inputs.get("contracts")),
     ]

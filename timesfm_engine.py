@@ -192,7 +192,7 @@ def forecast_company_score(
 
     # 不確実性帯（過去スコア標準偏差を利用）
     sigma = float(np.std(scores)) if len(scores) > 1 else 2.0
-    band_low  = [max(0.0, f - sigma) for f in forecast]
+    band_low = [max(0.0, f - sigma) for f in forecast]
     band_high = [min(100.0, f + sigma) for f in forecast]
 
     # トレンド判定

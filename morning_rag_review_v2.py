@@ -414,7 +414,7 @@ def run_morning_rag_review():
                 logger.info(f"  - 実装済み除外: {len(candidates) - len(filtered)}")
 
                 if filtered:
-                    logger.info(f"\n【本日の TOP 3 改善候補】")
+                    logger.info("\n【本日の TOP 3 改善候補】")
                     for i, c in enumerate(filtered[:3], 1):
                         logger.info(
                             f"  {i}. {c['id']}: {c['title']} "

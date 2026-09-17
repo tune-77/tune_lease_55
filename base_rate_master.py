@@ -280,13 +280,13 @@ def render_base_rate_manager() -> None:
     # ── 月次金利更新フォーム（最上部・常時表示） ──────────────────────────────
     # 更新対象月: 未登録の月を優先（当月未登録 → 当月、来月未登録 → 来月、それ以外 → 来月）
     current_rate_5y = get_base_rate_by_term(current_month, 60)
-    next_rate_5y    = get_base_rate_by_term(next_month, 60)
-    default_target  = current_month if current_rate_5y is None else next_month
+    next_rate_5y = get_base_rate_by_term(next_month, 60)
+    default_target = current_month if current_rate_5y is None else next_month
 
     # 直近登録データを前月比のデフォルト値として使用
     recent = list_base_rates(limit=2)
     latest = recent[0] if recent else {}          # 最新登録月のデータ
-    prev   = recent[1] if len(recent) > 1 else {} # その前月のデータ
+    prev = recent[1] if len(recent) > 1 else {}  # その前月のデータ
 
     def _fv(col: str, src: dict) -> float:
         """辞書から float 値を取り出す。なければ 1.00。"""

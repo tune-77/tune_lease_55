@@ -29,7 +29,7 @@ if not logger.handlers:
     logger.setLevel(logging.DEBUG)
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-_NOVEL_DB  = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
+_NOVEL_DB = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
 
 YEARS_PER_ROUND = 100
 
@@ -79,8 +79,8 @@ def solar_state(t_gyr: float) -> SolarState:
             t1, ph1, r1, l1 = cps[i + 1]
             if t0 <= t_gyr <= t1:
                 frac = (t_gyr - t0) / (t1 - t0)
-                lum   = l0 + frac * (l1 - l0)
-                r     = r0 + frac * (r1 - r0)
+                lum = l0 + frac * (l1 - l0)
+                r = r0 + frac * (r1 - r0)
                 phase = ph0 if frac < 0.5 else ph1
                 break
 
@@ -109,6 +109,7 @@ def solar_state(t_gyr: float) -> SolarState:
 def round_to_t_gyr(round_no: int, total_rounds: int = 50_000) -> float:
     """ラウンド番号を太陽年齢 (Gyr) に変換。50,000ラウンド = 50億年。"""
     return (round_no / total_rounds) * 10.0
+
 
 def _fix_json_str(raw: str) -> str:
     """
@@ -407,8 +408,8 @@ def run_simulation_round() -> dict:
         civs = []
 
     current_round = get_current_round()
-    next_round    = current_round + 1
-    year          = next_round * YEARS_PER_ROUND
+    next_round = current_round + 1
+    year = next_round * YEARS_PER_ROUND
 
     # 現在の状態を収集
     edges = get_current_graph()
@@ -456,8 +457,8 @@ def run_simulation_round() -> dict:
             prev_summary = f"\n【前回（第{current_round}ラウンド / アルカイア暦A.{current_round * YEARS_PER_ROUND}）の出来事】\n{last['summary']}\n"
 
     civ_list_text = "\n".join(
-        f"  ・{c['company_name']}（{c['industry']} / {c.get('status','active')} / "
-        f"era:{c.get('civ_era','?')}）"
+        f"  ・{c['company_name']}（{c['industry']} / {c.get('status', 'active')} / "
+        f"era:{c.get('civ_era', '?')}）"
         for c in valid_civs
     )
 
@@ -595,7 +596,7 @@ def _trigger_archaia_narratives(events: list, sol: SolarState, round_no: int) ->
     for ev in events:
         if ev.get("event_type") not in trigger_types:
             continue
-        civ_name   = ev.get("civ", "不明")
+        civ_name = ev.get("civ", "不明")
         event_type = ev.get("event_type", "collapse")
         try:
             from novelist_agent import generate_archaia_narrative

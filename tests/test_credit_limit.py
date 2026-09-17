@@ -75,13 +75,13 @@ class TestSuggestCreditLimit:
     def test_high_score_gets_better_tier(self):
         """スコア90超 vs スコア50前後でtierが異なる"""
         high = suggest_credit_limit(self._base_res(score=95.0))
-        low  = suggest_credit_limit(self._base_res(score=40.0))
+        low = suggest_credit_limit(self._base_res(score=40.0))
         # 高スコアの方が提案額が高い or 同等（件数少でフロアが効く場合もある）
         assert high.suggested >= low.suggested or high.tier <= low.tier
 
     def test_high_equity_raises_limit(self):
         """自己資本比率が高い方が与信枠が大きい"""
-        low_eq  = suggest_credit_limit(self._base_res(**{"user_eq": 5.0}))
+        low_eq = suggest_credit_limit(self._base_res(**{"user_eq": 5.0}))
         high_eq = suggest_credit_limit(self._base_res(**{"user_eq": 50.0}))
         assert high_eq.suggested >= low_eq.suggested
 

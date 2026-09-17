@@ -116,49 +116,49 @@ def compute_financial_indicators(fin: dict, bench: dict | None = None) -> list:
     bench: industry_benchmarks の当該業種エントリ（op_margin, equity_ratio 等）
     返却 : [{"name": str, "value": float, "bench": float|None, "unit": str}]
     """
-    n       = fin.get("nenshu") or 0
-    total   = fin.get("assets") or 0
-    net_a   = fin.get("net_assets")
-    gross   = fin.get("gross_profit") or 0
-    op      = fin.get("op_profit") or fin.get("rieki") or 0
-    ord_p   = fin.get("ord_profit") or 0
-    net     = fin.get("net_income") or 0
+    n = fin.get("nenshu") or 0
+    total = fin.get("assets") or 0
+    net_a = fin.get("net_assets")
+    gross = fin.get("gross_profit") or 0
+    op = fin.get("op_profit") or fin.get("rieki") or 0
+    ord_p = fin.get("ord_profit") or 0
+    net = fin.get("net_income") or 0
     machines = fin.get("machines") or 0
-    other_a  = fin.get("other_assets") or 0
-    bank    = fin.get("bank_credit") or 0
-    lease   = fin.get("lease_credit") or 0
-    dep     = fin.get("depreciation") or 0
-    fixed_a    = machines + other_a   # 固定資産（機械＋その他資産）
+    other_a = fin.get("other_assets") or 0
+    bank = fin.get("bank_credit") or 0
+    lease = fin.get("lease_credit") or 0
+    dep = fin.get("depreciation") or 0
+    fixed_a = machines + other_a   # 固定資産（機械＋その他資産）
     debt_total = bank + lease          # 借入金等
 
     indicators = []
 
     # ── 売上高ベースの利益率（売上高 > 0 で算出可能） ──
     if n > 0:
-        indicators.append({"name": "売上高総利益率",      "value": gross / n * 100, "bench": bench.get("gross_margin")          if bench else None, "unit": "%"})
-        indicators.append({"name": "営業利益率",          "value": op    / n * 100, "bench": bench.get("op_margin")             if bench else None, "unit": "%"})
-        indicators.append({"name": "経常利益率",          "value": ord_p / n * 100, "bench": bench.get("ord_margin")            if bench else None, "unit": "%"})
-        indicators.append({"name": "当期純利益率",        "value": net   / n * 100, "bench": bench.get("net_margin")            if bench else None, "unit": "%"})
+        indicators.append({"name": "売上高総利益率",      "value": gross / n * 100, "bench": bench.get("gross_margin") if bench else None, "unit": "%"})
+        indicators.append({"name": "営業利益率",          "value": op / n * 100, "bench": bench.get("op_margin") if bench else None, "unit": "%"})
+        indicators.append({"name": "経常利益率",          "value": ord_p / n * 100, "bench": bench.get("ord_margin") if bench else None, "unit": "%"})
+        indicators.append({"name": "当期純利益率",        "value": net / n * 100, "bench": bench.get("net_margin") if bench else None, "unit": "%"})
         if dep > 0:
-            indicators.append({"name": "減価償却費/売上高", "value": dep / n * 100, "bench": bench.get("dep_ratio")             if bench else None, "unit": "%"})
+            indicators.append({"name": "減価償却費/売上高", "value": dep / n * 100, "bench": bench.get("dep_ratio") if bench else None, "unit": "%"})
         if fixed_a > 0:
-            indicators.append({"name": "固定資産回転率",  "value": n / fixed_a,     "bench": bench.get("fixed_asset_turnover")  if bench else None, "unit": "回"})
+            indicators.append({"name": "固定資産回転率",  "value": n / fixed_a,     "bench": bench.get("fixed_asset_turnover") if bench else None, "unit": "回"})
 
     # ── 総資産・純資産ベース（total > 0 で算出可能） ──
     if total > 0:
         if net_a is not None:
             indicators.append({"name": "自己資本比率",         "value": net_a / total * 100,         "bench": _equity_ratio_display(bench.get("equity_ratio")) if bench else None, "unit": "%"})
         if net_a is not None and net_a > 0:
-            indicators.append({"name": "ROE(自己資本利益率)",  "value": net   / net_a * 100,         "bench": bench.get("roe")               if bench else None, "unit": "%"})
-            indicators.append({"name": "固定比率",             "value": fixed_a / net_a * 100,       "bench": bench.get("fixed_to_equity")   if bench else None, "unit": "%"})
-            indicators.append({"name": "負債比率",             "value": (total - net_a) / net_a * 100, "bench": bench.get("debt_to_equity")  if bench else None, "unit": "%"})
-        indicators.append({"name": "ROA(総資産利益率)",        "value": net / total * 100,            "bench": bench.get("roa")               if bench else None, "unit": "%"})
-        indicators.append({"name": "総資産回転率",             "value": n   / total if n > 0 else 0,  "bench": bench.get("asset_turnover")    if bench else None, "unit": "回"})
+            indicators.append({"name": "ROE(自己資本利益率)",  "value": net / net_a * 100,         "bench": bench.get("roe") if bench else None, "unit": "%"})
+            indicators.append({"name": "固定比率",             "value": fixed_a / net_a * 100,       "bench": bench.get("fixed_to_equity") if bench else None, "unit": "%"})
+            indicators.append({"name": "負債比率",             "value": (total - net_a) / net_a * 100, "bench": bench.get("debt_to_equity") if bench else None, "unit": "%"})
+        indicators.append({"name": "ROA(総資産利益率)",        "value": net / total * 100,            "bench": bench.get("roa") if bench else None, "unit": "%"})
+        indicators.append({"name": "総資産回転率",             "value": n / total if n > 0 else 0,  "bench": bench.get("asset_turnover") if bench else None, "unit": "回"})
         if fixed_a > 0:
-            indicators.append({"name": "固定資産比率",         "value": fixed_a / total * 100,       "bench": bench.get("fixed_ratio")       if bench else None, "unit": "%"})
+            indicators.append({"name": "固定資産比率",         "value": fixed_a / total * 100,       "bench": bench.get("fixed_ratio") if bench else None, "unit": "%"})
         indicators.append({"name": "流動資産比率(総資産比)",   "value": (total - fixed_a) / total * 100, "bench": bench.get("current_asset_ratio") if bench else None, "unit": "%"})
         if debt_total > 0:
-            indicators.append({"name": "借入金等依存度",       "value": debt_total / total * 100,    "bench": bench.get("debt_ratio")        if bench else None, "unit": "%"})
+            indicators.append({"name": "借入金等依存度",       "value": debt_total / total * 100,    "bench": bench.get("debt_ratio") if bench else None, "unit": "%"})
 
     return indicators
 
@@ -179,10 +179,10 @@ def analyze_indicators_vs_bench(indicators: list) -> tuple:
             _bench_is_nan = False
         if bench is None or _bench_is_nan:
             continue
-        name  = ind["name"]
+        name = ind["name"]
         value = ind["value"]
-        unit  = ind.get("unit", "%")
-        diff  = value - bench
+        unit = ind.get("unit", "%")
+        diff = value - bench
         if is_indicator_favorable(name, value, bench):
             above.append((name, value, bench, diff, unit))
         else:
@@ -231,9 +231,9 @@ def get_indicator_analysis_for_advice(last_result: dict) -> tuple:
         return "", "", ""
 
     selected_sub = last_result.get("industry_sub", "")
-    major        = last_result.get("industry_major", "")
-    benchmarks   = _get_benchmarks()
-    avg_data     = _get_avg_data()
+    major = last_result.get("industry_major", "")
+    benchmarks = _get_benchmarks()
+    avg_data = _get_avg_data()
 
     bench = dict(benchmarks.get(selected_sub, {}))
     cache = _load_web_benchmarks_cache()
@@ -245,7 +245,7 @@ def get_indicator_analysis_for_advice(last_result: dict) -> tuple:
     bench_ext = dict(bench)
     if major and avg_data and major in avg_data:
         avg = avg_data[major]
-        an  = avg.get("nenshu") or 0
+        an = avg.get("nenshu") or 0
         if an > 0:
             for key, src in [("gross_margin", "gross_profit"), ("ord_margin", "ord_profit"),
                              ("net_margin", "net_income"), ("dep_ratio", "depreciation")]:
@@ -253,10 +253,10 @@ def get_indicator_analysis_for_advice(last_result: dict) -> tuple:
                     bench_ext[key] = (avg.get(src) or 0) / an * 100
         total_avg = sum(avg.get(k) or 0 for k in ["machines", "other_assets", "bank_credit", "lease_credit"])
         if total_avg > 0:
-            if bench_ext.get("roa")            is None: bench_ext["roa"]            = (avg.get("net_income") or 0) / total_avg * 100
+            if bench_ext.get("roa") is None: bench_ext["roa"] = (avg.get("net_income") or 0) / total_avg * 100
             if bench_ext.get("asset_turnover") is None: bench_ext["asset_turnover"] = an / total_avg
-            if bench_ext.get("fixed_ratio")    is None: bench_ext["fixed_ratio"]    = ((avg.get("machines") or 0) + (avg.get("other_assets") or 0)) / total_avg * 100
-            if bench_ext.get("debt_ratio")     is None: bench_ext["debt_ratio"]     = ((avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)) / total_avg * 100
+            if bench_ext.get("fixed_ratio") is None: bench_ext["fixed_ratio"] = ((avg.get("machines") or 0) + (avg.get("other_assets") or 0)) / total_avg * 100
+            if bench_ext.get("debt_ratio") is None: bench_ext["debt_ratio"] = ((avg.get("bank_credit") or 0) + (avg.get("lease_credit") or 0)) / total_avg * 100
 
     indicators = compute_financial_indicators(fin, bench_ext)
     if not indicators:
@@ -264,8 +264,8 @@ def get_indicator_analysis_for_advice(last_result: dict) -> tuple:
 
     summary, detail = analyze_indicators_vs_bench(indicators)
     lines = [
-        f"- {ind['name']}: 貴社 {ind['value']:.1f}{ind.get('unit','%')}"
-        + (f" / 業界目安 {ind['bench']:.1f}{ind.get('unit','%')}" if ind.get("bench") is not None else "")
+        f"- {ind['name']}: 貴社 {ind['value']:.1f}{ind.get('unit', '%')}"
+        + (f" / 業界目安 {ind['bench']:.1f}{ind.get('unit', '%')}" if ind.get("bench") is not None else "")
         for ind in indicators
     ]
     return summary, detail, "\n".join(lines)
@@ -301,10 +301,10 @@ def calculate_pd(equity: float, current: float, profit: float | None) -> float:
         elif profit < 5:
             risk += 2.0
     base_pd = min(100.0, max(0.0, risk))
-    
+
     # 【実務適合】日本の法人倒産確率の実態（年間1〜5%程度）にスケーリング（1/10補正）
     base_pd = base_pd * 0.1
-    
+
     # ==== ネットワーク連鎖リスクエンジンの適用 ====
     try:
         import streamlit as st
@@ -317,26 +317,26 @@ def calculate_pd(equity: float, current: float, profit: float | None) -> float:
         if "建設" in industry: template_name = "建設業モデル"
         elif "製造" in industry: template_name = "製造業モデル"
         elif "情報" in industry: template_name = "情報通信業モデル"
-        
+
         if template_name in IOT_TEMPLATES:
             template = IOT_TEMPLATES[template_name]
-            
+
             # 先頭(0番目)を対象企業として配列を生成
             r_vec = np.array([base_pd] + [e.get("base_r", 1.0) for e in template["entities"][1:]])
-            alpha_vec = np.array([0.5] + [e.get("alpha", 0.5) for e in template["entities"][1:]]) 
-            
+            alpha_vec = np.array([0.5] + [e.get("alpha", 0.5) for e in template["entities"][1:]])
+
             n = len(r_vec)
             adj_w = np.zeros((n, n))
             for u, v, w in template["dependencies"]:
                 adj_w[u][v] = w
-                
+
             m_vec = calculate_modified_risk(r_vec, alpha_vec, adj_w)
             final_pd = min(100.0, max(0.0, m_vec[0]))
-            
+
             # アラート表示用にセッションステートへ保存
             st.session_state["_base_pd_for_alert"] = base_pd
             st.session_state["_m_pd_for_alert"] = final_pd
-            
+
             return final_pd
     except Exception:
         # エラー時は安全に本来の base_pd を返す

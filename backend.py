@@ -208,8 +208,8 @@ def forecast(req: ForecastRequest) -> ForecastResponse:
         3. 過去36ヶ月・予測12ヶ月のラベルと値をまとめて返す
     """
     # ── 月次補完 ─────────────────────────────────────────────────────────────
-    sales_hist      = _annual_to_monthly(req.sales,      req.industry)
-    profit_hist     = _annual_to_monthly(req.profit,     req.industry)
+    sales_hist = _annual_to_monthly(req.sales,      req.industry)
+    profit_hist = _annual_to_monthly(req.profit,     req.industry)
     net_assets_hist = _annual_to_monthly(req.net_assets, req.industry)
 
     # ── 月ラベル生成 ─────────────────────────────────────────────────────────
@@ -217,25 +217,25 @@ def forecast(req: ForecastRequest) -> ForecastResponse:
     today = date.today()
     # 直近期の末月 = 今年の3月（日本標準の3月決算を仮定）
     # ※ 汎用性のため「今月を基準に36ヶ月前から開始」とする
-    hist_start_year  = today.year - 3
+    hist_start_year = today.year - 3
     hist_start_month = today.month
-    history_labels   = _make_month_labels(hist_start_year, hist_start_month, 36)
-    forecast_labels  = _make_month_labels(today.year, today.month, 12)
+    history_labels = _make_month_labels(hist_start_year, hist_start_month, 36)
+    forecast_labels = _make_month_labels(today.year, today.month, 12)
 
     # ── TimesFM / GBM 予測 ───────────────────────────────────────────────────
     HORIZON = 12
-    sales_fore      = _run_forecast(sales_hist,      HORIZON)
-    profit_fore     = _run_forecast(profit_hist,     HORIZON)
+    sales_fore = _run_forecast(sales_hist,      HORIZON)
+    profit_fore = _run_forecast(profit_hist,     HORIZON)
     net_assets_fore = _run_forecast(net_assets_hist, HORIZON)
 
     return ForecastResponse(
-        months_history      = history_labels,
-        sales_history       = sales_hist,
-        profit_history      = profit_hist,
-        net_assets_history  = net_assets_hist,
-        months_forecast     = forecast_labels,
-        sales_forecast      = sales_fore,
-        profit_forecast     = profit_fore,
-        net_assets_forecast = net_assets_fore,
-        timesfm_available   = TIMESFM_AVAILABLE,
+        months_history=history_labels,
+        sales_history=sales_hist,
+        profit_history=profit_hist,
+        net_assets_history=net_assets_hist,
+        months_forecast=forecast_labels,
+        sales_forecast=sales_fore,
+        profit_forecast=profit_fore,
+        net_assets_forecast=net_assets_fore,
+        timesfm_available=TIMESFM_AVAILABLE,
     )

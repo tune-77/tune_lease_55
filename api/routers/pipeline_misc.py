@@ -1,7 +1,11 @@
 """知識グラフ・支払アラート・補助金・耐用年数・バッチ審査ルーター (REV-234 Phase11)"""
 from __future__ import annotations
 
-import json, os, re, threading, time
+import json
+import os
+import re
+import threading
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -224,6 +228,7 @@ def _knowledge_graph_source(path: str) -> dict[str, str | bool]:
 
 # ── pipeline / subsidies helpers (shared copies kept in main.py too) ────────
 
+
 def _log_bigrams(s: str) -> set[str]:
     import re as _r
     s = _r.sub(r'\s+', '', s.lower())
@@ -292,7 +297,8 @@ def _load_applied_from_ledger() -> tuple[set[str], set[str]]:
 
 def _find_similar_pipeline_items(text: str, threshold: float = 0.38) -> list[dict]:
     """テキストと類似するパイプライン改善候補（レポート＋ledger）を返す（上位5件）。"""
-    import glob as _g, json as _j
+    import glob as _g
+    import json as _j
     log_dir = os.path.expanduser("~/Library/Logs/tunelease")
     candidates: list[dict] = []
     seen_titles: set[str] = set()
@@ -336,6 +342,7 @@ def _find_similar_pipeline_items(text: str, threshold: float = 0.38) -> list[dic
         if len(matches) >= 5:
             break
     return matches
+
 
 def _load_title_to_rev() -> dict[str, str]:
     """最新の improvement_report_*.json からタイトル→REV番号マップを返す。"""
@@ -383,7 +390,9 @@ def _load_obsidian_implemented_titles() -> set[str]:
 
 # ── useful-life helpers ─────────────────────────────────────────────────────
 
+
 _USEFUL_LIFE_TABLE: list[dict] | None = None
+
 
 def _load_useful_life_table() -> list[dict]:
     global _USEFUL_LIFE_TABLE
@@ -394,6 +403,7 @@ def _load_useful_life_table() -> list[dict]:
     return _USEFUL_LIFE_TABLE
 
 # ── batch helpers ───────────────────────────────────────────────────────────
+
 
 def _sanitize_batch_value(value):
     try:
@@ -979,7 +989,6 @@ def get_knowledge_graph(limit: int = 180):
     except Exception as e:
         print(f"[API] knowledge graph error: {e}")
         raise HTTPException(status_code=503, detail="現在ナレッジ機能を準備中です。しばらくお待ちください。")
-
 
 
 @router.get("/api/payment/alerts")

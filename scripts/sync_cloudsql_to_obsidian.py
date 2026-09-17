@@ -57,6 +57,7 @@ from scripts._obsidian_common import emotion_bar  # noqa: E402
 
 # ── 接続設定（環境変数から取得） ────────────────────────────────────────────────
 
+
 def rewrite_cloudsql_socket_dsn(dsn: str, host: str, port: int) -> str:
     """Cloud Run 用 Unix ソケット DSN をローカルプロキシ向け TCP DSN に書き換える。
 
@@ -158,6 +159,7 @@ def _get_db_config() -> dict:
         "user": os.environ.get("CLOUD_SQL_USER", "postgres"),
         "password": password,
     }
+
 
 def _database_url_from_secret() -> str:
     secret_name = os.environ.get("DATABASE_URL_SECRET_NAME", "").strip()

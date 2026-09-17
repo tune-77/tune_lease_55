@@ -34,6 +34,7 @@ _CATEGORY_USEFUL_LIFE: dict[str, float] = {
     "医療機器": 6.0,   # 診断機器・治療機器等の平均
 }
 
+
 def _load_useful_life_json() -> dict:
     """useful_life_equipment.json を読み込む（失敗時は空 dict）。"""
     try:
@@ -41,7 +42,6 @@ def _load_useful_life_json() -> dict:
             return json.load(f)
     except Exception:
         return {}
-
 
 
 def _adjust_weights(category: str, base_weights: dict, contract: dict) -> dict:
@@ -73,7 +73,7 @@ def _adjust_weights(category: str, base_weights: dict, contract: dict) -> dict:
     items_map = {item["id"]: item for item in CATEGORY_SCORE_ITEMS.get(category, [])}
 
     lease_months = contract.get("lease_months", 0)
-    
+
     # ────────────────────────────────────────────────────────────────────────────
     # 期待使用期間との適合度評価（再リース機会ベース）
     # ────────────────────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ def _adjust_weights(category: str, base_weights: dict, contract: dict) -> dict:
         if asset_name:
             fit_result = calc_lease_period_fit_score(asset_name, lease_months)
             remanufacture_score = fit_result.get("remanufacture_score", 50)
-            
+
             # 再リース機会スコアに基づいた重み調整
             # remanufacture_score が低いほど（残り期間が短い）、残価リスク系の重みを上げる
             if remanufacture_score < 70:
@@ -271,7 +271,7 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
         "weight_adjusted": weight_adjusted,
         "completeness_ratio": round(completeness_ratio, 3),
     }
-    
+
     # 再リース機会の評価を追加
     lease_months = contract.get("lease_months", 0)
     if calc_lease_period_fit_score and lease_months > 0:
@@ -282,7 +282,7 @@ def calc_asset_score(category: str, scores: dict, contract: dict = None) -> dict
             # 外部参照用に短シリアライズ
             result["remanufacture_score"] = fit_result.get("remanufacture_score")
             result["assessment_label"] = fit_result.get("assessment_label")
-    
+
     return result
 
 

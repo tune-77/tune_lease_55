@@ -292,6 +292,7 @@ def test_current_head_can_be_restored_after_page_reload(feedback_store, monkeypa
     feedback_path.unlink()
     durable_events = [{"event_type": "judgment_asset_candidate_feedback", "payload": {**row, "candidate_id": row["rule_id"], "disposition": row["outcome"]}} for row in durable_rows]
     monkeypatch.setenv("K_SERVICE", "test-service")
+
     def read_durable_events(case_id, review_id):
         assert (case_id, review_id) == ("case-1", 7)
         return durable_events

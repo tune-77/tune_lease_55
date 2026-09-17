@@ -108,6 +108,7 @@ GENRES = {
 """ + _COMMON_RULES
 }
 
+
 def get_novel_system_prompt(genre: str) -> str:
     """指定されたジャンルのシステムプロンプトを返す"""
     if genre not in GENRES:

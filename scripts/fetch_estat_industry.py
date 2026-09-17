@@ -278,7 +278,7 @@ def _write_estat_update_log(changes: dict[str, list[str]], date_str: str) -> Non
         "## 出典",
         "",
         "- e-Stat 法人企業統計調査（財務省）statsDataId=0003060791",
-        f"- `static_data/industry_benchmarks.json` に反映済み",
+        "- `static_data/industry_benchmarks.json` に反映済み",
     ]
 
     try:

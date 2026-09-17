@@ -83,7 +83,7 @@ def render_secondary_review_ui(res: Optional[dict] = None):
 
     score = float((res or {}).get("score", 0))
     industry = (res or {}).get("industry_sub", "")
-    hantei   = (res or {}).get("hantei", "")
+    hantei = (res or {}).get("hantei", "")
 
     st.subheader("🔎 二次審査チェックリスト")
 
@@ -198,7 +198,7 @@ def render_secondary_review_ui(res: Optional[dict] = None):
             lines.append(f"\n▼ {cat}")
             for item in [i for i in items if i["category"] == cat]:
                 mark = "☑" if st.session_state["sr_checks"].get(item["id"]) else "☐"
-                req  = "【必須】" if item.get("required") else "　　　 "
+                req = "【必須】" if item.get("required") else "　　　 "
                 note = st.session_state["sr_notes"].get(item["id"], "")
                 lines.append(f"  {mark} {req} {item['text']}")
                 if note:
@@ -263,5 +263,5 @@ def render_secondary_review_ui(res: Optional[dict] = None):
     st.divider()
     if st.button("🔄 チェック状態をリセット（次の案件用）", key="sr_reset"):
         st.session_state["sr_checks"] = {}
-        st.session_state["sr_notes"]  = {}
+        st.session_state["sr_notes"] = {}
         st.rerun()

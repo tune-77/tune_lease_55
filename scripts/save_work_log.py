@@ -126,7 +126,7 @@ def main() -> None:
 
     if args.lesson:
         append_lesson_to_claude_md(args.lesson)
-        print(f"[claude.md] lesson appended")
+        print("[claude.md] lesson appended")
 
 
 if __name__ == "__main__":

@@ -112,8 +112,6 @@ class MahalanobisScorer:
         return joblib.load(path)
 
 
-
-
 def _gaussian_kl(mu_p: np.ndarray, cov_p: np.ndarray, mu_q: np.ndarray, cov_q: np.ndarray) -> float:
     p = cov_p.shape[0]
     cov_q_inv = np.linalg.pinv(cov_q)
@@ -156,7 +154,6 @@ def compute_kl_drift(scorer: "MahalanobisScorer", recent_X: np.ndarray) -> float
     if sign_t <= 0 or sign_r <= 0:
         raise ValueError("Covariance determinant sign invalid")
     return 0.5 * (term1 + term2 - p + (logdet_t - logdet_r))
-
 
 
 def compute_js_drift(scorer: "MahalanobisScorer", recent_X: np.ndarray) -> float:

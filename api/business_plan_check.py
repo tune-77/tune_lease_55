@@ -301,6 +301,7 @@ def _ai_review(params: dict, checks: list[dict], verdict: str) -> dict | None:
 # 前提を質問し概算を提示するためのシステムプロンプト注入ブロック。
 # /api/chat の intent 分岐（改善/通常/軍師AI）には触れず、追加ブロックとしてのみ作用する。
 
+
 _STRONG_HINTS = (
     "開業", "起業", "創業", "出店", "開店", "新規事業", "新事業",
     "事業計画", "事業を始", "独立し", "脱サラ",

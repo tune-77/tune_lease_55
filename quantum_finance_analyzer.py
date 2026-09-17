@@ -99,7 +99,7 @@ class QuantumFinanceAnalyzer:
 
                 # Bloch球面マッピング
                 # θ: 期待比率を基準とした極角（0=完全一致, π=完全逆転）
-                theta_actual   = 2 * np.arctan(max(actual_ratio,   1e-9) / expected_ratio)
+                theta_actual = 2 * np.arctan(max(actual_ratio,   1e-9) / expected_ratio)
                 theta_coherent = np.pi / 2  # 期待状態は赤道（θ=π/2）
 
                 delta_phi = abs(theta_actual - theta_coherent)
@@ -140,13 +140,13 @@ class QuantumFinanceAnalyzer:
         """
         result = pd.DataFrame(index=df.index)
 
-        assets  = df.get("total_assets",  pd.Series(0, index=df.index)).fillna(0)
-        sales   = df.get("nenshu",        pd.Series(0, index=df.index)).fillna(0)
+        assets = df.get("total_assets",  pd.Series(0, index=df.index)).fillna(0)
+        sales = df.get("nenshu",        pd.Series(0, index=df.index)).fillna(0)
         net_inc = df.get("net_income",    pd.Series(0, index=df.index)).fillna(0)
 
         # 仮想角運動量（正規化: 両者を対数変換してスケール揃え）
         log_assets = np.log1p(assets.clip(lower=0))
-        log_sales  = np.log1p(sales.clip(lower=0))
+        log_sales = np.log1p(sales.clip(lower=0))
         L = log_assets * log_sales
         result["virtual_L"] = L.round(3)
 
@@ -165,7 +165,7 @@ class QuantumFinanceAnalyzer:
         # 動態スコア（0=最悪 〜 100=最良）
         # 資産回転率を0.8基準で評価し、ROAで加減算
         turnover_score = np.clip(asset_turnover / 0.8 * 50, 0, 70)
-        roa_score      = np.clip(roa * 500, -20, 30)  # ROA ±4%で±20pt
+        roa_score = np.clip(roa * 500, -20, 30)  # ROA ±4%で±20pt
         dynamics_score = np.clip(turnover_score + roa_score, 0, 100)
         result["dynamics_score"] = np.round(dynamics_score, 1)
 
@@ -227,7 +227,7 @@ class QuantumFinanceAnalyzer:
 
             # ゼロ回避（KL計算用）
             actual_prob = np.clip(actual_prob, 1e-9, 1.0)
-            benford_p   = np.clip(benford_expected, 1e-9, 1.0)
+            benford_p = np.clip(benford_expected, 1e-9, 1.0)
 
             # KLダイバージェンス D_KL(actual || benford)
             kl_div = np.sum(actual_prob * np.log(actual_prob / benford_p))
@@ -277,7 +277,7 @@ class QuantumFinanceAnalyzer:
         lam = 0.8
         decay = np.exp(-lam * q_risk / 100)
         dyn_factor = 1.0 if dynamics_score >= 40 else 0.85
-        ent_factor  = 1.0 if entropy_risk  <  70 else 0.90
+        ent_factor = 1.0 if entropy_risk < 70 else 0.90
 
         factor = decay * dyn_factor * ent_factor
         corrected = round(base_score * factor, 1)
@@ -326,7 +326,7 @@ class QuantumFinanceAnalyzer:
                 continue
             ratio = num / den
             theta = 2 * np.arctan(max(ratio, 1e-9) / 0.05)
-            phi   = 2 * np.pi * min(ratio / 0.1, 1.0)
+            phi = 2 * np.pi * min(ratio / 0.1, 1.0)
 
             x = np.sin(theta) * np.cos(phi)
             y = np.sin(theta) * np.sin(phi)
@@ -372,7 +372,7 @@ class QuantumFinanceAnalyzer:
         ax.set_ylabel("ROA（%）", fontsize=12)
         ax.set_title("フェーズ・ポートレート — 企業動態空間\n赤: 失速状態（資産回転低 & ROA負）", fontsize=13)
 
-        red_patch  = mpatches.Patch(color="red",      label="失速状態")
+        red_patch = mpatches.Patch(color="red",      label="失速状態")
         blue_patch = mpatches.Patch(color="steelblue", label="正常")
         ax.legend(handles=[red_patch, blue_patch])
         ax.grid(True, alpha=0.3)
@@ -403,17 +403,17 @@ class QuantumFinanceAnalyzer:
             analyzer = QuantumFinanceAnalyzer()
             result = analyzer.full_analysis(inputs_df)
         """
-        q_risk   = self.calculate_q_risk(df)
+        q_risk = self.calculate_q_risk(df)
         dynamics = self.analyze_physical_dynamics(df)
-        entropy  = self.detect_data_entropy(df)
+        entropy = self.detect_data_entropy(df)
 
         result = df.copy()
-        result["q_risk"]              = q_risk
-        result["dynamics_score"]      = dynamics["dynamics_score"]
-        result["asset_turnover"]      = dynamics["asset_turnover"]
-        result["roa"]                 = dynamics["roa"]
-        result["stall_flag"]          = dynamics["stall_flag"]
-        result["entropy_risk"]        = entropy["entropy_risk"]
+        result["q_risk"] = q_risk
+        result["dynamics_score"] = dynamics["dynamics_score"]
+        result["asset_turnover"] = dynamics["asset_turnover"]
+        result["roa"] = dynamics["roa"]
+        result["stall_flag"] = dynamics["stall_flag"]
+        result["entropy_risk"] = entropy["entropy_risk"]
         result["data_integrity_flag"] = entropy["data_integrity_flag"]
 
         # 総合警告レベル

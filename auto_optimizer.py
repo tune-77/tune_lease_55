@@ -14,15 +14,15 @@ logger = logging.getLogger(__name__)
 AUC_MIN_IMPROVEMENT = -0.02  # -2%まで許容（大幅劣化のみ阻止）
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_META_FILE   = os.path.join(_SCRIPT_DIR, "data", "training_meta.json")
+_META_FILE = os.path.join(_SCRIPT_DIR, "data", "training_meta.json")
 
-MIN_START        = 50   # 初回学習に必要な最低件数
+MIN_START = 50   # 初回学習に必要な最低件数
 RETRAIN_INTERVAL = 20   # 以降の更新間隔（件数）
 
 _DEFAULT_META: dict = {
     "last_trained_count": 0,
-    "last_trained_at":    None,
-    "last_auc":           None,
+    "last_trained_at": None,
+    "last_auc": None,
     "total_runs":         0,
 }
 
@@ -76,24 +76,24 @@ def get_training_status() -> dict:
             "phase":              str,          # "waiting" | "ready" | "active"
         }
     """
-    meta  = load_training_meta()
+    meta = load_training_meta()
     count = get_registered_count()
-    last  = meta["last_trained_count"]
+    last = meta["last_trained_count"]
 
     if count < MIN_START:
-        phase        = "waiting"
+        phase = "waiting"
         next_trigger = MIN_START - count
-        should       = False
+        should = False
     elif last == 0:
         # 50件到達済みで未学習
-        phase        = "ready"
+        phase = "ready"
         next_trigger = 0
-        should       = True
+        should = True
     else:
-        gap          = count - last
+        gap = count - last
         next_trigger = max(0, RETRAIN_INTERVAL - gap)
-        should       = gap >= RETRAIN_INTERVAL
-        phase        = "ready" if should else "active"
+        should = gap >= RETRAIN_INTERVAL
+        phase = "ready" if should else "active"
 
     return {
         "count":              count,
@@ -253,17 +253,17 @@ def run_auto_optimization(force: bool = False) -> dict | None:
     # → 手動設定の coeff_overrides.json は上書きしない
     auto = load_auto_coeffs()
     auto["_auto_weight_borrower"] = result["recommended_borrower_pct"]
-    auto["_auto_weight_asset"]    = result["recommended_asset_pct"]
+    auto["_auto_weight_asset"] = result["recommended_asset_pct"]
     if "recommended_quant_pct" in result:
         auto["_auto_weight_quant"] = result["recommended_quant_pct"]
-        auto["_auto_weight_qual"]  = result["recommended_qual_pct"]
+        auto["_auto_weight_qual"] = result["recommended_qual_pct"]
 
     # 3モデル混合重み（①全体/②指標/③業種別）のクロスバリデーション最適化
     blend_result = optimize_model_blend_weights()
     if blend_result is not None:
-        auto["_auto_blend_w_main"]  = blend_result["w_main"]
+        auto["_auto_blend_w_main"] = blend_result["w_main"]
         auto["_auto_blend_w_bench"] = blend_result["w_bench"]
-        auto["_auto_blend_w_ind"]   = blend_result["w_ind"]
+        auto["_auto_blend_w_ind"] = blend_result["w_ind"]
         result["blend_weights"] = blend_result
 
     save_auto_coeffs(auto)
@@ -272,9 +272,9 @@ def run_auto_optimization(force: bool = False) -> dict | None:
     # メタ情報を更新
     meta = load_training_meta()
     meta["last_trained_count"] = status["count"]
-    meta["last_trained_at"]    = datetime.now().strftime("%Y-%m-%d %H:%M")
-    meta["last_auc"]           = new_auc
-    meta["total_runs"]         = meta.get("total_runs", 0) + 1
+    meta["last_trained_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    meta["last_auc"] = new_auc
+    meta["total_runs"] = meta.get("total_runs", 0) + 1
     save_training_meta(meta)
 
     # モデル見直しフックを実行し、再学習直後の状態を記録する
@@ -314,7 +314,7 @@ def render_sidebar_training_status() -> None:
             st.caption("「係数分析・更新」モードから実行 or 次回結果登録時に自動実行")
 
         else:  # active
-            gap       = count - s["last_trained_count"]
+            gap = count - s["last_trained_count"]
             remaining = s["next_trigger"]
             st.progress(gap / RETRAIN_INTERVAL, text=f"+{gap} / {RETRAIN_INTERVAL}件")
             st.caption(f"次回更新まであと **{remaining}件**")

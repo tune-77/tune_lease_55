@@ -13,6 +13,7 @@ from shinsa_gunshi_logic import (
     PHRASES_100,
 )
 
+
 def _gemini_stream_url() -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     return (

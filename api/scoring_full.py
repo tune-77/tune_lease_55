@@ -14,10 +14,12 @@ _scoring_lock = threading.Lock()
 # --- 審査エンジン用の共有セッション環境 ---
 _SHARED_SESSION_STATE = {}
 
+
 class MockSessionState(dict):
     def __getattr__(self, key): return self.get(key)
     def __setattr__(self, key, value): self[key] = value
     def pop(self, key, default=None): return super().pop(key, default)
+
 
 # 1. streamlit モックを物理的に固定
 mock_st = MagicMock()
@@ -35,6 +37,7 @@ SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if SCRIPT_DIR not in sys.path:
     sys.path.append(SCRIPT_DIR)
 
+
 # 3. リロード関数
 def get_latest_module():
     try:
@@ -46,9 +49,11 @@ def get_latest_module():
         import components.score_calculation
         return components.score_calculation
 
+
 # 初回インポート
 from constants import REQUIRED_FIELDS, RECOMMENDED_FIELDS, QUALITATIVE_SCORING_CORRECTION_ITEMS
 from category_config import ASSET_ID_TO_CATEGORY
+
 
 # 定性評価: ラベル文字列 → セッション保存用 1-based インデックス の変換マップ
 # score_calculation.py は st.session_state["qual_corr_<id>"] に
@@ -64,10 +69,12 @@ def _build_qual_label_idx_map() -> dict:
         mapping[item["id"]] = item_map
     return mapping
 
+
 _QUAL_LABEL_IDX_MAP: dict = _build_qual_label_idx_map()
 
 # データキャッシュ
 _CACHE = {}
+
 
 def _load_json(filename):
     if filename in _CACHE: return _CACHE[filename]
@@ -80,6 +87,7 @@ def _load_json(filename):
             _CACHE[filename] = data
             return data
     except: return {}
+
 
 def run_full_scoring_api(inputs: dict) -> dict:
     if os.getenv("SCORING_DIRECT", "").lower() not in ("1", "true", "yes"):
@@ -232,7 +240,7 @@ def _run_full_scoring_api_locked(inputs: dict) -> dict:
     try:
         # 最新のモジュールを取得
         sc_mod = get_latest_module()
-        
+
         # 実行
         print(f"[DEBUG] Executing run_scoring via module {id(sc_mod)}")
         sc_mod.run_scoring(

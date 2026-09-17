@@ -186,7 +186,7 @@ CONSTRAINT_CASE_EXAMPLES = [
             "Related_Bank_Status": False, "Related_Assets": False,
             "Co_Lease": False,          "Parent_Guarantor": False,
             "Core_Business_Use": True,  "Asset_Liquidity": False,
-            "Shorter_Lease_Term": False,"One_Time_Deal": False,
+            "Shorter_Lease_Term": False, "One_Time_Deal": False,
         },
         "constraint": "Main_Bank_Support が単独で最強の逆転因子として機能。",
         "result": "承認",
@@ -204,7 +204,7 @@ CONSTRAINT_CASE_EXAMPLES = [
         ),
         "evidence": {
             "Insolvent_Status": False,  "Main_Bank_Support": False,
-            "Related_Bank_Status": True,"Related_Assets": True,
+            "Related_Bank_Status": True, "Related_Assets": True,
             "Co_Lease": False,          "Parent_Guarantor": False,
             "Core_Business_Use": True,  "Asset_Liquidity": True,
             "Shorter_Lease_Term": True, "One_Time_Deal": False,
@@ -225,10 +225,10 @@ CONSTRAINT_CASE_EXAMPLES = [
         ),
         "evidence": {
             "Insolvent_Status": True,   "Main_Bank_Support": False,
-            "Related_Bank_Status": False,"Related_Assets": False,
+            "Related_Bank_Status": False, "Related_Assets": False,
             "Co_Lease": False,          "Parent_Guarantor": False,
             "Core_Business_Use": False, "Asset_Liquidity": False,
-            "Shorter_Lease_Term": False,"One_Time_Deal": False,
+            "Shorter_Lease_Term": False, "One_Time_Deal": False,
         },
         "constraint": "逆転因子が一つも存在しない。協調リースか親会社保証があれば検討余地あり。",
         "result": "否決",
@@ -246,10 +246,10 @@ CONSTRAINT_CASE_EXAMPLES = [
         ),
         "evidence": {
             "Insolvent_Status": True,  "Main_Bank_Support": False,
-            "Related_Bank_Status": False,"Related_Assets": False,
+            "Related_Bank_Status": False, "Related_Assets": False,
             "Co_Lease": False,         "Parent_Guarantor": True,
             "Core_Business_Use": True, "Asset_Liquidity": True,
-            "Shorter_Lease_Term": False,"One_Time_Deal": True,
+            "Shorter_Lease_Term": False, "One_Time_Deal": True,
         },
         "constraint": "Parent_Guarantor（親会社連帯保証）がヘッジ条件として機能。",
         "result": "承認",
@@ -267,7 +267,7 @@ CONSTRAINT_CASE_EXAMPLES = [
         ),
         "evidence": {
             "Insolvent_Status": False,  "Main_Bank_Support": False,
-            "Related_Bank_Status": True,"Related_Assets": False,
+            "Related_Bank_Status": True, "Related_Assets": False,
             "Co_Lease": False,          "Parent_Guarantor": False,
             "Core_Business_Use": True,  "Asset_Liquidity": True,
             "Shorter_Lease_Term": True, "One_Time_Deal": True,
@@ -310,7 +310,7 @@ def _prob_financial_creditworthiness(i: int, m: int, r: int, ra: int, nr: int, p
         base = 0.50 if i == 1 else 0.85
     else:
         base = 0.05 if i == 1 else 0.75
-    
+
     # 親会社連帯保証による信用力補完
     # 子会社単体の財務が弱くても、連結グループの信用力で補完される
     if pg == 1:
@@ -342,13 +342,13 @@ def _prob_hedge_condition(i: int, co: int, pg: int) -> float:
     """
     if i == 0:  # 非債務超過
         if co == 1 and pg == 1: return 0.98
-        if co == 1:              return 0.92
-        if pg == 1:              return 0.95
+        if co == 1: return 0.92
+        if pg == 1: return 0.95
         return 0.82
     else:       # 債務超過
         if co == 1 and pg == 1: return 0.90
-        if co == 1:              return 0.65
-        if pg == 1:              return 0.72
+        if co == 1: return 0.65
+        if pg == 1: return 0.72
         return 0.02  # 債務超過×ヘッジなし = 強制否決
 
 
@@ -586,17 +586,17 @@ def _run_inference_fallback(evidence: Dict[str, int]) -> Dict:
     各中間ノードの確率を CPT 関数で直接計算し、
     Final_Decision を全組み合わせの加重和で求める。
     """
-    i    = evidence.get("Insolvent_Status",    0)
-    m    = evidence.get("Main_Bank_Support",   0)
-    r    = evidence.get("Related_Bank_Status", 0)
-    ra   = evidence.get("Related_Assets",      0)
-    co   = evidence.get("Co_Lease",            0)
-    pg   = evidence.get("Parent_Guarantor",    0)
+    i = evidence.get("Insolvent_Status",    0)
+    m = evidence.get("Main_Bank_Support",   0)
+    r = evidence.get("Related_Bank_Status", 0)
+    ra = evidence.get("Related_Assets",      0)
+    co = evidence.get("Co_Lease",            0)
+    pg = evidence.get("Parent_Guarantor",    0)
     core = evidence.get("Core_Business_Use",   0)
-    liq  = evidence.get("Asset_Liquidity",     0)
-    st   = evidence.get("Shorter_Lease_Term",  0)
-    ot   = evidence.get("One_Time_Deal",       0)
-    nr   = evidence.get("High_Network_Risk",   0)
+    liq = evidence.get("Asset_Liquidity",     0)
+    st = evidence.get("Shorter_Lease_Term",  0)
+    ot = evidence.get("One_Time_Deal",       0)
+    nr = evidence.get("High_Network_Risk",   0)
 
     p_fc = _prob_financial_creditworthiness(i, m, r, ra, nr, pg)
     p_hc = _prob_hedge_condition(i, co, pg)

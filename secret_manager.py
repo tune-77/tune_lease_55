@@ -11,6 +11,7 @@ from typing import Optional
 
 SECRETS_TOML_PATH = Path(__file__).parent / ".streamlit" / "secrets.toml"
 
+
 def get_secret_value(key: str, fallback: Optional[str] = None) -> Optional[str]:
     """
     秘密情報を統一的に取得する関数
@@ -42,25 +43,31 @@ def get_secret_value(key: str, fallback: Optional[str] = None) -> Optional[str]:
     # 4. fallback
     return fallback
 
+
 def get_gemini_api_key() -> Optional[str]:
     """Gemini APIキーを取得"""
     return get_secret_value("GEMINI_API_KEY")
+
 
 def get_slack_bot_token() -> Optional[str]:
     """Slack Bot Tokenを取得"""
     return get_secret_value("SLACK_BOT_TOKEN")
 
+
 def get_slack_app_token() -> Optional[str]:
     """Slack App Tokenを取得"""
     return get_secret_value("SLACK_APP_TOKEN")
+
 
 def get_slack_webhook_url() -> Optional[str]:
     """Slack Webhook URLを取得"""
     return get_secret_value("SLACK_WEBHOOK_URL")
 
+
 def get_anything_llm_key() -> Optional[str]:
     """AnythingLLM APIキーを取得"""
     return get_secret_value("ANYTHING_LLM_API_KEY")
+
 
 def get_openai_api_key() -> Optional[str]:
     """OpenAI APIキーを取得"""

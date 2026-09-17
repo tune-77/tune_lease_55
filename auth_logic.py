@@ -17,8 +17,8 @@ import sqlite3
 import time
 from contextlib import closing
 
-_PKG_DIR   = os.path.dirname(os.path.abspath(__file__))
-_USERS_DB  = os.path.join(_PKG_DIR, "data", "users.db")
+_PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+_USERS_DB = os.path.join(_PKG_DIR, "data", "users.db")
 _TIMEOUT_S = 60 * 60 * 8  # 8時間でセッション期限切れ
 
 _BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
@@ -57,6 +57,7 @@ def _init_db() -> None:
             )
         """)
         conn.commit()
+
 
 def _get_user(username: str) -> dict | None:
     with closing(sqlite3.connect(_USERS_DB)) as conn:
@@ -130,8 +131,8 @@ def _setup_ui() -> None:
 
     def _on_set():
         uname = st.session_state.get("setup_uname", "").strip()
-        pw1   = st.session_state.get("setup_pw1", "")
-        pw2   = st.session_state.get("setup_pw2", "")
+        pw1 = st.session_state.get("setup_pw1", "")
+        pw2 = st.session_state.get("setup_pw2", "")
         if not uname:
             st.session_state["_setup_err"] = "ユーザー名を入力してください。"
         elif len(pw1) < 6:
@@ -141,7 +142,7 @@ def _setup_ui() -> None:
         else:
             _add_user(uname, pw1, role="admin")
             st.session_state["_setup_done"] = True
-            st.session_state["_setup_err"]  = ""
+            st.session_state["_setup_err"] = ""
 
     st.text_input("管理者ユーザー名", key="setup_uname")
     st.text_input("パスワード（6文字以上）", type="password", key="setup_pw1")
@@ -163,16 +164,16 @@ def _login_ui() -> None:
 
     def _on_login():
         uname = st.session_state.get("login_username", "").strip()
-        pw    = st.session_state.get("login_password", "")
+        pw = st.session_state.get("login_password", "")
         if not uname or not pw:
             return
         user = _get_user(uname)
         if user and _verify_password(user["password_hash"], pw):
             st.session_state["authenticated"] = True
-            st.session_state["auth_time"]     = time.time()
-            st.session_state["username"]      = uname
-            st.session_state["user_role"]     = user["role"]
-            st.session_state["_login_error"]  = False
+            st.session_state["auth_time"] = time.time()
+            st.session_state["username"] = uname
+            st.session_state["user_role"] = user["role"]
+            st.session_state["_login_error"] = False
             if not user["password_hash"].startswith(_BCRYPT_PREFIXES):
                 _change_password(uname, pw)  # 旧SHA-256形式をbcryptへ自動移行
             _update_last_login(uname)
@@ -206,13 +207,13 @@ def _user_management_sidebar() -> None:
     with st.sidebar.expander("👥 ユーザー管理", expanded=False):
         users = _list_users()
         for u in users:
-            st.caption(f"{'👑' if u['role']=='admin' else '👤'} {u['username']}  最終ログイン: {u['last_login'] or '未'}")
+            st.caption(f"{'👑' if u['role'] == 'admin' else '👤'} {u['username']}  最終ログイン: {u['last_login'] or '未'}")
 
         st.divider()
         st.markdown("**新規ユーザー追加**")
         new_uname = st.text_input("ユーザー名", key="_mgmt_uname")
-        new_pw    = st.text_input("パスワード", type="password", key="_mgmt_pw")
-        new_role  = st.selectbox("権限", ["user", "admin"], key="_mgmt_role")
+        new_pw = st.text_input("パスワード", type="password", key="_mgmt_pw")
+        new_role = st.selectbox("権限", ["user", "admin"], key="_mgmt_role")
         if st.button("追加", key="_mgmt_add"):
             if new_uname and new_pw:
                 if _add_user(new_uname, new_pw, new_role):
@@ -239,12 +240,12 @@ def _user_management_sidebar() -> None:
 def _change_password_sidebar() -> None:
     """サイドバーにパスワード変更UIを表示（認証済み時のみ）。"""
     with st.sidebar.expander("🔑 パスワード変更", expanded=False):
-        pw_old  = st.text_input("現在のパスワード",         type="password", key="chg_pw_old")
-        pw_new  = st.text_input("新しいパスワード（6文字以上）", type="password", key="chg_pw_new")
+        pw_old = st.text_input("現在のパスワード",         type="password", key="chg_pw_old")
+        pw_new = st.text_input("新しいパスワード（6文字以上）", type="password", key="chg_pw_new")
         pw_new2 = st.text_input("新しいパスワード（確認）",  type="password", key="chg_pw_new2")
         if st.button("変更する", key="chg_pw_btn"):
             uname = st.session_state.get("username", "")
-            user  = _get_user(uname)
+            user = _get_user(uname)
             if not user or not _verify_password(user["password_hash"], pw_old):
                 st.error("現在のパスワードが違います。")
             elif len(pw_new) < 6:

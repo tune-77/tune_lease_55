@@ -5,6 +5,7 @@ import time
 
 from clifford_poc import CliffordSuccessPredictor, CliffordVisualizerLogic
 
+
 def main(page: ft.Page):
     page.title = "AURION CORE - CliffordNet Geometric Analytics"
     page.padding = 20
@@ -15,14 +16,14 @@ def main(page: ft.Page):
 
     # 黄金の成約面積の座標
     golden_points = vis_logic.calculate_golden_area()
-    
+
     # 描画キャンバス
     canvas = cv.Canvas(
         width=600,
         height=600,
         shapes=[]
     )
-    
+
     # 財務指標の初期値
     features = {
         'sales_growth': 1.0,
@@ -32,11 +33,11 @@ def main(page: ft.Page):
     }
 
     sliders = {}
-    
+
     def update_canvas():
         # Canvas上の図形をクリア
         canvas.shapes.clear()
-        
+
         # 現在の値を更新
         for k in features:
             features[k] = sliders[k].value
@@ -44,16 +45,16 @@ def main(page: ft.Page):
         result = predictor.predict(features)
         prob = result['success_probability']
         prob_text.value = f"幾何的成約確率 (Clifford Probability): {prob:.2%}"
-        
+
         current_points = vis_logic.calculate_current_state(result['vectors'])
         guides = vis_logic.calculate_guide_vectors(current_points, golden_points)
-        
+
         # 1. 黄金の成約面積 (基準面: ゴースト描画)
         path_elements = [cv.Path.MoveTo(*golden_points[0])]
         for p in golden_points[1:]:
             path_elements.append(cv.Path.LineTo(*p))
         path_elements.append(cv.Path.Close())
-        
+
         canvas.shapes.append(
             cv.Path(
                 elements=path_elements,
@@ -80,7 +81,7 @@ def main(page: ft.Page):
         for p in current_points[1:]:
             curr_elements.append(cv.Path.LineTo(*p))
         curr_elements.append(cv.Path.Close())
-        
+
         # 成約確率に応じて色を変化
         base_color = ft.Colors.BLUE if prob < 0.6 else ft.Colors.GREEN
         canvas.shapes.append(
@@ -102,7 +103,7 @@ def main(page: ft.Page):
                 )
             )
         )
-        
+
         # 3. ガイドベクトル（どの方向に引っ張るべきか）
         for g in guides:
             # 線の描画
@@ -120,7 +121,7 @@ def main(page: ft.Page):
                     paint=ft.Paint(color=ft.Colors.WHITE)
                 )
             )
-            
+
         page.update()
 
     def on_slider_change(e):
@@ -132,7 +133,7 @@ def main(page: ft.Page):
             min=0.1, max=2.5, value=1.0, divisions=24,
             label="{value}", width=300, on_change=on_slider_change
         )
-        
+
     prob_text = ft.Text(size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
 
     controls_panel = ft.Column([
@@ -163,6 +164,7 @@ def main(page: ft.Page):
 
     # 初回描画
     update_canvas()
+
 
 if __name__ == "__main__":
     ft.app(target=main, view=ft.AppView.WEB_BROWSER)

@@ -104,25 +104,25 @@ def suggest_credit_limit(res: dict) -> CreditLimitResult:
       6. 提案与信枠  = max(0, 利用可能額)
                         → 最低保証 (score>=70 なら 100万)
     """
-    fin   = res.get("financials", {}) or {}
+    fin = res.get("financials", {}) or {}
     score = float(res.get("score", 0))
-    eq    = float(res.get("user_eq", 0))
-    op    = float(res.get("user_op", 0))
+    eq = float(res.get("user_eq", 0))
+    op = float(res.get("user_op", 0))
 
-    net_assets   = float(fin.get("net_assets", 0) or 0)
-    nenshu       = float(fin.get("nenshu", 0) or 0)
-    bank_bal     = float(fin.get("bank_credit", 0) or 0)
-    lease_bal    = float(fin.get("lease_credit", 0) or 0)
+    net_assets = float(fin.get("net_assets", 0) or 0)
+    nenshu = float(fin.get("nenshu", 0) or 0)
+    bank_bal = float(fin.get("bank_credit", 0) or 0)
+    lease_bal = float(fin.get("lease_credit", 0) or 0)
 
     remarks = []
 
     # ── 各係数 ──────────────────────────────────────────────
     score_mult = _lookup(_SCORE_TO_MULT, score)
-    eq_adj     = _lookup(_EQ_ADJUST, eq)
-    op_adj     = _lookup(_OP_ADJUST, op)
+    eq_adj = _lookup(_EQ_ADJUST, eq)
+    op_adj = _lookup(_OP_ADJUST, op)
 
     # ── 基準値計算 ──────────────────────────────────────────
-    base_limit  = net_assets * score_mult           # 純資産ベース（万円）
+    base_limit = net_assets * score_mult           # 純資産ベース（万円）
     sales_limit = nenshu * 0.07                     # 売上高の 7%
 
     if net_assets <= 0:
@@ -143,8 +143,8 @@ def suggest_credit_limit(res: dict) -> CreditLimitResult:
         )
 
     # ── 利用可能額・提案値 ──────────────────────────────────
-    available  = gross_limit - est_total
-    suggested  = max(0.0, available)
+    available = gross_limit - est_total
+    suggested = max(0.0, available)
 
     # スコア70以上なら最低保証100万
     if score >= 70 and suggested < 100:
@@ -249,7 +249,7 @@ def render_credit_limit_ui(res: dict):
                 "純資産":        f"{clr.net_assets:,.0f} 万円",
                 "売上高":        f"{clr.nenshu:,.0f} 万円",
                 "銀行与信残高":  f"{clr.bank_credit_bal:,.0f} 万円",
-                "リース与信残高":f"{clr.lease_credit_bal:,.0f} 万円",
+                "リース与信残高": f"{clr.lease_credit_bal:,.0f} 万円",
                 "審査スコア":    f"{clr.score:.1f}",
                 "自己資本比率":  f"{clr.user_eq:.1f}%",
                 "営業利益率":    f"{clr.user_op:.1f}%",
@@ -285,12 +285,12 @@ def render_credit_limit_ui(res: dict):
     col_a, col_b, col_c = st.columns(3)
     with col_a:
         sim_score = st.slider("審査スコア", 0, 100, int(clr.score), key="cl_sim_score")
-        sim_eq    = st.slider("自己資本比率(%)", 0, 100, int(clr.user_eq), key="cl_sim_eq")
+        sim_eq = st.slider("自己資本比率(%)", 0, 100, int(clr.user_eq), key="cl_sim_eq")
     with col_b:
-        sim_op    = st.slider("営業利益率(%)", -30, 30, int(clr.user_op), key="cl_sim_op")
-        sim_net   = st.number_input("純資産（万円）", value=int(clr.net_assets), step=100, key="cl_sim_net")
+        sim_op = st.slider("営業利益率(%)", -30, 30, int(clr.user_op), key="cl_sim_op")
+        sim_net = st.number_input("純資産（万円）", value=int(clr.net_assets), step=100, key="cl_sim_net")
     with col_c:
-        sim_bank  = st.number_input("銀行与信残高（万円）", value=int(clr.bank_credit_bal), step=100, key="cl_sim_bank")
+        sim_bank = st.number_input("銀行与信残高（万円）", value=int(clr.bank_credit_bal), step=100, key="cl_sim_bank")
         sim_lease = st.number_input("リース与信残高（万円）", value=int(clr.lease_credit_bal), step=100, key="cl_sim_lease")
 
     sim_fin = dict(fin)
@@ -314,7 +314,7 @@ def render_credit_limit_ui(res: dict):
 ">
     <span style="font-size:0.75rem;color:#666;">シミュレーション結果</span><br>
     <span style="font-size:1.6rem;font-weight:bold;color:{tc2};">{sim_clr.suggested:,.0f} 万円</span>
-    &nbsp;<span style="font-size:0.85rem;color:{'#00b09b' if delta>=0 else '#d62428'};">{delta_str}</span>
+    &nbsp;<span style="font-size:0.85rem;color:{'#00b09b' if delta >= 0 else '#d62428'};">{delta_str}</span>
     &nbsp;ランク <strong>{sim_clr.tier}</strong>
 </div>
 """, unsafe_allow_html=True)

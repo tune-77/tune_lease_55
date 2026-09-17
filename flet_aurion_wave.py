@@ -30,14 +30,14 @@ from aurion_wave_engine import compute_wave
 # ── 定数 ─────────────────────────────────────────────────────────────────────
 CANVAS_W = 640
 CANVAS_H = 300
-N_POINTS  = 200
+N_POINTS = 200
 DECOHERENCE_THRESHOLD = math.pi * 0.7   # AV.6 警告閾値
 
-COLOR_A       = ft.Colors.CYAN_400
-COLOR_B       = ft.Colors.AMBER_400
-COLOR_COMP    = ft.Colors.GREEN_400
+COLOR_A = ft.Colors.CYAN_400
+COLOR_B = ft.Colors.AMBER_400
+COLOR_COMP = ft.Colors.GREEN_400
 COLOR_WARNING = ft.Colors.RED_400
-COLOR_BG      = ft.Colors.with_opacity(0.08, ft.Colors.WHITE)
+COLOR_BG = ft.Colors.with_opacity(0.08, ft.Colors.WHITE)
 
 ANIMATION_INTERVAL_MS = 16   # ~60 fps
 

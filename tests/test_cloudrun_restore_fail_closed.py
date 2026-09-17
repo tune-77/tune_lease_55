@@ -39,6 +39,7 @@ def gcs(tmp_path, monkeypatch):
 @pytest.mark.parametrize("error", [TimeoutError("timeout"), PermissionError("denied")])
 def test_restore_failure_aborts_and_cleans_partial_download(gcs, error):
     bucket, target = gcs
+
     def fail(filename):
         Path(filename).write_bytes(b"partial")
         raise error

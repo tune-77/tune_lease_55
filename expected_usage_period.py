@@ -56,7 +56,7 @@ def find_item_by_name(item_name: str) -> Optional[dict]:
     data = get_usage_period_data()
     if not data:
         return None
-    
+
     item_name_lower = item_name.lower()
     for item in data.get("usage_period_data", []):
         if item.get("item_name", "").lower() == item_name_lower:
@@ -65,7 +65,7 @@ def find_item_by_name(item_name: str) -> Optional[dict]:
         for example in item.get("examples", []):
             if item_name_lower in example.lower():
                 return item
-    
+
     return None
 
 
@@ -86,11 +86,11 @@ def find_item_by_code(code: str) -> Optional[dict]:
     data = get_usage_period_data()
     if not data:
         return None
-    
+
     for item in data.get("usage_period_data", []):
         if item.get("code") == code:
             return item
-    
+
     return None
 
 
@@ -159,7 +159,7 @@ def calc_lease_period_fit_score(
     - 0:      再リース期間ゼロ/負（法定耐用年数使い切り）
     """
     item = find_item_by_name(item_name)
-    
+
     if not item:
         return {
             "remanufacture_score": 50,
@@ -172,12 +172,12 @@ def calc_lease_period_fit_score(
             "recommendation": "期待使用期間データが見つかりません",
             "lease_period_check": {"status": "unknown", "message": "データなし"},
         }
-    
+
     lease_years = lease_months / 12.0
     legal_useful_life = item.get("legal_useful_life", item.get("max_years", 10))
     min_years = item.get("min_years", 3)
     max_years = item.get("max_years", 10)
-    
+
     # 法定耐用年数に基づくリース期間の法定下限
     # リース期間の最小限度額：法定耐用年数 × 70% (10年未満) または × 60% (10年超)
     # この値以上のリース期間を設定すればOK
@@ -187,25 +187,25 @@ def calc_lease_period_fit_score(
     else:
         min_lease_years = legal_useful_life * 0.6
         rule = "60%"
-    
+
     # リース期間チェック（この値以上ならOK）
     if lease_years < min_lease_years:
         lease_status = "under_limit"
         lease_message = f"リース期間が法定下限({min_lease_years:.1f}年)未満です。短すぎるリース期間は、借手の実質的な購入と見なされ、適格リースと判定されない可能性があります。"
     elif lease_years < min_lease_years * 1.1:
         lease_status = "near_limit"
-        lease_message = f"リース期間が法定下限に接近しています。より長いリース期間を検討してください。"
+        lease_message = "リース期間が法定下限に接近しています。より長いリース期間を検討してください。"
     else:
         lease_status = "within_limit"
-        lease_message = f"リース期間は法定下限以上で、課税上安全です。"
-    
+        lease_message = "リース期間は法定下限以上で、課税上安全です。"
+
     # 残り期間を計算（法定耐用年数ベース）
     remaining_max = legal_useful_life - lease_years
     remaining_min = min_years - lease_years  # 念のため
-    
+
     # 再リース機会スコアを計算（法定耐用年数ベース）
     remaining_avg = remaining_max  # 法定耐用年数を基準
-    
+
     if remaining_avg >= 4:
         remanufacture_score = 100  # 充分
     elif remaining_avg >= 3:
@@ -218,7 +218,7 @@ def calc_lease_period_fit_score(
         remanufacture_score = 40   # 最小限
     else:
         remanufacture_score = 15   # ゼロ/負（再リース不可）
-    
+
     # 評価ラベル
     if remanufacture_score >= 85:
         assessment_label = "優秀（再リース機会豊富）"
@@ -235,7 +235,7 @@ def calc_lease_period_fit_score(
     else:
         assessment_label = "リスク高（再リース不可能）"
         recommendation = f"残り期間が負（{remaining_avg:.1f}年）。法定耐用年数を超過するため、再リースは実質不可能。買取終了が前提となる"
-    
+
     periods_data = item.get("periods", {})
     period_key = _lease_months_to_period_key(lease_months)
     expected_usage_months = periods_data.get(period_key)
@@ -285,7 +285,7 @@ def get_all_categories() -> List[Dict[str, str]]:
     data = get_usage_period_data()
     if not data:
         return []
-    
+
     result = []
     seen = set()
     for item in data.get("usage_period_data", []):
@@ -297,7 +297,7 @@ def get_all_categories() -> List[Dict[str, str]]:
                 "item_name": item.get("item_name", ""),
             })
             seen.add(key)
-    
+
     return result
 
 
@@ -322,44 +322,44 @@ def get_categories_by_group() -> Dict[str, List[Dict[str, str]]]:
     data = get_usage_period_data()
     if not data:
         return {}
-    
+
     result: Dict[str, List[Dict]] = {}
     for item in data.get("usage_period_data", []):
         category = item.get("category", "未分類")
         code = item.get("code", "")
         item_name = item.get("item_name", "")
-        
+
         if category not in result:
             result[category] = []
-        
+
         result[category].append({
             "code": code,
             "item_name": item_name,
         })
-    
+
     return result
 
 
 if __name__ == "__main__":
     # 簡易テスト
     print("=== 期待使用期間マスタ読み込みテスト ===\n")
-    
+
     data = get_usage_period_data()
     print(f"読み込みデータ件数: {len(data.get('usage_period_data', []))}\n")
-    
+
     # キーワード検索テスト
     item = find_item_by_name("電子計算機")
     if item:
         print(f"機種: {item.get('item_name')}")
         print(f"期待使用期間: {item.get('periods')}\n")
-    
+
     # リース期間適合度テスト
     result = calc_lease_period_fit_score("電子計算機", 60)
-    print(f"リース60ヶ月での適合度スコア:")
+    print("リース60ヶ月での適合度スコア:")
     print(f"  スコア: {result['remanufacture_score']:.1f}")
     print(f"  評価: {result['assessment_label']}")
     print(f"  推奨: {result['recommendation']}\n")
-    
+
     # カテゴリ一覧表示
     categories = get_categories_by_group()
     for cat_name in list(categories.keys())[:2]:

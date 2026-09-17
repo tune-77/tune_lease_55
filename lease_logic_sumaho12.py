@@ -38,6 +38,7 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
+
 @st.cache_resource
 def _intro_video_b64() -> str:
     """動画を base64 に変換してキャッシュ（起動時1回のみ・以降はメモリから）"""
@@ -46,6 +47,8 @@ def _intro_video_b64() -> str:
         return ""
     with open(_p, "rb") as _f:
         return base64.b64encode(_f.read()).decode()
+
+
 try:
     from streamlit_extras.metric_cards import style_metric_cards
 except ImportError:
@@ -239,6 +242,8 @@ try:
     _aurion_stealth_loaded = True
 except Exception:
     pass
+
+
 def red_label(placeholder, text):
     # display: block にして、一つ一つのスライダーセットの範囲を明確にします
     placeholder.markdown(f'''
@@ -469,7 +474,7 @@ st.markdown("""
     }
 </style>
     """, unsafe_allow_html=True)
-	
+
 # ── 認証チェック（ここより先はログイン済みのみ表示）──────────────────────
 from auth_logic import authenticate_user as _auth_check
 if not _auth_check():
@@ -494,6 +499,7 @@ else:
 # データのロード（キャッシュ化）
 _STATIC_DATA_DIR = os.path.join(BASE_DIR, "static_data")
 
+
 @st.cache_data(ttl=86400, persist="disk", max_entries=30)
 def load_json_data(filename):
     # static_data/ を優先し、なければ BASE_DIR を確認（後方互換）
@@ -504,6 +510,7 @@ def load_json_data(filename):
                 return json.load(f)
     return {}
 
+
 # 各種データのロード
 jsic_data = load_json_data("industry_trends_jsic.json")
 benchmarks_data = load_json_data("industry_benchmarks.json")
@@ -511,7 +518,7 @@ hints_data = load_json_data("industry_hints.json")
 jgb_rates = load_json_data("jgb_rates.json")
 avg_data = load_json_data("industry_averages.json")
 knowhow_data = load_json_data("leasing_knowhow.json")
-bankruptcy_data = load_json_data("bankruptcy_cases.json") # 倒産事例データ
+bankruptcy_data = load_json_data("bankruptcy_cases.json")  # 倒産事例データ
 subsidy_schedule_data = load_json_data("subsidy_schedule.json")
 useful_life_data = load_json_data("useful_life_equipment.json")
 capex_lease_data = load_json_data("industry_capex_lease.json")  # e-Stat年度版: リース・設備投資ベンチマーク
@@ -628,7 +635,7 @@ QUALITATIVE_SCORE_RANKS = [
 
 # 過去案件・係数・相談メモ・ニュースのパスは data_cases で定義（CASES_FILE, COEFF_OVERRIDES_FILE 等を import 済み）
 _DATA_DIR = os.path.join(BASE_DIR, "data")
-DEBATE_FILE = os.path.join(_DATA_DIR, "debate_logs.jsonl") # ディベートログ
+DEBATE_FILE = os.path.join(_DATA_DIR, "debate_logs.jsonl")  # ディベートログ
 # ネットで取得した業界目安を中分類ごとに保存（年1回・4月1日を境に更新）
 WEB_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "web_industry_benchmarks.json")
 TRENDS_EXTENDED_FILE = os.path.join(_DATA_DIR, "industry_trends_extended.json")
@@ -637,6 +644,8 @@ SALES_BAND_FILE = os.path.join(_DATA_DIR, "sales_band_benchmarks.json")
 # 分析ダッシュボード用画像（承認レベル・業種・物件に沿って選択）
 DASHBOARD_IMAGES_DIR = os.path.join(BASE_DIR, "dashboard_images")
 DASHBOARD_IMAGES_ASSETS = os.environ.get("DASHBOARD_IMAGES_ASSETS", "").strip()
+
+
 # 画像フォルダの候補（環境変数未設定時はこの順で試す）
 def _dashboard_image_base_dirs():
     if DASHBOARD_IMAGES_ASSETS and os.path.isdir(DASHBOARD_IMAGES_ASSETS):
@@ -653,6 +662,7 @@ def _dashboard_image_base_dirs():
         if candidate and os.path.isdir(candidate):
             yield candidate
             break
+
 
 def get_dashboard_image_path(hantei: str, industry_major: str, industry_sub: str, asset_name: str):
     """
@@ -715,7 +725,6 @@ def get_dashboard_image_path(hantei: str, industry_major: str, industry_sub: str
         except Exception:
             pass
     return None, ""
-
 
 
 def _fragment_nenshu():
@@ -879,7 +888,7 @@ elif mode == "📋 審査・分析":
             """,
             unsafe_allow_html=True,
         )
-        
+
         # --- マクロ環境アラート (コンセプトドリフト検知) ---
         try:
             from macro_drift_monitor import check_concept_drift
@@ -944,10 +953,10 @@ elif mode == "📋 審査・分析":
 
                 from components.form_apply import render_apply_form
                 form_result = render_apply_form(
-                    jsic_data, 
+                    jsic_data,
                     get_image,
-                    get_stats, 
-                    scrape_article_text, 
+                    get_stats,
+                    scrape_article_text,
                     is_japanese_text,
                     append_case_news,
                     _fragment_nenshu,
@@ -1033,11 +1042,11 @@ elif mode == "📋 審査・分析":
                     st.session_state.pop(_k, None)
 
                 from components.score_calculation import run_scoring
-                
+
                 # Fetch _rules directly where it's defined (rule_manager.py)
                 from rule_manager import load_business_rules
                 _rules = load_business_rules()
-                
+
                 run_scoring(
                     form_result=form_result,
                     REQUIRED_FIELDS=REQUIRED_FIELDS,
@@ -1129,7 +1138,7 @@ elif mode == "📋 審査・分析":
 
         if nav_mode == "📊 分析結果":
             from components.analysis_results import render_analysis_results
-            
+
             # Note: current_case_data, past_cases_log, etc. are passed from the local scope if defined,
             # or we pass None and the function handles it. But wait, in the original code,
             # were they defined in the outer scope or session_state?
@@ -1183,7 +1192,7 @@ elif mode == "🏭 物件ファイナンス審査":
             list(AssetFinanceEngine.ASSET_PARAMS.keys()),
             key="af_asset_type",
         )
-        
+
         _asd_category_map = {
             "建機": "産業機械",
             "工作機械": "産業機械",
@@ -1194,10 +1203,10 @@ elif mode == "🏭 物件ファイナンス審査":
         }
         _asd_cat = _asd_category_map.get(_af_asset_preset, "産業機械")
         _asd_model_name = st.text_input("具体的な型番・商品名 (任意)", placeholder="例: コマツ PC200-10", key="af_model_name")
-        
+
         # Gemini Search Grounding による詳細調査の呼び出し
         render_asset_score_detail(_asd_cat, f"af_{_af_asset_preset}", _asd_model_name or _af_asset_preset)
-        
+
         _af_asset = _af_asset_preset
         _af_params = AssetFinanceEngine.ASSET_PARAMS[_af_asset]
         st.caption(
@@ -1225,10 +1234,10 @@ elif mode == "🏭 物件ファイナンス審査":
         )
 
         with st.expander("🔍 定性因子（緩和要素）", expanded=True):
-            _af_main_bank   = st.checkbox("メイン銀行の支援先（+50点）", key="af_main_bank",
+            _af_main_bank = st.checkbox("メイン銀行の支援先（+50点）", key="af_main_bank",
                                           help="メイン取引銀行が推薦・協調する案件")
-            _af_bank_coord  = st.checkbox("銀行協調案件（+20点）", key="af_bank_coord")
-            _af_core_biz    = st.checkbox("本業利用物件（+20点）", key="af_core_biz",
+            _af_bank_coord = st.checkbox("銀行協調案件（+20点）", key="af_bank_coord")
+            _af_core_biz = st.checkbox("本業利用物件（+20点）", key="af_core_biz",
                                           help="事業の根幹に関わる物件")
             _af_related_ast = st.checkbox("関係者資産による保全（+15点）", key="af_related_ast")
 
@@ -1271,11 +1280,11 @@ elif mode == "🏭 物件ファイナンス審査":
             }
             _af_result = _af_engine.run_inference(_af_data)
             st.session_state["af_last_result"] = _af_result
-            st.session_state["af_last_data"]   = _af_data
+            st.session_state["af_last_data"] = _af_data
 
         if "af_last_result" in st.session_state:
             _af_result = st.session_state["af_last_result"]
-            _af_data   = st.session_state["af_last_data"]
+            _af_data = st.session_state["af_last_data"]
 
             # --- 判定バナー ---
             # 各状態に専用色（色の役割を分離: 同じ色に複数の意味を持たせない）
@@ -1292,7 +1301,7 @@ elif mode == "🏭 物件ファイナンス審査":
                 "否決":              "#fef2f2",
             }
             _af_color = _af_colors.get(_af_result['decision'], "#64748b")
-            _af_bg    = _af_bgs.get(_af_result['decision'], "#f8fafc")
+            _af_bg = _af_bgs.get(_af_result['decision'], "#f8fafc")
             st.markdown(
                 f"""<div style="
                   background:{_af_bg};
@@ -1395,8 +1404,7 @@ elif mode == "⚙️ 審査ルール設定":
     st.title("⚙️ 審査ルール設定")
     st.info("この画面で設定したルールや閾値・ペナルティは、次回以降の「新規審査」から即座に反映されます。")
     rules = load_business_rules()
-    
-    
+
     # 既存のルールをフォーム上で編集
     with st.form("rule_settings_form"):
         st.subheader("基本判定ライン（閾値）")
@@ -1408,17 +1416,17 @@ elif mode == "⚙️ 審査ルール設定":
         with col2:
             curr_review = int(rules.get("thresholds", {}).get("review", 0.40) * 100)
             review = st.slider("⚠️ 要審議ライン（点未満は否決圏）", 0, 100, curr_review, format="%d点")
-            
+
         st.subheader("減点・特別ルール設定")
         st.caption("AIによる評価や財務状況が悪い場合のペナルティを設定します。")
-        
+
         score_mod = rules.get("score_modifiers", {})
         col3, col4 = st.columns(2)
         with col3:
             pen_model = st.number_input("🤖 AI否決時のペナルティ倍率", value=float(score_mod.get("learning_model_reject_penalty_multiplier", 0.5)), step=0.1)
         with col4:
             pen_cap = st.number_input("📉 債務超過時のペナルティ（マイナス点）", value=float(score_mod.get("capital_deficiency_penalty", -5.0)), step=1.0)
-            
+
         submitted_basic_rules = st.form_submit_button("📝 基本設定を更新する (カスタムルールは下部で別途追加)", width='stretch')
         if submitted_basic_rules:
             if "thresholds" not in rules: rules["thresholds"] = {}
@@ -1428,7 +1436,7 @@ elif mode == "⚙️ 審査ルール設定":
             rules["thresholds"]["review"] = review / 100.0
             rules["score_modifiers"]["learning_model_reject_penalty_multiplier"] = pen_model
             rules["score_modifiers"]["capital_deficiency_penalty"] = pen_cap
-            
+
             if save_business_rules(rules):
                 st.success("✅ 基本設定が正常に保存され、システムに反映されました。")
                 log_info("基本設定（ビジネスルール）を保存しました。", context="設定保存")
@@ -1457,7 +1465,7 @@ elif mode == "⚙️ 審査ルール設定":
             st.error(f"❌ {_yr['error']}")
         else:
             curr = _yr["current_line"]
-            opt  = _yr["optimal"]
+            opt = _yr["optimal"]
             diff = opt - curr
             diff_str = f"+{diff}" if diff > 0 else str(diff)
 
@@ -1511,7 +1519,7 @@ elif mode == "⚙️ 審査ルール設定":
                             # coeff_history に承認ライン変更を記録
                             from data_cases import _append_coeff_history
                             _before = {"approval_line": curr}
-                            _after  = {"approval_line": opt}
+                            _after = {"approval_line": opt}
                             _append_coeff_history("approval_line", _before, _after, _apply_comment)
                         except Exception as _he:
                             log_warning(f"承認ライン変更履歴の記録に失敗: {_he}", context="Youden適用")
@@ -1552,20 +1560,20 @@ elif mode == "⚙️ 審査ルール設定":
         return ui
 
     _prev_mode_tracked = st.session_state.get("_rule_page_prev_mode", "")
-    _rules_need_reload  = (
+    _rules_need_reload = (
         "custom_rules_ui_data" not in st.session_state          # 初回
         or _prev_mode_tracked != "⚙️ 審査ルール設定"                 # モード切替後の再入
         or st.session_state.get("_rules_force_reload", False)   # 保存後フラグ
     )
     if _rules_need_reload:
         _loaded = rules.get("custom_rules", [])
-        st.session_state["custom_rules_ui_data"]    = _load_rules_from_json(_loaded)
-        st.session_state["_rules_saved_snapshot"]   = json.dumps(_loaded, ensure_ascii=False, sort_keys=True)
-        st.session_state["_rules_force_reload"]     = False
+        st.session_state["custom_rules_ui_data"] = _load_rules_from_json(_loaded)
+        st.session_state["_rules_saved_snapshot"] = json.dumps(_loaded, ensure_ascii=False, sort_keys=True)
+        st.session_state["_rules_force_reload"] = False
     st.session_state["_rule_page_prev_mode"] = "⚙️ 審査ルール設定"
 
     # 未保存インジケータ（ファイル上の保存済みルールと現在のUI状態を比較）
-    _saved_snap   = st.session_state.get("_rules_saved_snapshot", "")
+    _saved_snap = st.session_state.get("_rules_saved_snapshot", "")
     _current_snap = json.dumps(st.session_state.get("custom_rules_ui_data", []),
                                ensure_ascii=False, sort_keys=True)
     if _saved_snap != _current_snap:
@@ -1579,7 +1587,7 @@ elif mode == "⚙️ 審査ルール設定":
     TARGET_MAP = {
         "op_profit":    "営業利益",
         "net_assets":   "純資産",
-        "user_eq_ratio":"自己資本比率",
+        "user_eq_ratio": "自己資本比率",
         "nenshu":       "売上高",
         "total_assets": "総資産",
         "bank_credit":  "銀行借入",
@@ -1588,7 +1596,7 @@ elif mode == "⚙️ 審査ルール設定":
         "ord_profit":   "経常利益",
     }
     TARGET_INV_MAP = {v: k for k, v in TARGET_MAP.items()}
-    ACTION_MAP     = {"deduct_score": "スコア減点", "force_status": "ステータス強制変更"}
+    ACTION_MAP = {"deduct_score": "スコア減点", "force_status": "ステータス強制変更"}
     ACTION_INV_MAP = {v: k for k, v in ACTION_MAP.items()}
     IND_OPTS = ["ALL"] + (list(jsic_data.keys()) if "jsic_data" in globals() and jsic_data else
                 ["D 建設業", "E 製造業", "G 情報通信業", "H 運送業", "I 卸売・小売業",
@@ -1619,9 +1627,9 @@ elif mode == "⚙️ 審査ルール設定":
     # ルールエディタ描画
     # ===========================================================================
     for i, r in enumerate(st.session_state["custom_rules_ui_data"]):
-        rule_name   = r.get("name", "").strip() or f"ルール {i+1}"
+        rule_name = r.get("name", "").strip() or f"ルール {i+1}"
         act_preview = ACTION_MAP.get(r["action_type"], r["action_type"]) + f" ({r['action_value']})"
-        cond_len    = len(r["conditions"])
+        cond_len = len(r["conditions"])
         with st.expander(
             f"⚙️ **{rule_name}** — 業種[{r['industry']}] → {act_preview}　（条件数: {cond_len}）",
             expanded=True
@@ -1759,25 +1767,25 @@ elif mode == "⚙️ 審査ルール設定":
         with st.spinner("過去の案件データベース(SQLite)から読み込み、全件シミュレーションを実行中..."):
             from data_cases import load_all_cases
             from rule_manager import simulate_rules_on_past_cases
-            
+
             past_cases = load_all_cases()
             if not past_cases:
                 st.warning("シミュレーションを実行するための過去データが見つかりません。")
             else:
                 sim_res = simulate_rules_on_past_cases(past_cases, rules)
                 st.success(f"✅ 全 {sim_res['total']} 件のシミュレーションが完了しました！")
-                
+
                 # マトリクスの表示
                 matrix = sim_res["matrix"]
                 st.markdown("**■ ステータス変化マトリクス（行：過去の判定 ／ 列：新ルールでの判定）**")
-                
+
                 df_matrix = pd.DataFrame([
                     {"過去の判定": "承認圏内", "➡️ 新: 承認圏内": matrix["承認圏内"]["承認圏内"], "➡️ 新: 要審議": matrix["承認圏内"]["要審議"], "➡️ 新: 否決": matrix["承認圏内"]["否決"]},
                     {"過去の判定": "要審議", "➡️ 新: 承認圏内": matrix["要審議"]["承認圏内"], "➡️ 新: 要審議": matrix["要審議"]["要審議"], "➡️ 新: 否決": matrix["要審議"]["否決"]},
                     {"過去の判定": "否決", "➡️ 新: 承認圏内": matrix["否決"]["承認圏内"], "➡️ 新: 要審議": matrix["否決"]["要審議"], "➡️ 新: 否決": matrix["否決"]["否決"]},
                 ])
                 st.dataframe(df_matrix, width='stretch', hide_index=True)
-                
+
                 # 変化があった案件のリストアップ
                 changes = sim_res.get("changed_cases", [])
                 st.markdown(f"**■ 判定が変化した案件の詳細 ({len(changes)}件)**")

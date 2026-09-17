@@ -180,7 +180,7 @@ def main():
 
     # Analyze latency logs
     latency_log = log_dir / "phase1_latency.log"
-    print(f"\n📊 Latency Analysis")
+    print("\n📊 Latency Analysis")
     print(f"   Log file: {latency_log}")
 
     latency_entries = parse_phase1_logs(latency_log)
@@ -191,28 +191,28 @@ def main():
     else:
         print(f"\n   Total requests: {latency_stats['total_requests']}")
 
-        print(f"\n   Latency Breakdown:")
-        print(f"   ├─ Obsidian Search:")
+        print("\n   Latency Breakdown:")
+        print("   ├─ Obsidian Search:")
         for key, val in latency_stats["obsidian_search"].items():
             print(f"   │  ├─ {key:5s}: {val*1000:6.1f}ms")
 
-        print(f"   ├─ Obsidian Digest:")
+        print("   ├─ Obsidian Digest:")
         for key, val in latency_stats["obsidian_digest"].items():
             print(f"   │  ├─ {key:5s}: {val*1000:6.1f}ms")
 
-        print(f"   ├─ Web Search:")
+        print("   ├─ Web Search:")
         for key, val in latency_stats["web_search"].items():
             print(f"   │  ├─ {key:5s}: {val*1000:6.1f}ms")
 
-        print(f"   ├─ Gemini API:")
+        print("   ├─ Gemini API:")
         for key, val in latency_stats["gemini"].items():
             print(f"   │  ├─ {key:5s}: {val*1000:6.1f}ms")
 
-        print(f"   └─ Total:")
+        print("   └─ Total:")
         for key, val in latency_stats["total"].items():
             print(f"      ├─ {key:5s}: {val:6.3f}s")
 
-        print(f"\n   Cache Status Distribution:")
+        print("\n   Cache Status Distribution:")
         for status, count in latency_stats["cache_status_distribution"].items():
             pct = (count / latency_stats["total_requests"] * 100) if latency_stats["total_requests"] > 0 else 0
             print(f"   ├─ {status:20s}: {count:4d} ({pct:5.1f}%)")
@@ -220,12 +220,12 @@ def main():
         print(f"\n   Cache Hit Rate: {latency_stats['cache_hit_rate_percent']:.1f}%")
 
     # Analyze cache stats
-    print(f"\n📊 Cache Statistics")
+    print("\n📊 Cache Statistics")
     cache_entries = parse_cache_stats(latency_log)
 
     if cache_entries:
         latest_cache = cache_entries[-1]
-        print(f"\n   Latest Cache State:")
+        print("\n   Latest Cache State:")
         print(f"   ├─ Size: {latest_cache.get('size', 'N/A')} entries")
         print(f"   ├─ Total Requests: {latest_cache.get('total_requests', 'N/A')}")
         print(f"   ├─ Hits: {latest_cache.get('hits', 'N/A')}")
@@ -233,26 +233,26 @@ def main():
         print(f"   └─ Hit Rate: {latest_cache.get('hit_rate_percent', 'N/A'):.1f}%")
 
     # Assessment
-    print(f"\n🎯 Assessment")
+    print("\n🎯 Assessment")
     if latency_stats.get("total_requests", 0) < 50:
-        print(f"   ⚠️  Not enough data (< 50 requests). Collect more logs.")
+        print("   ⚠️  Not enough data (< 50 requests). Collect more logs.")
     else:
         obsidian_time = latency_stats["obsidian_search"]["avg"] + latency_stats["obsidian_digest"]["avg"]
         cache_hit_rate = latency_stats.get("cache_hit_rate_percent", 0)
 
         print(f"   ✅ Obsidian latency: {obsidian_time*1000:.1f}ms avg")
         if obsidian_time < 0.5:
-            print(f"      Status: ✅ GOOD (< 500ms target)")
+            print("      Status: ✅ GOOD (< 500ms target)")
         else:
-            print(f"      Status: ⚠️  SLOW (> 500ms target)")
+            print("      Status: ⚠️  SLOW (> 500ms target)")
 
         print(f"   ✅ Cache hit rate: {cache_hit_rate:.1f}%")
         if cache_hit_rate >= 30:
-            print(f"      Status: ✅ GOOD (>= 30% target)")
+            print("      Status: ✅ GOOD (>= 30% target)")
         else:
-            print(f"      Status: ⚠️  LOW (< 30% target)")
+            print("      Status: ⚠️  LOW (< 30% target)")
 
-    print(f"\n" + "=" * 70)
+    print("\n" + "=" * 70)
     print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70 + "\n")
 

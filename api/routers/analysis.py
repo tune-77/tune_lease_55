@@ -15,6 +15,7 @@ def _gemini_generate_url() -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
+
 # =============================================================================
 # 高度分析 API (Phase 15.3: 計数分析・ログ・マスタ)
 # =============================================================================
@@ -26,7 +27,7 @@ def api_contract_drivers():
     res = run_contract_driver_analysis()
     if res is None:
         raise HTTPException(status_code=400, detail="Not enough data (minimum 5 closed cases required).")
-    
+
     # JSON直列化のための細かな変換処理
     # closed_cases は大きすぎるので概要だけ返す
     return {
@@ -40,6 +41,7 @@ def api_contract_drivers():
             "rank_distribution": res.get("qualitative_summary", {}).get("rank_distribution"),
         } if res.get("qualitative_summary") else None
     }
+
 
 # ── 定量要因分析
 def _get_gemini_api_key() -> str:
@@ -125,6 +127,7 @@ def api_quantitative():
     res["gemini_comment"] = _generate_quantitative_gemini_comment(res)
     return res
 
+
 # ── 定性要因分析
 @router.post("/api/analysis/qualitative")
 def api_qualitative():
@@ -134,7 +137,6 @@ def api_qualitative():
     if res is None:
         raise HTTPException(status_code=400, detail="Not enough data.")
     return res
-
 
 
 @router.get("/api/logs/app")
@@ -148,7 +150,6 @@ def get_app_log_lines():
         return {"logs": [line.strip() for line in lines[-100:]]}
 
 
-
 # ── 競合関係グラフ
 @router.get("/api/analysis/competitor_graph")
 def api_competitor_graph():
@@ -158,7 +159,6 @@ def api_competitor_graph():
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 # ── システム管理・分析系API v2
@@ -189,6 +189,7 @@ def run_model_review_hooks_api():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/api/analysis/pdca_reflection")
 def get_pdca_reflection():
     from llm_pdca_reflection import load_pdca_rules
@@ -196,6 +197,7 @@ def get_pdca_reflection():
         return load_pdca_rules()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/api/analysis/math_proposals")
 def get_math_proposals():
@@ -210,6 +212,7 @@ def get_math_proposals():
     except Exception as e:
         return {"proposals": []}
 
+
 @router.get("/api/analysis/coeff_history")
 def get_coeff_history():
     from data_cases import load_coeff_history
@@ -217,6 +220,7 @@ def get_coeff_history():
         return {"history": load_coeff_history()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/api/analysis/app_logs")
 def get_app_logs(lines: int = 100):
@@ -237,8 +241,6 @@ def get_app_logs(lines: int = 100):
         return {"logs": f"Error reading log: {e}"}
 
 
-
-
 @router.post("/api/analysis/run_auto_optimization")
 def run_auto_opt():
     from auto_optimizer import run_auto_optimization
@@ -248,6 +250,7 @@ def run_auto_opt():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/api/analysis/run_pdca")
 def run_pdca_api(max_cases: int = 20):
     from llm_pdca_reflection import run_monthly_pdca_reflection
@@ -256,7 +259,6 @@ def run_pdca_api(max_cases: int = 20):
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @router.get("/api/analysis/status_summary")
@@ -285,5 +287,3 @@ def get_analysis_status_summary():
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["shion-meta"])
 
+
 @router.get("/api/shion/self-analysis")
 def get_shion_self_analysis(refresh: bool = False):
     """紫苑の自己分析を取得する（24時間キャッシュ）。"""
@@ -199,5 +200,3 @@ def get_central_synthesis():
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-

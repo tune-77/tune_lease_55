@@ -257,6 +257,7 @@ CAPITAL_DEFICIENCY_PENALTY_DEFAULT = -5.0  # 債務超過時の減点
 Q_RISK_ATTENTION_LINE = 35       # これ以上 = 要注意
 Q_RISK_STRONG_WARNING_LINE = 60  # これ以上 = 強警戒（credit_quantum_strong_warning 相当）
 
+
 def get_review_alert(res):
     """
     判定結果 res（last_result）を受け取り、要確認かどうかと理由リストを返す。
@@ -280,6 +281,7 @@ def get_review_alert(res):
     if effective_original < APPROVAL_LINE and decision == "承認":
         reasons.append("本社は要審議ですが、学習モデルは承認です。要確認。")
     return (len(reasons) > 0, reasons)
+
 
 # 定性「逆転の鍵」強みタグ（ワンホット・RAG用）
 STRENGTH_TAG_OPTIONS = [
@@ -351,7 +353,7 @@ QUALITATIVE_SCORE_RANKS = [
 
 # キャッシュファイルへのパス系（data/ サブディレクトリに移動済み）
 _DATA_DIR = os.path.join(BASE_DIR, "data")
-DEBATE_FILE = os.path.join(_DATA_DIR, "debate_logs.jsonl") # ディベートログ
+DEBATE_FILE = os.path.join(_DATA_DIR, "debate_logs.jsonl")  # ディベートログ
 WEB_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "web_industry_benchmarks.json")
 TRENDS_EXTENDED_FILE = os.path.join(_DATA_DIR, "industry_trends_extended.json")
 ASSETS_BENCHMARKS_FILE = os.path.join(_DATA_DIR, "industry_assets_benchmarks.json")
@@ -373,6 +375,7 @@ TEIREI_BYOKI_DEFAULT = [
     "リース審査、楽だって思ってる人いませんよね。いませんよね…？",
 ]
 
+
 # ==============================================================================
 # Helper / 共通パス解決系
 # ==============================================================================
@@ -390,6 +393,7 @@ def _dashboard_image_base_dirs():
         if candidate and os.path.isdir(candidate):
             yield candidate
             break
+
 
 def get_dashboard_image_path(hantei: str, industry_major: str, industry_sub: str, asset_name: str):
     """
