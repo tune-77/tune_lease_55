@@ -119,6 +119,21 @@ def test_monitor_warns_on_self_reference_loop_candidates(tmp_path, monkeypatch):
     assert check.details["self_generated_source_ratio"] >= 0.35
 
 
+def test_monitor_does_not_warn_on_empty_candidates(tmp_path, monkeypatch):
+    import scripts.monitor_obsidian_environment as monitor
+
+    monkeypatch.setattr(monitor, "REPO_ROOT", tmp_path)
+    (tmp_path / "data").mkdir()
+
+    check = monitor.check_self_reference_loop()
+
+    # 候補が0件なのは「ループを検出できない」だけで、ループの証拠ではない。
+    # status=ok にしないと Mana 側が self_reference_loop_risk (hold) として
+    # 誤検知する（候補欠落自体は memory_candidates_missing で別途報告される）。
+    assert check.status == "ok"
+    assert check.details["candidate_count"] == 0
+
+
 def test_monitor_warns_when_daily_notes_missing(tmp_path):
     vault = tmp_path / "Obsidian Vault"
     (vault / ".obsidian").mkdir(parents=True)
