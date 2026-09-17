@@ -128,6 +128,7 @@ data/judgment_asset_rules_v2.json
 data/shion_memory_freshness.jsonl
 data/shion_relationship_state.json
 data/.judgment_asset_promotion.lock
+data/error_log_candidates_surfaced.json
 .gstack/
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).

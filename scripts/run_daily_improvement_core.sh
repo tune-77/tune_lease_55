@@ -153,7 +153,9 @@ fi
 echo ""
 echo "[回帰] Cloud Runニュース/記憶レイヤーの回帰テスト..."
 MEMORY_CHAT_REGRESSION_START=$(date +%s)
+MEMORY_CHAT_REGRESSION_JUNIT="/tmp/memory_chat_regression_junit_${LOG_DATE}.xml"
 "${PYTHON}" -m pytest -q \
+    --junitxml="${MEMORY_CHAT_REGRESSION_JUNIT}" \
     "${PROJECT_ROOT}/tests/test_lease_news_collection.py::test_find_vault_refreshes_cloudrun_gcs_vault" \
     "${PROJECT_ROOT}/tests/test_lease_news_collection.py::test_daily_digest_prefers_note_date_over_gcs_download_mtime" \
     "${PROJECT_ROOT}/tests/test_chat_context_builder.py" \
@@ -166,6 +168,23 @@ MEMORY_CHAT_REGRESSION_DURATION=$(( $(date +%s) - MEMORY_CHAT_REGRESSION_START )
 log_step "memory_chat_regression_tests" ${MEMORY_CHAT_REGRESSION_EXIT} ${MEMORY_CHAT_REGRESSION_DURATION}
 if [ ${MEMORY_CHAT_REGRESSION_EXIT} -ne 0 ]; then
     echo "警告: Cloud Runニュース/記憶レイヤーの回帰テストが失敗しました（終了コード ${MEMORY_CHAT_REGRESSION_EXIT}）"
+fi
+
+echo ""
+echo "[バグ発見] テスト失敗を needs_review 候補として記録中..."
+"${PYTHON}" -c "
+import sys
+sys.path.insert(0, '${PROJECT_ROOT}/scripts')
+from pathlib import Path
+from test_failure_intake import record_from_junit
+n = record_from_junit(Path('${MEMORY_CHAT_REGRESSION_JUNIT}'), source='memory_chat_regression_tests')
+print(f'[test_failure_intake] {n} 件を記録しました。')
+"
+TEST_FAILURE_INTAKE_EXIT=$?
+log_step "test_failure_intake_record" ${TEST_FAILURE_INTAKE_EXIT}
+if [ ${TEST_FAILURE_INTAKE_EXIT} -ne 0 ]; then
+    echo "警告: test_failure_intake の記録に失敗しました（終了コード ${TEST_FAILURE_INTAKE_EXIT}）。パイプラインは継続します。"
+    true
 fi
 
 echo ""

@@ -4213,6 +4213,40 @@ def _cloudrun_improvement_items_from_gcs(limit: int = 30) -> list[dict]:
     return items
 
 
+def _attach_recursive_needs_review_items(normalized: dict) -> dict:
+    recursive_path = _latest_recursive_self_improvement_path()
+    if not recursive_path:
+        return normalized
+    try:
+        recursive_report = json.loads(recursive_path.read_text(encoding="utf-8"))
+    except Exception:
+        return normalized
+    candidates = recursive_report.get("canonical_candidates") or []
+    existing_keys = {str(i.get("canonical_key") or i.get("id") or "") for i in normalized.get("items") or []}
+    merged = list(normalized.get("items") or [])
+    for item in candidates:
+        item_id = str(item.get("id") or "")
+        if not item_id.startswith(("TESTFAIL-", "ERRLOG-")):
+            continue
+        if item.get("state") != "needs_review":
+            continue
+        key = str(item.get("canonical_key") or item_id)
+        if key in existing_keys:
+            continue
+        existing_keys.add(key)
+        merged.append({
+            "id": item_id,
+            "title": item.get("title"),
+            "description": item.get("description"),
+            "status": "NEEDS_REVIEW",
+            "canonical_key": key,
+            "source": item_id.split("-")[0].lower(),
+        })
+    normalized["items"] = merged
+    normalized["needs_review"] = sum(1 for i in merged if i.get("status") == "NEEDS_REVIEW")
+    return normalized
+
+
 def _attach_cloudrun_improvement_items(normalized: dict) -> dict:
     cloud_items = _cloudrun_improvement_items_from_gcs()
     normalized["cloudrun_input_count"] = len(cloud_items)
@@ -4288,7 +4322,7 @@ def get_improvement_log():
             },
         }
         normalized["codex_queue_triage"] = _load_codex_queue_triage_shadow()
-        return _attach_cloudrun_improvement_items(normalized)
+        return _attach_cloudrun_improvement_items(_attach_recursive_needs_review_items(normalized))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"改善ログ読み込み失敗: {e}")
 
