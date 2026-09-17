@@ -20,7 +20,7 @@ ANYTHING_LLM_WORKSPACE = "lease"
 @st.cache_data(ttl=300, show_spinner=False)
 def is_anything_llm_available(timeout: int = 3) -> bool:
     """AnythingLLM サーバーが起動していて認証が通るかチェック。"""
-    api_key = _get_anything_llm_key()
+    api_key = get_anything_llm_key()
     if not api_key:
         return False
     try:
@@ -40,7 +40,7 @@ def query_anything_llm(message: str, workspace_slug: str = ANYTHING_LLM_WORKSPAC
     mode="query" で知識ベース検索（RAG）に特化させる。
     失敗時は空文字を返す（例外は握りつぶす）。
     """
-    api_key = _get_anything_llm_key()
+    api_key = get_anything_llm_key()
     if not api_key:
         return ""
     try:
@@ -74,7 +74,7 @@ def chat_anything_llm(messages: list, workspace_slug: str = ANYTHING_LLM_WORKSPA
     {"message": {"content": "..."}} 形式で返す。
     Ollama / Gemini と同じ戻り値形式にすることで ai_chat.py から透過的に呼べる。
     """
-    api_key = _get_anything_llm_key()
+    api_key = get_anything_llm_key()
     if not api_key:
         return {"message": {"content": "AnythingLLM の APIキーが設定されていません。サイドバーで入力してください。"}}
 

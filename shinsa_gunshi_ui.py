@@ -1148,6 +1148,8 @@ def render_gunshi_ai_comment(
             st.session_state["_gunshi_cache_bn_hash"] = cur_bn_hash
 
     g = st.session_state[cache_key]
+    reverse_bayes_text = _format_reverse_bayes_text(g.get("reverse_bayes_bonus"))
+    _fp0_patch_text = _format_fp0_patch_text(g.get("fp0_patch_note"))
     pct = int(g["display_prob"] * 100)
     posterior = g["posterior"]
     bar_color = "#2d8a4e" if pct >= 70 else ("#f97316" if pct >= 50 else "#ef4444")

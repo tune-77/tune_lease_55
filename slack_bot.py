@@ -51,7 +51,12 @@ from slack_screening import (
     handle_screening_message,
     start_screening,
 )
-from secret_manager import get_slack_bot_token, get_slack_app_token, get_slack_webhook_url
+from secret_manager import (
+    get_slack_bot_token,
+    get_slack_app_token,
+    get_slack_webhook_url,
+    get_gemini_api_key,
+)
 
 # ── ログ設定 ────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -300,10 +305,10 @@ def _get_ai_response(prompt: str, timeout_seconds: int = 120) -> str:
     api_key = (
         os.environ.get("GEMINI_API_KEY", "").strip()
         or GEMINI_API_KEY_ENV
-        or _secrets.get("GEMINI_API_KEY", "")
-        or _get_gemini_key_from_secrets()
+        or get_gemini_api_key()
+        or ""
     )
-    gemini_model = _secrets.get("GEMINI_MODEL", GEMINI_MODEL_DEFAULT)
+    gemini_model = os.environ.get("GEMINI_MODEL", GEMINI_MODEL_DEFAULT)
     engine = "gemini" if api_key else "ollama"
     model = get_ollama_model()
 
@@ -893,7 +898,8 @@ def main():
     api_key = (
         os.environ.get("GEMINI_API_KEY", "").strip()
         or GEMINI_API_KEY_ENV
-        or _secrets.get("GEMINI_API_KEY", "")
+        or get_gemini_api_key()
+        or ""
     )
 
     if SLACK_APP_TOKEN:
