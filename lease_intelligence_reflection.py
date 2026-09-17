@@ -15,6 +15,7 @@ import re
 import sys
 from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Any
 
 # Allow running as a standalone script from the project root
 REPO_ROOT = Path(__file__).parent

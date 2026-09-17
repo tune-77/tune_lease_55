@@ -18,7 +18,10 @@ import math
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 try:
     import numpy as np
