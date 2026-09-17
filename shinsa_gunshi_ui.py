@@ -462,8 +462,6 @@ def render_gunshi() -> None:
         )
 
         last_id = st.session_state.get("gunshi_last_case_id")
-        # ── 週次戦略の表示 ──
-        _render_weekly_strategy_panel()
 
         if last_id:
             col_r1, col_r2 = st.columns(2)
