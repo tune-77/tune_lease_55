@@ -24,6 +24,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import describe_obsidian_vault_resolution  # noqa: E402
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
 
 try:
     from improvement_identity import canonical_key
@@ -681,9 +682,16 @@ def main() -> int:
         return 1
 
     print(f"改善インデックス: {index_file}")
-    index_raw_text = index_file.read_text(encoding="utf-8")
-
-    pipeline_text = extract_improvements_from_index(index_file, vault)
+    try:
+        index_raw_text = index_file.read_text(encoding="utf-8")
+        pipeline_text = extract_improvements_from_index(index_file, vault)
+    except OSError as exc:
+        # iCloud同期中のVaultファイルは稀に EDEADLK (Errno 11) を返す。
+        # 一時的な読み込み失敗でパイプライン全体を落とさず、今回の抽出だけ見送る。
+        report_pipeline_failure(
+            f"改善インデックスの読み込みに失敗しました（iCloud同期中の可能性）: {exc}", level="警告"
+        )
+        return 0
 
     # AI Chat Improvement Log を独立スキャンして結合
     ai_chat_text = extract_improvements_from_ai_chat_logs(vault)
