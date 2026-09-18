@@ -32,11 +32,19 @@ submit_cloud_build_and_wait() {
   echo "Cloud Build ID: ${build_id}"
   echo "Logs: https://console.cloud.google.com/cloud-build/builds/${build_id}?project=${project_id}"
 
+  # GitHub Actions の concurrency (cancel-in-progress) 等でこのポーリングを
+  # 中断しても、gcloud builds submit --async で投げた Cloud Build 自体は
+  # 明示的にキャンセルしない限りGCP側で走り続け、無駄なビルド分の課金が
+  # 発生する（deploy.yml に concurrency を追加した際の想定シナリオ）。
+  # TERM/INT を受けたらそのビルドをキャンセルしてから終了する。
+  trap 'gcloud builds cancel "$build_id" --project "$project_id" >/dev/null 2>&1 || true' TERM INT
+
   local status
   while true; do
     status="$(gcloud builds describe "$build_id" --project "$project_id" --format='value(status)')"
     case "$status" in
       SUCCESS)
+        trap - TERM INT
         echo "Build succeeded."
         return 0
         ;;
@@ -44,6 +52,7 @@ submit_cloud_build_and_wait() {
         sleep 10
         ;;
       *)
+        trap - TERM INT
         echo "Cloud Build failed with status: ${status}" >&2
         return 1
         ;;
