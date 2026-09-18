@@ -61,7 +61,7 @@ def test_checker_accepts_only_minimal_healthy_response() -> None:
     assert reason == "dashboard data unhealthy: missing_analysis"
 
 
-def test_hourly_workflow_uses_privacy_preserving_health_endpoint() -> None:
+def test_scheduled_workflow_uses_privacy_preserving_health_endpoint() -> None:
     workflow = (ROOT / ".github/workflows/dashboard-data-health.yml").read_text(
         encoding="utf-8"
     )
@@ -69,7 +69,10 @@ def test_hourly_workflow_uses_privacy_preserving_health_endpoint() -> None:
         encoding="utf-8"
     )
 
-    assert 'cron: "17 * * * *"' in workflow
+    # 2026-09、毎時プローブ自体がmin-instances=0のCloud Runをコールドスタート
+    # させ課金増の一因になっていたため毎時→2時間おきに変更（分オフセット17は
+    # デプロイ直後と重ならせない狙いのまま維持）。
+    assert 'cron: "17 */2 * * *"' in workflow
     # actions/checkout・actions/setup-pythonの配線がワークフローから消えていない
     # ことだけを保証する。バージョン番号は他ワークフローとの追従対象であり
     # Dependabotの更新のたびに変わるため、特定のaction versionはここで固定しない
