@@ -41,7 +41,7 @@ READ_ONLY_DB_TOOLS = [
     get_weekly_trend,          # 週次トレンド
     get_system_overview,       # モデル・閾値・データ規模のスナップショット
     get_recent_errors,         # logs/api.log・app.log の頻出エラー調査
-    get_pipeline_item_details, # 改善パイプライン台帳（ledger_rules.json）の個別項目詳細
+    get_pipeline_item_details,  # 改善パイプライン台帳（ledger_rules.json）の個別項目詳細
     recall_judgment_memory,    # 正準ルール＋紫苑の記憶索引から判断根拠を想起
     build_judgment_preview,    # 判断材料プレビュー（レビュー前の下書き）を取得
     search_obsidian_context,   # Obsidian Vaultの知識ノート検索

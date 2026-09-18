@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -380,7 +381,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def main() -> int:
     args = parse_args()
     report = build_instruction_debt_report(
         root=args.root.resolve(),
@@ -395,6 +396,17 @@ def main() -> None:
         f"debt_items={summary['debt_items']}"
     )
 
+    if summary["files_scanned"] == 0:
+        print(
+            "警告: DEFAULT_SCAN_PATHS(AGENTS.md/CLAUDE.md/MEMORY.md/.agents/skills/"
+            "shared-ai/skills)を1件も発見できませんでした。scan_pathsのドリフトを"
+            "疑ってください（instructions_found/debt_itemsが0件になるのは正常な"
+            "改善結果でもあるため、そちらは検知対象にしていない）。",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

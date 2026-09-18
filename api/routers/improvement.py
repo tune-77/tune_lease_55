@@ -493,7 +493,8 @@ def register_prompt_rule(req: PromptRuleRegisterRequest):
 @router.get("/api/improvement-pipeline/summary")
 def get_improvement_pipeline_summary():
     """最新パイプライン実行のサマリーを返す（REV-039）。latest.json直読み。"""
-    import json as _json, re as _re
+    import json as _json
+    import re as _re
     path = _latest_improvement_report_path()
     if path is None:
         return {"run_date": None, "applied_count": 0, "needs_review_count": 0, "failed_count": 0, "commit_result": None}

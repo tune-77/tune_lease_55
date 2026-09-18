@@ -59,16 +59,16 @@ jobs:
       contents: read
       id-token: write   # WIF に必須
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # トラフィックが乗っている（または直近 --keep 件以内の）リビジョンは
       # scripts/cleanup_cloud_run_revisions.py が保護するため安全に --apply できる。
@@ -102,3 +102,10 @@ jobs:
           if [ "${left_on}" != "0" ]; then
             exit 1
           fi
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Cloud Run Cost Guard"

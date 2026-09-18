@@ -331,7 +331,7 @@ class QuantumExplainer:
         # 各変数の感度計算（1単位増加でリスクがどれだけ下がるか）
         sensitivities = []
         for var, label, unit_delta, unit_str in TARGET_VARS:
-            r_plus  = _perturb_risk(var, +unit_delta)
+            r_plus = _perturb_risk(var, +unit_delta)
             r_minus = _perturb_risk(var, -unit_delta)
             sensitivity = (r_minus - r_plus) / (2 * unit_delta)  # リスク低減感度
             sensitivities.append({

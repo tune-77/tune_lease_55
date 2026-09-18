@@ -26,7 +26,7 @@ def _build_dataframe() -> pd.DataFrame:
         if score <= 0:
             continue
         final_rate = float(c.get("final_rate") or 0)
-        base_rate  = float(c.get("base_rate_at_time") or 0)
+        base_rate = float(c.get("base_rate_at_time") or 0)
         spread = (final_rate - base_rate) if base_rate > 0 else float(c.get("winning_spread") or 0)
         inputs = c.get("inputs") or {}
         acq = float(inputs.get("acquisition_cost") or 0)
@@ -215,9 +215,9 @@ def render_sankey():
 
     # ノードインデックス
     node_labels = industries + band_labels + results
-    ind_idx  = {v: i for i, v in enumerate(industries)}
+    ind_idx = {v: i for i, v in enumerate(industries)}
     band_idx = {v: len(industries) + i for i, v in enumerate(band_labels)}
-    res_idx  = {v: len(industries) + len(band_labels) + i for i, v in enumerate(results)}
+    res_idx = {v: len(industries) + len(band_labels) + i for i, v in enumerate(results)}
 
     node_colors = (
         ["#3b82f6"] * len(industries) +

@@ -4,10 +4,29 @@ scoring_core.py のユニットテスト
 テスト対象:
   - _safe_sigmoid  : シグモイド関数（オーバーフロー対策）
   - _calculate_z   : 係数セットからロジット値を計算
+  - _safe_float / _safe_int : 安全な型変換
+  - _normalize_competitor_count_value / _normalize_deal_occurrence_value /
+    _normalize_competitor_rate_value : 定性項目の正規化
+  - compute_dscr_approx / compute_interest_coverage : 財務指標近似値
+  - _apply_demo_food_service_score_cap : 公開デモ用スコア固定
 """
 import pytest
 import math
-from scoring_core import _safe_sigmoid, _calculate_z
+from scoring_core import (
+    _safe_sigmoid,
+    _calculate_z,
+    _safe_float,
+    _safe_int,
+    _normalize_competitor_count_value,
+    _normalize_deal_occurrence_value,
+    _normalize_competitor_rate_value,
+    compute_dscr_approx,
+    compute_interest_coverage,
+    _apply_demo_food_service_score_cap,
+    DEMO_FOOD_SERVICE_COMPANY_NO,
+    DEMO_FOOD_SERVICE_COMPANY_NAME,
+    DEMO_FOOD_SERVICE_TARGET_SCORE,
+)
 
 
 # ============================================================
@@ -183,3 +202,197 @@ class TestCalculateZ:
                                          industry_major=""),
                               coeff)
         assert z_pos > z_neg
+
+
+# ============================================================
+# _safe_float / _safe_int
+# ============================================================
+class TestSafeFloat:
+    """安全なfloat変換のテスト"""
+
+    def test_none_returns_default(self):
+        assert _safe_float(None) == 0.0
+        assert _safe_float(None, default=1.5) == 1.5
+
+    def test_valid_numeric_string(self):
+        assert _safe_float("3.14") == pytest.approx(3.14)
+
+    def test_valid_number(self):
+        assert _safe_float(42) == pytest.approx(42.0)
+
+    def test_invalid_string_returns_default(self):
+        assert _safe_float("not-a-number") == 0.0
+        assert _safe_float("abc", default=-1.0) == -1.0
+
+    def test_invalid_type_returns_default(self):
+        assert _safe_float([1, 2, 3]) == 0.0
+
+
+class TestSafeInt:
+    """安全なint変換のテスト"""
+
+    def test_none_returns_default(self):
+        assert _safe_int(None) == 0
+        assert _safe_int(None, default=7) == 7
+
+    def test_valid_numeric_string(self):
+        assert _safe_int("42") == 42
+
+    def test_valid_float_truncates(self):
+        assert _safe_int(3.9) == 3
+
+    def test_invalid_string_returns_default(self):
+        assert _safe_int("not-a-number") == 0
+        assert _safe_int("abc", default=-1) == -1
+
+    def test_invalid_type_returns_default(self):
+        assert _safe_int([1, 2, 3]) == 0
+
+
+# ============================================================
+# _normalize_competitor_count_value
+# ============================================================
+class TestNormalizeCompetitorCountValue:
+    """競合社数正規化のテスト"""
+
+    def test_none_returns_zero(self):
+        assert _normalize_competitor_count_value(None) == 0.0
+
+    def test_negative_number_returns_zero(self):
+        assert _normalize_competitor_count_value(-5) == 0.0
+
+    def test_number_capped_at_three(self):
+        assert _normalize_competitor_count_value(10) == 3.0
+
+    def test_number_passthrough_below_cap(self):
+        assert _normalize_competitor_count_value(2) == 2.0
+
+    @pytest.mark.parametrize("s, expected", [
+        ("3社", 3.0),
+        ("2社", 2.0),
+        ("1社", 1.0),
+        ("0社", 0.0),
+        ("指名", 0.0),
+        ("不明", 0.0),
+    ])
+    def test_string_values(self, s, expected):
+        assert _normalize_competitor_count_value(s) == expected
+
+
+# ============================================================
+# _normalize_deal_occurrence_value
+# ============================================================
+class TestNormalizeDealOccurrenceValue:
+    """発生経緯正規化のテスト"""
+
+    def test_none_returns_zero(self):
+        assert _normalize_deal_occurrence_value(None) == 0.0
+
+    @pytest.mark.parametrize("s, expected", [
+        ("相見積もり", 2.0),
+        ("競争入札", 2.0),
+        ("指名案件", 1.0),
+        ("その他", 0.0),
+        ("", 0.0),
+    ])
+    def test_string_values(self, s, expected):
+        assert _normalize_deal_occurrence_value(s) == expected
+
+
+# ============================================================
+# _normalize_competitor_rate_value
+# ============================================================
+class TestNormalizeCompetitorRateValue:
+    """競合提示金利正規化のテスト"""
+
+    def test_invalid_returns_zero(self):
+        assert _normalize_competitor_rate_value(None) == 0.0
+        assert _normalize_competitor_rate_value("abc") == 0.0
+
+    def test_zero_or_negative_returns_zero(self):
+        assert _normalize_competitor_rate_value(0) == 0.0
+        assert _normalize_competitor_rate_value(-1) == 0.0
+
+    def test_fraction_scaled_to_percent(self):
+        """1.0以下は% 表記への変換（×100）後に正規化される"""
+        assert _normalize_competitor_rate_value(0.15) == pytest.approx(0.5, abs=1e-9)
+
+    def test_permille_scaled_down(self):
+        """1000超は千分率とみなして ÷1000 する"""
+        assert _normalize_competitor_rate_value(1500) == pytest.approx(0.05, abs=1e-9)
+
+    def test_result_clamped_to_unit_interval(self):
+        val = _normalize_competitor_rate_value(100)
+        assert 0.0 <= val <= 1.0
+        assert val == pytest.approx(1.0)
+
+
+# ============================================================
+# compute_dscr_approx
+# ============================================================
+class TestComputeDscrApprox:
+    """DSCR近似値計算のテスト"""
+
+    def test_zero_denominator_returns_neutral(self):
+        assert compute_dscr_approx({"op_profit": 500, "dep_expense": 0, "rent_expense": 0}) == 1.0
+
+    def test_basic_calculation(self):
+        result = compute_dscr_approx({"op_profit": 1500, "dep_expense": 500, "rent_expense": 500})
+        assert result == pytest.approx(1.5)
+
+    def test_falls_back_to_legacy_keys(self):
+        """rieki/depreciation/rent の旧キーにフォールバックする"""
+        result = compute_dscr_approx({"rieki": 1000, "depreciation": 500, "rent": 500})
+        assert result == pytest.approx(1.0)
+
+    def test_negative_op_profit(self):
+        result = compute_dscr_approx({"op_profit": -500, "dep_expense": 500, "rent_expense": 0})
+        assert result == pytest.approx(-1.0)
+
+
+# ============================================================
+# compute_interest_coverage
+# ============================================================
+class TestComputeInterestCoverage:
+    """インタレスト・カバレッジ・レシオ計算のテスト"""
+
+    def test_no_interest_returns_high_safety_value(self):
+        assert compute_interest_coverage({"op_profit": 1000, "interest_expense": 0}) == 10.0
+
+    def test_basic_calculation(self):
+        result = compute_interest_coverage({"op_profit": 1000, "interest_expense": 200})
+        assert result == pytest.approx(5.0)
+
+    def test_negative_interest_treated_as_no_debt(self):
+        result = compute_interest_coverage({"op_profit": 1000, "interest_expense": -100})
+        assert result == 10.0
+
+
+# ============================================================
+# _apply_demo_food_service_score_cap
+# ============================================================
+class TestApplyDemoFoodServiceScoreCap:
+    """公開デモ用スコア固定のテスト"""
+
+    def test_unrelated_company_unaffected(self):
+        score, adj = _apply_demo_food_service_score_cap({"company_no": "123456"}, 80.0)
+        assert score == 80.0
+        assert adj == 0.0
+
+    def test_demo_company_no_below_target_unaffected(self):
+        """既にターゲット以下なら調整しない"""
+        inputs = {"company_no": DEMO_FOOD_SERVICE_COMPANY_NO}
+        score, adj = _apply_demo_food_service_score_cap(inputs, 20.0)
+        assert score == 20.0
+        assert adj == 0.0
+
+    def test_demo_company_no_above_target_capped(self):
+        inputs = {"company_no": DEMO_FOOD_SERVICE_COMPANY_NO}
+        score, adj = _apply_demo_food_service_score_cap(inputs, 80.0)
+        assert score == DEMO_FOOD_SERVICE_TARGET_SCORE
+        assert adj == pytest.approx(DEMO_FOOD_SERVICE_TARGET_SCORE - 80.0)
+
+    def test_demo_company_name_matches_too(self):
+        inputs = {"company_name": DEMO_FOOD_SERVICE_COMPANY_NAME}
+        score, adj = _apply_demo_food_service_score_cap(inputs, 90.0)
+        assert score == DEMO_FOOD_SERVICE_TARGET_SCORE

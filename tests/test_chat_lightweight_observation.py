@@ -22,4 +22,3 @@ def test_explicit_analysis_request_stays_out_of_lightweight_path():
     message = "キーエンスの検査機需要とリース需要の関係を根拠付きで分析して"
 
     assert _is_lightweight_chat_observation(message) is False
-

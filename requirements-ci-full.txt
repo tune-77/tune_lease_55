@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────
+# GitHub Actions CI用: pytest-core (pr-checks.yml) / full-pytest (daily-test.yml)
+# の全件テスト実行に必要な依存一覧。
+# 4箇所以上でべた書きされていた重複を1ファイルに集約したもの
+# （.claude/rules 棚卸しレポート「依存インストールの重複」対応）。
+# 更新するときはこのファイルだけを直せばよい。
+# ─────────────────────────────────────────────────────────────
+pytest
+pytest-xdist
+fastapi
+uvicorn
+pydantic
+slowapi
+httpx
+python-multipart
+requests
+numpy
+pandas
+matplotlib
+seaborn
+scipy
+scikit-learn==1.7.2
+joblib
+python-dateutil
+pyyaml
+beautifulsoup4
+filelock
+bcrypt
+flask
+flask-cors
+google-api-core
+lxml
+toml
+chromadb
+google-adk
+apscheduler

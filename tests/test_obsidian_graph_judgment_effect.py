@@ -42,6 +42,48 @@ def test_memory_usage_maps_memory_source_path_to_note_key(tmp_path):
     assert node["signals"]["memory_usage_count"] == 1
 
 
+def test_main_fails_when_vault_does_not_exist(tmp_path, capsys):
+    """iCloudパスドリフト等でVaultが解決できない場合は静かに空グラフを返さず失敗させる。"""
+    missing_vault = tmp_path / "does-not-exist"
+    idx = tmp_path / "idx.json"
+    idx.write_text(json.dumps({"records": []}), encoding="utf-8")
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("", encoding="utf-8")
+
+    exit_code = graph.main([
+        "--vault", str(missing_vault),
+        "--memory-index", str(idx),
+        "--memory-usage", str(empty),
+        "--rag-search", str(empty),
+        "--rag-feedback", str(empty),
+        "--dry-run",
+    ])
+
+    assert exit_code == 1
+    assert "Vaultが見つかりません" in capsys.readouterr().err
+
+
+def test_main_is_ok_when_vault_exists_but_has_no_notes(tmp_path, capsys):
+    """Vault自体は存在し、ノートが本当に0件（真の空）なら誤検知しない。"""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    idx = tmp_path / "idx.json"
+    idx.write_text(json.dumps({"records": []}), encoding="utf-8")
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("", encoding="utf-8")
+
+    exit_code = graph.main([
+        "--vault", str(vault),
+        "--memory-index", str(idx),
+        "--memory-usage", str(empty),
+        "--rag-search", str(empty),
+        "--rag-feedback", str(empty),
+        "--dry-run",
+    ])
+
+    assert exit_code == 0
+
+
 def test_cli_dry_run_outputs_json(tmp_path, capsys):
     vault = tmp_path / "vault"
     vault.mkdir()

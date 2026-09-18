@@ -8,9 +8,10 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 _DB_PATH = os.path.join(_REPO_ROOT, "data", "lease_data.db")
 
+
 def run_tracking():
     print(f"[{datetime.now()}] 物件市場相場データ収集バッチ 開始")
-    
+
     if not os.path.exists(_DB_PATH):
         print(f"❌ DBファイルが存在しません: {_DB_PATH}")
         return
@@ -24,7 +25,7 @@ def run_tracking():
     import sys
     if _REPO_ROOT not in sys.path:
         sys.path.append(_REPO_ROOT)
-    
+
     try:
         from components.asset_score_detail import _search_scores
     except ImportError as e:
@@ -69,22 +70,22 @@ def run_tracking():
         is_generic = len(search_query) <= 2 or search_query in generic_keywords
 
         market_price_sen = 0
-        
+
         if is_generic:
-            print(f"   ℹ️ クエリが一般的すぎるため、統計的減価償却ロジックへフォールバックします。")
+            print("   ℹ️ クエリが一般的すぎるため、統計的減価償却ロジックへフォールバックします。")
             # 簡易耐用年数マッピング (月次減価率)
             depreciation_rates = {
-                "vehicle": 0.015, # 車両: 6年
-                "medical": 0.012, # 医療: 7年
-                "machinery": 0.010, # 工作機械: 10年
-                "construction": 0.011, # 建機: 8年
-                "pc": 0.020, # PC/IT: 4年
+                "vehicle": 0.015,  # 車両: 6年
+                "medical": 0.012,  # 医療: 7年
+                "machinery": 0.010,  # 工作機械: 10年
+                "construction": 0.011,  # 建機: 8年
+                "pc": 0.020,  # PC/IT: 4年
                 "other": 0.015
             }
             rate = depreciation_rates.get(asset_category.lower(), 0.015)
-            
+
             # 契約開始日からの経過月数を簡易計算 (デフォルト24ヶ月経過と仮定、実稼働時はタイムスタンプから算出)
-            elapsed_months = 24 
+            elapsed_months = 24
             market_price_sen = int(acquisition_cost * ((1.0 - rate) ** elapsed_months))
         else:
             # Gemini Search Grounding 呼び出し
@@ -120,6 +121,7 @@ def run_tracking():
     conn.commit()
     conn.close()
     print(f"[{datetime.now()}] バッチ完了。計 {success_count} 件のデータを収集・保存しました。")
+
 
 if __name__ == "__main__":
     run_tracking()

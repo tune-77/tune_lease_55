@@ -54,7 +54,7 @@ def get_qualitative_items_text() -> str:
     for item in items:
         lines.append(f"\n■ {item['label']}（重み{item['weight']}%）")
         for opt in item.get("options", []):
-            lines.append(f"  {opt['score']}点: {opt['label']} — {opt.get('detail','')}")
+            lines.append(f"  {opt['score']}点: {opt['label']} — {opt.get('detail', '')}")
     return "\n".join(lines)
 
 
@@ -77,8 +77,8 @@ def get_manual_text() -> str:
     if bh:
         lines.append("\n■ ボーダーライン処理")
         for key, val in bh.items():
-            lines.append(f"  {val.get('condition','')}")
-            lines.append(f"    必要条件: {val.get('required','')}")
+            lines.append(f"  {val.get('condition', '')}")
+            lines.append(f"    必要条件: {val.get('required', '')}")
             for ex in val.get("examples", []):
                 lines.append(f"    例: {ex}")
     return "\n".join(lines)
@@ -123,8 +123,8 @@ def get_faq_text(category: str = "", max_items: int = 10) -> str:
     faqs = faqs[:max_items]
     lines = ["【FAQ】"]
     for faq in faqs:
-        lines.append(f"\nQ（{faq.get('category','')}）: {faq.get('q','')}")
-        lines.append(f"A: {faq.get('a','')}")
+        lines.append(f"\nQ（{faq.get('category', '')}）: {faq.get('q', '')}")
+        lines.append(f"A: {faq.get('a', '')}")
     return "\n".join(lines)
 
 
@@ -134,14 +134,14 @@ def get_cases_text(max_cases: int = 3) -> str:
     cases = kb.get("cases", [])[:max_cases]
     lines = ["【審査事例集】"]
     for case in cases:
-        lines.append(f"\n▶ 事例: {case.get('title','')}")
-        lines.append(f"  業種: {case.get('industry','')} / 設立: {case.get('company_age','')}年 / 従業員: {case.get('employees','')}名")
+        lines.append(f"\n▶ 事例: {case.get('title', '')}")
+        lines.append(f"  業種: {case.get('industry', '')} / 設立: {case.get('company_age', '')}年 / 従業員: {case.get('employees', '')}名")
         q = case.get("quant_score") or case.get("quant_score_initial", "")
         ql = case.get("qual_total", "")
         t = case.get("total_score") or case.get("total_score_final", "")
         g = case.get("grade") or case.get("grade_final", "")
         lines.append(f"  定量スコア: {q} / 定性スコア: {ql} / 総合: {t} → {g}ランク")
-        lines.append(f"  判定: {case.get('decision','')}")
+        lines.append(f"  判定: {case.get('decision', '')}")
         for lesson in case.get("lessons", [])[:2]:
             lines.append(f"  学び: {lesson}")
     return "\n".join(lines)
@@ -154,10 +154,10 @@ def get_improvement_guide_text() -> str:
     lines = ["【スコア改善ガイド】"]
     lines.append("\n■ すぐにできること（クイックウィン）")
     for item in guide.get("quick_wins", []):
-        lines.append(f"  ・{item.get('action','')}: {item.get('impact','')}（{item.get('timeline','')}）")
+        lines.append(f"  ・{item.get('action', '')}: {item.get('impact', '')}（{item.get('timeline', '')}）")
     lines.append("\n■ 中期的取り組み")
     for item in guide.get("medium_term", []):
-        lines.append(f"  ・{item.get('action','')}: {item.get('impact','')}（{item.get('timeline','')}）")
+        lines.append(f"  ・{item.get('action', '')}: {item.get('impact', '')}（{item.get('timeline', '')}）")
     return "\n".join(lines)
 
 
@@ -257,8 +257,8 @@ def build_knowledge_context(
             if matched:
                 lines = ["【関連FAQ】"]
                 for faq in matched:
-                    lines.append(f"\nQ: {faq.get('q','')}")
-                    lines.append(f"A: {faq.get('a','')}")
+                    lines.append(f"\nQ: {faq.get('q', '')}")
+                    lines.append(f"A: {faq.get('a', '')}")
                 sections.append("\n".join(lines))
             else:
                 sections.append(get_faq_text(max_items=5))
@@ -271,13 +271,13 @@ def build_knowledge_context(
             if matched_cases:
                 lines = ["【関連審査事例】"]
                 for case in matched_cases:
-                    lines.append(f"\n▶ {case.get('title','')}")
+                    lines.append(f"\n▶ {case.get('title', '')}")
                     q = case.get("quant_score") or case.get("quant_score_initial", "")
                     ql = case.get("qual_total", "")
                     t = case.get("total_score") or case.get("total_score_final", "")
                     g = case.get("grade") or case.get("grade_final", "")
                     lines.append(f"  スコア: 定量{q} / 定性{ql} / 総合{t} → {g}")
-                    lines.append(f"  判定: {case.get('decision','')}")
+                    lines.append(f"  判定: {case.get('decision', '')}")
                     for lesson in case.get("lessons", [])[:2]:
                         lines.append(f"  ・{lesson}")
                 sections.append("\n".join(lines))

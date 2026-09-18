@@ -1,6 +1,22 @@
 from scripts import build_cloud_chat_memory_pack as pack
 
 
+def test_collect_mid_term_memory_warns_on_stderr_when_timeline_delta_fails(monkeypatch, capsys):
+    """build_timeline_deltaの失敗を空リストへ握りつぶすだけでなく、無音にならない
+    ことを確認する回帰テスト。この関数はフォールバック文言込みの設計のため
+    exit codeは変えず、可視化のみ行う。"""
+
+    def boom(memory_dir, target_day, days=4):
+        raise RuntimeError("timeline delta broke")
+
+    monkeypatch.setattr("scripts.build_shion_timeline_delta.build_timeline_delta", boom)
+
+    items = pack.collect_mid_term_memory(limit=3)
+
+    assert items == []
+    assert "警告" in capsys.readouterr().err
+
+
 def test_collect_mid_term_memory_uses_timeline_delta(monkeypatch):
     monkeypatch.setattr(
         "scripts.build_shion_timeline_delta.build_timeline_delta",

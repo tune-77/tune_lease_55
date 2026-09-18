@@ -35,6 +35,17 @@ from scoring_core import APPROVAL_LINE, REVIEW_LINE
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
 _USAGE_LOG_PATH = _REPO_ROOT / "data" / "shion_memory_usage_log.jsonl"
+_JUDGMENT_FEEDBACK_PATH = _REPO_ROOT / "data" / "judgment_asset_usage_feedback.jsonl"
+
+# 人間が明示した評価だけを想起順位へ弱く反映する。成約/失注だけでは判断資産の
+# 有効性を断定できないため、案件結果そのものを直接加点しない。
+_OUTCOME_WEIGHTS = {
+    "helped": 1.0,
+    "used": 0.35,
+    "neutral": 0.0,
+    "challenged": -0.6,
+    "rejected": -1.0,
+}
 
 # --- リランカー設定（旧 shion_memory_rerank.py、唯一の呼び出し元だったここへ統合） ---
 _RERANK_POOL_SIZE = 12
@@ -231,6 +242,74 @@ def load_memory_index(path: Path = _INDEX_PATH) -> dict[str, Any]:
         return {}
 
 
+def resolve_judgment_feedback_path() -> Path:
+    """Cloud Run / local の正規 data path から判断資産評価台帳を解決する。"""
+    try:
+        from runtime_paths import get_data_path
+
+        return Path(get_data_path("judgment_asset_usage_feedback.jsonl"))
+    except Exception:
+        return _JUDGMENT_FEEDBACK_PATH
+
+
+def load_judgment_asset_outcome_signals(path: Path | None = None) -> dict[str, dict[str, Any]]:
+    """人間評価を、証拠数で縮約した小さな想起補正へ集約する。
+
+    1件だけの評価で順位が固定されないよう `n + 2` で縮約し、最大でも +/-1.2点に
+    制限する。壊れた行は無視し、想起本体を止めない。
+    """
+    from judgment_asset_bandit import (
+        normalize_asset_id,
+        normalize_outcome,
+        read_feedback_rows,
+        select_current_feedback_rows,
+    )
+
+    feedback_path = path or resolve_judgment_feedback_path()
+    totals: dict[str, dict[str, Any]] = {}
+    for row in select_current_feedback_rows(read_feedback_rows(feedback_path)):
+        source = str(row.get("source") or "").strip().lower()
+        case_id = str(row.get("case_id") or row.get("case") or "").strip().lower()
+        if source == "simulation" or case_id.startswith("sim-"):
+            continue
+        rule_id = normalize_asset_id(
+            row.get("rule_id")
+            or row.get("judgment_asset_id")
+            or row.get("asset_id")
+            or row.get("candidate_id")
+        )
+        outcome = normalize_outcome(row)
+        if not rule_id or outcome not in _OUTCOME_WEIGHTS:
+            continue
+        item = totals.setdefault(
+            rule_id,
+            {
+                "evidence_count": 0,
+                "helped_count": 0,
+                "challenged_count": 0,
+                "rejected_count": 0,
+                "weighted_sum": 0.0,
+                "last_feedback_at": "",
+            },
+        )
+        item["evidence_count"] += 1
+        item["weighted_sum"] += _OUTCOME_WEIGHTS[outcome]
+        if outcome == "helped":
+            item["helped_count"] += 1
+        elif outcome == "challenged":
+            item["challenged_count"] += 1
+        elif outcome == "rejected":
+            item["rejected_count"] += 1
+        used_at = str(row.get("used_at") or row.get("recorded_at") or "")
+        if used_at > item["last_feedback_at"]:
+            item["last_feedback_at"] = used_at
+    for item in totals.values():
+        n = int(item["evidence_count"])
+        raw = float(item.pop("weighted_sum")) / (n + 2) * 1.2
+        item["recall_adjustment"] = round(max(-1.2, min(1.2, raw)), 4)
+    return totals
+
+
 def infer_recall_route(question: str) -> str:
     """カテゴリ別のヒット数で想起ルートを決める。
 
@@ -254,6 +333,7 @@ def recall_memories(
     limit: int = 5,
     index_path: Path | None = None,
     vector_scores: dict[str, float] | None = None,
+    outcome_signals: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     index = load_memory_index(index_path if index_path is not None else resolve_index_path())
     records = index.get("records") or []
@@ -264,6 +344,11 @@ def recall_memories(
     query_terms = _query_terms(question)
     case_profile = _extract_case_profile(question) if route == "case_screening" else {}
     vector_similarity = _resolve_vector_scores(question, vector_scores)
+    asset_outcomes = (
+        outcome_signals
+        if outcome_signals is not None
+        else (load_judgment_asset_outcome_signals() if route == "case_screening" else {})
+    )
 
     scored: list[tuple[float, dict[str, Any]]] = []
     for record in records:
@@ -278,6 +363,10 @@ def recall_memories(
             continue
         memory_type = str(record.get("memory_type") or "")
         score = _score_record(content, memory_type, preferred_types, query_terms, case_profile, record)
+        asset_id = str(record.get("judgment_asset_id") or "")
+        outcome_signal = asset_outcomes.get(asset_id) if asset_id else None
+        if outcome_signal:
+            score += float(outcome_signal.get("recall_adjustment") or 0.0)
         if vector_similarity:
             # 埋め込み類似はキーワード0件（同義語・言い換え）の記憶も救えるよう加算
             sim = float(vector_similarity.get(str(record.get("id") or ""), 0.0))
@@ -313,6 +402,20 @@ def recall_memories(
                 "memory_type": str(r.get("memory_type") or ""),
                 "status": str(r.get("status") or "active"),
                 "vector_similarity": round(float(vector_similarity.get(rid, 0.0)), 3),
+                "judgment_asset_id": str(r.get("judgment_asset_id") or ""),
+                "outcome_adjustment": round(
+                    float(
+                        (asset_outcomes.get(str(r.get("judgment_asset_id") or "")) or {}).get(
+                            "recall_adjustment", 0.0
+                        )
+                    ),
+                    4,
+                ),
+                "outcome_evidence_count": int(
+                    (asset_outcomes.get(str(r.get("judgment_asset_id") or "")) or {}).get(
+                        "evidence_count", 0
+                    )
+                ),
             }
         )
     return {
@@ -321,6 +424,9 @@ def recall_memories(
         "case_profile": case_profile,
         "practical_scene": practical_scene,
         "vector_used": bool(vector_similarity),
+        "outcome_weighting_used": any(
+            float(item.get("outcome_adjustment") or 0.0) != 0.0 for item in match_reasons
+        ),
         "rerank_used": rerank_used,
         "memories": selected,
         "refs": [str(r.get("id") or "") for r in selected if r.get("id")],

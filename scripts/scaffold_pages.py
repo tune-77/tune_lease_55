@@ -68,10 +68,10 @@ export default function {component_name}Page() {{
 for route, title in routes.items():
     dir_path = os.path.join(base_path, route)
     os.makedirs(dir_path, exist_ok=True)
-    
+
     # Generate component name from route (e.g. batch -> Batch, coef-analysis -> CoefAnalysis)
     comp_name = "".join([part.capitalize() for part in route.split('-')])
-    
+
     file_path = os.path.join(dir_path, "page.tsx")
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(template.replace("{component_name}", comp_name).replace("{title}", title).strip())

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScoringFormData } from '../../types';
 import { API_BASE } from '../../lib/api';
 import { focusNextScreeningNumber, parseHumanNumberInput } from '../../lib/numberInput';
@@ -25,6 +25,11 @@ interface IndustrySuggestion {
   reason: string;
 }
 
+interface IndustrySuggestionResult {
+  hint: string;
+  items: IndustrySuggestion[];
+}
+
 function extractSubs(entry: IndustryMasterEntry | string[] | undefined): string[] {
   if (!entry) return [];
   if (Array.isArray(entry)) return entry.filter(Boolean);
@@ -35,8 +40,15 @@ function extractSubs(entry: IndustryMasterEntry | string[] | undefined): string[
 export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   const [industryMaster, setIndustryMaster] = useState<IndustryMaster>({});
   const [majors, setMajors] = useState<string[]>([]);
-  const [subs, setSubs] = useState<string[]>([]);
-  const [industrySuggestions, setIndustrySuggestions] = useState<IndustrySuggestion[]>([]);
+  const [industrySuggestionResult, setIndustrySuggestionResult] = useState<IndustrySuggestionResult>({ hint: '', items: [] });
+  const subs = useMemo(
+    () => extractSubs(industryMaster[data.industry_major]),
+    [industryMaster, data.industry_major],
+  );
+  const industryHint = [data.asset_name, data.industry_detail, data.company_name].filter(Boolean).join(' ').trim();
+  const visibleIndustrySuggestions = industryHint.length >= 2 && industrySuggestionResult.hint === industryHint
+    ? industrySuggestionResult.items
+    : [];
 
   // マスターデータの取得
   useEffect(() => {
@@ -47,11 +59,6 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           const jsicData = await res.json();
           setIndustryMaster(jsicData);
           setMajors(Object.keys(jsicData));
-          
-          // 初期値の整合性チェック
-          if (data.industry_major && jsicData[data.industry_major]) {
-            setSubs(extractSubs(jsicData[data.industry_major]));
-          }
         }
       } catch (err) {
         console.error("Failed to fetch industries:", err);
@@ -63,19 +70,16 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   // 大分類変更時の連動
   useEffect(() => {
     if (data.industry_major && industryMaster[data.industry_major]) {
-      const newSubs = extractSubs(industryMaster[data.industry_major]);
-      setSubs(newSubs);
       // もし現在の中分類が新しいリストになければ、最初の項目を選択
-      if (!newSubs.includes(data.industry_sub)) {
-        onChange('industry_sub', newSubs[0] || "");
+      if (!subs.includes(data.industry_sub)) {
+        onChange('industry_sub', subs[0] || "");
       }
     }
-  }, [data.industry_major, industryMaster]);
+  }, [data.industry_major, data.industry_sub, industryMaster, onChange, subs]);
 
   useEffect(() => {
-    const hintText = [data.asset_name, data.industry_detail, data.company_name].filter(Boolean).join(' ').trim();
+    const hintText = industryHint;
     if (hintText.length < 2) {
-      setIndustrySuggestions([]);
       return;
     }
 
@@ -92,16 +96,19 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
         });
         if (!res.ok) return;
         const body = await res.json();
-        setIndustrySuggestions((body.suggestions || []).filter((item: IndustrySuggestion) => (
-          item.industry_major !== data.industry_major || item.industry_sub !== data.industry_sub
-        )));
+        setIndustrySuggestionResult({
+          hint: hintText,
+          items: (body.suggestions || []).filter((item: IndustrySuggestion) => (
+            item.industry_major !== data.industry_major || item.industry_sub !== data.industry_sub
+          )),
+        });
       } catch (err) {
         console.error('Failed to suggest industry:', err);
       }
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [data.asset_name, data.industry_detail, data.company_name, data.industry_major, data.industry_sub]);
+  }, [industryHint, data.asset_name, data.industry_detail, data.company_name, data.industry_major, data.industry_sub]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
     const { name, value, type } = e.target;
@@ -206,7 +213,7 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
           <p className="text-[10px] text-slate-400 mt-1">※ AIがより正確な業界分析を行うためのヒントになります</p>
         </div>
 
-        {industrySuggestions.length > 0 && (
+        {visibleIndustrySuggestions.length > 0 && (
           <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div>
@@ -214,11 +221,11 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
                 <p className="text-[10px] font-bold text-emerald-700">物件名・企業名・詳細キーワードから推測。必要ならクリックで反映します。</p>
               </div>
               <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-emerald-700">
-                {industrySuggestions.length}件
+                {visibleIndustrySuggestions.length}件
               </span>
             </div>
             <div className="grid gap-2 md:grid-cols-3">
-              {industrySuggestions.map((item) => (
+              {visibleIndustrySuggestions.map((item) => (
                 <button
                   type="button"
                   key={`${item.industry_major}-${item.industry_sub}`}

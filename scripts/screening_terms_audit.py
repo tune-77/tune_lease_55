@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -108,6 +109,22 @@ SAFE_HINTS = (
     "Q_risk",
     "quantum_risk",
     "減点ではなく",
+    # PDをスコアと同一視しない/PDではないと明示する用語解説・disclaimer文言。
+    # DANGER_PATTERNSに一致しない限りreviewへ落ちてしまっていた誤検知を解消する。
+    "PD用語説明",
+    "PD（デフォルト確率）",
+    "デフォルト確率（PD）",
+    "PD（Probability of Default）",
+    "PDの数値をどう解釈",
+    "PDのみで機械的に判断せず",
+    "PD以外の財務・格付要因も確認",
+    "スプレッドとPDの関係",
+    "PD高水準のリスクヘッジ",
+    "PD）ではありません",
+    "校正したPDではない",
+    "PDではありません",
+    "PDや信用スコアではなく",
+    "PDやスコアではなく",
 )
 
 
@@ -271,6 +288,11 @@ def main() -> int:
         print(f"status={report['status']}")
         print(f"warn={report.get('counts', {}).get('warn', 0)}")
         print(f"review={report.get('counts', {}).get('review', 0)}")
+    # scanned_files=0 は「監査対象を1件も読めなかった」状態で、findings=0（クリーン）とは
+    # 別物。DEFAULT_SCAN_TARGETSのパスが移動/リネームされると静かにここへ落ちるため検知する。
+    if report["scanned_files"] == 0:
+        print("警告: 監査対象ファイルを1件もスキャンできませんでした。scan targetsのパスを確認してください。", file=sys.stderr)
+        return 1
     return 0
 
 

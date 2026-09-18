@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/asset-finance", tags=["asset-finance"])
 
+
 class AssetFinanceRequest(BaseModel):
     asset_name: str = Field("", max_length=120)
     asset_type: str = Field(..., description="建機 / 工作機械 / PC/IT / 医療機器 / ドローン / 車両")
@@ -463,4 +464,3 @@ def save_asset_finance_to_obsidian(req: AssetFinanceSaveToObsidianRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Obsidian保存エラー: {e}")
-

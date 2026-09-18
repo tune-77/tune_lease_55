@@ -127,9 +127,10 @@ def _get_asset_market_ctx() -> str:
     from components.asset_score_detail import get_asset_context_for_ai
     return get_asset_context_for_ai()
 
+
 # 後方互換用（古いコードが参照している場合のため）
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-_GEMINI_URL    = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 # ==============================================================================
 # 100選マスターデータ
@@ -374,12 +375,12 @@ for _iv_cat, _iv_phrases in _INDUSTRY_VEHICLE_PHRASES.items():
 _DEFAULT_EVIDENCE_WEIGHTS = {
     "resale_high":   0.15,  # リセール高
     "resale_mid":    0.05,  # リセール中
-    "resale_low":   -0.05,  # リセール低
+    "resale_low": -0.05,  # リセール低
     "repeat":        0.04,  # リピート1件あたり（最大+0.20）
     "subsidy":       0.12,  # 補助金採択
     "bank":          0.10,  # メイン銀行支援
     "intuition":     0.03,  # 直感スライダー1ポイントあたり（基準=3）
-    
+
     # 成約条件のフィードバック学習用初期値
     "cond_親会社保証": 0.13,
     "cond_担保保全":  0.11,
@@ -400,7 +401,7 @@ def _learn_evidence_weights_from_db() -> dict:
     EVIDENCE_WEIGHTS を統計的に逆算・学習する。
     """
     learned = {}
-    
+
     # 1. gunshi_cases からの基礎項目学習
     try:
         init_db()
@@ -414,7 +415,7 @@ def _learn_evidence_weights_from_db() -> dict:
         rows = []
 
     if len(rows) >= _CPD_MIN_CASES:
-        total    = len(rows)
+        total = len(rows)
         base_win = sum(1 for r in rows if r[4] == "成約") / total
 
         def _diff(filtered):
@@ -442,17 +443,17 @@ def _learn_evidence_weights_from_db() -> dict:
             table_exists = cur.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='past_cases'"
             ).fetchone()
-            
+
             if table_exists:
                 past_rows = cur.execute(
                     "SELECT final_status, data FROM past_cases WHERE final_status IN ('成約', '失注', '検収', '検収完了')"
                 ).fetchall()
-                
+
                 if len(past_rows) >= 10:
                     total_past = len(past_rows)
                     # '検収' または '検収完了' も成約としてカウントする
                     base_past_win = sum(1 for r in past_rows if r[0] in ("成約", "検収", "検収完了")) / total_past
-                    
+
                     # 条件ごとの集計用バッファ
                     # マッピング: 画面の選択肢 -> 重みキー
                     cond_map = {
@@ -462,9 +463,9 @@ def _learn_evidence_weights_from_db() -> dict:
                         "本件限度": "cond_限度額設定",
                         "次回決算まで本件限度": "cond_限度額設定",
                     }
-                    
+
                     cond_stats = {k: {"total": 0, "win": 0} for k in cond_map.keys()}
-                    
+
                     import json
                     for status, data_str in past_rows:
                         is_win = 1 if status == "成約" else 0
@@ -478,7 +479,7 @@ def _learn_evidence_weights_from_db() -> dict:
                                         cond_stats[c]["win"] += is_win
                         except:
                             continue
-                    
+
                     # 貢献度の算出 (成約率の差分)
                     for c_name, stat in cond_stats.items():
                         if stat["total"] >= 3:  # 信頼性のための最低適用回数
@@ -498,7 +499,7 @@ def refresh_evidence_weights() -> None:
     """
     global EVIDENCE_WEIGHTS
     learned = _learn_evidence_weights_from_db()
-    merged  = dict(_DEFAULT_EVIDENCE_WEIGHTS)
+    merged = dict(_DEFAULT_EVIDENCE_WEIGHTS)
     merged.update(learned)           # 実績で上書き（intuition/repeat はデフォルト維持）
     EVIDENCE_WEIGHTS = merged
 
@@ -629,12 +630,12 @@ def select_top_phrases(
 
     # 物件名のキーワード（大文字化して比較）
     asset_upper = (asset_name or "").upper()
-    is_hiace    = any(k.upper() in asset_upper for k in ["ハイエース", "キャラバン"])
-    is_keiban   = any(k.upper() in asset_upper for k in ["エブリイ", "エブリィ", "ハイゼット", "NV100", "バネット", "アトレー"])
-    is_compact  = any(k.upper() in asset_upper for k in ["ヤリス", "ノート", "フィット", "アクア", "カローラ", "ヴィッツ"])
-    is_ct_mri   = any(k.upper() in asset_upper for k in ["CT", "MRI", "PET", "レントゲン", "X線"])
-    is_cnc      = any(k.upper() in asset_upper for k in ["マシニング", "CNC", "旋盤", "プレス", "ロボット", "レーザー"])
-    is_truck    = any(k.upper() in asset_upper for k in ["トラック", "ダンプ", "ウイング", "冷凍", "保冷"])
+    is_hiace = any(k.upper() in asset_upper for k in ["ハイエース", "キャラバン"])
+    is_keiban = any(k.upper() in asset_upper for k in ["エブリイ", "エブリィ", "ハイゼット", "NV100", "バネット", "アトレー"])
+    is_compact = any(k.upper() in asset_upper for k in ["ヤリス", "ノート", "フィット", "アクア", "カローラ", "ヴィッツ"])
+    is_ct_mri = any(k.upper() in asset_upper for k in ["CT", "MRI", "PET", "レントゲン", "X線"])
+    is_cnc = any(k.upper() in asset_upper for k in ["マシニング", "CNC", "旋盤", "プレス", "ロボット", "レーザー"])
+    is_truck = any(k.upper() in asset_upper for k in ["トラック", "ダンプ", "ウイング", "冷凍", "保冷"])
 
     def score_phrase(p: dict) -> float:
         s = p["prob_boost"]
@@ -710,7 +711,7 @@ def select_top_phrases(
                 ("Related_Assets",     ["個人資産", "保全完結"],                              0.04),
                 # Main_Bank_Support: bank=True（フォーム入力）と被る場合は二重加算しない
                 ("Main_Bank_Support",  ["メイン", "メイン銀行", "支援"],                      0.04 if not bank else 0.0),
-                ("Related_Bank_Status",["信用力", "実績", "銀行取引"],                        0.03),
+                ("Related_Bank_Status", ["信用力", "実績", "銀行取引"],                        0.03),
                 ("One_Time_Deal",      ["本件限り", "条件付"],                                0.03),
                 ("Insolvent_Status",   ["逆転", "突破", "DSCR", "保証"],                      0.04),
             ]
@@ -816,9 +817,9 @@ def build_gunshi_prompt(
     comparison_text: str = "",  # ← 財務比較テキスト（res["comparison"]）
     reverse_bayes_text: str = "",  # ← 逆転のベイズ加点要約
     fp0_patch_text: str = "",  # ← FP=0 魂のパッチ要約
-    humor_style: str = "standard", # ← つん子モード拡張用
+    humor_style: str = "standard",  # ← つん子モード拡張用
     asset_market_context: str = "",  # ← get_asset_context_for_ai() の返値
-    asset_finance_context: str = "", # ← アセットファイナンス評価データの返値
+    asset_finance_context: str = "",  # ← アセットファイナンス評価データの返値
     estat_context_text: str = "",  # ← e-Stat統合文脈
     dissonance_section: str = "",  # ← リース知性体の未解決の懸念（GWT放送）
 ) -> str:
@@ -826,7 +827,8 @@ def build_gunshi_prompt(
     success_patterns = success_patterns or {"success_samples": [], "fail_samples": []}
     top_phrases = top_phrases or []
     try:
-        import sys as _sys, os as _os
+        import sys as _sys
+        import os as _os
         _repo = _os.path.abspath(_os.path.dirname(__file__))
         if _repo not in _sys.path:
             _sys.path.insert(0, _repo)
@@ -860,7 +862,7 @@ def build_gunshi_prompt(
         for f in success_patterns["fail_samples"]:
             fails.append(
                 f"  - Score {f['score']:.0f} / "
-                f"リセール{f['resale']} → 非成約 (備考: {f.get('notes','なし')})"
+                f"リセール{f['resale']} → 非成約 (備考: {f.get('notes', 'なし')})"
             )
         fail_text = "【過去の非成約事例（教訓）】\n" + "\n".join(fails)
 

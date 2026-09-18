@@ -525,7 +525,14 @@ def _score_one(row: dict) -> dict:
                 _weighted_score = round(asset_score * _aw + res["score"] * _ow, 1)
                 res["score"]          = _weighted_score
                 res["score_base"]     = _weighted_score
-                res["hantei"]         = "承認圏内" if _weighted_score >= _approval_line else "要審議"
+                res["score_based_hantei"] = (
+                    "承認圏内" if _weighted_score >= _approval_line else "要審議"
+                )
+                res["hantei"] = (
+                    "要審議"
+                    if res.get("risk_review_required")
+                    else res["score_based_hantei"]
+                )
                 res["asset_weight"]   = _aw
                 res["obligor_weight"] = _ow
                 res["asset_category"] = asset_category

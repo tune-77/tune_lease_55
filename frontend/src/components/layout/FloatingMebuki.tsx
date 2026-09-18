@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { apiClient } from "@/lib/api";
 import { renderInline } from "@/lib/renderMarkdown";
 import { Send, X, Loader2, NotebookPen, Lightbulb, Trash2 } from "lucide-react";
@@ -62,7 +63,8 @@ const renderMebukiContent = (text: string): React.ReactNode[] => {
 export default function FloatingMebuki() {
   const pathname = usePathname();
   const suppressPassiveBubble = false;
-  const [mebukiState, setMebukiState] = useState<'guide' | 'approve' | 'challenge' | 'reject'>('guide');
+  type MebukiState = 'guide' | 'approve' | 'challenge' | 'reject';
+  const [mebukiState, setMebukiState] = useState<MebukiState>('guide');
   const [bubbleMessage, setBubbleMessage] = useState("システム稼働中。いつでもサポートします！");
   const [isBubbleVisible, setIsBubbleVisible] = useState(!suppressPassiveBubble);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -97,8 +99,8 @@ export default function FloatingMebuki() {
 
   // カスタムイベントでめぶきの状態を制御する
   useEffect(() => {
-    const handleMebukiEvent = (e: any) => {
-      const { type, text } = e.detail;
+    const handleMebukiEvent = (e: Event) => {
+      const { type, text } = (e as CustomEvent<{ type: MebukiState; text: string }>).detail;
       setMebukiState(type);
       setBubbleMessage(cleanMebukiText(text));
       setIsBubbleVisible(true);
@@ -323,9 +325,11 @@ export default function FloatingMebuki() {
           {/* ヘッダー */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <img
+              <Image
                 src={`/mebuki/${mebukiState}.png`}
                 alt="めぶきちゃん"
+                width={28}
+                height={28}
                 className="w-7 h-7 rounded-full border-2 border-white object-cover bg-emerald-100"
               />
               <span className="text-white font-black text-sm">💬 めぶきちゃん</span>
@@ -376,9 +380,11 @@ export default function FloatingMebuki() {
               </div>
             ) : messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center px-4">
-                <img
+                <Image
                   src={`/mebuki/guide.png`}
                   alt="めぶきちゃん"
+                  width={48}
+                  height={48}
                   className="w-12 h-12 rounded-full border-2 border-emerald-300 object-cover bg-emerald-100 mb-2"
                 />
                 <p className="text-slate-600 font-bold text-xs">こんにちは！めぶきちゃんです🌿</p>
@@ -391,9 +397,11 @@ export default function FloatingMebuki() {
                   className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {msg.role === "assistant" && (
-                    <img
+                    <Image
                       src={`/mebuki/${mebukiState}.png`}
                       alt="めぶきちゃん"
+                      width={24}
+                      height={24}
                       className="w-6 h-6 rounded-full border border-emerald-300 object-cover bg-emerald-100 flex-shrink-0 mt-0.5"
                     />
                   )}
@@ -425,9 +433,11 @@ export default function FloatingMebuki() {
             {/* ローディングドット */}
             {loading && (
               <div className="flex gap-2 justify-start">
-                <img
+                <Image
                   src={`/mebuki/${mebukiState}.png`}
                   alt="めぶきちゃん"
+                  width={24}
+                  height={24}
                   className="w-6 h-6 rounded-full border border-emerald-300 object-cover bg-emerald-100 flex-shrink-0 mt-0.5"
                 />
                 <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-sm px-3 py-2 shadow-sm">
@@ -513,10 +523,11 @@ export default function FloatingMebuki() {
           }`}
           onClick={handleMebukiClick}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src={`/mebuki/${mebukiState}.png`}
             alt="めぶきちゃん"
+            fill
+            sizes="(min-width: 640px) 128px, 80px"
             className="w-full h-full object-cover rounded-full border-4 border-white shadow-lg bg-emerald-100"
           />
 

@@ -28,6 +28,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -244,12 +245,14 @@ def collect_mid_term_memory(limit: int = 6, days: int = 5) -> list[str]:
     """Cloud Runチャットに持たせる最近数日の継続論点を抽出する。"""
     try:
         from scripts.build_shion_timeline_delta import build_timeline_delta
-    except Exception:
+    except Exception as exc:
+        print(f"警告: build_shion_timeline_delta をimportできませんでした: {type(exc).__name__}", file=sys.stderr)
         return []
 
     try:
         payload = build_timeline_delta(STATE_DIR, datetime.now().date(), days=days)
-    except Exception:
+    except Exception as exc:
+        print(f"警告: build_timeline_delta が失敗しました（中期継続論点は今回0件扱い）: {type(exc).__name__}", file=sys.stderr)
         return []
 
     layer = payload.get("memory_layers") or {}
@@ -527,7 +530,8 @@ def write_pack(markdown: str, target_date: str, dry_run: bool) -> Path:
         print(markdown)
         return out_path
     if not (VAULT_PATH / ".obsidian").exists():
-        raise SystemExit(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
+        report_pipeline_failure(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
+        raise SystemExit(1)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(markdown, encoding="utf-8")
     latest_path.write_text(markdown, encoding="utf-8")
@@ -593,7 +597,8 @@ def write_layer_packs(
             print(content)
         return paths
     if not (VAULT_PATH / ".obsidian").exists():
-        raise SystemExit(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
+        report_pipeline_failure(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
+        raise SystemExit(1)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, content in layers:
         (out_dir / name).write_text(content, encoding="utf-8")

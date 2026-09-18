@@ -13,9 +13,9 @@
       }
     },
     "recommended": true,
-    "summary": "Context reset recommended (auto): 20 recent edit count exceed threshold 8",
+    "summary": "Context reset recommended (auto): 8 recent edit count exceed threshold 8",
     "reasons": [
-      "20 recent edit count exceed threshold 8"
+      "8 recent edit count exceed threshold 8"
     ],
     "candidates": [
       {
@@ -35,7 +35,7 @@
       {
         "key": "recent_edits",
         "label": "recent edit count",
-        "actual": 20,
+        "actual": 8,
         "threshold": 8,
         "triggered": true
       },
@@ -49,7 +49,7 @@
       {
         "key": "session_age_minutes",
         "label": "session age (minutes)",
-        "actual": 52,
+        "actual": 0,
         "threshold": 120,
         "triggered": false
       }
@@ -57,9 +57,9 @@
     "counters": {
       "wipTasks": 0,
       "blockedTasks": 0,
-      "recentEdits": 20,
+      "recentEdits": 8,
       "failedChecks": 0,
-      "sessionAgeMinutes": 52
+      "sessionAgeMinutes": null
     }
   },
   "continuity": {
@@ -71,29 +71,17 @@
   "legacy_version": "1.0.0",
   "metrics": null,
   "recentEdits": [
-    ".agents/skills/improvement-report-sync/scripts/sync_improvement_reports.py",
-    ".claude/memory/session-log.md",
-    ".claude/reports/api-health/latest.md",
-    ".claude/reports/build/latest.md",
-    ".claude/reports/data-quality/latest.md",
-    ".claude/reports/log-analysis/latest.md",
-    ".claude/reports/rule-validation/latest.md",
-    ".claude/reports/scoring-audit/latest.md",
     ".claude/state/handoff-artifact.json",
     ".claude/state/precompact-snapshot.json",
-    ".claude/state/session.events.jsonl",
-    "WEEKLY_LOG.md",
-    "api/rule_engine/ledger_rules.json",
-    "data/aurion_daily/latest.json",
-    "data/coeff_auto.json",
-    "data/news_judgment_signals_latest.json",
-    "data/shion_monitor_report_state.json",
-    "data/training_meta.json",
-    "frontend/public/generated/judgment-asset-graph/index.html",
-    "frontend/public/lease-grumble/2026-07-26.webp"
+    ".gitignore",
+    "api/main.py",
+    "scripts/recursive_self_improvement.py",
+    "scripts/run_daily_improvement_core.sh",
+    "scripts/error_log_candidate_intake.py",
+    "scripts/test_failure_intake.py"
   ],
   "sessionId": "",
-  "timestamp": "2026-09-08T12:57:10Z",
+  "timestamp": "2026-09-17T14:02:34Z",
   "version": "1.0.0",
   "wipTasks": null
 }

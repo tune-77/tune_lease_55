@@ -154,8 +154,13 @@ def _get_build_loop_proof():
     return _loop_proof_mod
 
 
-
 # ── endpoints ───────────────────────────────────────────────────────────────
+
+@router.get("/api/health/auth")
+def authenticated_health():
+    """起動時に認証設定も含めて確認する軽量なAPI。"""
+    return {"ok": True}
+
 
 @router.get("/health")
 @router.get("/healthz", include_in_schema=False)
@@ -224,7 +229,6 @@ def get_loop_proof():
         raise HTTPException(status_code=500, detail="loop-proof metrics unavailable")
 
 
-
 @router.get("/")
 def read_root():
     return {"message": "Lease Scoring API is running."}
@@ -243,6 +247,7 @@ def get_industries():
                 return json.load(f)
     return {}
 
+
 @router.get("/api/master/assets")
 def get_assets():
     paths = [
@@ -255,6 +260,7 @@ def get_assets():
                 return json.load(f)
     return {"items": []}
 
+
 @router.get("/api/master/qualitative")
 def get_qualitative_items():
     try:
@@ -262,7 +268,6 @@ def get_qualitative_items():
         return {"items": QUALITATIVE_SCORING_CORRECTION_ITEMS}
     except Exception:
         return {"items": []}
-
 
 
 class IndustrySuggestRequest(BaseModel):
@@ -384,7 +389,6 @@ def suggest_industry(req: IndustrySuggestRequest):
 
     suggestions.sort(key=lambda item: item["confidence"], reverse=True)
     return {"suggestions": suggestions[:3]}
-
 
 
 # ── industry/stats (separate location in main.py) ────────────────────────────

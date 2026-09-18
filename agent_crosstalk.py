@@ -278,7 +278,7 @@ JSON配列のみ出力してください。"""
         conversation = _fallback_crosstalk(topic_info)
 
     # ── ソーシャルフィードに保存 ──
-    thread_id = f"crosstalk_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(100,999)}"
+    thread_id = f"crosstalk_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(100, 999)}"
     now = datetime.datetime.now()
     saved_messages = []
 

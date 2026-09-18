@@ -24,15 +24,15 @@ def _to_df(cases: list[dict]) -> pd.DataFrame:
 def train() -> None:
     print("データ読込中...")
     all_cases = load_all_cases()
-    won   = [c for c in all_cases if c.get("final_status") == "成約"]
-    lost  = [c for c in all_cases if c.get("final_status") == "失注"]
+    won = [c for c in all_cases if c.get("final_status") == "成約"]
+    lost = [c for c in all_cases if c.get("final_status") == "失注"]
     print(f"成約: {len(won)}件  失注: {len(lost)}件")
 
-    df_won     = _to_df(won)
+    df_won = _to_df(won)
     df_labeled = pd.concat([_to_df(won), _to_df(lost)], ignore_index=True)
-    labels     = ["成約"] * len(won) + ["失注"] * len(lost)
+    labels = ["成約"] * len(won) + ["失注"] * len(lost)
 
-    print(f"学習開始（Isolation Forest + UMAP 2D）…")
+    print("学習開始（Isolation Forest + UMAP 2D）…")
     scorer = UMAPAnomalyScorer(FEATURES)
     scorer.fit(df_won, df_labeled, labels)
 

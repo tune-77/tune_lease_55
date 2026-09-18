@@ -17,25 +17,25 @@ class TestEvaluateCondition:
 
     @pytest.mark.parametrize("value, op, threshold, expected", [
         # 大なり・以上
-        (100,   ">",  50,  True),
-        (50,    ">",  50,  False),
-        (51,    ">=", 50,  True),
-        (50,    ">=", 50,  True),
-        (49,    ">=", 50,  False),
+        (100,   ">",  50, True),
+        (50,    ">",  50, False),
+        (51,    ">=", 50, True),
+        (50,    ">=", 50, True),
+        (49,    ">=", 50, False),
         # 小なり・以下
-        (30,    "<",  50,  True),
-        (50,    "<",  50,  False),
-        (49,    "<=", 50,  True),
-        (50,    "<=", 50,  True),
-        (51,    "<=", 50,  False),
+        (30,    "<",  50, True),
+        (50,    "<",  50, False),
+        (49,    "<=", 50, True),
+        (50,    "<=", 50, True),
+        (51,    "<=", 50, False),
         # 等号
         (100,   "=",  100, True),
         (100,   "==", 100, True),
         (99,    "=",  100, False),
         # 境界値（0・負数）
-        (0,     ">",  -1,  True),
-        (-5,    "<",  0,   True),
-        (-5,    ">=", -5,  True),
+        (0,     ">", -1, True),
+        (-5,    "<",  0, True),
+        (-5,    ">=", -5, True),
     ])
     def test_numeric(self, value, op, threshold, expected):
         assert evaluate_condition(value, op, threshold) == expected
@@ -73,10 +73,10 @@ class TestEvaluateCustomRules:
           action_value: 減点数 or ステータス文字列
         """
         if status:
-            action_type  = "force_status"
+            action_type = "force_status"
             action_value = status   # "review" → 実装が "要審議" にマップ
         else:
-            action_type  = "deduct_score"
+            action_type = "deduct_score"
             action_value = abs(delta)
         return {
             "label": label,

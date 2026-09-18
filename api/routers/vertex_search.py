@@ -103,11 +103,11 @@ def post_vertex_search_workflow(req: VertexKnowledgeWorkflowRequest):
         if req.save_to_obsidian:
             from api.vertex_distillation import capture_vertex_workflow_result
             from runtime_paths import get_data_dir
-            from api.main import _OBSIDIAN_VAULT_PATH
+            from runtime_paths import get_obsidian_vault_path
 
             result["obsidian_capture"] = capture_vertex_workflow_result(
                 result,
-                vault_path=_OBSIDIAN_VAULT_PATH,
+                vault_path=get_obsidian_vault_path(),
                 state_path=get_data_dir() / "vertex_workflow_capture_state.json",
             )
         return result

@@ -55,7 +55,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       wif: ${{ steps.wif.outputs.configured }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -99,6 +99,14 @@ jobs:
     needs: changes
     if: (needs.changes.outputs.api == 'true' || github.event.inputs.force_deploy == 'true') && needs.changes.outputs.wif == 'true'
     runs-on: ubuntu-latest
+    # このリポジトリは自動改善パイプラインが1日に何十回もapi/**へpushするため、
+    # 前のpushのビルドが終わる前に次のpushが来ることが多い。新しいpushが来たら
+    # 古い方のビルドは結果を使われず無駄になるため、Cloud Buildのビルド分課金を
+    # 抑えるために古い方をキャンセルする（scripts/lib/submit_cloud_build_and_wait.sh
+    # 側でGCP上のCloud Buildも明示キャンセルするようセットで対応済み）。
+    concurrency:
+      group: deploy-api-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write   # WIF に必須
@@ -107,11 +115,11 @@ jobs:
       SERVICE_NAME: tune-lease-55-api
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── GCP 認証 (WIF) ──────────────────────────────────────────────
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
@@ -119,7 +127,7 @@ jobs:
           # credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # シークレット検証はビルドより前に置く。ビルドの後に置くと、キーの設定漏れや
       # 権限不足が17分のビルドを待たないと分からず、1回の切り分けに17分かかる
@@ -217,6 +225,13 @@ jobs:
             --region "${REGION}" \
             --format="value(status.url)"
 
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Deploy to Cloud Run / deploy-api"
+
   # ────────────────────────────────────────────────────────────────────
   # Job 2b: Frontend → tune-lease-55-web
   # ────────────────────────────────────────────────────────────────────
@@ -225,6 +240,11 @@ jobs:
     needs: changes
     if: (needs.changes.outputs.frontend == 'true' || github.event.inputs.force_deploy == 'true') && needs.changes.outputs.wif == 'true'
     runs-on: ubuntu-latest
+    # deploy-api と同じ理由（上のコメント参照）。frontend側は別サービス・
+    # 別Cloud Buildなのでグループもapi側とは独立させる。
+    concurrency:
+      group: deploy-web-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write
@@ -234,18 +254,18 @@ jobs:
       API_SERVICE_NAME: tune-lease-55-api
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── GCP 認証 (WIF) ──────────────────────────────────────────────
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
           # credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # シークレット検証はビルドより前に置く（API側と同じ理由。deploy-api ジョブの
       # 同名ステップのコメント参照）。PUBLIC_TUNNEL_AUTHもここで検証するのは、
@@ -313,10 +333,43 @@ jobs:
           # （frontend/src/proxy.ts がBasic認証の代わりにX-Sync-Probe-Keyヘッダで
           # 要求する）。無くてもデプロイは止めない ―― 未設定ならproxy.tsがそのプローブ
           # パスを401にするだけで、安全側に倒れるため。
-          if gcloud secrets describe KNOWLEDGE_SYNC_PROBE_TOKEN --project "${PROJECT_ID}" >/dev/null 2>&1; then
+          # このデプロイ用サービスアカウントは secretmanager.secrets.get を持たず
+          # describe が PERMISSION_DENIED になる（API_ACCESS_KEY/PUBLIC_TUNNEL_AUTH の
+          # 確認時と同じ）。それを NOT_FOUND と誤認すると実在する秘密も常に配線され
+          # ず401化する（DASHBOARD_HEALTH_PROBE_TOKENで2026-09-14に実際に発生した
+          # ものと同じ構造のバグ）ため、NOT_FOUND の時だけスキップする。
+          knowledge_sync_probe_error="$(gcloud secrets describe KNOWLEDGE_SYNC_PROBE_TOKEN --project "${PROJECT_ID}" 2>&1 >/dev/null)" \
+            && knowledge_sync_probe_status=0 || knowledge_sync_probe_status=$?
+          if (( knowledge_sync_probe_status == 0 )); then
             secrets_value+=",KNOWLEDGE_SYNC_PROBE_TOKEN=KNOWLEDGE_SYNC_PROBE_TOKEN:latest"
-          else
+          elif printf '%s' "$knowledge_sync_probe_error" | grep -q 'NOT_FOUND'; then
             echo "Warning: Secret Manager secret KNOWLEDGE_SYNC_PROBE_TOKEN was not found; /api/system/knowledge-sync-health will 401 for the external monitor until it is created." >&2
+          else
+            echo "Warning: could not verify the KNOWLEDGE_SYNC_PROBE_TOKEN secret before deploying (needs secretmanager.secrets.get). Wiring it anyway; gcloud run deploy --set-secrets will fail if it is truly unusable." >&2
+            echo "--- gcloud output ---" >&2
+            echo "$knowledge_sync_probe_error" >&2
+            secrets_value+=",KNOWLEDGE_SYNC_PROBE_TOKEN=KNOWLEDGE_SYNC_PROBE_TOKEN:latest"
+          fi
+
+          # GitHub Actionsの dashboard-data-health 監視専用シークレット
+          # （frontend/src/proxy.ts がBasic認証の代わりにX-Dashboard-Health-Probe-Key
+          # ヘッダで要求する）。無くてもデプロイは止めない ―― 未設定ならproxy.tsが
+          # そのプローブパスを401にするだけで、安全側に倒れるため。
+          # このデプロイ用サービスアカウントは secretmanager.secrets.get を持たず
+          # describe が PERMISSION_DENIED になる（API_ACCESS_KEY/PUBLIC_TUNNEL_AUTH の
+          # 確認時と同じ）。それを NOT_FOUND と誤認すると実在する秘密も常に配線され
+          # ず404化する（2026-09-14に実際に発生）ため、NOT_FOUND の時だけスキップする。
+          dashboard_health_probe_error="$(gcloud secrets describe DASHBOARD_HEALTH_PROBE_TOKEN --project "${PROJECT_ID}" 2>&1 >/dev/null)" \
+            && dashboard_health_probe_status=0 || dashboard_health_probe_status=$?
+          if (( dashboard_health_probe_status == 0 )); then
+            secrets_value+=",DASHBOARD_HEALTH_PROBE_TOKEN=DASHBOARD_HEALTH_PROBE_TOKEN:latest"
+          elif printf '%s' "$dashboard_health_probe_error" | grep -q 'NOT_FOUND'; then
+            echo "Warning: Secret Manager secret DASHBOARD_HEALTH_PROBE_TOKEN was not found; /api/dashboard/data-health will 401 for the external monitor until it is created." >&2
+          else
+            echo "Warning: could not verify the DASHBOARD_HEALTH_PROBE_TOKEN secret before deploying (needs secretmanager.secrets.get). Wiring it anyway; gcloud run deploy --set-secrets will fail if it is truly unusable." >&2
+            echo "--- gcloud output ---" >&2
+            echo "$dashboard_health_probe_error" >&2
+            secrets_value+=",DASHBOARD_HEALTH_PROBE_TOKEN=DASHBOARD_HEALTH_PROBE_TOKEN:latest"
           fi
 
           deploy_args=(
@@ -345,3 +398,10 @@ jobs:
             --project "${PROJECT_ID}" \
             --region "${REGION}" \
             --format="value(status.url)"
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Deploy to Cloud Run / deploy-web"

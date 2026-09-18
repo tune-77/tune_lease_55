@@ -655,16 +655,33 @@ def _load_consolidator() -> object | None:
         return None
 
 
-def main() -> None:
+# インデックス本体にこれ以上の実質的な文字数があれば「中身のある改善台帳」とみなす。
+# 見出し（未解決課題/Phase等）や絵文字マーカー（🔴/🟢/🔲）依存の抽出ロジックが
+# ドリフトすると、内容があるのに抽出結果だけ静かに0件になる（このリポジトリで
+# 繰り返し見つかっているバグパターン）。
+_SUBSTANTIAL_INDEX_LEN = 500
+
+
+def _is_suspicious_empty_extraction(index_raw_text: str, final_count: int) -> bool:
+    """抽出結果0件が、内容のあるインデックスに対して起きているかを判定する。
+
+    インデックスファイルがほぼ空（新規/未使用）なら0件は正常。中身があるのに
+    0件なら、見出し/マーカー形式のドリフトを疑う。
+    """
+    return final_count == 0 and len(index_raw_text.strip()) > _SUBSTANTIAL_INDEX_LEN
+
+
+def main() -> int:
     vault = _get_vault_path()
     print(f"Obsidian Vault: {vault}")
 
     index_file = find_index_file(vault)
     if not index_file:
         print(f"エラー: 改善インデックスファイルが見つかりません（Vault: {vault}）", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     print(f"改善インデックス: {index_file}")
+    index_raw_text = index_file.read_text(encoding="utf-8")
 
     pipeline_text = extract_improvements_from_index(index_file, vault)
 
@@ -729,6 +746,16 @@ def main() -> None:
         f"（重複排除前: {before_count}件、排除後: {after_count}件{ai_note}）"
     )
 
+    if _is_suspicious_empty_extraction(index_raw_text, final_count):
+        print(
+            "警告: 改善インデックスに内容があるのに抽出結果が0件です。"
+            "見出し（未解決課題/Phase等）や絵文字マーカー（🔴/🟢/🔲）の形式が"
+            "変わっていないか確認してください。",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

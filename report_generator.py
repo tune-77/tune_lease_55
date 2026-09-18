@@ -29,7 +29,7 @@ _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 # ── ユーモアスタイル定数 ────────────────────────────────────────────
 HUMOR_STYLE_STANDARD = "standard"
-HUMOR_STYLE_YANAMI   = "yanami"
+HUMOR_STYLE_YANAMI = "yanami"
 
 HUMOR_FILES = {
     HUMOR_STYLE_STANDARD: os.path.join(_DATA_DIR, "humor_comments.json"),
@@ -165,7 +165,7 @@ APPROVAL_CHECKLIST: dict[str, list[str]] = {
 
 def generate_approval_checklist(risk_level: str) -> str:
     """リスクレベルに応じた承認チェックリストを生成する（テンプレート方式）。"""
-    items    = APPROVAL_CHECKLIST.get(risk_level, ["（リスクレベル不明）"])
+    items = APPROVAL_CHECKLIST.get(risk_level, ["（リスクレベル不明）"])
     checklist = "\n".join(f"  □ {item}" for item in items)
     return f"\n【承認に必要な追加情報】\n{checklist}\n"
 
@@ -281,7 +281,7 @@ def generate_humor_comment(result, style: str = HUMOR_STYLE_STANDARD) -> str:
             data = json.load(f)
         comments = data.get("comments", [])
 
-        risk     = result.risk_level
+        risk = result.risk_level
         industry = result.company.industry
 
         # 1. リスクレベル × 業種（完全一致）
@@ -328,7 +328,7 @@ def generate_full_report(
         industry_trends_file: 業界動向JSONファイルのパス
     """
     sep = "=" * 50
-    report  = f"{sep}\n"
+    report = f"{sep}\n"
     report += f"  審査結果レポート：{result.company.name}\n"
     report += f"{sep}\n"
 
@@ -374,14 +374,14 @@ def generate_full_report_from_res(res: dict, session_state) -> str:
 
     # 入力値取得（万円 → 円）
     inputs = session_state.get("last_submitted_inputs") or {}
-    revenue      = float(inputs.get("nenshu",          0) or 0) * 10_000
+    revenue = float(inputs.get("nenshu",          0) or 0) * 10_000
     lease_amount = float(inputs.get("acquisition_cost", 0) or 0) * 10_000
     lease_months = int(inputs.get("lease_term", 36) or 36)
-    nenshu_val   = float(inputs.get("nenshu", 1) or 1) or 1.0
-    rieki_val    = float(inputs.get("rieki",  0) or 0)
-    op_margin    = rieki_val / nenshu_val
+    nenshu_val = float(inputs.get("nenshu", 1) or 1) or 1.0
+    rieki_val = float(inputs.get("rieki",  0) or 0)
+    op_margin = rieki_val / nenshu_val
     equity_ratio = float(res.get("user_equity_ratio", 0) or 0) / 100
-    total_debt   = float(inputs.get("bank_credit", 0) or 0) * 10_000
+    total_debt = float(inputs.get("bank_credit", 0) or 0) * 10_000
 
     score_median = float(res.get("score", 0) or 0)
 

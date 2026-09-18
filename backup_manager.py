@@ -9,10 +9,10 @@ import shutil
 from datetime import datetime
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_DATA_DIR   = os.path.join(_SCRIPT_DIR, "data")
+_DATA_DIR = os.path.join(_SCRIPT_DIR, "data")
 _BACKUP_DIR = os.path.join(_DATA_DIR, "backups")
 # lease_data.db の実体は tune_lease_55/data/ にある
-_LEASE_DB   = os.path.join(os.path.dirname(_SCRIPT_DIR), "tune_lease_55", "data", "lease_data.db")
+_LEASE_DB = os.path.join(os.path.dirname(_SCRIPT_DIR), "tune_lease_55", "data", "lease_data.db")
 
 MAX_GENS = 7  # 保持する世代数
 
@@ -40,7 +40,7 @@ def run_backup(force: bool = False) -> dict:
         {"backed_up": [...], "skipped": [...], "ts": "YYYYMMDD"}
     """
     os.makedirs(_BACKUP_DIR, exist_ok=True)
-    today   = datetime.now().strftime("%Y%m%d_%H%M")
+    today = datetime.now().strftime("%Y%m%d_%H%M")
     day_str = today[:8]  # YYYYMMDD
 
     backed_up, skipped = [], []

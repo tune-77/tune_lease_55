@@ -906,15 +906,15 @@ def _generate_conclusions_with_llm(
     total_cases = db.get("total_cases", 0)
 
     band_text = "\n".join(
-        f"  {row.get('band','?')}: win_pct={row.get('win_pct','?')}%, n={row.get('n','?')}"
+        f"  {row.get('band', '?')}: win_pct={row.get('win_pct', '?')}%, n={row.get('n', '?')}"
         for row in score_bands
     ) or "  （データなし）"
 
     # キーは "excerpt"（"summary" ではない）
     web_findings = "\n".join(
-        f"  - [{item.get('theme','')}] {(item.get('excerpt') or item.get('summary',''))[:120]}"
+        f"  - [{item.get('theme', '')}] {(item.get('excerpt') or item.get('summary', ''))[:120]}"
         for item in web.get("findings", [])[:5]
-        if (item.get('excerpt') or item.get('summary',''))
+        if (item.get('excerpt') or item.get('summary', ''))
     ) or "  （なし）"
 
     keyword_text = ", ".join(f"{k}:{v}" for k, v in keyword_hits.items()) or "なし"
@@ -926,7 +926,7 @@ def _generate_conclusions_with_llm(
 {band_text}
 
 【異常フラグ】
-- Q_risk全件0.0: {q_risk_zero}（n={q_risk_info.get("n",0)}, avg={q_risk_info.get("avg_q","-")}）
+- Q_risk全件0.0: {q_risk_zero}（n={q_risk_info.get("n", 0)}, avg={q_risk_info.get("avg_q", "-")}）
 - スコア帯単調性違反（60-80帯 < 40-60帯）: {non_monotonic}
 - 総案件数: {total_cases}
 
@@ -1104,6 +1104,7 @@ def notify(title: str, message: str) -> None:
     if os.environ.get("AURION_NO_NOTIFY") == "1":
         return
     # LaunchAgent runs in a user GUI session. If not, notification simply fails.
+
     def apple_string(value: str) -> str:
         # Keep notifications single-line; multi-line AppleScript strings are fragile under launchd.
         value = value.replace("\r", " ").replace("\n", " ")

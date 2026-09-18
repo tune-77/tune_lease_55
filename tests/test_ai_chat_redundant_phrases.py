@@ -11,4 +11,3 @@ def test_remove_redundant_phrase_strips_standalone_acknowledgement():
 
 def test_remove_redundant_phrase_strips_acknowledgement_with_delimiter():
     assert _remove_redundant_phrases("はい、確認します。") == "確認します。"
-

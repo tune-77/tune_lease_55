@@ -82,7 +82,10 @@ export default function DevOpsPage() {
   const [isCloudRunHost, setIsCloudRunHost] = useState(true);
 
   useEffect(() => {
-    setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
+    const frame = window.requestAnimationFrame(() => {
+      setIsCloudRunHost(window.location.hostname.endsWith(".run.app"));
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   const visibleCycleSteps = isCloudRunHost

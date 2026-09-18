@@ -12,6 +12,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
+
 
 REUSABLE_KEYWORDS = [
     "判断",
@@ -55,7 +60,8 @@ def latest_queue_path(root: Path, latest_path: Path) -> Path:
         return Path(raw)
     queues = sorted((root / "reports").glob("wiki_promotion_queue_*.json"))
     if not queues:
-        raise SystemExit("No wiki_promotion_queue_*.json found.")
+        report_pipeline_failure("No wiki_promotion_queue_*.json found.")
+        raise SystemExit(1)
     return queues[-1]
 
 
@@ -135,7 +141,8 @@ def extract_reusable_points(text: str, limit: int = 8) -> list[str]:
 def safe_note_path(vault: Path, rel: str) -> Path:
     target = (vault / rel).resolve()
     if vault not in target.parents and target != vault:
-        raise SystemExit(f"Refusing to write outside vault: {rel}")
+        report_pipeline_failure(f"Refusing to write outside vault: {rel}")
+        raise SystemExit(1)
     if target.suffix.lower() != ".md":
         target = target.with_suffix(".md")
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -198,7 +205,8 @@ def load_bridge():
     try:
         from mobile_app.obsidian_bridge import find_vault
     except Exception as exc:
-        raise SystemExit(f"Obsidian bridge unavailable: {exc}") from exc
+        report_pipeline_failure(f"Obsidian bridge unavailable: {exc}")
+        raise SystemExit(1) from exc
     return find_vault
 
 
@@ -213,7 +221,8 @@ def promote_queue(
     find_vault = load_bridge()
     vault = find_vault()
     if not vault:
-        raise SystemExit("iCloud 上の Obsidian Vault が見つかりません。")
+        report_pipeline_failure("iCloud 上の Obsidian Vault が見つかりません。")
+        raise SystemExit(1)
 
     queue = load_json(queue_path)
     status = load_json(status_path)

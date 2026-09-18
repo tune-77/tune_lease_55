@@ -7,6 +7,7 @@ import math
 
 from clifford_poc import CliffordSuccessPredictor
 
+
 class Projection3D:
     def __init__(self, width, height, scale=150):
         self.width = width
@@ -21,6 +22,7 @@ class Projection3D:
         py = -y * factor + self.height / 2
         return px, py
 
+
 def rotate_y(points, angle):
     cos_a = math.cos(angle)
     sin_a = math.sin(angle)
@@ -31,6 +33,7 @@ def rotate_y(points, angle):
         nz = -x * sin_a + z * cos_a
         rotated.append((nx, y, nz))
     return rotated
+
 
 def rotate_x(points, angle):
     cos_a = math.cos(angle)
@@ -43,22 +46,23 @@ def rotate_x(points, angle):
         rotated.append((x, ny, nz))
     return rotated
 
+
 def main(page: ft.Page):
     page.title = "AURION CORE - 3D CliffordNet Engine"
     page.padding = 30
     page.theme_mode = ft.ThemeMode.DARK
-    page.bgcolor = "#0B0F19" # 深いダークブルー（SF風）
+    page.bgcolor = "#0B0F19"  # 深いダークブルー（SF風）
 
     predictor = CliffordSuccessPredictor()
 
     # 3D空間上の各指標の基本軸ベクトル (正八面体を形成: 6頂点)
     base_vectors = {
-        'sales_growth':      np.array([ 1.5,  0.0,  0.0]),
+        'sales_growth':      np.array([1.5,  0.0,  0.0]),
         'capital_ratio':     np.array([-1.5,  0.0,  0.0]),
-        'liquidity':         np.array([ 0.0,  1.5,  0.0]),
-        'years_in_business': np.array([ 0.0, -1.5,  0.0]),
-        'operating_margin':  np.array([ 0.0,  0.0,  1.5]),
-        'asset_turnover':    np.array([ 0.0,  0.0, -1.5])
+        'liquidity':         np.array([0.0,  1.5,  0.0]),
+        'years_in_business': np.array([0.0, -1.5,  0.0]),
+        'operating_margin':  np.array([0.0,  0.0,  1.5]),
+        'asset_turnover':    np.array([0.0,  0.0, -1.5])
     }
 
     # 正八面体の面を構成するインデックス (8面)
@@ -77,31 +81,31 @@ def main(page: ft.Page):
     }
 
     sliders = {}
-    
+
     canvas_width = 600
     canvas_height = 500
     canvas = cv.Canvas(width=canvas_width, height=canvas_height, shapes=[])
     proj = Projection3D(canvas_width, canvas_height, scale=300)
 
     angle_y = 0.0
-    angle_x = 0.3 # 少し上から見下ろす角度
-    
+    angle_x = 0.3  # 少し上から見下ろす角度
+
     is_running = True
 
     def draw_3d_frame():
         nonlocal angle_y
-        
+
         # UIの各スライダー値を反映
         for k in features:
             features[k] = sliders[k].value
 
         result = predictor.predict(features)
         prob = result['success_probability']
-        
+
         # 確率表示の更新
         prob_text.value = f"3D GEOMETRIC PROBABILITY: {prob:.2%}"
         prob_text.color = ft.Colors.CYAN_ACCENT_400 if prob >= 0.5 else ft.Colors.RED_ACCENT_400
-        
+
         # 黄金面積（理想の形: 全て1.0）の頂点
         golden_verts = [base_vectors[k] * 1.0 for k in features.keys()]
         # 現在の案件の頂点
@@ -123,7 +127,7 @@ def main(page: ft.Page):
             for idx in face[1:]:
                 path_elements.append(cv.Path.LineTo(*golden_2d[idx]))
             path_elements.append(cv.Path.Close())
-            
+
             canvas.shapes.append(
                 cv.Path(
                     elements=path_elements,
@@ -138,14 +142,14 @@ def main(page: ft.Page):
 
         # 2. 現在の案件（ソリッド面とエッジ: シアンブルー）
         base_color = ft.Colors.CYAN_ACCENT_400 if prob >= 0.5 else ft.Colors.RED_400
-        
+
         # Zソート（奥の面から描画するための簡易ソート）
         face_depths = []
         for i, face in enumerate(faces):
             # 面の中心のZ座標（回転後）を計算
             avg_z = sum(curr_rot[idx][2] for idx in face) / 3.0
             face_depths.append((avg_z, face))
-        
+
         # 奥(Zが小さい)から手前へソート
         face_depths.sort(key=lambda x: x[0], reverse=True)
 
@@ -154,7 +158,7 @@ def main(page: ft.Page):
             for idx in face[1:]:
                 path_elements.append(cv.Path.LineTo(*curr_2d[idx]))
             path_elements.append(cv.Path.Close())
-            
+
             # 面の塗りつぶし（半透明）
             canvas.shapes.append(
                 cv.Path(
@@ -193,14 +197,14 @@ def main(page: ft.Page):
         try:
             page.update()
         except:
-            pass # ページ終了時エラー回避
+            pass  # ページ終了時エラー回避
 
     def animation_loop():
         nonlocal angle_y
         while is_running:
-            angle_y += 0.02 # 回転速度
+            angle_y += 0.02  # 回転速度
             draw_3d_frame()
-            time.sleep(0.03) # 約30FPS
+            time.sleep(0.03)  # 約30FPS
 
     def on_slider_change(e):
         # 描画はアニメーションループに任せる
@@ -213,7 +217,7 @@ def main(page: ft.Page):
             active_color=ft.Colors.CYAN_ACCENT_700,
             label="{value}", width=350, on_change=on_slider_change
         )
-        
+
     prob_text = ft.Text(size=28, weight=ft.FontWeight.W_900, font_family="monospace")
 
     controls_panel = ft.Column([
@@ -239,8 +243,8 @@ def main(page: ft.Page):
             content=canvas,
             border=ft.border.all(1, ft.Colors.WHITE12),
             border_radius=16,
-            bgcolor="#111827", # ダークパネル
-            shadow=ft.BoxShadow(spread_radius=1, blur_radius=15, color=ft.Colors.CYAN_ACCENT_700, offset=ft.Offset(0,0))
+            bgcolor="#111827",  # ダークパネル
+            shadow=ft.BoxShadow(spread_radius=1, blur_radius=15, color=ft.Colors.CYAN_ACCENT_700, offset=ft.Offset(0, 0))
         )
     ], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.START)
 
@@ -254,6 +258,7 @@ def main(page: ft.Page):
         nonlocal is_running
         is_running = False
     page.on_disconnect = on_disconnect
+
 
 if __name__ == "__main__":
     ft.app(target=main, view=ft.AppView.WEB_BROWSER)

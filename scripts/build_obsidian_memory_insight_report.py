@@ -236,6 +236,15 @@ def _date_hint(path: Path, text: str) -> str:
     return ""
 
 
+def _missing_source_dirs(vault: Path) -> list[str]:
+    """SOURCE_DIRS のうち Vault 配下に実在しないサーフェスを返す。
+
+    日付範囲に該当ノートが無いだけの正常系と、Vaultのディレクトリ構成が
+    ドリフトして全サーフェスが読めなくなった異常系を区別するためのもの。
+    """
+    return [surface for surface, rel_dir in SOURCE_DIRS.items() if not (vault / rel_dir).exists()]
+
+
 def load_notes(vault: Path, *, end_date: date, days: int, max_files_per_surface: int = 40) -> list[SourceNote]:
     wanted_dates = _date_range(end_date, days)
     notes: list[SourceNote] = []
@@ -674,10 +683,19 @@ def main() -> int:
     args = parser.parse_args()
 
     vault = _vault_path(args.vault)
+    missing_dirs = _missing_source_dirs(vault)
     notes = load_notes(vault, end_date=_parse_date(args.date), days=max(1, args.days))
     candidates = collect_candidates(notes)
     cards = build_thinking_cards(candidates)
     report = build_report(vault, notes, candidates, cards)
+
+    if len(missing_dirs) == len(SOURCE_DIRS):
+        print(
+            f"警告: Obsidian Vault ({vault}) に想定ソースディレクトリが1つも見つかりません。"
+            "Vault構成の変更かパス解決の異常の可能性があります: " + ", ".join(sorted(missing_dirs)),
+            file=sys.stderr,
+        )
+        return 1
 
     if args.dry_run:
         print(render_markdown(report))

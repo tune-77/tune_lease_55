@@ -106,9 +106,9 @@ def render_test_file(spec_id: str, phase: int, acs: list[tuple[str, str]]) -> st
         lines += [
             "",
             f"def {func_name}() -> None:",
-            f'    """',
+            '    """',
             f"    {docstring}",
-            f'    """',
+            '    """',
             f'    pytest.fail("{ac_id} not implemented")',
         ]
     lines.append("")

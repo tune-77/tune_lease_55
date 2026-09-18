@@ -17,28 +17,45 @@ jobs:
     name: Python Dependency Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
       - name: Install safety
-        run: pip install -q safety
+        run: |
+          # setuptoolsはrequirements.txtに含まれずPythonツールチェーン同梱のため、
+          # CVE-2026-59890（<83.0.0で影響）を避けて明示的に更新する。
+          pip install -q --upgrade "setuptools>=83.0.0"
+          pip install -q safety
 
       - name: Check Python dependencies
         run: |
           echo "🔍 Python パッケージの脆弱性チェック..."
-          safety check --json --output report.json || true
+          set +e
+          # --output はファイルパスではなく出力形式(screen/text/json/bare/html)を
+          # 取る仕様に変わっている。ファイルへはstdoutをリダイレクトして書く。
+          safety check --output json > report.json
+          status=$?
+          set -e
           cat report.json || echo "No vulnerabilities found"
+          exit "${status}"
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Security Scan / python-security"
 
   npm-security:
     name: NPM Dependency Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -50,16 +67,26 @@ jobs:
 
       - name: Audit dependencies
         working-directory: frontend
-        run: npm audit --production --audit-level=moderate || true
+        run: npm audit --production --audit-level=moderate
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Security Scan / npm-security"
 
   dependency-check:
     name: OWASP Dependency Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run Dependency-Check
-        uses: dependency-check/Dependency-Check_Action@main
+        # main は未タグのブランチ参照で、上流の破壊的変更が無警告でCIを壊しうるため
+        # 具体的なコミットSHAに固定する（2026-09-14時点のmain HEAD）。
+        # 更新する場合: git ls-remote https://github.com/dependency-check/Dependency-Check_Action.git main
+        uses: dependency-check/Dependency-Check_Action@1e54355a8b4c8abaa8cc7d0b70aa655a3bb15a6c
         with:
           project: 'tune-lease-55'
           path: '.'
@@ -67,3 +94,10 @@ jobs:
           args: >
             --scan .
             --exclude "node_modules,venv,.venv,tests,__pycache__,.git"
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Security Scan / dependency-check"

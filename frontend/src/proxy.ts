@@ -42,10 +42,16 @@ const hasValidSyncProbeToken = (request: NextRequest, token: string) => {
   return provided.length > 0 && constantTimeEqual(provided, token);
 };
 
+const hasValidDashboardHealthProbeToken = (request: NextRequest, token: string) => {
+  const provided = request.headers.get("x-dashboard-health-probe-key") || "";
+  return provided.length > 0 && constantTimeEqual(provided, token);
+};
+
 export function proxy(request: NextRequest) {
   const key = process.env.API_ACCESS_KEY;
   const tunnelPassword = process.env.PUBLIC_TUNNEL_AUTH;
   const syncProbeToken = process.env.KNOWLEDGE_SYNC_PROBE_TOKEN;
+  const dashboardHealthProbeToken = process.env.DASHBOARD_HEALTH_PROBE_TOKEN;
   const hostname = request.nextUrl.hostname;
   const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
   // GitHub Actions runs one read-only sync-health probe on a schedule. It used
@@ -59,11 +65,21 @@ export function proxy(request: NextRequest) {
   // Secrets. The full cloud-status response still requires Basic auth.
   const isKnowledgeSyncProbe = request.nextUrl.pathname
     === "/api/system/knowledge-sync-health";
+  // Same reasoning applies to the hourly dashboard-data-health probe: it used
+  // to send no credentials at all, so once PUBLIC_TUNNEL_AUTH started gating
+  // every /api/* path (2026-09-08) it began failing with 401 on every run.
+  // It gets its own dedicated secret (X-Dashboard-Health-Probe-Key) rather
+  // than the browser Basic-auth password.
+  const isDashboardHealthProbe = request.nextUrl.pathname
+    === "/api/dashboard/data-health";
   const isTunnelRequest = process.env.PUBLIC_TUNNEL === "1"
     && (request.headers.has("cf-connecting-ip") || !isLocalHost);
   if (isTunnelRequest) {
     const isAuthorized = isKnowledgeSyncProbe
       ? !!syncProbeToken && hasValidSyncProbeToken(request, syncProbeToken)
+      : isDashboardHealthProbe
+      ? !!dashboardHealthProbeToken
+        && hasValidDashboardHealthProbeToken(request, dashboardHealthProbeToken)
       : !!tunnelPassword && hasValidTunnelCredentials(request, tunnelPassword);
     if (!isAuthorized) {
       return new NextResponse("Authentication required", {

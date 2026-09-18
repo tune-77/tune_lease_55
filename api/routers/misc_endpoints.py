@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["misc"])
 
+
 @router.get("/api/judgment-feedback/summary")
 def judgment_feedback_summary_api():
     from judgment_feedback import get_judgment_feedback_summary
@@ -657,7 +658,6 @@ def save_work_log(req: WorkLogRequest):
         obs_result = {"status": "error", "reason": str(e)}
 
     return WorkLogResponse(memory_path=str(mem_path), obsidian=obs_result)
-
 
 
 # ── 世界認識 通知ステータス ────────────────────────────────────────────────

@@ -40,9 +40,9 @@ def build_contract_report_pdf(analysis: dict) -> bytes:
     def safe_text(text):
         return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    body_style  = ParagraphStyle("BodyJP",      parent=styles["Normal"],   fontName=font_name, fontSize=8,  leading=10)
+    body_style = ParagraphStyle("BodyJP",      parent=styles["Normal"],   fontName=font_name, fontSize=8,  leading=10)
     title_style = ParagraphStyle("CustomTitle", parent=styles["Heading1"], fontName=font_name, fontSize=14, leading=16)
-    h2_style    = ParagraphStyle("CustomH2",    parent=styles["Heading2"], fontName=font_name, fontSize=10, leading=12)
+    h2_style = ParagraphStyle("CustomH2",    parent=styles["Heading2"], fontName=font_name, fontSize=10, leading=12)
     thin = 1.5 * mm
 
     story = []
@@ -73,7 +73,7 @@ def build_contract_report_pdf(analysis: dict) -> bytes:
             ("LEFTPADDING",  (0, 0), (-1, -1), 3),
             ("RIGHTPADDING", (0, 0), (-1, -1), 3),
             ("TOPPADDING",   (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING",(0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
             ("BACKGROUND",   (0, 0), (-1, 0), colors.lightgrey),
             ("GRID",         (0, 0), (-1, -1), 0.5, colors.grey),
         ]))

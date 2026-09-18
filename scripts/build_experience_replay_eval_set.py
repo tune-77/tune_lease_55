@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -262,10 +263,22 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=10)
     args = parser.parse_args()
 
-    cases = build_replay_eval_set(load_flywheel(args.flywheel_report.expanduser()), limit=args.limit)
+    flywheel_report = load_flywheel(args.flywheel_report.expanduser())
+    candidates = flywheel_report.get("replay_eval_candidates") or []
+    cases = build_replay_eval_set(flywheel_report, limit=args.limit)
     write_outputs(cases, output_json=args.output_json.expanduser(), output_md=args.output_md.expanduser())
     print(f"experience replay eval cases: {len(cases)} -> {args.output_json.expanduser()}")
     print(f"saved: {args.output_md.expanduser()}")
+    # replay_eval_candidates が有るのに1件もケース化できないのは、リース関連語
+    # キーワード判定やquery抽出キーがドリフトして全滅している疑いがある。
+    # candidatesが元々0件（=キューにネガティブ/中立フィードバックが無い日）は正常。
+    if candidates and not cases:
+        print(
+            "[replay_eval_set] 警告: replay_eval_candidates は"
+            f"{len(candidates)}件あるのにeval caseが0件。query抽出/関連語判定のドリフトの疑い",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

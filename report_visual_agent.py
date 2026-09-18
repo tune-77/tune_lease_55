@@ -21,31 +21,31 @@ from typing import Any
 
 def collect_report_data(session_state: Any) -> dict:
     """st.session_state から審査レポート用データを収集・整形する。"""
-    res    = session_state.get("last_result") or {}
+    res = session_state.get("last_result") or {}
     inputs = session_state.get("last_submitted_inputs") or {}
-    mc_pf  = session_state.get("mc_portfolio_result")
+    mc_pf = session_state.get("mc_portfolio_result")
 
     # 基本スコア
-    score          = float(res.get("score",          0) or 0)
-    hantei         = str(res.get("hantei",           "—"))
+    score = float(res.get("score",          0) or 0)
+    hantei = str(res.get("hantei",           "—"))
     industry_major = str(res.get("industry_major",   ""))
-    industry_sub   = str(res.get("industry_sub",     ""))
+    industry_sub = str(res.get("industry_sub",     ""))
     # 物件・借手スコア（total_scorer_result から）
-    tsr            = res.get("total_scorer_result") or {}
-    asset_score    = min(100.0, max(0.0, float(tsr.get("asset_score",    0) or 0)))
+    tsr = res.get("total_scorer_result") or {}
+    asset_score = min(100.0, max(0.0, float(tsr.get("asset_score",    0) or 0)))
     borrower_score = min(100.0, max(0.0, float(tsr.get("borrower_score", 0) or 0)))
 
     # 定性スコア
     qual_result = session_state.get("qualitative_analysis_result") or {}
-    qual_score  = min(100.0, max(0.0, float((qual_result or {}).get("total_score", 0) or 0)))
+    qual_score = min(100.0, max(0.0, float((qual_result or {}).get("total_score", 0) or 0)))
 
     # 財務指標
-    user_eq    = float(res.get("user_eq",    0) or 0)
-    user_op    = float(res.get("user_op",    0) or 0)
-    bench_eq   = float(res.get("bench_eq",   0) or 0)
-    bench_op   = float(res.get("bench_op",   0) or 0)
+    user_eq = float(res.get("user_eq",    0) or 0)
+    user_op = float(res.get("user_op",    0) or 0)
+    bench_eq = float(res.get("bench_eq",   0) or 0)
+    bench_op = float(res.get("bench_op",   0) or 0)
     contract_p = float(res.get("contract_prob", 0) or 0)
-    roa        = float(res.get("roa",        0) or 0)
+    roa = float(res.get("roa",        0) or 0)
 
     # モンテカルロ
     mc_data: dict = {}
@@ -58,8 +58,8 @@ def collect_report_data(session_state: Any) -> dict:
         }
 
     # ベイジアンネットワーク
-    bn_result        = session_state.get("_bn_s_result") or {}
-    bn_evidence      = session_state.get("_bn_s_evidence") or {}
+    bn_result = session_state.get("_bn_s_result") or {}
+    bn_evidence = session_state.get("_bn_s_evidence") or {}
     bn_approval_prob = float((bn_result or {}).get("承認確率", 0) or 0)
 
     # AIコメント（軍師テキストのキャッシュがあれば）
@@ -90,10 +90,10 @@ def collect_report_data(session_state: Any) -> dict:
     shap_top5 = list(session_state.get("_shap_top5_items") or [])
 
     # 入力値から財務数値（千円単位）
-    nenshu     = float(inputs.get("nenshu", 0) or 0)
+    nenshu = float(inputs.get("nenshu", 0) or 0)
     net_assets = float(inputs.get("net_assets", 0) or 0)
     lease_term = int(inputs.get("lease_term", 0) or 0)
-    acq_cost   = float(inputs.get("acquisition_cost", 0) or 0)
+    acq_cost = float(inputs.get("acquisition_cost", 0) or 0)
 
     return {
         "company_name":    str(company_name),
@@ -135,14 +135,14 @@ def _circular_gauge_svg(score: float, label: str, size: int = 130,
                          color: str = "#f0b429") -> str:
     """円形ゲージ SVG（0-100 スコア表示用）。"""
     pct = max(0.0, min(100.0, float(score)))
-    r   = size * 0.34
-    cx  = cy = size / 2
+    r = size * 0.34
+    cx = cy = size / 2
     circumference = 2 * math.pi * r
     arc_len = circumference * pct / 100.0
     gap_len = circumference - arc_len
     font_main = int(size * 0.18)
-    font_sub  = int(size * 0.065)
-    font_lbl  = int(size * 0.07)
+    font_sub = int(size * 0.065)
+    font_lbl = int(size * 0.07)
     return (
         f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">'
         f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" fill="none"'
@@ -170,7 +170,7 @@ def _radar_svg(values: list, labels: list, size: int = 260) -> str:
     if n < 3:
         return ""
     cx = cy = size / 2
-    r  = size * 0.36
+    r = size * 0.36
     angles = [2 * math.pi * i / n - math.pi / 2 for i in range(n)]
 
     # 背景グリッド（25 / 50 / 75 / 100%）
@@ -255,34 +255,34 @@ def generate_html_report(data: dict) -> str:
     Google Fonts（Noto Sans JP）を使用するため閲覧時にインターネット接続が必要。
     CSS・SVG は完全自己完結。
     """
-    company   = _esc(data["company_name"])
-    screener  = _esc(data["screener"])
-    date      = _esc(data["date"])
-    hantei    = _esc(data["hantei"])
-    score     = data["score"]
-    asset_s   = data["asset_score"]
-    borrow_s  = data["borrower_score"]
-    qual_s    = data["qual_score"]
+    company = _esc(data["company_name"])
+    screener = _esc(data["screener"])
+    date = _esc(data["date"])
+    hantei = _esc(data["hantei"])
+    score = data["score"]
+    asset_s = data["asset_score"]
+    borrow_s = data["borrower_score"]
+    qual_s = data["qual_score"]
     ind_major = _esc(data["industry_major"])
-    ind_sub   = _esc(data["industry_sub"])
-    user_eq   = data["user_eq"]
-    user_op   = data["user_op"]
-    mc        = data["mc_data"]
-    bn_prob   = data["bn_approval_prob"]
-    ai_cmt    = _esc(data["ai_comment"])
-    news      = data["news_items"]
-    nenshu    = data["nenshu"]
+    ind_sub = _esc(data["industry_sub"])
+    user_eq = data["user_eq"]
+    user_op = data["user_op"]
+    mc = data["mc_data"]
+    bn_prob = data["bn_approval_prob"]
+    ai_cmt = _esc(data["ai_comment"])
+    news = data["news_items"]
+    nenshu = data["nenshu"]
     net_assets = data["net_assets"]
-    acq_cost  = data["acq_cost"]
+    acq_cost = data["acq_cost"]
     lease_term = data["lease_term"]
 
     txt_col, badge_bg = _hantei_badge_colors(data["hantei"])
 
     # SVG ゲージ
-    gauge_total  = _circular_gauge_svg(score,   "総合スコア", 150, "#f0b429")
-    gauge_asset  = _circular_gauge_svg(asset_s, "物件スコア", 125, "#4fc3f7")
-    gauge_borrow = _circular_gauge_svg(borrow_s,"財務スコア", 125, "#81c784")
-    gauge_qual   = _circular_gauge_svg(qual_s,  "定性スコア", 125, "#ce93d8")
+    gauge_total = _circular_gauge_svg(score,   "総合スコア", 150, "#f0b429")
+    gauge_asset = _circular_gauge_svg(asset_s, "物件スコア", 125, "#4fc3f7")
+    gauge_borrow = _circular_gauge_svg(borrow_s, "財務スコア", 125, "#81c784")
+    gauge_qual = _circular_gauge_svg(qual_s,  "定性スコア", 125, "#ce93d8")
 
     # レーダーチャート
     radar_svg = _radar_svg(
@@ -368,7 +368,7 @@ def generate_html_report(data: dict) -> str:
     )
 
     screener_line = f" &nbsp;|&nbsp; 担当：{screener}" if screener else ""
-    ind_display   = ind_sub or ind_major or "業種未設定"
+    ind_display = ind_sub or ind_major or "業種未設定"
 
     return f"""<!DOCTYPE html>
 <html lang="ja">
@@ -564,15 +564,15 @@ def generate_pdf_report(data: dict) -> bytes:
     )
 
     # カラーパレット
-    BG    = colors.HexColor("#0a0e1a")
-    CARD  = colors.HexColor("#141c2e")
-    GOLD  = colors.HexColor("#f0b429")
+    BG = colors.HexColor("#0a0e1a")
+    CARD = colors.HexColor("#141c2e")
+    GOLD = colors.HexColor("#f0b429")
     LIGHT = colors.HexColor("#e0e6ef")
-    DIM   = colors.HexColor("#8899bb")
-    RISK  = colors.HexColor("#ff6b6b")
-    GOOD  = colors.HexColor("#81c784")
-    BLUE  = colors.HexColor("#4fc3f7")
-    PURP  = colors.HexColor("#ce93d8")
+    DIM = colors.HexColor("#8899bb")
+    RISK = colors.HexColor("#ff6b6b")
+    GOOD = colors.HexColor("#81c784")
+    BLUE = colors.HexColor("#4fc3f7")
+    PURP = colors.HexColor("#ce93d8")
     WHITE = colors.white
 
     # 日本語フォント設定
@@ -600,43 +600,43 @@ def generate_pdf_report(data: dict) -> bytes:
     def ps(name: str, **kw) -> ParagraphStyle:
         return ParagraphStyle(name, parent=styles["Normal"], fontName=fn, **kw)
 
-    title_s  = ps("title",  fontSize=20, textColor=LIGHT, leading=24, spaceAfter=2)
-    meta_s   = ps("meta",   fontSize=9,  textColor=DIM,   leading=12)
-    badge_s  = ps("badge",  fontSize=14, textColor=GOLD,  leading=18, alignment=TA_RIGHT)
-    h2_s     = ps("h2",     fontSize=11, textColor=GOLD,  leading=14, spaceBefore=8, spaceAfter=4,
+    title_s = ps("title",  fontSize=20, textColor=LIGHT, leading=24, spaceAfter=2)
+    meta_s = ps("meta",   fontSize=9,  textColor=DIM,   leading=12)
+    badge_s = ps("badge",  fontSize=14, textColor=GOLD,  leading=18, alignment=TA_RIGHT)
+    h2_s = ps("h2",     fontSize=11, textColor=GOLD,  leading=14, spaceBefore=8, spaceAfter=4,
                   borderPadding=(0, 0, 2, 0))
-    body_s   = ps("body",   fontSize=9,  textColor=LIGHT, leading=13)
-    body_d   = ps("bodyD",  fontSize=9,  textColor=DIM,   leading=13)
-    num_s    = ps("num",    fontSize=22, textColor=GOLD,  leading=26, alignment=TA_CENTER)
-    num_b_s  = ps("numB",   fontSize=16, textColor=BLUE,  leading=20, alignment=TA_CENTER)
-    num_g_s  = ps("numG",   fontSize=16, textColor=GOOD,  leading=20, alignment=TA_CENTER)
-    num_p_s  = ps("numP",   fontSize=16, textColor=PURP,  leading=20, alignment=TA_CENTER)
-    lbl_s    = ps("lbl",    fontSize=9,  textColor=DIM,   leading=12, alignment=TA_CENTER)
-    small_s  = ps("small",  fontSize=8,  textColor=DIM,   leading=11)
+    body_s = ps("body",   fontSize=9,  textColor=LIGHT, leading=13)
+    body_d = ps("bodyD",  fontSize=9,  textColor=DIM,   leading=13)
+    num_s = ps("num",    fontSize=22, textColor=GOLD,  leading=26, alignment=TA_CENTER)
+    num_b_s = ps("numB",   fontSize=16, textColor=BLUE,  leading=20, alignment=TA_CENTER)
+    num_g_s = ps("numG",   fontSize=16, textColor=GOOD,  leading=20, alignment=TA_CENTER)
+    num_p_s = ps("numP",   fontSize=16, textColor=PURP,  leading=20, alignment=TA_CENTER)
+    lbl_s = ps("lbl",    fontSize=9,  textColor=DIM,   leading=12, alignment=TA_CENTER)
+    small_s = ps("small",  fontSize=8,  textColor=DIM,   leading=11)
 
     def hline() -> HRFlowable:
         return HRFlowable(width="100%", thickness=0.5, color=GOLD, spaceAfter=5, spaceBefore=3)
 
     # データ取得
-    company    = data["company_name"]
-    screener   = data["screener"]
-    date       = data["date"]
-    hantei     = data["hantei"]
-    score      = data["score"]
-    asset_v    = data["asset_score"]
-    borrow_v   = data["borrower_score"]
-    qual_v     = data["qual_score"]
-    user_eq    = data["user_eq"]
-    user_op    = data["user_op"]
-    mc         = data["mc_data"]
-    bn_prob    = data["bn_approval_prob"]
-    ai_cmt     = data["ai_comment"]
-    news       = data["news_items"]
-    nenshu     = data["nenshu"]
+    company = data["company_name"]
+    screener = data["screener"]
+    date = data["date"]
+    hantei = data["hantei"]
+    score = data["score"]
+    asset_v = data["asset_score"]
+    borrow_v = data["borrower_score"]
+    qual_v = data["qual_score"]
+    user_eq = data["user_eq"]
+    user_op = data["user_op"]
+    mc = data["mc_data"]
+    bn_prob = data["bn_approval_prob"]
+    ai_cmt = data["ai_comment"]
+    news = data["news_items"]
+    nenshu = data["nenshu"]
     net_assets = data["net_assets"]
-    acq_cost   = data["acq_cost"]
+    acq_cost = data["acq_cost"]
     lease_term = data["lease_term"]
-    ind_sub    = data["industry_sub"] or data["industry_major"]
+    ind_sub = data["industry_sub"] or data["industry_major"]
 
     story = []
 
@@ -715,7 +715,7 @@ def generate_pdf_report(data: dict) -> bytes:
     bn_ev_data = [
         [Paragraph(f"ベイズ推定承認確率：<font color='#81c784'>{bn_prob:.1f}%</font>", body_s), ""]
     ]
-    
+
     # 選択されたエビデンスをリスト化
     _EV_LABELS = {
         "Insolvent_Status": "債務超過回避",
@@ -731,7 +731,7 @@ def generate_pdf_report(data: dict) -> bytes:
     }
     bn_evidence = data.get("bn_evidence", {}) or {}
     active_ev = [f"・{_EV_LABELS.get(k, k)}：証拠あり" for k, v in bn_evidence.items() if v == 1]
-    
+
     if active_ev:
         for ev_str in active_ev:
             bn_ev_data.append([Paragraph(ev_str, small_s), ""])

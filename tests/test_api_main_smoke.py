@@ -30,6 +30,7 @@ SMOKE_GET_PATHS = [
     "/api/improvement-log",
     "/api/vertex-search/widget-config",
     "/api/relationship/state",
+    "/api/shion/daily-greeting",
     "/api/lease-news/focus",
     "/api/lease-news/brief",
     "/api/lease-news/actions",
@@ -49,8 +50,11 @@ def test_get_endpoint_returns_200(path):
 
 
 def test_app_has_expected_route_count():
-    """ルート数が大きく減っていないか（抽出時の mount 漏れ検知用の粗いガード）。"""
-    assert len(main_module.app.routes) >= 60
+    """FastAPI の直ルートと遅延 include_router が十分に登録されている。"""
+    # 公開 method/path の完全性は test_api_route_contract.py の274件署名で検証する。
+    # FastAPI の遅延 router は複数APIを1要素として保持するため、ここでは構成の
+    # 全消失だけを検知する粗い下限に留める。
+    assert len(main_module.app.routes) >= 50
 
 
 def test_no_duplicate_method_path_routes():
@@ -83,7 +87,8 @@ def test_calculate_score_exposes_forced_review_reason(monkeypatch):
         "risk_review_reasons": ["Q_risk 強警戒（65.0）"],
         "credit_risk_group_score": 72.0,
         "credit_risk_group_level": "high",
-        "credit_risk_group_flags": ["high_q_risk"],
+        "credit_risk_group_flag": True,
+        "credit_risk_group_reasons": ["high_q_risk"],
         "quantum_risk": 65.0,
         "q_risk_breakdown": {"total": 65.0},
         "credit_quantum_strong_warning": True,
@@ -108,3 +113,5 @@ def test_calculate_score_exposes_forced_review_reason(monkeypatch):
     assert response.risk_review_reasons == ["Q_risk 強警戒（65.0）"]
     assert response.quantum_risk == 65.0
     assert response.credit_risk_group_level == "high"
+    assert response.credit_risk_group_flag is True
+    assert response.credit_risk_group_reasons == ["high_q_risk"]

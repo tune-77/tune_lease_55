@@ -26,6 +26,7 @@ from analysis_regression import (
 
 # ── Gemini 呼び出し共通 ──────────────────────────────────────────────────────
 
+
 def _gemini_call(prompt: str, max_tokens: int = 4000) -> str | None:
     api_key = (
         st.session_state.get("gemini_api_key", "").strip()

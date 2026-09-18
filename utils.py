@@ -1,5 +1,6 @@
 import streamlit as st
 
+
 def _slider_and_number(field_name, key_prefix, default, min_val, max_val, step_slider, step_num=None, fmt="{:,}", unit="千円", label_slider="売上高調整", max_val_number=None, unit_factor=1):
     """スライダーと数値入力の両方に対応。後から動かした方を採用値とする。
     on_change を使わないため st.form 内でも動作する。
@@ -17,23 +18,23 @@ def _slider_and_number(field_name, key_prefix, default, min_val, max_val, step_s
         display_unit = "百万円"
         step_slider_d = 1.0
         step_num_d = 0.1
-        min_d   = min_val / unit_factor
-        max_d   = max_val / unit_factor
+        min_d = min_val / unit_factor
+        max_d = max_val / unit_factor
         num_max_d = num_max / unit_factor
-        cur_d   = cur / unit_factor
+        cur_d = cur / unit_factor
     else:
         display_unit = unit
         step_slider_d = step_slider
         step_num_d = step_num
-        min_d   = min_val
-        max_d   = max_val
+        min_d = min_val
+        max_d = max_val
         num_max_d = num_max
-        cur_d   = cur
+        cur_d = cur
 
-    prev_key      = f"_san_prev_{key_prefix}"
-    num_key       = f"num_{key_prefix}"
-    slide_key     = f"slide_{key_prefix}"
-    prev_num_key  = f"_san_prev_num_{key_prefix}"
+    prev_key = f"_san_prev_{key_prefix}"
+    num_key = f"num_{key_prefix}"
+    slide_key = f"slide_{key_prefix}"
+    prev_num_key = f"_san_prev_num_{key_prefix}"
     prev_slide_key = f"_san_prev_slide_{key_prefix}"
     externally_changed = st.session_state.get(prev_key) != cur
 
@@ -52,12 +53,12 @@ def _slider_and_number(field_name, key_prefix, default, min_val, max_val, step_s
                   step=step_slider_d, key=slide_key,
                   label_visibility="collapsed")
 
-    new_num   = st.session_state[num_key]
+    new_num = st.session_state[num_key]
     new_slide = st.session_state[slide_key]
-    prev_num  = st.session_state.get(prev_num_key, new_num)
+    prev_num = st.session_state.get(prev_num_key, new_num)
     prev_slide = st.session_state.get(prev_slide_key, new_slide)
 
-    num_changed   = new_num   != prev_num
+    num_changed = new_num != prev_num
     slide_changed = new_slide != prev_slide
     if num_changed and not slide_changed:
         adopted_d = new_num
@@ -76,8 +77,8 @@ def _slider_and_number(field_name, key_prefix, default, min_val, max_val, step_s
         caption_str = f"{fmt.format(adopted)} {display_unit}"
 
     st.session_state[field_name] = adopted
-    st.session_state[prev_key]   = adopted
-    st.session_state[prev_num_key]   = new_num
+    st.session_state[prev_key] = adopted
+    st.session_state[prev_num_key] = new_num
     st.session_state[prev_slide_key] = new_slide
     st.caption(f"**採用値: {caption_str}**")
     return adopted

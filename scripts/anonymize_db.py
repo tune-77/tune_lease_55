@@ -264,7 +264,7 @@ def _copy_screening_records(src: sqlite3.Connection, dst: sqlite3.Connection) ->
 
     score_cols = {"total_score", "asset_score", "tenant_score",
                   "q_risk_score", "competitor_pressure_score"}
-    date_cols  = {"screened_at", "created_at", "updated_at"}
+    date_cols = {"screened_at", "created_at", "updated_at"}
 
     for row in rows:
         r = dict(zip(cols, row))
@@ -500,7 +500,7 @@ def main() -> None:
     dst = sqlite3.connect(DST_DB)
 
     print("Building mappings …")
-    dept_map    = _build_dept_map(src)
+    dept_map = _build_dept_map(src)
     company_map = _build_company_map(src)
     print(f"  Sales dept map : {dept_map}")
     print(f"  Company names  : {len(company_map)} entries")

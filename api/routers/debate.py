@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from runtime_paths import get_obsidian_vault_path
 
 router = APIRouter()
 
@@ -36,9 +37,7 @@ class SaveDebateToObsidianRequest(BaseModel):
 @router.post("/api/debate/save-to-obsidian")
 def save_debate_to_obsidian(req: SaveDebateToObsidianRequest):
     """討論審査結果を iCloud 上の Obsidian Vault の Debates/ フォルダに保存する。"""
-    from api.main import _OBSIDIAN_VAULT_PATH
-
-    vault_root = _OBSIDIAN_VAULT_PATH
+    vault_root = get_obsidian_vault_path()
 
     if not vault_root or not os.path.isdir(vault_root):
         raise HTTPException(

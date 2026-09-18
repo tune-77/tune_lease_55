@@ -2,10 +2,35 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { apiClient } from '@/lib/api';
 import * as d3 from 'd3';
-import { sankey as d3Sankey, sankeyLinkHorizontal } from 'd3-sankey';
+import { sankey as d3Sankey, sankeyLinkHorizontal, type SankeyLink, type SankeyNode } from 'd3-sankey';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import { Eye, Activity, ChartPie, Grid, GitMerge, MousePointer2, Lightbulb, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react';
-import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar, Cell, LabelList } from 'recharts';
+import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar, Cell, LabelList, type TooltipContentProps } from 'recharts';
+
+type VisualCase = {
+  industry_major?: string;
+  industry_sub?: string;
+  score: number;
+  status: string;
+  acquisition_cost?: number;
+  interest_rate?: number;
+};
+
+type SankeyNodeData = Record<string, unknown> & {
+  name: string;
+  category: string;
+  color: string;
+};
+
+type SankeyLinkData = Record<string, unknown> & {
+  source: number;
+  target: number;
+  value: number;
+  color: string;
+};
+
+type LayoutNode = SankeyNode<SankeyNodeData, SankeyLinkData>;
+type LayoutLink = SankeyLink<SankeyNodeData, SankeyLinkData>;
 
 type IndustryStat = {
   industry: string;
@@ -23,7 +48,7 @@ function formatInsight(text: string): React.ReactNode {
 }
 
 export default function VisualPage() {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<VisualCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'bubble' | 'heatmap' | 'sankey' | 'industry'>('bubble');
   const [insightOpen, setInsightOpen] = useState(true);
@@ -35,7 +60,7 @@ export default function VisualPage() {
 
     const fetchData = async () => {
       try {
-        const res = await apiClient.get(`/api/visual/data`);
+        const res = await apiClient.get<{ cases?: VisualCase[] }>(`/api/visual/data`);
         setData(res.data.cases || []);
       } catch (err) {
         console.error("Failed to load visual data", err);
@@ -66,14 +91,14 @@ export default function VisualPage() {
     const results = ["成約", "失注"];
     const bandLabels = bands.map(b => b.label);
 
-    const nodes: any[] = [
+    const nodes: SankeyNodeData[] = [
       ...industries.map(name => ({ name, category: 'industry', color: '#6366f1' })),
       ...bandLabels.map(name => ({ name, category: 'band', color: '#8b5cf6' })),
       ...results.map(name => ({ name, category: 'result', color: name === '成約' ? '#22c55e' : '#ef4444' }))
     ];
 
     const nodeIndexMap = new Map(nodes.map((n, i) => [n.name, i]));
-    const links: any[] = [];
+    const links: SankeyLinkData[] = [];
 
     // 業種 -> スコア帯
     industries.forEach(ind => {
@@ -82,8 +107,8 @@ export default function VisualPage() {
         const count = data.filter(c => (c.industry_major || "不明") === ind && c.score >= band.min && c.score < band.max).length;
         if (count > 0) {
           links.push({
-            source: nodeIndexMap.get(ind),
-            target: nodeIndexMap.get(bandLabel),
+            source: nodeIndexMap.get(ind)!,
+            target: nodeIndexMap.get(bandLabel)!,
             value: count,
             color: 'rgba(99, 102, 241, 0.2)'
           });
@@ -98,8 +123,8 @@ export default function VisualPage() {
         const count = data.filter(c => c.score >= band.min && c.score < band.max && c.status === res).length;
         if (count > 0) {
           links.push({
-            source: nodeIndexMap.get(bandLabel),
-            target: nodeIndexMap.get(res),
+            source: nodeIndexMap.get(bandLabel)!,
+            target: nodeIndexMap.get(res)!,
             value: count,
             color: res === '成約' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'
           });
@@ -120,7 +145,7 @@ export default function VisualPage() {
 
     svg.selectAll('*').remove();
 
-    const generator = d3Sankey()
+    const generator = d3Sankey<SankeyNodeData, SankeyLinkData>()
       .nodeWidth(14)
       .nodePadding(10)
       .extent([[1, 1], [width - 1, height - 5]]);
@@ -137,12 +162,12 @@ export default function VisualPage() {
       .data(links)
       .join('path')
       .attr('d', sankeyLinkHorizontal())
-      .attr('stroke', (d: any) => d.color)
-      .attr('stroke-width', (d: any) => Math.max(1, d.width))
+      .attr('stroke', (d: LayoutLink) => d.color)
+      .attr('stroke-width', (d: LayoutLink) => Math.max(1, d.width ?? 1))
       .style('mix-blend-mode', 'multiply')
       .attr('opacity', 0.6)
-      .on('mouseover', function() { d3.select(this).attr('opacity', 0.9).attr('stroke', (d: any) => d.target.color); })
-      .on('mouseout', function() { d3.select(this).attr('opacity', 0.6).attr('stroke', (d: any) => d.color); });
+      .on('mouseover', function(_event, d) { d3.select(this).attr('opacity', 0.9).attr('stroke', (d.target as LayoutNode).color); })
+      .on('mouseout', function(_event, d) { d3.select(this).attr('opacity', 0.6).attr('stroke', d.color); });
 
     // Nodes
     const nodeNodes = svg.append('g')
@@ -151,22 +176,22 @@ export default function VisualPage() {
       .join('g');
 
     nodeNodes.append('rect')
-      .attr('x', (d: any) => d.x0)
-      .attr('y', (d: any) => d.y0)
-      .attr('height', (d: any) => d.y1 - d.y0)
-      .attr('width', (d: any) => d.x1 - d.x0)
-      .attr('fill', (d: any) => d.color)
+      .attr('x', (d: LayoutNode) => d.x0 ?? 0)
+      .attr('y', (d: LayoutNode) => d.y0 ?? 0)
+      .attr('height', (d: LayoutNode) => (d.y1 ?? 0) - (d.y0 ?? 0))
+      .attr('width', (d: LayoutNode) => (d.x1 ?? 0) - (d.x0 ?? 0))
+      .attr('fill', (d: LayoutNode) => d.color)
       .attr('rx', 4);
 
     nodeNodes.append('text')
-      .attr('x', (d: any) => d.x0 < width / 2 ? d.x1 + 6 : d.x0 - 6)
-      .attr('y', (d: any) => (d.y1 + d.y0) / 2)
+      .attr('x', (d: LayoutNode) => (d.x0 ?? 0) < width / 2 ? (d.x1 ?? 0) + 6 : (d.x0 ?? 0) - 6)
+      .attr('y', (d: LayoutNode) => ((d.y1 ?? 0) + (d.y0 ?? 0)) / 2)
       .attr('dy', '0.35em')
-      .attr('text-anchor', (d: any) => d.x0 < width / 2 ? 'start' : 'end')
+      .attr('text-anchor', (d: LayoutNode) => (d.x0 ?? 0) < width / 2 ? 'start' : 'end')
       .attr('font-size', '9px')
       .attr('font-weight', 'bold')
       .attr('fill', '#475569')
-      .text((d: any) => d.name);
+      .text((d: LayoutNode) => d.name);
 
   }, [sankeyData, activeTab]);
 
@@ -294,9 +319,9 @@ export default function VisualPage() {
     return [];
   }, [data, activeTab, industryStats]);
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps) => {
     if (active && payload && payload.length) {
-      const d = payload[0].payload;
+      const d = payload[0].payload as VisualCase;
       return (
         <div className="bg-slate-900/90 text-white p-3 rounded-xl shadow-2xl border border-white/10 text-xs backdrop-blur-md">
           <p className="font-black text-indigo-300 mb-1">{d.industry_sub || d.industry_major}</p>
@@ -385,7 +410,7 @@ export default function VisualPage() {
                     <XAxis type="number" dataKey="score" name="スコア" domain={[0, 105]} stroke="#94a3b8" tick={{fill: '#64748b', fontWeight: 'bold'}} />
                     <YAxis type="number" dataKey="spread" name="スプレッド" stroke="#94a3b8" tick={{fill: '#64748b', fontWeight: 'bold'}} />
                     <ZAxis type="number" dataKey="acquisition_cost" range={[40, 800]} />
-                    <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3' }} />
+                    <Tooltip content={CustomTooltip} cursor={{ strokeDasharray: '3 3' }} />
                     <Legend iconType="circle" />
                     <Scatter name="成約" data={wonCases} fill="#10b981" fillOpacity={0.6} stroke="#059669" strokeWidth={2} />
                     <Scatter name="失注" data={lostCases} fill="#f43f5e" fillOpacity={0.6} stroke="#e11d48" strokeWidth={2} />

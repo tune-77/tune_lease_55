@@ -2,6 +2,11 @@
 
 *[日本語版 README はこちら](README.md)*
 
+[![PR Checks](https://github.com/tune-77/tune_lease_55/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/pr-checks.yml)
+[![Daily Test Suite](https://github.com/tune-77/tune_lease_55/actions/workflows/daily-test.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/daily-test.yml)
+[![Deploy to Cloud Run](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml)
+[![Security Scan](https://github.com/tune-77/tune_lease_55/actions/workflows/security-scan.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/security-scan.yml)
+
 [![SHION demo video](https://img.youtube.com/vi/KWLbWEHHn-E/hqdefault.jpg)](https://youtu.be/KWLbWEHHn-E)
 
 **SHION is an AI for lease-financing credit review that captures the "something feels off" a human reviewer senses in the field — instead of letting it evaporate — and turns it into checkpoints, conditions, and material for the next decision.**

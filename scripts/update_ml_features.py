@@ -34,30 +34,31 @@ import numpy as np
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)
 
-DB_PATH        = os.path.join(_PROJECT_ROOT, "data", "lease_data.db")
-MODEL_PATH     = os.path.join(_PROJECT_ROOT, "data", "ml_rf_v3.pkl")
-ENCODER_PATH   = os.path.join(_PROJECT_ROOT, "data", "ml_rf_industry_encoder.pkl")
+DB_PATH = os.path.join(_PROJECT_ROOT, "data", "lease_data.db")
+MODEL_PATH = os.path.join(_PROJECT_ROOT, "data", "ml_rf_v3.pkl")
+ENCODER_PATH = os.path.join(_PROJECT_ROOT, "data", "ml_rf_industry_encoder.pkl")
 
 logger = logging.getLogger(__name__)
 
 # ── モデルをモジュールレベルでキャッシュ ─────────────────────────────
-_bundle  = None
-_model   = None
-_FEAT    = None
-_enc     = None
-_imp     = None
+_bundle = None
+_model = None
+_FEAT = None
+_enc = None
+_imp = None
 _medians = None
+
 
 def _load_model():
     global _bundle, _model, _FEAT, _enc, _imp, _medians
     if _model is not None:
         return
     import joblib
-    _bundle  = joblib.load(MODEL_PATH)
-    _model   = _bundle["model"]
-    _FEAT    = _bundle["feature_names"]
-    _enc     = _bundle["encoders"]
-    _imp     = _bundle["imputer"]
+    _bundle = joblib.load(MODEL_PATH)
+    _model = _bundle["model"]
+    _FEAT = _bundle["feature_names"]
+    _enc = _bundle["encoders"]
+    _imp = _bundle["imputer"]
     _medians = dict(zip(_FEAT, _imp.statistics_))
 
 
@@ -82,16 +83,16 @@ def _safe_div(a, b):
 
 def _enc_safe(key, val):
     le = _enc[key]
-    v  = val if val in le.classes_ else _DEFAULT_ENC[key]
+    v = val if val in le.classes_ else _DEFAULT_ENC[key]
     return int(le.transform([v])[0])
 
 
 def _build_record(case_id, data_json, final_status):
     """JSON文字列 → (case_id, feature_dict, pred_proba, pred_score, judgment)"""
-    d   = json.loads(data_json)
+    d = json.loads(data_json)
     inp = d.get("inputs", {})
     res = d.get("result", {})
-    qs  = inp.get("qualitative_scoring") or res.get("qualitative_scoring_correction") or {}
+    qs = inp.get("qualitative_scoring") or res.get("qualitative_scoring_correction") or {}
     qs_items = qs.get("items", {}) if isinstance(qs, dict) else {}
 
     def qs_val(k):
@@ -99,69 +100,69 @@ def _build_record(case_id, data_json, final_status):
         return item.get("value") if isinstance(item, dict) else None
 
     # 財務（千円→百万円）
-    gp   = (inp.get("gross_profit") or 0) / 1000
-    op   = (inp.get("op_profit")    or 0) / 1000
-    ep   = (inp.get("ord_profit")   or 0) / 1000
-    ni   = (inp.get("net_income")   or 0) / 1000
-    dep  = (inp.get("dep_expense")  or 0) / 1000
+    gp = (inp.get("gross_profit") or 0) / 1000
+    op = (inp.get("op_profit") or 0) / 1000
+    ep = (inp.get("ord_profit") or 0) / 1000
+    ni = (inp.get("net_income") or 0) / 1000
+    dep = (inp.get("dep_expense") or 0) / 1000
     depr = (inp.get("depreciation") or 0) / 1000
-    ns   = (inp.get("nenshu")       or 0) / 1000
-    mach = (inp.get("machines")     or 0) / 1000
-    oa   = (inp.get("other_assets") or 0) / 1000
-    rent = (inp.get("rent")         or 0) / 1000
+    ns = (inp.get("nenshu") or 0) / 1000
+    mach = (inp.get("machines") or 0) / 1000
+    oa = (inp.get("other_assets") or 0) / 1000
+    rent = (inp.get("rent") or 0) / 1000
     rexp = (inp.get("rent_expense") or 0) / 1000
-    bk   = (inp.get("bank_credit")  or 0) / 1000
-    lc   = (inp.get("lease_credit") or 0) / 1000
-    acq  = (inp.get("acquisition_cost") or 0) / 1000
-    lt   = float(inp.get("lease_term") or 60)
-    ct   = float(inp.get("contracts") or 0)
-    las  = float(inp.get("lease_asset_score") or 0)
+    bk = (inp.get("bank_credit") or 0) / 1000
+    lc = (inp.get("lease_credit") or 0) / 1000
+    acq = (inp.get("acquisition_cost") or 0) / 1000
+    lt = float(inp.get("lease_term") or 60)
+    ct = float(inp.get("contracts") or 0)
+    las = float(inp.get("lease_asset_score") or 0)
 
     # 派生比率
-    gpm         = _safe_div(gp, ns)
-    ord_margin  = _safe_div(ep, gp)
-    net_margin  = _safe_div(ni, gp)
-    dep_ratio   = _safe_div(dep, gp)
-    bank_to_ns  = _safe_div(bk, ns)
+    gpm = _safe_div(gp, ns)
+    ord_margin = _safe_div(ep, gp)
+    net_margin = _safe_div(ni, gp)
+    dep_ratio = _safe_div(dep, gp)
+    bank_to_ns = _safe_div(bk, ns)
     lease_to_ns = _safe_div(lc, ns)
-    mach_to_ns  = _safe_div(mach, ns)
-    acq_to_ns   = _safe_div(acq, ns)
-    op_margin   = _safe_div(op, ns)
+    mach_to_ns = _safe_div(mach, ns)
+    acq_to_ns = _safe_div(acq, ns)
+    op_margin = _safe_div(op, ns)
     dep_to_loan = _safe_div(dep, bk + lc) if (bk + lc) > 0 else 0.0
 
     # カテゴリ
     industry_raw = d.get("industry_major") or "不明"
-    ind_code  = _enc_safe("industry",      industry_raw)
-    ct_code   = _enc_safe("contract_type", inp.get("contract_type") or "不明")
-    ds_code   = _enc_safe("deal_source",   inp.get("deal_source")   or "不明")
-    sd_code   = _enc_safe("sales_dept",    d.get("sales_dept")      or "不明")
+    ind_code = _enc_safe("industry",      industry_raw)
+    ct_code = _enc_safe("contract_type", inp.get("contract_type") or "不明")
+    ds_code = _enc_safe("deal_source",   inp.get("deal_source") or "不明")
+    sd_code = _enc_safe("sales_dept",    d.get("sales_dept") or "不明")
     cust_type = 1 if d.get("customer_type") == "既存先" else 0
-    main_bk   = 1 if (d.get("main_bank") or "").startswith("メイン先") else 0
-    competitor= 1 if d.get("competitor") == "競合あり" else 0
+    main_bk = 1 if (d.get("main_bank") or "").startswith("メイン先") else 0
+    competitor = 1 if d.get("competitor") == "競合あり" else 0
     comp_rate = float(d.get("competitor_rate") or 0)
-    grade     = _GRADE_MAP.get(inp.get("grade", ""), 4)
+    grade = _GRADE_MAP.get(inp.get("grade", ""), 4)
     base_rate = d.get("base_rate_at_time") or None
 
     # 定性スコア
-    q_history   = qs_val("company_history")
+    q_history = qs_val("company_history")
     q_stability = qs_val("customer_stability")
     q_repayment = qs_val("repayment_history")
-    q_future    = qs_val("business_future")
-    q_equip     = qs_val("equipment_purpose")
-    q_mainbk    = qs_val("main_bank")
-    q_weighted  = qs.get("weighted_score") if isinstance(qs, dict) else None
+    q_future = qs_val("business_future")
+    q_equip = qs_val("equipment_purpose")
+    q_mainbk = qs_val("main_bank")
+    q_weighted = qs.get("weighted_score") if isinstance(qs, dict) else None
 
     # システムスコア（Step1: scoring_core の run_quick_scoring() 出力から取得）
     # sys_score_b は scoring_core 内の LGBM借手スコアモデルが計算した借手スコア(0-100)。
     # このスクリプトは Step2 の RF 特徴量として sys_score_b をそのまま利用する。
-    sys_score   = res.get("score")
+    sys_score = res.get("score")
     sys_score_b = res.get("score_borrower")
-    sys_dscr    = res.get("dscr_approx")
-    sys_op_m    = res.get("user_op_margin")
-    sys_icr     = res.get("interest_coverage")
-    sys_appr    = res.get("approval_line")
-    sys_ind     = res.get("ind_score")
-    sys_bench   = res.get("bench_score")
+    sys_dscr = res.get("dscr_approx")
+    sys_op_m = res.get("user_op_margin")
+    sys_icr = res.get("interest_coverage")
+    sys_appr = res.get("approval_line")
+    sys_ind = res.get("ind_score")
+    sys_bench = res.get("bench_score")
 
     feat_map = {
         "gross_profit": gp,    "op_profit": op,    "ord_profit": ep,
@@ -193,7 +194,7 @@ def _build_record(case_id, data_json, final_status):
 
     # Step2: RF 52特徴量モデルで成約確率を予測（sys_score_b が特徴量に含まれる）
     X_raw = np.array([[feat_map.get(f) for f in _FEAT]], dtype=float)
-    X     = _imp.transform(X_raw)
+    X = _imp.transform(X_raw)
     proba = float(_model.predict_proba(X)[0, 1])
     score = int(round(proba * 100))
     judgment = "承認" if score >= 65 else ("条件付" if score >= 45 else "否認")

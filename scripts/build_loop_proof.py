@@ -394,50 +394,50 @@ def render(m: dict) -> str:
 
   <div class="sechead"><h2>ループが回った実数</h2><span class="line"></span></div>
   <div class="tiles">
-    <div class="tile"><p class="k">AIの改善提案</p><div class="v tnum">{m.get('proposals',0)}</div><p class="sub">台帳に記録された改善候補（REV）</p></div>
-    <div class="tile"><p class="k">実際に適用</p><div class="v tnum">{m.get('applied',0)}</div><span class="pct good">適用率 {m.get('applied_pct',0)}%</span><p class="sub">提案 → コードへ反映まで到達</p></div>
-    <div class="tile"><p class="k">PRに紐づく適用</p><div class="v tnum">{m.get('pr_traced',0)}</div><p class="sub">{m.get('distinct_rev',0)} の独立REVがPR経路で追跡可能</p></div>
-    <div class="tile"><p class="k">人間評価の反映</p><div class="v tnum">{m.get('feedback_total',0)}<small>件</small></div><span class="pct good">PDCA {round(m.get('feedback_pct',0))}%</span><p class="sub">全件が次のプロンプトへ反映</p></div>
+    <div class="tile"><p class="k">AIの改善提案</p><div class="v tnum">{m.get('proposals', 0)}</div><p class="sub">台帳に記録された改善候補（REV）</p></div>
+    <div class="tile"><p class="k">実際に適用</p><div class="v tnum">{m.get('applied', 0)}</div><span class="pct good">適用率 {m.get('applied_pct', 0)}%</span><p class="sub">提案 → コードへ反映まで到達</p></div>
+    <div class="tile"><p class="k">PRに紐づく適用</p><div class="v tnum">{m.get('pr_traced', 0)}</div><p class="sub">{m.get('distinct_rev', 0)} の独立REVがPR経路で追跡可能</p></div>
+    <div class="tile"><p class="k">人間評価の反映</p><div class="v tnum">{m.get('feedback_total', 0)}<small>件</small></div><span class="pct good">PDCA {round(m.get('feedback_pct', 0))}%</span><p class="sub">全件が次のプロンプトへ反映</p></div>
   </div>
 
   <hr class="rule">
 
   <div class="sechead"><h2>閉ループの各段が、実データで点灯している</h2><span class="line"></span></div>
   <div class="loop">
-    <div class="stage"><span class="flag live">稼働</span><span class="n">01 提案</span><span class="t">AIが改善を起票</span><span class="big tnum">{m.get('proposals',0)}</span><span class="d">改善候補を台帳へ</span></div>
-    <div class="stage"><span class="flag live">稼働</span><span class="n">02 適用</span><span class="t">PRで反映</span><span class="big tnum">{m.get('applied',0)}</span><span class="d">うち{m.get('pr_traced',0)}がPR追跡可</span></div>
-    <div class="stage"><span class="flag live">稼働</span><span class="n">03 人間評価</span><span class="t">効いた／微妙／外した</span><span class="big tnum">{m.get('feedback_total',0)}</span><span class="d">{m.get('fb_diff_pct',0)}%が次回応答を変えた</span></div>
-    <div class="stage"><span class="flag live">稼働</span><span class="n">04 資産化</span><span class="t">判断資産が育つ</span><span class="big tnum">{m.get('materials',0)}</span><span class="d">Materials／Active rules {m.get('active_rules',0)}</span></div>
-    <div class="stage next"><span class="flag soon">次の点火点</span><span class="n">05 実戦検証</span><span class="t">例題/案件レビューで効いたか</span><span class="big tnum">{round(m.get('field',0))}</span><span class="d">Field validation score</span></div>
+    <div class="stage"><span class="flag live">稼働</span><span class="n">01 提案</span><span class="t">AIが改善を起票</span><span class="big tnum">{m.get('proposals', 0)}</span><span class="d">改善候補を台帳へ</span></div>
+    <div class="stage"><span class="flag live">稼働</span><span class="n">02 適用</span><span class="t">PRで反映</span><span class="big tnum">{m.get('applied', 0)}</span><span class="d">うち{m.get('pr_traced', 0)}がPR追跡可</span></div>
+    <div class="stage"><span class="flag live">稼働</span><span class="n">03 人間評価</span><span class="t">効いた／微妙／外した</span><span class="big tnum">{m.get('feedback_total', 0)}</span><span class="d">{m.get('fb_diff_pct', 0)}%が次回応答を変えた</span></div>
+    <div class="stage"><span class="flag live">稼働</span><span class="n">04 資産化</span><span class="t">判断資産が育つ</span><span class="big tnum">{m.get('materials', 0)}</span><span class="d">Materials／Active rules {m.get('active_rules', 0)}</span></div>
+    <div class="stage next"><span class="flag soon">次の点火点</span><span class="n">05 実戦検証</span><span class="t">例題/案件レビューで効いたか</span><span class="big tnum">{round(m.get('field', 0))}</span><span class="d">Field validation score</span></div>
   </div>
 
   <hr class="rule">
 
   <div class="cols">
     <div class="card">
-      <h3>判断資産の成長スコア <span class="tnum" style="color:var(--accent);font-family:var(--serif);font-weight:600">{m.get('growth_score',0)}</span></h3>
-      <p class="note">{m.get('gen_date','')} 時点・日次トラッキング（local計測、RAG/プロンプト/スコアリングへ書き戻さないガードレール下）。人間判断から蒸留した構成要素の充足度。</p>
+      <h3>判断資産の成長スコア <span class="tnum" style="color:var(--accent);font-family:var(--serif);font-weight:600">{m.get('growth_score', 0)}</span></h3>
+      <p class="note">{m.get('gen_date', '')} 時点・日次トラッキング（local計測、RAG/プロンプト/スコアリングへ書き戻さないガードレール下）。人間判断から蒸留した構成要素の充足度。</p>
       {meters}
       <div class="counts">
-        <div><div class="cn tnum">{m.get('materials',0)}</div><div class="cl">判断材料 Materials</div></div>
-        <div><div class="cn tnum">{m.get('active_rules',0)}</div><div class="cl">現役ルール Active</div></div>
-        <div><div class="cn tnum">{m.get('user_evidence',0)}</div><div class="cl">ユーザー根拠</div></div>
-        <div><div class="cn tnum">{m.get('concepts',0)}</div><div class="cl">概念 Concepts</div></div>
-        <div><div class="cn tnum">{m.get('risk_axes',0)}</div><div class="cl">リスク軸</div></div>
-        <div><div class="cn tnum">{m.get('inbox',0)}</div><div class="cl">Inbox候補</div></div>
+        <div><div class="cn tnum">{m.get('materials', 0)}</div><div class="cl">判断材料 Materials</div></div>
+        <div><div class="cn tnum">{m.get('active_rules', 0)}</div><div class="cl">現役ルール Active</div></div>
+        <div><div class="cn tnum">{m.get('user_evidence', 0)}</div><div class="cl">ユーザー根拠</div></div>
+        <div><div class="cn tnum">{m.get('concepts', 0)}</div><div class="cl">概念 Concepts</div></div>
+        <div><div class="cn tnum">{m.get('risk_axes', 0)}</div><div class="cl">リスク軸</div></div>
+        <div><div class="cn tnum">{m.get('inbox', 0)}</div><div class="cl">Inbox候補</div></div>
       </div>
     </div>
     <div class="card">
       <h3>人間評価 → 応答の変化</h3>
-      <p class="note">{m.get('feedback_total',0)}件の人間フィードバック（効いた／微妙／外した／修正）が全件PDCAに反映。うち実際に前回応答からの差分を生んだ割合。</p>
+      <p class="note">{m.get('feedback_total', 0)}件の人間フィードバック（効いた／微妙／外した／修正）が全件PDCAに反映。うち実際に前回応答からの差分を生んだ割合。</p>
       <div class="prop">
-        <div class="propbar" role="img" aria-label="{m.get('feedback_total',0)}件中{m.get('fb_diffs',0)}件（{m.get('fb_diff_pct',0)}%）が次回応答を変えた">
-          <div class="seg a" style="width:{m.get('fb_diff_pct',0)}%"></div>
-          <div class="seg b" style="width:{m.get('fb_other_pct',0)}%"></div>
+        <div class="propbar" role="img" aria-label="{m.get('feedback_total', 0)}件中{m.get('fb_diffs', 0)}件（{m.get('fb_diff_pct', 0)}%）が次回応答を変えた">
+          <div class="seg a" style="width:{m.get('fb_diff_pct', 0)}%"></div>
+          <div class="seg b" style="width:{m.get('fb_other_pct', 0)}%"></div>
         </div>
         <div class="leg">
-          <span><span class="sw a"></span>応答が変化 {m.get('fb_diffs',0)}件 <b class="tnum" style="margin-left:2px">{m.get('fb_diff_pct',0)}%</b></span>
-          <span><span class="sw b"></span>反映・現状維持 {m.get('fb_other',0)}件</span>
+          <span><span class="sw a"></span>応答が変化 {m.get('fb_diffs', 0)}件 <b class="tnum" style="margin-left:2px">{m.get('fb_diff_pct', 0)}%</b></span>
+          <span><span class="sw b"></span>反映・現状維持 {m.get('fb_other', 0)}件</span>
         </div>
       </div>
       <h3 style="margin-top:22px">適用REVの推移</h3>
@@ -453,8 +453,8 @@ def render(m: dict) -> str:
   <div class="gaps">
     <h3>正直な現在地 — ここが次の伸びしろ</h3>
     <ul>
-      <li><span class="dot"></span><span><b>Field validation score は {round(m.get('field',0))}。</b> 例題レビューで初期点灯した段階。次は本物の案件フィードバックを <code>source=shion_screening_review</code> 等で積み、manual_example と分けて有効性を見る。</span></li>
-      <li><span class="dot"></span><span><b>レビュー圧が高い。</b> {m.get('needs_review',0)}件が needs-review で滞留。適用スピードに対し人間承認がボトルネック。</span></li>
+      <li><span class="dot"></span><span><b>Field validation score は {round(m.get('field', 0))}。</b> 例題レビューで初期点灯した段階。次は本物の案件フィードバックを <code>source=shion_screening_review</code> 等で積み、manual_example と分けて有効性を見る。</span></li>
+      <li><span class="dot"></span><span><b>レビュー圧が高い。</b> {m.get('needs_review', 0)}件が needs-review で滞留。適用スピードに対し人間承認がボトルネック。</span></li>
       {scoring_line}
     </ul>
   </div>

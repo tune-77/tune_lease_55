@@ -112,7 +112,8 @@ def run_gemini_shion(question: str, mind_path: Path) -> dict:
 # ── Claude single-shot ─────────────────────────────────────────────────────
 
 def run_claude_shion(question: str, mind_path: Path, timeout: int = 180) -> dict:
-    import shutil, subprocess
+    import shutil
+    import subprocess
     cli = shutil.which("claude")
     if not cli:
         return {"error": "claude CLI not found", "model": "claude", "provider": "claude"}
@@ -185,7 +186,8 @@ def run_gemini_bare(question: str) -> dict:
 
 
 def run_claude_bare(question: str, timeout: int = 180) -> dict:
-    import shutil, subprocess
+    import shutil
+    import subprocess
     cli = shutil.which("claude")
     if not cli:
         return {"error": "claude CLI not found", "model": "claude", "provider": "claude_bare"}
@@ -213,7 +215,7 @@ def run_claude_bare(question: str, timeout: int = 180) -> dict:
 def run_control_experiment(question: str) -> None:
     """Gemini vs Claude, no Shion memory — baseline for identity comparison."""
     print(f"\n{'═' * 60}")
-    print(f"【コントロール実験: 記憶なし】")
+    print("【コントロール実験: 記憶なし】")
     print(f"{'═' * 60}")
 
     print("[Gemini/記憶なし] 推論中…")
@@ -260,9 +262,9 @@ def jaccard(a: list, b: list) -> float:
 
 
 def compare_paths(path_a: dict, path_b: dict) -> dict:
-    kept   = jaccard(path_a.get("kept", []),    path_b.get("kept", []))
+    kept = jaccard(path_a.get("kept", []),    path_b.get("kept", []))
     dropped = jaccard(path_a.get("dropped", []), path_b.get("dropped", []))
-    pivots  = jaccard(path_a.get("pivots", []),  path_b.get("pivots", []))
+    pivots = jaccard(path_a.get("pivots", []),  path_b.get("pivots", []))
 
     # value_weights: compare as flat text
     wt_a = list(path_a.get("value_weights", {}).items())
@@ -327,11 +329,11 @@ def _save_record(record: dict) -> Path:
 # ── Main ────────────────────────────────────────────────────────────────────
 
 def run_experiment(question: str, ollama_model: str, provider: str = "ollama") -> dict:
-    print(f"\n[Gemini] 推論中…")
+    print("\n[Gemini] 推論中…")
     result_gemini = run_gemini_shion(question, MIND_PATH)
 
     if provider == "claude":
-        print(f"[Claude] 推論中…")
+        print("[Claude] 推論中…")
         result_b = run_claude_shion(question, MIND_PATH)
     else:
         print(f"[Ollama/{ollama_model}] 推論中…")

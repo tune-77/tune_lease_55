@@ -112,6 +112,7 @@ def _format_fp0_patch_text(fp0_patch_note: dict | None) -> str:
 
     return "\n".join(lines)
 
+
 def render_gunshi() -> None:
     """軍師モード メイン UI"""
     # DB 初期化
@@ -461,8 +462,6 @@ def render_gunshi() -> None:
         )
 
         last_id = st.session_state.get("gunshi_last_case_id")
-        # ── 週次戦略の表示 ──
-        _render_weekly_strategy_panel()
 
         if last_id:
             col_r1, col_r2 = st.columns(2)
@@ -593,6 +592,7 @@ _ASSET_RESALE_MAP: list[tuple[list[str], str]] = [
     (["PC", "サーバー", "タブレット", "スマホ", "IT", "コンピュータ"],      "低"),
 ]
 
+
 def _resale_from_asset_name(asset_name: str) -> str:
     """物件名からリセール評価（高/中/低）を推定する。"""
     name = (asset_name or "").upper()
@@ -600,8 +600,6 @@ def _resale_from_asset_name(asset_name: str) -> str:
         if any(k.upper() in name for k in keywords):
             return level
     return "中"  # デフォルト
-
-
 
 
 def _repeat_from_qualitative(res: dict) -> int:
@@ -667,12 +665,12 @@ def compute_gunshi_from_res(
     """
     init_db()
 
-    score   = float(res.get("score", 0))
-    pd_pct  = float(res.get("pd_percent", 0))
+    score = float(res.get("score", 0))
+    pd_pct = float(res.get("pd_percent", 0))
 
     # 業種カテゴリ
     industry_major = res.get("industry_major", "")
-    industry_cat   = _INDUSTRY_MAJOR_MAP.get(industry_major, "汎用")
+    industry_cat = _INDUSTRY_MAJOR_MAP.get(industry_major, "汎用")
 
     # 物件名からリセール評価
     asset_name = res.get("asset_name", "") or ""
@@ -697,7 +695,7 @@ def compute_gunshi_from_res(
 
     # 補助金・銀行支援
     subsidy = _subsidy_from_res(res, submitted_inputs)
-    bank    = _bank_from_res(res, submitted_inputs)
+    bank = _bank_from_res(res, submitted_inputs)
 
     # 直感スコア：submitted_inputs に入力値があれば使用、なければ3（ニュートラル）
     _raw_intuition = (submitted_inputs or {}).get("intuition")
@@ -709,7 +707,7 @@ def compute_gunshi_from_res(
         intuition = 3
 
     # ベイズ計算
-    prior    = compute_prior(score, pd_pct)
+    prior = compute_prior(score, pd_pct)
     patterns = get_success_patterns(industry_cat)
     posterior = compute_posterior(
         prior=prior,
@@ -844,10 +842,10 @@ def render_gunshi_in_results(
 
     # ── 計算（キャッシュ利用） ──────────────────────────────────────
     cache_key = "gunshi_auto_result"
-    last_score   = st.session_state.get("_gunshi_cache_score")
+    last_score = st.session_state.get("_gunshi_cache_score")
     last_bn_hash = st.session_state.get("_gunshi_cache_bn_hash")
-    cur_score    = res.get("score", 0)
-    cur_bn_hash  = hash((frozenset((bn_evidence or {}).items()), bn_approval_prob))
+    cur_score = res.get("score", 0)
+    cur_bn_hash = hash((frozenset((bn_evidence or {}).items()), bn_approval_prob))
     if cache_key not in st.session_state or last_score != cur_score or last_bn_hash != cur_bn_hash:
         with st.spinner("軍師データを計算中..."):
             st.session_state[cache_key] = compute_gunshi_from_res(
@@ -855,11 +853,11 @@ def render_gunshi_in_results(
                 bn_evidence=bn_evidence,
                 bn_approval_prob=bn_approval_prob,
             )
-            st.session_state["_gunshi_cache_score"]   = cur_score
+            st.session_state["_gunshi_cache_score"] = cur_score
             st.session_state["_gunshi_cache_bn_hash"] = cur_bn_hash
 
     g = st.session_state[cache_key]
-    pct       = int(g["display_prob"] * 100)
+    pct = int(g["display_prob"] * 100)
     posterior = g["posterior"]
     reverse_bayes_text = _format_reverse_bayes_text(g.get("reverse_bayes_bonus"))
     fp0_patch_text = _format_fp0_patch_text(g.get("fp0_patch_note"))
@@ -950,15 +948,15 @@ def render_gunshi_in_results(
     )
     if run_llm:
         _trend = st.session_state.get("_gunshi_trend_300", "")
-        _comp  = (res or {}).get("comparison", "")
+        _comp = (res or {}).get("comparison", "")
         _fp0_patch_text = _format_fp0_patch_text(g.get("fp0_patch_note"))
-        
+
         # --- アセットファイナンスの補足情報構築 ---
         _af_ctx = ""
         try:
             from components.asset_finance import AssetFinanceEngine
             _afe = AssetFinanceEngine()
-            
+
             # 物件名からマッピング
             _afe_key = "車両"
             _a_name_up = (g.get("asset_name") or "").upper()
@@ -976,16 +974,16 @@ def render_gunshi_in_results(
                 _afe_key = "ドローン"
             else:
                 _afe_key = "車両"
-                
+
             _af_data_eval = {
                 'asset_type':          _afe_key,
                 'term':                int(st.session_state.get("lease_term", 60) or 60),
                 'down_payment':        0.10,
                 'financial_score':     "Medium",
                 'main_bank_support':   g["bank"],
-                'bank_coordination':   False,
-                'core_business':       True,
-                'related_assets':      False,
+                'bank_coordination': False,
+                'core_business': True,
+                'related_assets': False,
                 'annual_km':           15000,
                 'has_maintenance_lease': False,
                 'ai_residual_pct':     st.session_state.get('asd_residual')
@@ -1132,11 +1130,11 @@ def render_gunshi_ai_comment(
         st.session_state["_gunshi_trend_info"] = trend_info
 
     # ── 計算（render_gunshi_in_results と共有キャッシュ） ─────────────────
-    cache_key    = "gunshi_auto_result"
-    last_score   = st.session_state.get("_gunshi_cache_score")
+    cache_key = "gunshi_auto_result"
+    last_score = st.session_state.get("_gunshi_cache_score")
     last_bn_hash = st.session_state.get("_gunshi_cache_bn_hash")
-    cur_score    = res.get("score", 0)
-    cur_bn_hash  = hash((frozenset((bn_evidence or {}).items()), bn_approval_prob))
+    cur_score = res.get("score", 0)
+    cur_bn_hash = hash((frozenset((bn_evidence or {}).items()), bn_approval_prob))
     if cache_key not in st.session_state or last_score != cur_score or last_bn_hash != cur_bn_hash:
         with st.spinner("軍師AIを起動中..."):
             st.session_state[cache_key] = compute_gunshi_from_res(
@@ -1144,11 +1142,13 @@ def render_gunshi_ai_comment(
                 bn_evidence=bn_evidence,
                 bn_approval_prob=bn_approval_prob,
             )
-            st.session_state["_gunshi_cache_score"]   = cur_score
+            st.session_state["_gunshi_cache_score"] = cur_score
             st.session_state["_gunshi_cache_bn_hash"] = cur_bn_hash
 
     g = st.session_state[cache_key]
-    pct       = int(g["display_prob"] * 100)
+    reverse_bayes_text = _format_reverse_bayes_text(g.get("reverse_bayes_bonus"))
+    _fp0_patch_text = _format_fp0_patch_text(g.get("fp0_patch_note"))
+    pct = int(g["display_prob"] * 100)
     posterior = g["posterior"]
     bar_color = "#2d8a4e" if pct >= 70 else ("#f97316" if pct >= 50 else "#ef4444")
     bar_label = "✅ 承認圏内" if pct >= 70 else ("⚠️ 要審議" if pct >= 50 else "❌ 再考必要")
@@ -1232,7 +1232,7 @@ def render_gunshi_ai_comment(
     if _raw_trend and _raw_trend.strip():
         # ネット補足は除外し、jsicデータ部分を先頭300文字に絞る
         _trend_core = _raw_trend.split("\n\n【ネットで補足】")[0].strip()
-        _trend_300  = (_trend_core[:300] + "…") if len(_trend_core) > 300 else _trend_core
+        _trend_300 = (_trend_core[:300] + "…") if len(_trend_core) > 300 else _trend_core
         # 300文字版をセッションに保存（LLMプロンプトで使用）
         st.session_state["_gunshi_trend_300"] = _trend_300
         st.markdown(
@@ -1283,7 +1283,7 @@ def render_gunshi_ai_comment(
         if run_llm:
             # 業界動向は300文字サマリー版を使用（UIに表示済みのものと同一）
             _trend = st.session_state.get("_gunshi_trend_300", "")
-            _comp  = (res or {}).get("comparison", "")
+            _comp = (res or {}).get("comparison", "")
             prompt = build_gunshi_prompt(
                 industry=g["industry_cat"],
                 score=g["score"],

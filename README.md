@@ -2,6 +2,11 @@
 
 *[English README](README.en.md)*
 
+[![PR Checks](https://github.com/tune-77/tune_lease_55/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/pr-checks.yml)
+[![Daily Test Suite](https://github.com/tune-77/tune_lease_55/actions/workflows/daily-test.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/daily-test.yml)
+[![Deploy to Cloud Run](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml)
+[![Security Scan](https://github.com/tune-77/tune_lease_55/actions/workflows/security-scan.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/security-scan.yml)
+
 [![紫苑デモ動画](https://img.youtube.com/vi/KWLbWEHHn-E/hqdefault.jpg)](https://youtu.be/KWLbWEHHn-E)
 
 **紫苑（SHION）は、リース審査の現場で人間が感じる「なんか変」を、消さずに言語化し、確認点・条件・次回の判断材料として残すAIです。**

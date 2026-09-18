@@ -12,7 +12,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -26,7 +26,7 @@ jobs:
             if [[ ! "$branch" =~ ^(master|main|develop|dev)$ ]]; then
               echo "削除: $branch"
               git push origin --delete "$branch" || true
-              ((merged_count++))
+              merged_count=$((merged_count + 1))
             fi
           done
 
@@ -45,7 +45,7 @@ jobs:
             if [ "$last_commit_date" -lt "$cutoff_date" ]; then
               echo "削除: $branch (最終更新: $(date -d @$last_commit_date))"
               git push origin --delete "$branch" || true
-              ((stale_count++))
+              stale_count=$((stale_count + 1))
             fi
           done
 
@@ -56,3 +56,10 @@ jobs:
           echo "📊 ブランチクリーンアップ完了" >> $GITHUB_STEP_SUMMARY
           git fetch -q
           echo "現在のブランチ数: $(git branch -r | wc -l)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Cleanup Old Branches"

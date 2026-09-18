@@ -307,6 +307,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
     patterns = tuple(args.log_patterns or DEFAULT_LOG_PATTERNS)
+    scanned_logs = expand_logs(PROJECT_ROOT, patterns)
     findings = build_findings(PROJECT_ROOT, patterns)
     auto_actions = apply_safe_findings(findings) if args.apply_safe else []
     report = OpsFrictionReport(findings=findings, auto_actions=auto_actions)
@@ -320,6 +321,16 @@ def main(argv: Iterable[str] | None = None) -> int:
         print(json.dumps(asdict(report), ensure_ascii=False, indent=2))
     else:
         print(render(report), end="")
+    # findings=0（摩擦なし）は良い意味のゼロなので検知しない。検知するのは
+    # スキャン対象のログファイル自体が1件も見つからないケース（glob patternの
+    # 対象ディレクトリ/命名がドリフトして、何もスキャンできていない疑い）。
+    if not scanned_logs:
+        print(
+            "[ops_friction_doctor] 警告: 走査対象ログが1件も見つからなかった。"
+            f"log-pattern がドリフトした疑い: {', '.join(patterns)}",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

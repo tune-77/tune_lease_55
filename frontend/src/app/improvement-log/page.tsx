@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { apiClient } from "@/lib/api";
+import { apiClient, getApiErrorDetail } from "@/lib/api";
 import {
   AlertCircle,
   AlertTriangle,
@@ -875,7 +875,7 @@ export default function ImprovementLogPage() {
       setPendingRecipes(res.data.recipes ?? []);
       setRecipeStatus(statusRes.data ?? null);
       setActionLedgerSummary(actionLedgerRes?.data ?? null);
-    } catch (error) {
+    } catch (_error) {
       setPendingRecipes([]);
       setRecipeStatus(null);
       setActionLedgerSummary(null);
@@ -892,7 +892,7 @@ export default function ImprovementLogPage() {
         await apiClient.post(`/api/recipes/${recipe.id}/${action}`);
         setDismissedRecipes((prev) => new Set(prev).add(recipe.id));
         await fetchRecipes();
-      } catch (error) {
+      } catch (_error) {
         setRecipeError(action === "approve" ? "今回の修正案を適用待ちへ送れませんでした" : "今回の修正案の破棄に失敗しました");
       }
     },
@@ -913,9 +913,8 @@ export default function ImprovementLogPage() {
           setRecipeError(`自動適用は完了しませんでした: ${status}${message ? ` / ${message}` : ""}`);
         }
         await fetchRecipes();
-      } catch (err: any) {
-        const detail = err?.response?.data?.detail || "承認後の自動適用に失敗しました。";
-        setRecipeError(String(detail));
+      } catch (err: unknown) {
+        setRecipeError(getApiErrorDetail(err, "承認後の自動適用に失敗しました。"));
       }
     },
     [fetchRecipes]

@@ -33,6 +33,7 @@ from shion_triage import (  # noqa: E402
     resolve_triage_mode,
     triage_record_for_item,
 )
+from _pipeline_common import report_pipeline_failure  # noqa: E402
 
 BLOCKED_KEYWORDS = [
     "db",
@@ -186,7 +187,8 @@ def is_batch_apply_touched(
 def latest_report_path(root: Path) -> Path:
     reports = sorted((root / "reports").glob("improvement_report_*.json"))
     if not reports:
-        raise SystemExit("No reports/improvement_report_*.json files found.")
+        report_pipeline_failure("No reports/improvement_report_*.json files found.")
+        raise SystemExit(1)
     return reports[-1]
 
 

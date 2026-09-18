@@ -27,9 +27,11 @@ OUTPUT_DIR = f"{VAULT_PATH}/02-開発中_代替案/leaseDb_データ"
 # 出力ディレクトリ作成
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+
 def get_db_connection():
     """SQLite 接続"""
     return sqlite3.connect(DB_PATH)
+
 
 def table_to_markdown(table_name, limit=100, columns=None):
     """
@@ -55,6 +57,7 @@ def table_to_markdown(table_name, limit=100, columns=None):
         return df, md_table
     finally:
         conn.close()
+
 
 def create_past_cases_markdown():
     """過去審査案件をマークダウン化"""
@@ -136,6 +139,7 @@ GROUP BY industry_sub
 
     return frontmatter
 
+
 def create_screening_records_markdown():
     """審査記録をマークダウン化"""
 
@@ -208,6 +212,7 @@ GROUP BY outcome
 
     return frontmatter
 
+
 def create_payment_history_markdown():
     """返済履歴をマークダウン化"""
 
@@ -269,6 +274,7 @@ updated_at: {datetime.now().isoformat()}
 
     return frontmatter
 
+
 def create_subsidies_markdown():
     """補助金情報をマークダウン化"""
 
@@ -316,6 +322,7 @@ updated_at: {datetime.now().isoformat()}
 """
 
     return frontmatter
+
 
 def is_month_end():
     """月末かどうかを判定"""
@@ -805,7 +812,7 @@ updated_at: {datetime.now().isoformat()}
 |--------|---------|-------|------|
 | **1位** | {score_analysis.sort_values('成約率(%)', ascending=False).iloc[0]['スコア帯']} | {score_analysis['成約率(%)'].max():.1f}% | 最優先営業対象 |
 | **2位** | {score_analysis.sort_values('成約率(%)', ascending=False).iloc[1]['スコア帯']} | {score_analysis.sort_values('成約率(%)', ascending=False).iloc[1]['成約率(%)']:.1f}% | 次点対象 |
-| **3位** | 50～59 | {score_analysis[score_analysis['スコア帯']=='50～59']['成約率(%)'].values[0]:.1f}% | ボリューム狙い |
+| **3位** | 50～59 | {score_analysis[score_analysis['スコア帯'] == '50～59']['成約率(%)'].values[0]:.1f}% | ボリューム狙い |
 
 ### アクション
 
@@ -1012,6 +1019,7 @@ LIMIT 12
 
     return dashboard
 
+
 def main():
     """メイン処理"""
     print("=" * 60)
@@ -1107,6 +1115,7 @@ def main():
     print("  1. Obsidian を開く")
     print("  2. 02-開発中_代替案/leaseDb_データ/ を確認")
     print("  3. leaseDb_ダッシュボード.md でダッシュボードを確認")
+
 
 if __name__ == "__main__":
     main()

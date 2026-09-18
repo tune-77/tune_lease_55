@@ -34,6 +34,7 @@ from app_logger import log_warning, log_error
 
 _STATIC_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static_data")
 
+
 def _load_json(filename: str) -> dict:
     # static_data/ を優先し、なければ BASE_DIR を確認（後方互換）
     for base in [_STATIC_DATA_DIR, BASE_DIR]:
@@ -94,19 +95,19 @@ _BENCH_VALID_RANGES: dict[str, tuple[float, float]] = {
     "op_margin":            (-30.0,  25.0),   # 営業利益率 %
     "ord_margin":           (-30.0,  25.0),   # 経常利益率 %
     "net_margin":           (-30.0,  20.0),   # 純利益率 %
-    "gross_margin":         (  0.0,  95.0),   # 売上総利益率 %
-    "dep_ratio":            (  0.0,  15.0),   # 減価償却費/売上高 %
+    "gross_margin":         (0.0,  95.0),   # 売上総利益率 %
+    "dep_ratio":            (0.0,  15.0),   # 減価償却費/売上高 %
     "roa":                  (-20.0,  20.0),   # ROA %
     "roe":                  (-50.0,  50.0),   # ROE %
-    "equity_ratio":         (  0.0,  90.0),   # 自己資本比率 %
-    "asset_turnover":       (  0.1,   8.0),   # 総資産回転率 回
-    "fixed_ratio":          (  0.0,  90.0),   # 固定資産比率（対総資産）%
-    "fixed_to_equity":      (  0.0, 400.0),   # 固定比率（対純資産）%
-    "debt_ratio":           (  0.0,  85.0),   # 借入金等依存度 %
-    "debt_to_equity":       (  0.0, 500.0),   # 負債比率（対純資産）%
-    "fixed_asset_turnover": (  0.1,  20.0),   # 固定資産回転率 回
-    "current_asset_ratio":  (  5.0,  95.0),   # 流動資産比率 %
-    "current_ratio":        ( 50.0, 300.0),   # 流動比率 %
+    "equity_ratio":         (0.0,  90.0),   # 自己資本比率 %
+    "asset_turnover":       (0.1,   8.0),   # 総資産回転率 回
+    "fixed_ratio":          (0.0,  90.0),   # 固定資産比率（対総資産）%
+    "fixed_to_equity":      (0.0, 400.0),   # 固定比率（対純資産）%
+    "debt_ratio":           (0.0,  85.0),   # 借入金等依存度 %
+    "debt_to_equity":       (0.0, 500.0),   # 負債比率（対純資産）%
+    "fixed_asset_turnover": (0.1,  20.0),   # 固定資産回転率 回
+    "current_asset_ratio":  (5.0,  95.0),   # 流動資産比率 %
+    "current_ratio":        (50.0, 300.0),   # 流動比率 %
 }
 
 
@@ -553,8 +554,8 @@ def is_japanese_text(text: str, threshold: float = 0.2) -> bool:
         total += 1
         if (
             ("\u3040" <= ch <= "\u30ff")    # ひらがな・カタカナ
-            or ("\u4e00" <= ch <= "\u9faf") # CJK統合漢字
-            or ("\uff66" <= ch <= "\uff9d") # 半角カナ
+            or ("\u4e00" <= ch <= "\u9faf")  # CJK統合漢字
+            or ("\uff66" <= ch <= "\uff9d")  # 半角カナ
         ):
             jp_count += 1
     if total == 0:
@@ -682,7 +683,7 @@ def get_advice_context_extras(selected_sub: str, selected_major: str) -> str:
     lc = get_lease_classification_text()
     if lc:
         parts.append("\n" + lc)
-        
+
     # ▼ 新規追加: 事前生成A4レポートの読み込み
     try:
         import os

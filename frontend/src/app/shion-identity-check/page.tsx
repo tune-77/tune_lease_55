@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowLeft,
   Brain,
@@ -52,13 +53,16 @@ function boolStatus(value: boolean): CheckStatus {
   return value ? "PASS" : "WARNING";
 }
 
-function buildRows(memoryDebug: Record<string, any>): InspectionRow[] {
-  const identity = memoryDebug.identity_memory || {};
-  const personal = memoryDebug.user_personal_memory || {};
-  const recall = memoryDebug.memory_recall || {};
-  const continuity = memoryDebug.continuity_hook || {};
-  const reflection = memoryDebug.reflection_gate || {};
-  const experience = memoryDebug.experience_loop || {};
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+
+function buildRows(memoryDebug: Record<string, unknown>): InspectionRow[] {
+  const identity = asRecord(memoryDebug.identity_memory);
+  const personal = asRecord(memoryDebug.user_personal_memory);
+  const recall = asRecord(memoryDebug.memory_recall);
+  const continuity = asRecord(memoryDebug.continuity_hook);
+  const reflection = asRecord(memoryDebug.reflection_gate);
+  const experience = asRecord(memoryDebug.experience_loop);
   const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0;
   const memoryRefs = Array.isArray(recall.refs) ? recall.refs.length : 0;
 
@@ -223,7 +227,7 @@ export default function ShionIdentityCheckPage() {
           <div className="rounded-xl border border-slate-800 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_transparent_36%),#020617] p-4 shadow-2xl">
             <div className="grid gap-4 sm:grid-cols-[128px_minmax(0,1fr)] sm:items-center">
               <div className="relative mx-auto h-32 w-32 overflow-hidden rounded-xl border border-cyan-300/30 bg-slate-950 shadow-[0_0_34px_rgba(34,211,238,0.22)] sm:mx-0">
-                <img src={SHION_IDENTITY_IMAGE} alt="自己照合中の紫苑" className="h-full w-full object-cover object-top" />
+                <Image src={SHION_IDENTITY_IMAGE} alt="自己照合中の紫苑" fill sizes="128px" className="object-cover object-top" />
                 <div className="absolute inset-x-0 bottom-0 bg-slate-950/75 px-2 py-1 text-center text-[10px] font-black tracking-[0.28em] text-cyan-200">
                   SHION-ID
                 </div>

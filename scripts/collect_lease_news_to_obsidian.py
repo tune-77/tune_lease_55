@@ -1195,15 +1195,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"articles={len(articles)}")
     print(f"saved_files={len(saved_paths)}")
     if focus_result:
-        print(f"focus_saved=1")
+        print("focus_saved=1")
     if actions_result:
-        print(f"actions_saved=1")
+        print("actions_saved=1")
     if signal_result:
-        print(f"news_judgment_signals_saved=1")
+        print("news_judgment_signals_saved=1")
     if classified_summary:
-        print(f"news_classified_summary_saved=1")
+        print("news_classified_summary_saved=1")
     if reflection_result:
-        print(f"reflection_saved=1")
+        print("reflection_saved=1")
     print(f"news_dir={vault / news_dir}")
     print(f"daily_note={daily_path}")
     return 0

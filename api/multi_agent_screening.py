@@ -44,6 +44,7 @@ from api.shion_mana import build_mana_prompt_block, evaluate_mana_consultation
 from lease_news_digest import find_vault, lease_news_actions_as_text, lease_news_focus_as_text
 from scoring_core import APPROVAL_LINE
 
+
 # ── モデル・エンドポイント ───────────────────────────────────────────────────
 # 紫苑（懐疑派）・紫苑（楽観派）: Gemini Flash（temperature差で視点を分離）
 # 紫苑（統合派）: Gemini Flash（temperature=0.3 で統合裁定役）
@@ -51,7 +52,8 @@ def _gemini_url() -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-_DEBATE_LOW  = 40  # これ以下 → 否決ファストパス
+
+_DEBATE_LOW = 40  # これ以下 → 否決ファストパス
 # 承認ファストパスは scoring_core.APPROVAL_LINE（既定71）を単一ソースとして参照する。
 # ハードコードすると審査結果がモジュールごとに食い違う（CLAUDE.md 参照）
 _DEBATE_HIGH = APPROVAL_LINE
@@ -271,7 +273,8 @@ def _build_case_ctxs(params: dict) -> tuple[str, str]:
 
 
 def _get_recent_news_digest_block(limit: int = 3) -> str:
-    import json as _json, re as _re
+    import json as _json
+    import re as _re
     from pathlib import Path
 
     vault = find_vault()
@@ -627,7 +630,6 @@ def _persona_call(
     if entry.get("refs") and "_knowledge_refs" not in result:
         result["_knowledge_refs"] = entry["refs"]
     return result
-
 
 
 # ── エージェント別プロンプトビルダー ────────────────────────────────────────────

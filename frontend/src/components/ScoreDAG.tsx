@@ -2,7 +2,13 @@ import React from 'react';
 import { Network, ArrowRight } from 'lucide-react';
 
 interface ScoreDAGProps {
-  data: any;
+  data: {
+    score_borrower?: number;
+    score_base?: number;
+    score?: number;
+    hantei?: string;
+    ai_completed_factors?: Array<{ factor: string; effect_percent: number }>;
+  } | null;
 }
 
 export default function ScoreDAG({ data }: ScoreDAGProps) {
@@ -48,7 +54,7 @@ export default function ScoreDAG({ data }: ScoreDAGProps) {
           <div className="flex flex-col items-center gap-2 relative z-10 w-32">
             <span className="text-xs font-bold text-slate-400 mb-2">補正因子 (AI)</span>
             {factors.length > 0 ? (
-              factors.map((f: any, i: number) => (
+              factors.map((f, i) => (
                 <div key={i} className={`border-2 rounded-xl p-2 w-full text-center ${f.effect_percent >= 0 ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-rose-50 border-rose-300 text-rose-700'}`}>
                   <div className="text-[10px] font-semibold truncate">{f.factor.substring(0, 8)}</div>
                   <div className="text-sm font-black">{f.effect_percent > 0 ? '+' : ''}{f.effect_percent}%</div>

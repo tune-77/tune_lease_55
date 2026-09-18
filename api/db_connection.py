@@ -275,7 +275,7 @@ def ensure_schema() -> None:
         # 記憶構築コストのログ計装（REV: 記憶構築コストのログ計装）で追加。
         # get_summary() が生成した要約のバックグラウンドキャッシュ。
         # 同期経路（/api/chat）ではここを読むだけで、書き込みは日次バッチのみ。
-        f"""CREATE TABLE IF NOT EXISTS chat_message_summaries (
+        """CREATE TABLE IF NOT EXISTS chat_message_summaries (
             user_id TEXT PRIMARY KEY,
             summary TEXT NOT NULL DEFAULT '',
             message_count_at_build INTEGER NOT NULL DEFAULT 0,

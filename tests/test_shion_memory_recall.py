@@ -4,6 +4,7 @@ from api.shion_memory_recall import (
     build_recall_prompt_block,
     infer_practical_scene,
     infer_recall_route,
+    load_judgment_asset_outcome_signals,
     recall_memories,
 )
 
@@ -213,6 +214,113 @@ def test_recall_downweights_revised_records(tmp_path):
 
     # 改訂済みの旧結論は後継記憶より下位（参照は可能）
     assert recalled["refs"][0] == "mem_successor"
+
+
+def test_load_judgment_asset_outcome_signals_shrinks_human_feedback(tmp_path):
+    path = tmp_path / "feedback.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                json.dumps({"rule_id": "rule_helped", "outcome": "helped", "used_at": "2026-09-10"}),
+                json.dumps({"rule_id": "rule_helped", "outcome": "used", "used_at": "2026-09-11"}),
+                json.dumps({"rule_id": "rule_rejected", "outcome": "rejected", "used_at": "2026-09-12"}),
+                "{broken-json",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    signals = load_judgment_asset_outcome_signals(path)
+
+    assert 0 < signals["rule_helped"]["recall_adjustment"] < 1.2
+    assert -1.2 < signals["rule_rejected"]["recall_adjustment"] < 0
+    assert signals["rule_helped"]["evidence_count"] == 2
+    assert signals["rule_helped"]["last_feedback_at"] == "2026-09-11"
+
+
+def test_outcome_signals_normalize_ids_and_ignore_superseded_and_simulation(tmp_path):
+    path = tmp_path / "feedback.jsonl"
+    rows = [
+        {
+            "event_id": "evt-old",
+            "rule_id": "cr-rule_current",
+            "outcome": "helped",
+            "case_id": "case-1",
+        },
+        {
+            "event_id": "evt-new",
+            "supersedes_event_id": "evt-old",
+            "rule_id": "cr-rule_current",
+            "outcome": "rejected",
+            "case_id": "case-1",
+        },
+        {
+            "event_id": "evt-sim-source",
+            "rule_id": "cr-rule_current",
+            "outcome": "helped",
+            "source": "simulation",
+            "case_id": "case-2",
+        },
+        {
+            "event_id": "evt-sim-case",
+            "rule_id": "cr-rule_current",
+            "outcome": "helped",
+            "source": "screening",
+            "case_id": "sim-123",
+        },
+    ]
+    path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows),
+        encoding="utf-8",
+    )
+
+    signals = load_judgment_asset_outcome_signals(path)
+
+    assert set(signals) == {"rule_current"}
+    assert signals["rule_current"]["evidence_count"] == 1
+    assert signals["rule_current"]["helped_count"] == 0
+    assert signals["rule_current"]["rejected_count"] == 1
+    assert signals["rule_current"]["recall_adjustment"] < 0
+
+
+def test_case_recall_uses_bounded_human_outcome_weighting(tmp_path):
+    index = {
+        "records": [
+            {
+                "id": "mem_helped",
+                "judgment_asset_id": "rule_helped",
+                "content": "建設業の案件では返済原資と受注根拠を確認する。",
+                "memory_type": "judgment_memory",
+                "status": "active",
+            },
+            {
+                "id": "mem_rejected",
+                "judgment_asset_id": "rule_rejected",
+                "content": "建設業の案件では返済原資と受注根拠を確認する。",
+                "memory_type": "judgment_memory",
+                "status": "active",
+            },
+        ]
+    }
+    path = tmp_path / "index.json"
+    path.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    outcomes = {
+        "rule_helped": {"recall_adjustment": 0.8, "evidence_count": 4},
+        "rule_rejected": {"recall_adjustment": -0.8, "evidence_count": 4},
+    }
+
+    recalled = recall_memories(
+        "建設業の案件で返済原資をどう確認する？",
+        index_path=path,
+        limit=2,
+        outcome_signals=outcomes,
+    )
+
+    assert recalled["refs"] == ["mem_helped", "mem_rejected"]
+    assert recalled["outcome_weighting_used"] is True
+    assert recalled["match_reasons"][0]["judgment_asset_id"] == "rule_helped"
+    assert recalled["match_reasons"][0]["outcome_adjustment"] == 0.8
+    assert recalled["match_reasons"][0]["outcome_evidence_count"] == 4
 
 
 def test_signal_term_boost_prefers_q_risk_note(tmp_path):

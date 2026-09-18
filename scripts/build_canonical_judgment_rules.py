@@ -14,6 +14,7 @@ import datetime as dt
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -280,7 +281,7 @@ def write_report(rules: list[dict[str, Any]], *, date: dt.date) -> dict[str, str
     }
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description="Build canonical judgment-rule preview from material preview JSONL")
     parser.add_argument("--input", default=str(DEFAULT_INPUT_JSONL))
     parser.add_argument(
@@ -313,6 +314,15 @@ def main() -> None:
         )
     )
 
+    if materials and not rules:
+        print(
+            f"警告: 入力materialsが{len(materials)}件あるのにcanonical_rulesが0件でした。"
+            "CONCEPT_RULESのキーワード網羅がずれていないか確認してください。",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

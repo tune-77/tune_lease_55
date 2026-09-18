@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, ReferenceLine
 } from "recharts";
 import {
-  Lightbulb, RefreshCw, ChevronDown, Loader2, AlertCircle,
+  Lightbulb, ChevronDown, Loader2, AlertCircle,
   TrendingUp, CheckCircle2, ArrowRight, BarChart2
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
@@ -65,7 +65,7 @@ const ChartTooltip = ({ active, payload, label }: { active?: boolean; payload?: 
 
 export default function CounterfactualPage() {
   const [cases, setCases] = useState<CaseRow[]>([]);
-  const [loadingCases, setLoadingCases] = useState(false);
+  const [, setLoadingCases] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<CFResult | null>(null);
@@ -106,7 +106,6 @@ export default function CounterfactualPage() {
   };
 
   const selectedCase = cases.find(c => c.id === selectedId);
-  const scoreGap = result ? result.gap : 0;
   const alreadyApproved = result && result.current_score >= result.target_score;
 
   const scoreColor = (s: number) =>

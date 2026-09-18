@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { Mic, MicOff, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { ScoringFormData } from '../../types';
 import SliderInput from '../SliderInput';
@@ -80,12 +80,19 @@ const isSpeechSupported = () => {
   return Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition);
 };
 
+const subscribeSpeechSupport = () => () => {};
+const getServerSpeechSupport = () => false;
+
 export default function FormQualitative({ data, onChange }: FormQualitativeProps) {
   const [qualItems, setQualItems] = useState<QualitativeItem[]>([]);
   const [assetItems, setAssetItems] = useState<string[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState('');
-  const [speechSupported, setSpeechSupported] = useState(isSpeechSupported);
+  const speechSupported = useSyncExternalStore(
+    subscribeSpeechSupport,
+    isSpeechSupported,
+    getServerSpeechSupport,
+  );
 
   // REV-064/068/050: 物件情報から計算する派生値
   const assetInfo = ASSET_INFO[data.asset_name] ?? null;
@@ -181,7 +188,6 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
 
     if (!Recognition) {
       setSpeechError('このブラウザは音声入力に未対応です。');
-      setSpeechSupported(false);
       return;
     }
 

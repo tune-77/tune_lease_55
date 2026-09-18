@@ -16,6 +16,7 @@ from app_logger import log_warning, log_info, log_error
 
 PDCA_RULES_FILE = os.path.join(_SCRIPT_DIR, "data", "pdca_ai_rules.json")
 
+
 def load_pdca_rules() -> dict:
     """保存されたPDCA反映ルールを読み込む"""
     if not os.path.exists(PDCA_RULES_FILE):
@@ -26,6 +27,7 @@ def load_pdca_rules() -> dict:
     except Exception as e:
         log_error(f"Failed to load PDCA rules: {e}", context="load_pdca_rules")
         return {}
+
 
 def save_pdca_rules(data: dict) -> bool:
     """PDCA反映ルールを保存する"""
@@ -38,6 +40,7 @@ def save_pdca_rules(data: dict) -> bool:
         log_error(f"Failed to save PDCA rules: {e}", context="save_pdca_rules")
         return False
 
+
 def format_cases_for_llm(cases: list) -> str:
     """LLMに読ませるための案件サマリー文字列を生成する"""
     lines = []
@@ -45,16 +48,17 @@ def format_cases_for_llm(cases: list) -> str:
         status = c.get("final_status", "不明")
         inputs = c.get("inputs", {})
         res = c.get("result", {})
-        
+
         industry = c.get("industry_major", "") or c.get("industry_sub", "")
         eq_ratio = res.get("user_eq", inputs.get("user_eq_ratio", 0))
         score = res.get("score", 0)
         hantei = res.get("hantei", "")
         nenshu = inputs.get("nenshu", 0)
-        
+
         lines.append(f"案件{i+1}: 【結果】{status} | 業種:{industry} | AI判定:{hantei}({score:.1f}点) | 自己資本比率:{eq_ratio}% | 年商:{nenshu}千円")
-    
+
     return "\n".join(lines)
+
 
 def run_monthly_pdca_reflection(force: bool = False, max_cases: int = 20) -> Optional[Dict[str, Any]]:
     """
@@ -64,17 +68,17 @@ def run_monthly_pdca_reflection(force: bool = False, max_cases: int = 20) -> Opt
     all_cases = load_all_cases()
     # 未登録以外の案件を抽出（成約、失注、デフォルトなど確実に結果が出ているもの）
     resolved_cases = [c for c in all_cases if c.get("final_status") and c.get("final_status") != "未登録"]
-    
+
     # タイムスタンプで降順（新しい順）にソート
     resolved_cases.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     target_cases = resolved_cases[:max_cases]
-    
+
     if len(target_cases) < 5 and not force:
         log_info("PDCA Reflection skipped: Not enough resolved cases (minimum 5 required).")
         return {"status": "skipped", "reason": "Not enough cases"}
 
     cases_text = format_cases_for_llm(target_cases)
-    
+
     prompt = f"""あなたはリース審査システムの「AI審査マネージャー」です。
 システムが自動的に学習（PDCA）を行うため、直近のリース案件の結果一覧を分析してください。
 
@@ -96,7 +100,7 @@ def run_monthly_pdca_reflection(force: bool = False, max_cases: int = 20) -> Opt
   ]
 }}
 """
-    
+
     try:
         model = get_ollama_model()
         # ai_chat.chat_with_retry は st.session_state を参照するため、一部環境（直接実行）でエラーになる可能性あり
@@ -113,27 +117,27 @@ def run_monthly_pdca_reflection(force: bool = False, max_cases: int = 20) -> Opt
             retries=2,
             timeout_seconds=90,
         )
-        
+
         content = ((ans.get("message") or {}).get("content") or "").strip()
         if not content:
             raise ValueError("LLM returned empty content")
-            
+
         # JSON部分だけを抽出する（LLMが余計な文字を入れた場合の防御）
         import re
         json_match = re.search(r'\\{.*\\}', content, re.DOTALL)
         if json_match:
             content = json_match.group(0)
-            
+
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as e:
             # Markdownバッククォートが含まれている場合は除去
             content = content.replace("```json", "").replace("```", "").strip()
             parsed = json.loads(content)
-            
+
         if "reflection_summary" not in parsed or "ai_prompt_addons" not in parsed:
             raise KeyError("JSON missing required fields")
-            
+
         existing = load_pdca_rules()
         existing_manual = list(existing.get("manual_ai_prompt_addons") or [])
         if not existing_manual:
@@ -181,15 +185,16 @@ def run_monthly_pdca_reflection(force: bool = False, max_cases: int = 20) -> Opt
             "manual_rule_count": len(existing_manual),
             "pdca_rule_meta": existing_meta + generated_meta,
         }
-        
+
         save_pdca_rules(save_data)
         log_info(f"PDCA Reflection completed successfully. {len(parsed['ai_prompt_addons'])} rules generated.")
         return {"status": "success", "data": save_data}
-        
+
     except Exception as e:
         error_msg = f"PDCA Reflection failed: {e}\n{traceback.format_exc()}"
         log_error(error_msg, context="run_monthly_pdca_reflection")
         return {"status": "error", "reason": str(e)}
+
 
 if __name__ == "__main__":
     # テスト用

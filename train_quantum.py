@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 DB_PATH = PROJECT_ROOT / "data" / "lease_data.db"
 MODEL_PATH = str(PROJECT_ROOT / "data" / "quantum_model.joblib")
 
+
 def _load_training_config() -> dict:
     p = PROJECT_ROOT / "data" / "quantum_config.json"
     try:
@@ -31,9 +32,10 @@ def _load_training_config() -> dict:
     except Exception:
         return {}
 
+
 _TRAIN_CFG = _load_training_config()
 MIN_CASES: int = int(_TRAIN_CFG.get("min_cases", 5))
-_SYNTH_N: int  = int(_TRAIN_CFG.get("synth_fallback_n", 30))
+_SYNTH_N: int = int(_TRAIN_CFG.get("synth_fallback_n", 30))
 
 
 def _load_cases(status: str) -> list[dict]:
@@ -60,7 +62,8 @@ def _save_versioned(gate, seiyaku_n: int, lost_n: int, keep: int = 3) -> str:
     data/models/quantum/ にバージョン付きモデルを保存し直近 keep 世代を保持。
     メインパス (MODEL_PATH) にも上書きコピーする。
     """
-    import datetime, shutil
+    import datetime
+    import shutil
     model_dir = PROJECT_ROOT / "data" / "models" / "quantum"
     model_dir.mkdir(parents=True, exist_ok=True)
 

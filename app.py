@@ -19,6 +19,7 @@ st.set_page_config(page_title="リース審査AI", page_icon=":money_with_wings:
 if "is_logged_in" not in st.session_state:
     st.session_state["is_logged_in"] = False
 
+
 # ログイン処理
 def login():
     """
@@ -44,6 +45,7 @@ def login():
     else:
         st.error("ユーザー名またはパスワードが間違っています。")
         return False
+
 
 # ログインフォーム
 if not st.session_state["is_logged_in"]:
@@ -79,6 +81,7 @@ st.set_page_config(page_title="リース審査AI", page_icon=":money_with_wings:
 if "is_logged_in" not in st.session_state:
     st.session_state["is_logged_in"] = False
 
+
 # ログイン処理
 def login():
     """
@@ -104,6 +107,7 @@ def login():
     else:
         st.error("ユーザー名またはパスワードが間違っています。")
         return False
+
 
 # ログインフォーム
 if not st.session_state["is_logged_in"]:

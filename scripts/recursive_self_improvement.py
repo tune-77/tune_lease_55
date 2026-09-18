@@ -16,6 +16,9 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from prompt_feedback_metrics import DEFAULT_LOG_PATH, build_summary as build_prompt_summary, load_jsonl
+from scripts.error_log_candidate_intake import load_error_log_candidates
+from scripts.test_failure_intake import load_test_failure_intake
+from scripts._pipeline_common import report_pipeline_failure
 
 _PIPELINE_ROOT = _REPO_ROOT / ".agents" / "skills" / "auto-improvement-pipeline"
 _PIPELINE_SCRIPTS_DIR = _REPO_ROOT / ".agents" / "skills" / "auto-improvement-pipeline" / "scripts"
@@ -31,7 +34,8 @@ try:
     from implementation_ranker import rank_improvements
     import pipeline_ledger
 except ImportError as exc:  # pragma: no cover - import wiring failure is fatal
-    raise SystemExit(f"failed to import pipeline helpers: {exc}")
+    report_pipeline_failure(f"failed to import pipeline helpers: {exc}")
+    raise SystemExit(1)
 
 REPORTS_DIR = _REPO_ROOT / "reports"
 DEFAULT_OUTPUT_JSON = REPORTS_DIR / "recursive_self_improvement_latest.json"
@@ -586,6 +590,14 @@ def main() -> int:
     if chat_intake:
         report.setdefault("needs_review", [])
         report["needs_review"].extend(chat_intake)
+    test_failure_intake = load_test_failure_intake()
+    if test_failure_intake:
+        report.setdefault("needs_review", [])
+        report["needs_review"].extend(test_failure_intake)
+    error_log_intake = load_error_log_candidates()
+    if error_log_intake:
+        report.setdefault("needs_review", [])
+        report["needs_review"].extend(error_log_intake)
     prompt_rows = load_jsonl(args.prompt_log.expanduser())
     obsidian_notes = _load_obsidian_notes([path.expanduser() for path in args.obsidian_note])
     bundle = build_recursive_self_improvement(

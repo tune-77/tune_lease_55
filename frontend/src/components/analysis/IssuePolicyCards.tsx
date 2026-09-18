@@ -10,10 +10,19 @@ export type IssuePolicyFormData = Partial<
   contracts?: ScoringFormData["contracts"] | string;
 };
 
-export const getScreeningScore = (result?: Record<string, any> | null) =>
+export type IssuePolicyResult = {
+  score?: number;
+  score_base?: number;
+  aurion_core?: {
+    severity?: string;
+    discipline_flags?: unknown[];
+  };
+};
+
+export const getScreeningScore = (result?: IssuePolicyResult | null) =>
   Number(result?.score ?? result?.score_base ?? 0);
 
-export function buildCurrentIssue(result: Record<string, any>, data: IssuePolicyFormData) {
+export function buildCurrentIssue(result: IssuePolicyResult, data: IssuePolicyFormData) {
   const score = getScreeningScore(result);
   const isNewCustomer = String(data.customer_type || "").includes("新規");
   const hasNoLeaseHistory = Number(data.lease_credit || 0) <= 0 && Number(data.contracts || 0) <= 0;
@@ -21,7 +30,7 @@ export function buildCurrentIssue(result: Record<string, any>, data: IssuePolicy
   const hasMainBank = data.main_bank === "メイン先";
   const aurionSeverity = String(result.aurion_core?.severity || "");
   const aurionFlags = Array.isArray(result.aurion_core?.discipline_flags)
-    ? result.aurion_core.discipline_flags
+    ? result.aurion_core.discipline_flags.filter((flag): flag is string => typeof flag === "string")
     : [];
 
   if (score < 60) {
@@ -56,8 +65,7 @@ export function buildCurrentIssue(result: Record<string, any>, data: IssuePolicy
   return "承認域の案件を、条件・採算・稟議説明まで崩さず通せるか";
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function CurrentIssueCard({ result, data }: { result: Record<string, any>; data: IssuePolicyFormData }) {
+export function CurrentIssueCard({ result, data }: { result: IssuePolicyResult; data: IssuePolicyFormData }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <div className="flex items-start gap-3">
@@ -75,7 +83,7 @@ export function CurrentIssueCard({ result, data }: { result: Record<string, any>
   );
 }
 
-export function buildRingiPolicy(result: Record<string, any>, data: IssuePolicyFormData) {
+export function buildRingiPolicy(result: IssuePolicyResult, data: IssuePolicyFormData) {
   const score = getScreeningScore(result);
   const isNewCustomer = String(data.customer_type || "").includes("新規");
   const hasNoLeaseHistory = Number(data.lease_credit || 0) <= 0 && Number(data.contracts || 0) <= 0;
@@ -112,8 +120,7 @@ export function buildRingiPolicy(result: Record<string, any>, data: IssuePolicyF
   return "稟議方針: 承認域。通常確認事項を押さえ、採算と取引継続性を根拠に上申する。";
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function RingiPolicyCard({ result, data }: { result: Record<string, any>; data: IssuePolicyFormData }) {
+export function RingiPolicyCard({ result, data }: { result: IssuePolicyResult; data: IssuePolicyFormData }) {
   return (
     <section className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 shadow-sm">
       <div className="flex items-start gap-3">

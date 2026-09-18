@@ -90,6 +90,23 @@ def test_mana_watches_when_private_reflection_is_only_similar_to_yesterday():
     assert "similarity_to_yesterday=0.938" in markdown
 
 
+def test_mana_does_not_hold_on_empty_candidates():
+    report = build_mana_report(
+        target_date=date(2026, 7, 14),
+        monitor_report=_monitor_report(
+            ("private_reflection_meaning", "ok", "meaningful", {}),
+            ("self_reference_loop", "ok", "memory insight candidates are missing; worm guard cannot evaluate", {"candidate_count": 0}),
+        ),
+        reflection_delta=_reflection_delta(),
+        candidates=[],
+    )
+
+    codes = {finding["code"] for finding in report["findings"]}
+    assert "self_reference_loop_risk" not in codes
+    assert "memory_candidates_missing" in codes
+    assert report["status"] != "hold"
+
+
 def test_mana_stops_on_high_self_reference_candidates():
     candidates = [
         {

@@ -130,7 +130,7 @@ def train() -> None:
 
     os.makedirs("data", exist_ok=True)
     scorer.save("data/mahalanobis_model.joblib")
-    print(f"保存完了: data/mahalanobis_model.joblib  (推定器={'MinCovDet' if len(df)>=30 else 'EmpiricalCovariance'})")
+    print(f"保存完了: data/mahalanobis_model.joblib  (推定器={'MinCovDet' if len(df) >= 30 else 'EmpiricalCovariance'})")
 
     # 簡易バックテスト
     _backtest(scorer, all_cases)
@@ -138,8 +138,8 @@ def train() -> None:
 
 def _backtest(scorer: MahalanobisScorer, all_cases: list) -> None:
     import pandas as _pd
-    won   = [c for c in all_cases if c.get("final_status") == "成約"][:400]
-    lost  = [c for c in all_cases if c.get("final_status") == "失注"][:400]
+    won = [c for c in all_cases if c.get("final_status") == "成約"][:400]
+    lost = [c for c in all_cases if c.get("final_status") == "失注"][:400]
 
     def get_score(cases):
         out = []
@@ -159,7 +159,8 @@ def _backtest(scorer: MahalanobisScorer, all_cases: list) -> None:
 
     # pred_proba との相関（ml_featuresから）
     try:
-        import sqlite3, json
+        import sqlite3
+        import json
         conn = sqlite3.connect(os.path.join(_DIR, "data", "lease_data.db"))
         ml_rows = conn.execute('''
             SELECT mf.pred_proba_v3, pc.data
@@ -177,7 +178,7 @@ def _backtest(scorer: MahalanobisScorer, all_cases: list) -> None:
             score_list.append(s)
         r = float(np.corrcoef(proba_list, score_list)[0, 1])
         print(f"\nMahalanobis vs pred_proba_v3 相関: r={r:.3f}")
-        print(f"  (目標: r < -0.20, 現在の旧実装: r=-0.159)")
+        print("  (目標: r < -0.20, 現在の旧実装: r=-0.159)")
         for lo, hi in [(0, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1.0)]:
             p = np.array(proba_list); sc = np.array(score_list)
             mask = (p >= lo) & (p < hi)

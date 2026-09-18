@@ -10,9 +10,11 @@ import requests
 
 from api.crystallizer.anomaly_extractor import AnomalyCase
 
+
 def _gemini_url() -> str:
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
 
 _SYSTEM = """あなたはリース審査のナレッジマネジメント専門家です。
 与えられた審査案件群から、今後の審査に役立つ新しいパターンや教訓を簡潔に言語化してください。

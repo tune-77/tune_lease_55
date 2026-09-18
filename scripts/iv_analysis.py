@@ -31,12 +31,12 @@ if not DATA_PATH.exists():
 cases = [json.loads(l) for l in open(DATA_PATH, encoding="utf-8")]
 cases = [c for c in cases if c.get("final_status") in ("成約", "失注")]
 
-n_events    = sum(1 for c in cases if c["final_status"] == "成約")
+n_events = sum(1 for c in cases if c["final_status"] == "成約")
 n_nonevents = sum(1 for c in cases if c["final_status"] == "失注")
 
 print(f"分析対象: {len(cases)}件  成約:{n_events}件  失注:{n_nonevents}件")
 if len(cases) < 30:
-    print(f"⚠ 件数が少ないためIVの絶対値は参考程度。100件以上で信頼度が上がります。")
+    print("⚠ 件数が少ないためIVの絶対値は参考程度。100件以上で信頼度が上がります。")
 
 
 # ==============================
@@ -47,7 +47,7 @@ def build_df(cases):
     for c in cases:
         inp = c.get("inputs", {})
         res = c.get("result", {})
-        qs  = inp.get("qualitative_scoring", {})
+        qs = inp.get("qualitative_scoring", {})
         rows.append({
             # ターゲット
             "target": 1 if c["final_status"] == "成約" else 0,
@@ -67,7 +67,7 @@ def build_df(cases):
             "bank_credit":      inp.get("bank_credit", 0),
             "lease_credit":     inp.get("lease_credit", 0),
             "acquisition_cost": inp.get("acquisition_cost", 0),
-            "lease_asset_score":inp.get("lease_asset_score", 0),
+            "lease_asset_score": inp.get("lease_asset_score", 0),
             "contracts":        inp.get("contracts", 0),
             # スコア変数
             "score":          res.get("score", 0),
@@ -112,15 +112,15 @@ def calc_woe_iv(series, target, n_bins=4):
         pd.DataFrame({"bin": col, "target": target})
         .groupby("bin", observed=True)["target"]
     )
-    events    = grouped.sum()
+    events = grouped.sum()
     nonevents = grouped.count() - events
 
     iv = 0.0
     rows = []
     for b in events.index:
-        e  = max(float(events[b]),    0.5)
+        e = max(float(events[b]),    0.5)
         ne = max(float(nonevents[b]), 0.5)
-        pct_e  = e  / n_events
+        pct_e = e / n_events
         pct_ne = ne / n_nonevents
         woe = np.log(pct_ne / pct_e)
         iv += (pct_ne - pct_e) * woe
@@ -136,16 +136,16 @@ def calc_woe_iv(series, target, n_bins=4):
 
 
 def iv_label(iv):
-    if iv < 0.02:  return "× 使えない"
-    if iv < 0.1:   return "△ 弱い"
-    if iv < 0.3:   return "○ 中程度"
+    if iv < 0.02: return "× 使えない"
+    if iv < 0.1: return "△ 弱い"
+    if iv < 0.3: return "○ 中程度"
     return "◎ 強い"
 
 
 # ==============================
 # 全変数に対してIV計算
 # ==============================
-results    = []
+results = []
 detail_map = {}
 
 for col in CAT_COLS + NUM_COLS:

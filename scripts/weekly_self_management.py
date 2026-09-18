@@ -20,6 +20,41 @@ def is_monday() -> bool:
     return datetime.now(JST).weekday() == 0
 
 
+def ledger_timestamp_coverage(path: Path) -> tuple[int, int]:
+    """ledger.jsonl 全体を走査し、(パース成功行数, 有効タイムスタンプを持つ行数) を返す。
+
+    直近7日の件数だけでは「今週たまたま0件」と「フィールド名がドリフトして
+    全件タイムスタンプなし扱いになった」（過去に recorded_at 未読み込みで
+    実際に発生した障害）を区別できないため、全期間で判定する。
+    """
+    if not path.exists():
+        return (0, 0)
+    total = 0
+    with_ts = 0
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except Exception:
+                continue
+            total += 1
+            ts_str = (
+                entry.get("recorded_at")
+                or entry.get("timestamp")
+                or entry.get("updated_at")
+                or entry.get("created_at")
+                or ""
+            )
+            if ts_str:
+                with_ts += 1
+    except Exception:
+        pass
+    return (total, with_ts)
+
+
 def load_ledger_entries(since: datetime) -> list[dict]:
     if not LEDGER_PATH.exists():
         return []
@@ -133,13 +168,13 @@ def append_weekly_log(log_text: str) -> None:
 
     content = content.rstrip() + "\n" + log_text + "\n"
     WEEKLY_LOG_PATH.write_text(content, encoding="utf-8")
-    print(f"[weekly_self_management] Weekly Log を WEEKLY_LOG.md に追記しました")
+    print("[weekly_self_management] Weekly Log を WEEKLY_LOG.md に追記しました")
 
 
-def main() -> None:
+def main() -> int:
     if not is_monday():
         print(f"[weekly_self_management] 月曜日以外のため実行をスキップします（曜日: {datetime.now(JST).strftime('%A')}）")
-        sys.exit(0)
+        return 0
 
     now = datetime.now(JST)
     week_end = now
@@ -150,10 +185,25 @@ def main() -> None:
     entries = load_ledger_entries(week_start)
     print(f"[weekly_self_management] 対象エントリ数: {len(entries)} 件")
 
+    # 今週たまたま0件（正常）と、タイムスタンプ抽出がドリフトして毎週0件になる
+    # 障害（過去に実際発生）を区別する。ledgerに行はあるのに有効タイムスタンプが
+    # 1件も無い場合だけ異常とみなす。
+    if not entries:
+        total, with_ts = ledger_timestamp_coverage(LEDGER_PATH)
+        if total > 0 and with_ts == 0:
+            print(
+                "[weekly_self_management] 警告: ledger.jsonl にエントリはあるが"
+                "有効なタイムスタンプが1件も無い。フィールド名がドリフトした疑い"
+                "（recorded_at未読み込みで実際に発生した既知障害と同型）",
+                file=sys.stderr,
+            )
+            return 1
+
     summary = summarize_entries(entries)
     log_text = build_weekly_log(summary, week_start, week_end)
     append_weekly_log(log_text)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

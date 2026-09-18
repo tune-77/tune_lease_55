@@ -284,32 +284,32 @@ def _build_default_model_feature_row(inputs: dict) -> list[float]:
     major = str(inputs.get("industry_major") or "").strip()
     grade = str(inputs.get("grade") or "").strip()
 
-    ind_medical       = 1.0 if ("医療" in major or "福祉" in major) else 0.0
-    ind_transport     = 1.0 if "運輸" in major else 0.0
-    ind_construction  = 1.0 if "建設" in major else 0.0
+    ind_medical = 1.0 if ("医療" in major or "福祉" in major) else 0.0
+    ind_transport = 1.0 if "運輸" in major else 0.0
+    ind_construction = 1.0 if "建設" in major else 0.0
     ind_manufacturing = 1.0 if "製造" in major else 0.0
-    ind_service       = 1.0 if any(x in major for x in ["卸売", "小売", "サービス"]) else 0.0
+    ind_service = 1.0 if any(x in major for x in ["卸売", "小売", "サービス"]) else 0.0
 
-    nenshu       = max(_safe_float(inputs.get("nenshu")), 0.0)
-    bank_credit  = max(_safe_float(inputs.get("bank_credit")), 0.0)
+    nenshu = max(_safe_float(inputs.get("nenshu")), 0.0)
+    bank_credit = max(_safe_float(inputs.get("bank_credit")), 0.0)
     lease_credit = max(_safe_float(inputs.get("lease_credit")), 0.0)
 
-    grade_4_6   = 1.0 if "4-6" in grade else 0.0
+    grade_4_6 = 1.0 if "4-6" in grade else 0.0
     grade_watch = 1.0 if "要注意" in grade else 0.0
-    grade_none  = 1.0 if ("無格付" in grade or grade in ("0", "④無格付")) else 0.0
+    grade_none = 1.0 if ("無格付" in grade or grade in ("0", "④無格付")) else 0.0
 
     return [
         ind_medical, ind_transport, ind_construction, ind_manufacturing, ind_service,
         np.log1p(nenshu), np.log1p(bank_credit), np.log1p(lease_credit),
-        _safe_float(inputs.get("op_profit"))    / 1000.0,
-        _safe_float(inputs.get("ord_profit"))   / 1000.0,
-        _safe_float(inputs.get("net_income"))   / 1000.0,
-        _safe_float(inputs.get("machines"))     / 1000.0,
+        _safe_float(inputs.get("op_profit")) / 1000.0,
+        _safe_float(inputs.get("ord_profit")) / 1000.0,
+        _safe_float(inputs.get("net_income")) / 1000.0,
+        _safe_float(inputs.get("machines")) / 1000.0,
         _safe_float(inputs.get("other_assets")) / 1000.0,
-        _safe_float(inputs.get("rent"))         / 1000.0,
+        _safe_float(inputs.get("rent")) / 1000.0,
         _safe_float(inputs.get("gross_profit")) / 1000.0,
         _safe_float(inputs.get("depreciation")) / 1000.0,
-        _safe_float(inputs.get("dep_expense"))  / 1000.0,
+        _safe_float(inputs.get("dep_expense")) / 1000.0,
         _safe_float(inputs.get("rent_expense")) / 1000.0,
         grade_4_6, grade_watch, grade_none,
         _safe_float(inputs.get("contracts")),
@@ -380,20 +380,20 @@ def _build_lgb_qual_feature_vector(inputs: dict, feature_names: list[str], asset
 def _build_lgb_feature_vector(data_scoring: dict, inputs: dict, feature_names: list[str]) -> list[float]:
     """data_scoring + inputs から LGB モデル用特徴量ベクトルを構築する。"""
     major = data_scoring.get("industry_major") or ""
-    ind_medical      = 1.0 if ("医療" in major or "福祉" in major or major.startswith("P")) else 0.0
-    ind_transport    = 1.0 if ("運輸" in major or major.startswith("H")) else 0.0
+    ind_medical = 1.0 if ("医療" in major or "福祉" in major or major.startswith("P")) else 0.0
+    ind_transport = 1.0 if ("運輸" in major or major.startswith("H")) else 0.0
     ind_construction = 1.0 if ("建設" in major or major.startswith("D")) else 0.0
-    ind_manufacturing= 1.0 if ("製造" in major or major.startswith("E")) else 0.0
-    ind_service      = 1.0 if (any(x in major for x in ["卸売", "小売", "サービス"]) or
+    ind_manufacturing = 1.0 if ("製造" in major or major.startswith("E")) else 0.0
+    ind_service = 1.0 if (any(x in major for x in ["卸売", "小売", "サービス"]) or
                                 (bool(major) and major[0] in ["I", "K", "M", "R"])) else 0.0
 
     nenshu = data_scoring.get("nenshu") or 0
     bank_credit = data_scoring.get("bank_credit") or 0
     lease_credit = data_scoring.get("lease_credit") or 0
     grade = data_scoring.get("grade") or "1-3"
-    grade_4_6   = 1.0 if "4-6" in grade else 0.0
+    grade_4_6 = 1.0 if "4-6" in grade else 0.0
     grade_watch = 1.0 if "要注意" in grade else 0.0
-    grade_none  = 1.0 if "無格付" in grade else 0.0
+    grade_none = 1.0 if "無格付" in grade else 0.0
 
     main_val = {
         "ind_medical": ind_medical, "ind_transport": ind_transport,
@@ -516,13 +516,13 @@ def _calculate_z(data, coeff_set):
 
     sales_dept = data.get("sales_dept", "未設定")
     dept_utsunomiya = 1 if sales_dept == "宇都宮営業部" else 0
-    dept_oyama      = 1 if sales_dept == "小山営業部" else 0
-    dept_ashikaga   = 1 if sales_dept == "足利営業部" else 0
-    dept_saitama    = 1 if sales_dept == "埼玉営業部" else 0
+    dept_oyama = 1 if sales_dept == "小山営業部" else 0
+    dept_ashikaga = 1 if sales_dept == "足利営業部" else 0
+    dept_saitama = 1 if sales_dept == "埼玉営業部" else 0
     z += dept_utsunomiya * coeff_set.get("dept_utsunomiya", 0.0)
-    z += dept_oyama      * coeff_set.get("dept_oyama", 0.0)
-    z += dept_ashikaga   * coeff_set.get("dept_ashikaga", 0.0)
-    z += dept_saitama    * coeff_set.get("dept_saitama", 0.0)
+    z += dept_oyama * coeff_set.get("dept_oyama", 0.0)
+    z += dept_ashikaga * coeff_set.get("dept_ashikaga", 0.0)
+    z += dept_saitama * coeff_set.get("dept_saitama", 0.0)
     return z
 
 
@@ -1079,6 +1079,7 @@ def run_quick_scoring(inputs: dict) -> dict:
                 # UMAP.transform() はデータポイントごとに勾配降下法を実行するため非常に遅い。
                 # 固定サイズプールに投げ、5秒以内に終わらなければスキップする（結果は無視、
                 # ワーカースレッド自体はプールに残り再利用される）。
+
                 def _run_umap():
                     _s, _x, _y = _umap.score(_umap_df)
                     _sim = _umap.find_similar(_umap_df, top_k=3)

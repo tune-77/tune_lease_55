@@ -42,6 +42,7 @@ _OBSIDIAN_VAULT_PATH: str = os.environ.get("OBSIDIAN_VAULT_PATH", "")
 
 # section comment removed – content starts below
 
+
 class ObsidianReadRequest(BaseModel):
     paths: List[str]
 
@@ -54,18 +55,12 @@ class ResearchOrganRunRequest(BaseModel):
 def _get_vault_path() -> str:
     """Vaultパスを取得する。
 
-    api.main の解決結果（環境変数 → 未設定時は find_vault() による自動検索）を
-    優先する。ここで環境変数の生値だけを見ると、OBSIDIAN_VAULT_PATH が明示設定
-    されていない起動経路（例: .zshrc を読まない uvicorn 起動）でノート一覧が
-    常に空になるため、debate.py 等と同じく api.main の解決済み値に揃える。
+    runtime_paths の正準解決（環境変数 → 既定/legacy Vault）を使う。
+    composition rootへ逆importせず、全routerで同じ優先順位を共有する。
     """
-    try:
-        from api.main import _OBSIDIAN_VAULT_PATH as _resolved_vault_path
-        if _resolved_vault_path:
-            return _resolved_vault_path
-    except Exception:
-        pass
-    return os.environ.get("OBSIDIAN_VAULT_PATH", "")
+    from runtime_paths import get_obsidian_vault_path
+
+    return get_obsidian_vault_path()
 
 
 def _read_obsidian_files(vault_path: str, rel_paths: list[str], max_bytes: int = 10_240) -> tuple[str, list[str]]:
@@ -338,6 +333,7 @@ def get_agent_thoughts(limit: int = 50):
     except Exception as e:
         return {"thoughts": [], "error": str(e)}
 
+
 @router.get("/api/agent_hub/novel/latest")
 def get_latest_novel_api():
     from novelist_agent import get_latest_novel
@@ -348,6 +344,7 @@ def get_latest_novel_api():
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="内部エラーが発生しました")
+
 
 @router.post("/api/agent_hub/script/generate")
 def generate_script_api():
@@ -482,9 +479,11 @@ def get_novel_episodes_api():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 class AgentRunRequest(BaseModel):
     agent_id: str  # benchmark, market, gunshi, team, slack, anomaly, retrain
     params: Dict[str, Any] = {}
+
 
 @router.post("/api/agent_hub/run_agent")
 def run_agent_api(req: AgentRunRequest):
@@ -519,13 +518,14 @@ def run_agent_api(req: AgentRunRequest):
 
         else:
             return {"status": "error", "message": f"Unknown agent: {agent_id}"}
-            
+
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 # ── スタンドアロン実行ヘルパー（Streamlit依存回避） ────────────────────────────────
+
 
 _BENCHMARK_FALLBACK: dict[str, dict] = {
     "製造業":       {"op_margin": 3.5, "equity_ratio": 38.0, "roa": 3.2, "current_ratio": 140.0, "dscr": 1.4},
@@ -534,16 +534,17 @@ _BENCHMARK_FALLBACK: dict[str, dict] = {
     "小売業":       {"op_margin": 2.8, "equity_ratio": 28.0, "roa": 3.0, "current_ratio": 115.0, "dscr": 1.2},
     "運輸業":       {"op_margin": 3.0, "equity_ratio": 25.0, "roa": 2.8, "current_ratio": 110.0, "dscr": 1.3},
     "情報通信業":   {"op_margin": 8.5, "equity_ratio": 52.0, "roa": 6.5, "current_ratio": 170.0, "dscr": 2.0},
-    "不動産業":     {"op_margin": 12.0,"equity_ratio": 35.0, "roa": 4.0, "current_ratio": 120.0, "dscr": 1.6},
+    "不動産業":     {"op_margin": 12.0, "equity_ratio": 35.0, "roa": 4.0, "current_ratio": 120.0, "dscr": 1.6},
     "医療・福祉":   {"op_margin": 4.5, "equity_ratio": 42.0, "roa": 3.5, "current_ratio": 145.0, "dscr": 1.5},
     "サービス業":   {"op_margin": 5.0, "equity_ratio": 38.0, "roa": 4.2, "current_ratio": 135.0, "dscr": 1.4},
     "飲食業":       {"op_margin": 2.0, "equity_ratio": 18.0, "roa": 2.0, "current_ratio": 90.0,  "dscr": 1.1},
     "農業・漁業":   {"op_margin": 2.5, "equity_ratio": 30.0, "roa": 2.2, "current_ratio": 120.0, "dscr": 1.2},
-    "金融・保険業": {"op_margin": 15.0,"equity_ratio": 55.0, "roa": 5.0, "current_ratio": 180.0, "dscr": 2.2},
+    "金融・保険業": {"op_margin": 15.0, "equity_ratio": 55.0, "roa": 5.0, "current_ratio": 180.0, "dscr": 2.2},
     "教育・学習支援業": {"op_margin": 5.5, "equity_ratio": 45.0, "roa": 4.0, "current_ratio": 150.0, "dscr": 1.6},
     "宿泊業":       {"op_margin": 3.0, "equity_ratio": 22.0, "roa": 2.5, "current_ratio": 100.0, "dscr": 1.2},
     "その他":       {"op_margin": 4.0, "equity_ratio": 33.0, "roa": 3.0, "current_ratio": 125.0, "dscr": 1.3},
 }
+
 
 def _run_benchmark_agent_standalone(industry: str):
     from ai_chat import _chat_for_thread
@@ -576,6 +577,7 @@ def _run_benchmark_agent_standalone(industry: str):
     fallback = _BENCHMARK_FALLBACK.get(industry, _BENCHMARK_FALLBACK["その他"]).copy()
     fallback["_source"] = "static"
     return fallback
+
 
 def _run_market_agent_standalone():
     from ai_chat import _chat_for_thread

@@ -26,7 +26,7 @@ import re
 import sqlite3
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-_NOVEL_DB  = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
+_NOVEL_DB = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
 
 
 def _extract_outermost_json(text: str) -> list[dict]:
@@ -66,13 +66,14 @@ def _extract_outermost_json(text: str) -> list[dict]:
             break
     return results
 
+
 # ── 固定エージェントノード ──────────────────────────────────────────────────
 AGENT_NODES: list[dict] = [
     {"id": "Tune",     "label": "Tune",     "group": "agent", "color": "#3b82f6"},
     {"id": "Dr.Algo",  "label": "Dr.Algo",  "group": "agent", "color": "#ef4444"},
     {"id": "軍師",      "label": "軍師",      "group": "agent", "color": "#f59e0b"},
     {"id": "タム",      "label": "タム",      "group": "agent", "color": "#22c55e"},
-    {"id": "リースくん","label": "リースくん","group": "agent", "color": "#8b5cf6"},
+    {"id": "リースくん", "label": "リースくん", "group": "agent", "color": "#8b5cf6"},
 ]
 AGENT_IDS = {a["id"] for a in AGENT_NODES}
 
@@ -87,6 +88,7 @@ REL_TYPES = {
 }
 
 # ── DB初期化 ────────────────────────────────────────────────────────────────
+
 
 def init_graph_db() -> None:
     conn = sqlite3.connect(_NOVEL_DB)
@@ -138,15 +140,15 @@ def _seed_initial_relations(conn: sqlite3.Connection) -> None:
     """第1話開始時点の関係性（プリセット）"""
     seeds = [
         # (source, target, rel_type, strength, note)
-        ("Tune",    "Dr.Algo",   "rival",      -1.0, "データ至上主義 vs 人情派で常に衝突"),
-        ("Tune",    "軍師",       "trust",      +2.0, "冷静なTuneが唯一心を許す古参"),
+        ("Tune",    "Dr.Algo",   "rival", -1.0, "データ至上主義 vs 人情派で常に衝突"),
+        ("Tune",    "軍師",       "trust", +2.0, "冷静なTuneが唯一心を許す古参"),
         ("Tune",    "タム",       "dependence", +1.0, "タムの直感が案外核心を突く"),
-        ("Tune",    "リースくん", "trust",      +1.5, "真面目な新人への期待"),
-        ("Dr.Algo", "軍師",       "rival",      -2.0, "数値 vs 定性で永遠に平行線"),
-        ("Dr.Algo", "タム",       "suspicion",  -1.0, "タムの非論理的言動が理解できない"),
-        ("軍師",    "タム",       "ally",       +2.0, "孫子とわんわんで謎の共鳴"),
-        ("軍師",    "リースくん", "trust",      +1.0, "後継者として目をかけている"),
-        ("タム",    "リースくん", "ally",       +1.5, "なんか仲良し（理由不明）"),
+        ("Tune",    "リースくん", "trust", +1.5, "真面目な新人への期待"),
+        ("Dr.Algo", "軍師",       "rival", -2.0, "数値 vs 定性で永遠に平行線"),
+        ("Dr.Algo", "タム",       "suspicion", -1.0, "タムの非論理的言動が理解できない"),
+        ("軍師",    "タム",       "ally", +2.0, "孫子とわんわんで謎の共鳴"),
+        ("軍師",    "リースくん", "trust", +1.0, "後継者として目をかけている"),
+        ("タム",    "リースくん", "ally", +1.5, "なんか仲良し（理由不明）"),
     ]
     now = "2000-01-01 00:00:00"
     for s, t, rt, st, note in seeds:
@@ -197,18 +199,18 @@ def save_relationship_updates(episode_no: int, updates: list[dict]) -> None:
     current = get_current_graph(up_to_episode=episode_no - 1)
 
     for u in updates:
-        src   = u.get("source", "").strip()
-        tgt   = u.get("target", "").strip()
-        rt    = u.get("rel_type", "neutral")
+        src = u.get("source", "").strip()
+        tgt = u.get("target", "").strip()
+        rt = u.get("rel_type", "neutral")
         delta = float(u.get("delta", 0))
-        note  = u.get("note", "")
+        note = u.get("note", "")
 
         if not src or not tgt:
             continue
 
         prev = current.get((src, tgt), {})
         prev_strength = prev.get("strength", 0.0)
-        new_strength  = max(-5.0, min(5.0, prev_strength + delta))
+        new_strength = max(-5.0, min(5.0, prev_strength + delta))
 
         conn.execute(
             "INSERT INTO novel_relationships (episode_no, ts, source, target, rel_type, strength, delta, note) "
@@ -259,8 +261,8 @@ def save_civ_characteristics(chars: list[dict]) -> None:
                traits=excluded.traits, goals=excluded.goals, ideology=excluded.ideology,
                strengths=excluded.strengths, weaknesses=excluded.weaknesses,
                personality=excluded.personality, created_at=excluded.created_at""",
-            (name, c.get("traits",""), c.get("goals",""), c.get("ideology",""),
-             c.get("strengths",""), c.get("weaknesses",""), c.get("personality",""), ts)
+            (name, c.get("traits", ""), c.get("goals", ""), c.get("ideology", ""),
+             c.get("strengths", ""), c.get("weaknesses", ""), c.get("personality", ""), ts)
         )
     conn.commit()
     conn.close()
@@ -289,7 +291,7 @@ def generate_civ_characteristics_ai() -> int:
         return 0
 
     civ_list = "\n".join(
-        f"・{c['company_name']}（{c['industry']} / {c.get('civ_era','?')} / status:{c.get('status','active')}）"
+        f"・{c['company_name']}（{c['industry']} / {c.get('civ_era', '?')} / status:{c.get('status', 'active')}）"
         for c in new_civs
     )
 
@@ -371,7 +373,7 @@ def save_relationship_predictions(preds: list[dict]) -> None:
                ON CONFLICT(source, target) DO UPDATE SET
                prediction=excluded.prediction, risk_level=excluded.risk_level,
                created_at=excluded.created_at""",
-            (src, tgt, p.get("prediction",""), float(p.get("risk_level", 0.5)), ts)
+            (src, tgt, p.get("prediction", ""), float(p.get("risk_level", 0.5)), ts)
         )
     conn.commit()
     conn.close()
@@ -488,7 +490,7 @@ def generate_and_seed_company_relations() -> int:
 
     # Gemini に企業間関係を想像させる
     civ_list = "\n".join(
-        f"・{c['company_name']}（{c['industry']} / {c.get('civ_era','?')}）"
+        f"・{c['company_name']}（{c['industry']} / {c.get('civ_era', '?')}）"
         for c in valid_civs
     )
     prompt = f"""以下の企業・文明リストを見て、それぞれの間にどんな関係があるか想像して物語的に設定してください。
@@ -533,9 +535,9 @@ delta は -5〜+5。すべての企業ペアに関係を作る必要はないが
     for u in updates:
         src = u.get("source", "").strip()
         tgt = u.get("target", "").strip()
-        rt  = u.get("rel_type", "neutral")
+        rt = u.get("rel_type", "neutral")
         delta = float(u.get("delta", 0))
-        note  = u.get("note", "")
+        note = u.get("note", "")
         if not src or not tgt or src in AGENT_IDS or tgt in AGENT_IDS:
             continue
         st = max(-5.0, min(5.0, delta))
@@ -572,9 +574,9 @@ def build_graph_context_for_prompt(episode_no: int) -> str:
         lines.append("▼ 各文明・企業の特性（自律的行動の根拠として使用すること）")
         for name, c in list(characteristics.items())[:12]:
             traits = c.get("traits", "")
-            goals  = c.get("goals", "")
-            pers   = c.get("personality", "")
-            weak   = c.get("weaknesses", "")
+            goals = c.get("goals", "")
+            pers = c.get("personality", "")
+            weak = c.get("weaknesses", "")
             info_parts = []
             if traits: info_parts.append(f"特徴:{traits}")
             if goals:  info_parts.append(f"目標:{goals}")
@@ -685,9 +687,9 @@ def build_d3_graph_data(episode_no: int | None = None) -> dict:
         "dormant":   "#64748b",   # グレー — 休眠
     }
     _STATUS_TO_REL = {
-        "active":    ("trust",   +2.0, "審査通過"),
-        "collapsed": ("rival",   -3.0, "審査否決"),
-        "ascended":  ("ally",    +4.0, "審査通過"),
+        "active":    ("trust", +2.0, "審査通過"),
+        "collapsed": ("rival", -3.0, "審査否決"),
+        "ascended":  ("ally", +4.0, "審査通過"),
         "dormant":   ("neutral",  0.0, ""),
     }
     try:

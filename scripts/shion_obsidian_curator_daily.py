@@ -44,7 +44,24 @@ def _clean(value: Any, limit: int = 220) -> str:
     return text
 
 
-def build_daily_report(*, report_date: str, themes: list[str], limit: int) -> dict[str, Any]:
+def _degree0_trend(summary: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not previous:
+        return None
+    previous_summary = previous.get("health", {}).get("summary") if isinstance(previous.get("health"), dict) else {}
+    previous_count = previous_summary.get("degree0_count") if isinstance(previous_summary, dict) else None
+    if not isinstance(previous_count, int):
+        return None
+    current_count = summary.get("degree0_count", 0)
+    return {
+        "previous_date": previous.get("date"),
+        "previous_count": previous_count,
+        "delta": current_count - previous_count,
+    }
+
+
+def build_daily_report(
+    *, report_date: str, themes: list[str], limit: int, previous: dict[str, Any] | None = None
+) -> dict[str, Any]:
     health = review_obsidian_vault_health(limit=limit)
     theme_reports = [
         suggest_obsidian_curation_actions(theme, limit=min(3, limit))
@@ -87,6 +104,7 @@ def build_daily_report(*, report_date: str, themes: list[str], limit: int) -> di
         if len(top_actions) >= limit:
             break
 
+    summary = health.get("summary") if isinstance(health.get("summary"), dict) else {}
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "date": report_date,
@@ -95,7 +113,16 @@ def build_daily_report(*, report_date: str, themes: list[str], limit: int) -> di
         "health": health,
         "theme_reports": theme_reports,
         "top_actions": top_actions[:limit],
+        "degree0_trend": _degree0_trend(summary, previous),
     }
+
+
+def _degree0_trend_line(trend: dict[str, Any] | None) -> str:
+    if not trend:
+        return "前日データなし"
+    delta = trend.get("delta", 0)
+    sign = "+" if delta >= 0 else ""
+    return f"{trend.get('previous_count')} ({trend.get('previous_date')}) から {sign}{delta}"
 
 
 def markdown(report: dict[str, Any]) -> str:
@@ -110,6 +137,7 @@ def markdown(report: dict[str, Any]) -> str:
         f"- Graph buckets: {summary.get('graph_buckets', {})}",
         f"- Degree 0 count: {summary.get('degree0_count', 0)}",
         f"- Top degree 0 dirs: {summary.get('top_degree0_dirs', {})}",
+        f"- Degree 0 trend: {_degree0_trend_line(report.get('degree0_trend'))}",
         "",
         "## Top Actions",
     ]
@@ -154,7 +182,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     themes = args.themes or list(DEFAULT_THEMES)
-    report = build_daily_report(report_date=args.date, themes=themes, limit=max(1, min(10, args.limit)))
+    previous_report: dict[str, Any] | None = None
+    if args.output_json.exists():
+        try:
+            previous_report = json.loads(args.output_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            previous_report = None
+
+    report = build_daily_report(
+        report_date=args.date, themes=themes, limit=max(1, min(10, args.limit)), previous=previous_report
+    )
 
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_md.parent.mkdir(parents=True, exist_ok=True)
@@ -163,6 +200,18 @@ def main(argv: list[str] | None = None) -> int:
     print(f"wrote={args.output_json}")
     print(f"wrote={args.output_md}")
     print(f"top_actions={len(report.get('top_actions') or [])}")
+
+    # review_obsidian_vault_health は graph_effect/retrieval_graph の両方が読めないと
+    # status="missing_reports" を返す。これを無視すると、上流レポート生成が壊れていても
+    # 「top_actions=0」の静かな成功として見過ごされる。
+    health = report.get("health") if isinstance(report.get("health"), dict) else {}
+    if health.get("status") == "missing_reports":
+        print(
+            "警告: 元になるレポート（obsidian_graph_judgment_effect_latest.json / "
+            "obsidian_retrieval_graph.json）が両方とも読めませんでした。",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

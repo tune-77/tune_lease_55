@@ -27,6 +27,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -518,9 +519,11 @@ def _write_daily_section(vault: Path, day: str, events: list[dict[str, Any]], no
 
 def sync(days: int, target_date: str | None = None, dry_run: bool = False) -> dict[str, int]:
     if not OBSIDIAN_VAULT.exists():
-        raise SystemExit(f"Vault が見つかりません: {OBSIDIAN_VAULT}")
+        report_pipeline_failure(f"Vault が見つかりません: {OBSIDIAN_VAULT}")
+        raise SystemExit(1)
     if not (OBSIDIAN_VAULT / ".obsidian").exists():
-        raise SystemExit(f"Obsidian Vault ではありません: {OBSIDIAN_VAULT}")
+        report_pipeline_failure(f"Obsidian Vault ではありません: {OBSIDIAN_VAULT}")
+        raise SystemExit(1)
 
     target_days = [date.fromisoformat(target_date)] if target_date else list(_date_range(days))
     scan_days = sorted(set(target_days + list(_date_range(days + 1))))

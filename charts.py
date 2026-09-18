@@ -770,7 +770,7 @@ def plot_contract_prob_factors_plotly(ai_completed_factors):
     factors = [f.get("factor", "") for f in ai_completed_factors]
     effects = [f.get("effect_percent", 0) for f in ai_completed_factors]
     colors = [CHART_STYLE["good"] if e >= 0 else CHART_STYLE["danger"] for e in effects]
-    hover_text = [f"{f.get('factor','')}: {f.get('effect_percent',0):+.0f}%<br>{f.get('detail','')}" for f in ai_completed_factors]
+    hover_text = [f"{f.get('factor', '')}: {f.get('effect_percent', 0):+.0f}%<br>{f.get('detail', '')}" for f in ai_completed_factors]
     fig = go.Figure(go.Bar(
         y=factors,
         x=effects,
@@ -1036,10 +1036,10 @@ def plot_ebitda_coverage_plotly(financials):
     EBITDA = 営業利益 + 減価償却費。リース債務を何倍カバーできるかを可視化。"""
     if not financials:
         return None
-    op_profit    = financials.get("op_profit") or financials.get("rieki") or 0
+    op_profit = financials.get("op_profit") or financials.get("rieki") or 0
     depreciation = financials.get("depreciation") or 0
     lease_credit = financials.get("lease_credit") or 0
-    bank_credit  = financials.get("bank_credit") or 0
+    bank_credit = financials.get("bank_credit") or 0
     ebitda = op_profit + depreciation
     if ebitda == 0 and lease_credit == 0 and bank_credit == 0:
         return None
@@ -1094,24 +1094,24 @@ def plot_financial_bullet_plotly(res, avg_data):
     """主要財務3指標（営業利益率・自己資本比率・ROA）を横棒で業界平均と比較。"""
     if not res or not avg_data:
         return None
-    fin          = res.get("financials", {})
+    fin = res.get("financials", {})
     industry_key = res.get("industry_major", "")
-    nenshu       = fin.get("nenshu") or 0
-    op_profit    = fin.get("op_profit") or fin.get("rieki") or 0
-    net_assets   = fin.get("net_assets") or 0
-    assets       = fin.get("assets") or 0
+    nenshu = fin.get("nenshu") or 0
+    op_profit = fin.get("op_profit") or fin.get("rieki") or 0
+    net_assets = fin.get("net_assets") or 0
+    assets = fin.get("assets") or 0
 
-    op_margin    = op_profit / nenshu * 100    if nenshu  > 0 else 0
-    equity_ratio = net_assets / assets  * 100  if assets  > 0 else 0
-    roa          = op_profit  / assets  * 100  if assets  > 0 else 0
+    op_margin = op_profit / nenshu * 100 if nenshu > 0 else 0
+    equity_ratio = net_assets / assets * 100 if assets > 0 else 0
+    roa = op_profit / assets * 100 if assets > 0 else 0
 
     avg = avg_data.get(industry_key, {})
-    a_nenshu  = avg.get("nenshu") or 1
-    a_assets  = (avg.get("machines", 0) + avg.get("other_assets", 0)
+    a_nenshu = avg.get("nenshu") or 1
+    a_assets = (avg.get("machines", 0) + avg.get("other_assets", 0)
                  + avg.get("bank_credit", 0) + avg.get("lease_credit", 0)) or 1
-    avg_op_margin    = avg.get("op_profit", 0) / a_nenshu * 100
+    avg_op_margin = avg.get("op_profit", 0) / a_nenshu * 100
     avg_equity_ratio = None   # avg_dataには純資産直接値なし
-    avg_roa          = avg.get("net_income", 0) / a_assets * 100
+    avg_roa = avg.get("net_income", 0) / a_assets * 100
 
     metrics = [
         ("営業利益率 (%)",   op_margin,    avg_op_margin,    5.0),
@@ -1229,12 +1229,12 @@ def plot_cash_flow_bridge_plotly(financials):
     """簡易キャッシュフロー構造ブリッジ。純利益→EBITDA→リース債務控除後の返済余力を可視化。"""
     if not financials:
         return None
-    net_income   = financials.get("net_income") or 0
+    net_income = financials.get("net_income") or 0
     depreciation = financials.get("depreciation") or 0
-    op_profit    = financials.get("op_profit") or financials.get("rieki") or 0
+    op_profit = financials.get("op_profit") or financials.get("rieki") or 0
     lease_credit = financials.get("lease_credit") or 0
-    ebitda       = op_profit + depreciation
-    余力         = ebitda - lease_credit
+    ebitda = op_profit + depreciation
+    余力 = ebitda - lease_credit
     if net_income == 0 and depreciation == 0:
         return None
 

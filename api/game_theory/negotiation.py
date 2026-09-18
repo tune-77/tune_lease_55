@@ -220,7 +220,7 @@ def _build_recommendation(
 
 def rubinstein_equilibrium(
     lender_discount: float = 0.95,   # 貸し手の1期あたりの割引率
-    borrower_discount: float = 0.90, # 借り手の1期あたりの割引率（借り手の方が急いでいる）
+    borrower_discount: float = 0.90,  # 借り手の1期あたりの割引率（借り手の方が急いでいる）
     total_surplus: float = 1.0,
 ) -> dict[str, Any]:
     """

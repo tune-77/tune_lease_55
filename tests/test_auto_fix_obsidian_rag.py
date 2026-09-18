@@ -1,4 +1,4 @@
-from scripts.auto_fix_obsidian_rag import is_safe_improvement, run_auto_fix
+from scripts.auto_fix_obsidian_rag import is_safe_improvement, is_total_rag_collapse, run_auto_fix
 
 
 def _summary(*, hit_at_k: int, hit_at_1: int, forbidden: int, passed_ids: set[str]) -> dict:
@@ -57,3 +57,17 @@ def test_run_auto_fix_selects_candidate_without_regressing_passes():
 
     assert report["status"] == "applied"
     assert report["selected"]["summary"]["passed"] is True
+
+
+def test_is_total_rag_collapse_true_when_all_cases_miss():
+    # ChromaDB/Obsidianパス破損等でRAGが物理的に死んでいる場合、全件0ヒットになる。
+    baseline = _summary(hit_at_k=0, hit_at_1=0, forbidden=0, passed_ids=set())
+
+    assert is_total_rag_collapse(baseline) is True
+
+
+def test_is_total_rag_collapse_false_for_partial_miss():
+    # 一部だけ外れているのは通常のチューニング対象であり、全壊ではない。
+    baseline = _summary(hit_at_k=2, hit_at_1=1, forbidden=0, passed_ids={"a", "b"})
+
+    assert is_total_rag_collapse(baseline) is False

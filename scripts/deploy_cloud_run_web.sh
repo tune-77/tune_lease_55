@@ -70,10 +70,43 @@ secrets_value="API_ACCESS_KEY=${api_access_key_ref},PUBLIC_TUNNEL_AUTH=${tunnel_
 # GitHub Actionsの knowledge-sync-health 監視専用シークレット（frontend/src/proxy.ts
 # がBasic認証の代わりにX-Sync-Probe-Keyヘッダで要求する）。無くてもデプロイは止めない
 # ―― 未設定ならproxy.tsがそのプローブパスを401にするだけで、安全側に倒れるため。
-if gcloud secrets describe KNOWLEDGE_SYNC_PROBE_TOKEN --project "$PROJECT_ID" >/dev/null 2>&1; then
+# このデプロイ用サービスアカウントは secretmanager.secrets.get を持たず describe が
+# PERMISSION_DENIED になる（API_ACCESS_KEY/PUBLIC_TUNNEL_AUTH の確認時と同じ）。
+# それを NOT_FOUND と誤認すると実在する秘密も常に配線されず401化する
+# （DASHBOARD_HEALTH_PROBE_TOKENで2026-09-14に実際に発生したものと同じ構造の
+# バグ）ため、NOT_FOUND の時だけスキップする。
+knowledge_sync_probe_error="$(gcloud secrets describe KNOWLEDGE_SYNC_PROBE_TOKEN --project "$PROJECT_ID" 2>&1 >/dev/null)" \
+  && knowledge_sync_probe_status=0 || knowledge_sync_probe_status=$?
+if (( knowledge_sync_probe_status == 0 )); then
   secrets_value+=",KNOWLEDGE_SYNC_PROBE_TOKEN=KNOWLEDGE_SYNC_PROBE_TOKEN:latest"
-else
+elif printf '%s' "$knowledge_sync_probe_error" | grep -q 'NOT_FOUND'; then
   echo "Warning: Secret Manager secret KNOWLEDGE_SYNC_PROBE_TOKEN was not found; /api/system/knowledge-sync-health will 401 for the external monitor until it is created." >&2
+else
+  echo "Warning: could not verify the KNOWLEDGE_SYNC_PROBE_TOKEN secret before deploying (needs secretmanager.secrets.get). Wiring it anyway; gcloud run deploy --set-secrets will fail if it is truly unusable." >&2
+  echo "--- gcloud output ---" >&2
+  echo "$knowledge_sync_probe_error" >&2
+  secrets_value+=",KNOWLEDGE_SYNC_PROBE_TOKEN=KNOWLEDGE_SYNC_PROBE_TOKEN:latest"
+fi
+
+# GitHub Actionsの dashboard-data-health 監視専用シークレット（frontend/src/proxy.ts
+# がBasic認証の代わりにX-Dashboard-Health-Probe-Keyヘッダで要求する）。無くても
+# デプロイは止めない ―― 未設定ならproxy.tsがそのプローブパスを401にするだけで、
+# 安全側に倒れるため。
+# このデプロイ用サービスアカウントは secretmanager.secrets.get を持たず describe が
+# PERMISSION_DENIED になる（API_ACCESS_KEY/PUBLIC_TUNNEL_AUTH の確認時と同じ）。
+# それを NOT_FOUND と誤認すると実在する秘密も常に配線されず404化する
+# （2026-09-14に実際に発生）ため、NOT_FOUND の時だけスキップする。
+dashboard_health_probe_error="$(gcloud secrets describe DASHBOARD_HEALTH_PROBE_TOKEN --project "$PROJECT_ID" 2>&1 >/dev/null)" \
+  && dashboard_health_probe_status=0 || dashboard_health_probe_status=$?
+if (( dashboard_health_probe_status == 0 )); then
+  secrets_value+=",DASHBOARD_HEALTH_PROBE_TOKEN=DASHBOARD_HEALTH_PROBE_TOKEN:latest"
+elif printf '%s' "$dashboard_health_probe_error" | grep -q 'NOT_FOUND'; then
+  echo "Warning: Secret Manager secret DASHBOARD_HEALTH_PROBE_TOKEN was not found; /api/dashboard/data-health will 401 for the external monitor until it is created." >&2
+else
+  echo "Warning: could not verify the DASHBOARD_HEALTH_PROBE_TOKEN secret before deploying (needs secretmanager.secrets.get). Wiring it anyway; gcloud run deploy --set-secrets will fail if it is truly unusable." >&2
+  echo "--- gcloud output ---" >&2
+  echo "$dashboard_health_probe_error" >&2
+  secrets_value+=",DASHBOARD_HEALTH_PROBE_TOKEN=DASHBOARD_HEALTH_PROBE_TOKEN:latest"
 fi
 deploy_args+=(--set-secrets "$secrets_value")
 

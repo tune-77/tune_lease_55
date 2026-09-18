@@ -1,0 +1,50 @@
+name: CodeQL
+
+# アプリケーションコード自体の静的解析。
+# security-scan.yml は依存パッケージの脆弱性、docker-scan.yml はDockerイメージの
+# 脆弱性をカバーしているが、SQLインジェクション・SSRF等のコード自体の脆弱性は
+# どちらも検知しない。ここではPython(api/・scripts/等)とJavaScript/TypeScript
+# (frontend/)を対象にCodeQLで静的解析する。
+#
+# 他の日次スキャン（security-scan.yml/docker-scan.yml）と同じ運用に揃え、
+# PRごとには実行しない（CodeQL自体が数分かかりPRフィードバックを遅くするため）。
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "30 1 * * 0"  # 毎週日曜 01:30 UTC（JST 10:30）
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "CodeQL / ${{ matrix.language }}"

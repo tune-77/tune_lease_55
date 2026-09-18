@@ -4,6 +4,7 @@ import json
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RULES_FILE_PATH = os.path.join(_SCRIPT_DIR, "data", "business_rules.json")
 
+
 def load_business_rules() -> dict:
     """
     data/business_rules.json を読み込み辞書として返す。
@@ -32,13 +33,14 @@ def load_business_rules() -> dict:
             },
             "custom_rules": []
         }
-    
+
     try:
         with open(RULES_FILE_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         print(f"Error loading business rules: {e}")
         return {}
+
 
 def save_business_rules(rules: dict) -> bool:
     """
@@ -53,6 +55,7 @@ def save_business_rules(rules: dict) -> bool:
     except Exception as e:
         print(f"Error saving business rules: {e}")
         return False
+
 
 def evaluate_condition(value, op: str, threshold) -> bool:
     """ 数値と演算子から条件の真偽を判定する """
@@ -71,6 +74,7 @@ def evaluate_condition(value, op: str, threshold) -> bool:
         pass
     return False
 
+
 def evaluate_custom_rules(custom_rules: list, context: dict) -> dict:
     """
     ユーザー定義のカスタムルールリストを評価し、適用結果を返す。
@@ -87,10 +91,10 @@ def evaluate_custom_rules(custom_rules: list, context: dict) -> dict:
         "forced_status": None,
         "applied_reasons": []
     }
-    
+
     if not custom_rules:
         return result
-        
+
     for rule in custom_rules:
         # 1. 業種チェック
         target_obj_ind = rule.get("industry", "ALL")
@@ -99,7 +103,7 @@ def evaluate_custom_rules(custom_rules: list, context: dict) -> dict:
             curr_ind = context.get("industry", "")
             if target_obj_ind not in curr_ind and curr_ind not in target_obj_ind:
                 continue
-                
+
         # 2. 条件（複数AND）チェック
         # 後方互換のため旧フォーマットからの変換もサポート
         conditions = rule.get("conditions", [])
@@ -144,21 +148,21 @@ def evaluate_custom_rules(custom_rules: list, context: dict) -> dict:
                 break
 
             reasons_parts.append(reason_str)
-        
+
         if all_met:
             # 3. アクション適用
             action = rule.get("action_type")
             val = rule.get("action_value")
-            
+
             # 理由文の作成
             ind_str = "全業種" if target_obj_ind == "ALL" else target_obj_ind
             action_str = f"スコアを {val}点引く" if action == "deduct_score" else f"ステータスを {val} に強制"
             cond_str = " かつ ".join(reasons_parts)
             reason = f"【カスタムルール適用】{ind_str} で {cond_str} のため、{action_str}。"
-            
+
             if action == "deduct_score":
                 try:
-                    result["score_delta"] -= abs(float(val)) # 常に入力値を減点として扱う
+                    result["score_delta"] -= abs(float(val))  # 常に入力値を減点として扱う
                 except (ValueError, TypeError):
                     pass
             elif action == "force_status":
@@ -167,10 +171,11 @@ def evaluate_custom_rules(custom_rules: list, context: dict) -> dict:
                     result["forced_status"] = "要審議"
                 elif str(val) in ["reject", "否決"]:
                     result["forced_status"] = "否決"
-                    
+
             result["applied_reasons"].append(reason)
-            
+
     return result
+
 
 def simulate_rules_on_past_cases(cases: list, rules: dict) -> dict:
     """
@@ -181,7 +186,7 @@ def simulate_rules_on_past_cases(cases: list, rules: dict) -> dict:
     approval_line = thresholds.get("approval", 0.70) * 100
     review_line = thresholds.get("review", 0.40) * 100
     custom_rules = rules.get("custom_rules", [])
-    
+
     # 変化マトリクス [old_status][new_status] = count
     matrix = {
         "承認圏内": {"承認圏内": 0, "要審議": 0, "否決": 0},
@@ -190,17 +195,17 @@ def simulate_rules_on_past_cases(cases: list, rules: dict) -> dict:
         "不明": {"承認圏内": 0, "要審議": 0, "否決": 0}
     }
     details = []
-    
+
     for c in cases:
         inputs = c.get("inputs", {})
         res = c.get("result", {})
         if not isinstance(inputs, dict) or not isinstance(res, dict):
             continue
-            
+
         old_status = c.get("final_status", "")
         if old_status not in matrix:
             old_status = "不明"
-            
+
         # context 用データの構築（実際に審査時に構築しているものに極力近づける）
         context_data = {
             "industry": c.get("industry_major", ""),
@@ -217,16 +222,16 @@ def simulate_rules_on_past_cases(cases: list, rules: dict) -> dict:
             "bank_credit": inputs.get("bank_credit", 0),
             "lease_credit": inputs.get("lease_credit", 0)
         }
-        
+
         # オリジナルのスコア（ペナルティなどを除いた純粋なベーススコアと仮定するか、ログのスコアを使うか）
         # ここではログに残っている最終スコアからカスタムルールの影響を（もしあれば）取り除いたものは不明なため、
         # 簡易的に raw スコア等から再計算するか、記録されている score をベースとして扱う
         base_score = res.get("score", 0)
-        
+
         cr_result = evaluate_custom_rules(custom_rules, context_data)
         new_score = base_score + cr_result["score_delta"]
         new_score = max(0, min(100, new_score))
-        
+
         # 新ステータスの判定
         if cr_result.get("forced_status"):
             new_status = cr_result.get("forced_status")
@@ -236,13 +241,13 @@ def simulate_rules_on_past_cases(cases: list, rules: dict) -> dict:
             new_status = "承認圏内"
         else:
             new_status = "要審議"
-            
+
         # ゆらぎ吸収
         if new_status not in ["承認圏内", "要審議", "否決"]:
             new_status = "要審議"
-            
+
         matrix[old_status][new_status] += 1
-        
+
         if old_status != new_status and old_status != "不明":
             details.append({
                 "id": c.get("id", "Unknown"),
@@ -253,10 +258,9 @@ def simulate_rules_on_past_cases(cases: list, rules: dict) -> dict:
                 "new_status": new_status,
                 "reasons": cr_result["applied_reasons"]
             })
-            
+
     return {
         "matrix": matrix,
         "changed_cases": details,
         "total": len(cases)
     }
-

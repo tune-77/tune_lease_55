@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { apiClient } from "@/lib/api";
+import { apiClient, getApiErrorDetail } from "@/lib/api";
 import {
   AlertTriangle,
   BookOpen,
@@ -104,8 +104,8 @@ export default function ResearchOrganPage() {
       setOutputDir(topicRes.data.default_output_dir || outputDir);
       setNotes(notesRes.data.notes || []);
       setResearchRoot(notesRes.data.research_root || "");
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || "外部調査器官の初期化に失敗しました。");
+    } catch (err: unknown) {
+      setError(getApiErrorDetail(err, "外部調査器官の初期化に失敗しました。"));
     } finally {
       setLoading(false);
     }
@@ -132,12 +132,12 @@ export default function ResearchOrganPage() {
           const notesRes = await apiClient.get<{ notes: ResearchNote[]; research_root: string }>("/api/research-organ/notes?limit=5");
           setNotes(notesRes.data.notes || []);
           setResearchRoot(notesRes.data.research_root || "");
-        } catch (notesErr: any) {
-          setWarning(notesErr?.response?.data?.detail || notesErr?.message || "保存は完了しましたが、Researchノート一覧の再取得に失敗しました。更新ボタンで再読み込みできます。");
+        } catch (notesErr: unknown) {
+          setWarning(getApiErrorDetail(notesErr, "保存は完了しましたが、Researchノート一覧の再取得に失敗しました。更新ボタンで再読み込みできます。"));
         }
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || "調査実行に失敗しました。Gemini APIキー、利用枠、safety filterを確認してください。");
+    } catch (err: unknown) {
+      setError(getApiErrorDetail(err, "調査実行に失敗しました。Gemini APIキー、利用枠、safety filterを確認してください。"));
     } finally {
       setRunning(null);
     }

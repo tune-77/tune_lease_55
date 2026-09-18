@@ -75,12 +75,27 @@ class CaseProgressStampRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/api/cases")
-def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
-    """過去案件一覧 (limit/offset/sort 対応)"""
+def list_cases(
+    limit: int = 30,
+    offset: int = 0,
+    sort: str = "desc",
+    industry_major: str | None = None,
+    contract_type: str | None = None,
+):
+    """過去案件一覧 (limit/offset/sort、業種大分類・物件区分での絞り込みに対応)"""
     limit = min(max(limit, 1), 200)
     offset = max(offset, 0)
     order = "DESC" if sort.lower() != "asc" else "ASC"
     rows = []
+    where_clauses = []
+    params: list = []
+    if industry_major:
+        where_clauses.append("json_extract(data,'$.industry_major') = ?")
+        params.append(industry_major)
+    if contract_type:
+        where_clauses.append("json_extract(data,'$.contract_type') = ?")
+        params.append(contract_type)
+    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
     try:
         with get_connection() as conn:
             res = conn.execute(
@@ -88,9 +103,11 @@ def list_cases(limit: int = 30, offset: int = 0, sort: str = "desc"):
                 f"json_extract(data,'$.company_name') AS company_name, "
                 f"json_extract(data,'$.company_no')   AS company_no, "
                 f"json_extract(data,'$.judgment')     AS judgment, "
+                f"json_extract(data,'$.industry_major') AS industry_major, "
+                f"COALESCE(json_extract(data,'$.contract_type'), '一般') AS contract_type, "
                 f"COALESCE(json_extract(data,'$._source'), 'past_cases') AS source "
-                f"FROM past_cases ORDER BY timestamp {order} LIMIT ? OFFSET ?",
-                (limit, offset),
+                f"FROM past_cases {where_sql} ORDER BY timestamp {order} LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ).fetchall()
             for r in res:
                 rows.append(dict(r))

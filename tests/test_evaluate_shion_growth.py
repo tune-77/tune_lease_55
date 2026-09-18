@@ -1,3 +1,5 @@
+import json
+
 from scripts import evaluate_shion_growth as growth_eval
 
 
@@ -87,6 +89,60 @@ def test_negative_signal_or_large_score_drop_marks_regression():
     )
 
     assert payload["judgment"]["code"] == "regressed"
+
+
+def test_main_warns_and_exits_nonzero_when_history_exists_but_period_is_empty(tmp_path, monkeypatch, capsys):
+    """growth_history_jsonlに過去の記録はあるのに、対象期間の日付フォーマットが
+    ドリフトして1件も拾えなくなった場合、無条件exit 0のまま無音停止しないことを確認する。"""
+    history = tmp_path / "growth_history.jsonl"
+    # "date" キーが別形式に変わり、対象期間の日付比較にヒットしなくなった想定
+    history.write_text(
+        json.dumps({"day": "2026-07-15", "score": 60.0}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "evaluate_shion_growth.py",
+            "--start-date", "2026-07-01",
+            "--end-date", "2026-07-31",
+            "--growth-history-jsonl", str(history),
+            "--growth-latest-json", str(tmp_path / "missing_latest.json"),
+            "--feedback-jsonl", str(tmp_path / "missing_feedback.jsonl"),
+            "--output-json", str(tmp_path / "out.json"),
+            "--output-md", str(tmp_path / "out.md"),
+        ],
+    )
+
+    exit_code = growth_eval.main()
+
+    assert exit_code == 1
+    assert "日付フィールドの形式ドリフト" in capsys.readouterr().err
+    assert not (tmp_path / "out.json").exists()
+
+
+def test_main_returns_zero_when_no_growth_history_exists_yet(tmp_path, monkeypatch):
+    """growth_history_jsonl自体がまだ無い（運用開始直後で真に対象が無い）場合は
+    誤検知せず正常終了する。"""
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "evaluate_shion_growth.py",
+            "--start-date", "2026-07-01",
+            "--end-date", "2026-07-31",
+            "--growth-history-jsonl", str(tmp_path / "missing_history.jsonl"),
+            "--growth-latest-json", str(tmp_path / "missing_latest.json"),
+            "--feedback-jsonl", str(tmp_path / "missing_feedback.jsonl"),
+            "--output-json", str(tmp_path / "out.json"),
+            "--output-md", str(tmp_path / "out.md"),
+        ],
+    )
+
+    exit_code = growth_eval.main()
+
+    assert exit_code == 0
+    assert (tmp_path / "out.json").exists()
 
 
 def test_markdown_contains_judgment_dimensions_and_next_actions():

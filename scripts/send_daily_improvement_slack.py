@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
 DEFAULT_REPORT = REPO_ROOT / "reports" / "latest.json"
 DEFAULT_MANA_REPORT = REPO_ROOT / "reports" / "mana_obsidian_curator_latest.json"
 DEFAULT_SCREENING_TERMS_REPORT = REPO_ROOT / "reports" / "screening_terms_audit_latest.json"
@@ -30,6 +31,11 @@ DEFAULT_REFLECTION_JOURNAL_REPORT = REPO_ROOT / "reports" / "obsidian_reflection
 DEFAULT_SHION_OBSIDIAN_CURATOR_DAILY = REPO_ROOT / "reports" / "shion_obsidian_curator_daily_latest.json"
 DEFAULT_STATE = REPO_ROOT / "data" / "slack_daily_improvement_state.json"
 DEFAULT_TIMEOUT = 15
+# needs_review の初出日を調べる台帳。REV番号は日次実行のたびに振り直されるため
+# （pipeline_runner.suppress_previously_applied_improvements 参照）、キーはtitleを使う
+# （scripts/rotate_weekly_focus.py と同じ方式）。ローカルMac専用でリポジトリ外・
+# コミット対象外のため、CI等では存在せず初出日表示は省略される。
+_LEDGER_PATH = Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"
 # 本文ハッシュ方式へ切り替えた版数。旧方式（生JSON全体からのハッシュ）で保存された
 # state は digest_version が無いため、当日中にこのバージョンをまたいでパイプラインが
 # 再実行されるとハッシュ方式の違いだけで不一致になり、内容が同じでも重複送信して
@@ -42,11 +48,14 @@ def _read_json(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        raise SystemExit(f"report not found: {path}")
+        report_pipeline_failure(f"report not found: {path}")
+        raise SystemExit(1)
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"invalid report json: {path}: {exc}")
+        report_pipeline_failure(f"invalid report json: {path}: {exc}")
+        raise SystemExit(1)
     if not isinstance(data, dict):
-        raise SystemExit(f"report must be a JSON object: {path}")
+        report_pipeline_failure(f"report must be a JSON object: {path}")
+        raise SystemExit(1)
     return data
 
 
@@ -119,6 +128,41 @@ def _clean_text(value: Any, limit: int = 140) -> str:
 def _items(report: dict[str, Any], key: str) -> list[dict[str, Any]]:
     value = report.get(key) or []
     return [item for item in value if isinstance(item, dict)]
+
+
+def _parse_ledger_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).date()
+    except ValueError:
+        pass
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+
+
+def _load_ledger_first_seen() -> dict[str, date]:
+    """title -> ledger.jsonl 上でその title が最初に現れた日付。"""
+    if not _LEDGER_PATH.exists():
+        return {}
+    first_seen: dict[str, date] = {}
+    for raw in _LEDGER_PATH.read_text(encoding="utf-8").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            entry = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        title = entry.get("title", "")
+        if not title:
+            continue
+        recorded = _parse_ledger_date(entry.get("recorded_at"))
+        if title not in first_seen or (recorded and recorded < first_seen[title]):
+            first_seen[title] = recorded or date.today()
+    return first_seen
 
 
 def _read_optional_json(path: Path) -> dict[str, Any] | None:
@@ -449,16 +493,20 @@ def build_message(
     failed_count = int(report.get("failed_count") or len(failed))
 
     top_review = needs_review[:5]
+    ledger_first_seen = _load_ledger_first_seen() if top_review else {}
     review_lines = []
     for item in top_review:
         rev_id = _clean_text(item.get("id") or item.get("rev_id") or "", 24)
-        title = _clean_text(item.get("title") or item.get("detail") or "無題", 120)
+        raw_title = str(item.get("title") or item.get("detail") or "")
+        title = _clean_text(raw_title or "無題", 120)
         risk = ""
         policy = item.get("auto_fix_policy")
         if isinstance(policy, dict) and policy.get("risk"):
             risk = f" / risk={policy.get('risk')}"
+        first_seen = ledger_first_seen.get(raw_title)
+        elapsed = f" / 初出{(date.today() - first_seen).days}日前" if first_seen else ""
         prefix = f"{rev_id}: " if rev_id else ""
-        review_lines.append(f"• {prefix}{title}{risk}")
+        review_lines.append(f"• {prefix}{title}{risk}{elapsed}")
 
     if not review_lines:
         review_lines.append("• 要レビュー項目なし")

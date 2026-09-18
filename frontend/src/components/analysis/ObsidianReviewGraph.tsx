@@ -25,6 +25,10 @@ type ObsidianGraphEdge = {
   color?: string;
 };
 
+type SimNode = ObsidianGraphNode & d3.SimulationNodeDatum;
+type SimEdge = Omit<ObsidianGraphEdge, "source" | "target">
+  & d3.SimulationLinkDatum<SimNode>;
+
 type ObsidianGraph = {
   nodes: ObsidianGraphNode[];
   edges: ObsidianGraphEdge[];
@@ -100,25 +104,27 @@ export default function ObsidianReviewGraph({ graph, title = "Obsidianグラフ"
         .on("zoom", (event) => g.attr("transform", event.transform)),
     );
 
-    const simulation = d3.forceSimulation(prepared.nodes as any)
-      .force("link", d3.forceLink(prepared.edges as any)
-        .id((d: any) => d.id)
-        .distance((d: any) => (d.type === "wikilink" ? 92 : d.type === "query" ? 118 : 82))
-        .strength((d: any) => (d.type === "wikilink" ? 0.18 : 0.45)))
-      .force("charge", d3.forceManyBody().strength((d: any) => (d.type === "focus" ? -700 : d.type === "linked" ? -80 : -260)))
+    const nodes = prepared.nodes as SimNode[];
+    const edges = prepared.edges as SimEdge[];
+    const simulation = d3.forceSimulation<SimNode>(nodes)
+      .force("link", d3.forceLink<SimNode, SimEdge>(edges)
+        .id((d) => d.id)
+        .distance((d) => (d.type === "wikilink" ? 92 : d.type === "query" ? 118 : 82))
+        .strength((d) => (d.type === "wikilink" ? 0.18 : 0.45)))
+      .force("charge", d3.forceManyBody<SimNode>().strength((d) => (d.type === "focus" ? -700 : d.type === "linked" ? -80 : -260)))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collide", d3.forceCollide().radius((d: any) => (d.radius || 12) + 14));
+      .force("collide", d3.forceCollide<SimNode>().radius((d) => (d.radius || 12) + 14));
 
     const link = g.append("g")
       .attr("stroke-linecap", "round")
       .selectAll("line")
-      .data(prepared.edges)
+      .data(edges)
       .join("line")
-      .attr("stroke", (d: any) => d.color || "#cbd5e1")
-      .attr("stroke-width", (d: any) => d.width || 1)
-      .attr("stroke-dasharray", (d: any) => (d.type === "wikilink" ? "4,4" : null))
-      .attr("opacity", (d: any) => (d.type === "wikilink" ? 0.5 : 0.85))
-      .attr("marker-end", (d: any) => (d.type === "wikilink" ? "url(#arrow-link)" : "url(#arrow-main)"));
+      .attr("stroke", (d) => d.color || "#cbd5e1")
+      .attr("stroke-width", (d) => d.width || 1)
+      .attr("stroke-dasharray", (d) => (d.type === "wikilink" ? "4,4" : null))
+      .attr("opacity", (d) => (d.type === "wikilink" ? 0.5 : 0.85))
+      .attr("marker-end", (d) => (d.type === "wikilink" ? "url(#arrow-link)" : "url(#arrow-main)"));
 
     // 引用元ノード用のグロー filter 定義
     const glowFilter = defs.append("filter")
@@ -133,34 +139,34 @@ export default function ObsidianReviewGraph({ graph, title = "Obsidianグラフ"
     feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
     const node = g.append("g")
-      .selectAll("g")
-      .data(prepared.nodes)
+      .selectAll<SVGGElement, SimNode>("g")
+      .data(nodes)
       .join("g")
       .attr("cursor", "grab")
       .call(
-        d3.drag<SVGGElement, any>()
-          .on("start", (event: any, d: any) => {
+        d3.drag<SVGGElement, SimNode>()
+          .on("start", (event, d) => {
             if (!event.active) simulation.alphaTarget(0.25).restart();
             d.fx = d.x;
             d.fy = d.y;
           })
-          .on("drag", (event: any, d: any) => {
+          .on("drag", (event, d) => {
             d.fx = event.x;
             d.fy = event.y;
           })
-          .on("end", (event: any, d: any) => {
+          .on("end", (event, d) => {
             if (!event.active) simulation.alphaTarget(0);
             if (!d.pinned) {
               d.fx = null;
               d.fy = null;
             }
-          }) as any,
+          }),
       );
 
     // 引用元ノードにハローリング（外側の光輪）を追加
-    node.filter((d: any) => d.used)
+    node.filter((d) => Boolean(d.used))
       .append("circle")
-      .attr("r", (d: any) => (d.radius || 12) + 6)
+      .attr("r", (d) => (d.radius || 12) + 6)
       .attr("fill", "none")
       .attr("stroke", "#f59e0b")
       .attr("stroke-width", 2.5)
@@ -168,28 +174,28 @@ export default function ObsidianReviewGraph({ graph, title = "Obsidianグラフ"
       .attr("filter", "url(#glow-citation)");
 
     node.append("circle")
-      .attr("r", (d: any) => d.radius || 12)
-      .attr("fill", (d: any) => d.color || "#94a3b8")
-      .attr("stroke", (d: any) => (d.used ? "#f59e0b" : d.type === "focus" ? "#0f172a" : "#e2e8f0"))
-      .attr("stroke-width", (d: any) => (d.used ? 3 : d.type === "focus" ? 3 : 1.5))
-      .attr("opacity", (d: any) => (d.type === "linked" ? 0.7 : 1))
-      .attr("filter", (d: any) => (d.used ? "url(#glow-citation)" : d.type === "focus" ? "drop-shadow(0 4px 8px rgba(15,23,42,0.16))" : null));
+      .attr("r", (d) => d.radius || 12)
+      .attr("fill", (d) => d.color || "#94a3b8")
+      .attr("stroke", (d) => (d.used ? "#f59e0b" : d.type === "focus" ? "#0f172a" : "#e2e8f0"))
+      .attr("stroke-width", (d) => (d.used ? 3 : d.type === "focus" ? 3 : 1.5))
+      .attr("opacity", (d) => (d.type === "linked" ? 0.7 : 1))
+      .attr("filter", (d) => (d.used ? "url(#glow-citation)" : d.type === "focus" ? "drop-shadow(0 4px 8px rgba(15,23,42,0.16))" : null));
 
     // 引用元ノードに「引」バッジを追加
-    node.filter((d: any) => d.used)
+    node.filter((d) => Boolean(d.used))
       .append("circle")
       .attr("r", 6)
-      .attr("cx", (d: any) => (d.radius || 12) * 0.7)
-      .attr("cy", (d: any) => -(d.radius || 12) * 0.7)
+      .attr("cx", (d) => (d.radius || 12) * 0.7)
+      .attr("cy", (d) => -(d.radius || 12) * 0.7)
       .attr("fill", "#f59e0b")
       .attr("stroke", "#fff")
       .attr("stroke-width", 1.5);
 
-    node.filter((d: any) => d.used)
+    node.filter((d) => Boolean(d.used))
       .append("text")
       .text("引")
-      .attr("x", (d: any) => (d.radius || 12) * 0.7)
-      .attr("y", (d: any) => -(d.radius || 12) * 0.7)
+      .attr("x", (d) => (d.radius || 12) * 0.7)
+      .attr("y", (d) => -(d.radius || 12) * 0.7)
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "central")
       .attr("font-size", 6)
@@ -198,14 +204,14 @@ export default function ObsidianReviewGraph({ graph, title = "Obsidianグラフ"
       .attr("pointer-events", "none");
 
     node.append("text")
-      .text((d: any) => truncate(d.label, d.type === "linked" ? 18 : 26))
+      .text((d) => truncate(d.label, d.type === "linked" ? 18 : 26))
       .attr("text-anchor", "middle")
-      .attr("dy", (d: any) => (d.radius || 12) + 14)
-      .attr("font-size", (d: any) => (d.type === "focus" ? 12 : d.type === "linked" ? 9 : 10))
+      .attr("dy", (d) => (d.radius || 12) + 14)
+      .attr("font-size", (d) => (d.type === "focus" ? 12 : d.type === "linked" ? 9 : 10))
       .attr("font-weight", 900)
       .attr("fill", "#1e293b");
 
-    node.append("title").text((d: any) => {
+    node.append("title").text((d) => {
       const parts = [d.label];
       if (d.path) parts.push(d.path);
       if (d.snippet) parts.push(d.snippet);
@@ -215,12 +221,12 @@ export default function ObsidianReviewGraph({ graph, title = "Obsidianグラフ"
 
     simulation.on("tick", () => {
       link
-        .attr("x1", (d: any) => d.source.x)
-        .attr("y1", (d: any) => d.source.y)
-        .attr("x2", (d: any) => d.target.x)
-        .attr("y2", (d: any) => d.target.y);
+        .attr("x1", (d) => (d.source as SimNode).x ?? 0)
+        .attr("y1", (d) => (d.source as SimNode).y ?? 0)
+        .attr("x2", (d) => (d.target as SimNode).x ?? 0)
+        .attr("y2", (d) => (d.target as SimNode).y ?? 0);
 
-      node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+      node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
 
     return () => {

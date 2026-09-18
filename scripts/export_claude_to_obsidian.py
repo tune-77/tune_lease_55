@@ -139,18 +139,18 @@ def load_sessions(days: int) -> dict[str, list[dict]]:
 def render_md(date_str: str, messages: list[dict]) -> str:
     """日付と会話リストから Markdown を生成する。"""
     lines = [
-        f"---",
+        "---",
         f"date: {date_str}",
-        f"tags: [Claude会話記録, claude, dispatch]",
+        "tags: [Claude会話記録, claude, dispatch]",
         f"total_messages: {len(messages)}",
-        f"---",
-        f"",
+        "---",
+        "",
         f"# {date_str} Claude 会話記録",
-        f"",
+        "",
         f"**総メッセージ数**: {len(messages)}",
-        f"",
-        f"---",
-        f"",
+        "",
+        "---",
+        "",
     ]
     for msg in messages:
         label = ROLE_LABELS.get(msg["role"], msg["role"])

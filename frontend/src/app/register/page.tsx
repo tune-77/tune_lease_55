@@ -5,10 +5,22 @@ import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import CaseRegistrationForm from '../../components/analysis/CaseRegistrationForm';
 import { Search, User, ClipboardList, Trash2, RefreshCw } from 'lucide-react';
 
+type PendingCase = {
+  id: string;
+  company_no?: string;
+  company_name?: string;
+  score?: number | string | null;
+  hantei?: string | null;
+  _source?: string;
+  registration_date?: string;
+  estimate_sent_date?: string;
+  timestamp?: string;
+};
+
 export default function RegisterPage() {
   const [targetId, setTargetId] = useState('');
-  const [pendingCases, setPendingCases] = useState<any[]>([]);
-  const [selectedCase, setSelectedCase] = useState<any | null>(null);
+  const [pendingCases, setPendingCases] = useState<PendingCase[]>([]);
+  const [selectedCase, setSelectedCase] = useState<PendingCase | null>(null);
   const [liveClosureProb, setLiveClosureProb] = useState<number | null>(null);
   const [progressStampingCaseId, setProgressStampingCaseId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -36,7 +48,7 @@ export default function RegisterPage() {
   const fetchPendingCases = async () => {
     setRefreshing(true);
     try {
-      const res = await apiClient.get(`/api/cases/pending`);
+      const res = await apiClient.get<PendingCase[]>(`/api/cases/pending`);
       const rows = Array.isArray(res.data) ? res.data : [];
       setPendingCases(rows);
       const caseIdParam = new URLSearchParams(window.location.search).get('case_id') || '';
@@ -57,10 +69,11 @@ export default function RegisterPage() {
     }
   };
 
-  const scoreColor = (s: number | null | undefined) => {
+  const scoreColor = (s: number | string | null | undefined) => {
     if (s === null || s === undefined || Number.isNaN(s)) return 'text-slate-400';
-    if (s >= 70) return 'text-emerald-600';
-    if (s >= 50) return 'text-amber-600';
+    const score = Number(s);
+    if (score >= 70) return 'text-emerald-600';
+    if (score >= 50) return 'text-amber-600';
     return 'text-rose-600';
   };
 
@@ -79,7 +92,7 @@ export default function RegisterPage() {
       await apiClient.delete(`/api/cases/${caseId}`);
       triggerMebuki('guide', '案件を削除しました。');
       fetchPendingCases();
-    } catch (err) {
+    } catch (_err) {
       triggerMebuki('reject', '削除に失敗しました。');
     }
   };
@@ -90,12 +103,12 @@ export default function RegisterPage() {
       await apiClient.delete(`/api/cases/operation/clear-all`);
       triggerMebuki('guide', '全ての未登録案件を削除しました。');
       fetchPendingCases();
-    } catch (err) {
+    } catch (_err) {
       triggerMebuki('reject', '一括削除に失敗しました。');
     }
   };
 
-  const selectCase = (c: any) => {
+  const selectCase = (c: PendingCase) => {
     setTargetId(c.id);
     setSelectedCase(c);
     triggerMebuki('approve', `企業番号 #${c.company_no} を選択しました！`);
@@ -119,7 +132,7 @@ export default function RegisterPage() {
       if (typeof p === 'number') setLiveClosureProb(p);
       triggerMebuki('approve', `${eventType === 'estimate_sent' ? '見積提示' : '顧客反応'}を記録しました。`);
       fetchPendingCases();
-    } catch (err) {
+    } catch (_err) {
       triggerMebuki('reject', 'タイムスタンプ記録に失敗しました。');
     } finally {
       setProgressStampingCaseId(null);

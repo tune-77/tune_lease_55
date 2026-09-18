@@ -282,7 +282,7 @@ def run_screening(case_input: Optional[dict] = None) -> str:
             "ord_profit": 38_000,
             "net_income": 25_000,
             "net_assets": 200_000,   # 2億円
-            "total_assets": 600_000, # 6億円
+            "total_assets": 600_000,  # 6億円
             "industry_major": "F 製造業",
             "industry_sub": "24 食料品製造業",
             "grade": "1-3",

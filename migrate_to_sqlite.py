@@ -11,6 +11,7 @@ if not os.path.exists(DATA_DIR):
 DB_PATH = os.path.join(DATA_DIR, "lease_data.db")
 CASES_FILE = os.path.join(_REPO_ROOT, "past_cases.jsonl")
 
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -28,6 +29,7 @@ def init_db():
     """)
     conn.commit()
     return conn
+
 
 def migrate_cases(conn):
     if not os.path.exists(CASES_FILE):
@@ -49,7 +51,7 @@ def migrate_cases(conn):
 
             timestamp = data.get("timestamp", "")
             industry_sub = data.get("industry_sub", "")
-            
+
             # Extract score and user_eq from result object if present
             score = None
             user_eq = None
@@ -85,11 +87,12 @@ def migrate_cases(conn):
     conn.commit()
     print(f"Migrated {count} records to past_cases table.")
 
+
 if __name__ == "__main__":
     print("Starting migration to SQLite...")
     conn = init_db()
     migrate_cases(conn)
-    
+
     # Verify
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM past_cases")

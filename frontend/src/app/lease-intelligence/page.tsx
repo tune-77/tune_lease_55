@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowDown, Brain, Check, ClipboardList, Clock, Copy, Database, History, Loader2, Mic, MicOff,
   HelpCircle, Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
@@ -94,12 +95,6 @@ type DialogueImprovementItem = {
   canonical_key?: string;
   source_event_id?: string;
   recommended_order?: number | null;
-};
-
-const DI_MISSING_ANALYSIS_RESULT: DialogueImprovementItem = {
-  title: "審査分析結果が結果登録に表示されない",
-  detail: "審査分析結果が結果登録に表示されない",
-  reason: "AI Chat 改善ログ (2026-08-05) のチャット改善メモ（raw, priority: high）",
 };
 
 type TriageDecision = "today" | "later" | "discard";
@@ -429,11 +424,17 @@ const pushImprovementItemLines = (lines: string[], item: DialogueImprovementItem
 const classifyPmImprovementItems = (items: DialogueImprovementItem[]) => {
   const actionable: DialogueImprovementItem[] = [];
   const later: DialogueImprovementItem[] = [];
+  const seenKeys = new Set<string>();
   for (const item of items) {
     const status = String(item.status || "").toUpperCase();
     const text = `${item.title || ""} ${item.reason || ""} ${item.detail || ""} ${item.category || ""}`.toLowerCase();
     if (!["NEEDS_REVIEW", "AUTO_FIX_CANDIDATE", "RULE_REVIEW"].includes(status)) {
       continue;
+    }
+    const dedupeKey = String(item.canonical_key || item.title || item.id || "").trim().toLowerCase();
+    if (dedupeKey) {
+      if (seenKeys.has(dedupeKey)) continue;
+      seenKeys.add(dedupeKey);
     }
     const risky =
       text.includes("db") ||
@@ -1141,7 +1142,7 @@ export default function LeaseIntelligencePage() {
   const [showLatestButton, setShowLatestButton] = useState(false);
 
   // Voice state
-  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(true);
   const [voiceError, setVoiceError] = useState("");
@@ -1380,6 +1381,11 @@ export default function LeaseIntelligencePage() {
     speakNext(0);
   };
 
+  const speakTextRef = useRef(speakText);
+  useEffect(() => {
+    speakTextRef.current = speakText;
+  });
+
   // ── File attach ──────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1544,7 +1550,7 @@ export default function LeaseIntelligencePage() {
                 pipelineResult.status === "fulfilled" ? pipelineResult.value.data?.failed_count ?? 0 : 0,
               source: "dialogue_daily_report",
             }).catch(() => {});
-            speakText(report);
+            speakTextRef.current(report);
           }
         }
         setMessages(nextMessages);
@@ -1690,10 +1696,12 @@ export default function LeaseIntelligencePage() {
         {/* ── サイドパネル ── */}
         <aside className="order-2 space-y-4 lg:order-1">
           <section className="overflow-hidden rounded-3xl border border-violet-200 bg-white shadow-sm">
-            <img
+            <Image
               key={shionMoodImage}
               src={shionMoodImage}
               alt={`リース知性体・${state.dominant_mood || "好奇心"}`}
+              width={640}
+              height={640}
               className="aspect-square w-full animate-[lease-mood-fade_400ms_ease-out] object-cover"
             />
             <div className="p-5">
@@ -2101,11 +2109,12 @@ export default function LeaseIntelligencePage() {
             </div>
           )}
 
-          <div
-            ref={messageListRef}
-            onScroll={handleMessageScroll}
-            className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5"
-          >
+          <div className="relative min-h-0 flex-1">
+            <div
+              ref={messageListRef}
+              onScroll={handleMessageScroll}
+              className="h-full space-y-4 overflow-y-auto overscroll-contain p-5"
+            >
             {initializing && <Loader2 className="mx-auto mt-20 h-7 w-7 animate-spin text-violet-500" />}
             {!initializing && messages.length === 0 && (
               <div className="mx-auto mt-16 max-w-lg rounded-2xl bg-violet-50 p-6 text-center">
@@ -2136,11 +2145,13 @@ export default function LeaseIntelligencePage() {
                   className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                 {message.role === "assistant" && (
-                  <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-violet-200 bg-violet-100 shadow-sm">
-                    <img
+                  <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-violet-200 bg-violet-100 shadow-sm">
+                    <Image
                       src={shionMoodImage}
                       alt="紫苑"
-                      className="h-full w-full scale-[1.65] object-cover object-[center_30%]"
+                      fill
+                      sizes="36px"
+                      className="scale-[1.65] object-cover object-[center_30%]"
                     />
                   </div>
                 )}
@@ -2278,22 +2289,23 @@ export default function LeaseIntelligencePage() {
                 <Loader2 className="h-5 w-5 animate-spin" /> 考えています…
               </div>
             )}
-            <div />
+              <div />
+            </div>
+
+            {showLatestButton && (
+              <button
+                type="button"
+                onClick={() => scrollToLatest()}
+                className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 shadow-lg transition hover:bg-violet-50"
+                aria-label="最新の発言へ移動"
+              >
+                <ArrowDown className="h-4 w-4" />
+                最新の発言へ
+              </button>
+            )}
           </div>
 
-          {showLatestButton && (
-            <button
-              type="button"
-              onClick={() => scrollToLatest()}
-              className="absolute bottom-28 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 shadow-lg transition hover:bg-violet-50"
-              aria-label="最新の発言へ移動"
-            >
-              <ArrowDown className="h-4 w-4" />
-              最新の発言へ
-            </button>
-          )}
-
-          <footer className="shrink-0 border-t border-violet-100 bg-white p-4">
+          <footer className="shrink-0 border-t border-violet-100 bg-white p-3 sm:p-4">
             {error && <p className="mb-2 text-xs font-bold text-red-600">{error}</p>}
             {voiceError && <p className="mb-2 text-xs font-bold text-orange-600">🎤 {voiceError}</p>}
             {fileError && <p className="mb-2 text-xs font-bold text-orange-600">📎 {fileError}</p>}
@@ -2319,7 +2331,7 @@ export default function LeaseIntelligencePage() {
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 sm:flex-nowrap">
               {/* 音声入力ボタン */}
               <button
                 type="button"
@@ -2370,7 +2382,7 @@ export default function LeaseIntelligencePage() {
                 }}
                 placeholder="リース知性体に話しかける…"
                 rows={2}
-                className="min-h-[48px] flex-1 resize-none rounded-2xl border border-violet-200 px-4 py-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                className="order-first min-h-[88px] w-full basis-full resize-none rounded-2xl border border-violet-200 px-4 py-3 text-base leading-relaxed outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 sm:order-none sm:min-h-[48px] sm:min-w-0 sm:flex-1 sm:basis-auto sm:text-sm"
               />
 
               {/* 音声読み上げ ON/OFF */}
@@ -2400,10 +2412,10 @@ export default function LeaseIntelligencePage() {
                 onClick={send}
                 disabled={loading || (!input.trim() && !attachedFile)}
                 aria-label="リース知性体へ送信"
-                className="flex h-12 min-w-20 shrink-0 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-12 min-w-20 flex-1 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:shrink-0"
               >
                 <Send className="h-5 w-5" />
-                <span className="hidden sm:inline">送信</span>
+                <span>送信</span>
               </button>
             </div>
           </footer>

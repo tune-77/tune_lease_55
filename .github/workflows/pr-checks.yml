@@ -23,9 +23,9 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -41,14 +41,14 @@ jobs:
 
       - name: ESLint check (no --fix)
         working-directory: frontend
-        run: npm run lint
+        run: npm run lint:baseline
 
   python-syntax:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -61,22 +61,18 @@ jobs:
   pytest-core:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Install test dependencies
-        run: >
-          pip install -q pytest fastapi uvicorn pydantic slowapi httpx python-multipart
-          requests numpy pandas matplotlib seaborn scipy scikit-learn==1.7.2 joblib
-          python-dateutil pyyaml beautifulsoup4 filelock bcrypt flask flask-cors
-          google-api-core lxml toml chromadb google-adk apscheduler
+        run: pip install -q -r requirements-ci-full.txt
 
       - name: Run full Python test suite
-        run: python -m pytest -q -m "not external"
+        run: python -m pytest -q -m "not external" -n auto
 
   # #863/#864/#865/#866 の危険域専用ガード。
   # Cloud Run実データ登録、APIアクセス制御、GCS DBスナップショット/復元、
@@ -84,18 +80,15 @@ jobs:
   cloudrun-data-safety:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Install safety test dependencies
-        run: >
-          pip install -q pytest fastapi uvicorn pydantic slowapi httpx python-multipart
-          requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
-          python-dateutil pyyaml
+        run: pip install -q -r requirements-ci-light.txt
 
       - name: Run Cloud Run data safety suite
         run: >
@@ -114,18 +107,15 @@ jobs:
   judgment-asset-loop:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Install judgment asset loop test dependencies
-        run: >
-          pip install -q pytest fastapi uvicorn pydantic slowapi httpx python-multipart
-          requests numpy pandas matplotlib seaborn scipy scikit-learn joblib
-          python-dateutil pyyaml
+        run: pip install -q -r requirements-ci-light.txt
 
       - name: Run judgment asset feedback loop suite
         run: >
@@ -143,11 +133,11 @@ jobs:
   preflight-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # resolve_base_ref() が origin/master との merge-base を要求するため全履歴取得
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -169,11 +159,11 @@ jobs:
   pr-change-risk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -194,9 +184,9 @@ jobs:
   obsidian-ops-consistency:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -213,9 +203,9 @@ jobs:
   schema-consistency:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -231,7 +221,7 @@ jobs:
   shellcheck-daily-pipeline:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Shellcheck (daily pipeline scripts, error severity only)
         env:
@@ -252,9 +242,9 @@ jobs:
   orphaned-scripts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 

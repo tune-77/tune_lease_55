@@ -61,6 +61,7 @@ DEFAULT_CANDIDATE_STATE = {
     "neutral_count": 0,
     "last_used_at": "",
     "last_feedback_at": "",
+    "last_feedback_event_id": "",
     "verified_status": "unverified",
     "verification_note": "",
     "edited_claim": "",

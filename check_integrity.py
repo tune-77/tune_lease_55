@@ -75,9 +75,9 @@ def check_mahalanobis_features() -> None:
     if saved_features == list(CURRENT_FEATURES):
         ok(f"特徴量一致 ({len(CURRENT_FEATURES)}次元): {CURRENT_FEATURES}")
     else:
-        added   = [f for f in CURRENT_FEATURES if f not in saved_features]
+        added = [f for f in CURRENT_FEATURES if f not in saved_features]
         removed = [f for f in saved_features if f not in CURRENT_FEATURES]
-        detail  = []
+        detail = []
         if added:
             detail.append(f"追加された特徴量: {added}")
         if removed:
@@ -125,7 +125,7 @@ def check_sales_dept_options() -> None:
         dept_values = sorted(_DEPT_MAP.values())
         core_sorted = sorted(CORE_OPTS)
         if dept_values == core_sorted:
-            ok(f"train_mahalanobis._DEPT_MAP ↔ scoring_core 一致")
+            ok("train_mahalanobis._DEPT_MAP ↔ scoring_core 一致")
         else:
             fail(
                 f"_DEPT_MAP の値 {dept_values} ≠ SALES_DEPT_OPTIONS {core_sorted}",
@@ -208,13 +208,13 @@ def check_dept_features_vs_dept_map() -> None:
         return
 
     dept_in_features = sorted([f for f in FEATURES if f.startswith("dept_")])
-    dept_in_map      = sorted(_DEPT_MAP.keys())
+    dept_in_map = sorted(_DEPT_MAP.keys())
 
     if dept_in_features == dept_in_map:
         ok(f"FEATURES の dept_* ↔ _DEPT_MAP キー 一致: {dept_in_features}")
     else:
         only_features = [f for f in dept_in_features if f not in dept_in_map]
-        only_map      = [f for f in dept_in_map if f not in dept_in_features]
+        only_map = [f for f in dept_in_map if f not in dept_in_features]
         detail = []
         if only_features:
             detail.append(f"FEATURES のみ: {only_features}")
