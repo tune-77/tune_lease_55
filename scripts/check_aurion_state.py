@@ -85,10 +85,13 @@ def detect_anomalies(state: dict) -> list[str]:
 def append_to_export(alerts: list[str], state_path: Path) -> None:
     if not alerts:
         return
-    lines = [
-        "[改善] aurion 自動診断アラート（要確認）",
-        f"  出典: {state_path.name}",
-    ] + [f"  - {a}" for a in alerts]
+    # 出典ファイル名（state_YYYY-MM-DD.json）には日付が入るため、ここに含めると
+    # 同じ異常が翌日も続いただけで改善パイプラインの重複防止キー
+    # （canonical_key = title+description のハッシュ、step1_extract_and_structure.py）
+    # が毎回変わり、既存REVとして畳み込まれず日毎に新規REVが発行され続けてしまう
+    # （READMEにあるREV-230/237・REV-292と同種の重複発行）。日付付きの出典は
+    # save_alert_file / append_to_daily_brief 側にのみ残す。
+    lines = ["[改善] aurion 自動診断アラート（要確認）"] + [f"  - {a}" for a in alerts]
     try:
         with open(EXPORT_FILE, "a", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n\n")
