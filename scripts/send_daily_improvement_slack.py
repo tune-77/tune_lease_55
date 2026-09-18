@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
 DEFAULT_REPORT = REPO_ROOT / "reports" / "latest.json"
 DEFAULT_MANA_REPORT = REPO_ROOT / "reports" / "mana_obsidian_curator_latest.json"
 DEFAULT_SCREENING_TERMS_REPORT = REPO_ROOT / "reports" / "screening_terms_audit_latest.json"
@@ -47,11 +48,14 @@ def _read_json(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        raise SystemExit(f"report not found: {path}")
+        report_pipeline_failure(f"report not found: {path}")
+        raise SystemExit(1)
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"invalid report json: {path}: {exc}")
+        report_pipeline_failure(f"invalid report json: {path}: {exc}")
+        raise SystemExit(1)
     if not isinstance(data, dict):
-        raise SystemExit(f"report must be a JSON object: {path}")
+        report_pipeline_failure(f"report must be a JSON object: {path}")
+        raise SystemExit(1)
     return data
 
 

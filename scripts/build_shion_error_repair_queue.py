@@ -26,6 +26,7 @@ from build_codex_auto_queue import (  # noqa: E402
     refresh_auto_fix_policy,
     repo_root,
 )
+from _pipeline_common import report_pipeline_failure  # noqa: E402
 
 LEDGER_PATH = Path("api/rule_engine/ledger_rules.json")
 STATE_FILE_NAME = "shion_error_repair_queue_state.json"
@@ -209,7 +210,8 @@ def main() -> None:
 
     ledger = load_json(args.ledger) if args.ledger.exists() else []
     if not isinstance(ledger, list):
-        raise SystemExit("ledger must be a JSON array")
+        report_pipeline_failure("ledger must be a JSON array")
+        raise SystemExit(1)
     state = load_state(args.state_file)
     already_queued_ids = {str(x) for x in state.get("queued_ids") or []}
 
@@ -224,7 +226,8 @@ def main() -> None:
     try:
         queue["success_state_file"] = args.state_file.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
-        raise SystemExit("state file must be inside the repository")
+        report_pipeline_failure("state file must be inside the repository")
+        raise SystemExit(1)
 
     dump_json(output_path, queue)
     print(
