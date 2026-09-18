@@ -21,6 +21,11 @@ from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
+
 DEFAULT_INDEX = REPO_ROOT / "data" / "shion_memory_index.json"
 DEFAULT_STATE = REPO_ROOT / "data" / "shion_memory_health_state.json"
 
@@ -125,7 +130,7 @@ def main() -> int:
         print(f"  状態内訳: {summary['by_status']}")
         save_state(args.state, summary)
         return 0
-    print(f"警告: {message}", file=sys.stderr)
+    report_pipeline_failure(message, level="警告")
     return 1
 
 

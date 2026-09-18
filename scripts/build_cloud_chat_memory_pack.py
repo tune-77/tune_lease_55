@@ -28,6 +28,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -529,7 +530,8 @@ def write_pack(markdown: str, target_date: str, dry_run: bool) -> Path:
         print(markdown)
         return out_path
     if not (VAULT_PATH / ".obsidian").exists():
-        raise SystemExit(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
+        report_pipeline_failure(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
+        raise SystemExit(1)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(markdown, encoding="utf-8")
     latest_path.write_text(markdown, encoding="utf-8")
@@ -595,7 +597,8 @@ def write_layer_packs(
             print(content)
         return paths
     if not (VAULT_PATH / ".obsidian").exists():
-        raise SystemExit(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
+        report_pipeline_failure(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
+        raise SystemExit(1)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, content in layers:
         (out_dir / name).write_text(content, encoding="utf-8")
