@@ -244,44 +244,52 @@ def promote_queue(
         if not source_path.exists():
             results.append({"promotion_id": prom_id, "source_note": source_note, "status": "missing_source"})
             continue
-        source_text = source_path.read_text(encoding="utf-8", errors="ignore")
-        target_rel = target_rel_path(str(item.get("suggested_target") or ""))
-        target_path = safe_note_path(vault, target_rel)
-        section = build_section(item, source_text, target_rel)
 
-        if target_path.exists() and prom_id in target_path.read_text(encoding="utf-8", errors="ignore"):
+        try:
+            source_text = source_path.read_text(encoding="utf-8", errors="ignore")
+            target_rel = target_rel_path(str(item.get("suggested_target") or ""))
+            target_path = safe_note_path(vault, target_rel)
+            section = build_section(item, source_text, target_rel)
+
+            if target_path.exists() and prom_id in target_path.read_text(encoding="utf-8", errors="ignore"):
+                promoted_items[prom_id] = {
+                    "source_note": source_note,
+                    "target_note": target_rel,
+                    "status": "already_present",
+                    "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
+                }
+                results.append({"promotion_id": prom_id, "source_note": source_note, "target_note": target_rel, "status": "already_present"})
+                continue
+
+            if dry_run:
+                results.append(
+                    {
+                        "promotion_id": prom_id,
+                        "source_note": source_note,
+                        "target_note": target_rel,
+                        "status": "dry_run",
+                        "preview": section[:700],
+                    }
+                )
+                continue
+
+            prefix = "\n\n" if target_path.exists() and target_path.read_text(encoding="utf-8", errors="ignore").strip() else ""
+            with target_path.open("a", encoding="utf-8") as handle:
+                handle.write(prefix + section)
             promoted_items[prom_id] = {
                 "source_note": source_note,
                 "target_note": target_rel,
-                "status": "already_present",
+                "status": "promoted",
+                "source_hash": source_hash(source_text),
                 "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
             }
-            results.append({"promotion_id": prom_id, "source_note": source_note, "target_note": target_rel, "status": "already_present"})
+            results.append({"promotion_id": prom_id, "source_note": source_note, "target_note": target_rel, "status": "promoted"})
+        except OSError as exc:
+            # iCloud同期中のVaultファイルは稀に EDEADLK (Errno 11) を返す。
+            # 1件の一時的な読み書き失敗でパイプライン全体を落とさず、この案件だけスキップする。
+            print(f"警告: Wiki昇格の読み書きに失敗しました（source={source_note}）: {exc}")
+            results.append({"promotion_id": prom_id, "source_note": source_note, "status": "read_error_skipped", "error": str(exc)})
             continue
-
-        if dry_run:
-            results.append(
-                {
-                    "promotion_id": prom_id,
-                    "source_note": source_note,
-                    "target_note": target_rel,
-                    "status": "dry_run",
-                    "preview": section[:700],
-                }
-            )
-            continue
-
-        prefix = "\n\n" if target_path.exists() and target_path.read_text(encoding="utf-8", errors="ignore").strip() else ""
-        with target_path.open("a", encoding="utf-8") as handle:
-            handle.write(prefix + section)
-        promoted_items[prom_id] = {
-            "source_note": source_note,
-            "target_note": target_rel,
-            "status": "promoted",
-            "source_hash": source_hash(source_text),
-            "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
-        }
-        results.append({"promotion_id": prom_id, "source_note": source_note, "target_note": target_rel, "status": "promoted"})
 
     promoted_count = sum(1 for item in results if item.get("status") == "promoted")
     skipped_count = sum(1 for item in results if str(item.get("status", "")).startswith("skipped") or item.get("status") == "already_present")
