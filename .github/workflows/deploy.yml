@@ -99,6 +99,14 @@ jobs:
     needs: changes
     if: (needs.changes.outputs.api == 'true' || github.event.inputs.force_deploy == 'true') && needs.changes.outputs.wif == 'true'
     runs-on: ubuntu-latest
+    # このリポジトリは自動改善パイプラインが1日に何十回もapi/**へpushするため、
+    # 前のpushのビルドが終わる前に次のpushが来ることが多い。新しいpushが来たら
+    # 古い方のビルドは結果を使われず無駄になるため、Cloud Buildのビルド分課金を
+    # 抑えるために古い方をキャンセルする（scripts/lib/submit_cloud_build_and_wait.sh
+    # 側でGCP上のCloud Buildも明示キャンセルするようセットで対応済み）。
+    concurrency:
+      group: deploy-api-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write   # WIF に必須
@@ -232,6 +240,11 @@ jobs:
     needs: changes
     if: (needs.changes.outputs.frontend == 'true' || github.event.inputs.force_deploy == 'true') && needs.changes.outputs.wif == 'true'
     runs-on: ubuntu-latest
+    # deploy-api と同じ理由（上のコメント参照）。frontend側は別サービス・
+    # 別Cloud Buildなのでグループもapi側とは独立させる。
+    concurrency:
+      group: deploy-web-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write

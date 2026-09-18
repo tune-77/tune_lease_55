@@ -2,8 +2,12 @@ name: Dashboard Data Health
 
 on:
   schedule:
-    # 毎時17分。デプロイ直後と重なりにくい時刻にずらす。
-    - cron: "17 * * * *"
+    # 2時間おき17分。min-instances=0のためこのプローブ自体がCloud Run
+    # (web→proxy.ts経由でapiまで)のコールドスタートを毎回誘発しており、
+    # Cloud Run課金増の一因だったため毎時→2時間おきに頻度を落とした
+    # （2026-09、Cloud Run費用調査で判明）。デプロイ直後と重なりにくい
+    # 時刻にずらす狙いは維持。
+    - cron: "17 */2 * * *"
   workflow_dispatch:
 
 permissions:
