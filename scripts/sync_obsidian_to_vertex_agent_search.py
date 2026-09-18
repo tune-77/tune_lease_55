@@ -30,6 +30,7 @@ from scripts.export_obsidian_for_agent_search import (  # noqa: E402
     DEFAULT_VAULT,
     export_notes,
 )
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
 
 DEFAULT_PROJECT_ID = "gen-lang-client-0420497423"
 DEFAULT_LOCATION = "global"
@@ -234,7 +235,8 @@ def main() -> None:
 
     if args.import_documents:
         if not args.upload and not args.dry_run:
-            raise SystemExit("--import-documents requires --upload unless --dry-run is set")
+            report_pipeline_failure("--import-documents requires --upload unless --dry-run is set")
+            raise SystemExit(1)
         report["import_requested"] = True
         if args.dry_run:
             report["operation"] = {"dry_run": True}

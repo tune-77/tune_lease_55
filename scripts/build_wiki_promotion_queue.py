@@ -11,6 +11,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
+
 
 REUSABLE_KEYWORDS = [
     "判断",
@@ -131,7 +136,8 @@ def load_documents() -> list[dict[str, str]]:
     try:
         from mobile_app.obsidian_bridge import iter_indexed_obsidian_documents
     except Exception as exc:
-        raise SystemExit(f"Obsidian bridge unavailable: {exc}") from exc
+        report_pipeline_failure(f"Obsidian bridge unavailable: {exc}")
+        raise SystemExit(1) from exc
     return iter_indexed_obsidian_documents(include_chat_logs=True, max_chars=1600)
 
 

@@ -17,6 +17,7 @@ from api.knowledge.obsidian_loader import _chunk_by_h2, _parse_frontmatter
 from api.knowledge.vector_store import KnowledgeVectorStore
 from obsidian_query import list_vault_md_files
 from scripts.evaluate_obsidian_rag import evaluate_cases
+from scripts._pipeline_common import report_pipeline_failure
 
 DEFAULT_KNOWLEDGE_DIR = REPO_ROOT / "knowledge_base" / "okf_lease_concepts"
 DEFAULT_EVAL_SET = REPO_ROOT / "api" / "knowledge" / "okf_rag_eval_set.json"
@@ -69,7 +70,8 @@ def main() -> int:
     cases = json.loads(args.eval_set.expanduser().read_text(encoding="utf-8"))
     chunks = _load_okf_chunks(knowledge_dir)
     if not chunks:
-        raise SystemExit(f"no markdown chunks found: {knowledge_dir}")
+        report_pipeline_failure(f"no markdown chunks found: {knowledge_dir}")
+        raise SystemExit(1)
 
     with tempfile.TemporaryDirectory(prefix="okf-rag-") as temp_dir:
         store = KnowledgeVectorStore(chroma_dir=temp_dir)
