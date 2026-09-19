@@ -1,6 +1,11 @@
 # .github/workflows/deploy.yml
 #
 # REV-215: api/ または frontend/ 変更を検知して Cloud Run に自動デプロイ
+# 2026-09: push毎の即時デプロイから週次(月曜4:00 JST)cronへ変更。
+#   理由: masterへのpush毎に毎回ビルド・デプロイが走ると、まだ検証中の
+#   小さな変更でもCloud Buildコストと本番反映頻度が積み上がるため、
+#   週1回にまとめて「差分があるときだけ」デプロイする運用に変更した。
+#   緊急修正が必要な場合は workflow_dispatch（force_deploy）で手動実行する。
 #
 # ──────────────────────────────────────────────────────────────────────
 #  対象サービス
@@ -29,8 +34,9 @@
 name: Deploy to Cloud Run
 
 on:
-  push:
-    branches: [master]
+  schedule:
+    # 毎週日曜 19:00 UTC = 月曜 4:00 JST。push トリガーは廃止済み。
+    - cron: '0 19 * * 0'
   workflow_dispatch:
     inputs:
       force_deploy:
@@ -48,7 +54,10 @@ jobs:
   # Job 1: どのパスが変更されたか検出
   # ────────────────────────────────────────────────────────────────────
   changes:
-    name: Detect changed paths
+    # schedule イベントには push の before/after SHA が無く dorny/paths-filter が
+    # 使えないため、「Cloud Run で現在稼働中のイメージのタグ(=デプロイ済みコミットSHA)」
+    # と HEAD の git diff で判定する（scripts/smart_deploy.sh と同じ考え方）。
+    name: Detect changes since last deployed image
     runs-on: ubuntu-latest
     outputs:
       api: ${{ steps.filter.outputs.api }}
@@ -57,24 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
-
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            api:
-              - 'api/**'
-              - 'scoring_core.py'
-              - 'scoring/**'
-              - 'Dockerfile.api'
-              - 'cloudbuild.api.yaml'
-              - 'requirements.txt'
-              - 'pyproject.toml'
-              - 'uv.lock'
-            frontend:
-              - 'frontend/**'
-              - 'cloudbuild.web.yaml'
+          fetch-depth: 0   # デプロイ済みコミットまで遡って diff するため全履歴が必要
 
       # WIF Secrets 未設定なら deploy ジョブをスキップ扱いにする（失敗表示を出さない）。
       # secrets コンテキストは job レベルの if: では参照できないため、ここで存在確認して
@@ -90,6 +82,104 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "::notice::WIF Secrets (WIF_PROVIDER / WIF_SERVICE_ACCOUNT) が未設定のため Cloud Run 自動デプロイをスキップします。手動デプロイ（scripts/deploy_cloud_run_api.sh 等）を使用してください。"
           fi
+
+      # changed_files_between/classify_changes と同じ考え方をここでも使うため、
+      # イメージタグの取得に GCP 認証が要る（旧実装では deploy-api/deploy-web の
+      # 中でしか認証していなかったが、schedule 実行では changes ジョブ自身が
+      # 「今何がデプロイされているか」を知る必要がある）。
+      - name: Authenticate to GCP
+        if: steps.wif.outputs.configured == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        if: steps.wif.outputs.configured == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Detect changes since last deployed image
+        id: filter
+        if: steps.wif.outputs.configured == 'true'
+        env:
+          REGION: ${{ env.REGION }}
+          FORCE_DEPLOY: ${{ github.event.inputs.force_deploy }}
+        run: |
+          set -Eeuo pipefail
+
+          # 稼働中イメージのタグ（＝デプロイ時の短縮コミットSHA）を取得する。
+          # scripts/smart_deploy.sh の service_image_tag() と同じ抽出方法。
+          service_image_tag() {
+            local service_name="$1"
+            local image
+            image="$(gcloud run services describe "$service_name" \
+              --region "$REGION" \
+              --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || true)"
+            if [[ "$image" == *:* ]]; then
+              printf '%s\n' "${image##*:}"
+            fi
+          }
+
+          # api/frontend のパス判定は、旧 dorny/paths-filter の filters 定義と同じ
+          # パターンをそのまま使う。
+          path_impacts_api() {
+            case "$1" in
+              api/*|scoring_core.py|scoring/*|Dockerfile.api|cloudbuild.api.yaml|requirements.txt|pyproject.toml|uv.lock)
+                return 0 ;;
+            esac
+            return 1
+          }
+          path_impacts_frontend() {
+            case "$1" in
+              frontend/*|cloudbuild.web.yaml)
+                return 0 ;;
+            esac
+            return 1
+          }
+
+          api_changed=false
+          frontend_changed=false
+
+          api_deployed_sha="$(service_image_tag tune-lease-55-api)"
+          web_deployed_sha="$(service_image_tag tune-lease-55-web)"
+          echo "Deployed API SHA: ${api_deployed_sha:-unknown}"
+          echo "Deployed Web SHA: ${web_deployed_sha:-unknown}"
+
+          if [[ -n "$api_deployed_sha" ]] && git rev-parse --verify --quiet "${api_deployed_sha}^{commit}" >/dev/null; then
+            while IFS= read -r file; do
+              [[ -z "$file" ]] && continue
+              if path_impacts_api "$file"; then
+                api_changed=true
+                break
+              fi
+            done < <(git diff --name-only "${api_deployed_sha}..HEAD")
+          else
+            # デプロイ済みSHAが特定できない（初回デプロイ／イメージ参照が想定外の形式など）
+            # 場合は「差分なし」と誤判定してデプロイし忘れるより安全側に倒す。
+            echo "::notice::デプロイ済み API イメージのコミットSHAを特定できませんでした。安全側としてデプロイ対象に含めます。"
+            api_changed=true
+          fi
+
+          if [[ -n "$web_deployed_sha" ]] && git rev-parse --verify --quiet "${web_deployed_sha}^{commit}" >/dev/null; then
+            while IFS= read -r file; do
+              [[ -z "$file" ]] && continue
+              if path_impacts_frontend "$file"; then
+                frontend_changed=true
+                break
+              fi
+            done < <(git diff --name-only "${web_deployed_sha}..HEAD")
+          else
+            echo "::notice::デプロイ済み Web イメージのコミットSHAを特定できませんでした。安全側としてデプロイ対象に含めます。"
+            frontend_changed=true
+          fi
+
+          if [[ "${FORCE_DEPLOY:-}" == "true" ]]; then
+            api_changed=true
+            frontend_changed=true
+          fi
+
+          echo "api=$api_changed" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend_changed" >> "$GITHUB_OUTPUT"
 
   # ────────────────────────────────────────────────────────────────────
   # Job 2a: API → tune-lease-55-api
