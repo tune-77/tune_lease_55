@@ -197,9 +197,24 @@ def append_consultation_memory(user_text: str, assistant_text: str):
         pass
 
 
-def load_all_cases():
+class CaseDataUnavailable(RuntimeError):
+    """案件DBの読み込みに失敗し、結果が「0件」なのか「取得不能」なのか
+    判定できない状態。
+
+    load_all_cases() は例外を握り潰して部分的に読めた分（多くは空リスト）を
+    返すため、呼び出し側からは正常な0件と区別できない。これを集計して
+    永続化すると誤った0件がキャッシュに焼き付く（2026-09-19 実障害の一般形）。
+    キャッシュへ書き込む経路だけが strict=True でこの例外を受け取る。
+    """
+
+
+def load_all_cases(strict: bool = False):
     """過去案件を全件読み込み（past_cases のみ）。
     統計用の screening_records は集計バッチ（aggregate_stats_from_past_cases.py）で別途管理。
+
+    strict=True の時、DB読み込みが例外で失敗したら CaseDataUnavailable を送出する。
+    DBファイルが存在しない場合は「確定的に0件」（新規環境）なので送出せず [] を返す。
+    不定な失敗だけを例外にするのが境界線。
     """
     import sqlite3
 
@@ -222,6 +237,8 @@ def load_all_cases():
                     continue
     except Exception as e:
         print(f"[Error in load_all_cases]: {e}", file=sys.stderr)
+        if strict:
+            raise CaseDataUnavailable(f"案件DBの読み込みに失敗しました: {e}") from e
     return cases
 
 
@@ -351,7 +368,7 @@ def _amount_to_display_million(value: float | None) -> float | None:
 
 def build_department_stats_cache() -> dict:
     """営業部ダッシュボード用の軽量集計を作る。"""
-    all_cases = load_all_cases()
+    all_cases = load_all_cases(strict=True)
     dept_buckets: dict[str, dict] = {}
     industry_set: set[str] = set()
 
@@ -628,7 +645,7 @@ def build_dashboard_stats_cache(limit_recent_cases: int = 15) -> dict:
     except Exception:
         analysis = {}
 
-    all_cases = load_all_cases()
+    all_cases = load_all_cases(strict=True)
     recent_cases = [_compact_recent_case(c) for c in reversed(all_cases[-limit_recent_cases:])] if all_cases else []
 
     closed_cases = analysis.get("closed_cases") or []
@@ -655,79 +672,219 @@ def build_dashboard_stats_cache(limit_recent_cases: int = 15) -> dict:
     }
 
 
+def _stats_cache_path(base_path: str) -> str:
+    """接続先ごとに統計キャッシュの実ファイルを分ける。
+
+    _case_db_connection() は DATABASE_URL があれば Cloud SQL を読むのに、
+    キャッシュの書き先は常にローカル _DATA_DIR だった。そのためクラウド側の
+    数件だけを見た集計がローカルSQLite用キャッシュを上書きし、
+    closed_count=None のまま固着する（2026-09-19 実障害）。
+    読み先と書き先を対にするため、クラウド接続時だけ別ファイルを使う。
+    """
+    if not _cloud_db_enabled():
+        return base_path
+    root, ext = os.path.splitext(base_path)
+    return f"{root}.cloud{ext}"
+
+
+def _extract_stats_count(payload, count_path: tuple) -> int | None:
+    """キャッシュpayloadから件数を取り出す。欠損・非int（boolを含む）は None。"""
+    current = payload
+    for key in count_path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    if isinstance(current, bool) or not isinstance(current, int):
+        return None
+    return current
+
+
+# 退化判定のしきい値。母数がこれ未満なら比率判定をしない（小標本での誤検知回避）
+_DEGENERATE_MIN_BASELINE = 10
+# 既存件数に対してこの比率以下へ落ちる更新は崩壊とみなす
+_DEGENERATE_SHRINK_RATIO = 0.5
+
+
+def _is_degenerate_stats_update(
+    previous_count: int | None,
+    new_count: int | None,
+    *,
+    allow_shrink: bool = False,
+) -> bool:
+    """新しい集計値が「退化」＝書き込むべきでない崩壊かを判定する。
+
+    previous_count: 既存キャッシュの件数（未生成・非数値なら None）
+    new_count     : これから書こうとしている件数（同上）
+
+    True を返すと書き込みを行わず、既存キャッシュを温存する。
+
+    判定方針（2026-09-19 の実障害を踏まえる）:
+      1. 既存が無い/非数値 → 常に許可。拒否すると初回起動でキャッシュが
+         永久に作られなくなる（ブートストラップの死）。
+      2. 既存が 0 → 守るべき値が無いので常に許可。
+      3. 新規が None（集計不能）→ 拒否。これが 1174 → None の固着経路。
+      4. 新規が 0、または半減以下 → 拒否。ただし母数が小さい時は誤検知が
+         多いので _DEGENERATE_MIN_BASELINE 件以上の時だけ見る。
+    正当な一括削除でここに引っかかった場合は、確定済みの削除処理からだけ
+    allow_shrink=True を渡して通す。運用時の緊急回避には環境変数
+    STATS_CACHE_ALLOW_SHRINK=1 も使える。拒否してもキャッシュが古くなるだけで、
+    ズレは system_guardrails._audit_stats_cache_consistency() が
+    stats_cache_drift として検知するため、黙って壊れることはない。
+    """
+    if os.environ.get("STATS_CACHE_ALLOW_SHRINK", "").strip() in (
+        "1",
+        "true",
+        "True",
+    ):
+        return False
+    if previous_count is None or previous_count <= 0:
+        return False
+    if new_count is None:
+        return True
+    if allow_shrink:
+        return False
+    if previous_count < _DEGENERATE_MIN_BASELINE:
+        return False
+    return new_count <= previous_count * _DEGENERATE_SHRINK_RATIO
+
+
+def _reject_degenerate_write(
+    path: str,
+    payload,
+    count_path: tuple,
+    label: str,
+    *,
+    allow_shrink: bool = False,
+) -> bool:
+    """書き込み直前の門番。拒否したら True を返す。"""
+    previous = None
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                previous = json.load(f)
+        except Exception:
+            previous = None
+    previous_count = _extract_stats_count(previous, count_path)
+    new_count = _extract_stats_count(payload, count_path)
+    if _is_degenerate_stats_update(
+        previous_count, new_count, allow_shrink=allow_shrink
+    ):
+        print(
+            f"[stats_cache] {label}: 退化更新を拒否しました "
+            f"(既存={previous_count} / 新規={new_count}) path={path}",
+            file=sys.stderr,
+        )
+        return True
+    return False
+
+
 def load_dashboard_stats_cache() -> dict | None:
-    if not os.path.exists(DASHBOARD_STATS_CACHE_FILE):
+    path = _stats_cache_path(DASHBOARD_STATS_CACHE_FILE)
+    if not os.path.exists(path):
         return None
     try:
-        with open(DASHBOARD_STATS_CACHE_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
 
 
-def _write_dashboard_stats_cache_locked() -> dict | None:
-    payload = build_dashboard_stats_cache()
+def _write_dashboard_stats_cache_locked(*, allow_shrink: bool = False) -> dict | None:
     try:
-        os.makedirs(os.path.dirname(DASHBOARD_STATS_CACHE_FILE), exist_ok=True)
-        tmp_path = DASHBOARD_STATS_CACHE_FILE + ".tmp"
+        payload = build_dashboard_stats_cache()
+    except CaseDataUnavailable as e:
+        print(
+            f"[stats_cache] dashboard: 案件DBが読めないため更新を見送りました ({e})",
+            file=sys.stderr,
+        )
+        return load_dashboard_stats_cache()
+    path = _stats_cache_path(DASHBOARD_STATS_CACHE_FILE)
+    if _reject_degenerate_write(
+        path,
+        payload,
+        ("analysis", "closed_count"),
+        "dashboard",
+        allow_shrink=allow_shrink,
+    ):
+        return load_dashboard_stats_cache()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp_path = path + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, cls=CustomJSONEncoder)
-        os.replace(tmp_path, DASHBOARD_STATS_CACHE_FILE)
+        os.replace(tmp_path, path)
     except Exception as e:
         print(f"[Error in refresh_dashboard_stats_cache]: {e}", file=sys.stderr)
     return payload
 
 
-def refresh_dashboard_stats_cache() -> dict | None:
+def refresh_dashboard_stats_cache(*, allow_shrink: bool = False) -> dict | None:
     with _DASHBOARD_STATS_CACHE_LOCK:
-        return _write_dashboard_stats_cache_locked()
+        return _write_dashboard_stats_cache_locked(allow_shrink=allow_shrink)
 
 
 def refresh_dashboard_stats_cache_if_missing() -> dict | None:
     with _DASHBOARD_STATS_CACHE_LOCK:
-        if os.path.exists(DASHBOARD_STATS_CACHE_FILE):
+        if os.path.exists(_stats_cache_path(DASHBOARD_STATS_CACHE_FILE)):
             return None
         return _write_dashboard_stats_cache_locked()
 
 
 def load_department_stats_cache() -> dict | None:
-    if not os.path.exists(DEPARTMENT_STATS_CACHE_FILE):
+    path = _stats_cache_path(DEPARTMENT_STATS_CACHE_FILE)
+    if not os.path.exists(path):
         return None
     try:
-        with open(DEPARTMENT_STATS_CACHE_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
 
 
-def _write_department_stats_cache_locked() -> dict | None:
-    payload = build_department_stats_cache()
+def _write_department_stats_cache_locked(*, allow_shrink: bool = False) -> dict | None:
     try:
-        os.makedirs(os.path.dirname(DEPARTMENT_STATS_CACHE_FILE), exist_ok=True)
-        tmp_path = DEPARTMENT_STATS_CACHE_FILE + ".tmp"
+        payload = build_department_stats_cache()
+    except CaseDataUnavailable as e:
+        print(
+            f"[stats_cache] department: 案件DBが読めないため更新を見送りました ({e})",
+            file=sys.stderr,
+        )
+        return load_department_stats_cache()
+    path = _stats_cache_path(DEPARTMENT_STATS_CACHE_FILE)
+    if _reject_degenerate_write(
+        path,
+        payload,
+        ("overall", "total_count"),
+        "department",
+        allow_shrink=allow_shrink,
+    ):
+        return load_department_stats_cache()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp_path = path + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, cls=CustomJSONEncoder)
-        os.replace(tmp_path, DEPARTMENT_STATS_CACHE_FILE)
+        os.replace(tmp_path, path)
     except Exception as e:
         print(f"[Error in refresh_department_stats_cache]: {e}", file=sys.stderr)
     return payload
 
 
-def refresh_department_stats_cache() -> dict | None:
+def refresh_department_stats_cache(*, allow_shrink: bool = False) -> dict | None:
     with _DEPARTMENT_STATS_CACHE_LOCK:
-        return _write_department_stats_cache_locked()
+        return _write_department_stats_cache_locked(allow_shrink=allow_shrink)
 
 
 def refresh_department_stats_cache_if_missing() -> dict | None:
     with _DEPARTMENT_STATS_CACHE_LOCK:
-        if os.path.exists(DEPARTMENT_STATS_CACHE_FILE):
+        if os.path.exists(_stats_cache_path(DEPARTMENT_STATS_CACHE_FILE)):
             return None
         return _write_department_stats_cache_locked()
 
 
-def refresh_stats_caches() -> None:
-    refresh_dashboard_stats_cache()
-    refresh_department_stats_cache()
+def refresh_stats_caches(*, allow_shrink: bool = False) -> None:
+    refresh_dashboard_stats_cache(allow_shrink=allow_shrink)
+    refresh_department_stats_cache(allow_shrink=allow_shrink)
 
 
 def load_past_cases():
