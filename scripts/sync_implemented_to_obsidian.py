@@ -14,6 +14,8 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
+
 _INDEX_REL = "Projects/tune_lease_55/改善策インデックス_2026.md"
 _IMPL_SECTION = "## 実装済み改善一覧（パイプライン除外リスト）"
 _EXPORT_FILE = Path("/tmp/obsidian_improvements_export.txt")
@@ -190,7 +192,15 @@ def main() -> None:
         print(f"情報: インデックスファイルを新規作成しました: {index_file}")
 
     # Obsidian実装済みリスト → ledger に applied 書き込み（永続ブロック）
-    existing_impl = _load_existing_impl(index_file)
+    try:
+        existing_impl = _load_existing_impl(index_file)
+    except OSError as exc:
+        # iCloud同期中のVaultファイルは稀に EDEADLK (Errno 11) を返す。
+        # 実装済みリストが読めない状態で続けると重複追記の恐れがあるため、今回はスキップする。
+        report_pipeline_failure(
+            f"改善インデックスの読み込みに失敗しました（iCloud同期中の可能性）: {exc}", level="警告"
+        )
+        return
     ledger_synced = _sync_obsidian_to_ledger(existing_impl)
     if ledger_synced:
         print(f"✅ ledger に applied 同期: {ledger_synced} 件（パイプラインから永続除外）")

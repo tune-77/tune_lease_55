@@ -552,11 +552,20 @@ def sync(days: int, target_date: str | None = None, dry_run: bool = False) -> di
             _write_dialogue_logs(OBSIDIAN_VAULT, day, events, dry_run=True)
             skipped += 1
             continue
-        path.write_text(md, encoding="utf-8")
-        _write_daily_section(OBSIDIAN_VAULT, day.isoformat(), events, rel_path, dry_run=False)
-        improvements = _write_improvement_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
-        chat_logs = _write_chat_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
-        dialogue_logs = _write_dialogue_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
+        try:
+            path.write_text(md, encoding="utf-8")
+            _write_daily_section(OBSIDIAN_VAULT, day.isoformat(), events, rel_path, dry_run=False)
+            improvements = _write_improvement_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
+            chat_logs = _write_chat_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
+            dialogue_logs = _write_dialogue_logs(OBSIDIAN_VAULT, day, events, dry_run=False)
+        except OSError as exc:
+            # iCloud同期中のVaultファイルは稀に EDEADLK (Errno 11) を返す。
+            # 1日分の書き込み失敗で全日程を落とさず、その日だけスキップして次へ進む。
+            report_pipeline_failure(
+                f"{day.isoformat()} のObsidian書き込みに失敗しました: {exc}", level="警告"
+            )
+            skipped += 1
+            continue
         suffix = (
             (f" improvements={improvements}" if improvements else "")
             + (f" chats={chat_logs}" if chat_logs else "")

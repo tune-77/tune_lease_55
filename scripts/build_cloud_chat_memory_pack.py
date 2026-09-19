@@ -533,8 +533,15 @@ def write_pack(markdown: str, target_date: str, dry_run: bool) -> Path:
         report_pipeline_failure(f"Obsidian Vault が見つかりません: {VAULT_PATH}")
         raise SystemExit(1)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(markdown, encoding="utf-8")
-    latest_path.write_text(markdown, encoding="utf-8")
+    for target in (out_path, latest_path):
+        try:
+            target.write_text(markdown, encoding="utf-8")
+        except OSError as exc:
+            # iCloud同期中のVaultファイルは稀に EDEADLK (Errno 11) を返す。
+            # 片方の書き込み失敗でパイプライン全体を落とさず、その出力先だけスキップする。
+            report_pipeline_failure(
+                f"メモリパックの書き込みに失敗しました（target={target}）: {exc}", level="警告"
+            )
     return out_path
 
 
@@ -601,7 +608,14 @@ def write_layer_packs(
         raise SystemExit(1)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, content in layers:
-        (out_dir / name).write_text(content, encoding="utf-8")
+        try:
+            (out_dir / name).write_text(content, encoding="utf-8")
+        except OSError as exc:
+            # iCloud同期中のVaultファイルは稀に EDEADLK (Errno 11) を返す。
+            # 1層の書き込み失敗で残りの記憶層まで落とさず、その層だけスキップする。
+            report_pipeline_failure(
+                f"記憶層の書き込みに失敗しました（layer={name}）: {exc}", level="警告"
+            )
     return paths
 
 
