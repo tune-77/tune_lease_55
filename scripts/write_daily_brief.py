@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault  # noqa: E402
+from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
 
 ICLOUD_VAULT_PATH = resolve_lease_wiki_vault()   # RAG インデックス対象（Vault統合後）
 ICLOUD_MAIN_VAULT_PATH = resolve_obsidian_vault()
@@ -170,8 +171,15 @@ def main() -> None:
 _次回更新: 翌 AM4:00 （run_daily_improvement_pipeline.sh）_
 """
 
-    OUTPUT_PATH.write_text(content, encoding="utf-8")
-    print(f"[write_daily_brief] 書き出し完了: {OUTPUT_PATH}")
+    try:
+        OUTPUT_PATH.write_text(content, encoding="utf-8")
+        print(f"[write_daily_brief] 書き出し完了: {OUTPUT_PATH}")
+    except OSError as exc:
+        # iCloud同期中のVaultファイルは稀に EDEADLK (Errno 11) を返す。
+        # 1件の一時的な書き込み失敗でパイプライン全体を落とさず、この出力先だけスキップする。
+        report_pipeline_failure(
+            f"DAILY-BRIEFの書き込みに失敗しました（target={OUTPUT_PATH}）: {exc}", level="警告"
+        )
 
     for vault, label in [
         (ICLOUD_VAULT_PATH, "lease-wiki-vault"),
@@ -179,8 +187,13 @@ _次回更新: 翌 AM4:00 （run_daily_improvement_pipeline.sh）_
     ]:
         if vault.exists():
             out = vault / "DAILY-BRIEF.md"
-            out.write_text(content, encoding="utf-8")
-            print(f"[write_daily_brief] {label} に書き出し: {out}")
+            try:
+                out.write_text(content, encoding="utf-8")
+                print(f"[write_daily_brief] {label} に書き出し: {out}")
+            except OSError as exc:
+                report_pipeline_failure(
+                    f"{label} への書き込みに失敗しました（target={out}）: {exc}", level="警告"
+                )
         else:
             print(f"[write_daily_brief] {label} が見つかりません（スキップ）: {vault}")
 
