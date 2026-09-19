@@ -7130,6 +7130,7 @@ def post_chat(req: ChatRequest):
         rag_knowledge_refs = retrieval.rag_knowledge_refs
         vertex_agent_search = retrieval.vertex_agent_search
         vertex_answer_api = retrieval.vertex_answer_api
+        typesafe_rag = retrieval.typesafe_rag
 
         external_research = {"used": False}
         research_suggestion = build_external_research_suggestion(
@@ -7626,6 +7627,7 @@ def post_chat(req: ChatRequest):
                 user_personal_memory=user_personal_memory_payload,
                 vertex_ai_search=vertex_agent_search,
                 vertex_answer_api=vertex_answer_api,
+                typesafe_rag=typesafe_rag,
             )
         return response_payload
     except Exception as e:

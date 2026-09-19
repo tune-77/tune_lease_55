@@ -103,3 +103,83 @@ def test_markdown_fallback_search_keeps_legacy_hit_shape(monkeypatch, tmp_path):
             "source": "vault_markdown_fallback",
         }
     ]
+
+
+def test_main_chat_rag_uses_typesafe_candidate_gate(monkeypatch):
+    seen = {}
+    raw_hits = [
+        {"doc_id": "1", "text": "weak", "ref": "[[weak]]", "file_name": "weak.md"},
+        {"doc_id": "2", "text": "strong", "ref": "[[strong]]", "file_name": "strong.md"},
+        {"doc_id": "3", "text": "attack", "ref": "[[attack]]", "file_name": "attack.md"},
+        {"doc_id": "4", "text": "extra", "ref": "[[extra]]", "file_name": "extra.md"},
+    ]
+
+    class FakeStore:
+        def search(self, _message, top_k):
+            seen["top_k"] = top_k
+            return raw_hits[:top_k]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "api.knowledge.vector_store",
+        types.SimpleNamespace(
+            get_store=lambda: FakeStore(),
+            confidence_for_hit=lambda _hit: (0.9, "high"),
+        ),
+    )
+    monkeypatch.setattr(
+        "api.chat_retrieval._typesafe_rag_filter",
+        lambda: lambda _query, hits: (
+            [{**hits[1], "typesafe_route": "include"}],
+            {
+                "status": "applied",
+                "model": "jev-test",
+                "candidate_count": len(hits),
+                "accepted_count": 1,
+                "excluded_count": len(hits) - 1,
+            },
+        ),
+    )
+
+    result = build_chat_retrieval_context(
+        "query",
+        rag_top_k=2,
+        question_category="general",
+        is_general_response_mode=False,
+    )
+
+    assert seen["top_k"] == 4
+    assert "strong" in result.rag_context
+    assert "weak" not in result.rag_context
+    assert result.rag_refs == ["[[strong]]"]
+    assert result.typesafe_rag["status"] == "applied"
+
+
+def test_screening_rag_does_not_leave_process_by_default(monkeypatch):
+    monkeypatch.delenv("TYPESAFE_ALLOW_SCREENING", raising=False)
+    monkeypatch.setattr(
+        "api.chat_retrieval._typesafe_rag_filter",
+        lambda: (_ for _ in ()).throw(AssertionError("must not enable external gate")),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "api.knowledge.vector_store",
+        types.SimpleNamespace(
+            get_store=lambda: types.SimpleNamespace(
+                search=lambda _message, top_k: [
+                    {"doc_id": "1", "text": "local", "ref": "[[local]]", "file_name": "local.md"}
+                ][:top_k]
+            ),
+            confidence_for_hit=lambda _hit: (0.9, "high"),
+        ),
+    )
+
+    result = build_chat_retrieval_context(
+        "A社の案件を審査して",
+        rag_top_k=2,
+        question_category="lease_screening",
+        is_general_response_mode=True,
+    )
+
+    assert "local" in result.rag_context
+    assert result.typesafe_rag["status"] == "disabled"

@@ -37,6 +37,42 @@ class ChatRetrievalResult:
     vertex_answer_api: dict[str, Any] = field(
         default_factory=lambda: {"used": False, "status": "not_attempted", "refs": []}
     )
+    typesafe_rag: dict[str, Any] = field(
+        default_factory=lambda: {"status": "not_attempted"}
+    )
+
+
+def _typesafe_rag_filter():
+    """Load the optional external semantic gate without making it a hard dependency."""
+    try:
+        from typesafe_rag_guard import filter_hits_if_enabled, typesafe_rag_enabled
+
+        return filter_hits_if_enabled if typesafe_rag_enabled() else None
+    except Exception:
+        return None
+
+
+def _typesafe_screening_allowed() -> bool:
+    return str(os.environ.get("TYPESAFE_ALLOW_SCREENING") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _filter_local_rag_hits(
+    message: str,
+    hits: list[dict[str, Any]],
+    *,
+    limit: int,
+    filter_fn=None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Apply Jev after deterministic retrieval and retain a strict prompt-size cap."""
+    if filter_fn is None:
+        return hits[:limit], {"status": "disabled", "candidate_count": len(hits)}
+    filtered, metadata = filter_fn(message, hits)
+    return list(filtered)[:limit], dict(metadata)
 
 
 def extract_vertex_search_hint(message: str) -> str:
@@ -223,10 +259,23 @@ def build_chat_retrieval_context(
     if rag_top_k <= 0:
         return result
 
+    typesafe_filter = (
+        _typesafe_rag_filter()
+        if question_category != "lease_screening" or _typesafe_screening_allowed()
+        else None
+    )
+    candidate_top_k = min(20, max(rag_top_k, rag_top_k * 2)) if typesafe_filter else rag_top_k
+
     try:
         from api.knowledge.vector_store import get_store
 
-        hits = get_store().search(message, top_k=rag_top_k)
+        hits = get_store().search(message, top_k=candidate_top_k)
+        hits, result.typesafe_rag = _filter_local_rag_hits(
+            message,
+            hits,
+            limit=rag_top_k,
+            filter_fn=typesafe_filter,
+        )
         result.rag_context = _append_rag_hits(
             hits,
             rag_refs=result.rag_refs,
@@ -242,8 +291,14 @@ def build_chat_retrieval_context(
                 top_k,
                 obsidian_vault_path=obsidian_vault_path,
             )
-        fallback_hits = fallback_search(message, rag_top_k)
+        fallback_hits = fallback_search(message, candidate_top_k)
         if fallback_hits:
+            fallback_hits, result.typesafe_rag = _filter_local_rag_hits(
+                message,
+                fallback_hits,
+                limit=rag_top_k,
+                filter_fn=typesafe_filter,
+            )
             result.rag_context = _append_rag_hits(
                 fallback_hits,
                 rag_refs=result.rag_refs,
