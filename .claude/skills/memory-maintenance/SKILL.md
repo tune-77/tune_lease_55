@@ -9,8 +9,15 @@ description: 日次メモ(memory/YYYY-MM-DD.md)をMEMORY.mdへ棚卸しするス
 適用条件: use during heartbeat maintenance and memory review tasks.
 削除条件: remove if daily promotion and pruning become fully automated with reliable review evidence.
 
-`memory/YYYY-MM-DD.md` から `MEMORY.md` への自動昇格条件は AGENTS.md の Promotion Triggers を参照。
-このスキルは、その自動昇格が拾い切れなかったものを手動で拾うためのチェックである:
+日次メモから長期記憶へ昇格する候補は、次のいずれかを満たすものに絞る:
+
+- 同種の課題や質問へ3回以上対応した
+- 今後の意思決定に影響する方針変更があった
+- 再発防止したい失敗や注意点が発生した
+- 1週間以上有効と見込める個人設定や好みが確認できた
+
+昇格時は「事実・影響・次の行動」を短くまとめ、個人情報や秘密情報は必要最小限にする。
+このスキルは、自動昇格が拾い切れなかったものを手動で拾うためのチェックである:
 
 1. Read through recent `memory/YYYY-MM-DD.md` files
 2. Identify missed significant events, lessons, or insights worth keeping long-term
