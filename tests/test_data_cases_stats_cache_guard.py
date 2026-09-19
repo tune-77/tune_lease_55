@@ -95,6 +95,40 @@ def test_escape_hatch_allows_legitimate_mass_deletion(monkeypatch):
     assert data_cases._is_degenerate_stats_update(2157, 0) is False
 
 
+def test_operation_scoped_bypass_allows_legitimate_mass_deletion(monkeypatch):
+    """確定済み削除処理は環境全体を緩めず、その更新だけ縮小を許可できる。"""
+    monkeypatch.delenv("STATS_CACHE_ALLOW_SHRINK", raising=False)
+
+    assert (
+        data_cases._is_degenerate_stats_update(2157, 0, allow_shrink=True)
+        is False
+    )
+    assert (
+        data_cases._is_degenerate_stats_update(2157, None, allow_shrink=True)
+        is True
+    )
+
+
+def test_refresh_stats_caches_forwards_operation_scoped_bypass(monkeypatch):
+    dashboard_calls = []
+    department_calls = []
+    monkeypatch.setattr(
+        data_cases,
+        "refresh_dashboard_stats_cache",
+        lambda **kwargs: dashboard_calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        data_cases,
+        "refresh_department_stats_cache",
+        lambda **kwargs: department_calls.append(kwargs),
+    )
+
+    data_cases.refresh_stats_caches(allow_shrink=True)
+
+    assert dashboard_calls == [{"allow_shrink": True}]
+    assert department_calls == [{"allow_shrink": True}]
+
+
 # --- 門番の通し動作 -----------------------------------------------------
 
 

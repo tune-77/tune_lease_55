@@ -103,6 +103,30 @@ def test_cache_failure_after_commit_is_still_success(deletion):
         assert conn.execute("SELECT COUNT(*) FROM past_cases").fetchone()[0] == 0
 
 
+def test_clear_all_allows_confirmed_cache_shrink(monkeypatch):
+    cache = Mock()
+    module = types.ModuleType("data_cases")
+    module.refresh_stats_caches = cache
+    monkeypatch.setitem(sys.modules, "data_cases", module)
+
+    connection = Mock()
+    connection.__enter__ = Mock(return_value=connection)
+    connection.__exit__ = Mock(return_value=False)
+    ns = {
+        "logger": logging.getLogger(__name__),
+        "HTTPException": HTTPException,
+        "get_connection": Mock(return_value=connection),
+        "_list_cloudrun_score_pending_cases": Mock(return_value=[]),
+        "_reject_cloudrun_score_pending_case": Mock(return_value=False),
+        "_reject_cloudrun_event_pending_case": Mock(return_value=False),
+        "_git_push_db": Mock(),
+    }
+    endpoint = load_function("api/main.py", "clear_all_pending_cases", ns)
+
+    assert endpoint(Mock())["message"] == "Cleared all pending cases"
+    cache.assert_called_once_with(allow_shrink=True)
+
+
 @pytest.mark.parametrize("case_id,index", [("cloudrun_score:1", 3), ("cloudrun_event:e", 4)])
 def test_pending_rejection_errors_are_not_success(deletion, case_id, index):
     endpoint = deletion[0]

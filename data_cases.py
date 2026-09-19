@@ -705,7 +705,12 @@ _DEGENERATE_MIN_BASELINE = 10
 _DEGENERATE_SHRINK_RATIO = 0.5
 
 
-def _is_degenerate_stats_update(previous_count: int | None, new_count: int | None) -> bool:
+def _is_degenerate_stats_update(
+    previous_count: int | None,
+    new_count: int | None,
+    *,
+    allow_shrink: bool = False,
+) -> bool:
     """新しい集計値が「退化」＝書き込むべきでない崩壊かを判定する。
 
     previous_count: 既存キャッシュの件数（未生成・非数値なら None）
@@ -720,23 +725,37 @@ def _is_degenerate_stats_update(previous_count: int | None, new_count: int | Non
       3. 新規が None（集計不能）→ 拒否。これが 1174 → None の固着経路。
       4. 新規が 0、または半減以下 → 拒否。ただし母数が小さい時は誤検知が
          多いので _DEGENERATE_MIN_BASELINE 件以上の時だけ見る。
-    正当な一括削除でここに引っかかった場合は環境変数
-    STATS_CACHE_ALLOW_SHRINK=1 で明示的に通す。拒否してもキャッシュが古く
-    なるだけで、ズレは system_guardrails._audit_stats_cache_consistency()
-    が stats_cache_drift として検知するため、黙って壊れることはない。
+    正当な一括削除でここに引っかかった場合は、確定済みの削除処理からだけ
+    allow_shrink=True を渡して通す。運用時の緊急回避には環境変数
+    STATS_CACHE_ALLOW_SHRINK=1 も使える。拒否してもキャッシュが古くなるだけで、
+    ズレは system_guardrails._audit_stats_cache_consistency() が
+    stats_cache_drift として検知するため、黙って壊れることはない。
     """
-    if os.environ.get("STATS_CACHE_ALLOW_SHRINK", "").strip() in ("1", "true", "True"):
+    if os.environ.get("STATS_CACHE_ALLOW_SHRINK", "").strip() in (
+        "1",
+        "true",
+        "True",
+    ):
         return False
     if previous_count is None or previous_count <= 0:
         return False
     if new_count is None:
         return True
+    if allow_shrink:
+        return False
     if previous_count < _DEGENERATE_MIN_BASELINE:
         return False
     return new_count <= previous_count * _DEGENERATE_SHRINK_RATIO
 
 
-def _reject_degenerate_write(path: str, payload, count_path: tuple, label: str) -> bool:
+def _reject_degenerate_write(
+    path: str,
+    payload,
+    count_path: tuple,
+    label: str,
+    *,
+    allow_shrink: bool = False,
+) -> bool:
     """書き込み直前の門番。拒否したら True を返す。"""
     previous = None
     if os.path.exists(path):
@@ -747,7 +766,9 @@ def _reject_degenerate_write(path: str, payload, count_path: tuple, label: str) 
             previous = None
     previous_count = _extract_stats_count(previous, count_path)
     new_count = _extract_stats_count(payload, count_path)
-    if _is_degenerate_stats_update(previous_count, new_count):
+    if _is_degenerate_stats_update(
+        previous_count, new_count, allow_shrink=allow_shrink
+    ):
         print(
             f"[stats_cache] {label}: 退化更新を拒否しました "
             f"(既存={previous_count} / 新規={new_count}) path={path}",
@@ -768,7 +789,7 @@ def load_dashboard_stats_cache() -> dict | None:
         return None
 
 
-def _write_dashboard_stats_cache_locked() -> dict | None:
+def _write_dashboard_stats_cache_locked(*, allow_shrink: bool = False) -> dict | None:
     try:
         payload = build_dashboard_stats_cache()
     except CaseDataUnavailable as e:
@@ -778,7 +799,13 @@ def _write_dashboard_stats_cache_locked() -> dict | None:
         )
         return load_dashboard_stats_cache()
     path = _stats_cache_path(DASHBOARD_STATS_CACHE_FILE)
-    if _reject_degenerate_write(path, payload, ("analysis", "closed_count"), "dashboard"):
+    if _reject_degenerate_write(
+        path,
+        payload,
+        ("analysis", "closed_count"),
+        "dashboard",
+        allow_shrink=allow_shrink,
+    ):
         return load_dashboard_stats_cache()
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -791,9 +818,9 @@ def _write_dashboard_stats_cache_locked() -> dict | None:
     return payload
 
 
-def refresh_dashboard_stats_cache() -> dict | None:
+def refresh_dashboard_stats_cache(*, allow_shrink: bool = False) -> dict | None:
     with _DASHBOARD_STATS_CACHE_LOCK:
-        return _write_dashboard_stats_cache_locked()
+        return _write_dashboard_stats_cache_locked(allow_shrink=allow_shrink)
 
 
 def refresh_dashboard_stats_cache_if_missing() -> dict | None:
@@ -814,7 +841,7 @@ def load_department_stats_cache() -> dict | None:
         return None
 
 
-def _write_department_stats_cache_locked() -> dict | None:
+def _write_department_stats_cache_locked(*, allow_shrink: bool = False) -> dict | None:
     try:
         payload = build_department_stats_cache()
     except CaseDataUnavailable as e:
@@ -824,7 +851,13 @@ def _write_department_stats_cache_locked() -> dict | None:
         )
         return load_department_stats_cache()
     path = _stats_cache_path(DEPARTMENT_STATS_CACHE_FILE)
-    if _reject_degenerate_write(path, payload, ("overall", "total_count"), "department"):
+    if _reject_degenerate_write(
+        path,
+        payload,
+        ("overall", "total_count"),
+        "department",
+        allow_shrink=allow_shrink,
+    ):
         return load_department_stats_cache()
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -837,9 +870,9 @@ def _write_department_stats_cache_locked() -> dict | None:
     return payload
 
 
-def refresh_department_stats_cache() -> dict | None:
+def refresh_department_stats_cache(*, allow_shrink: bool = False) -> dict | None:
     with _DEPARTMENT_STATS_CACHE_LOCK:
-        return _write_department_stats_cache_locked()
+        return _write_department_stats_cache_locked(allow_shrink=allow_shrink)
 
 
 def refresh_department_stats_cache_if_missing() -> dict | None:
@@ -849,9 +882,9 @@ def refresh_department_stats_cache_if_missing() -> dict | None:
         return _write_department_stats_cache_locked()
 
 
-def refresh_stats_caches() -> None:
-    refresh_dashboard_stats_cache()
-    refresh_department_stats_cache()
+def refresh_stats_caches(*, allow_shrink: bool = False) -> None:
+    refresh_dashboard_stats_cache(allow_shrink=allow_shrink)
+    refresh_department_stats_cache(allow_shrink=allow_shrink)
 
 
 def load_past_cases():
