@@ -101,9 +101,15 @@ class UMAPAnomalyScorer:
         xy = self.umap_model.transform(X_scaled)[0]
         return round(score, 1), float(xy[0]), float(xy[1])
 
-    def find_similar(self, x_raw, top_k: int = 3) -> list[dict]:
-        """UMAP空間で最近傍の成約案件を返す。"""
-        _, ux, uy = self.score(x_raw)
+    def find_similar(self, x_raw, top_k: int = 3, precomputed_xy: tuple[float, float] | None = None) -> list[dict]:
+        """UMAP空間で最近傍の成約案件を返す。
+
+        precomputed_xy を渡すと score() の再計算（UMAP transform含む）を省略する。
+        """
+        if precomputed_xy is not None:
+            ux, uy = precomputed_xy
+        else:
+            _, ux, uy = self.score(x_raw)
         if self.umap_embeddings_ is None:
             return []
         labels = np.array(self.train_labels_)

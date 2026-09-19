@@ -1082,7 +1082,7 @@ def run_quick_scoring(inputs: dict) -> dict:
 
                 def _run_umap():
                     _s, _x, _y = _umap.score(_umap_df)
-                    _sim = _umap.find_similar(_umap_df, top_k=3)
+                    _sim = _umap.find_similar(_umap_df, top_k=3, precomputed_xy=(_x, _y))
                     return _s, _x, _y, _sim
                 try:
                     umap_anomaly_score, umap_x, umap_y, umap_similar = (
