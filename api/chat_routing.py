@@ -145,6 +145,8 @@ def _routing_confidence_threshold(environ: Mapping[str, str] | None = None) -> f
         value = float(env.get("TYPESAFE_ROUTING_CONFIDENCE", TYPESAFE_ROUTING_DEFAULT_CONFIDENCE))
     except (TypeError, ValueError):
         return TYPESAFE_ROUTING_DEFAULT_CONFIDENCE
+    if not math.isfinite(value):
+        return TYPESAFE_ROUTING_DEFAULT_CONFIDENCE
     return min(1.0, max(0.0, value))
 
 
@@ -169,7 +171,7 @@ def is_potentially_sensitive_screening_message(message: str) -> bool:
     if any(term in text for term in sensitive_terms):
         return True
     return bool(
-        re.search(r"(?:株式会社|有限会社|合同会社|\b[A-ZＡ-Ｚ][\s　]*社\b)", text)
+        re.search(r"(?:株式会社|有限会社|合同会社|[A-ZＡ-Ｚ]{1,10}[\s　]*社)", text)
         or re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", text)
         or re.search(r"\b0\d{1,4}-\d{1,4}-\d{3,4}\b", text)
     )

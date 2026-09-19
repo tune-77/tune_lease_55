@@ -129,6 +129,20 @@ def test_typesafe_does_not_trust_baseline_for_sensitive_screening_text(monkeypat
     assert chat_routing.classify_question("A社案件の売上と財務を確認して") == "lease_knowledge"
 
 
+def test_company_placeholders_are_sensitive_without_word_boundaries():
+    assert chat_routing.is_potentially_sensitive_screening_message("A社の現預金推移を見て")
+    assert chat_routing.is_potentially_sensitive_screening_message("ABC社の状況を見て")
+
+
+def test_non_finite_routing_threshold_uses_safe_default(monkeypatch):
+    monkeypatch.setenv("TYPESAFE_ROUTING_CONFIDENCE", "nan")
+
+    assert (
+        chat_routing._routing_confidence_threshold()
+        == chat_routing.TYPESAFE_ROUTING_DEFAULT_CONFIDENCE
+    )
+
+
 def test_context_mode_and_budget_stable_shapes():
     assert chat_context_mode("案件の審査スコアを見て", "lease_screening") == "screening"
     assert chat_context_mode("詳しく根拠も教えて", "lease_knowledge") == "deep"
