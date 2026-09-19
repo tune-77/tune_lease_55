@@ -257,6 +257,14 @@ def _audit_stats_cache_consistency() -> list[dict]:
     update_case_field)がコミット直後に同期で refresh_stats_caches() を
     呼ぶことで最新化される設計。乖離が出るのは、そのどれかを経由しない
     書き込み経路が残っている（キャッシュ再生成の配線漏れ）ことを意味する。
+
+    乖離にはもう一種類ある。run_contract_driver_analysis() は成約5件未満で
+    None を返し、build_dashboard_stats_cache() の `analysis or {}` を経て
+    closed_count=None として永続化される。DBが正常でもキャッシュだけが
+    この退化状態で固着し得る（2026-09-19、/api/dashboard/data-health が
+    invalid_closed_count を返し続けた実例あり）。そのため None も除外せず
+    比較する。None 同士は不一致にならないため、キャッシュ未生成の
+    正常な新規DBは検出対象にならない。
     """
     from data_cases import (
         build_dashboard_stats_cache,
@@ -272,7 +280,7 @@ def _audit_stats_cache_consistency() -> list[dict]:
         live_dashboard = build_dashboard_stats_cache()
         cached_closed = (cached_dashboard.get("analysis") or {}).get("closed_count")
         live_closed = (live_dashboard.get("analysis") or {}).get("closed_count")
-        if cached_closed is not None and live_closed is not None and cached_closed != live_closed:
+        if cached_closed != live_closed:
             issues.append({
                 "severity": "error",
                 "kind": "stats_cache_drift",
@@ -286,7 +294,7 @@ def _audit_stats_cache_consistency() -> list[dict]:
         live_department = build_department_stats_cache()
         cached_total = (cached_department.get("overall") or {}).get("total_count")
         live_total = (live_department.get("overall") or {}).get("total_count")
-        if cached_total is not None and live_total is not None and cached_total != live_total:
+        if cached_total != live_total:
             issues.append({
                 "severity": "error",
                 "kind": "stats_cache_drift",
