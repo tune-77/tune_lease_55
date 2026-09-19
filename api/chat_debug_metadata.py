@@ -302,8 +302,23 @@ def append_chat_debug_metadata(
     user_personal_memory: dict[str, Any],
     vertex_ai_search: dict[str, Any],
     vertex_answer_api: dict[str, Any],
+    typesafe_rag: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     memory_debug["user_personal_memory"] = user_personal_memory_debug_payload(user_personal_memory)
+    raw_typesafe = typesafe_rag if isinstance(typesafe_rag, dict) else {}
+    memory_debug["typesafe_rag"] = {
+        key: raw_typesafe.get(key)
+        for key in (
+            "status",
+            "model",
+            "candidate_count",
+            "accepted_count",
+            "excluded_count",
+            "error_type",
+            "usage",
+        )
+        if key in raw_typesafe
+    }
     return append_retrieval_debug_payloads(
         memory_debug,
         vertex_ai_search=vertex_ai_search,

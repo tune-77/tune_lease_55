@@ -41,3 +41,39 @@ def test_build_obsidian_ai_context_block_passes_budget(monkeypatch):
 
     assert "short.md" in block
     assert "digest" in block
+
+
+def test_collect_obsidian_ai_context_applies_optional_typesafe_filter(monkeypatch):
+    hits = [
+        {"path": "first.md", "snippet": "first"},
+        {"path": "second.md", "snippet": "second"},
+    ]
+
+    monkeypatch.setattr(
+        oac,
+        "_load_obsidian_bridge",
+        lambda: (lambda _query, limit=4: hits[:limit], lambda _query, _hits: {"digest": "digest"}),
+    )
+    monkeypatch.setattr(
+        oac,
+        "_load_typesafe_rag_filter",
+        lambda _query: lambda _query, _hits: (
+            [{**hits[1], "typesafe_route": "include"}],
+            {"status": "applied", "accepted_count": 1},
+        ),
+    )
+
+    result = oac.collect_obsidian_ai_context("query", limit=2)
+
+    assert [hit["path"] for hit in result["hits"]] == ["second.md"]
+    assert result["retrieval_boundary"]["typesafe"] == {
+        "status": "applied",
+        "accepted_count": 1,
+    }
+
+
+def test_shared_context_requires_separate_external_processing_opt_in(monkeypatch):
+    monkeypatch.setenv("TYPESAFE_RAG_ENABLED", "1")
+    monkeypatch.delenv("TYPESAFE_ALLOW_SHARED_CONTEXT", raising=False)
+
+    assert oac._load_typesafe_rag_filter("一般的なリース知識") is None

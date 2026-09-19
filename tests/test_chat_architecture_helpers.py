@@ -57,11 +57,24 @@ def test_append_chat_debug_metadata_adds_user_and_retrieval_debug():
         user_personal_memory={"block": "x", "refs": list(range(10)), "line_count": 7},
         vertex_ai_search={"used": True, "status": "ok", "refs": ["a"], "summary": "summary"},
         vertex_answer_api={"used": True, "status": "ok", "refs": ["x"], "answer_text": "answer"},
+        typesafe_rag={
+            "status": "applied",
+            "model": "jev-test",
+            "candidate_count": 6,
+            "accepted_count": 2,
+            "secret": "must-not-leak",
+        },
     )
 
     assert memory_debug["user_personal_memory"] == {"used": True, "refs": [0, 1, 2, 3, 4, 5], "line_count": 7}
     assert memory_debug["vertex_ai_search"]["summary_preview"] == "summary"
     assert memory_debug["vertex_answer_api"]["answer_preview"] == "answer"
+    assert memory_debug["typesafe_rag"] == {
+        "status": "applied",
+        "model": "jev-test",
+        "candidate_count": 6,
+        "accepted_count": 2,
+    }
 
 
 def test_chat_memory_debug_payload_keeps_core_shape_and_limits():
