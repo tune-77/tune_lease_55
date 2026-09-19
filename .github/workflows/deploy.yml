@@ -120,14 +120,48 @@ jobs:
             fi
           }
 
-          # api/frontend のパス判定は、旧 dorny/paths-filter の filters 定義と同じ
-          # パターンをそのまま使う。
+          # ── API のパス判定は「除外方式」────────────────────────────
+          # Dockerfile.api は `COPY . .` でリポジトリ全体をイメージへ焼き込み、
+          # api/ 配下は data_cases.py・constants.py・rule_manager.py など
+          # ルート直下の共有モジュールを40本以上 import する。そのため
+          # 「APIに影響するパス」を列挙する許可リスト方式は構造的に取りこぼす。
+          #
+          # 危険なのは、判定が OR であるせいで欠陥が普段は表に出ないこと。
+          # 同じコミットに api/ の変更が1つでも混ざっていれば true になるため、
+          # 取りこぼしは「ルート直下モジュールだけを直した回」にだけ顕在化する。
+          # 例: 2026-09-19 の統計キャッシュ修正は data_cases.py と
+          # system_guardrails.py が本体だったが、たまたま api/main.py も
+          # 含んでいたため旧フィルタでも拾えた。本体2ファイルだけの修正なら
+          # 黙ってスキップされていた。
+          # しかも判定が外れても deploy ジョブは skipped = 成功で終わるため、
+          # ログ上は異常に見えない。
+          #
+          # よって「APIランタイムに影響しないと証明できるパス」だけを除外し、
+          # 残り全部をAPI影響ありとみなす（取りこぼしではなく過剰デプロイ側へ倒す）。
+          #
+          # 除外に追加するときの基準: そのパスが変わっても Cloud Run 上の FastAPI
+          # プロセスの挙動が変わらないと言い切れること。
+          # 特に「ルート直下の *.md」を glob で一括除外してはいけない。
+          #   api/chat_user_personal_memory.py  → USER.md / MEMORY.md
+          #   api/shion_system_self_inspection.py → AGENTS.md / CLAUDE.md / HEARTBEAT.md
+          # を実行時に読むため、除外すると同じ事故を逆向きに再発させる。
           path_impacts_api() {
             case "$1" in
-              api/*|scoring_core.py|scoring/*|Dockerfile.api|cloudbuild.api.yaml|requirements.txt|pyproject.toml|uv.lock)
-                return 0 ;;
+              # Next.js ソース。イメージには入るが FastAPI からは実行されない
+              frontend/*) return 1 ;;
+              # 別アプリ / 退避置き場
+              mobile_app/*|_archive/*) return 1 ;;
+              # ドキュメント・自動生成レポート・テスト（本番プロセスは読まない）
+              docs/*|reports/*|tests/*) return 1 ;;
+              # CI・エージェント設定・ローカル定期実行の定義
+              .github/*|.claude/*|.agents/*|shared-ai/*|launchd/*) return 1 ;;
+              # web 側だけのビルド定義
+              cloudbuild.web.yaml) return 1 ;;
             esac
-            return 1
+            # 上記以外はすべて API 影響ありとみなす。
+            # （api/・scripts/・knowledge_base/・static_data/・components/・
+            #   ルート直下の *.py と *.md・依存定義ファイルなど）
+            return 0
           }
           path_impacts_frontend() {
             case "$1" in
@@ -177,6 +211,24 @@ jobs:
             api_changed=true
             frontend_changed=true
           fi
+
+          # 判定が外れて取りこぼしても deploy ジョブは skipped = 成功で終わるため、
+          # ログ上は異常に見えない（2026-09-19の事故はこれで気づけなかった）。
+          # 「デプロイ済みSHAから進んでいるのに影響なしと判定した」場合だけ警告を出し、
+          # 人間がフィルタの取りこぼしに気づけるようにする。差分が本当に除外対象
+          # だけのときも鳴るが、鳴らずに落とすより安い。
+          warn_if_suspicious_skip() {
+            local label="$1" deployed_sha="$2" changed="$3"
+            [[ "$changed" == "true" ]] && return 0
+            [[ -z "$deployed_sha" ]] && return 0
+            local ahead
+            ahead="$(git rev-list --count "${deployed_sha}..HEAD" 2>/dev/null || echo 0)"
+            if [[ "$ahead" -gt 0 ]]; then
+              echo "::warning::${label}: デプロイ済み ${deployed_sha} から ${ahead} コミット進んでいますが、パス判定では影響なしと判断しました。path_impacts_${label}() の除外条件に取りこぼしが無いか確認してください。"
+            fi
+          }
+          warn_if_suspicious_skip api "$api_deployed_sha" "$api_changed"
+          warn_if_suspicious_skip frontend "$web_deployed_sha" "$frontend_changed"
 
           echo "api=$api_changed" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend_changed" >> "$GITHUB_OUTPUT"
