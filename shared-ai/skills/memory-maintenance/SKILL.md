@@ -9,6 +9,12 @@ description: 日次メモ(memory/YYYY-MM-DD.md)をMEMORY.mdへ棚卸しするス
 適用条件: use during heartbeat maintenance and memory review tasks.
 削除条件: remove if daily promotion and pruning become fully automated with reliable review evidence.
 
+## Access Guard
+
+`MEMORY.md` may contain personal context. Read or edit it only in a private main session
+(a direct conversation with the user). In Discord, group chats, shared sessions, or sessions
+with other people, do not open or modify `MEMORY.md`; stop this skill without exposing its contents.
+
 日次メモから長期記憶へ昇格する候補は、次のいずれかを満たすものに絞る:
 
 - 同種の課題や質問へ3回以上対応した
