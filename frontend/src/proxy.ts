@@ -23,6 +23,17 @@ const constantTimeEqual = (left: string, right: string) => {
   return difference === 0;
 };
 
+const TUNNEL_SESSION_COOKIE = "tune_lease_session";
+const TUNNEL_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
+const tunnelSessionToken = async (password: string) => {
+  const payload = new TextEncoder().encode(`tune-lease-session-v1:${password}`);
+  const digest = await crypto.subtle.digest("SHA-256", payload);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+};
+
 const hasValidTunnelCredentials = (request: NextRequest, password: string) => {
   const authorization = request.headers.get("authorization") || "";
   if (!authorization.startsWith("Basic ")) return false;
@@ -47,7 +58,7 @@ const hasValidDashboardHealthProbeToken = (request: NextRequest, token: string) 
   return provided.length > 0 && constantTimeEqual(provided, token);
 };
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const key = process.env.API_ACCESS_KEY;
   const tunnelPassword = process.env.PUBLIC_TUNNEL_AUTH;
   const syncProbeToken = process.env.KNOWLEDGE_SYNC_PROBE_TOKEN;
@@ -74,13 +85,26 @@ export function proxy(request: NextRequest) {
     === "/api/dashboard/data-health";
   const isTunnelRequest = process.env.PUBLIC_TUNNEL === "1"
     && (request.headers.has("cf-connecting-ip") || !isLocalHost);
+  let shouldCreateTunnelSession = false;
   if (isTunnelRequest) {
-    const isAuthorized = isKnowledgeSyncProbe
-      ? !!syncProbeToken && hasValidSyncProbeToken(request, syncProbeToken)
-      : isDashboardHealthProbe
-      ? !!dashboardHealthProbeToken
-        && hasValidDashboardHealthProbeToken(request, dashboardHealthProbeToken)
-      : !!tunnelPassword && hasValidTunnelCredentials(request, tunnelPassword);
+    let isAuthorized = false;
+    if (isKnowledgeSyncProbe) {
+      isAuthorized = !!syncProbeToken
+        && hasValidSyncProbeToken(request, syncProbeToken);
+    } else if (isDashboardHealthProbe) {
+      // 機械アクセス想定のprobeなのでセッションCookieは発行しない。
+      isAuthorized = !!dashboardHealthProbeToken
+        && hasValidDashboardHealthProbeToken(request, dashboardHealthProbeToken);
+    } else if (tunnelPassword) {
+      const expectedSession = await tunnelSessionToken(tunnelPassword);
+      const providedSession = request.cookies.get(TUNNEL_SESSION_COOKIE)?.value || "";
+      const hasValidSession = providedSession.length > 0
+        && constantTimeEqual(providedSession, expectedSession);
+      const hasValidBasicAuth = hasValidTunnelCredentials(request, tunnelPassword);
+      isAuthorized = hasValidSession || hasValidBasicAuth;
+      // Basic認証のみ成功した初回だけCookieを発行し、以降はセッションで通す。
+      shouldCreateTunnelSession = hasValidBasicAuth && !hasValidSession;
+    }
     if (!isAuthorized) {
       return new NextResponse("Authentication required", {
         status: 401,
@@ -88,17 +112,28 @@ export function proxy(request: NextRequest) {
       });
     }
   }
-  if (!request.nextUrl.pathname.startsWith("/api/")) {
-    return NextResponse.next();
+  let response: NextResponse;
+  if (request.nextUrl.pathname.startsWith("/api/") && key) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-api-key", key);
+    response = NextResponse.next({
+      request: { headers: requestHeaders },
+    });
+  } else {
+    response = NextResponse.next();
   }
-  if (!key) {
-    return NextResponse.next();
+  if (shouldCreateTunnelSession && tunnelPassword) {
+    response.cookies.set({
+      name: TUNNEL_SESSION_COOKIE,
+      value: await tunnelSessionToken(tunnelPassword),
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      path: "/",
+      maxAge: TUNNEL_SESSION_MAX_AGE_SECONDS,
+    });
   }
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-api-key", key);
-  return NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  return response;
 }
 
 export const config = {
