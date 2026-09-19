@@ -87,6 +87,7 @@ def test_typesafe_shadow_never_changes_baseline(monkeypatch):
 def test_typesafe_enforce_requires_configured_confidence(monkeypatch):
     monkeypatch.setenv("TYPESAFE_ROUTING_MODE", "enforce")
     monkeypatch.setenv("TYPESAFE_ROUTING_CONFIDENCE", "0.90")
+    monkeypatch.setenv("TYPESAFE_ALLOW_SCREENING", "1")
     monkeypatch.setattr(chat_routing, "_legacy_classify_question", lambda _message: "lease_knowledge")
     monkeypatch.setattr(
         chat_routing,
@@ -113,6 +114,19 @@ def test_typesafe_does_not_receive_screening_questions_by_default(monkeypatch):
     )
 
     assert chat_routing.classify_question("A社の案件を審査して") == "lease_screening"
+
+
+def test_typesafe_does_not_trust_baseline_for_sensitive_screening_text(monkeypatch):
+    monkeypatch.setenv("TYPESAFE_ROUTING_MODE", "shadow")
+    monkeypatch.delenv("TYPESAFE_ALLOW_SCREENING", raising=False)
+    monkeypatch.setattr(chat_routing, "_legacy_classify_question", lambda _message: "lease_knowledge")
+    monkeypatch.setattr(
+        chat_routing,
+        "judge_question_category",
+        lambda _message: (_ for _ in ()).throw(AssertionError("must not call TypeSafe")),
+    )
+
+    assert chat_routing.classify_question("A社案件の売上と財務を確認して") == "lease_knowledge"
 
 
 def test_context_mode_and_budget_stable_shapes():

@@ -58,6 +58,7 @@ Optional settings:
 - `TYPESAFE_ROUTING_MODE` (default: `off`)
 - `TYPESAFE_ROUTING_CONFIDENCE` (default: `0.85`, only used by `enforce`)
 - `TYPESAFE_ALLOW_SCREENING` (default: unset/false)
+- `TYPESAFE_ALLOW_SHARED_CONTEXT` (default: unset/false; required by the shared Obsidian helper)
 
 Do not put the API key in source code. Enabling the pilot sends the user query
 and candidate snippets to TypeSafe. Local file paths are deliberately excluded.
@@ -66,6 +67,10 @@ confidential screening cases until the applicable retention terms are approved.
 Questions already classified as `lease_screening` therefore stay entirely on
 the existing local/Gemini path by default. Routing and RAG can process them only
 when an operator explicitly sets `TYPESAFE_ALLOW_SCREENING=1`.
+The code also applies a conservative pre-routing sensitivity check, so this
+protection does not depend only on the probabilistic baseline category. Shared
+Obsidian callers have no reliable category contract and therefore require the
+additional `TYPESAFE_ALLOW_SHARED_CONTEXT=1` opt-in.
 
 ## Judgments and routing
 

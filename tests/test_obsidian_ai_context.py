@@ -57,7 +57,7 @@ def test_collect_obsidian_ai_context_applies_optional_typesafe_filter(monkeypatc
     monkeypatch.setattr(
         oac,
         "_load_typesafe_rag_filter",
-        lambda: lambda _query, _hits: (
+        lambda _query: lambda _query, _hits: (
             [{**hits[1], "typesafe_route": "include"}],
             {"status": "applied", "accepted_count": 1},
         ),
@@ -70,3 +70,10 @@ def test_collect_obsidian_ai_context_applies_optional_typesafe_filter(monkeypatc
         "status": "applied",
         "accepted_count": 1,
     }
+
+
+def test_shared_context_requires_separate_external_processing_opt_in(monkeypatch):
+    monkeypatch.setenv("TYPESAFE_RAG_ENABLED", "1")
+    monkeypatch.delenv("TYPESAFE_ALLOW_SHARED_CONTEXT", raising=False)
+
+    assert oac._load_typesafe_rag_filter("一般的なリース知識") is None

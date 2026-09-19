@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 DEFAULT_CONTEXT_TOKEN_BUDGET = 700
@@ -25,10 +26,21 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4) if text else 0
 
 
-def _load_typesafe_rag_filter():
+def _env_truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _load_typesafe_rag_filter(query: str = ""):
     try:
+        from api.chat_routing import is_potentially_sensitive_screening_message
         from typesafe_rag_guard import filter_hits_if_enabled, typesafe_rag_enabled
 
+        if not _env_truthy(os.environ.get("TYPESAFE_ALLOW_SHARED_CONTEXT")):
+            return None
+        if is_potentially_sensitive_screening_message(query) and not _env_truthy(
+            os.environ.get("TYPESAFE_ALLOW_SCREENING")
+        ):
+            return None
         return filter_hits_if_enabled if typesafe_rag_enabled() else None
     except Exception:
         return None
@@ -75,7 +87,7 @@ def collect_obsidian_ai_context(
     if collect_obsidian_context is None or build_obsidian_digest is None:
         return {"block": "", "hits": [], "source_count": 0, "retrieval_boundary": {}}
     try:
-        typesafe_filter = _load_typesafe_rag_filter()
+        typesafe_filter = _load_typesafe_rag_filter(query)
         candidate_limit = max(limit * 2, limit) if typesafe_filter is not None else limit
         hits: list[dict[str, Any]] = collect_obsidian_context(query, limit=candidate_limit)
         if not hits:

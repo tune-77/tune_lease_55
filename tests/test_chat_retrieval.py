@@ -129,7 +129,7 @@ def test_main_chat_rag_uses_typesafe_candidate_gate(monkeypatch):
     )
     monkeypatch.setattr(
         "api.chat_retrieval._typesafe_rag_filter",
-        lambda: lambda _query, hits: (
+        lambda _message: lambda _query, hits: (
             [{**hits[1], "typesafe_route": "include"}],
             {
                 "status": "applied",
@@ -159,7 +159,7 @@ def test_screening_rag_does_not_leave_process_by_default(monkeypatch):
     monkeypatch.delenv("TYPESAFE_ALLOW_SCREENING", raising=False)
     monkeypatch.setattr(
         "api.chat_retrieval._typesafe_rag_filter",
-        lambda: (_ for _ in ()).throw(AssertionError("must not enable external gate")),
+        lambda _message: (_ for _ in ()).throw(AssertionError("must not enable external gate")),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -178,6 +178,33 @@ def test_screening_rag_does_not_leave_process_by_default(monkeypatch):
         "A社の案件を審査して",
         rag_top_k=2,
         question_category="lease_screening",
+        is_general_response_mode=True,
+    )
+
+    assert "local" in result.rag_context
+    assert result.typesafe_rag["status"] == "disabled"
+
+
+def test_sensitive_query_skips_typesafe_even_when_baseline_category_is_wrong(monkeypatch):
+    monkeypatch.setenv("TYPESAFE_RAG_ENABLED", "1")
+    monkeypatch.delenv("TYPESAFE_ALLOW_SCREENING", raising=False)
+    monkeypatch.setitem(
+        sys.modules,
+        "api.knowledge.vector_store",
+        types.SimpleNamespace(
+            get_store=lambda: types.SimpleNamespace(
+                search=lambda _message, top_k: [
+                    {"doc_id": "1", "text": "local", "ref": "[[local]]", "file_name": "local.md"}
+                ][:top_k]
+            ),
+            confidence_for_hit=lambda _hit: (0.9, "high"),
+        ),
+    )
+
+    result = build_chat_retrieval_context(
+        "A社案件の売上と財務を確認して",
+        rag_top_k=2,
+        question_category="lease_knowledge",
         is_general_response_mode=True,
     )
 

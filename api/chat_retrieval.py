@@ -42,11 +42,14 @@ class ChatRetrievalResult:
     )
 
 
-def _typesafe_rag_filter():
+def _typesafe_rag_filter(message: str = ""):
     """Load the optional external semantic gate without making it a hard dependency."""
     try:
+        from api.chat_routing import is_potentially_sensitive_screening_message
         from typesafe_rag_guard import filter_hits_if_enabled, typesafe_rag_enabled
 
+        if is_potentially_sensitive_screening_message(message) and not _typesafe_screening_allowed():
+            return None
         return filter_hits_if_enabled if typesafe_rag_enabled() else None
     except Exception:
         return None
@@ -260,7 +263,7 @@ def build_chat_retrieval_context(
         return result
 
     typesafe_filter = (
-        _typesafe_rag_filter()
+        _typesafe_rag_filter(message)
         if question_category != "lease_screening" or _typesafe_screening_allowed()
         else None
     )

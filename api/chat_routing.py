@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -157,6 +158,23 @@ def _typesafe_screening_allowed(environ: Mapping[str, str] | None = None) -> boo
     }
 
 
+def is_potentially_sensitive_screening_message(message: str) -> bool:
+    """Conservatively identify case-specific text before any external classifier call."""
+    text = str(message or "")
+    sensitive_terms = (
+        "審査", "案件", "稟議", "承認", "否決", "与信", "信用判断", "債務", "延滞",
+        "財務", "決算", "売上", "利益", "赤字", "債務超過", "返済", "銀行支援",
+        "取引先", "顧客", "代表者", "申込人", "保証人", "案件番号", "顧客番号",
+    )
+    if any(term in text for term in sensitive_terms):
+        return True
+    return bool(
+        re.search(r"(?:株式会社|有限会社|合同会社|\b[A-ZＡ-Ｚ][\s　]*社\b)", text)
+        or re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", text)
+        or re.search(r"\b0\d{1,4}-\d{1,4}-\d{3,4}\b", text)
+    )
+
+
 def classify_question(message: str) -> str:
     """Classify a chat question, optionally comparing or enforcing a Jev Choice."""
     news_keywords = ("ニュースを要約", "記事を要約", "このニュース", "要約して保存", "ニュース保存", "要約してobsidian", "要約してメモ")
@@ -172,7 +190,9 @@ def classify_question(message: str) -> str:
     mode = typesafe_routing_mode()
     if mode == "off":
         return baseline
-    if baseline == "lease_screening" and not _typesafe_screening_allowed():
+    if not _typesafe_screening_allowed() and (
+        baseline == "lease_screening" or is_potentially_sensitive_screening_message(message)
+    ):
         return baseline
     try:
         judgment = judge_question_category(message)
