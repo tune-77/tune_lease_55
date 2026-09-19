@@ -176,3 +176,82 @@ def test_department_count_path_is_honored(monkeypatch, tmp_path, capsys):
 
     assert rejected is True
     assert "department" in capsys.readouterr().err
+
+
+# --- 取得不能 vs 確定的に0件 ---------------------------------------------
+
+
+class _BoomConnection:
+    def __enter__(self):
+        raise RuntimeError("could not connect to server")
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _make_db_unreadable(monkeypatch):
+    """DBファイルは存在扱いにしつつ、接続で必ず失敗させる。"""
+    monkeypatch.setattr(data_cases, "_cloud_db_enabled", lambda: True)
+    monkeypatch.setattr(data_cases, "_case_db_connection", lambda: _BoomConnection())
+
+
+def test_non_strict_load_keeps_swallowing_for_compatibility(monkeypatch, capsys):
+    """既定は従来通り。find_similar_past_cases 等の5経路は無変更で動く。"""
+    _make_db_unreadable(monkeypatch)
+
+    assert data_cases.load_all_cases() == []
+    assert "[Error in load_all_cases]" in capsys.readouterr().err
+
+
+def test_strict_load_raises_when_db_unreadable(monkeypatch):
+    _make_db_unreadable(monkeypatch)
+
+    with pytest.raises(data_cases.CaseDataUnavailable):
+        data_cases.load_all_cases(strict=True)
+
+
+def test_strict_load_returns_empty_for_missing_db(monkeypatch, tmp_path):
+    """DBファイル不在は「確定的に0件」。新規環境で例外にしてはいけない。"""
+    monkeypatch.setattr(data_cases, "_cloud_db_enabled", lambda: False)
+    monkeypatch.setattr(data_cases, "DB_PATH", str(tmp_path / "does_not_exist.db"))
+
+    assert data_cases.load_all_cases(strict=True) == []
+
+
+def test_write_preserves_cache_when_db_unreadable(monkeypatch, tmp_path, capsys):
+    """DBが読めない時に 0件集計を焼き付けず、既存キャッシュを返す。"""
+    cache = tmp_path / "dashboard_stats_cache.json"
+    _write(cache, 1174)
+    monkeypatch.setattr(data_cases, "DASHBOARD_STATS_CACHE_FILE", str(cache))
+    monkeypatch.setattr(data_cases, "_cloud_db_enabled", lambda: False)
+
+    def _boom(*_a, **_kw):
+        raise data_cases.CaseDataUnavailable("案件DBの読み込みに失敗しました")
+
+    monkeypatch.setattr(data_cases, "build_dashboard_stats_cache", _boom)
+
+    result = data_cases._write_dashboard_stats_cache_locked()
+
+    assert result["analysis"]["closed_count"] == 1174
+    assert "更新を見送り" in capsys.readouterr().err
+    assert json.loads(cache.read_text(encoding="utf-8"))["analysis"]["closed_count"] == 1174
+
+
+def test_guardrail_reports_unavailable_instead_of_crashing(monkeypatch):
+    from system_guardrails import _audit_stats_cache_consistency
+
+    monkeypatch.setattr(
+        data_cases, "load_dashboard_stats_cache", lambda: {"analysis": {"closed_count": 1174}}
+    )
+
+    def _boom():
+        raise data_cases.CaseDataUnavailable("案件DBの読み込みに失敗しました")
+
+    monkeypatch.setattr(data_cases, "build_dashboard_stats_cache", _boom)
+    monkeypatch.setattr(data_cases, "load_department_stats_cache", lambda: None)
+
+    issues = _audit_stats_cache_consistency()
+
+    assert len(issues) == 1
+    assert issues[0]["kind"] == "stats_cache_unavailable"
+    assert issues[0]["severity"] == "warning"

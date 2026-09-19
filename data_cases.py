@@ -197,9 +197,24 @@ def append_consultation_memory(user_text: str, assistant_text: str):
         pass
 
 
-def load_all_cases():
+class CaseDataUnavailable(RuntimeError):
+    """案件DBの読み込みに失敗し、結果が「0件」なのか「取得不能」なのか
+    判定できない状態。
+
+    load_all_cases() は例外を握り潰して部分的に読めた分（多くは空リスト）を
+    返すため、呼び出し側からは正常な0件と区別できない。これを集計して
+    永続化すると誤った0件がキャッシュに焼き付く（2026-09-19 実障害の一般形）。
+    キャッシュへ書き込む経路だけが strict=True でこの例外を受け取る。
+    """
+
+
+def load_all_cases(strict: bool = False):
     """過去案件を全件読み込み（past_cases のみ）。
     統計用の screening_records は集計バッチ（aggregate_stats_from_past_cases.py）で別途管理。
+
+    strict=True の時、DB読み込みが例外で失敗したら CaseDataUnavailable を送出する。
+    DBファイルが存在しない場合は「確定的に0件」（新規環境）なので送出せず [] を返す。
+    不定な失敗だけを例外にするのが境界線。
     """
     import sqlite3
 
@@ -222,6 +237,8 @@ def load_all_cases():
                     continue
     except Exception as e:
         print(f"[Error in load_all_cases]: {e}", file=sys.stderr)
+        if strict:
+            raise CaseDataUnavailable(f"案件DBの読み込みに失敗しました: {e}") from e
     return cases
 
 
@@ -351,7 +368,7 @@ def _amount_to_display_million(value: float | None) -> float | None:
 
 def build_department_stats_cache() -> dict:
     """営業部ダッシュボード用の軽量集計を作る。"""
-    all_cases = load_all_cases()
+    all_cases = load_all_cases(strict=True)
     dept_buckets: dict[str, dict] = {}
     industry_set: set[str] = set()
 
@@ -628,7 +645,7 @@ def build_dashboard_stats_cache(limit_recent_cases: int = 15) -> dict:
     except Exception:
         analysis = {}
 
-    all_cases = load_all_cases()
+    all_cases = load_all_cases(strict=True)
     recent_cases = [_compact_recent_case(c) for c in reversed(all_cases[-limit_recent_cases:])] if all_cases else []
 
     closed_cases = analysis.get("closed_cases") or []
@@ -752,7 +769,14 @@ def load_dashboard_stats_cache() -> dict | None:
 
 
 def _write_dashboard_stats_cache_locked() -> dict | None:
-    payload = build_dashboard_stats_cache()
+    try:
+        payload = build_dashboard_stats_cache()
+    except CaseDataUnavailable as e:
+        print(
+            f"[stats_cache] dashboard: 案件DBが読めないため更新を見送りました ({e})",
+            file=sys.stderr,
+        )
+        return load_dashboard_stats_cache()
     path = _stats_cache_path(DASHBOARD_STATS_CACHE_FILE)
     if _reject_degenerate_write(path, payload, ("analysis", "closed_count"), "dashboard"):
         return load_dashboard_stats_cache()
@@ -791,7 +815,14 @@ def load_department_stats_cache() -> dict | None:
 
 
 def _write_department_stats_cache_locked() -> dict | None:
-    payload = build_department_stats_cache()
+    try:
+        payload = build_department_stats_cache()
+    except CaseDataUnavailable as e:
+        print(
+            f"[stats_cache] department: 案件DBが読めないため更新を見送りました ({e})",
+            file=sys.stderr,
+        )
+        return load_department_stats_cache()
     path = _stats_cache_path(DEPARTMENT_STATS_CACHE_FILE)
     if _reject_degenerate_write(path, payload, ("overall", "total_count"), "department"):
         return load_department_stats_cache()
