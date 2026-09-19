@@ -2015,7 +2015,7 @@ def clear_all_pending_cases(background_tasks: BackgroundTasks):
                 "DELETE FROM past_cases "
                 "WHERE COALESCE(NULLIF(final_status, ''), '未登録') IN ('未登録', '稟議中', 'スコアリングのみ')"
             )
-        refresh_stats_caches()
+        refresh_stats_caches(allow_shrink=True)
         try:
             for item in _list_cloudrun_score_pending_cases(limit=200):
                 item_id = str(item.get("id") or "")
