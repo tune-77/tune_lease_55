@@ -32,10 +32,8 @@ data/*.sqlite*
 data/*.jsonl
 data/backups
 data/*.backup_*
-data/dashboard_stats_cache.json
-data/dashboard_stats_cache.cloud.json
-data/department_stats_cache.json
-data/department_stats_cache.cloud.json
+data/dashboard_stats_cache*.json*
+data/department_stats_cache*.json*
 !.cloudrun_bundle/
 !.cloudrun_bundle/**
 !.cloudrun_bundle/data/

@@ -40,10 +40,8 @@ data/identity_experiment/
 data/aurion_daily/state_*.json
 data/backups/
 data/.fuse_hidden*
-data/dashboard_stats_cache.json
-data/dashboard_stats_cache.cloud.json
-data/department_stats_cache.json
-data/department_stats_cache.cloud.json
+data/dashboard_stats_cache*.json*
+data/department_stats_cache*.json*
 data/runtime_cache/
 data/shion_self_analysis_cache.json
 data/lease_news_metrics.json

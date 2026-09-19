@@ -282,7 +282,7 @@ def _audit_stats_cache_consistency() -> list[dict]:
             live_dashboard = build_dashboard_stats_cache()
         except CaseDataUnavailable as e:
             issues.append({
-                "severity": "warning",
+                "severity": "warn",
                 "kind": "stats_cache_unavailable",
                 "message": "案件DBが読めないため dashboard_stats_cache.json の整合性を検証できません"
                 f"（{e}）。DB接続とDATABASE_URLを確認してください。",
@@ -306,7 +306,7 @@ def _audit_stats_cache_consistency() -> list[dict]:
             live_department = build_department_stats_cache()
         except CaseDataUnavailable as e:
             issues.append({
-                "severity": "warning",
+                "severity": "warn",
                 "kind": "stats_cache_unavailable",
                 "message": "案件DBが読めないため department_stats_cache.json の整合性を検証できません"
                 f"（{e}）。DB接続とDATABASE_URLを確認してください。",

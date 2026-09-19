@@ -288,4 +288,4 @@ def test_guardrail_reports_unavailable_instead_of_crashing(monkeypatch):
 
     assert len(issues) == 1
     assert issues[0]["kind"] == "stats_cache_unavailable"
-    assert issues[0]["severity"] == "warning"
+    assert issues[0]["severity"] == "warn"
