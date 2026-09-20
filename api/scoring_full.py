@@ -191,7 +191,10 @@ def _run_full_scoring_api_locked(inputs: dict) -> dict:
         "sales_dept": str(inputs.get("sales_dept", "未設定")),
         "lease_term": int(inputs.get("lease_term", 60)),
         "acquisition_cost": float(inputs.get("acquisition_cost", 0)),
-        "asset_score": float(inputs.get("asset_score", 50.0)),
+        # asset_score は未入力を None で受ける（api/schemas.py）。dict.get の default は
+        # キーが無い時しか効かず、値が None だと float(None) で TypeError になる。
+        # 0.0 は正当なスコアなので `or` ではなく None 判定で既定値へ落とす。
+        "asset_score": 50.0 if inputs.get("asset_score") is None else float(inputs["asset_score"]),
         "industry_major": str(inputs.get("industry_major", "G 情報通信業")),
         "industry_sub": str(inputs.get("industry_sub", "39 情報サービス業")),
         "selected_major": str(inputs.get("industry_major", "G 情報通信業")),

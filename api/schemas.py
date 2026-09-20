@@ -42,7 +42,10 @@ class ScoringRequest(BaseModel):
     lease_term: int = Field(default=60, description="契約期間")
     acquisition_cost: float = Field(default=0, description="取得価格")
 
-    asset_score: Optional[float] = Field(default=50.0, description="物件スコア（0-100）")
+    # default を 50.0 にすると「未入力」と「50と入力」が境界で区別できなくなり、
+    # scoring_core.py:755 の used_default_asset_score が決して立たない。
+    # 未入力は None のまま下流へ渡し、既定値 50.0 は scoring 側で補完する。
+    asset_score: Optional[float] = Field(default=None, description="物件スコア（0-100）。未入力は None")
     selected_asset_id: Optional[str] = Field(default="", description="選択物件ID")
     asset_name: Optional[str] = Field(default="", description="対象物件名")
     asset_detail: Optional[str] = Field(default="", description="型式・メーカー・仕様など")
