@@ -143,6 +143,28 @@ def test_low_confidence_is_reported_not_suppressed():
     assert set(meta["low_confidence_items"]) == set(scores)
 
 
+@pytest.mark.parametrize("confidence", [-0.1, 1.5, float("nan"), float("inf")])
+def test_invalid_confidence_is_rejected(confidence):
+    with pytest.raises(guard.TypeSafeAssetError):
+        guard.judge_asset(
+            _asset(), request_fn=lambda _: _answers(2.0, confidence=confidence)
+        )
+
+
+@pytest.mark.parametrize("human_score", [-1, 101, float("nan"), float("inf")])
+def test_fixture_rejects_human_score_outside_finite_zero_to_100(human_score):
+    rows = [
+        {
+            "name": "大型トラック",
+            "detail": "",
+            "category": "車両",
+            "human_score": human_score,
+        }
+    ]
+
+    assert measure._validate(rows) == ["[0] human_score が0〜100の有限値でない"]
+
+
 # --- fail-open ------------------------------------------------------------
 
 

@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sqlite3
 import statistics
 import sys
@@ -372,9 +373,12 @@ def _validate(rows: list[dict[str, Any]]) -> list[str]:
         except guard.TypeSafeAssetError:
             problems.append(f"[{index}] 未知のカテゴリ: {category!r}")
         try:
-            float(row["human_score"])
+            human_score = float(row["human_score"])
         except (KeyError, TypeError, ValueError):
             problems.append(f"[{index}] human_score が数値でない")
+            continue
+        if not math.isfinite(human_score) or not 0.0 <= human_score <= 100.0:
+            problems.append(f"[{index}] human_score が0〜100の有限値でない")
     return problems
 
 
