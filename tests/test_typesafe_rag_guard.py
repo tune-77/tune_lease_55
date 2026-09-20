@@ -1,3 +1,4 @@
+import json
 import time
 
 import pytest
@@ -168,6 +169,47 @@ def test_default_request_bounds_a_hanging_network_call(monkeypatch):
     elapsed = time.monotonic() - start
 
     assert elapsed < 3.0
+
+
+def test_filter_logs_usage_only_when_opted_in(monkeypatch, tmp_path):
+    log_path = tmp_path / "usage.jsonl"
+    monkeypatch.delenv("TYPESAFE_RAG_USAGE_LOG_PATH", raising=False)
+    hits = [{"path": "best.md", "snippet": "直接的な回答根拠"}]
+
+    def fake_request(_payload):
+        return {
+            "model": "jev-test",
+            "usage": {"input_tokens": 10, "output_tokens": 2},
+            "answers": _answers_for(
+                [{"relevant": 0.9, "evidence": 0.9, "contradicts": 0.1, "injection": 0.1}]
+            ),
+        }
+
+    trg.filter_hits_if_enabled("query", hits, request_fn=fake_request)
+    assert not log_path.exists()
+
+    monkeypatch.setenv("TYPESAFE_RAG_USAGE_LOG_PATH", str(log_path))
+    trg.filter_hits_if_enabled("query", hits, request_fn=fake_request)
+
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["status"] == "applied"
+    assert record["candidate_count"] == 1
+    assert record["accepted_count"] == 1
+    assert "timestamp" in record
+
+
+def test_filter_logs_fallback_status(monkeypatch, tmp_path):
+    log_path = tmp_path / "usage.jsonl"
+    monkeypatch.setenv("TYPESAFE_RAG_USAGE_LOG_PATH", str(log_path))
+    hits = [{"path": "original.md", "snippet": "original"}]
+
+    trg.filter_hits_if_enabled("query", hits, request_fn=lambda _payload: {"answers": []})
+
+    record = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["status"] == "fallback"
+    assert record["error_type"] == "TypeSafeRagError"
 
 
 def test_verify_citation_support_returns_typed_probability():
