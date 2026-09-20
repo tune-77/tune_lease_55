@@ -4,11 +4,13 @@ import safe_run
 from safe_run import action_safety_reason, host_is_allowed
 
 
-def _page(label="統計データを検索", *, role="button", kind="click"):
+def _page(label="統計データを検索", *, role="button", kind="click", href=None):
+    action = {"id": "e1", "kind": kind, "label": label, "role": role}
+    if href is not None:
+        action["href"] = href
     return {
-        "actions": [
-            {"id": "e1", "kind": kind, "label": label, "role": role}
-        ]
+        "url": "https://www.e-stat.go.jp/",
+        "actions": [action],
     }
 
 
@@ -32,6 +34,36 @@ def test_host_allowlist_accepts_only_domain_boundaries():
 
 def test_safe_search_click_is_allowed():
     assert action_safety_reason(_decision(), _page(), min_confidence=0.55)[0]
+
+
+def test_link_destination_is_checked_before_navigation():
+    safe, reason = action_safety_reason(
+        _decision(),
+        _page(role="link", href="https://example.com/collect"),
+        min_confidence=0.55,
+        allowed_hosts=("e-stat.go.jp",),
+    )
+    assert not safe
+    assert "outside the allowlist" in reason
+
+    safe, _ = action_safety_reason(
+        _decision(),
+        _page(role="link", href="/stat-search"),
+        min_confidence=0.55,
+        allowed_hosts=("e-stat.go.jp",),
+    )
+    assert safe
+
+
+def test_link_without_observed_destination_is_blocked():
+    safe, reason = action_safety_reason(
+        _decision(),
+        _page(role="link"),
+        min_confidence=0.55,
+        allowed_hosts=("e-stat.go.jp",),
+    )
+    assert not safe
+    assert "not observed" in reason
 
 
 def test_login_and_submission_are_blocked():
@@ -74,6 +106,7 @@ def test_low_confidence_wait_is_safe_but_bounded_by_runner():
 
 
 def test_text_model_key_can_be_loaded_from_keychain(monkeypatch):
+    monkeypatch.setattr(safe_run.sys, "platform", "darwin")
     monkeypatch.delenv("TEXT_MODEL_API_KEY", raising=False)
     monkeypatch.setenv("TEXT_MODEL_API_KEYCHAIN_SERVICE", "test-text-service")
     monkeypatch.setattr(

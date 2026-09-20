@@ -85,11 +85,24 @@ def selected_action(
     return None
 
 
+def action_destination(
+    action: Mapping[str, Any], page: Mapping[str, Any]
+) -> str:
+    """Resolve an observed link target without activating it."""
+    attributes = action.get("attributes")
+    nested = attributes if isinstance(attributes, Mapping) else {}
+    raw_target = action.get("href") or action.get("url") or nested.get("href")
+    if not raw_target:
+        return ""
+    return urllib.parse.urljoin(str(page.get("url") or ""), str(raw_target))
+
+
 def action_safety_reason(
     decision: Mapping[str, Any],
     page: Mapping[str, Any],
     *,
     min_confidence: float,
+    allowed_hosts: Sequence[str] = (),
 ) -> tuple[bool, str]:
     operation = str(decision.get("operation") or "")
     if operation not in SAFE_OPERATIONS:
@@ -115,6 +128,14 @@ def action_safety_reason(
     blocked = next((term for term in BLOCKED_LABEL_TERMS if term in label), None)
     if blocked:
         return False, f"blocked label term: {blocked}"
+
+    if operation == "CLICK" and allowed_hosts:
+        role = str(action.get("role") or "").lower()
+        destination = action_destination(action, page)
+        if role == "link" and not destination:
+            return False, "link destination was not observed before navigation"
+        if destination and not host_is_allowed(destination, allowed_hosts):
+            return False, f"link destination is outside the allowlist: {destination}"
 
     if operation == "TYPE_TEXT":
         role = str(action.get("role") or "").lower()
@@ -201,6 +222,10 @@ def run(args: argparse.Namespace) -> int:
     with Agent(args.url, args.goal) as agent:
         initial = agent.snapshot()
         print(json.dumps(public_snapshot(initial), ensure_ascii=False, indent=2))
+        initial_url = str((initial.get("page") or {}).get("url") or "")
+        if not host_is_allowed(initial_url, allowed_hosts):
+            print(f"STOPPED: initial navigation left the allowlist: {initial_url}")
+            return 2
         if not args.auto:
             print("DRY RUN: no model call or browser action was executed")
             return 0
@@ -222,6 +247,7 @@ def run(args: argparse.Namespace) -> int:
                 decision,
                 state.get("page") or {},
                 min_confidence=args.min_confidence,
+                allowed_hosts=allowed_hosts,
             )
             summary = {
                 "operation": decision.get("operation"),
