@@ -33,6 +33,8 @@
     <string>1</string>
     <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>
     <string>typesafe-api-key</string>
+    <key>TYPESAFE_RAG_USAGE_LOG_PATH</key>
+    <string>data/typesafe_rag_usage.jsonl</string>
   </dict>
 
   <key>RunAtLoad</key>

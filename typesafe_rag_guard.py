@@ -8,11 +8,13 @@ must keep deterministic retrieval and fallback behavior in code.
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import math
 import os
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -269,6 +271,19 @@ def judge_passages(
     }
 
 
+def _log_usage(metadata: Mapping[str, Any]) -> None:
+    """Append one usage record for effectiveness reporting; a no-op unless opted in."""
+    log_path = str(os.environ.get("TYPESAFE_RAG_USAGE_LOG_PATH") or "").strip()
+    if not log_path:
+        return
+    record = {"timestamp": datetime.now(timezone.utc).isoformat(), **metadata}
+    try:
+        with open(log_path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def filter_hits_if_enabled(
     query: str,
     hits: Sequence[Mapping[str, Any]],
@@ -280,9 +295,13 @@ def filter_hits_if_enabled(
     if request_fn is None and not typesafe_rag_enabled():
         return original, {"status": "disabled"}
     try:
-        return judge_passages(query, original, request_fn=request_fn)
+        filtered, metadata = judge_passages(query, original, request_fn=request_fn)
     except Exception as exc:
-        return original, {"status": "fallback", "error_type": type(exc).__name__}
+        metadata = {"status": "fallback", "error_type": type(exc).__name__}
+        _log_usage(metadata)
+        return original, metadata
+    _log_usage(metadata)
+    return filtered, metadata
 
 
 def verify_citation_support(
