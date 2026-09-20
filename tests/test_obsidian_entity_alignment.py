@@ -27,6 +27,22 @@ def test_load_notes_only_reads_safe_included_roots(tmp_path: Path) -> None:
     assert notes[0].path == "03-知識_業界/残価.md"
 
 
+def test_load_notes_strips_crlf_frontmatter_with_spaced_delimiter(tmp_path: Path) -> None:
+    _write_note(
+        tmp_path / "03-知識_業界" / "公開.md",
+        "---  \r\ntitle: 公開タイトル\r\naliases: [公開別名]\r\n# customer-123\r\n--- \t\r\n"
+        "# 本文タイトル\r\n## 公開見出し\r\n",
+    )
+
+    notes = alignment.load_notes(tmp_path)
+
+    assert len(notes) == 1
+    assert notes[0].title == "公開タイトル"
+    assert notes[0].aliases == ("公開別名",)
+    assert notes[0].outline == ("本文タイトル", "公開見出し")
+    assert "customer-123" not in notes[0].public_state()["outline"]
+
+
 def test_load_notes_excludes_sensitive_nested_directories(tmp_path: Path) -> None:
     _write_note(tmp_path / "03-知識_業界" / "公開.md", "# 公開\n一般知識")
     _write_note(
