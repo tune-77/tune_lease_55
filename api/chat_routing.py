@@ -2,7 +2,41 @@
 
 from __future__ import annotations
 
+import json
+import math
+import os
+import re
+from collections.abc import Callable, Mapping
 from typing import Any
+
+
+QUESTION_CATEGORIES = ("lease_screening", "lease_knowledge", "general", "news_summarize")
+TYPESAFE_ROUTING_MODES = {"off", "shadow", "enforce"}
+TYPESAFE_ROUTING_DEFAULT_CONFIDENCE = 0.85
+
+RoutingRequestFn = Callable[[dict[str, Any]], Mapping[str, Any]]
+
+
+def shion_query_class_from_category(category: str) -> dict[str, Any]:
+    """Map an existing chat route to the legacy query-class log shape without AI."""
+    mapping = {
+        "general": ("auto", "一般知識で直接回答できる分類"),
+        "lease_knowledge": ("discuss", "ナレッジ参照が必要な分類"),
+        "news_summarize": ("discuss", "記事取得と要約処理が必要な分類"),
+        "lease_screening": ("review", "個別審査として慎重な確認が必要"),
+        "improvement": ("discuss", "改善メモとして整理とレビューが必要"),
+    }
+    recommendation, reason = mapping.get(
+        str(category or "").strip(),
+        ("review", "カテゴリ不明のため確認が必要"),
+    )
+    return {
+        "recommendation": recommendation,
+        "reason": reason,
+        "type": str(category or "unknown"),
+        "save": False,
+        "provider": "deterministic_category",
+    }
 
 
 def is_lightweight_chat_observation(message: str) -> bool:
@@ -34,19 +68,10 @@ def is_lightweight_chat_observation(message: str) -> bool:
     return any(term in text for term in causal_terms) and any(term in text for term in business_terms)
 
 
-def classify_question(message: str) -> str:
-    """Classify a chat question into lease_screening/lease_knowledge/general/news_summarize."""
+def _legacy_classify_question(message: str) -> str:
+    """Preserve the existing Gemini classifier as the baseline and fallback."""
     import json as _json
     import re as _re
-
-    news_keywords = ("ニュースを要約", "記事を要約", "このニュース", "要約して保存", "ニュース保存", "要約してobsidian", "要約してメモ")
-    low = message.lower()
-    if any(k in message for k in news_keywords):
-        return "news_summarize"
-    if ("http://" in low or "https://" in low) and ("要約" in message or "まとめ" in message or "保存" in message):
-        return "news_summarize"
-    if is_lightweight_chat_observation(message):
-        return "general"
 
     try:
         from api.chat_memory import call_gemini_chat as _g
@@ -64,11 +89,159 @@ def classify_question(message: str) -> str:
         m = _re.search(r'\{[^}]+\}', raw)
         if m:
             cat = _json.loads(m.group()).get("category", "lease_knowledge")
-            if cat in ("lease_screening", "lease_knowledge", "general", "news_summarize"):
+            if cat in QUESTION_CATEGORIES:
                 return cat
     except Exception as exc:
         print(f"[classify_question] エラー: {exc}")
     return "lease_knowledge"
+
+
+def typesafe_routing_mode(environ: Mapping[str, str] | None = None) -> str:
+    """Return the configured rollout mode; invalid values fail closed to off."""
+    env = os.environ if environ is None else environ
+    mode = str(env.get("TYPESAFE_ROUTING_MODE") or "off").strip().lower()
+    return mode if mode in TYPESAFE_ROUTING_MODES else "off"
+
+
+def build_question_classification_request(
+    message: str,
+    *,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Build a narrow Choice request without conversation history or user identity."""
+    return {
+        "state": {"message": str(message or "")[:1200]},
+        "model": model or os.environ.get("TYPESAFE_MODEL", "jev-latest"),
+        "questions": {
+            "category": {
+                "type": "choice",
+                "instructions": "Which single category best describes the user's current request in `message`?",
+                "criteria": {
+                    "news_summarize": "Summarize or save a supplied news article, URL, or article text.",
+                    "lease_screening": "Assess, score, approve, reject, or analyze a specific lease case or credit decision.",
+                    "lease_knowledge": "Explain or research lease knowledge, accounting, rates, assets, subsidies, or industry trends.",
+                    "general": "General conversation or a request not materially about lease knowledge or lease screening.",
+                },
+            }
+        },
+    }
+
+
+def judge_question_category(
+    message: str,
+    *,
+    request_fn: RoutingRequestFn | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Ask Jev for one typed category and return only safe operational metadata."""
+    if request_fn is None:
+        from typesafe_rag_guard import request_system_one
+
+        request_fn = request_system_one
+    payload = build_question_classification_request(message, model=model)
+    body = request_fn(payload)
+    answers = body.get("answers")
+    answer = answers.get("category") if isinstance(answers, Mapping) else None
+    if not isinstance(answer, Mapping):
+        raise ValueError("TypeSafe routing response is missing category")
+    category = str(answer.get("choice") or "")
+    if category not in QUESTION_CATEGORIES:
+        raise ValueError("TypeSafe routing response contains an unknown category")
+    try:
+        confidence = float(answer.get("confidence"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("TypeSafe routing response has invalid confidence") from exc
+    if not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+        raise ValueError("TypeSafe routing confidence is outside [0, 1]")
+    return {
+        "category": category,
+        "confidence": confidence,
+        "model": str(body.get("model") or payload["model"]),
+        "usage": dict(body.get("usage") or {}),
+    }
+
+
+def _routing_confidence_threshold(environ: Mapping[str, str] | None = None) -> float:
+    env = os.environ if environ is None else environ
+    try:
+        value = float(env.get("TYPESAFE_ROUTING_CONFIDENCE", TYPESAFE_ROUTING_DEFAULT_CONFIDENCE))
+    except (TypeError, ValueError):
+        return TYPESAFE_ROUTING_DEFAULT_CONFIDENCE
+    if not math.isfinite(value):
+        return TYPESAFE_ROUTING_DEFAULT_CONFIDENCE
+    return min(1.0, max(0.0, value))
+
+
+def _typesafe_screening_allowed(environ: Mapping[str, str] | None = None) -> bool:
+    env = os.environ if environ is None else environ
+    return str(env.get("TYPESAFE_ALLOW_SCREENING") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def is_potentially_sensitive_screening_message(message: str) -> bool:
+    """Conservatively identify case-specific text before any external classifier call."""
+    text = str(message or "")
+    sensitive_terms = (
+        "審査", "案件", "稟議", "承認", "否決", "与信", "信用判断", "債務", "延滞",
+        "財務", "決算", "売上", "利益", "赤字", "債務超過", "返済", "銀行支援",
+        "取引先", "顧客", "代表者", "申込人", "保証人", "案件番号", "顧客番号",
+        "氏名", "住所", "生年月日", "電話番号", "メールアドレス", "契約番号",
+    )
+    if any(term in text for term in sensitive_terms):
+        return True
+    return bool(
+        re.search(r"(?:株式会社|有限会社|合同会社|[A-ZＡ-Ｚ]{1,10}[\s　]*社)", text)
+        or re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", text)
+        or re.search(r"\b0\d{1,4}-\d{1,4}-\d{3,4}\b", text)
+        or re.search(r"(?:案件|顧客|申込|契約)[#＃:：\s-]*[A-Za-z0-9-]{4,}", text)
+        or re.search(r"\d[\d,，.]*\s*(?:円|万円|億円)", text)
+    )
+
+
+def classify_question(message: str) -> str:
+    """Classify a chat question, optionally comparing or enforcing a Jev Choice."""
+    news_keywords = ("ニュースを要約", "記事を要約", "このニュース", "要約して保存", "ニュース保存", "要約してobsidian", "要約してメモ")
+    low = message.lower()
+    if any(k in message for k in news_keywords):
+        return "news_summarize"
+    if ("http://" in low or "https://" in low) and ("要約" in message or "まとめ" in message or "保存" in message):
+        return "news_summarize"
+    if is_lightweight_chat_observation(message):
+        return "general"
+
+    mode = typesafe_routing_mode()
+    if mode == "off":
+        return _legacy_classify_question(message)
+    if not _typesafe_screening_allowed() and is_potentially_sensitive_screening_message(message):
+        return _legacy_classify_question(message)
+
+    # Shadow mode deliberately pays for both providers so agreement can be
+    # measured. Enforce mode avoids the Gemini baseline unless Jev is uncertain
+    # or unavailable, which is the cost-saving path.
+    baseline = _legacy_classify_question(message) if mode == "shadow" else None
+    try:
+        judgment = judge_question_category(message)
+    except Exception as exc:
+        print(f"[TypeSafeRouting] fallback error_type={type(exc).__name__}")
+        return baseline or _legacy_classify_question(message)
+
+    comparison = {
+        "mode": mode,
+        "baseline": baseline,
+        "typesafe": judgment["category"],
+        "agreement": baseline == judgment["category"] if baseline is not None else None,
+        "confidence": round(float(judgment["confidence"]), 4),
+        "model": judgment["model"],
+        "usage": judgment["usage"],
+    }
+    print(f"[TypeSafeRouting] {json.dumps(comparison, ensure_ascii=False, separators=(',', ':'))}")
+    if mode == "enforce" and judgment["confidence"] >= _routing_confidence_threshold():
+        return str(judgment["category"])
+    return baseline or _legacy_classify_question(message)
 
 
 CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {

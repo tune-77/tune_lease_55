@@ -6396,25 +6396,15 @@ def _cap_system_prompt(prompt: str, *, surface: str) -> str:
     return result
 
 
-def _log_shion_query_class(message: str) -> None:
-    """shion_classify の結果を data/chat_logs.jsonl に非同期で記録する（レスポンス遅延なし）。"""
+def _log_shion_query_class(message: str, question_category: str) -> None:
+    """Record the already-computed chat category without a second model call."""
     import json as _json
     from datetime import datetime, timezone
 
     def _run() -> None:
-        # 分類と書き込みを個別に堅牢化（REV-090）: 分類が失敗してもデフォルト分類で
-        # 必ずログ行を残し、書き込み失敗は握り潰さずに記録する。
-        result: dict
-        try:
-            from lease_intelligence_mind import shion_classify
-            result = shion_classify(message[:500], "chat_query")
-        except Exception as exc:
-            result = {
-                "recommendation": "review",
-                "reason": f"分類呼び出し失敗: {type(exc).__name__}",
-                "type": "unknown",
-                "save": False,
-            }
+        from api.chat_routing import shion_query_class_from_category
+
+        result = shion_query_class_from_category(question_category)
         try:
             log_path = Path(__file__).parent.parent / "data" / "chat_logs.jsonl"
             log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -6463,7 +6453,6 @@ def post_chat(req: ChatRequest):
     """汎用チャット：メッセージを受け取り、会話履歴付きでGeminiへ送信して返答する。"""
     if not req.message.strip():
         raise HTTPException(status_code=422, detail="message は空にできません")
-    _log_shion_query_class(req.message)
     _log_information_weighting_shadow(
         req.message,
         source="api_chat_user_message",
@@ -6543,6 +6532,7 @@ def post_chat(req: ChatRequest):
         )
 
         if (req.intent or "").strip().lower() == "improvement":
+            _log_shion_query_class(req.message, "improvement")
             save_message(req.user_id, "user", req.message)
             original_text = req.message.strip()
             organized_text = ""
@@ -6690,6 +6680,7 @@ def post_chat(req: ChatRequest):
             ),
         )
         question_category = context_state.question_category
+        _log_shion_query_class(req.message, question_category)
         basic_lease_question_context = context_state.basic_lease_question_context
         context_mode = context_state.context_mode
         context_budget = context_state.context_budget
@@ -7130,6 +7121,7 @@ def post_chat(req: ChatRequest):
         rag_knowledge_refs = retrieval.rag_knowledge_refs
         vertex_agent_search = retrieval.vertex_agent_search
         vertex_answer_api = retrieval.vertex_answer_api
+        typesafe_rag = retrieval.typesafe_rag
 
         external_research = {"used": False}
         research_suggestion = build_external_research_suggestion(
@@ -7626,6 +7618,7 @@ def post_chat(req: ChatRequest):
                 user_personal_memory=user_personal_memory_payload,
                 vertex_ai_search=vertex_agent_search,
                 vertex_answer_api=vertex_answer_api,
+                typesafe_rag=typesafe_rag,
             )
         return response_payload
     except Exception as e:

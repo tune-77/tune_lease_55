@@ -39,6 +39,86 @@ def test_parse_llm_output_defensive():
     assert llm.parse_llm_output("JSONじゃない返答") == {}
 
 
+def test_typesafe_triage_requires_explicit_rollout_mode():
+    assert llm.typesafe_triage_mode({}) == "off"
+    assert llm.typesafe_triage_mode({"TYPESAFE_TRIAGE_MODE": "enforce"}) == "enforce"
+    assert llm.typesafe_triage_mode({"TYPESAFE_TRIAGE_MODE": "unexpected"}) == "off"
+
+
+def test_typesafe_request_uses_one_choice_per_candidate():
+    rows = [
+        {
+            "item_id": "REV-1",
+            "title": "認証フロー見直し",
+            "reason": "影響が広い",
+            "rule": "later",
+        },
+        {
+            "item_id": "REV-2",
+            "title": "表示ラベル修正",
+            "reason": "誤字",
+            "rule": "today",
+        },
+    ]
+    payload = llm.build_typesafe_request(rows, model="jev-test")
+
+    assert payload["model"] == "jev-test"
+    assert payload["state"]["candidates"][0]["item_id"] == "REV-1"
+    assert set(payload["questions"]) == {"item_0", "item_1"}
+    assert payload["questions"]["item_0"]["type"] == "choice"
+    assert set(payload["questions"]["item_0"]["criteria"]) == {"today", "later", "discard"}
+
+
+def test_parse_typesafe_output_skips_low_confidence_and_invalid_answers():
+    rows = [
+        {"item_id": "REV-1"},
+        {"item_id": "REV-2"},
+        {"item_id": "REV-3"},
+    ]
+    body = {
+        "answers": {
+            "item_0": {"type": "choice", "choice": "later", "confidence": 0.91},
+            "item_1": {"type": "choice", "choice": "today", "confidence": 0.40},
+            "item_2": {"type": "choice", "choice": "unknown", "confidence": 0.99},
+        }
+    }
+
+    assert llm.parse_typesafe_output(body, rows, confidence_threshold=0.70) == {
+        "REV-1": {
+            "decision": "later",
+            "reason": "影響範囲または副作用の確認が必要と判定",
+            "confidence": 0.91,
+        }
+    }
+
+
+def test_build_typesafe_proposals_records_provider_and_confidence():
+    candidates = [_candidate("REV-401", "表示ラベルの整理")]
+
+    proposals, meta = llm.build_typesafe_proposals(
+        candidates,
+        {},
+        request_fn=lambda _payload: {
+            "model": "jev-test",
+            "answers": {
+                "item_0": {"type": "choice", "choice": "later", "confidence": 0.93},
+            },
+            "usage": {"input_tokens": 42},
+        },
+    )
+
+    assert proposals[0]["decision"] == "later"
+    assert proposals[0]["model_provider"] == "typesafe"
+    assert proposals[0]["confidence"] == 0.93
+    assert meta == {
+        "status": "applied",
+        "model": "jev-test",
+        "candidate_count": 1,
+        "accepted_count": 1,
+        "usage": {"input_tokens": 42},
+    }
+
+
 def test_build_proposals_only_diffs_and_skips_user_confirmed():
     candidates = [
         _candidate("REV-401", "表示ラベルの整理"),          # rule=today

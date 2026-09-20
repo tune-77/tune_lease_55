@@ -29,6 +29,16 @@
     <string>0</string>
     <key>SHION_ENABLE_VERTEX_TOOLS</key>
     <string>1</string>
+    <key>TYPESAFE_RAG_ENABLED</key>
+    <string>1</string>
+    <key>TYPESAFE_ROUTING_MODE</key>
+    <string>enforce</string>
+    <key>TYPESAFE_ROUTING_CONFIDENCE</key>
+    <string>0.85</string>
+    <key>TYPESAFE_RECIPE_CLASSIFY_ENABLED</key>
+    <string>1</string>
+    <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>
+    <string>typesafe-api-key</string>
   </dict>
 
   <key>RunAtLoad</key>
