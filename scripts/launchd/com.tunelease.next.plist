@@ -30,7 +30,7 @@
     <key>SHION_ENABLE_VERTEX_TOOLS</key>
     <string>1</string>
     <key>TYPESAFE_RAG_ENABLED</key>
-    <string>1</string>
+    <string>0</string>
     <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>
     <string>typesafe-api-key</string>
   </dict>
