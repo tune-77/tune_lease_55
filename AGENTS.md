@@ -18,6 +18,20 @@ AIチャットからObsidian/Vaultを参照する処理を実装・変更する�
 
 「Obsidianに保存」「Vaultに保存」と言われた時の保存先判定は `.claude/skills/obsidian-save/SKILL.md` を参照。
 
+## Obsidian Entity Alignment Standard
+
+Reason: 文字列類似だけの過剰リンクと、AIへ全Vaultを送る運用の両方を避け、低コストかつ意味的に妥当なWiki整理を継続する。
+Scope: Obsidianノートの重複検出、統合、Relatedリンク追加・整理を行う時。
+Retirement: 同等以上のローカル候補抽出・型付き意味判定・人間確認を一体化した後継パイプラインへ移行した時。
+
+- 標準手順は「ローカルで候補抽出 → Jev/TypeSafeで意味判定 → 確認済みの変更だけ反映」とする。
+- ローカル処理ではタイトル、aliases、tags、既存リンクを使って候補を絞り込み、決定的な検索・除外・ファイル操作はコード側に残す。
+- Jevへ送る情報はタイトル、aliases、tags、H1〜H3見出しに限定し、本文、絶対パス、Vault内相対パス、案件データ、秘密情報は送らない。
+- JevのScoreは「別物／関連／重複」の意味判定、Noulは同一対象・同一結論・矛盾の補助判定に使う。
+- Jevが利用不能な場合はローカル候補レポートまでで停止し、自動統合しない。
+- リンク追加・統合・削除は判定結果を確認してから行う。統合時は正本、aliases、参照元の付け替えを確認し、削除は復元可能なArchive移動を優先する。
+- 実行手順と安全境界は `docs/obsidian_entity_alignment.md` を参照する。
+
 ## External Helper Tool Rule
 
 Reason: `context7` と `taste-skill` は有用だが、既存の RAG・記憶・UI ワークフローと役割が重なるため、常時依存にすると不安定化しやすい。
