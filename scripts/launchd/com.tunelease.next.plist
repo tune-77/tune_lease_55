@@ -35,6 +35,8 @@
     <string>typesafe-api-key</string>
     <key>TYPESAFE_RAG_USAGE_LOG_PATH</key>
     <string>data/typesafe_rag_usage.jsonl</string>
+    <key>TYPESAFE_ROUTING_MODE</key>
+    <string>shadow</string>
   </dict>
 
   <key>RunAtLoad</key>
