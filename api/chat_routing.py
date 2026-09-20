@@ -188,6 +188,8 @@ def is_potentially_sensitive_screening_message(message: str) -> bool:
     sensitive_terms = (
         "審査", "案件", "稟議", "承認", "否決", "与信", "信用判断", "債務", "延滞",
         "財務", "決算", "売上", "利益", "赤字", "債務超過", "返済", "銀行支援",
+        "自己資本", "純資産", "年収", "所得", "借入", "借金", "現預金", "預金",
+        "資本金", "決算書", "貸借対照表", "損益計算書", "通せますか", "採否",
         "取引先", "顧客", "代表者", "申込人", "保証人", "案件番号", "顧客番号",
         "氏名", "住所", "生年月日", "電話番号", "メールアドレス", "契約番号",
     )
@@ -195,6 +197,8 @@ def is_potentially_sensitive_screening_message(message: str) -> bool:
         return True
     return bool(
         re.search(r"(?:株式会社|有限会社|合同会社|[A-ZＡ-Ｚ]{1,10}[\s　]*社)", text)
+        or re.search(r"[一-龯]{2,20}(?:商店|工業|建設|運輸|物流|製作所|医院|クリニック|事務所)", text)
+        or re.search(r"[一-龯]{2,4}(?:さん|様|氏|は年収|の年収)", text)
         or re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", text)
         or re.search(r"\b0\d{1,4}-\d{1,4}-\d{3,4}\b", text)
         or re.search(r"(?:案件|顧客|申込|契約)[#＃:：\s-]*[A-Za-z0-9-]{4,}", text)

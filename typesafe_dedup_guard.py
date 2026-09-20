@@ -55,8 +55,22 @@ _SENSITIVE_MARKERS = (
     "保証人",
     "代表者名",
     "担当者名",
+    "氏名",
+    "住所",
+    "生年月日",
+    "自己資本",
+    "純資産",
+    "年収",
+    "所得",
+    "借入",
+    "現預金",
+    "決算書",
 )
 _COMPANY_RE = re.compile(r"(?:株式会社|有限会社|合同会社|[A-ZＡ-Ｚ][\s　]*社)")
+_BUSINESS_NAME_RE = re.compile(
+    r"[一-龯]{2,20}(?:商店|工業|建設|運輸|物流|製作所|医院|クリニック|事務所)"
+)
+_PERSON_NAME_RE = re.compile(r"[一-龯]{2,4}(?:さん|様|氏|は年収|の年収)")
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _PHONE_RE = re.compile(r"(?:^|\D)0\d{1,4}-\d{1,4}-\d{3,4}(?:\D|$)")
 _CASE_ID_RE = re.compile(r"(?:案件|顧客|申込|契約)[#＃:：\s-]*[A-Za-z0-9-]{4,}")
@@ -169,7 +183,15 @@ def is_safe_public_candidate(candidate: Mapping[str, Any]) -> bool:
         return False
     return not any(
         pattern.search(text)
-        for pattern in (_COMPANY_RE, _EMAIL_RE, _PHONE_RE, _CASE_ID_RE, _MONEY_RE)
+        for pattern in (
+            _COMPANY_RE,
+            _BUSINESS_NAME_RE,
+            _PERSON_NAME_RE,
+            _EMAIL_RE,
+            _PHONE_RE,
+            _CASE_ID_RE,
+            _MONEY_RE,
+        )
     )
 
 

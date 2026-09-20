@@ -180,6 +180,8 @@ def test_personal_and_financial_values_are_sensitive():
     assert chat_routing.is_potentially_sensitive_screening_message("契約番号 ABC-1234 を確認")
     assert chat_routing.is_potentially_sensitive_screening_message("金額は1,000万円です")
     assert chat_routing.is_potentially_sensitive_screening_message("メールはuser@example.com")
+    assert chat_routing.is_potentially_sensitive_screening_message("山田商店について、自己資本比率10%なら通せますか？")
+    assert chat_routing.is_potentially_sensitive_screening_message("鈴木太郎は年収500万です。評価して")
 
 
 def test_non_finite_routing_threshold_uses_safe_default(monkeypatch):

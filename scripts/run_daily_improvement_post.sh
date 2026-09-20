@@ -26,14 +26,6 @@ SCREENING_TERMS_REPORT_JSON="${PROJECT_ROOT}/reports/screening_terms_audit_lates
 LATEST_FILE="${PROJECT_ROOT}/reports/latest.json"
 PROMPT_FEEDBACK_LOG="${PROJECT_ROOT}/data/prompt_feedback_log.jsonl"
 JUDGMENT_ASSET_GRAPH_FREQUENCY="${JUDGMENT_ASSET_GRAPH_FREQUENCY:-weekly}"
-DETAILED_SIDECAR_REPORT_FREQUENCY="${DETAILED_SIDECAR_REPORT_FREQUENCY:-weekly}"
-
-RUN_DETAILED_SIDECAR_REPORTS=0
-if [ "${DETAILED_SIDECAR_REPORT_FREQUENCY}" = "daily" ]; then
-  RUN_DETAILED_SIDECAR_REPORTS=1
-elif [ "${DETAILED_SIDECAR_REPORT_FREQUENCY}" = "weekly" ] && [ "$(date +%u)" = "1" ]; then
-  RUN_DETAILED_SIDECAR_REPORTS=1
-fi
 
 build_reflection_delta() {
   "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_reflection_delta.py" \
@@ -146,26 +138,21 @@ echo "[育成] 昇格後の記憶鮮度を更新..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/update_shion_memory_freshness.py"; log_step "update_shion_memory_freshness_post_promotion" $?
 
 echo ""
-echo "[育成] 紫苑記憶の効果測定JSONを更新（人間向けはMemory Sentinelへ統合）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_effect_report.py" --json-only; log_step "build_shion_memory_effect_report" $?
+echo "[育成] 紫苑記憶の効果測定レポートを生成（観測のみ）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_effect_report.py"; log_step "build_shion_memory_effect_report" $?
 
 echo ""
-echo "[育成] 永続記憶監査JSONを更新（人間向けはMemory Sentinelへ統合）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/audit_persistent_memory.py" --json-only; log_step "audit_persistent_memory" $?
+echo "[育成] 永続記憶監査を生成（観測のみ）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/audit_persistent_memory.py"; log_step "audit_persistent_memory" $?
 
-if [ "${RUN_DETAILED_SIDECAR_REPORTS}" = "1" ]; then
-  echo ""
-  echo "[週次監査] scripts/ 配下の配線漏れを監査（読み取り専用・advisory）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/check_orphaned_scripts.py"; log_step "check_orphaned_scripts" $?
+echo ""
+echo "[監査] scripts/ 配下の配線漏れ（呼び出し元がないスクリプト）を監査（読み取り専用・advisory）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/check_orphaned_scripts.py"; log_step "check_orphaned_scripts" $?
 
-  echo ""
-  echo "[週次監査] AGENTS/skills/MEMORY の指示肥大化を監査（読み取り専用・自動削除なし）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_instruction_debt_report.py"
-  log_step "build_instruction_debt_report" $?
-else
-  echo "[週次監査] 詳細運用監査はスキップ（frequency=${DETAILED_SIDECAR_REPORT_FREQUENCY}、既存latestを使用）..."
-  log_step "detailed_ops_sidecars_skipped" 0
-fi
+echo ""
+echo "[監査] AGENTS/skills/MEMORY の指示肥大化を監査（読み取り専用・自動削除なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_instruction_debt_report.py"
+log_step "build_instruction_debt_report" $?
 
 echo ""
 echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
@@ -263,8 +250,7 @@ echo "[知識] OKFナレッジパックのRAG精度を評価（obsidian_memory_e
 echo ""
 echo "[記憶] Obsidian Memory Effectiveness を生成（保存→想起→使用→人間評価の状態を観測。自動反映なし）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_memory_effectiveness_report.py" \
-  --date "${PIPELINE_DATE}" \
-  --json-only
+  --date "${PIPELINE_DATE}"
 log_step "obsidian_memory_effectiveness_report" $?
 
 echo ""
@@ -340,27 +326,22 @@ echo "[評価] レビュー済み経験リプレイチェックリストをRefle
 "${PYTHON}" "${PROJECT_ROOT}/scripts/review_experience_replay_checklist.py"
 log_step "review_experience_replay_checklist" $?
 
-if [ "${RUN_DETAILED_SIDECAR_REPORTS}" = "1" ]; then
-  echo ""
-  echo "[週次育成] 判断資産A/B候補レポートを生成（勝者自動確定なし）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_ab_report.py"
-  log_step "build_judgment_asset_ab_report" $?
+echo ""
+echo "[育成] 判断資産A/B候補レポートを生成（勝者自動確定なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_ab_report.py"
+log_step "build_judgment_asset_ab_report" $?
 
-  echo ""
-  echo "[週次育成] 紫苑育成ブリーフを生成（自動昇格なし）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_growth_brief.py" \
-    --date "${PIPELINE_DATE}"
-  log_step "build_shion_growth_brief" $?
+echo ""
+echo "[育成] 紫苑育成ブリーフを生成（朝の確認用・自動昇格なし）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_growth_brief.py" \
+  --date "${PIPELINE_DATE}"
+log_step "build_shion_growth_brief" $?
 
-  echo ""
-  echo "[週次成長] 紫苑の期間成長判定を生成（判断資産グラフが参照）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_shion_growth.py" \
-    --end-date "${PIPELINE_DATE}"
-  log_step "evaluate_shion_growth" $?
-else
-  echo "[週次育成] A/B・育成ブリーフ・期間成長判定はスキップ（既存latestを使用）..."
-  log_step "detailed_growth_sidecars_skipped" 0
-fi
+echo ""
+echo "[成長] 紫苑の期間成長判定を生成（判断資産グラフのみが参照する末端）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_shion_growth.py" \
+  --end-date "${PIPELINE_DATE}"
+log_step "evaluate_shion_growth" $?
 
 RUN_JUDGMENT_ASSET_GRAPH=0
 if [ "${JUDGMENT_ASSET_GRAPH_FREQUENCY}" = "daily" ]; then
@@ -489,14 +470,10 @@ else
   log_step "sync_improvement_reports_post" 0
 fi
 
-if [ "${RUN_DETAILED_SIDECAR_REPORTS}" = "1" ]; then
-  echo ""
-  echo "[週次監査] Shion アーキテクチャ層監査を生成中（read-only）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_architecture_layer_audit.py" || true
-  log_step "build_shion_architecture_layer_audit" $?
-else
-  log_step "shion_architecture_layer_audit_skipped" 0
-fi
+echo ""
+echo "[監査] Shion アーキテクチャ層監査（read-only・harness/agents/improverの3層で強み/リスクを可視化）を生成中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_architecture_layer_audit.py" || true
+log_step "build_shion_architecture_layer_audit" $?
 
 echo ""
 echo "[保守] 追記ログのローテーション（しきい値超過分をアーカイブへ退避して縮約）..."

@@ -316,9 +316,17 @@ def build_typesafe_proposals(
     request_fn: Callable[[dict[str, Any]], Mapping[str, Any]] | None = None,
 ) -> tuple[list[dict], dict[str, Any]]:
     """Create proposals from one batched Jev request."""
-    rows = _candidate_rows(candidates, triage_latest)
+    import typesafe_dedup_guard as privacy
+
+    all_rows = _candidate_rows(candidates, triage_latest)
+    rows = [row for row in all_rows if privacy.is_safe_public_candidate(row)]
+    excluded_count = len(all_rows) - len(rows)
     if not rows:
-        return [], {"status": "skipped", "candidate_count": 0}
+        return [], {
+            "status": "skipped",
+            "candidate_count": 0,
+            "excluded_count": excluded_count,
+        }
     if request_fn is None:
         from typesafe_rag_guard import request_system_one
 
@@ -331,9 +339,38 @@ def build_typesafe_proposals(
         "status": "applied",
         "model": str(body.get("model") or payload["model"]),
         "candidate_count": len(rows),
+        "excluded_count": excluded_count,
         "accepted_count": len(decisions),
         "usage": dict(body.get("usage") or {}),
     }
+
+
+def _run_typesafe_shadow_comparison(
+    candidates: list[dict],
+    triage_latest: dict[str, dict],
+    gemini_proposals: list[dict],
+) -> None:
+    """Log a best-effort comparison without invalidating Gemini's result."""
+    try:
+        typesafe_proposals, meta = build_typesafe_proposals(candidates, triage_latest)
+    except Exception as exc:
+        print(f"[llm_triage] shadow=skipped error_type={type(exc).__name__}")
+        return
+    typesafe_map = {p["item_id"]: p["decision"] for p in typesafe_proposals}
+    gemini_map = {p["item_id"]: p["decision"] for p in gemini_proposals}
+    print(
+        "[llm_triage] shadow="
+        + json.dumps(
+            {
+                "typesafe": typesafe_map,
+                "gemini": gemini_map,
+                "agreement": typesafe_map == gemini_map,
+                "usage": meta.get("usage", {}),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    )
 
 
 def _gemini_proposals(root: Path, candidates: list[dict], triage_latest: dict[str, dict]) -> list[dict]:
@@ -375,22 +412,7 @@ def main() -> int:
             if not typesafe_available():
                 print("[llm_triage] shadow=skipped reason=typesafe_unavailable")
             else:
-                typesafe_proposals, meta = build_typesafe_proposals(candidates, triage_latest)
-                typesafe_map = {p["item_id"]: p["decision"] for p in typesafe_proposals}
-                gemini_map = {p["item_id"]: p["decision"] for p in proposals}
-                print(
-                    "[llm_triage] shadow="
-                    + json.dumps(
-                        {
-                            "typesafe": typesafe_map,
-                            "gemini": gemini_map,
-                            "agreement": typesafe_map == gemini_map,
-                            "usage": meta["usage"],
-                        },
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    )
-                )
+                _run_typesafe_shadow_comparison(candidates, triage_latest, proposals)
         else:
             os.environ.setdefault("TYPESAFE_API_KEYCHAIN_SERVICE", "typesafe-api-key")
             from typesafe_rag_guard import typesafe_available

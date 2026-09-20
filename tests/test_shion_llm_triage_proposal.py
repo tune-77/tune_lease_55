@@ -114,9 +114,49 @@ def test_build_typesafe_proposals_records_provider_and_confidence():
         "status": "applied",
         "model": "jev-test",
         "candidate_count": 1,
+        "excluded_count": 0,
         "accepted_count": 1,
         "usage": {"input_tokens": 42},
     }
+
+
+def test_build_typesafe_proposals_filters_unsafe_candidate_before_request():
+    candidates = [
+        _candidate("REV-401", "表示ラベルの整理"),
+        _candidate("REV-402", "山田商店の自己資本を確認"),
+    ]
+    captured = {}
+
+    def request(payload):
+        captured.update(payload)
+        return {
+            "model": "jev-test",
+            "answers": {
+                "item_0": {"type": "choice", "choice": "later", "confidence": 0.93},
+            },
+            "usage": {},
+        }
+
+    proposals, meta = llm.build_typesafe_proposals(candidates, {}, request_fn=request)
+
+    assert [row["item_id"] for row in captured["state"]["candidates"]] == ["REV-401"]
+    assert [proposal["item_id"] for proposal in proposals] == ["REV-401"]
+    assert meta["candidate_count"] == 1
+    assert meta["excluded_count"] == 1
+
+
+def test_typesafe_shadow_failure_preserves_gemini_proposals(monkeypatch, capsys):
+    gemini = [{"item_id": "REV-401", "decision": "later"}]
+    monkeypatch.setattr(
+        llm,
+        "build_typesafe_proposals",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("offline")),
+    )
+
+    llm._run_typesafe_shadow_comparison([], {}, gemini)
+
+    assert "shadow=skipped error_type=TimeoutError" in capsys.readouterr().out
+    assert gemini == [{"item_id": "REV-401", "decision": "later"}]
 
 
 def test_build_proposals_only_diffs_and_skips_user_confirmed():

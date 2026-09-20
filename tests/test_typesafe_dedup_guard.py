@@ -115,6 +115,8 @@ def test_build_pair_request_omits_local_metadata() -> None:
         {"title": "通知改善", "reason": "user@example.comへ送る"},
         {"title": "入力改善", "reason": "03-1234-5678"},
         {"title": "金額表示", "reason": "1,000万円"},
+        {"title": "山田商店の自己資本を確認", "reason": ""},
+        {"title": "鈴木太郎は年収500万", "reason": "評価する"},
     ],
 )
 def test_privacy_screen_rejects_case_and_personal_data(candidate) -> None:
