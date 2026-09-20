@@ -101,14 +101,16 @@ DB には2つの入力フォームの履歴が混在する。
 ```bash
 python3 experiments/typesafe_asset/measure.py --seed     # DB から教師データ生成
 python3 experiments/typesafe_asset/measure.py            # 件数・分布の確認（通信なし）
-python3 experiments/typesafe_asset/measure.py --inspect  # 送信ペイロードを全文表示
+python3 experiments/typesafe_asset/measure.py --inspect  # 全文表示＋承認トークン発行
 TYPESAFE_ASSET_ENABLED=1 TYPESAFE_API_KEY=... \
-  python3 experiments/typesafe_asset/measure.py --send   # 送信
+  python3 experiments/typesafe_asset/measure.py --send \
+  --approval-token '<inspectで表示された値>'             # 別実行で送信
 python3 experiments/typesafe_asset/measure.py --sweep results/judged_*.json
 ```
 
-`--inspect` で全文を目視してから `--send` する2段ゲート。`--send` は
-`TYPESAFE_ASSET_ENABLED` と API キーの両方が揃っていなければ何もせず終了する。
+`--inspect` で全文を目視すると、送信内容に結び付いた承認トークンが表示される。
+`--send` は別の実行で同じトークンを指定し、さらに `TYPESAFE_ASSET_ENABLED` と
+API キーの両方が揃わなければ何もせず終了する。fixtureを変更するとトークンも変わる。
 **現時点で `--send` は一度も実行していない。**
 
 再開する場合、`admit_row()` を書き換えて `--seed` をやり直せばコーパスを切り直せる
