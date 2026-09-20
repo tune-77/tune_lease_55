@@ -14,6 +14,10 @@ classified_by=llm の「提案」記録を data/shion_improvement_triage.jsonl �
 使い方:
   python scripts/shion_llm_triage_proposal.py --dry-run
   python scripts/shion_llm_triage_proposal.py --apply
+
+TypeSafe/Jev:
+  TYPESAFE_TRIAGE_MODE=enforce でJevを優先し、障害時だけGeminiへ戻す。
+  shadow は比較のみ、off（既定）は従来どおりGeminiを使う。
 """
 
 from __future__ import annotations
@@ -23,8 +27,9 @@ import datetime as dt
 import json
 import os
 import sys
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Callable
+from typing import Any
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
@@ -40,6 +45,11 @@ from shion_triage import (  # noqa: E402
 
 VALID_DECISIONS = {"today", "later", "discard"}
 MAX_CANDIDATES = 12
+TYPESAFE_TRIAGE_MODES = {"off", "shadow", "enforce"}
+# This only creates non-binding proposals; user-confirmed decisions remain authoritative.
+# Jev confidence measures distribution concentration, so 0.55 is intentionally more
+# permissive than the threshold used for operational chat routing.
+DEFAULT_TYPESAFE_CONFIDENCE = 0.55
 
 
 def repo_root() -> Path:
@@ -96,6 +106,103 @@ def call_gemini(prompt: str, api_key: str) -> str:
     return response.text or ""
 
 
+def typesafe_triage_mode(environ: Mapping[str, str] | None = None) -> str:
+    """Return the explicit rollout mode; unset or invalid configuration stays off."""
+    env = os.environ if environ is None else environ
+    mode = str(env.get("TYPESAFE_TRIAGE_MODE") or "off").strip().lower()
+    return mode if mode in TYPESAFE_TRIAGE_MODES else "off"
+
+
+def _typesafe_confidence_threshold(environ: Mapping[str, str] | None = None) -> float:
+    env = os.environ if environ is None else environ
+    try:
+        value = float(env.get("TYPESAFE_TRIAGE_CONFIDENCE", DEFAULT_TYPESAFE_CONFIDENCE))
+    except (TypeError, ValueError):
+        return DEFAULT_TYPESAFE_CONFIDENCE
+    if not 0.0 <= value <= 1.0:
+        return DEFAULT_TYPESAFE_CONFIDENCE
+    return value
+
+
+def build_typesafe_request(rows: list[dict], *, model: str | None = None) -> dict[str, Any]:
+    """Build one batched Choice request; code keeps all execution policy."""
+    questions: dict[str, dict[str, Any]] = {}
+    public_rows: list[dict[str, str]] = []
+    for index, row in enumerate(rows):
+        public_rows.append(
+            {
+                "item_id": str(row["item_id"])[:80],
+                "title": str(row["title"])[:120],
+                "reason": str(row["reason"])[:400],
+                "rule_decision": str(row["rule"]),
+            }
+        )
+        questions[f"item_{index}"] = {
+            "type": "choice",
+            "instructions": (
+                f"Classify improvement candidate `candidates[{index}]` by the safest next action. "
+                "Choose one outcome even when it differs from `rule_decision`."
+            ),
+            "criteria": {
+                "today": (
+                    "A small, reversible, low-risk improvement suitable for today, such as wording, "
+                    "guidance, or a narrow UI correction with limited side effects."
+                ),
+                "later": (
+                    "Needs broader review or has meaningful side effects; includes database, API, "
+                    "scoring, authentication, deployment, or model behavior changes."
+                ),
+                "discard": (
+                    "Already applied, duplicate, obsolete, unsupported by the candidate evidence, "
+                    "or too low-value to keep."
+                ),
+            },
+        }
+    return {
+        "state": {"candidates": public_rows},
+        "model": model or os.environ.get("TYPESAFE_MODEL", "jev-latest"),
+        "questions": questions,
+    }
+
+
+def parse_typesafe_output(
+    body: Mapping[str, Any],
+    rows: list[dict],
+    *,
+    confidence_threshold: float | None = None,
+) -> dict[str, dict]:
+    """Convert typed Choice answers into the existing decision contract."""
+    answers = body.get("answers")
+    if not isinstance(answers, Mapping):
+        raise ValueError("TypeSafe triage response is missing answers")
+    threshold = _typesafe_confidence_threshold() if confidence_threshold is None else confidence_threshold
+    decisions: dict[str, dict] = {}
+    reason_by_decision = {
+        "today": "小さく安全で、今日対応できる改善と判定",
+        "later": "影響範囲または副作用の確認が必要と判定",
+        "discard": "重複・陳腐化・価値不足の可能性が高いと判定",
+    }
+    for index, row in enumerate(rows):
+        answer = answers.get(f"item_{index}")
+        if not isinstance(answer, Mapping):
+            continue
+        decision = str(answer.get("choice") or "").strip().lower()
+        try:
+            confidence = float(answer.get("confidence"))
+        except (TypeError, ValueError):
+            continue
+        if decision not in VALID_DECISIONS or not 0.0 <= confidence <= 1.0:
+            continue
+        if confidence < threshold:
+            continue
+        decisions[str(row["item_id"])] = {
+            "decision": decision,
+            "reason": reason_by_decision[decision],
+            "confidence": confidence,
+        }
+    return decisions
+
+
 def parse_llm_output(text: str) -> dict[str, dict]:
     """LLM 出力から {item_id: {decision, reason}} を防御的に取り出す。"""
     text = text.strip()
@@ -128,12 +235,7 @@ def parse_llm_output(text: str) -> dict[str, dict]:
     return result
 
 
-def build_proposals(
-    candidates: list[dict],
-    triage_latest: dict[str, dict],
-    llm_fn: Callable[[str], str],
-) -> list[dict]:
-    """LLM がルールと異なる判断をした候補についてのみ提案記録を作る。"""
+def _candidate_rows(candidates: list[dict], triage_latest: dict[str, dict]) -> list[dict]:
     rows: list[dict] = []
     for item in candidates[:MAX_CANDIDATES]:
         record = triage_record_for_item(triage_latest, item)
@@ -153,10 +255,19 @@ def build_proposals(
                 "existing": record,
             }
         )
-    if not rows:
-        return []
+    return rows
 
-    decisions = parse_llm_output(llm_fn(build_prompt(rows)))
+
+def _candidate_identity(candidate: Mapping[str, Any]) -> str:
+    return str(candidate.get("canonical_key") or candidate.get("id") or "").strip()
+
+
+def _proposals_from_decisions(
+    rows: list[dict],
+    decisions: Mapping[str, Mapping[str, Any]],
+    *,
+    provider: str,
+) -> list[dict]:
     now = dt.datetime.now().isoformat(timespec="seconds")
     proposals: list[dict] = []
     for row in rows:
@@ -172,19 +283,131 @@ def build_proposals(
             and str(existing.get("decision") or "") == verdict["decision"]
         ):
             continue  # 同じ提案の再追記はしない（冪等）
-        proposals.append(
-            {
-                "canonical_key": row["canonical_key"],
-                "item_id": row["item_id"],
-                "title": row["title"],
-                "decision": verdict["decision"],
-                "rule_decision": row["rule"],
-                "classified_by": "llm",
-                "reason": verdict["reason"],
-                "decided_at": now,
-            }
-        )
+        proposal = {
+            "canonical_key": row["canonical_key"],
+            "item_id": row["item_id"],
+            "title": row["title"],
+            "decision": verdict["decision"],
+            "rule_decision": row["rule"],
+            "classified_by": "llm",
+            "reason": verdict["reason"],
+            "decided_at": now,
+            "model_provider": provider,
+        }
+        if "confidence" in verdict:
+            proposal["confidence"] = round(float(verdict["confidence"]), 4)
+        proposals.append(proposal)
     return proposals
+
+
+def build_proposals(
+    candidates: list[dict],
+    triage_latest: dict[str, dict],
+    llm_fn: Callable[[str], str],
+) -> list[dict]:
+    """LLM がルールと異なる判断をした候補についてのみ提案記録を作る。"""
+    rows = _candidate_rows(candidates, triage_latest)
+    if not rows:
+        return []
+    decisions = parse_llm_output(llm_fn(build_prompt(rows)))
+    return _proposals_from_decisions(rows, decisions, provider="gemini")
+
+
+def build_typesafe_proposals(
+    candidates: list[dict],
+    triage_latest: dict[str, dict],
+    *,
+    request_fn: Callable[[dict[str, Any]], Mapping[str, Any]] | None = None,
+) -> tuple[list[dict], dict[str, Any]]:
+    """Create proposals from one batched Jev request."""
+    import typesafe_dedup_guard as privacy
+
+    all_rows = _candidate_rows(candidates, triage_latest)
+    rows = [row for row in all_rows if privacy.is_safe_public_candidate(row)]
+    excluded_count = len(all_rows) - len(rows)
+    safe_keys = {str(row["canonical_key"]) for row in rows}
+    excluded_keys = [
+        str(row["canonical_key"]) for row in all_rows if str(row["canonical_key"]) not in safe_keys
+    ]
+    if not rows:
+        return [], {
+            "status": "skipped",
+            "candidate_count": 0,
+            "excluded_count": excluded_count,
+            "excluded_keys": excluded_keys,
+            "accepted_count": 0,
+            "usage": {},
+        }
+    if request_fn is None:
+        from typesafe_rag_guard import request_system_one
+
+        request_fn = request_system_one
+    payload = build_typesafe_request(rows)
+    body = request_fn(payload)
+    decisions = parse_typesafe_output(body, rows)
+    proposals = _proposals_from_decisions(rows, decisions, provider="typesafe")
+    return proposals, {
+        "status": "applied",
+        "model": str(body.get("model") or payload["model"]),
+        "candidate_count": len(rows),
+        "excluded_count": excluded_count,
+        "excluded_keys": excluded_keys,
+        "accepted_count": len(decisions),
+        "usage": dict(body.get("usage") or {}),
+    }
+
+
+def _run_typesafe_shadow_comparison(
+    candidates: list[dict],
+    triage_latest: dict[str, dict],
+    gemini_proposals: list[dict],
+) -> None:
+    """Log a best-effort comparison without invalidating Gemini's result."""
+    try:
+        typesafe_proposals, meta = build_typesafe_proposals(candidates, triage_latest)
+    except Exception as exc:
+        print(f"[llm_triage] shadow=skipped error_type={type(exc).__name__}")
+        return
+    typesafe_map = {p["item_id"]: p["decision"] for p in typesafe_proposals}
+    gemini_map = {p["item_id"]: p["decision"] for p in gemini_proposals}
+    print(
+        "[llm_triage] shadow="
+        + json.dumps(
+            {
+                "typesafe": typesafe_map,
+                "gemini": gemini_map,
+                "agreement": typesafe_map == gemini_map,
+                "usage": meta.get("usage", {}),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    )
+
+
+def _gemini_filtered_fallback(
+    root: Path,
+    candidates: list[dict],
+    triage_latest: dict[str, dict],
+    excluded_keys: Sequence[str],
+) -> list[dict]:
+    """Keep locally filtered candidates on the pre-existing Gemini path."""
+    excluded = set(excluded_keys)
+    filtered = [item for item in candidates if _candidate_identity(item) in excluded]
+    if not filtered:
+        return []
+    return _gemini_proposals(root, filtered, triage_latest)
+
+
+def _gemini_proposals(root: Path, candidates: list[dict], triage_latest: dict[str, dict]) -> list[dict]:
+    api_key = _get_gemini_api_key(root)
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+    try:
+        import google.generativeai  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError("google-generativeai is not installed") from exc
+    return build_proposals(candidates, triage_latest, lambda p: call_gemini(p, api_key))
 
 
 def main() -> int:
@@ -200,22 +423,58 @@ def main() -> int:
         print("[llm_triage] 改善候補がありません（スキップ）")
         return 0
 
-    api_key = _get_gemini_api_key(root)
-    if not api_key:
-        print("[llm_triage] GEMINI_API_KEY 未設定のためLLM提案をスキップします")
-        return 0
-    try:
-        import google.generativeai  # noqa: F401
-    except ImportError:
-        print("[llm_triage] google-generativeai 未インストールのためスキップします")
-        return 0
-
     triage_latest = load_triage_latest(root)
+    mode = typesafe_triage_mode()
+    proposals: list[dict]
     try:
-        proposals = build_proposals(candidates, triage_latest, lambda p: call_gemini(p, api_key))
+        if mode == "off":
+            proposals = _gemini_proposals(root, candidates, triage_latest)
+            print("[llm_triage] provider=gemini mode=off")
+        elif mode == "shadow":
+            proposals = _gemini_proposals(root, candidates, triage_latest)
+            os.environ.setdefault("TYPESAFE_API_KEYCHAIN_SERVICE", "typesafe-api-key")
+            from typesafe_rag_guard import typesafe_available
+
+            if not typesafe_available():
+                print("[llm_triage] shadow=skipped reason=typesafe_unavailable")
+            else:
+                _run_typesafe_shadow_comparison(candidates, triage_latest, proposals)
+        else:
+            os.environ.setdefault("TYPESAFE_API_KEYCHAIN_SERVICE", "typesafe-api-key")
+            from typesafe_rag_guard import typesafe_available
+
+            if not typesafe_available():
+                raise RuntimeError("TypeSafe credential is not configured")
+            proposals, meta = build_typesafe_proposals(candidates, triage_latest)
+            excluded_keys = list(meta.get("excluded_keys") or [])
+            if excluded_keys:
+                try:
+                    proposals.extend(
+                        _gemini_filtered_fallback(
+                            root, candidates, triage_latest, excluded_keys
+                        )
+                    )
+                except Exception as exc:
+                    print(
+                        "[llm_triage] filtered_fallback=skipped "
+                        f"error_type={type(exc).__name__}"
+                    )
+            print(
+                "[llm_triage] provider=typesafe "
+                f"mode={mode} candidates={meta['candidate_count']} accepted={meta['accepted_count']} "
+                f"usage={json.dumps(meta['usage'], ensure_ascii=False, separators=(',', ':'))}"
+            )
     except Exception as exc:
-        print(f"[llm_triage] LLM呼び出しに失敗しました（提案なしで継続）: {exc}")
-        return 0
+        if mode == "enforce":
+            print(f"[llm_triage] TypeSafe失敗のためGeminiへフォールバック: {type(exc).__name__}")
+            try:
+                proposals = _gemini_proposals(root, candidates, triage_latest)
+            except Exception as fallback_exc:
+                print(f"[llm_triage] LLM呼び出しに失敗しました（提案なしで継続）: {type(fallback_exc).__name__}")
+                return 0
+        else:
+            print(f"[llm_triage] LLM呼び出しに失敗しました（提案なしで継続）: {type(exc).__name__}")
+            return 0
 
     for proposal in proposals:
         print(

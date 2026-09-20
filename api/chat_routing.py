@@ -17,6 +17,28 @@ TYPESAFE_ROUTING_DEFAULT_CONFIDENCE = 0.85
 RoutingRequestFn = Callable[[dict[str, Any]], Mapping[str, Any]]
 
 
+def shion_query_class_from_category(category: str) -> dict[str, Any]:
+    """Map an existing chat route to the legacy query-class log shape without AI."""
+    mapping = {
+        "general": ("auto", "一般知識で直接回答できる分類"),
+        "lease_knowledge": ("discuss", "ナレッジ参照が必要な分類"),
+        "news_summarize": ("discuss", "記事取得と要約処理が必要な分類"),
+        "lease_screening": ("review", "個別審査として慎重な確認が必要"),
+        "improvement": ("discuss", "改善メモとして整理とレビューが必要"),
+    }
+    recommendation, reason = mapping.get(
+        str(category or "").strip(),
+        ("review", "カテゴリ不明のため確認が必要"),
+    )
+    return {
+        "recommendation": recommendation,
+        "reason": reason,
+        "type": str(category or "unknown"),
+        "save": False,
+        "provider": "deterministic_category",
+    }
+
+
 def is_lightweight_chat_observation(message: str) -> bool:
     """Return True for short conversational observations that do not need RAG."""
     text = str(message or "").strip()
@@ -166,14 +188,21 @@ def is_potentially_sensitive_screening_message(message: str) -> bool:
     sensitive_terms = (
         "審査", "案件", "稟議", "承認", "否決", "与信", "信用判断", "債務", "延滞",
         "財務", "決算", "売上", "利益", "赤字", "債務超過", "返済", "銀行支援",
+        "自己資本", "純資産", "年収", "所得", "借入", "借金", "現預金", "預金",
+        "資本金", "決算書", "貸借対照表", "損益計算書", "通せますか", "採否",
         "取引先", "顧客", "代表者", "申込人", "保証人", "案件番号", "顧客番号",
+        "氏名", "住所", "生年月日", "電話番号", "メールアドレス", "契約番号",
     )
     if any(term in text for term in sensitive_terms):
         return True
     return bool(
         re.search(r"(?:株式会社|有限会社|合同会社|[A-ZＡ-Ｚ]{1,10}[\s　]*社)", text)
+        or re.search(r"[一-龯]{2,20}(?:商店|工業|建設|運輸|物流|製作所|医院|クリニック|事務所)", text)
+        or re.search(r"[一-龯]{2,4}(?:さん|様|氏|は年収|の年収)", text)
         or re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", text)
         or re.search(r"\b0\d{1,4}-\d{1,4}-\d{3,4}\b", text)
+        or re.search(r"(?:案件|顧客|申込|契約)[#＃:：\s-]*[A-Za-z0-9-]{4,}", text)
+        or re.search(r"\d[\d,，.]*\s*(?:円|万円|億円)", text)
     )
 
 
@@ -188,25 +217,27 @@ def classify_question(message: str) -> str:
     if is_lightweight_chat_observation(message):
         return "general"
 
-    baseline = _legacy_classify_question(message)
     mode = typesafe_routing_mode()
     if mode == "off":
-        return baseline
-    if not _typesafe_screening_allowed() and (
-        baseline == "lease_screening" or is_potentially_sensitive_screening_message(message)
-    ):
-        return baseline
+        return _legacy_classify_question(message)
+    if not _typesafe_screening_allowed() and is_potentially_sensitive_screening_message(message):
+        return _legacy_classify_question(message)
+
+    # Shadow mode deliberately pays for both providers so agreement can be
+    # measured. Enforce mode avoids the Gemini baseline unless Jev is uncertain
+    # or unavailable, which is the cost-saving path.
+    baseline = _legacy_classify_question(message) if mode == "shadow" else None
     try:
         judgment = judge_question_category(message)
     except Exception as exc:
         print(f"[TypeSafeRouting] fallback error_type={type(exc).__name__}")
-        return baseline
+        return baseline or _legacy_classify_question(message)
 
     comparison = {
         "mode": mode,
         "baseline": baseline,
         "typesafe": judgment["category"],
-        "agreement": baseline == judgment["category"],
+        "agreement": baseline == judgment["category"] if baseline is not None else None,
         "confidence": round(float(judgment["confidence"]), 4),
         "model": judgment["model"],
         "usage": judgment["usage"],
@@ -214,7 +245,7 @@ def classify_question(message: str) -> str:
     print(f"[TypeSafeRouting] {json.dumps(comparison, ensure_ascii=False, separators=(',', ':'))}")
     if mode == "enforce" and judgment["confidence"] >= _routing_confidence_threshold():
         return str(judgment["category"])
-    return baseline
+    return baseline or _legacy_classify_question(message)
 
 
 CHAT_CONTEXT_BUDGETS: dict[str, dict[str, Any]] = {

@@ -1905,6 +1905,99 @@ _SHION_CLASSIFY_DEFAULT: dict[str, Any] = {
 }
 
 
+def build_typesafe_recipe_classification_request(
+    context_text: str,
+    *,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Build the typed replacement for the Gemini recipe classifier."""
+    return {
+        "state": {"improvement": str(context_text or "")[:1600]},
+        "model": model or os.environ.get("TYPESAFE_MODEL", "jev-latest"),
+        "questions": {
+            "recommendation": {
+                "type": "choice",
+                "instructions": (
+                    "Choose the safest handling route for the improvement described in `improvement`."
+                ),
+                "criteria": {
+                    "auto": (
+                        "A small reversible frontend wording, style, or narrowly scoped display change "
+                        "whose target files and exact edit are clear."
+                    ),
+                    "discuss": (
+                        "A change involving scoring, database, API logic, authentication, deployment, "
+                        "models, multiple subsystems, or meaningful side effects."
+                    ),
+                    "review": (
+                        "The requested change, target, evidence, or risk is too unclear to act on safely."
+                    ),
+                },
+            }
+        },
+    }
+
+
+def _classify_recipe_with_typesafe(
+    context_text: str,
+    *,
+    request_fn=None,
+    confidence_threshold: float = 0.85,
+) -> dict[str, Any] | None:
+    """Return a high-confidence Jev recipe route, otherwise let Gemini handle it."""
+    try:
+        import math
+
+        import typesafe_dedup_guard as privacy
+        from typesafe_rag_guard import request_system_one, typesafe_available
+
+        if str(os.environ.get("TYPESAFE_RECIPE_CLASSIFY_ENABLED", "1")).strip().lower() not in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            return None
+        if not privacy.is_safe_public_candidate({"title": context_text, "reason": ""}):
+            return None
+        os.environ.setdefault("TYPESAFE_API_KEYCHAIN_SERVICE", "typesafe-api-key")
+        if request_fn is None and not typesafe_available():
+            return None
+        payload = build_typesafe_recipe_classification_request(context_text)
+        body = (request_fn or request_system_one)(payload)
+        answers = body.get("answers") if isinstance(body, dict) else None
+        answer = answers.get("recommendation") if isinstance(answers, dict) else None
+        if not isinstance(answer, dict):
+            return None
+        recommendation = str(answer.get("choice") or "")
+        confidence = float(answer.get("confidence"))
+        if (
+            recommendation not in {"auto", "discuss", "review"}
+            or not math.isfinite(confidence)
+            or confidence < confidence_threshold
+        ):
+            return None
+        reason = {
+            "auto": "小さく可逆的な表示変更として自動対応可能",
+            "discuss": "影響範囲が広く複数観点での確認が必要",
+            "review": "対象・根拠・リスクが不明確で人の確認が必要",
+        }[recommendation]
+        print(
+            "[ShionClassify] provider=typesafe "
+            f"recommendation={recommendation} confidence={confidence:.4f} "
+            f"usage={json.dumps(body.get('usage') or {}, ensure_ascii=False, separators=(',', ':'))}"
+        )
+        return {
+            "recommendation": recommendation,
+            "reason": reason,
+            "confidence": round(confidence, 4),
+            "provider": "typesafe",
+        }
+    except Exception as exc:
+        print(f"[ShionClassify] TypeSafe fallback error_type={type(exc).__name__}")
+        return None
+
+
 def _call_gemini_for_classify(prompt: str) -> str | None:
     """Gemini APIを呼び出してテキストを返す。失敗時はNone。"""
     import urllib.request as _urllib_request
@@ -2022,6 +2115,10 @@ def shion_classify(context_text: str, context_type: str = "general") -> dict[str
     import re as _re
 
     try:
+        if context_type == "recipe":
+            typed = _classify_recipe_with_typesafe(context_text)
+            if typed is not None:
+                return typed
         vault_path_str = os.environ.get("OBSIDIAN_VAULT_PATH", "").strip()
         vault: Path | None = Path(vault_path_str) if vault_path_str else None
         mind_context = build_mind_context(vault)

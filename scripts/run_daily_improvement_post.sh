@@ -387,8 +387,10 @@ echo "[監査] コミット済みモデルpickleの依存バージョン互換�
 "${PYTHON}" "${PROJECT_ROOT}/scripts/check_model_pickle_compat.py"; log_step "check_model_pickle_compat" $?
 
 echo ""
-echo "[提案] 紫苑（LLM）のトリアージ上書き提案（差分のみ・User確定は上書きしない）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/shion_llm_triage_proposal.py" --apply; log_step "shion_llm_triage_proposal" $?
+echo "[提案] 紫苑（Jev優先）のトリアージ上書き提案（差分のみ・User確定は上書きしない）..."
+TYPESAFE_TRIAGE_MODE="${TYPESAFE_TRIAGE_MODE:-enforce}" \
+TYPESAFE_API_KEYCHAIN_SERVICE="${TYPESAFE_API_KEYCHAIN_SERVICE:-typesafe-api-key}" \
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/shion_llm_triage_proposal.py" --apply; log_step "shion_llm_triage_proposal" $?
 
 echo ""
 echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チェック（repo applied を runtime へ補完）..."

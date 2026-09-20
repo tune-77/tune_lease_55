@@ -212,7 +212,9 @@ EXPORT_FILE="${EXPORT_FILE}" "${PYTHON}" "${PROJECT_ROOT}/scripts/check_aurion_s
 # 診断用の改善候補抽出
 echo ""
 echo "[診断] Obsidian 改善インデックスから改善案を抽出中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/extract_obsidian_improvements.py"
+TYPESAFE_DEDUP_ENABLED="${TYPESAFE_DEDUP_ENABLED:-1}" \
+TYPESAFE_API_KEYCHAIN_SERVICE="${TYPESAFE_API_KEYCHAIN_SERVICE:-typesafe-api-key}" \
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/extract_obsidian_improvements.py"
 STEP0_EXIT=$?
 log_step "extract_obsidian_improvements" ${STEP0_EXIT}
 if [ ${STEP0_EXIT} -ne 0 ]; then

@@ -39,6 +39,147 @@ def test_parse_llm_output_defensive():
     assert llm.parse_llm_output("JSONじゃない返答") == {}
 
 
+def test_typesafe_triage_requires_explicit_rollout_mode():
+    assert llm.typesafe_triage_mode({}) == "off"
+    assert llm.typesafe_triage_mode({"TYPESAFE_TRIAGE_MODE": "enforce"}) == "enforce"
+    assert llm.typesafe_triage_mode({"TYPESAFE_TRIAGE_MODE": "unexpected"}) == "off"
+
+
+def test_typesafe_request_uses_one_choice_per_candidate():
+    rows = [
+        {
+            "item_id": "REV-1",
+            "title": "認証フロー見直し",
+            "reason": "影響が広い",
+            "rule": "later",
+        },
+        {
+            "item_id": "REV-2",
+            "title": "表示ラベル修正",
+            "reason": "誤字",
+            "rule": "today",
+        },
+    ]
+    payload = llm.build_typesafe_request(rows, model="jev-test")
+
+    assert payload["model"] == "jev-test"
+    assert payload["state"]["candidates"][0]["item_id"] == "REV-1"
+    assert set(payload["questions"]) == {"item_0", "item_1"}
+    assert payload["questions"]["item_0"]["type"] == "choice"
+    assert set(payload["questions"]["item_0"]["criteria"]) == {"today", "later", "discard"}
+
+
+def test_parse_typesafe_output_skips_low_confidence_and_invalid_answers():
+    rows = [
+        {"item_id": "REV-1"},
+        {"item_id": "REV-2"},
+        {"item_id": "REV-3"},
+    ]
+    body = {
+        "answers": {
+            "item_0": {"type": "choice", "choice": "later", "confidence": 0.91},
+            "item_1": {"type": "choice", "choice": "today", "confidence": 0.40},
+            "item_2": {"type": "choice", "choice": "unknown", "confidence": 0.99},
+        }
+    }
+
+    assert llm.parse_typesafe_output(body, rows, confidence_threshold=0.70) == {
+        "REV-1": {
+            "decision": "later",
+            "reason": "影響範囲または副作用の確認が必要と判定",
+            "confidence": 0.91,
+        }
+    }
+
+
+def test_build_typesafe_proposals_records_provider_and_confidence():
+    candidates = [_candidate("REV-401", "表示ラベルの整理")]
+
+    proposals, meta = llm.build_typesafe_proposals(
+        candidates,
+        {},
+        request_fn=lambda _payload: {
+            "model": "jev-test",
+            "answers": {
+                "item_0": {"type": "choice", "choice": "later", "confidence": 0.93},
+            },
+            "usage": {"input_tokens": 42},
+        },
+    )
+
+    assert proposals[0]["decision"] == "later"
+    assert proposals[0]["model_provider"] == "typesafe"
+    assert proposals[0]["confidence"] == 0.93
+    assert meta == {
+        "status": "applied",
+        "model": "jev-test",
+        "candidate_count": 1,
+        "excluded_count": 0,
+        "excluded_keys": [],
+        "accepted_count": 1,
+        "usage": {"input_tokens": 42},
+    }
+
+
+def test_build_typesafe_proposals_filters_unsafe_candidate_before_request():
+    candidates = [
+        _candidate("REV-401", "表示ラベルの整理"),
+        _candidate("REV-402", "山田商店の自己資本を確認"),
+    ]
+    captured = {}
+
+    def request(payload):
+        captured.update(payload)
+        return {
+            "model": "jev-test",
+            "answers": {
+                "item_0": {"type": "choice", "choice": "later", "confidence": 0.93},
+            },
+            "usage": {},
+        }
+
+    proposals, meta = llm.build_typesafe_proposals(candidates, {}, request_fn=request)
+
+    assert [row["item_id"] for row in captured["state"]["candidates"]] == ["REV-401"]
+    assert [proposal["item_id"] for proposal in proposals] == ["REV-401"]
+    assert meta["candidate_count"] == 1
+    assert meta["excluded_count"] == 1
+
+
+def test_typesafe_shadow_failure_preserves_gemini_proposals(monkeypatch, capsys):
+    gemini = [{"item_id": "REV-401", "decision": "later"}]
+    monkeypatch.setattr(
+        llm,
+        "build_typesafe_proposals",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("offline")),
+    )
+
+    llm._run_typesafe_shadow_comparison([], {}, gemini)
+
+    assert "shadow=skipped error_type=TimeoutError" in capsys.readouterr().out
+    assert gemini == [{"item_id": "REV-401", "decision": "later"}]
+
+
+def test_filtered_candidates_use_existing_gemini_fallback(monkeypatch):
+    candidates = [
+        _candidate("REV-401", "表示ラベルの整理"),
+        _candidate("REV-402", "山田商店の自己資本を確認"),
+    ]
+    seen = []
+    monkeypatch.setattr(
+        llm,
+        "_gemini_proposals",
+        lambda _root, rows, _triage: seen.extend(rows) or [{"item_id": "REV-402"}],
+    )
+
+    result = llm._gemini_filtered_fallback(
+        llm.repo_root(), candidates, {}, ["key_rev-402"]
+    )
+
+    assert [row["id"] for row in seen] == ["REV-402"]
+    assert result == [{"item_id": "REV-402"}]
+
+
 def test_build_proposals_only_diffs_and_skips_user_confirmed():
     candidates = [
         _candidate("REV-401", "表示ラベルの整理"),          # rule=today
