@@ -33,7 +33,8 @@ VAULT_SCAN_EXCLUDE_DIR_NAMES: frozenset[str] = frozenset(
 
 
 def strip_frontmatter(text: str) -> str:
-    return re.sub(r"^---\n.*?\n---\n", "", text, flags=re.DOTALL)
+    """Remove the same frontmatter block accepted by ``parse_note_frontmatter``."""
+    return FRONTMATTER_RE.sub("", text, count=1)
 
 
 def safe_rel(path: Path, root: Path) -> str:
