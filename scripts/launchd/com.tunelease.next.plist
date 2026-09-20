@@ -30,9 +30,11 @@
     <key>SHION_ENABLE_VERTEX_TOOLS</key>
     <string>1</string>
     <key>TYPESAFE_RAG_ENABLED</key>
-    <string>0</string>
+    <string>1</string>
     <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>
     <string>typesafe-api-key</string>
+    <key>TYPESAFE_RAG_USAGE_LOG_PATH</key>
+    <string>data/typesafe_rag_usage.jsonl</string>
   </dict>
 
   <key>RunAtLoad</key>
