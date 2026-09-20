@@ -39,18 +39,34 @@ def test_load_notes_excludes_sensitive_nested_directories(tmp_path: Path) -> Non
     assert [note.title for note in notes] == ["公開"]
 
 
-def test_outline_skips_headings_inside_code_fences() -> None:
-    body = """# 公開見出し
-```markdown
-## 案件固有の秘密
-```
+def test_load_notes_skips_symlinked_notes(tmp_path: Path) -> None:
+    outside = tmp_path / "past_cases" / "customer-123.md"
+    _write_note(outside, "# 顧客案件\n非公開情報")
+    included = tmp_path / "03-知識_業界"
+    included.mkdir(parents=True)
+    (included / "公開名.md").symlink_to(outside)
+    _write_note(included / "通常.md", "# 通常\n一般知識")
+
+    notes = alignment.load_notes(tmp_path)
+
+    assert [note.title for note in notes] == ["通常"]
+
+
+def test_title_and_outline_skip_matching_code_fences() -> None:
+    body = """````markdown
+# 案件固有の秘密
 ~~~text
-### 顧客識別子
+## 案件固有の秘密
 ~~~
+```
+### 顧客識別子
+````
+# 公開タイトル
 ## 公開サブ見出し
 """
 
-    assert alignment._outline(body) == ("公開見出し", "公開サブ見出し")
+    assert alignment._note_title({}, body, Path("fallback.md")) == "公開タイトル"
+    assert alignment._outline(body) == ("公開タイトル", "公開サブ見出し")
 
 
 def test_load_notes_skips_a_note_that_times_out(tmp_path: Path, monkeypatch) -> None:
@@ -118,6 +134,38 @@ def test_existing_link_detection_accepts_full_path_and_filename_stem() -> None:
 
     assert len(pairs) == 1
     assert pairs[0].already_linked is True
+
+
+def test_existing_link_alone_qualifies_a_candidate_pair() -> None:
+    notes = [
+        alignment.NoteEntity("a.md", "残価評価", (), (), "", ("為替リスク",)),
+        alignment.NoteEntity("b.md", "為替リスク", (), (), "", ()),
+    ]
+
+    pairs = alignment.select_candidate_pairs(notes, min_similarity=0.9, max_pairs=10)
+
+    assert len(pairs) == 1
+    assert pairs[0].reasons == ("existing_link",)
+    assert pairs[0].already_linked is True
+
+
+def test_link_only_candidates_are_bounded() -> None:
+    notes = [
+        alignment.NoteEntity(
+            f"note-{index}.md",
+            f"固有題名{index}",
+            (),
+            (),
+            "",
+            (f"固有題名{index + 1}",) if index < 9 else (),
+        )
+        for index in range(10)
+    ]
+
+    pairs = alignment.select_candidate_pairs(notes, min_similarity=1.0, max_pairs=40)
+
+    assert len(pairs) == alignment.DEFAULT_MAX_LINKED_ONLY_PAIRS
+    assert all(pair.reasons == ("existing_link",) for pair in pairs)
 
 
 def test_candidate_selection_ignores_domain_wide_title_fragments() -> None:

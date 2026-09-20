@@ -66,6 +66,7 @@ MAX_TAGS = 20
 MAX_EXCERPT_CHARS = 1200
 DEFAULT_MIN_SIMILARITY = 0.18
 DEFAULT_MAX_PAIRS = 40
+DEFAULT_MAX_LINKED_ONLY_PAIRS = 5
 LOW_CONFIDENCE = 0.45
 CONTRADICTION_REVIEW_MIN = 0.70
 MACOS_DATALESS_FLAG = 0x40000000
@@ -129,7 +130,7 @@ def _note_title(meta: Mapping[str, Any], body: str, path: Path) -> str:
     frontmatter_title = str(meta.get("title") or "").strip()
     if frontmatter_title:
         return frontmatter_title
-    for line in body.splitlines():
+    for line in _unfenced_lines(body):
         if line.startswith("# "):
             heading = line[2:].strip()
             if heading:
@@ -137,15 +138,36 @@ def _note_title(meta: Mapping[str, Any], body: str, path: Path) -> str:
     return path.stem
 
 
+def _unfenced_lines(body: str) -> list[str]:
+    """Return Markdown lines outside matching backtick or tilde fences."""
+    lines: list[str] = []
+    fence_char = ""
+    fence_length = 0
+    for raw in body.splitlines():
+        if fence_char:
+            closing = re.match(r"^ {0,3}([`~]+)[ \t]*$", raw)
+            if (
+                closing
+                and set(closing.group(1)) == {fence_char}
+                and len(closing.group(1)) >= fence_length
+            ):
+                fence_char = ""
+                fence_length = 0
+            continue
+        opening = re.match(r"^ {0,3}(`{3,}|~{3,}).*$", raw)
+        if opening:
+            fence_char = opening.group(1)[0]
+            fence_length = len(opening.group(1))
+            continue
+        lines.append(raw)
+    return lines
+
+
 def _excerpt(body: str) -> str:
     lines: list[str] = []
-    in_fence = False
-    for raw in body.splitlines():
+    for raw in _unfenced_lines(body):
         line = raw.strip()
-        if line.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence or not line or line.startswith("#"):
+        if not line or line.startswith("#"):
             continue
         lines.append(line)
         if sum(len(item) for item in lines) >= MAX_EXCERPT_CHARS:
@@ -155,14 +177,7 @@ def _excerpt(body: str) -> str:
 
 def _outline(body: str) -> tuple[str, ...]:
     headings: list[str] = []
-    in_fence = False
-    for raw in body.splitlines():
-        stripped = raw.strip()
-        if stripped.startswith(("```", "~~~")):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
+    for raw in _unfenced_lines(body):
         match = re.match(r"^#{1,3}\s+(.+?)\s*$", raw)
         if not match:
             continue
@@ -206,13 +221,21 @@ def load_notes(
             paths.update(root.rglob("*.md"))
 
     notes: list[NoteEntity] = []
+    vault_resolved = vault.resolve()
     for path in sorted(paths):
         relative = path.relative_to(vault)
+        prefixes = (vault.joinpath(*relative.parts[:index]) for index in range(1, len(relative.parts) + 1))
+        if any(prefix.is_symlink() for prefix in prefixes):
+            continue
+        try:
+            resolved_relative = path.resolve(strict=True).relative_to(vault_resolved)
+        except (OSError, ValueError):
+            continue
         if any(part in excluded_parts for part in relative.parts[:-1]):
             continue
         if any(
             marker.casefold() in part.casefold()
-            for part in relative.parts
+            for part in (*relative.parts, *resolved_relative.parts)
             for marker in SENSITIVE_NAME_MARKERS
         ):
             continue
@@ -364,6 +387,9 @@ def select_candidate_pairs(
                 reasons.append("title_similarity")
             if tag_overlap and title_similarity >= min_similarity * 0.65:
                 reasons.append("shared_tags")
+            direct_linked = _linked(left, right)
+            if direct_linked:
+                reasons.append("existing_link")
 
             if not reasons:
                 continue
@@ -376,12 +402,29 @@ def select_candidate_pairs(
                     b=j,
                     similarity=round(similarity, 4),
                     reasons=tuple(reasons),
-                    already_linked=_linked(left, right),
+                    already_linked=direct_linked,
                 )
             )
 
-    candidates.sort(key=lambda pair: (-pair.similarity, notes[pair.a].path, notes[pair.b].path))
-    return candidates[: max(1, max_pairs)]
+    candidates.sort(
+        key=lambda pair: (
+            pair.reasons == ("existing_link",),
+            -pair.similarity,
+            notes[pair.a].path,
+            notes[pair.b].path,
+        )
+    )
+    selected: list[CandidatePair] = []
+    linked_only_count = 0
+    for pair in candidates:
+        if pair.reasons == ("existing_link",):
+            if linked_only_count >= DEFAULT_MAX_LINKED_ONLY_PAIRS:
+                continue
+            linked_only_count += 1
+        selected.append(pair)
+        if len(selected) >= max(1, max_pairs):
+            break
+    return selected
 
 
 def build_alignment_request(
