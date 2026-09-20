@@ -69,6 +69,32 @@ def test_title_and_outline_skip_matching_code_fences() -> None:
     assert alignment._outline(body) == ("公開タイトル", "公開サブ見出し")
 
 
+def test_metadata_extractors_skip_hidden_comments_and_non_rendered_links() -> None:
+    body = """%%
+# Obsidianの秘密
+[[Obsidian Secret]]
+%%
+<!--
+# HTMLの秘密
+[[HTML Secret]]
+-->
+```markdown
+# コード例の秘密
+[[Code Secret]]
+```
+%% 非表示 %% [[表示されるリンク]]
+<!-- 非表示 --> # 公開タイトル
+## 公開サブ見出し
+本文 <!-- [[Inline HTML Secret]] --> 公開情報
+"""
+
+    assert alignment._note_title({}, body, Path("fallback.md")) == "公開タイトル"
+    assert alignment._outline(body) == ("公開タイトル", "公開サブ見出し")
+    assert alignment._wikilinks(body) == ("表示されるリンク",)
+    assert "秘密" not in alignment._excerpt(body)
+    assert "公開情報" in alignment._excerpt(body)
+
+
 def test_load_notes_skips_a_note_that_times_out(tmp_path: Path, monkeypatch) -> None:
     _write_note(tmp_path / "03-知識_業界" / "読める.md", "# 読める\n本文")
     _write_note(tmp_path / "03-知識_業界" / "遅い.md", "# 遅い\n本文")

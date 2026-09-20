@@ -130,19 +130,70 @@ def _note_title(meta: Mapping[str, Any], body: str, path: Path) -> str:
     frontmatter_title = str(meta.get("title") or "").strip()
     if frontmatter_title:
         return frontmatter_title
-    for line in _unfenced_lines(body):
-        if line.startswith("# "):
-            heading = line[2:].strip()
+    for line in _visible_markdown_lines(body):
+        match = re.match(r"^ {0,3}#\s+(.+?)\s*$", line)
+        if match:
+            heading = match.group(1).strip()
             if heading:
                 return heading
     return path.stem
 
 
-def _unfenced_lines(body: str) -> list[str]:
-    """Return Markdown lines outside matching backtick or tilde fences."""
+def _strip_hidden_comments(
+    raw: str,
+    *,
+    in_obsidian_comment: bool,
+    in_html_comment: bool,
+) -> tuple[str, bool, bool]:
+    """Remove Obsidian and HTML comments while preserving visible suffixes."""
+    visible: list[str] = []
+    cursor = 0
+    while cursor < len(raw):
+        if in_obsidian_comment:
+            end = raw.find("%%", cursor)
+            if end < 0:
+                return "".join(visible), True, in_html_comment
+            cursor = end + 2
+            in_obsidian_comment = False
+            continue
+        if in_html_comment:
+            end = raw.find("-->", cursor)
+            if end < 0:
+                return "".join(visible), in_obsidian_comment, True
+            cursor = end + 3
+            in_html_comment = False
+            continue
+
+        obsidian_start = raw.find("%%", cursor)
+        html_start = raw.find("<!--", cursor)
+        starts = [
+            (position, kind)
+            for position, kind in ((obsidian_start, "obsidian"), (html_start, "html"))
+            if position >= 0
+        ]
+        if not starts:
+            visible.append(raw[cursor:])
+            break
+
+        start, kind = min(starts)
+        visible.append(raw[cursor:start])
+        if kind == "obsidian":
+            in_obsidian_comment = True
+            cursor = start + 2
+        else:
+            in_html_comment = True
+            cursor = start + 4
+
+    return "".join(visible), in_obsidian_comment, in_html_comment
+
+
+def _visible_markdown_lines(body: str) -> list[str]:
+    """Return rendered Markdown outside fences and hidden comment blocks."""
     lines: list[str] = []
     fence_char = ""
     fence_length = 0
+    in_obsidian_comment = False
+    in_html_comment = False
     for raw in body.splitlines():
         if fence_char:
             closing = re.match(r"^ {0,3}([`~]+)[ \t]*$", raw)
@@ -154,18 +205,23 @@ def _unfenced_lines(body: str) -> list[str]:
                 fence_char = ""
                 fence_length = 0
             continue
-        opening = re.match(r"^ {0,3}(`{3,}|~{3,}).*$", raw)
+        visible, in_obsidian_comment, in_html_comment = _strip_hidden_comments(
+            raw,
+            in_obsidian_comment=in_obsidian_comment,
+            in_html_comment=in_html_comment,
+        )
+        opening = re.match(r"^ {0,3}(`{3,}|~{3,}).*$", visible)
         if opening:
             fence_char = opening.group(1)[0]
             fence_length = len(opening.group(1))
             continue
-        lines.append(raw)
+        lines.append(visible)
     return lines
 
 
 def _excerpt(body: str) -> str:
     lines: list[str] = []
-    for raw in _unfenced_lines(body):
+    for raw in _visible_markdown_lines(body):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -177,8 +233,8 @@ def _excerpt(body: str) -> str:
 
 def _outline(body: str) -> tuple[str, ...]:
     headings: list[str] = []
-    for raw in _unfenced_lines(body):
-        match = re.match(r"^#{1,3}\s+(.+?)\s*$", raw)
+    for raw in _visible_markdown_lines(body):
+        match = re.match(r"^ {0,3}#{1,3}\s+(.+?)\s*$", raw)
         if not match:
             continue
         heading = match.group(1).strip()
@@ -192,7 +248,8 @@ def _outline(body: str) -> tuple[str, ...]:
 def _wikilinks(body: str) -> tuple[str, ...]:
     links: list[str] = []
     seen: set[str] = set()
-    for raw in re.findall(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]", body):
+    visible_body = "\n".join(_visible_markdown_lines(body))
+    for raw in re.findall(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]", visible_body):
         target = raw.strip()
         if target.endswith(".md"):
             target = target[:-3]
