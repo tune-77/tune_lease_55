@@ -27,6 +27,32 @@ def test_load_notes_only_reads_safe_included_roots(tmp_path: Path) -> None:
     assert notes[0].path == "03-知識_業界/残価.md"
 
 
+def test_load_notes_excludes_sensitive_nested_directories(tmp_path: Path) -> None:
+    _write_note(tmp_path / "03-知識_業界" / "公開.md", "# 公開\n一般知識")
+    _write_note(
+        tmp_path / "03-知識_業界" / "past_cases" / "customer-123.md",
+        "# 顧客案件\n非公開情報",
+    )
+
+    notes = alignment.load_notes(tmp_path)
+
+    assert [note.title for note in notes] == ["公開"]
+
+
+def test_outline_skips_headings_inside_code_fences() -> None:
+    body = """# 公開見出し
+```markdown
+## 案件固有の秘密
+```
+~~~text
+### 顧客識別子
+~~~
+## 公開サブ見出し
+"""
+
+    assert alignment._outline(body) == ("公開見出し", "公開サブ見出し")
+
+
 def test_load_notes_skips_a_note_that_times_out(tmp_path: Path, monkeypatch) -> None:
     _write_note(tmp_path / "03-知識_業界" / "読める.md", "# 読める\n本文")
     _write_note(tmp_path / "03-知識_業界" / "遅い.md", "# 遅い\n本文")

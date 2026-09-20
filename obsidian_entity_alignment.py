@@ -155,7 +155,14 @@ def _excerpt(body: str) -> str:
 
 def _outline(body: str) -> tuple[str, ...]:
     headings: list[str] = []
+    in_fence = False
     for raw in body.splitlines():
+        stripped = raw.strip()
+        if stripped.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
         match = re.match(r"^#{1,3}\s+(.+?)\s*$", raw)
         if not match:
             continue
@@ -203,8 +210,11 @@ def load_notes(
         relative = path.relative_to(vault)
         if any(part in excluded_parts for part in relative.parts[:-1]):
             continue
-        lower_name = path.name.casefold()
-        if any(marker.casefold() in lower_name for marker in SENSITIVE_NAME_MARKERS):
+        if any(
+            marker.casefold() in part.casefold()
+            for part in relative.parts
+            for marker in SENSITIVE_NAME_MARKERS
+        ):
             continue
         if _is_dataless(path):
             continue
