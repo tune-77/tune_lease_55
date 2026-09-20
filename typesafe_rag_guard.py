@@ -7,6 +7,7 @@ must keep deterministic retrieval and fallback behavior in code.
 
 from __future__ import annotations
 
+import concurrent.futures
 import math
 import os
 import subprocess
@@ -20,6 +21,14 @@ TYPESAFE_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 DEFAULT_MODEL = "jev-latest"
 DEFAULT_TIMEOUT_SECONDS = 8.0
 DEFAULT_MAX_CANDIDATES = 8
+
+# httpx's timeout does not reliably bound DNS resolution on every platform: a
+# black-holed DNS query can block the underlying socket call well past the
+# configured timeout. Running the request on this executor gives the caller a
+# hard wall-clock bound regardless of where the hang occurs.
+_REQUEST_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="typesafe-rag"
+)
 
 PASSAGE_THRESHOLDS = {
     "injection_max": 0.70,
@@ -146,11 +155,7 @@ def build_passage_request(
     }
 
 
-def _default_request(payload: dict[str, Any]) -> Mapping[str, Any]:
-    api_key = _resolve_api_key()
-    if not api_key:
-        raise TypeSafeRagError("TYPESAFE_API_KEY is not configured")
-    timeout = float(os.environ.get("TYPESAFE_RAG_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS))
+def _send_request(payload: dict[str, Any], *, api_key: str, timeout: float) -> Mapping[str, Any]:
     with httpx.Client(timeout=timeout) as client:
         response = client.post(
             os.environ.get("TYPESAFE_ENDPOINT", TYPESAFE_ENDPOINT),
@@ -158,7 +163,19 @@ def _default_request(payload: dict[str, Any]) -> Mapping[str, Any]:
             json=payload,
         )
         response.raise_for_status()
-        body = response.json()
+        return response.json()
+
+
+def _default_request(payload: dict[str, Any]) -> Mapping[str, Any]:
+    api_key = _resolve_api_key()
+    if not api_key:
+        raise TypeSafeRagError("TYPESAFE_API_KEY is not configured")
+    timeout = float(os.environ.get("TYPESAFE_RAG_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS))
+    future = _REQUEST_EXECUTOR.submit(_send_request, payload, api_key=api_key, timeout=timeout)
+    try:
+        body = future.result(timeout=timeout + 2.0)
+    except concurrent.futures.TimeoutError as exc:
+        raise TypeSafeRagError("TypeSafe request exceeded the configured timeout") from exc
     if not isinstance(body, Mapping):
         raise TypeSafeRagError("TypeSafe response must be an object")
     return body

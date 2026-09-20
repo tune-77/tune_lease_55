@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 import typesafe_rag_guard as trg
@@ -143,6 +145,29 @@ def test_invalid_probability_is_rejected():
                 )
             },
         )
+
+
+def test_default_request_bounds_a_hanging_network_call(monkeypatch):
+    """A blocked DNS/connect phase must not hang the caller past the configured timeout.
+
+    httpx's own timeout does not reliably cover DNS resolution on every platform,
+    which previously let a black-holed lookup hang /api/chat indefinitely.
+    """
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setenv("TYPESAFE_RAG_TIMEOUT_SECONDS", "0.1")
+
+    def hang(_payload, *, api_key, timeout):
+        time.sleep(5)
+        return {}
+
+    monkeypatch.setattr(trg, "_send_request", hang)
+
+    start = time.monotonic()
+    with pytest.raises(trg.TypeSafeRagError, match="timeout"):
+        trg._default_request({"state": {}})
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 3.0
 
 
 def test_verify_citation_support_returns_typed_probability():
