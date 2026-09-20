@@ -58,7 +58,13 @@ TEXT_ROLES = {"textbox", "searchbox", "combobox"}
 
 
 def normalized_host(url: str) -> str:
-    parsed = urllib.parse.urlsplit(str(url or ""))
+    raw_url = str(url or "")
+    # Chromium treats backslashes as path separators for special URL schemes,
+    # while urllib can interpret the same text as user-info. Reject both raw
+    # and encoded forms instead of relying on two parsers agreeing.
+    if "\\" in raw_url or "%5c" in raw_url.lower():
+        return ""
+    parsed = urllib.parse.urlsplit(raw_url)
     if parsed.scheme not in {"http", "https"}:
         return ""
     return (parsed.hostname or "").lower().rstrip(".")
@@ -274,6 +280,10 @@ def run(args: argparse.Namespace) -> int:
                 agent.state["page"] = agent.state["browser"].observe(
                     screenshot=agent.screenshots
                 )
+                observed_url = str((agent.state["page"] or {}).get("url") or "")
+                if not host_is_allowed(observed_url, allowed_hosts):
+                    print(f"STOPPED: stale-page retry left the allowlist: {observed_url}")
+                    return 2
                 print("RETRY: page changed after prediction; observed the current DOM")
                 continue
             current_url = str((state.get("page") or {}).get("url") or "")

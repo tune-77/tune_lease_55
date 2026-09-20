@@ -1,4 +1,5 @@
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 import safe_run
 from safe_run import action_safety_reason, host_is_allowed
@@ -30,6 +31,12 @@ def test_host_allowlist_accepts_only_domain_boundaries():
     assert host_is_allowed("https://www.meti.go.jp/", ("go.jp",))
     assert not host_is_allowed("https://go.jp.example.com/", ("go.jp",))
     assert not host_is_allowed("file:///tmp/private", ("go.jp",))
+    assert not host_is_allowed(
+        "https://evil.example\\@www.e-stat.go.jp/", ("e-stat.go.jp",)
+    )
+    assert not host_is_allowed(
+        "https://evil.example%5C@www.e-stat.go.jp/", ("e-stat.go.jp",)
+    )
 
 
 def test_safe_search_click_is_allowed():
@@ -119,3 +126,54 @@ def test_text_model_key_can_be_loaded_from_keychain(monkeypatch):
         "TEXT_MODEL_API_KEY", "TEXT_MODEL_API_KEYCHAIN_SERVICE"
     )
     assert safe_run.os.environ["TEXT_MODEL_API_KEY"] == "secret-from-keychain"
+
+
+def test_stale_page_retry_rechecks_observed_host(monkeypatch):
+    class StalePage(Exception):
+        pass
+
+    class Browser:
+        def observe(self, **_kwargs):
+            return {"url": "https://evil.example/", "fingerprint": "changed"}
+
+    class Agent:
+        def __init__(self, *_args):
+            self.screenshots = False
+            self.state = {"browser": Browser()}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def snapshot(self):
+            return {"status": "ready", "page": {"url": "https://www.e-stat.go.jp/"}}
+
+        def command(self, operation, *_args):
+            if operation == "predict":
+                return {
+                    "decision": {"operation": "WAIT", "choice": "wait", "confidence": 0.9},
+                    "page": {"url": "https://www.e-stat.go.jp/", "fingerprint": "old"},
+                }
+            raise StalePage
+
+    package = ModuleType("jev_ultrafast")
+    package.Agent = Agent
+    browser = ModuleType("jev_ultrafast.browser")
+    browser.StalePage = StalePage
+    monkeypatch.setitem(sys.modules, "jev_ultrafast", package)
+    monkeypatch.setitem(sys.modules, "jev_ultrafast.browser", browser)
+    monkeypatch.setattr(safe_run, "configure_cdp", lambda _url: None)
+    monkeypatch.setattr(safe_run, "load_api_key_from_keychain", lambda *_args: True)
+    args = SimpleNamespace(
+        url="https://www.e-stat.go.jp/",
+        goal="統計を見る",
+        allow_host=["e-stat.go.jp"],
+        cdp_http="",
+        auto=True,
+        max_steps=1,
+        min_confidence=0.55,
+    )
+
+    assert safe_run.run(args) == 2
