@@ -31,12 +31,16 @@
     <string>1</string>
     <key>TYPESAFE_RAG_ENABLED</key>
     <string>1</string>
+    <key>TYPESAFE_ROUTING_MODE</key>
+    <string>enforce</string>
+    <key>TYPESAFE_ROUTING_CONFIDENCE</key>
+    <string>0.85</string>
+    <key>TYPESAFE_RECIPE_CLASSIFY_ENABLED</key>
+    <string>1</string>
     <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>
     <string>typesafe-api-key</string>
     <key>TYPESAFE_RAG_USAGE_LOG_PATH</key>
     <string>data/typesafe_rag_usage.jsonl</string>
-    <key>TYPESAFE_ROUTING_MODE</key>
-    <string>shadow</string>
   </dict>
 
   <key>RunAtLoad</key>

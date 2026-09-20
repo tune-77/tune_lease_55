@@ -627,6 +627,97 @@ def deduplicate_improvements(improvements: list[dict]) -> list[dict]:
     return result
 
 
+def semantic_deduplicate_improvements(
+    improvements: list[dict],
+    *,
+    request_fn=None,
+) -> tuple[list[dict], dict]:
+    """Merge only high-confidence Jev duplicates in the deterministic gray band.
+
+    The existing exact/theme/Jaccard stages run first. Potentially sensitive
+    title/reason pairs never leave the machine. Failure keeps every candidate,
+    matching the pre-TypeSafe behavior.
+    """
+    if len(improvements) < 2:
+        return improvements, {"status": "skipped", "reason": "too_few_candidates"}
+    try:
+        import typesafe_dedup_guard as guard
+
+        gray_pairs = guard.select_gray_pairs(improvements, _jaccard_similarity)
+        safe_pairs, sensitive_skipped = guard.filter_safe_pairs(improvements, gray_pairs)
+        judged, meta = guard.judge_pairs_if_enabled(
+            improvements,
+            safe_pairs,
+            request_fn=request_fn,
+            threshold=guard.AUTO_MERGE_MIN,
+        )
+    except Exception as exc:
+        return improvements, {"status": "fallback", "error_type": type(exc).__name__}
+
+    meta = dict(meta)
+    meta["gray_pair_count"] = len(gray_pairs)
+    meta["sensitive_skipped_pairs"] = sensitive_skipped
+    duplicate_edges = [item for item in judged if item.get("route") == "duplicate"]
+    if not duplicate_edges:
+        return improvements, meta
+
+    parent = list(range(len(improvements)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(a: int, b: int) -> None:
+        root_a, root_b = find(a), find(b)
+        if root_a != root_b:
+            parent[root_b] = root_a
+
+    for edge in duplicate_edges:
+        union(int(edge["a"]), int(edge["b"]))
+
+    grouped: dict[int, list[int]] = {}
+    for index in range(len(improvements)):
+        grouped.setdefault(find(index), []).append(index)
+
+    # Independent pair judgments are not transitive. Merge a component only
+    # when every member pair was explicitly judged duplicate; otherwise retain
+    # every candidate for human review.
+    duplicate_pairs = {
+        frozenset((int(edge["a"]), int(edge["b"]))) for edge in duplicate_edges
+    }
+    merge_groups: list[list[int]] = []
+    inconsistent_components = 0
+    for indexes in grouped.values():
+        pairwise_complete = all(
+            frozenset((indexes[left], indexes[right])) in duplicate_pairs
+            for left in range(len(indexes))
+            for right in range(left + 1, len(indexes))
+        )
+        if pairwise_complete:
+            merge_groups.append(indexes)
+        else:
+            inconsistent_components += 1
+            merge_groups.extend([[index] for index in indexes])
+
+    merged: list[dict] = []
+    for indexes in merge_groups:
+        representative = dict(improvements[indexes[0]])
+        representative["duplicate_count"] = sum(
+            int(improvements[index].get("duplicate_count") or 1) for index in indexes
+        )
+        if len(indexes) > 1:
+            representative["semantic_duplicate_titles"] = [
+                str(improvements[index].get("title") or "") for index in indexes[1:]
+            ]
+        merged.append(representative)
+    meta["auto_merged_pairs"] = sum(max(0, len(indexes) - 1) for indexes in merge_groups)
+    meta["inconsistent_components"] = inconsistent_components
+    meta["result_count"] = len(merged)
+    return merged, meta
+
+
 def _format_deduplicated(improvements: list[dict]) -> str:
     """deduplicate_improvements の結果をパイプライン用テキストに変換する."""
     lines: list[str] = []
@@ -737,7 +828,19 @@ def main() -> int:
             print(f"実装済み除外: {skipped}件スキップ（残り{len(deduped)}件）")
         after_count = len(deduped)
 
-    # AI統合（Gemini APIが使えない場合は deduped をそのまま使用）
+    # 意味的重複排除（Jev無効・失敗時は deduped をそのまま使用）
+    deduped, semantic_meta = semantic_deduplicate_improvements(deduped)
+    print(
+        "Jev意味重複判定: "
+        f"status={semantic_meta.get('status')} "
+        f"gray_pairs={semantic_meta.get('gray_pair_count', 0)} "
+        f"merged={semantic_meta.get('auto_merged_pairs', 0)} "
+        f"sensitive_skipped={semantic_meta.get('sensitive_skipped_pairs', 0)} "
+        f"usage={json.dumps(semantic_meta.get('usage') or {}, ensure_ascii=False, separators=(',', ':'))}"
+    )
+    after_count = len(deduped)
+
+    # AI統合（15件超だけGeminiを使用。APIエラー時は deduped をそのまま使用）
     consolidate_with_ai = _load_consolidator()
     if consolidate_with_ai is not None:
         final = consolidate_with_ai(deduped)
