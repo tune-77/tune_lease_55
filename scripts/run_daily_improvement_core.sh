@@ -193,7 +193,7 @@ echo "[記憶] 記憶の矛盾候補を検出中（レポートのみ・自動�
 
 echo ""
 echo "[記憶] Memory Engineering レポートを生成中（書き込み費用・昇格率・忘却候補）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/build_memory_engineering_report.py"
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_memory_engineering_report.py" --json-only
 MEMORY_ENGINEERING_EXIT=$?
 log_step "build_memory_engineering_report" ${MEMORY_ENGINEERING_EXIT}
 if [ ${MEMORY_ENGINEERING_EXIT} -ne 0 ]; then
@@ -212,7 +212,9 @@ EXPORT_FILE="${EXPORT_FILE}" "${PYTHON}" "${PROJECT_ROOT}/scripts/check_aurion_s
 # 診断用の改善候補抽出
 echo ""
 echo "[診断] Obsidian 改善インデックスから改善案を抽出中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/extract_obsidian_improvements.py"
+TYPESAFE_DEDUP_ENABLED="${TYPESAFE_DEDUP_ENABLED:-1}" \
+TYPESAFE_API_KEYCHAIN_SERVICE="${TYPESAFE_API_KEYCHAIN_SERVICE:-typesafe-api-key}" \
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/extract_obsidian_improvements.py"
 STEP0_EXIT=$?
 log_step "extract_obsidian_improvements" ${STEP0_EXIT}
 if [ ${STEP0_EXIT} -ne 0 ]; then
@@ -349,28 +351,6 @@ echo "[反映] 安全な修正案（紫苑auto・低リスク）を自動で適�
 echo ""
 echo "[反映] batch_apply — 台帳ルールを自動適用中..."
 "${PYTHON}" "${PROJECT_ROOT}/api/rule_engine/batch_apply.py" --apply; log_step "batch_apply" $?
-
-echo ""
-echo "[反映] 再帰的自己改善レポートを生成中..."
-RECURSIVE_JSON_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.json"
-RECURSIVE_MD_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.md"
-RECURSIVE_LATEST_JSON="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.json"
-RECURSIVE_LATEST_MD="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.md"
-"${PYTHON}" "${PROJECT_ROOT}/scripts/recursive_self_improvement.py" \
-    --report "${LATEST_FILE}" \
-    --prompt-log "${PROJECT_ROOT}/data/prompt_feedback_log.jsonl" \
-    --output-json "${RECURSIVE_JSON_FILE}" \
-    --output-md "${RECURSIVE_MD_FILE}" \
-    --latest-json "${RECURSIVE_LATEST_JSON}" \
-    --latest-md "${RECURSIVE_LATEST_MD}"
-RECURSIVE_EXIT=$?
-log_step "recursive_self_improvement" ${RECURSIVE_EXIT}
-if [ ${RECURSIVE_EXIT} -ne 0 ]; then
-    echo "警告: 再帰的自己改善レポート生成に失敗しました（終了コード ${RECURSIVE_EXIT}）"
-    if [ ${FINAL_EXIT} -eq 0 ]; then
-        FINAL_EXIT=${RECURSIVE_EXIT}
-    fi
-fi
 
 echo ""
 echo "[学習] PDCAルールのライフサイクル管理 — 効果のあるルールを自動延長中..."

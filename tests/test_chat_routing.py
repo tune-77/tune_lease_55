@@ -9,6 +9,7 @@ from api.chat_routing import (
     classify_question,
     is_lightweight_chat_observation,
     judge_question_category,
+    shion_query_class_from_category,
     should_apply_chat_pdca,
 )
 
@@ -28,6 +29,13 @@ def test_explicit_analysis_request_is_not_lightweight():
 
 def test_news_summarize_category_uses_deterministic_shortcut():
     assert classify_question("https://example.com/news を要約して保存") == "news_summarize"
+
+
+def test_shion_query_class_reuses_existing_category_without_ai():
+    assert shion_query_class_from_category("general")["recommendation"] == "auto"
+    assert shion_query_class_from_category("lease_knowledge")["recommendation"] == "discuss"
+    assert shion_query_class_from_category("lease_screening")["recommendation"] == "review"
+    assert shion_query_class_from_category("unknown")["recommendation"] == "review"
 
 
 def test_typesafe_choice_request_contains_only_current_message():
@@ -88,7 +96,11 @@ def test_typesafe_enforce_requires_configured_confidence(monkeypatch):
     monkeypatch.setenv("TYPESAFE_ROUTING_MODE", "enforce")
     monkeypatch.setenv("TYPESAFE_ROUTING_CONFIDENCE", "0.90")
     monkeypatch.setenv("TYPESAFE_ALLOW_SCREENING", "1")
-    monkeypatch.setattr(chat_routing, "_legacy_classify_question", lambda _message: "lease_knowledge")
+    monkeypatch.setattr(
+        chat_routing,
+        "_legacy_classify_question",
+        lambda _message: (_ for _ in ()).throw(AssertionError("Gemini must not be called")),
+    )
     monkeypatch.setattr(
         chat_routing,
         "judge_question_category",
@@ -101,6 +113,36 @@ def test_typesafe_enforce_requires_configured_confidence(monkeypatch):
     )
 
     assert chat_routing.classify_question("案件を見て") == "lease_screening"
+
+
+def test_typesafe_enforce_low_confidence_falls_back_to_gemini(monkeypatch):
+    monkeypatch.setenv("TYPESAFE_ROUTING_MODE", "enforce")
+    monkeypatch.setenv("TYPESAFE_ROUTING_CONFIDENCE", "0.85")
+    monkeypatch.setattr(chat_routing, "_legacy_classify_question", lambda _message: "general")
+    monkeypatch.setattr(
+        chat_routing,
+        "judge_question_category",
+        lambda _message: {
+            "category": "lease_knowledge",
+            "confidence": 0.60,
+            "model": "jev-test",
+            "usage": {},
+        },
+    )
+
+    assert chat_routing.classify_question("リースを簡単に説明して") == "general"
+
+
+def test_typesafe_enforce_failure_falls_back_to_gemini(monkeypatch):
+    monkeypatch.setenv("TYPESAFE_ROUTING_MODE", "enforce")
+    monkeypatch.setattr(chat_routing, "_legacy_classify_question", lambda _message: "general")
+    monkeypatch.setattr(
+        chat_routing,
+        "judge_question_category",
+        lambda _message: (_ for _ in ()).throw(TimeoutError("offline")),
+    )
+
+    assert chat_routing.classify_question("明日の天気を教えて") == "general"
 
 
 def test_typesafe_does_not_receive_screening_questions_by_default(monkeypatch):
@@ -132,6 +174,12 @@ def test_typesafe_does_not_trust_baseline_for_sensitive_screening_text(monkeypat
 def test_company_placeholders_are_sensitive_without_word_boundaries():
     assert chat_routing.is_potentially_sensitive_screening_message("A社の現預金推移を見て")
     assert chat_routing.is_potentially_sensitive_screening_message("ABC社の状況を見て")
+
+
+def test_personal_and_financial_values_are_sensitive():
+    assert chat_routing.is_potentially_sensitive_screening_message("契約番号 ABC-1234 を確認")
+    assert chat_routing.is_potentially_sensitive_screening_message("金額は1,000万円です")
+    assert chat_routing.is_potentially_sensitive_screening_message("メールはuser@example.com")
 
 
 def test_non_finite_routing_threshold_uses_safe_default(monkeypatch):

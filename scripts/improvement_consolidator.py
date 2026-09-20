@@ -128,6 +128,12 @@ def consolidate_with_ai(improvements: list[dict]) -> list[dict]:
     """
     if not improvements:
         return improvements
+    if len(improvements) <= 15:
+        print(
+            f"情報: 改善案は{len(improvements)}件のためGemini統合をスキップします",
+            file=sys.stderr,
+        )
+        return improvements
 
     api_key = _get_api_key()
     if not api_key:
