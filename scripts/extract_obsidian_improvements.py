@@ -681,8 +681,28 @@ def semantic_deduplicate_improvements(
     for index in range(len(improvements)):
         grouped.setdefault(find(index), []).append(index)
 
-    merged: list[dict] = []
+    # Independent pair judgments are not transitive. Merge a component only
+    # when every member pair was explicitly judged duplicate; otherwise retain
+    # every candidate for human review.
+    duplicate_pairs = {
+        frozenset((int(edge["a"]), int(edge["b"]))) for edge in duplicate_edges
+    }
+    merge_groups: list[list[int]] = []
+    inconsistent_components = 0
     for indexes in grouped.values():
+        pairwise_complete = all(
+            frozenset((indexes[left], indexes[right])) in duplicate_pairs
+            for left in range(len(indexes))
+            for right in range(left + 1, len(indexes))
+        )
+        if pairwise_complete:
+            merge_groups.append(indexes)
+        else:
+            inconsistent_components += 1
+            merge_groups.extend([[index] for index in indexes])
+
+    merged: list[dict] = []
+    for indexes in merge_groups:
         representative = dict(improvements[indexes[0]])
         representative["duplicate_count"] = sum(
             int(improvements[index].get("duplicate_count") or 1) for index in indexes
@@ -692,7 +712,8 @@ def semantic_deduplicate_improvements(
                 str(improvements[index].get("title") or "") for index in indexes[1:]
             ]
         merged.append(representative)
-    meta["auto_merged_pairs"] = len(duplicate_edges)
+    meta["auto_merged_pairs"] = sum(max(0, len(indexes) - 1) for indexes in merge_groups)
+    meta["inconsistent_components"] = inconsistent_components
     meta["result_count"] = len(merged)
     return merged, meta
 

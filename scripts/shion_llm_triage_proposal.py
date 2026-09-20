@@ -27,7 +27,7 @@ import datetime as dt
 import json
 import os
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -258,6 +258,10 @@ def _candidate_rows(candidates: list[dict], triage_latest: dict[str, dict]) -> l
     return rows
 
 
+def _candidate_identity(candidate: Mapping[str, Any]) -> str:
+    return str(candidate.get("canonical_key") or candidate.get("id") or "").strip()
+
+
 def _proposals_from_decisions(
     rows: list[dict],
     decisions: Mapping[str, Mapping[str, Any]],
@@ -321,11 +325,18 @@ def build_typesafe_proposals(
     all_rows = _candidate_rows(candidates, triage_latest)
     rows = [row for row in all_rows if privacy.is_safe_public_candidate(row)]
     excluded_count = len(all_rows) - len(rows)
+    safe_keys = {str(row["canonical_key"]) for row in rows}
+    excluded_keys = [
+        str(row["canonical_key"]) for row in all_rows if str(row["canonical_key"]) not in safe_keys
+    ]
     if not rows:
         return [], {
             "status": "skipped",
             "candidate_count": 0,
             "excluded_count": excluded_count,
+            "excluded_keys": excluded_keys,
+            "accepted_count": 0,
+            "usage": {},
         }
     if request_fn is None:
         from typesafe_rag_guard import request_system_one
@@ -340,6 +351,7 @@ def build_typesafe_proposals(
         "model": str(body.get("model") or payload["model"]),
         "candidate_count": len(rows),
         "excluded_count": excluded_count,
+        "excluded_keys": excluded_keys,
         "accepted_count": len(decisions),
         "usage": dict(body.get("usage") or {}),
     }
@@ -371,6 +383,20 @@ def _run_typesafe_shadow_comparison(
             separators=(",", ":"),
         )
     )
+
+
+def _gemini_filtered_fallback(
+    root: Path,
+    candidates: list[dict],
+    triage_latest: dict[str, dict],
+    excluded_keys: Sequence[str],
+) -> list[dict]:
+    """Keep locally filtered candidates on the pre-existing Gemini path."""
+    excluded = set(excluded_keys)
+    filtered = [item for item in candidates if _candidate_identity(item) in excluded]
+    if not filtered:
+        return []
+    return _gemini_proposals(root, filtered, triage_latest)
 
 
 def _gemini_proposals(root: Path, candidates: list[dict], triage_latest: dict[str, dict]) -> list[dict]:
@@ -420,6 +446,19 @@ def main() -> int:
             if not typesafe_available():
                 raise RuntimeError("TypeSafe credential is not configured")
             proposals, meta = build_typesafe_proposals(candidates, triage_latest)
+            excluded_keys = list(meta.get("excluded_keys") or [])
+            if excluded_keys:
+                try:
+                    proposals.extend(
+                        _gemini_filtered_fallback(
+                            root, candidates, triage_latest, excluded_keys
+                        )
+                    )
+                except Exception as exc:
+                    print(
+                        "[llm_triage] filtered_fallback=skipped "
+                        f"error_type={type(exc).__name__}"
+                    )
             print(
                 "[llm_triage] provider=typesafe "
                 f"mode={mode} candidates={meta['candidate_count']} accepted={meta['accepted_count']} "

@@ -7,6 +7,7 @@ suite never contacts TypeSafe.
 from __future__ import annotations
 
 import importlib.util
+import concurrent.futures
 from pathlib import Path
 
 import pytest
@@ -90,7 +91,7 @@ def test_build_pair_request_batches_one_request_and_truncates() -> None:
     assert len(payload["state"]["pairs"]) == 2
     first = payload["state"]["pairs"][0]
     assert len(first["a_title"]) == guard.MAX_TITLE_CHARS
-    assert len(first["a_reason"]) == guard.MAX_REASON_CHARS
+    assert set(first) == {"a_title", "b_title"}
     assert payload["questions"]["pair0_same_issue"]["type"] == "noul"
 
 
@@ -103,8 +104,9 @@ def test_build_pair_request_omits_local_metadata() -> None:
     payload = guard.build_pair_request(candidates, [(0, 1)])
 
     sent = payload["state"]["pairs"][0]
-    assert set(sent) == {"a_title", "a_reason", "b_title", "b_reason"}
+    assert set(sent) == {"a_title", "b_title"}
     assert "/Users/me" not in str(payload)
+    assert "reason" not in str(payload)
 
 
 @pytest.mark.parametrize(
@@ -287,3 +289,20 @@ def test_judge_pairs_if_enabled_sends_nothing_when_disabled(monkeypatch) -> None
 
     assert meta == {"status": "disabled"}
     assert judged == [{"a": 0, "b": 1, "same_issue": None, "route": "distinct"}]
+
+
+def test_default_request_has_hard_wall_clock_deadline(monkeypatch) -> None:
+    class TimedOutFuture:
+        def result(self, **_kwargs):
+            raise concurrent.futures.TimeoutError
+
+    class Executor:
+        def submit(self, *_args, **_kwargs):
+            return TimedOutFuture()
+
+    monkeypatch.setattr(guard, "_resolve_api_key", lambda: "secret")
+    monkeypatch.setattr(guard, "_REQUEST_EXECUTOR", Executor())
+    monkeypatch.setenv("TYPESAFE_DEDUP_TIMEOUT_SECONDS", "0.01")
+
+    with pytest.raises(guard.TypeSafeDedupError, match="exceeded"):
+        guard._default_request({"state": {}, "questions": {}})

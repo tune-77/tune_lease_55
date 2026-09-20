@@ -115,6 +115,7 @@ def test_build_typesafe_proposals_records_provider_and_confidence():
         "model": "jev-test",
         "candidate_count": 1,
         "excluded_count": 0,
+        "excluded_keys": [],
         "accepted_count": 1,
         "usage": {"input_tokens": 42},
     }
@@ -157,6 +158,26 @@ def test_typesafe_shadow_failure_preserves_gemini_proposals(monkeypatch, capsys)
 
     assert "shadow=skipped error_type=TimeoutError" in capsys.readouterr().out
     assert gemini == [{"item_id": "REV-401", "decision": "later"}]
+
+
+def test_filtered_candidates_use_existing_gemini_fallback(monkeypatch):
+    candidates = [
+        _candidate("REV-401", "表示ラベルの整理"),
+        _candidate("REV-402", "山田商店の自己資本を確認"),
+    ]
+    seen = []
+    monkeypatch.setattr(
+        llm,
+        "_gemini_proposals",
+        lambda _root, rows, _triage: seen.extend(rows) or [{"item_id": "REV-402"}],
+    )
+
+    result = llm._gemini_filtered_fallback(
+        llm.repo_root(), candidates, {}, ["key_rev-402"]
+    )
+
+    assert [row["id"] for row in seen] == ["REV-402"]
+    assert result == [{"item_id": "REV-402"}]
 
 
 def test_build_proposals_only_diffs_and_skips_user_confirmed():

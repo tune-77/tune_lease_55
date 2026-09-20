@@ -68,3 +68,33 @@ def test_semantic_dedup_fails_open() -> None:
 
     assert result == items
     assert meta["status"] == "fallback"
+
+
+def test_semantic_dedup_does_not_merge_inconsistent_chain(monkeypatch) -> None:
+    module = _load_extract_module()
+    items = [
+        {"tag": "改善", "title": "ABCDEF", "reason": "A"},
+        {"tag": "改善", "title": "ABCDEG", "reason": "B"},
+        {"tag": "改善", "title": "ABCDGH", "reason": "C"},
+    ]
+    monkeypatch.setattr(
+        module,
+        "_jaccard_similarity",
+        lambda _a, _b: 0.40,
+    )
+
+    result, meta = module.semantic_deduplicate_improvements(
+        items,
+        request_fn=lambda _payload: {
+            "answers": {
+                "pair0_same_issue": {"type": "noul", "noul": 0.9},
+                "pair1_same_issue": {"type": "noul", "noul": 0.1},
+                "pair2_same_issue": {"type": "noul", "noul": 0.9},
+            }
+        },
+    )
+
+    assert [row["title"] for row in result] == [row["title"] for row in items]
+    assert all(row["duplicate_count"] == 1 for row in result)
+    assert meta["auto_merged_pairs"] == 0
+    assert meta["inconsistent_components"] == 1

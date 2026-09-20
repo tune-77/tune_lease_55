@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import concurrent.futures
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -47,6 +48,10 @@ AUTO_MERGE_MIN = 0.75
 
 MAX_TITLE_CHARS = 200
 MAX_REASON_CHARS = 600
+
+_REQUEST_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="typesafe-dedup"
+)
 
 _SENSITIVE_MARKERS = (
     "案件番号",
@@ -165,14 +170,13 @@ def _public_pair(
 ) -> dict[str, str]:
     """Build the minimum pair sent externally.
 
-    Only the operator-authored title and reason leave the machine; tags, vault
-    paths and source filenames stay local.
+    Only the operator-authored titles leave the machine. Reasons can inherit
+    arbitrary Obsidian/chat text, so they remain local together with paths and
+    source filenames.
     """
     return {
         "a_title": str(a.get("title") or "")[:MAX_TITLE_CHARS],
-        "a_reason": str(a.get("reason") or "")[:MAX_REASON_CHARS],
         "b_title": str(b.get("title") or "")[:MAX_TITLE_CHARS],
-        "b_reason": str(b.get("reason") or "")[:MAX_REASON_CHARS],
     }
 
 
@@ -218,7 +222,6 @@ def _pair_question(index: int) -> dict[str, dict[str, Any]]:
             "type": "noul",
             "instructions": (
                 f"{a_ref} と {b_ref} は、同一の根本課題に対する改善案か？"
-                f" 各案の意図は `pairs[{index}].a_reason` と `pairs[{index}].b_reason` を参照する。"
             ),
             "criteria": {
                 "true": "対象箇所と目的が同じで、片方を実装すればもう片方も解消される。",
@@ -247,11 +250,7 @@ def build_pair_request(
     }
 
 
-def _default_request(payload: dict[str, Any]) -> Mapping[str, Any]:
-    api_key = _resolve_api_key()
-    if not api_key:
-        raise TypeSafeDedupError("TYPESAFE_API_KEY is not configured")
-    timeout = float(os.environ.get("TYPESAFE_DEDUP_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS))
+def _send_request(payload: dict[str, Any], *, api_key: str, timeout: float) -> Mapping[str, Any]:
     with httpx.Client(timeout=timeout) as client:
         response = client.post(
             os.environ.get("TYPESAFE_ENDPOINT", TYPESAFE_ENDPOINT),
@@ -259,7 +258,19 @@ def _default_request(payload: dict[str, Any]) -> Mapping[str, Any]:
             json=payload,
         )
         response.raise_for_status()
-        body = response.json()
+        return response.json()
+
+
+def _default_request(payload: dict[str, Any]) -> Mapping[str, Any]:
+    api_key = _resolve_api_key()
+    if not api_key:
+        raise TypeSafeDedupError("TYPESAFE_API_KEY is not configured")
+    timeout = float(os.environ.get("TYPESAFE_DEDUP_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS))
+    future = _REQUEST_EXECUTOR.submit(_send_request, payload, api_key=api_key, timeout=timeout)
+    try:
+        body = future.result(timeout=timeout + 2.0)
+    except concurrent.futures.TimeoutError as exc:
+        raise TypeSafeDedupError("TypeSafe request exceeded the configured timeout") from exc
     if not isinstance(body, Mapping):
         raise TypeSafeDedupError("TypeSafe response must be an object")
     return body
