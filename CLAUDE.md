@@ -60,6 +60,7 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 - **矛盾チェック**: 3ヶ月以上前の`ledger.jsonl`決定事項やCLAUDE.mdの方針と矛盾する変更前に必ず確認を取る（最新が正しいとは限らない）
 
 詳細: @.claude/rules/workflow.md | @.claude/rules/security.md | .claude/AGENTS.md
+リポジトリ構造マップ（ディレクトリ役割・2系統の実装・開発コマンド）: `docs/repo_structure_map.md` — 自動読込しない参照資料。初見時やディレクトリの役割が不明な時だけ読む
 週次サマリーは `scripts/weekly_self_management.py` が毎週月曜 `WEEKLY_LOG.md` に自動追記（本ファイルには追記しない）
 
 ## Claude Code / Codex 共通資産
