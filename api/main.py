@@ -2067,6 +2067,11 @@ def get_dashboard_stats():
         payload["improvement_highlights"] = _load_latest_improvement_highlights(limit=3)
         payload["lease_system_gaps"] = _load_lease_system_gap_analysis(limit=3)
         return payload
+    except HTTPException:
+        # 上の 503 は意図した応答。ここで拾うと下の except Exception が
+        # status_code=500 / detail="503: ..." へ化けて、DB未整備と内部障害が
+        # 区別できなくなる（api/main.py:6345 と同じ方針）。
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
