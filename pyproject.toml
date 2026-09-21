@@ -12,7 +12,7 @@ dependencies = [
     "plotly==7.0.0",
     "matplotlib==3.10.7",
     "seaborn==0.13.2",
-    "scikit-learn==1.2.2",
+    "scikit-learn==1.7.2",
     "umap-learn==0.5.7",
     # ── umap → pynndescent → llvmlite の macOS Intel wheel 制約 ──
     "llvmlite<0.44",
