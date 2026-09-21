@@ -1,0 +1,3 @@
+# 案件由来の品名・人手スコアと送信結果はコミットしない（.claude/rules/security.md）
+fixtures/
+results/
