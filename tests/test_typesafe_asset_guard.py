@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import typesafe_asset_guard as guard  # noqa: E402
+from experiments.typesafe_asset import measure  # noqa: E402
 
 
 def _asset(**overrides: Any) -> dict[str, Any]:
@@ -142,6 +143,28 @@ def test_low_confidence_is_reported_not_suppressed():
     assert set(meta["low_confidence_items"]) == set(scores)
 
 
+@pytest.mark.parametrize("confidence", [-0.1, 1.5, float("nan"), float("inf")])
+def test_invalid_confidence_is_rejected(confidence):
+    with pytest.raises(guard.TypeSafeAssetError):
+        guard.judge_asset(
+            _asset(), request_fn=lambda _: _answers(2.0, confidence=confidence)
+        )
+
+
+@pytest.mark.parametrize("human_score", [-1, 101, float("nan"), float("inf")])
+def test_fixture_rejects_human_score_outside_finite_zero_to_100(human_score):
+    rows = [
+        {
+            "name": "大型トラック",
+            "detail": "",
+            "category": "車両",
+            "human_score": human_score,
+        }
+    ]
+
+    assert measure._validate(rows) == ["[0] human_score が0〜100の有限値でない"]
+
+
 # --- fail-open ------------------------------------------------------------
 
 
@@ -183,3 +206,33 @@ def test_enabled_requires_both_flag_and_key():
     assert guard.typesafe_asset_enabled(
         {"TYPESAFE_ASSET_ENABLED": "1", "TYPESAFE_API_KEY": "sk-test"}
     )
+
+
+def test_fixture_approval_token_is_bound_to_payload_content():
+    first = [{"name": "大型トラック", "detail": "", "category": "車両", "human_score": 50}]
+    second = [{**first[0], "name": "別の大型トラック"}]
+
+    assert measure._approval_token(first) != measure._approval_token(second)
+
+
+def test_measurement_preserves_fallback_rows(monkeypatch, tmp_path):
+    monkeypatch.setattr(measure, "RESULTS_DIR", tmp_path)
+    calls = iter(
+        [
+            ({item["id"]: 50.0 for item in guard.resolve_items("車両")}, {"status": "applied"}),
+            ({}, {"status": "fallback", "error_type": "TimeoutError"}),
+        ]
+    )
+    monkeypatch.setattr(measure.guard, "judge_asset_if_enabled", lambda *_args, **_kwargs: next(calls))
+    rows = [
+        {"name": "大型トラック", "detail": "A", "category": "車両", "human_score": 50},
+        {"name": "大型トラック", "detail": "B", "category": "車両", "human_score": 60},
+    ]
+
+    output = measure._send(rows)
+    saved = json.loads(output.read_text(encoding="utf-8"))
+
+    assert len(saved) == 2
+    assert saved[0]["jev_total"] is not None
+    assert saved[1]["jev_total"] is None
+    assert saved[1]["meta"]["status"] == "fallback"
