@@ -69,10 +69,13 @@ def test_scheduled_workflow_uses_privacy_preserving_health_endpoint() -> None:
         encoding="utf-8"
     )
 
-    # 2026-09、毎時プローブ自体がmin-instances=0のCloud Runをコールドスタート
-    # させ課金増の一因になっていたため毎時→2時間おきに変更（分オフセット17は
-    # デプロイ直後と重ならせない狙いのまま維持）。
-    assert 'cron: "17 */2 * * *"' in workflow
+    # 2026-09、プローブ自体がmin-instances=0のCloud Runをコールドスタートさせ
+    # 課金増の一因になっていたため、知識同期チェックを統合し平日JST 9/13/17時の
+    # 1日3回に絞った（分オフセット17はデプロイ直後と重ならせない狙いのまま維持）。
+    assert 'cron: "17 0,4,8 * * 1-5"' in workflow
+    assert "python scripts/check_cloudrun_knowledge_sync.py" in workflow
+    assert "KNOWLEDGE_SYNC_PROBE_TOKEN: ${{ secrets.KNOWLEDGE_SYNC_PROBE_TOKEN }}" in workflow
+    assert not (ROOT / ".github/workflows/knowledge-sync-health.yml").exists()
     # actions/checkout・actions/setup-pythonの配線がワークフローから消えていない
     # ことだけを保証する。バージョン番号は他ワークフローとの追従対象であり
     # Dependabotの更新のたびに変わるため、特定のaction versionはここで固定しない
