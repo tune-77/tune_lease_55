@@ -553,6 +553,12 @@ def _note_candidates(path: Path, *, vault: Path, states: dict[str, dict[str, Any
                     "review_status": "candidate",
                     "asset_quality": asset_quality,
                     "quality_reasons": quality_reasons,
+                    "quality_source": "rule",
+                    "quality_decision": "rule_only",
+                    "quality_confidence": None,
+                    "quality_margin": None,
+                    "typesafe_asset_quality": "",
+                    "needs_review": False,
                     **state,
                     "promotion_status": promotion_status,
                     "requires_human_use_feedback": True,
@@ -603,6 +609,75 @@ def extract_candidates(
     return dedupe_similar_candidates(candidates)
 
 
+def apply_typesafe_quality(
+    candidates: list[dict[str, Any]],
+    *,
+    request_fn: Any | None = None,
+) -> dict[str, Any]:
+    """Overlay Jev quality judgments on the rule verdicts, in place.
+
+    Import is deferred so this module keeps working where ``httpx`` or the
+    guard is unavailable, matching ``scripts/extract_obsidian_improvements.py``.
+
+    Contract:
+
+    * The rule verdict from ``_judgment_asset_quality()`` is the default and
+      survives untouched whenever the guard is disabled, unsafe to call, or
+      fails.
+    * Only an ``auto`` judgment may overwrite ``asset_quality``.
+    * A ``review`` judgment never suppresses a candidate. It raises
+      ``needs_review`` so the claim reaches a human instead of being dropped,
+      which is the failure mode this pass exists to remove.
+    * ``promotion_status`` values a human already moved into
+      ``PRESERVED_PROMOTION_STATUSES`` or ``SUPPRESSED_PROMOTION_STATUSES`` are
+      never rewritten by a machine judgment.
+    """
+    if not candidates:
+        return {"status": "skipped", "reason": "no_candidates"}
+    try:
+        import typesafe_judgment_quality_guard as guard
+    except Exception as exc:  # pragma: no cover - depends on optional deps
+        return {"status": "unavailable", "error_type": type(exc).__name__}
+
+    judged, meta = guard.judge_claims_if_enabled(candidates, request_fn=request_fn)
+    applied = 0
+    flagged = 0
+    for item in judged:
+        candidate = candidates[int(item["index"])]
+        decision = str(item["decision"])
+        candidate["quality_source"] = "typesafe"
+        candidate["quality_decision"] = decision
+        candidate["quality_confidence"] = item["confidence"]
+        candidate["quality_margin"] = item["margin"]
+        candidate["typesafe_asset_quality"] = str(item["asset_quality"])
+
+        current_status = str(candidate.get("promotion_status") or "")
+        locked = (
+            current_status in PRESERVED_PROMOTION_STATUSES
+            or current_status in SUPPRESSED_PROMOTION_STATUSES
+        )
+        if decision == "auto":
+            candidate["needs_review"] = False
+            if candidate["asset_quality"] != item["asset_quality"]:
+                candidate["asset_quality"] = str(item["asset_quality"])
+                applied += 1
+                if not locked:
+                    candidate["promotion_status"] = _promotion_status(
+                        _candidate_state(candidate), candidate["asset_quality"]
+                    )
+            continue
+
+        candidate["needs_review"] = True
+        flagged += 1
+        if not locked:
+            candidate["promotion_status"] = "needs_review_quality"
+
+    meta = dict(meta)
+    meta["quality_changed"] = applied
+    meta["needs_review"] = flagged
+    return meta
+
+
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -632,6 +707,8 @@ def _markdown(candidates: list[dict[str, Any]], *, end_date: dt.date, days: int)
         f"- ready_for_promotion: {sum(1 for item in candidates if item.get('promotion_status') == 'ready_for_promotion')}",
         f"- rejected_or_deprioritized: {sum(1 for item in candidates if item.get('promotion_status') == 'rejected_or_deprioritized')}",
         f"- textbook_general: {sum(1 for item in candidates if item.get('asset_quality') == 'textbook_general')}",
+        f"- needs_review (quality unresolved): {sum(1 for item in candidates if item.get('needs_review'))}",
+        f"- typesafe_judged: {sum(1 for item in candidates if item.get('quality_source') == 'typesafe')}",
         "",
         "## Promotion Policy",
         "",
@@ -656,6 +733,7 @@ def _markdown(candidates: list[dict[str, Any]], *, end_date: dt.date, days: int)
             f"- Evidence: `{item['evidence_path']}`",
             f"- Status: {item['review_status']} / {item['promotion_status']}",
             f"- Asset quality: {item.get('asset_quality', 'actionable')} / reasons={', '.join(item.get('quality_reasons') or []) or 'none'}",
+            f"- Quality judgment: source={item.get('quality_source', 'rule')}, decision={item.get('quality_decision', 'rule_only')}, needs_review={bool(item.get('needs_review'))}",
             f"- Metrics: use={item.get('use_count', 0)}, useful={item.get('useful_count', 0)}, rejected={item.get('rejected_count', 0)}, neutral={item.get('neutral_count', 0)}, verified={item.get('verified_status', 'unverified')}",
             f"- Deduped similar: {item.get('deduped_count', 0)}",
             "",
@@ -663,7 +741,14 @@ def _markdown(candidates: list[dict[str, Any]], *, end_date: dt.date, days: int)
     return "\n".join(lines).rstrip() + "\n"
 
 
-def write_report(candidates: list[dict[str, Any]], *, end_date: dt.date, days: int, output_jsonl: Path) -> dict[str, str]:
+def write_report(
+    candidates: list[dict[str, Any]],
+    *,
+    end_date: dt.date,
+    days: int,
+    output_jsonl: Path,
+    quality_meta: dict[str, Any] | None = None,
+) -> dict[str, str]:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     date_key = end_date.isoformat().replace("-", "")
     md_path = REPORTS_DIR / f"autoresearch_judgment_asset_candidates_{date_key}.md"
@@ -688,6 +773,9 @@ def write_report(candidates: list[dict[str, Any]], *, end_date: dt.date, days: i
         "ready_for_promotion": sum(1 for item in candidates if item.get("promotion_status") == "ready_for_promotion"),
         "rejected_or_deprioritized": sum(1 for item in candidates if item.get("promotion_status") == "rejected_or_deprioritized"),
         "textbook_general": sum(1 for item in candidates if item.get("asset_quality") == "textbook_general"),
+        "needs_review": sum(1 for item in candidates if item.get("needs_review")),
+        "typesafe_judged": sum(1 for item in candidates if item.get("quality_source") == "typesafe"),
+        "typesafe_quality": dict(quality_meta or {"status": "not_run"}),
         "output_jsonl": str(output_jsonl),
         "promotion_policy": "human_use_feedback_result_verification_and_non_textbook_actionability_required",
     }
@@ -729,14 +817,25 @@ def main() -> None:
         existing_jsonl=output_path,
         state_path=state_path,
     )
+    # Deliberately after write_state(): the state file records human signals, so
+    # a machine verdict written there would be preserved forever by
+    # _note_candidates() and would freeze the next run's re-evaluation.
+    quality_meta = apply_typesafe_quality(candidates)
     write_jsonl(output_path, candidates)
-    paths = write_report(candidates, end_date=end_date, days=days, output_jsonl=output_path)
+    paths = write_report(
+        candidates,
+        end_date=end_date,
+        days=days,
+        output_jsonl=output_path,
+        quality_meta=quality_meta,
+    )
     print(
         json.dumps(
             {
                 "candidates": len(candidates),
                 "output_jsonl": str(output_path),
                 "state": str(state_path),
+                "typesafe_quality": quality_meta,
                 "paths": paths,
             },
             ensure_ascii=False,
