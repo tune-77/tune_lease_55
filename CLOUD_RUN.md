@@ -257,6 +257,23 @@ Before production use:
    scoring bridge and shared session state are removed.
 5. The Web service can scale separately from the API service.
 
+## ChromaDB のGCSスナップショット（2026-09、費用削減）
+
+`api/knowledge/chroma_snapshot.py` が、実行中インスタンスが自分で
+`api/chroma_db` を `gs://<GCS_BUCKET>/<GCS_SNAPSHOT_PREFIX>/chroma_db.tar.gz`
+へ定期アップロードする（既定30分おき、`GCS_CHROMA_SNAPSHOT_INTERVAL_SECONDS`）。
+起動時（`scripts/restore_chroma_snapshot.py`、`scripts/start_api_cloud_run.sh`
+内でバンドル復元後・uvicorn起動前に実行）はこのスナップショットを復元してから
+`api/main.py` の起動時索引（`ENABLE_OBSIDIAN_INDEXING`）を走らせる。復元できれば
+`api/knowledge/indexer.py` のmtime差分判定が効き、起動のたびの全量再埋め込みを
+避けられる。スナップショット未作成・復元失敗時は従来どおりその場でフル索引する
+（非致命的、起動は止めない）。demoモードは対象外（`lease_data.db`と同じ判定）。
+
+**`--no-cpu-throttling` はまだ外していない**: 復元できなかった場合のフル索引や、
+他のバックグラウンドスレッド（DBスナップショット・フィードバック読込）が引き続き
+CPU割当を必要とするため。本番で復元が安定して効くことを確認してから、別途
+費用対効果を計測した上で判断する。
+
 ## Verification
 
 ```bash
