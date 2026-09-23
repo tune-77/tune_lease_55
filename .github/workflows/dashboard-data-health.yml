@@ -2,12 +2,12 @@ name: Dashboard Data Health
 
 on:
   schedule:
-    # 2時間おき17分。min-instances=0のためこのプローブ自体がCloud Run
-    # (web→proxy.ts経由でapiまで)のコールドスタートを毎回誘発しており、
-    # Cloud Run課金増の一因だったため毎時→2時間おきに頻度を落とした
-    # （2026-09、Cloud Run費用調査で判明）。デプロイ直後と重なりにくい
-    # 時刻にずらす狙いは維持。
-    - cron: "17 */2 * * *"
+    # 平日のJST 9:17 / 13:17 / 17:17 の1日3回（cronはUTC）。min-instances=0のため
+    # このプローブ自体がCloud Run(web→proxy.ts経由でapiまで)のコールドスタートを
+    # 毎回誘発する。2026-09のCloud Run費用調査で、旧knowledge-sync-health.yml
+    # （2時間おき27分）と合わせ1日12回の起動になっていたため、両チェックを
+    # このジョブへ統合し1回の起動で済ませ、業務時間帯のみに絞った。
+    - cron: "17 0,4,8 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -19,9 +19,10 @@ concurrency:
 
 jobs:
   check-dashboard-data:
-    name: Detect HTTP 200 with unusable dashboard data
+    name: Detect unusable dashboard data and incomplete Vault to ChromaDB sync
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 知識同期チェックはコールドスタート後のGCS Vault同期＋索引完了を待つため長め。
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -39,9 +40,24 @@ jobs:
             --retry-delay 10 \
             --timeout 20
 
+      # 旧 knowledge-sync-health.yml を統合。直前のダッシュボードチェックで起動した
+      # インスタンスの起動時Vault同期・索引（10分超かかることがある）を待つため、
+      # 60秒間隔で最大15回リトライする。
+      - name: Check production knowledge sync
+        if: ${{ !cancelled() }}
+        env:
+          KNOWLEDGE_SYNC_PROBE_TOKEN: ${{ secrets.KNOWLEDGE_SYNC_PROBE_TOKEN }}
+        run: |
+          python scripts/check_cloudrun_knowledge_sync.py \
+            --base-url "https://tune-lease-55-web-6mijhyebkq-an.a.run.app" \
+            --path "/api/system/knowledge-sync-health" \
+            --attempts 15 \
+            --retry-delay 60 \
+            --timeout 20
+
       - name: Notify Slack on failure
         if: failure()
         uses: ./.github/actions/notify-slack-failure
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          workflow-name: "Dashboard Data Health"
+          workflow-name: "Dashboard Data / Knowledge Sync Health"
