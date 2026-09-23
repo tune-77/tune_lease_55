@@ -40,7 +40,9 @@ Usage
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import sqlite3
 import statistics
 import sys
@@ -371,9 +373,12 @@ def _validate(rows: list[dict[str, Any]]) -> list[str]:
         except guard.TypeSafeAssetError:
             problems.append(f"[{index}] 未知のカテゴリ: {category!r}")
         try:
-            float(row["human_score"])
+            human_score = float(row["human_score"])
         except (KeyError, TypeError, ValueError):
             problems.append(f"[{index}] human_score が数値でない")
+            continue
+        if not math.isfinite(human_score) or not 0.0 <= human_score <= 100.0:
+            problems.append(f"[{index}] human_score が0〜100の有限値でない")
     return problems
 
 
@@ -409,12 +414,26 @@ def _print_corpus(rows: list[dict[str, Any]]) -> None:
         print("  ⚠ 件数が少なく、一致率の差は偶然の範囲に収まる。追記を推奨")
 
 
-def _print_payloads(rows: list[dict[str, Any]]) -> None:
+def _approval_token(rows: list[dict[str, Any]]) -> str:
+    """Bind an explicit send approval to the exact outbound payload set."""
+    states = []
+    for row in rows:
+        items = guard.resolve_items(str(row["category"]))
+        states.append(guard.build_asset_request(row, items)["state"])
+    serialized = json.dumps(states, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
+
+
+def _print_payloads(rows: list[dict[str, Any]]) -> str:
     print("\n--- 送信されるペイロード（これ以外は送られない） ---")
     for row in rows:
         items = guard.resolve_items(str(row["category"]))
         payload = guard.build_asset_request(row, items)
         print(json.dumps(payload["state"], ensure_ascii=False))
+    token = _approval_token(rows)
+    print(f"\n承認トークン: {token}")
+    print("内容を確認後、別の実行で --send --approval-token <token> を指定すること")
+    return token
 
 
 def _compose(scores: dict[str, float], category: str) -> float:
@@ -426,7 +445,8 @@ def _send(rows: list[dict[str, Any]]) -> Path:
     judged: list[dict[str, Any]] = []
     for row in rows:
         category = str(row["category"])
-        scores, meta = guard.judge_asset(row, category=category)
+        # Preserve every completed/billable result even if a later row fails.
+        scores, meta = guard.judge_asset_if_enabled(row, category=category)
         judged.append(
             {
                 "name": row["name"],
@@ -529,6 +549,10 @@ def main() -> int:
     parser.add_argument("--seed", action="store_true", help="DB から初期エントリを作成")
     parser.add_argument("--inspect", action="store_true", help="送信ペイロードを全文表示")
     parser.add_argument("--send", action="store_true", help="TypeSafe に送信する")
+    parser.add_argument(
+        "--approval-token",
+        help="直前の --inspect で表示されたペイロード固有の承認トークン",
+    )
     parser.add_argument("--sweep", type=Path, help="保存済み結果を再集計")
     args = parser.parse_args()
 
@@ -560,6 +584,14 @@ def main() -> int:
         if not guard.typesafe_asset_enabled():
             print(
                 "\nTYPESAFE_ASSET_ENABLED と API キーが未設定のため送信しない",
+                file=sys.stderr,
+            )
+            return 1
+        expected_token = _approval_token(rows)
+        if args.approval_token != expected_token:
+            print(
+                "\n送信を停止: --inspect で内容を確認し、表示された承認トークンを "
+                "--approval-token に指定してください",
                 file=sys.stderr,
             )
             return 1
