@@ -87,6 +87,9 @@ deploy_args=(
   --memory "$MEMORY"
   --cpu "$CPU"
   --no-cpu-throttling
+  # 起動直後の一時的なCPU増強。コールドスタート（UMAP/ChromaDB等の初期化）を短縮し、
+  # min-instances=0運用で課金対象となる起動時間を減らす。
+  --cpu-boost
   --timeout "$TIMEOUT"
   --concurrency "$CONCURRENCY"
   --min-instances "$MIN_INSTANCES"
