@@ -240,10 +240,10 @@ def _score(
         )
     try:
         confidence = float(raw.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        confidence = 0.0
-    if not math.isfinite(confidence):
-        confidence = 0.0
+    except (TypeError, ValueError) as exc:
+        raise TypeSafeAssetError(f"invalid confidence: {question_id}") from exc
+    if not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+        raise TypeSafeAssetError(f"confidence outside [0, 1]: {question_id}")
     return value, confidence
 
 
