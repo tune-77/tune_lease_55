@@ -38,7 +38,6 @@ dependencies = [
     "lxml>=4.9.0",
     "filelock>=3.0.0",
     "cachetools>=5.0.0",
-    # ── torch: Intel Mac (x86_64) は 2.2.2 までしか wheel が無い ──
     "torch<2.15.0",
     # ── Flask mobile_app / web ──
     "flask>=3.0.0",
