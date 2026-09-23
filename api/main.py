@@ -351,6 +351,24 @@ async def lifespan(app: FastAPI):
             _t.sleep(interval)
             snapshot_and_upload()
     _th.Thread(target=_periodic_db_snapshot, daemon=True, name="db-snapshot").start()
+    # startup: ChromaDBのGCS定期スナップショット（非demoモードのみ）。
+    # 起動のたびに埋め込みモデルでVault全量を再構築するのを避けるため、
+    # ビルド済みChromaDBをGCSへ定期アップロードし、次回起動はそれを復元して
+    # 差分索引（api/knowledge/indexer.py）だけで済ませる（api/knowledge/chroma_snapshot.py）。
+    def _periodic_chroma_snapshot():
+        try:
+            from api.knowledge.chroma_snapshot import is_snapshot_enabled, snapshot_and_upload
+        except Exception as e:
+            print(f"[API] chroma snapshot module unavailable (non-fatal): {e}")
+            return
+        if not is_snapshot_enabled():
+            return
+        interval = int(os.environ.get("GCS_CHROMA_SNAPSHOT_INTERVAL_SECONDS", "1800"))
+        import time as _t
+        while True:
+            _t.sleep(interval)
+            snapshot_and_upload()
+    _th.Thread(target=_periodic_chroma_snapshot, daemon=True, name="chroma-snapshot").start()
     yield
     # shutdown: 結晶化スケジューラー停止
     try:
@@ -364,6 +382,12 @@ async def lifespan(app: FastAPI):
         snapshot_and_upload()
     except Exception as e:
         print(f"[API] shutdown db snapshot failed (non-fatal): {e}")
+    # shutdown: ChromaDBの最終スナップショット
+    try:
+        from api.knowledge.chroma_snapshot import snapshot_and_upload as snapshot_chroma
+        snapshot_chroma()
+    except Exception as e:
+        print(f"[API] shutdown chroma snapshot failed (non-fatal): {e}")
     # shutdown: 最終 git push（コンテナ停止前にデータを永続化）
     if os.path.isdir(os.path.join(_DATA_GIT_DIR, ".git")):
         try:
