@@ -47,6 +47,10 @@ fi
 # prompt_feedback_log.jsonl を復元する（失敗しても起動をブロックしない）
 python "$(dirname "$0")/restore_prompt_feedback_snapshot.py" || true
 
+# ChromaDBのGCSスナップショットを復元する（失敗/未作成でも起動をブロックしない。
+# 復元できなければ api/main.py 側の起動時フル索引にそのままフォールバックする）
+python "$(dirname "$0")/restore_chroma_snapshot.py" || true
+
 exec python -m uvicorn api.main:app \
   --host "$FASTAPI_HOST" \
   --port "$FASTAPI_PORT" \
