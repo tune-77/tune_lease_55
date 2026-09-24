@@ -34,6 +34,7 @@ HUMAN_RESPONSE_FEEDBACK_LOG = PROJECT_ROOT / "data" / "human_response_feedback.j
 SHION_MEMORY_USAGE_LOG = PROJECT_ROOT / "data" / "shion_memory_usage_log.jsonl"
 JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = PROJECT_ROOT / "data" / "judgment_asset_feedback_drops.jsonl"
 JUDGMENT_ASSET_USAGE_FEEDBACK_LOG = PROJECT_ROOT / "data" / "judgment_asset_usage_feedback.jsonl"
+JUDGMENT_STATE_LEDGER = PROJECT_ROOT / "data" / "judgment_state_events.jsonl"
 SHION_HYPOTHESIS_COLLISION_LOG = PROJECT_ROOT / "data" / "shion_hypothesis_collision_log.jsonl"
 SHION_AGENT_CONSULTATION_QUEUE = PROJECT_ROOT / "data" / "shion_agent_consultation_queue.jsonl"
 SHION_REASONER_CONSULTATION_QUEUE = PROJECT_ROOT / "data" / "shion_reasoner_consultation_queue.jsonl"
@@ -763,6 +764,28 @@ def _human_response_feedback_from_event(event: dict) -> dict | None:
     }
 
 
+def _materialize_judgment_state_events(events: list[dict]) -> int:
+    """Restore normalized state events written by Cloud Run into the local ledger."""
+    try:
+        from decision_state_ledger import append_event, validate_event
+    except Exception:
+        return 0
+
+    recorded = 0
+    for outer in events:
+        if outer.get("event_type") != "judgment_state_event":
+            continue
+        payload = outer.get("payload") if isinstance(outer.get("payload"), dict) else {}
+        try:
+            validate_event(payload)
+            result = append_event(JUDGMENT_STATE_LEDGER, payload)
+        except Exception:
+            continue
+        if result.get("recorded"):
+            recorded += 1
+    return recorded
+
+
 def _first_text(*values: Any, limit: int = 900) -> str:
     for value in values:
         text = str(value or "").strip()
@@ -1242,6 +1265,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         row for event in events if (row := _shion_reasoner_consultation_status_from_event(event))
     ]
     personal_memory_new = _sync_personal_memory_from_events(events) if events else 0
+    judgment_state_events_new = _materialize_judgment_state_events(events) if events else 0
     rag_feedback_rows: list[dict] = []
     rag_hit_rows: list[dict] = []
     for event in events:
@@ -1283,6 +1307,7 @@ def materialize_events(events: list[dict]) -> dict[str, int]:
         "shion_reasoner_consultations_new": _append_jsonl_dedup(SHION_REASONER_CONSULTATION_QUEUE, shion_reasoner_consultation_rows) if shion_reasoner_consultation_rows else 0,
         "shion_reasoner_consultation_status_updates": _append_jsonl_dedup(SHION_REASONER_CONSULTATION_QUEUE, shion_reasoner_consultation_status_rows) if shion_reasoner_consultation_status_rows else 0,
         "personal_memory_new": personal_memory_new,
+        "judgment_state_events_new": judgment_state_events_new,
         **db_result,
     }
 
