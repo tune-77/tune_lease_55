@@ -766,7 +766,10 @@ def _human_response_feedback_from_event(event: dict) -> dict | None:
 
 def _materialize_judgment_state_events(events: list[dict]) -> int:
     """Restore normalized state events written by Cloud Run into the local ledger."""
-    from decision_state_ledger import append_event, validate_event
+    try:
+        from decision_state_ledger import append_event, validate_event
+    except Exception:
+        return 0
 
     recorded = 0
     for outer in events:

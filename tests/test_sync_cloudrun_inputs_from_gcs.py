@@ -176,6 +176,23 @@ def test_materialize_events_restores_normalized_judgment_state_event(tmp_path, m
     assert [row["event_id"] for row in load_events(ledger)] == [event["event_id"]]
 
 
+def test_materialize_events_survives_a_missing_decision_state_ledger(monkeypatch) -> None:
+    """台帳モジュールが無い環境でも、同期本流へ ImportError を漏らさないこと。"""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name == "decision_state_ledger":
+            raise ImportError("decision_state_ledger is unavailable here")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    outer = {"event_type": "judgment_state_event", "payload": {"event_id": "x"}}
+
+    assert syncer._materialize_judgment_state_events([outer]) == 0
+
+
 def test_materialize_events_writes_prompt_feedback_log(tmp_path, monkeypatch) -> None:
     """Cloud Run由来のprompt_feedbackイベントがdata/prompt_feedback_log.jsonl相当へ合流すること。
 
