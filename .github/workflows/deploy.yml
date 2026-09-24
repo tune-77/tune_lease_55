@@ -156,6 +156,10 @@ jobs:
               mobile_app/*|_archive/*) return 1 ;;
               # ドキュメント・自動生成レポート・テスト（本番プロセスは読まない）
               docs/*|reports/*|tests/*) return 1 ;;
+              # デプロイ定義そのもの。--set-env-vars などランタイム設定を含むため、
+              # 「CI設定だから影響なし」とは扱えない（2026-09-25: ENABLE_SYNC_SCORING_
+              # DIAGNOSTICS を追加しても本番に届かない構造だった）。
+              .github/workflows/deploy.yml) return 0 ;;
               # CI・エージェント設定・ローカル定期実行の定義
               .github/*|.claude/*|.agents/*|shared-ai/*|launchd/*) return 1 ;;
               # web 側だけのビルド定義
