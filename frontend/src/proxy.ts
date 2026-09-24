@@ -102,8 +102,12 @@ export async function proxy(request: NextRequest) {
         && constantTimeEqual(providedSession, expectedSession);
       const hasValidBasicAuth = hasValidTunnelCredentials(request, tunnelPassword);
       isAuthorized = hasValidSession || hasValidBasicAuth;
-      // Basic認証のみ成功した初回だけCookieを発行し、以降はセッションで通す。
-      shouldCreateTunnelSession = hasValidBasicAuth && !hasValidSession;
+      // Basic認証のみ成功した初回にCookieを発行し、以降はセッションで通す。
+      // 有効なセッションでページを開いた時も期限を30日延長する（最終アクセス起点）。
+      // 静的アセットや /api/* の度に Set-Cookie しないよう document 遷移に限る。
+      const isDocumentRequest = request.headers.get("sec-fetch-dest") === "document";
+      shouldCreateTunnelSession = (hasValidBasicAuth && !hasValidSession)
+        || (hasValidSession && isDocumentRequest);
     }
     if (!isAuthorized) {
       return new NextResponse("Authentication required", {
