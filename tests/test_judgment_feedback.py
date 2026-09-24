@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decision_state_ledger import load_events
 from judgment_feedback import (
     build_judgment_learning_prompt_block,
     get_judgment_feedback_summary,
@@ -29,6 +30,12 @@ def test_changed_judgment_becomes_review_candidate(tmp_path):
     candidates = load_judgment_training_candidates(approved_only=False, db_path=db_path)
     assert candidates[0]["target_label"] == 0
     assert candidates[0]["input_snapshot"]["company_name"] == "[REDACTED]"
+    events = load_events(tmp_path / "judgment_state_events.jsonl")
+    assert len(events) == 1
+    assert events[0]["event_type"] == "decision_changed"
+    assert events[0]["transition"]["from"]["stance"] == "conditional"
+    assert events[0]["transition"]["to"]["stance"] == "reject"
+    assert result["state_event_recorded"] is True
 
 
 def test_unchanged_judgment_is_not_recorded(tmp_path):
@@ -80,3 +87,38 @@ def test_unapproved_feedback_is_not_in_learning_prompt(tmp_path):
     )
 
     assert build_judgment_learning_prompt_block(db_path=db_path) == ""
+
+
+def test_registered_business_result_is_an_outcome_not_a_human_decision(tmp_path):
+    db_path = str(tmp_path / "lease.db")
+    result = record_judgment_feedback(
+        case_id="case-outcome",
+        model_decision="条件付",
+        human_decision="承認",
+        reason="案件登録トリガー: 成約",
+        source="register_trigger",
+        db_path=db_path,
+    )
+
+    events = load_events(tmp_path / "judgment_state_events.jsonl")
+    assert result["success"] is True
+    assert events[0]["event_type"] == "outcome_recorded"
+    assert events[0]["transition"]["to"]["status"] == "approve"
+
+
+def test_ledger_failure_does_not_rollback_feedback(tmp_path):
+    db_path = str(tmp_path / "lease.db")
+    result = record_judgment_feedback(
+        case_id="case-ledger-failure",
+        model_decision="承認",
+        human_decision="否決",
+        reason="判断理由はDBへ残す",
+        source="test",
+        db_path=db_path,
+        ledger_path=tmp_path,
+    )
+
+    assert result["success"] is True
+    assert result["state_event_recorded"] is False
+    assert result["state_event_error"]
+    assert len(load_judgment_training_candidates(approved_only=False, db_path=db_path)) == 1

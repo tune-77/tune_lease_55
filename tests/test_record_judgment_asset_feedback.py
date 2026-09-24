@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from decision_state_ledger import load_events
 from scripts import record_judgment_asset_feedback as feedback
 
 
@@ -39,6 +40,10 @@ def test_append_feedback_writes_jsonl(tmp_path):
 
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert rows == [entry]
+    events = load_events(tmp_path / "judgment_state_events.jsonl")
+    assert len(events) == 1
+    assert events[0]["event_type"] == "judgment_asset_evaluated"
+    assert events[0]["transition"]["action"] == "challenged"
 
 
 def _write_canonical(path: Path) -> None:

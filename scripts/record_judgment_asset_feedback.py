@@ -19,6 +19,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CANONICAL_JSON = PROJECT_ROOT / "data" / "canonical_judgment_rules.json"
 DEFAULT_FEEDBACK_JSONL = PROJECT_ROOT / "data" / "judgment_asset_usage_feedback.jsonl"
+DEFAULT_STATE_LEDGER = PROJECT_ROOT / "data" / "judgment_state_events.jsonl"
 VALID_OUTCOMES = {"used", "helped", "challenged", "rejected", "neutral"}
 
 
@@ -48,10 +49,24 @@ def build_feedback_entry(
     }
 
 
-def append_feedback(path: Path, entry: dict[str, str]) -> None:
+def append_feedback(
+    path: Path,
+    entry: dict[str, str],
+    *,
+    state_ledger_path: Path | None = None,
+) -> dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+    try:
+        from decision_state_ledger import build_judgment_asset_evaluated_event, safe_append_event
+
+        target = state_ledger_path
+        if target is None:
+            target = DEFAULT_STATE_LEDGER if path == DEFAULT_FEEDBACK_JSONL else path.parent / "judgment_state_events.jsonl"
+        return safe_append_event(target, build_judgment_asset_evaluated_event(entry))
+    except Exception as exc:
+        return {"ok": False, "recorded": False, "event_id": "", "error": str(exc)}
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -134,6 +149,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--used-at", default="")
     parser.add_argument("--canonical-json", type=Path, default=DEFAULT_CANONICAL_JSON)
     parser.add_argument("--feedback-jsonl", type=Path, default=DEFAULT_FEEDBACK_JSONL)
+    parser.add_argument("--state-ledger", type=Path, default=None)
     parser.add_argument("--list-active", action="store_true", help="Show active judgment assets and exit")
     parser.add_argument("--dry-run", action="store_true", help="Validate and print the entry without writing")
     parser.add_argument(
@@ -168,9 +184,15 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(entry, ensure_ascii=False, sort_keys=True))
         return 0
 
-    append_feedback(args.feedback_jsonl, entry)
+    ledger_result = append_feedback(
+        args.feedback_jsonl,
+        entry,
+        state_ledger_path=args.state_ledger,
+    )
     concept = str(rule.get("concept") or "").strip() or "-"
     print(f"recorded {entry['outcome']} for {entry['rule_id']} ({concept}) -> {args.feedback_jsonl}")
+    if not ledger_result.get("ok"):
+        print(f"state_event_warning={ledger_result.get('error') or 'not recorded'}")
     if args.recompute_growth:
         run_growth_report()
     return 0

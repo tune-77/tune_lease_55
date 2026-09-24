@@ -128,6 +128,7 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
         "shion_reasoner_consultations_new": 0,
         "shion_reasoner_consultation_status_updates": 0,
         "personal_memory_new": 0,
+        "judgment_state_events_new": 0,
         "score_inputs_new": 1,
         "ocr_results_new": 0,
         "shion_reviews_new": 0,
@@ -141,6 +142,38 @@ def test_materialize_events_writes_existing_pipeline_logs(tmp_path, monkeypatch)
     assert "asset_name" in wizard_rows[0]["empty_fields"]
     assert rag_rows[0]["event_id"] == "rag-1"
     assert hit_rows[0]["hit_type"] == "feedback_confirmed"
+
+
+def test_materialize_events_restores_normalized_judgment_state_event(tmp_path, monkeypatch) -> None:
+    from decision_state_ledger import build_decision_changed_event, load_events
+
+    ledger = tmp_path / "judgment_state_events.jsonl"
+    monkeypatch.setattr(syncer, "JUDGMENT_STATE_LEDGER", ledger)
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", tmp_path / "lease_data.db")
+    event = build_decision_changed_event(
+        case_id="case-cloud-1",
+        before="承認",
+        after="条件付",
+        reason="追加確認が必要",
+        source="screening",
+        record_id=91,
+        occurred_at="2026-09-14T01:00:00+00:00",
+    )
+    outer = {
+        "event_id": "cloud-event-1",
+        "ts": "2026-09-14T01:00:01+00:00",
+        "event_type": "judgment_state_event",
+        "surface": "screening",
+        "payload": event,
+    }
+
+    first = syncer.materialize_events([outer])
+    second = syncer.materialize_events([outer])
+
+    assert first["judgment_state_events_new"] == 1
+    assert second["judgment_state_events_new"] == 0
+    assert [row["event_id"] for row in load_events(ledger)] == [event["event_id"]]
 
 
 def test_materialize_events_writes_prompt_feedback_log(tmp_path, monkeypatch) -> None:

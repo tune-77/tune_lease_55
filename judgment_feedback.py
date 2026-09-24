@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 DEFAULT_DB_PATH = "data/lease_data.db"
@@ -79,6 +80,7 @@ def record_judgment_feedback(
     input_snapshot: dict[str, Any] | None = None,
     evidence_snapshot: dict[str, Any] | None = None,
     db_path: str = DEFAULT_DB_PATH,
+    ledger_path: str | Path | None = None,
 ) -> dict[str, Any]:
     model = normalize_decision(model_decision)
     human = normalize_decision(human_decision)
@@ -119,16 +121,87 @@ def record_judgment_feedback(
                 ),
             )
             record_id = int(cur.lastrowid)
+        ledger_result = _record_decision_state_sidecar(
+            case_id=str(case_id).strip(),
+            model_decision=model,
+            human_decision=human,
+            reason=clean_reason,
+            source=str(source or "unknown").strip(),
+            score=score,
+            record_id=record_id,
+            recorded_at=recorded_at,
+            db_path=db_path,
+            ledger_path=ledger_path,
+        )
         return {
             "success": True,
             "record_id": record_id,
             "review_status": "candidate",
             "model_label": DECISION_LABELS[model],
             "human_label": DECISION_LABELS[human],
+            "state_event_recorded": bool(ledger_result.get("recorded")),
+            "state_event_id": str(ledger_result.get("event_id") or ""),
+            "state_event_error": str(ledger_result.get("error") or ""),
             "error": None,
         }
     except Exception as exc:
         return {"success": False, "record_id": -1, "error": str(exc)}
+
+
+def _record_decision_state_sidecar(
+    *,
+    case_id: str,
+    model_decision: str,
+    human_decision: str,
+    reason: str,
+    source: str,
+    score: float | None,
+    record_id: int,
+    recorded_at: str,
+    db_path: str,
+    ledger_path: str | Path | None,
+) -> dict[str, Any]:
+    """Best-effort observer; failures must never roll back judgment feedback."""
+    try:
+        from decision_state_ledger import (
+            DEFAULT_LEDGER_PATH,
+            build_decision_changed_event,
+            build_outcome_recorded_event,
+            safe_append_event,
+        )
+
+        if ledger_path is None:
+            target = (
+                DEFAULT_LEDGER_PATH
+                if Path(db_path) == Path(DEFAULT_DB_PATH)
+                else Path(db_path).parent / "judgment_state_events.jsonl"
+            )
+        else:
+            target = Path(ledger_path)
+        if source == "register_trigger":
+            event = build_outcome_recorded_event(
+                case_id=case_id,
+                outcome=human_decision,
+                reason=reason,
+                source=source,
+                record_id=record_id,
+                occurred_at=recorded_at,
+            )
+        else:
+            event = build_decision_changed_event(
+                case_id=case_id,
+                before=model_decision,
+                after=human_decision,
+                reason=reason,
+                source=source,
+                record_id=record_id,
+                score=score,
+                action="revised",
+                occurred_at=recorded_at,
+            )
+        return safe_append_event(target, event)
+    except Exception as exc:
+        return {"ok": False, "recorded": False, "event_id": "", "error": str(exc)}
 
 
 def get_judgment_feedback_summary(db_path: str = DEFAULT_DB_PATH) -> dict[str, int]:
