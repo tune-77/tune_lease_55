@@ -270,6 +270,23 @@ async def lifespan(app: FastAPI):
         daemon=True,
         name="dashboard-cache-warmup",
     ).start()
+    # startup: 診断モデル（Mahalanobis / UMAP）のウォームアップ
+    # import umap が約10秒かかるため、リクエストパス上で払うと
+    # コールドスタート後の初回審査が 0.8s → 9.1s になる（2026-09-25 実測）。
+    # ENABLE_SYNC_SCORING_DIAGNOSTICS が off の環境では中で skip される。
+    def _warm_scoring_diagnostics_models():
+        try:
+            from scoring_core import warm_diagnostics_models
+            summary = warm_diagnostics_models()
+            if summary.get("status") != "skipped":
+                print(f"[Scoring] diagnostics warmup: {summary}")
+        except Exception as e:
+            print(f"[Scoring] diagnostics warmup failed (non-fatal): {e}")
+    threading.Thread(
+        target=_warm_scoring_diagnostics_models,
+        daemon=True,
+        name="scoring-diagnostics-warmup",
+    ).start()
     import threading as _th
 
     if os.environ.get("ENABLE_OBSIDIAN_INDEXING", "false").lower() != "true":
