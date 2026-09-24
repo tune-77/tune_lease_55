@@ -95,6 +95,31 @@ debug metadata is requested.
 source. It is not wired into answer generation yet because claim extraction and
 the action threshold need separate evaluation.
 
+## Obsidian curation / ChromaDB reduction shadow tests
+
+Two more shadow-only tests reuse the same Jev gate to measure whether it is
+worth wiring Jev into Obsidian vault curation or ChromaDB reduction later.
+Neither ever writes to the Vault, reindexes ChromaDB, or changes the
+improvement ledger — they only append a jsonl log for offline agreement
+analysis via `scripts/typesafe_curation_shadow_report.py`.
+
+- `TYPESAFE_CURATION_MODE=shadow` — in `api/shion_obsidian_curator.py`,
+  `review_obsidian_vault_health()` asks Jev whether each `connect_used_isolate`
+  proposal's suggested hub notes are actually related to the isolated note
+  (title only, no note body), and logs the routing to
+  `data/obsidian_curation_shadow_log.jsonl`.
+- `TYPESAFE_STALENESS_MODE=shadow` — in `scripts/analyze_rag_staleness.py`,
+  `shadow_log_jev_relevance()` asks Jev whether each top stale /
+  important_but_unused candidate (title + tags only) is still valuable, and
+  logs agreement with the existing keyword heuristic to
+  `data/rag_staleness_shadow_log.jsonl`.
+
+Both additionally require `TYPESAFE_ALLOW_SHARED_CONTEXT=1` (same opt-in the
+shared Obsidian context helper already requires) since they read vault
+metadata. Neither mode has an `enforce` option yet — promoting either to
+influence real curator auto-actions or reduction candidates needs a
+follow-up decision once the agreement report has enough samples.
+
 ## Verification
 
 ```bash

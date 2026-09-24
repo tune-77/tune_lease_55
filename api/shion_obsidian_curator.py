@@ -3,12 +3,19 @@
 These tools are intentionally read-only. They inspect existing sidecar reports
 and the retrieval graph, then return small, reviewable curation suggestions.
 They do not edit the Vault, rebuild ChromaDB, alter prompts, or promote memory.
+
+Optionally, when TYPESAFE_CURATION_MODE=shadow is set (plus the usual Jev
+opt-ins), review_obsidian_vault_health() also logs Jev's relatedness judgment
+for each connect_used_isolate proposal to a local jsonl file for later
+agreement analysis. This never changes the returned proposals or output.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +25,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _GRAPH_EFFECT_JSON = _REPO_ROOT / "reports" / "obsidian_graph_judgment_effect_latest.json"
 _RETRIEVAL_GRAPH_JSON = _REPO_ROOT / "data" / "obsidian_retrieval_graph.json"
 _ENV_MONITOR_JSON = _REPO_ROOT / "reports" / "obsidian_environment_monitor_latest.json"
+_CURATION_SHADOW_LOG = _REPO_ROOT / "data" / "obsidian_curation_shadow_log.jsonl"
 
 _SKILLS_DIR = _REPO_ROOT / ".claude" / "skills"
 _SYNTAX_GUIDE_SOURCES: dict[str, Path] = {
@@ -104,6 +112,72 @@ def _brief_env_checks(env_report: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _curation_shadow_mode() -> str:
+    """Return the configured shadow rollout mode; invalid values fail closed to off."""
+    mode = str(os.environ.get("TYPESAFE_CURATION_MODE") or "off").strip().lower()
+    return mode if mode in {"off", "shadow"} else "off"
+
+
+def _env_truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _shadow_log_curation_relatedness(proposals: list[dict[str, Any]]) -> None:
+    """Best-effort: log Jev's relatedness judgment for connect_used_isolate proposals.
+
+    Never raises and never changes `proposals`. Only note titles (already
+    derived from graph reports, not raw Vault text) are sent externally, and
+    only when both TYPESAFE_CURATION_MODE=shadow and the existing shared-Obsidian
+    Jev opt-ins are set.
+    """
+    if _curation_shadow_mode() != "shadow":
+        return
+    if not _env_truthy(os.environ.get("TYPESAFE_ALLOW_SHARED_CONTEXT")):
+        return
+    try:
+        from typesafe_rag_guard import judge_passages, typesafe_rag_enabled
+
+        if not typesafe_rag_enabled():
+            return
+        for proposal in proposals:
+            if proposal.get("type") != "connect_used_isolate":
+                continue
+            hubs = [str(h) for h in proposal.get("suggested_links") or [] if h]
+            if not hubs:
+                continue
+            query = Path(str(proposal.get("path") or "")).stem
+            hits = [{"title": hub, "text": hub} for hub in hubs]
+            try:
+                judged, meta = judge_passages(query, hits)
+            except Exception as exc:  # noqa: BLE001 - shadow logging must not break the tool
+                record = {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "mode": "shadow",
+                    "path": proposal.get("path"),
+                    "status": "fallback",
+                    "error_type": type(exc).__name__,
+                }
+            else:
+                record = {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "mode": "shadow",
+                    "path": proposal.get("path"),
+                    "suggested_links": hubs,
+                    "jev_routes": [j.get("typesafe_route") for j in judged],
+                    "model": meta.get("model"),
+                    "usage": meta.get("usage"),
+                    "status": meta.get("status", "applied"),
+                }
+            try:
+                _CURATION_SHADOW_LOG.parent.mkdir(parents=True, exist_ok=True)
+                with open(_CURATION_SHADOW_LOG, "a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+    except Exception:  # noqa: BLE001 - shadow logging is best-effort only
+        return
+
+
 def review_obsidian_vault_health(limit: int = 5) -> dict[str, Any]:
     """Review Obsidian health and return the top curation opportunities.
 
@@ -162,6 +236,8 @@ def review_obsidian_vault_health(limit: int = 5) -> dict[str, Any]:
                 "suggested_action": action,
                 "requires_human_approval": True,
             })
+
+    _shadow_log_curation_relatedness(proposals[:max_items])
 
     return {
         "mode": "read_only_obsidian_curator",
