@@ -128,7 +128,7 @@ export async function proxy(request: NextRequest) {
       value: await tunnelSessionToken(tunnelPassword),
       httpOnly: true,
       secure: true,
-      sameSite: "strict",
+      sameSite: "lax",
       path: "/",
       maxAge: TUNNEL_SESSION_MAX_AGE_SECONDS,
     });
