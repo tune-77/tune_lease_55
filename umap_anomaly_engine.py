@@ -31,6 +31,7 @@ class UMAPAnomalyScorer:
         self._score_max: float = 0.0
         # UMAP埋め込み（全学習データ）
         self.umap_embeddings_: np.ndarray | None = None
+        self.train_X_scaled_: np.ndarray | None = None  # 近傍近似用
         self.train_labels_: list[str] = []
         self.train_size: int = 0
         self.last_updated: str | None = None
@@ -75,9 +76,11 @@ class UMAPAnomalyScorer:
             X_all = self._preprocess(df_labeled[self.feature_names].values)
             X_all_scaled = self.scaler.transform(X_all)
             self.umap_embeddings_ = self.umap_model.fit_transform(X_all_scaled)
+            self.train_X_scaled_ = X_all_scaled
             self.train_labels_ = list(labels)
         else:
             self.umap_embeddings_ = self.umap_model.fit_transform(X_won_scaled)
+            self.train_X_scaled_ = X_won_scaled
             self.train_labels_ = ['成約'] * len(df_won)
 
         self.train_size = len(self.train_labels_)
@@ -85,8 +88,29 @@ class UMAPAnomalyScorer:
 
     # ── スコアリング ─────────────────────────────────────────
 
+    def _approx_umap_xy(self, X_scaled: np.ndarray, k: int = 5) -> tuple[float, float]:
+        """
+        umap.transform() の代わりに特徴量空間の近傍点の UMAP 座標を加重平均で近似する。
+        umap.transform() は15秒以上かかるが、こちらは数ms。
+        """
+        if self.umap_embeddings_ is None:
+            return 0.0, 0.0
+        # 学習時のスケール済み特徴量を復元（StandardScaler の逆変換で元データを得る）
+        # ここでは保存済み埋め込みと学習データを対応させるため、
+        # 学習データのスケール済み座標が必要。train_X_scaled_ を保存しておく。
+        if not hasattr(self, 'train_X_scaled_') or self.train_X_scaled_ is None:
+            return 0.0, 0.0
+        dists = np.linalg.norm(self.train_X_scaled_ - X_scaled[0], axis=1)
+        top_idx = np.argsort(dists)[:k]
+        weights = 1.0 / (dists[top_idx] + 1e-6)
+        weights /= weights.sum()
+        emb = self.umap_embeddings_
+        ux = float(np.dot(weights, emb[top_idx, 0]))
+        uy = float(np.dot(weights, emb[top_idx, 1]))
+        return ux, uy
+
     def score(self, x_raw) -> tuple[float, float, float]:
-        """(anomaly_score 0-100, umap_x, umap_y) を返す。"""
+        """(anomaly_score 0-100, umap_x, umap_y) を返す。UMAP座標は近傍平均で高速近似。"""
         import pandas as pd
         if isinstance(x_raw, pd.DataFrame):
             X = self._preprocess(x_raw[self.feature_names].values)
@@ -98,11 +122,17 @@ class UMAPAnomalyScorer:
         span = max(self._score_max - self._score_min, 1e-6)
         score = float(np.clip((raw - self._score_min) / span * 100, 0, 100))
 
-        xy = self.umap_model.transform(X_scaled)[0]
-        return round(score, 1), float(xy[0]), float(xy[1])
+        ux, uy = self._approx_umap_xy(X_scaled)
+        return round(score, 1), ux, uy
 
     def find_similar(self, x_raw, top_k: int = 3) -> list[dict]:
-        """UMAP空間で最近傍の成約案件を返す。"""
+        """特徴量空間で最近傍の成約案件を返す（高速）。"""
+        import pandas as pd
+        if isinstance(x_raw, pd.DataFrame):
+            X = self._preprocess(x_raw[self.feature_names].values)
+        else:
+            X = self._preprocess(np.array(x_raw))
+        X_scaled = self.scaler.transform(X)
         _, ux, uy = self.score(x_raw)
         if self.umap_embeddings_ is None:
             return []
