@@ -90,19 +90,28 @@ changed_files_between() {
   git diff --name-only
 }
 
+# .github/workflows/deploy.yml の同名関数と判定を一致させること。
+# 以前はこちらだけ許可リスト方式で残っており、同じ変更でも CI 経由か
+# ローカル経由かでデプロイ要否が食い違っていた（ルート直下の *.py 等が
+# 許可リストに無く、こちらだけ「影響なし」と判定されていた）。
 path_impacts_api() {
   case "$1" in
-    api/*|data/*|mobile_app/*|runtime_paths.py|data_cases.py|requirements*.txt|Dockerfile.api|cloudbuild.api.yaml)
-      return 0
-      ;;
-    scripts/deploy_cloud_run_api.sh|scripts/start_api_cloud_run.sh|scripts/restore_lease_db_snapshot.py|scripts/package_cloud_run_bundle.sh|scripts/check_cloudrun_demo_readiness.py)
-      return 0
-      ;;
-    scripts/build_shion_memory_index.py|scripts/gcs_vault_loader.py|scripts/cloud_init.py)
-      return 0
-      ;;
+    # Next.js ソース。イメージには入るが FastAPI からは実行されない
+    frontend/*) return 1 ;;
+    # 別アプリ / 退避置き場
+    mobile_app/*|_archive/*) return 1 ;;
+    # ドキュメント・自動生成レポート・テスト（本番プロセスは読まない）
+    docs/*|reports/*|tests/*) return 1 ;;
+    # デプロイ定義そのもの。--set-env-vars などランタイム設定を含むため、
+    # 「CI設定だから影響なし」とは扱えない。
+    .github/workflows/deploy.yml) return 0 ;;
+    # CI・エージェント設定・ローカル定期実行の定義
+    .github/*|.claude/*|.agents/*|shared-ai/*|launchd/*) return 1 ;;
+    # web 側だけのビルド定義
+    cloudbuild.web.yaml) return 1 ;;
   esac
-  return 1
+  # 上記以外はすべて API 影響ありとみなす。
+  return 0
 }
 
 path_impacts_web() {

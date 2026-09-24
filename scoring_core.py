@@ -20,6 +20,87 @@ _umap_model_path_cache: str | None = None
 from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 _umap_executor = _ThreadPoolExecutor(max_workers=2, thread_name_prefix="umap-score")
 
+
+def _sync_diagnostics_enabled() -> bool:
+    """同期診断（Mahalanobis / UMAP）を実行してよいか。
+
+    run_quick_scoring と warm_diagnostics_models の両方から参照する。
+    判定を2箇所に複製すると、片方だけ条件を変えたときに
+    「ウォームアップはするのに使われない」「使うのにウォームアップされない」
+    という食い違いが起きるため、必ずこの関数を経由すること。
+    """
+    return os.getenv("ENABLE_SYNC_SCORING_DIAGNOSTICS", "").lower() in {"1", "true", "yes", "on"}
+
+
+def warm_diagnostics_models() -> dict:
+    """診断モデルを起動時に温め、初回リクエストのレイテンシを削る。
+
+    実測（2026-09-25）:
+      import umap             9.795s   <- コストのほぼ全て。numba の JIT
+      UMAPAnomalyScorer.load  0.074s
+      MahalanobisScorer.load  0.001s
+
+    つまり重いのはモデルのロードではなく umap パッケージの import であり、
+    _umap_model_cache に入れるだけでは import 分を先払いできない点に注意。
+
+    api/main.py の lifespan から daemon thread で呼ばれる。起動を止めては
+    いけないので、失敗しても例外を投げずに戻ること（診断値が null に戻るだけで
+    審査本体は動く）。
+
+    Returns:
+        実行結果のサマリ（ログ用）。呼び出し側は戻り値を使わなくてもよい。
+    """
+    if not _sync_diagnostics_enabled():
+        return {"status": "skipped", "reason": "ENABLE_SYNC_SCORING_DIAGNOSTICS is off"}
+
+    global _umap_model_cache, _umap_model_path_cache
+    result: dict = {"status": "ok", "umap": "not_attempted", "mahalanobis": "not_attempted"}
+
+    import time as _time
+    _t0 = _time.perf_counter()
+
+    # Mahalanobis: モデル自体のロードは 1ms でキャッシュする意味は無いが、
+    # プロセス内で最初の load が sklearn の遅延 import を誘発する（実測 1.42s）。
+    # オブジェクトは捨てて import だけ先払いする。
+    _maha_path = os.path.join(_SCRIPT_DIR, "data", "mahalanobis_model.joblib")
+    try:
+        if os.path.exists(_maha_path):
+            from mahalanobis_engine import MahalanobisScorer
+            MahalanobisScorer.load(_maha_path)
+            result["mahalanobis"] = "warmed"
+        else:
+            result["mahalanobis"] = "model_missing"
+    except Exception as e:
+        result["mahalanobis"] = f"failed: {type(e).__name__}: {e}"
+        result["status"] = "partial"
+
+    # UMAP: 重いのは import umap（実測 9.795s / numba の JIT）であって
+    # load() 自体ではない。load() が import を連鎖的に誘発するため、
+    # キャッシュ格納と import の先払いが同時に済む。
+    _umap_path = os.path.join(_SCRIPT_DIR, "data", "umap_anomaly_model.joblib")
+    try:
+        if os.path.exists(_umap_path):
+            from umap_anomaly_engine import UMAPAnomalyScorer
+            _loaded = UMAPAnomalyScorer.load(_umap_path)
+            # 中間状態を読まれても run_quick_scoring の判定は
+            # 「cache is None or path != _umap_path」で両方を要求するため、
+            # 最悪でも一度余計にロードされるだけで誤った結果にはならない。
+            _umap_model_cache = _loaded
+            _umap_model_path_cache = _umap_path
+            result["umap"] = "warmed"
+        else:
+            result["umap"] = "model_missing"
+    except Exception as e:
+        # 壊れたモデルを掴んだまま残さない（run_quick_scoring 側が再試行できる）
+        _umap_model_cache = None
+        _umap_model_path_cache = None
+        result["umap"] = f"failed: {type(e).__name__}: {e}"
+        result["status"] = "partial"
+
+    result["elapsed_sec"] = round(_time.perf_counter() - _t0, 3)
+    return result
+
+
 # パスを追加してからインポート
 import sys
 if _REPO_ROOT not in sys.path:
@@ -1042,7 +1123,7 @@ def run_quick_scoring(inputs: dict) -> dict:
     umap_x: float | None = None
     umap_y: float | None = None
     umap_similar: list | None = None
-    run_sync_diagnostics = os.getenv("ENABLE_SYNC_SCORING_DIAGNOSTICS", "").lower() in {"1", "true", "yes", "on"}
+    run_sync_diagnostics = _sync_diagnostics_enabled()
     if run_sync_diagnostics:
         try:
             import pandas as _pd
