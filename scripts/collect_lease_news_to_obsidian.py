@@ -469,6 +469,63 @@ def _apply_classification(article: Article, value: dict[str, Any] | None) -> Non
     article.classification_source = normalized["classification_source"]
 
 
+def _news_guard_actions(articles: list[Article]) -> list[str]:
+    """Jevで記事を選別し、記事順の行動リストを返す。
+
+    off（既定）は従来どおり全件を送る。shadow は判定を記録するだけで送信内容を
+    変えない。enforce のときだけ skip / quarantine を実際に除外する。
+    ガードが落ちてもニュース収集は止めない（全件送信へフォールバック）。
+    """
+    import typesafe_news_guard as guard
+
+    mode = guard.news_guard_mode()
+    if mode == "off":
+        return ["send"] * len(articles)
+    if not guard.typesafe_available():
+        print("[news] typesafe guard skipped: credential not configured", file=sys.stderr)
+        return ["send"] * len(articles)
+    result = guard.screen_articles(
+        [
+            {
+                "title": article.title,
+                "summary": article.summary,
+                "source": article.source,
+                "query": article.query,
+            }
+            for article in articles
+        ]
+    )
+    print(
+        "[news-guard] "
+        + json.dumps(
+            {
+                "mode": mode,
+                "status": result.get("status"),
+                "counts": result.get("counts"),
+                "excluded_count": result.get("excluded_count"),
+                "thresholds": result.get("thresholds"),
+                "usage": result.get("usage"),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        file=sys.stderr,
+    )
+    actions = list(result.get("actions") or ["send"] * len(articles))
+    quarantined = [item for item in result.get("judgments") or [] if item.get("action") == "quarantine"]
+    if quarantined:
+        # shadow では送信内容を変えないため、検知しても実際にはGeminiへ渡る。
+        # enforce へ上げるまでの間、見逃したことに気づけるよう明示する。
+        print(
+            f"[news-guard] injection suspected in {len(quarantined)} article(s); "
+            f"{'excluded' if mode == 'enforce' else 'NOT excluded (shadow mode)'}",
+            file=sys.stderr,
+        )
+    if mode == "shadow":
+        return ["send"] * len(articles)
+    return actions
+
+
 def classify_articles(articles: list[Article], use_ai: bool = True) -> None:
     for article in articles:
         _apply_classification(article, _rule_classification(article))
@@ -476,9 +533,16 @@ def classify_articles(articles: list[Article], use_ai: bool = True) -> None:
     if not api_key or not articles:
         return
     try:
+        actions = _news_guard_actions(articles)
+    except Exception as exc:
+        print(f"[news] typesafe guard skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+        actions = ["send"] * len(articles)
+    try:
         from google import genai
         from google.genai import types
 
+        # article_index は元リストの添字を保持する。間引いても応答側の
+        # マッピング（下の _apply_classification）はそのまま成立する。
         payload = [
             {
                 "article_index": index,
@@ -490,7 +554,11 @@ def classify_articles(articles: list[Article], use_ai: bool = True) -> None:
                 "rule_tags": list(article.tags),
             }
             for index, article in enumerate(articles)
+            if actions[index] == "send"
         ]
+        if not payload:
+            print("[news] all articles filtered before AI classification; rule tags kept", file=sys.stderr)
+            return
         prompt = (
             "以下の顧客業界・物件・市況ニュースを、リース審査で後から検索・再利用できるよう分類してください。"
             "リース会社そのもののニュースではなく、借手の返済力、設備稼働、物件価値、投資判断に効く論点を優先してください。"

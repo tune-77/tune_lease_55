@@ -345,7 +345,68 @@ def _fallback_decision_body(topic: ResearchTopic, raw_research: str, sources: li
 - 参照元URLが古くなった、またはより一次情報に近い資料が見つかった場合。"""
 
 
-def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str]:
+def _verify_note_claims(body: str, raw_research: str) -> tuple[str, dict[str, Any]]:
+    """合成後のノートを調査原文と突き合わせる。
+
+    off（既定）は何もしない。shadow は結果を記録するだけ、enforce のときだけ
+    「出典突き合わせ」節をノートへ追記する。ガード障害でノート保存は止めない。
+    """
+    try:
+        import typesafe_research_verify_guard as guard
+    except Exception as exc:  # pragma: no cover - 依存欠落時
+        return body, {"status": "skipped", "reason": type(exc).__name__}
+    mode = guard.verify_mode()
+    if mode == "off":
+        return body, {"status": "skipped", "reason": "mode_off"}
+    if not guard.typesafe_available():
+        return body, {"status": "skipped", "reason": "credential_missing"}
+    try:
+        result = guard.verify_note_claims(body, raw_research)
+    except Exception as exc:
+        print(f"[research-verify] skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return body, {"status": "skipped", "reason": type(exc).__name__}
+    print(
+        "[research-verify] "
+        + json.dumps(
+            {
+                "mode": mode,
+                "status": result.get("status"),
+                "claim_count": result.get("claim_count"),
+                "counts": result.get("counts"),
+                "flagged": len(result.get("flagged") or []),
+                "usage": result.get("usage"),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        file=sys.stderr,
+    )
+    if mode == "enforce":
+        body = body + guard.render_verification_section(result)
+    return body, {
+        "mode": mode,
+        "status": result.get("status"),
+        "claim_count": result.get("claim_count"),
+        "counts": result.get("counts"),
+        "flagged_count": len(result.get("flagged") or []),
+    }
+
+
+def _emit_grounding_telemetry(topic: ResearchTopic, grounding: dict[str, Any], *, outcome: str) -> None:
+    """接地検索の試行回数を1行JSONで残す。
+
+    例外経路でも必ず呼ぶ。成功時の戻り値だけに載せると、最も課金が無駄になる
+    「2回とも sources 空」のケースが記録から丸ごと落ちる。
+    """
+    grounding["outcome"] = outcome
+    print(
+        "[autoresearch-grounding] "
+        + json.dumps({"topic": topic.key, **grounding}, ensure_ascii=False, separators=(",", ":")),
+        file=sys.stderr,
+    )
+
+
+def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str, dict[str, Any]]:
     from api.vertex_agent_search import _access_token, get_config
 
     vertex_config = get_config()
@@ -390,6 +451,11 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
     search_response = None
     raw_research = ""
     sources: list[dict[str, str]] = []
+    # 接地検索は1リクエストあたりの単価が最も高いステップなので、試行ごとの
+    # 結果を必ず記録する。retry は「モデルが答えたが groundingMetadata が空」
+    # でも発生するため、text_chars と source_count を分けて残さないと
+    # どちらの失敗で二重課金されたのか後から切り分けられない。
+    grounding: dict[str, Any] = {"per_attempt": [], "attempts": 0, "retried": False, "outcome": "unknown"}
     for attempt in range(2):
         attempt_prompt = search_prompt
         if attempt:
@@ -409,12 +475,24 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
         )
         raw_research = str(getattr(search_response, "text", "") or "").strip()
         sources = _extract_sources(search_response)
+        grounding["per_attempt"].append(
+            {
+                "attempt": attempt + 1,
+                "text_chars": len(raw_research),
+                "source_count": len(sources),
+            }
+        )
+        grounding["attempts"] = len(grounding["per_attempt"])
+        grounding["retried"] = grounding["attempts"] > 1
         if raw_research and sources:
             break
     if not raw_research:
+        _emit_grounding_telemetry(topic, grounding, outcome="no_text")
         raise RuntimeError("Gemini research returned no text")
     if not sources:
+        _emit_grounding_telemetry(topic, grounding, outcome="no_sources")
         raise RuntimeError("Gemini research returned no verifiable source URLs; note was not saved")
+    _emit_grounding_telemetry(topic, grounding, outcome="ok")
     source_catalog = [
         {
             **source,
@@ -483,7 +561,9 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
         body = _normalize_required_headings(str(getattr(repair_response, "text", "") or ""))
     if not body or not _substantive_sections_present(body):
         body = _fallback_decision_body(topic, raw_research, source_catalog)
-    return body, source_catalog, model
+    body, verification = _verify_note_claims(body, raw_research)
+    grounding["verification"] = verification
+    return body, source_catalog, model, grounding
 
 
 def build_note(topic: ResearchTopic, body: str, sources: list[dict[str, str]], model: str) -> str:
@@ -595,13 +675,13 @@ def run(vault: Path, output_dir: str, requested_topic: str = "", dry_run: bool =
     if dry_run:
         return result
 
-    body, sources, model = research_topic(topic)
+    body, sources, model, grounding = research_topic(topic)
     target_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{dt.date.today().isoformat()}_{topic.key}.md"
     path = target_dir / filename
     path.write_text(build_note(topic, body, sources, model), encoding="utf-8")
     _index_note(path)
-    result.update({"path": str(path), "source_count": len(sources), "model": model})
+    result.update({"path": str(path), "source_count": len(sources), "model": model, "grounding": grounding})
     try:
         result["judgment_asset_candidates"] = _refresh_judgment_asset_candidates(vault, output_dir)
     except Exception as exc:

@@ -96,6 +96,7 @@ def test_run_saves_to_normal_vault_research_path(tmp_path, monkeypatch):
             "## 結論\n- 検収と所有権を確認する。",
             [{"title": "Source", "url": "https://example.com"}],
             "gemini-test",
+            {"attempts": 1, "retried": False, "outcome": "ok"},
         ),
     )
     indexed = []
@@ -127,6 +128,7 @@ def test_run_keeps_research_note_when_candidate_refresh_fails(tmp_path, monkeypa
             "## 結論\n- 検収と所有権を確認する。",
             [{"title": "Source", "url": "https://example.com"}],
             "gemini-test",
+            {"attempts": 1, "retried": False, "outcome": "ok"},
         ),
     )
     monkeypatch.setattr(research, "_index_note", lambda path: None)
@@ -140,3 +142,48 @@ def test_run_keeps_research_note_when_candidate_refresh_fails(tmp_path, monkeypa
 
     assert Path(result["path"]).exists()
     assert "candidate refresh failed" in result["judgment_asset_candidates"]["error"]
+
+
+def test_run_reports_grounding_telemetry(tmp_path, monkeypatch):
+    """接地検索の試行回数をレポートへ載せる。retryの二重課金を後から数えるため。"""
+    vault = tmp_path / "Obsidian Vault"
+    monkeypatch.setattr(
+        research,
+        "research_topic",
+        lambda topic: (
+            "## 結論\n- 検収と所有権を確認する。",
+            [{"title": "Source", "url": "https://example.com"}],
+            "gemini-test",
+            {
+                "attempts": 2,
+                "retried": True,
+                "outcome": "ok",
+                "per_attempt": [
+                    {"attempt": 1, "text_chars": 900, "source_count": 0},
+                    {"attempt": 2, "text_chars": 1400, "source_count": 12},
+                ],
+            },
+        ),
+    )
+    monkeypatch.setattr(research, "_index_note", lambda path: None)
+    monkeypatch.setattr(research, "_refresh_judgment_asset_candidates", lambda v, o: {"candidates": 0})
+
+    result = research.run(vault, research.DEFAULT_OUTPUT_DIR, requested_topic="contract-ownership")
+
+    assert result["grounding"]["retried"] is True
+    assert result["grounding"]["per_attempt"][0]["source_count"] == 0, (
+        "1回目が接地ゼロだった事実が消えると、最も高い課金が見えないままになる"
+    )
+
+
+def test_emit_grounding_telemetry_writes_one_greppable_line(capsys):
+    research._emit_grounding_telemetry(
+        research.TOPICS[0],
+        {"attempts": 2, "retried": True, "per_attempt": [], "outcome": "unknown"},
+        outcome="no_sources",
+    )
+
+    err = capsys.readouterr().err.strip()
+    assert err.startswith("[autoresearch-grounding] ")
+    assert '"outcome":"no_sources"' in err
+    assert len(err.splitlines()) == 1, "1行でないとログ集計時に壊れる"
