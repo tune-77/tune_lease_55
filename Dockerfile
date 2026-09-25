@@ -64,7 +64,7 @@ RUN chmod +x scripts/start_cloud_run.sh scripts/entrypoint.sh \
     && useradd --create-home --uid 10001 appuser \
     && chown -R appuser:appuser /app /tmp/tune-lease
 
-USER appuser
+USER 10001
 
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
