@@ -4,7 +4,10 @@ import typesafe_news_guard as guard
 
 
 def _noul(probability: float) -> dict[str, object]:
-    return {"type": "noul", "probability": probability}
+    # 実応答の形（2026-09-25 に本物のレスポンスで確認）。"probability" と書くと
+    # テストは通るのに本番で毎回パース失敗する。外部契約のフィクスチャは
+    # 推測で書かず実物に合わせる。
+    return {"type": "noul", "noul": probability}
 
 
 def _articles(count: int) -> list[dict[str, str]]:

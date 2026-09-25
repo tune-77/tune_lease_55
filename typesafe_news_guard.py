@@ -14,12 +14,13 @@ HTTP・資格情報・タイムアウトは `typesafe_rag_guard` の実装を再
 
 環境変数:
   TYPESAFE_NEWS_MODE       off（既定） | shadow | enforce
-  TYPESAFE_NEWS_RELEVANT_MIN   返済力関連とみなす下限（既定 0.55）
+  TYPESAFE_NEWS_RELEVANT_MIN   返済力関連とみなす下限（既定 0.35）
   TYPESAFE_NEWS_INJECTION_MAX  これを超えたら除外（既定 0.70）
 """
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from collections.abc import Mapping, Sequence
@@ -150,12 +151,15 @@ def _noul(answers: Mapping[str, Any], question_id: str) -> float:
     raw = answers.get(question_id)
     if not isinstance(raw, Mapping) or raw.get("type") != "noul":
         raise TypeSafeRagError(f"missing noul answer: {question_id}")
+    # 確率は "noul" キーに入る（"probability" ではない）。ここを取り違えると
+    # 本番では毎回 TypeSafeRagError になり、フォールバックで全件送信のまま
+    # 「ガードが動いている」ように見えてしまう。実応答で確認済み。
     try:
-        value = float(raw.get("probability"))
-    except (TypeError, ValueError) as exc:
-        raise TypeSafeRagError(f"invalid noul probability: {question_id}") from exc
-    if not 0.0 <= value <= 1.0:
-        raise TypeSafeRagError(f"noul probability out of range: {question_id}")
+        value = float(raw["noul"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TypeSafeRagError(f"invalid noul answer: {question_id}") from exc
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise TypeSafeRagError(f"noul outside [0, 1]: {question_id}")
     return value
 
 
