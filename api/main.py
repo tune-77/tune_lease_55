@@ -6525,6 +6525,7 @@ def post_chat(req: ChatRequest):
         news_actions_text = lease_news_actions_as_text(
             industry=req.industry or "",
             asset_name="",
+            risk_context=req.message,
             surface="chat",
         )
         news_actions_text = wrap_untrusted_context(news_actions_text, label="ニュースアクション", logger=logger)

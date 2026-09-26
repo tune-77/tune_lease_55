@@ -40,6 +40,27 @@ type RecentNewsItem = {
   file_path?: string;
 };
 
+type NewsActionItem = {
+  signal?: string;
+  affected_industries?: string[];
+  affected_assets?: string[];
+  risk_flags?: string[];
+  recommended_checks?: string[];
+  condition_impacts?: string[];
+  source_title?: string;
+  source_path?: string;
+  source_reliability?: string;
+  classification_confidence?: number;
+  valid_until?: string;
+  confidence?: number;
+};
+
+type NewsActions = {
+  available?: boolean;
+  date?: string;
+  action_items?: NewsActionItem[];
+};
+
 type ClassifiedArticle = {
   date?: string;
   title?: string;
@@ -135,6 +156,12 @@ type VertexTrendSummary = {
 };
 
 const axisOrder = ["industry", "social", "finance"];
+const feedbackLabels: Record<string, string> = {
+  used: "使った",
+  irrelevant: "無関係",
+  question_changed: "質問変更",
+  condition_changed: "条件変更",
+};
 
 function formatDate(value?: string) {
   if (!value) return "";
@@ -144,6 +171,7 @@ function formatDate(value?: string) {
 export default function NewsDashboardPage() {
   const [focus, setFocus] = useState<NewsFocus | null>(null);
   const [recentNews, setRecentNews] = useState<RecentNewsItem[]>([]);
+  const [newsActions, setNewsActions] = useState<NewsActions | null>(null);
   const [summary, setSummary] = useState<ClassifiedSummary | null>(null);
   const [trendSummary, setTrendSummary] = useState<VertexTrendSummary | null>(null);
   const [selectedAxis, setSelectedAxis] = useState("industry");
@@ -151,27 +179,49 @@ export default function NewsDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [feedbackByPath, setFeedbackByPath] = useState<Record<string, string>>({});
+  const [feedbackError, setFeedbackError] = useState("");
 
   const loadNews = async (refresh = false) => {
     setError("");
     setRefreshing(refresh);
     try {
-      const [focusRes, recentRes, summaryRes, trendRes] = await Promise.all([
+      const [focusRes, recentRes, summaryRes, trendRes, actionsRes] = await Promise.all([
         apiClient.get("/api/lease-news/focus"),
         apiClient.get("/api/lease-news/recent?limit=8"),
         apiClient.get(`/api/lease-news/classified-summary${refresh ? "?refresh=true" : ""}`),
         apiClient.get(`/api/lease-news/trend-summary${refresh ? "?refresh=true" : ""}`),
+        apiClient.get("/api/lease-news/actions"),
       ]);
       setFocus(focusRes.data || null);
       setRecentNews(recentRes.data?.items || []);
       setSummary(summaryRes.data || null);
       setTrendSummary(trendRes.data || null);
+      setNewsActions(actionsRes.data || null);
     } catch (err) {
       console.error("Failed to load news dashboard", err);
       setError("ニュース情報を取得できませんでした。API と Obsidian Vault の同期状態を確認してください。");
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const recordActionFeedback = async (item: NewsActionItem, outcome: string) => {
+    const sourcePath = item.source_path || "";
+    if (!sourcePath) return;
+    setFeedbackError("");
+    try {
+      await apiClient.post("/api/lease-news/feedback", {
+        source_path: sourcePath,
+        source_title: item.source_title || item.signal || "",
+        outcome,
+        surface: "news_dashboard",
+      });
+      setFeedbackByPath((current) => ({ ...current, [sourcePath]: outcome }));
+    } catch (err) {
+      console.error("Failed to record news feedback", err);
+      setFeedbackError("ニュースの利用結果を記録できませんでした。");
     }
   };
 
@@ -471,6 +521,91 @@ export default function NewsDashboardPage() {
                   </div>
                 )}
               </div>
+            </section>
+
+            <section className="rounded-lg border border-indigo-200 bg-white p-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-indigo-600">Case Triggers</p>
+                  <h2 className="mt-1 text-xl font-black text-slate-950">案件へつなぐニュース</h2>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                    実際に確認質問や条件が変わったかを記録し、次回の選別に使います。
+                  </p>
+                </div>
+                {newsActions?.date && (
+                  <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">
+                    {newsActions.date}
+                  </span>
+                )}
+              </div>
+
+              {feedbackError && (
+                <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{feedbackError}</p>
+              )}
+
+              {!newsActions?.available || !(newsActions.action_items || []).length ? (
+                <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  案件へつなげられるニューストリガーはありません。
+                </p>
+              ) : (
+                <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
+                  {(newsActions.action_items || []).slice(0, 3).map((item, index) => {
+                    const sourcePath = item.source_path || `${item.source_title}-${index}`;
+                    const recorded = feedbackByPath[sourcePath];
+                    return (
+                      <article key={sourcePath} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap gap-1.5">
+                          {(item.affected_industries || []).slice(0, 2).map((label) => (
+                            <span key={label} className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-black text-indigo-700">
+                              {label}
+                            </span>
+                          ))}
+                          {item.source_reliability && (
+                            <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-slate-500">
+                              信頼度 {item.source_reliability}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="mt-3 text-sm font-black leading-relaxed text-slate-900">
+                          {item.source_title || item.signal || "ニューストリガー"}
+                        </h3>
+                        {item.recommended_checks?.[0] && (
+                          <p className="mt-3 rounded-lg bg-white p-3 text-xs font-bold leading-relaxed text-slate-700">
+                            確認: {item.recommended_checks[0]}
+                          </p>
+                        )}
+                        {item.condition_impacts?.[0] && (
+                          <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                            条件影響: {item.condition_impacts[0]}
+                          </p>
+                        )}
+                        {recorded ? (
+                          <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">
+                            記録しました: {feedbackLabels[recorded] || recorded}
+                          </p>
+                        ) : (
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            {[
+                              ["used", "使った"],
+                              ["irrelevant", "無関係"],
+                              ["question_changed", "質問変更"],
+                              ["condition_changed", "条件変更"],
+                            ].map(([outcome, label]) => (
+                              <button
+                                key={outcome}
+                                onClick={() => recordActionFeedback(item, outcome)}
+                                className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-black text-slate-700 hover:border-indigo-300 hover:text-indigo-700"
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </section>
 
             <section className="rounded-lg border border-slate-200 bg-white p-5">

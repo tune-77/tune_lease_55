@@ -1,6 +1,16 @@
 """Stable JSON presenters shared by lease-news routes, dashboard, and chat."""
 from __future__ import annotations
 
+from pathlib import Path
+
+
+def _safe_news_source_path(value: object) -> str:
+    normalized = str(value or "").replace("\\", "/")
+    for anchor in ("05-クリップ_記事/", "業界リスクニュース/", "リースニュース/"):
+        if anchor in normalized:
+            return normalized[normalized.index(anchor):]
+    return Path(normalized).name if Path(normalized).is_absolute() else normalized
+
 
 def lease_news_focus_to_dict(focus):
     if not focus or not getattr(focus, "available", False):
@@ -96,7 +106,11 @@ def lease_news_actions_to_dict(actions):
                 "recommended_checks": list(getattr(item, "recommended_checks", ()) or ()),
                 "condition_impacts": list(getattr(item, "condition_impacts", ()) or ()),
                 "source_title": getattr(item, "source_title", ""),
-                "source_path": getattr(item, "source_path", ""),
+                "source_path": _safe_news_source_path(getattr(item, "source_path", "")),
+                "region": getattr(item, "region", ""),
+                "source_reliability": getattr(item, "source_reliability", "medium"),
+                "classification_confidence": getattr(item, "classification_confidence", 0.0),
+                "impact_direction": getattr(item, "impact_direction", "neutral"),
                 "valid_until": getattr(item, "valid_until", ""),
                 "confidence": getattr(item, "confidence", 0.0),
                 "noise_score": getattr(item, "noise_score", 0.0),
