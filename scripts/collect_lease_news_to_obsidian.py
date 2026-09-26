@@ -511,6 +511,27 @@ def _news_guard_actions(articles: list[Article]) -> list[str]:
         ),
         file=sys.stderr,
     )
+    # 記事ごとの判定も残す。集計値だけでは「どれを落としたか」を後から誰も
+    # 復元できず、shadow の目的（enforce 前に誤って落とす記事を見つける）が
+    # 果たせない。見出しは公開記事のもので、このログはローカルにしか出ない。
+    for item in result.get("judgments") or []:
+        index = item.get("index")
+        title = articles[index].title if isinstance(index, int) and index < len(articles) else ""
+        print(
+            "[news-guard-item] "
+            + json.dumps(
+                {
+                    "index": index,
+                    "action": item.get("action"),
+                    "repayment": item.get("repayment"),
+                    "injection": item.get("injection"),
+                    "title": title[:120],
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            file=sys.stderr,
+        )
     actions = list(result.get("actions") or ["send"] * len(articles))
     quarantined = [item for item in result.get("judgments") or [] if item.get("action") == "quarantine"]
     if quarantined:
