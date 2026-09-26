@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from api.background_executor import background_executor
-from api.cloudrun_writeback import record_cloudrun_input_event
+from api.cloudrun_writeback import record_cloudrun_input_event, record_lease_news_usage_feedback_event
 from api.knowledge.news_classifier import (
     build_classified_news_summary_from_vault,
     load_latest_classified_news_summary,
@@ -425,7 +425,8 @@ def record_lease_news_usage_feedback_api(req: LeaseNewsUsageFeedbackRequest):
             case_id=req.case_id,
             note=req.note,
         )
-        return {"status": "recorded", "feedback": feedback}
+        writeback = record_lease_news_usage_feedback_event(feedback)
+        return {"status": "recorded", "feedback": feedback, "writeback": writeback}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:

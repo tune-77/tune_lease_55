@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from obsidian_query import split_query_terms
 from runtime_paths import resolve_obsidian_vault
 
 
@@ -1832,11 +1833,7 @@ def lease_news_actions_as_text(
         return ""
 
     def parts(value: str) -> list[str]:
-        return [
-            part.lower()
-            for part in re.split(r"[\s/・,、()（）]+", value)
-            if len(part.strip()) >= 2
-        ]
+        return split_query_terms(value)
 
     def overlaps(query: str, candidate: str) -> bool:
         query_parts = parts(query)
@@ -1865,7 +1862,10 @@ def lease_news_actions_as_text(
                 *action.condition_impacts,
             )
         )
-        if industry_text and overlaps(industry_text, joined_industries):
+        if industry_text and (
+            "全業種" in action.affected_industries
+            or overlaps(industry_text, joined_industries)
+        ):
             match += 3
         if asset_text and overlaps(asset_text, joined_assets):
             match += 3
@@ -2036,24 +2036,42 @@ def record_lease_news_usage_feedback(
 
 def _load_news_usage_feedback_scores(path: Path | None = None, limit: int = 2000) -> dict[str, int]:
     target = path or NEWS_USAGE_FEEDBACK_JSONL
-    if not target.exists():
-        return {}
     weights = {
         "used": 1,
         "irrelevant": -3,
         "question_changed": 2,
         "condition_changed": 2,
     }
-    scores: dict[str, int] = {}
-    try:
-        lines = target.read_text(encoding="utf-8", errors="ignore").splitlines()[-max(1, limit):]
-    except OSError:
-        return {}
-    for line in lines:
+    items: list[dict] = []
+    if target.exists():
         try:
-            item = json.loads(line)
-        except json.JSONDecodeError:
+            lines = target.read_text(encoding="utf-8", errors="ignore").splitlines()[-max(1, limit):]
+        except OSError:
+            lines = []
+        for line in lines:
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict):
+                items.append(item)
+
+    if path is None:
+        try:
+            from api.cloudrun_writeback import read_lease_news_usage_feedback_events
+
+            items.extend(read_lease_news_usage_feedback_events(limit=limit))
+        except Exception:
+            pass
+
+    scores: dict[str, int] = {}
+    seen_event_ids: set[str] = set()
+    for item in items[-max(1, limit):]:
+        event_id = str(item.get("event_id") or "").strip()
+        if event_id and event_id in seen_event_ids:
             continue
+        if event_id:
+            seen_event_ids.add(event_id)
         source_path = str(item.get("source_path") or "").strip()
         outcome = str(item.get("outcome") or "").strip()
         if not source_path or outcome not in weights:

@@ -179,7 +179,10 @@ classification_source: rule
     matched = digest.lease_news_actions_as_text(vault=vault, industry="建設", asset_name="建設機械")
     assert "価格転嫁" in matched
     assert "補助金" not in matched
-    message_matched = digest.lease_news_actions_as_text(vault=vault, risk_context="建設業の倒産ニュースを確認したい")
+    message_matched = digest.lease_news_actions_as_text(
+        vault=vault,
+        risk_context="最近、建設業の倒産が増えているけど、この会社は大丈夫？",
+    )
     assert "価格転嫁" in message_matched
     assert len(recorded) == 2
     assert all(item["matched_count"] == 1 for item in recorded)
@@ -201,6 +204,46 @@ classification_source: rule
     )
     monkeypatch.setattr(digest, "NEWS_USAGE_FEEDBACK_JSONL", feedback_path)
     assert digest.lease_news_actions_as_text(vault=vault, industry="建設") == ""
+
+
+def test_lease_news_actions_treats_all_industries_as_wildcard(monkeypatch):
+    action = digest.LeaseNewsAction(
+        signal="金利上昇",
+        source_title="金融環境の変化",
+        source_path="news/macro.md",
+        affected_industries=("全業種",),
+        recommended_checks=("返済余力を確認する",),
+        confidence=0.8,
+        source_reliability="high",
+    )
+    actions = digest.LeaseNewsActions(available=True, date="2026-09-27", action_items=(action,))
+    monkeypatch.setattr(digest, "get_latest_lease_news_actions", lambda **_kwargs: actions)
+    monkeypatch.setattr(digest, "_load_news_usage_feedback_scores", lambda: {})
+    monkeypatch.setattr(digest, "record_lease_news_action_use", lambda *_args, **_kwargs: {})
+
+    assert "返済余力" in digest.lease_news_actions_as_text(industry="製造業")
+
+
+def test_feedback_scores_merge_and_deduplicate_durable_events(tmp_path, monkeypatch):
+    local_path = tmp_path / "feedback.jsonl"
+    local_path.write_text(
+        json.dumps({"event_id": "same", "source_path": "news/a.md", "outcome": "used"}) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(digest, "NEWS_USAGE_FEEDBACK_JSONL", local_path)
+
+    from api import cloudrun_writeback
+
+    monkeypatch.setattr(
+        cloudrun_writeback,
+        "read_lease_news_usage_feedback_events",
+        lambda limit=2000: [
+            {"event_id": "same", "source_path": "news/a.md", "outcome": "used"},
+            {"event_id": "remote", "source_path": "news/a.md", "outcome": "question_changed"},
+        ],
+    )
+
+    assert digest._load_news_usage_feedback_scores() == {"news/a.md": 3}
 
 
 def test_record_lease_news_usage_feedback_writes_outcome_metrics(tmp_path, monkeypatch):

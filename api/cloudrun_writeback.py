@@ -66,6 +66,77 @@ def _judgment_feedback_path(case_id: str, review_id: Any) -> str:
     return f"{GCS_INPUT_PREFIX.strip('/') or 'cloudrun-inputs'}/judgment-feedback/{key}.jsonl"
 
 
+def _lease_news_feedback_path() -> str:
+    return f"{GCS_INPUT_PREFIX.strip('/') or 'cloudrun-inputs'}/lease-news-feedback/events.jsonl"
+
+
+def read_lease_news_usage_feedback_events(limit: int = 2000) -> list[dict[str, Any]]:
+    """Read the shared lease-news feedback index used by ranking."""
+    if not _writeback_enabled():
+        return []
+    try:
+        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
+        from google.cloud import storage  # type: ignore[import-untyped]
+
+        blob = storage.Client().bucket(_bucket_name()).blob(_lease_news_feedback_path())
+        try:
+            text = blob.download_as_text()
+        except NotFound:
+            return []
+        rows = [json.loads(line) for line in text.splitlines() if line.strip()]
+        payloads = [row.get("payload") for row in rows if isinstance(row, dict)]
+        return [row for row in payloads[-max(1, limit):] if isinstance(row, dict)]
+    except Exception:
+        return []
+
+
+def record_lease_news_usage_feedback_event(payload: dict[str, Any]) -> dict[str, Any]:
+    """Durably append news feedback to both the daily stream and shared index."""
+    if not _writeback_enabled():
+        return {"ok": False, "skipped": True, "reason": "writeback_disabled"}
+    entry = build_cloudrun_input_event(
+        event_type="lease_news_usage_feedback",
+        surface=str(payload.get("surface") or "news_dashboard"),
+        payload=payload,
+    )
+    try:
+        from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
+        from google.cloud import storage  # type: ignore[import-untyped]
+        from scripts.gcs_lock import GCSLock
+
+        bucket_name = _bucket_name()
+        bucket = storage.Client().bucket(bucket_name)
+        now = datetime.now(timezone.utc)
+        targets = (_event_path(now), _lease_news_feedback_path())
+        for path in targets:
+            blob = bucket.blob(path)
+            with GCSLock(bucket_name=bucket_name, target_file=path, ttl_seconds=30):
+                try:
+                    blob.reload()
+                    current = blob.download_as_text()
+                    generation = blob.generation
+                except NotFound:
+                    current, generation = "", 0
+                if any(
+                    isinstance(row, dict)
+                    and isinstance(row.get("payload"), dict)
+                    and row["payload"].get("event_id") == payload.get("event_id")
+                    for line in current.splitlines()
+                    if line.strip()
+                    for row in [json.loads(line)]
+                ):
+                    continue
+                blob.upload_from_string(
+                    current + json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n",
+                    content_type="application/jsonl; charset=utf-8",
+                    if_generation_match=generation,
+                )
+        return {"ok": True, "skipped": False, "event_id": entry["event_id"]}
+    except Exception as exc:
+        _fallback(entry, str(exc))
+        return {"ok": False, "skipped": False, "reason": str(exc), "event_id": entry["event_id"]}
+
+
 def read_judgment_asset_feedback_events(case_id: str, review_id: Any) -> list[dict[str, Any]]:
     if not _writeback_enabled() or not str(case_id or "").strip():
         return []
