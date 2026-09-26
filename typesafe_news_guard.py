@@ -104,11 +104,22 @@ def _article_questions(index: int) -> dict[str, dict[str, Any]]:
                 "lease instalments, or the value or utilisation of leased equipment?"
             ),
             "criteria": {
+                # 規模と地域を明示的に打ち消す一文を足している。2026-09-26 の実測で
+                # 「鳥取県の地域運送業者の破産」が 0.32、全国集計の「とび工事業倒産110件」が
+                # 0.71 と開いた。元の文面は insolvency としか書いておらず、規模について
+                # 何も言っていないため、Jev が「全国的な話題か」を暗黙の重みにしていた。
+                # 借り手は中小企業なので、この暗黙の重みは目的と逆を向く。
                 "true": (
                     "It bears on borrower repayment capacity or asset value: insolvency, earnings, "
                     "cash flow, funding conditions, demand or price shifts in a named industry, "
                     "capital-expenditure or subsidy rules, equipment utilisation, or regulation "
-                    "that changes what a lessee must pay or operate."
+                    "that changes what a lessee must pay or operate. "
+                    "Scale and geography carry no weight here: a single small or regional operator "
+                    "filing for bankruptcy, suspending business, or losing a major contract counts "
+                    "as fully as a nationwide statistic, because the borrowers being screened are "
+                    "small and medium-sized firms of exactly that kind. What matters is whether the "
+                    "firm or sector concerned is one that leases equipment — haulage and logistics, "
+                    "construction, manufacturing, agriculture, medical, food service."
                 ),
                 "false": (
                     "It is about the leasing industry's own corporate news, general politics, "
