@@ -236,3 +236,47 @@ def test_measurement_preserves_fallback_rows(monkeypatch, tmp_path):
     assert saved[0]["jev_total"] is not None
     assert saved[1]["jev_total"] is None
     assert saved[1]["meta"]["status"] == "fallback"
+
+
+def test_main_validates_fixture_before_printing_statistics(monkeypatch, tmp_path, capsys):
+    fixture = tmp_path / "invalid.jsonl"
+    fixture.write_text(
+        json.dumps({"name": "大型トラック", "category": "車両", "human_score": "unknown"})
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys, "argv", ["measure.py", "--fixture", str(fixture)])
+    monkeypatch.setattr(
+        measure,
+        "_print_corpus",
+        lambda _rows: (_ for _ in ()).throw(AssertionError("must validate first")),
+    )
+
+    assert measure.main() == 1
+    assert "human_score が数値でない" in capsys.readouterr().out
+
+
+def test_report_warns_when_only_a_few_responses_are_usable(capsys):
+    judged = [
+        {
+            "name": "大型トラック",
+            "human_score": 60.0,
+            "jev_total": 58.0,
+            "n": 1,
+            "meta": {},
+        },
+        {
+            "name": "配送トラック",
+            "human_score": 80.0,
+            "jev_total": 78.0,
+            "n": 1,
+            "meta": {},
+        },
+        {"name": "失敗行", "human_score": 70.0, "jev_total": None, "meta": {}},
+    ]
+
+    measure._report(judged)
+
+    output = capsys.readouterr().out
+    assert "有効回答が 2 問" in output
+    assert "優位とは判定しない" in output

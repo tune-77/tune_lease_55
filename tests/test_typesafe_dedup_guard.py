@@ -7,7 +7,6 @@ suite never contacts TypeSafe.
 from __future__ import annotations
 
 import importlib.util
-import concurrent.futures
 from pathlib import Path
 
 import pytest
@@ -291,18 +290,53 @@ def test_judge_pairs_if_enabled_sends_nothing_when_disabled(monkeypatch) -> None
     assert judged == [{"a": 0, "b": 1, "same_issue": None, "route": "distinct"}]
 
 
-def test_default_request_has_hard_wall_clock_deadline(monkeypatch) -> None:
-    class TimedOutFuture:
-        def result(self, **_kwargs):
-            raise concurrent.futures.TimeoutError
+def test_request_process_is_terminated_at_hard_deadline() -> None:
+    class Receiver:
+        def poll(self, _timeout):
+            return False
 
-    class Executor:
-        def submit(self, *_args, **_kwargs):
-            return TimedOutFuture()
+        def close(self):
+            pass
 
-    monkeypatch.setattr(guard, "_resolve_api_key", lambda: "secret")
-    monkeypatch.setattr(guard, "_REQUEST_EXECUTOR", Executor())
-    monkeypatch.setenv("TYPESAFE_DEDUP_TIMEOUT_SECONDS", "0.01")
+    class Sender:
+        def close(self):
+            pass
+
+    class Process:
+        terminated = False
+
+        def start(self):
+            pass
+
+        def terminate(self):
+            self.terminated = True
+
+        def join(self, **_kwargs):
+            pass
+
+        def is_alive(self):
+            return not self.terminated
+
+        def kill(self):
+            self.terminated = True
+
+    class Context:
+        def __init__(self):
+            self.process = Process()
+
+        def Pipe(self, **_kwargs):
+            return Receiver(), Sender()
+
+        def Process(self, **_kwargs):
+            return self.process
+
+    context = Context()
 
     with pytest.raises(guard.TypeSafeDedupError, match="exceeded"):
-        guard._default_request({"state": {}, "questions": {}})
+        guard._request_with_hard_deadline(
+            {"state": {}, "questions": {}},
+            api_key="secret",
+            timeout=0.01,
+            process_context=context,
+        )
+    assert context.process.terminated is True
