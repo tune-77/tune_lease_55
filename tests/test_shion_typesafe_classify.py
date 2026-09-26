@@ -56,6 +56,23 @@ def test_low_confidence_recipe_result_falls_back():
     assert result is None
 
 
+def test_out_of_range_confidence_recipe_result_falls_back():
+    result = mind._classify_recipe_with_typesafe(
+        "改善タイトル: 表示ラベル修正",
+        request_fn=lambda _payload: {
+            "answers": {
+                "recommendation": {
+                    "type": "choice",
+                    "choice": "auto",
+                    "confidence": 2.0,
+                }
+            }
+        },
+    )
+
+    assert result is None
+
+
 def test_sensitive_recipe_is_not_sent():
     result = mind._classify_recipe_with_typesafe(
         "A社の案件番号 ABC-1234 を修正",

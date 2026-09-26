@@ -39,8 +39,26 @@ def test_host_allowlist_accepts_only_domain_boundaries():
     )
 
 
-def test_safe_search_click_is_allowed():
-    assert action_safety_reason(_decision(), _page(), min_confidence=0.55)[0]
+def test_click_is_blocked_without_request_interception():
+    safe, reason = action_safety_reason(
+        _decision(),
+        _page(),
+        min_confidence=0.55,
+        allowed_hosts=("e-stat.go.jp",),
+    )
+    assert not safe
+    assert "request interception" in reason
+
+
+def test_select_is_blocked_without_request_interception():
+    safe, reason = action_safety_reason(
+        _decision("SELECT"),
+        _page("表示件数", role="combobox", kind="select"),
+        min_confidence=0.55,
+        allowed_hosts=("e-stat.go.jp",),
+    )
+    assert not safe
+    assert "request interception" in reason
 
 
 def test_link_destination_is_checked_before_navigation():
@@ -51,7 +69,7 @@ def test_link_destination_is_checked_before_navigation():
         allowed_hosts=("e-stat.go.jp",),
     )
     assert not safe
-    assert "outside the allowlist" in reason
+    assert "request interception" in reason
 
     safe, _ = action_safety_reason(
         _decision(),
@@ -59,7 +77,7 @@ def test_link_destination_is_checked_before_navigation():
         min_confidence=0.55,
         allowed_hosts=("e-stat.go.jp",),
     )
-    assert safe
+    assert not safe
 
 
 def test_link_without_observed_destination_is_blocked():
@@ -70,7 +88,7 @@ def test_link_without_observed_destination_is_blocked():
         allowed_hosts=("e-stat.go.jp",),
     )
     assert not safe
-    assert "not observed" in reason
+    assert "request interception" in reason
 
 
 def test_login_and_submission_are_blocked():
@@ -177,3 +195,52 @@ def test_stale_page_retry_rechecks_observed_host(monkeypatch):
     )
 
     assert safe_run.run(args) == 2
+
+
+def test_predicted_page_is_checked_before_action(monkeypatch):
+    class StalePage(Exception):
+        pass
+
+    class Agent:
+        acted = False
+
+        def __init__(self, *_args):
+            self.screenshots = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def snapshot(self):
+            return {"status": "ready", "page": {"url": "https://www.e-stat.go.jp/"}}
+
+        def command(self, operation, *_args):
+            if operation == "act":
+                self.acted = True
+            return {
+                "decision": {"operation": "WAIT", "choice": "wait", "confidence": 0.9},
+                "page": {"url": "https://evil.example/", "fingerprint": "new"},
+            }
+
+    package = ModuleType("jev_ultrafast")
+    package.Agent = Agent
+    browser = ModuleType("jev_ultrafast.browser")
+    browser.StalePage = StalePage
+    monkeypatch.setitem(sys.modules, "jev_ultrafast", package)
+    monkeypatch.setitem(sys.modules, "jev_ultrafast.browser", browser)
+    monkeypatch.setattr(safe_run, "configure_cdp", lambda _url: None)
+    monkeypatch.setattr(safe_run, "load_api_key_from_keychain", lambda *_args: True)
+    args = SimpleNamespace(
+        url="https://www.e-stat.go.jp/",
+        goal="統計を見る",
+        allow_host=["e-stat.go.jp"],
+        cdp_http="",
+        auto=True,
+        max_steps=1,
+        min_confidence=0.55,
+    )
+
+    assert safe_run.run(args) == 2
+    assert Agent.acted is False

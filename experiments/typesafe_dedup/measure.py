@@ -260,7 +260,14 @@ def _send(candidates, analysis, width: float) -> Path:
     pairs = gray_pairs_for(analysis, width)
     if not pairs:
         raise SystemExit("灰色帯にペアがないため送信しない")
-    judged, meta = guard.judge_pairs(candidates, pairs)
+    safe_pairs, privacy_skipped = guard.filter_safe_pairs(candidates, pairs)
+    if not safe_pairs:
+        raise SystemExit("機密情報フィルター通過後の送信可能ペアがない")
+    judged, meta = guard.judge_pairs(candidates, safe_pairs)
+    meta = dict(meta)
+    meta["privacy_skipped_pairs"] = privacy_skipped
+    if privacy_skipped:
+        print(f"機密情報の可能性があるため送信除外: {privacy_skipped} ペア")
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"judged_w{int(width * 100)}.json"
     out.write_text(

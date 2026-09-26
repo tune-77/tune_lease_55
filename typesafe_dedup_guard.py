@@ -20,11 +20,11 @@ Design contract:
 from __future__ import annotations
 
 import math
+import multiprocessing
 import os
 import re
 import subprocess
 import sys
-import concurrent.futures
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -48,10 +48,6 @@ AUTO_MERGE_MIN = 0.75
 
 MAX_TITLE_CHARS = 200
 MAX_REASON_CHARS = 600
-
-_REQUEST_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=2, thread_name_prefix="typesafe-dedup"
-)
 
 _SENSITIVE_MARKERS = (
     "案件番号",
@@ -261,19 +257,66 @@ def _send_request(payload: dict[str, Any], *, api_key: str, timeout: float) -> M
         return response.json()
 
 
+def _request_worker(connection, payload: dict[str, Any], api_key: str, timeout: float) -> None:
+    """Run the blocking HTTP stack in a process that the parent can terminate."""
+    try:
+        body = _send_request(payload, api_key=api_key, timeout=timeout)
+        connection.send(("ok", body))
+    except BaseException as exc:
+        connection.send(("error", type(exc).__name__))
+    finally:
+        connection.close()
+
+
+def _request_with_hard_deadline(
+    payload: dict[str, Any],
+    *,
+    api_key: str,
+    timeout: float,
+    process_context=None,
+) -> Mapping[str, Any]:
+    """Terminate DNS/socket work that outlives the configured wall-clock bound."""
+    context = process_context or multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_request_worker,
+        args=(sender, payload, api_key, timeout),
+        daemon=True,
+    )
+    process.start()
+    sender.close()
+    try:
+        if not receiver.poll(timeout + 2.0):
+            process.terminate()
+            process.join(timeout=1.0)
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=1.0)
+            raise TypeSafeDedupError("TypeSafe request exceeded the configured timeout")
+        try:
+            status, value = receiver.recv()
+        except EOFError as exc:
+            raise TypeSafeDedupError("TypeSafe request process exited without a response") from exc
+    finally:
+        receiver.close()
+        if process.is_alive():
+            process.join(timeout=1.0)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=1.0)
+    if status != "ok":
+        raise TypeSafeDedupError(f"TypeSafe request failed: {value}")
+    if not isinstance(value, Mapping):
+        raise TypeSafeDedupError("TypeSafe response must be an object")
+    return value
+
+
 def _default_request(payload: dict[str, Any]) -> Mapping[str, Any]:
     api_key = _resolve_api_key()
     if not api_key:
         raise TypeSafeDedupError("TYPESAFE_API_KEY is not configured")
     timeout = float(os.environ.get("TYPESAFE_DEDUP_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS))
-    future = _REQUEST_EXECUTOR.submit(_send_request, payload, api_key=api_key, timeout=timeout)
-    try:
-        body = future.result(timeout=timeout + 2.0)
-    except concurrent.futures.TimeoutError as exc:
-        raise TypeSafeDedupError("TypeSafe request exceeded the configured timeout") from exc
-    if not isinstance(body, Mapping):
-        raise TypeSafeDedupError("TypeSafe response must be an object")
-    return body
+    return _request_with_hard_deadline(payload, api_key=api_key, timeout=timeout)
 
 
 def _noul(answers: Mapping[str, Any], question_id: str) -> float:

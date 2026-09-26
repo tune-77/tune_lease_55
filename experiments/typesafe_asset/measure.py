@@ -66,6 +66,32 @@ SEND_WARNING = (
     "含まれていないことを確認してから送信すること。--inspect で全文を表示できる。"
 )
 
+# Two-sided 95% Student-t critical values. Values beyond the exact table use
+# the lowest degrees of freedom in each range so the resulting margin is never
+# understated. The final 1.980 value is intentionally conservative for df>120.
+_T_975 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+    11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
+    16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
+    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
+}
+
+
+def _student_t_95(df: int) -> float:
+    if df < 1:
+        return float("inf")
+    if df <= 30:
+        return _T_975[df]
+    if df <= 40:
+        return 2.040
+    if df <= 60:
+        return 2.020
+    if df <= 120:
+        return 2.000
+    return 1.980
+
 # ---------------------------------------------------------------------------
 # Corpus extraction
 # ---------------------------------------------------------------------------
@@ -518,11 +544,25 @@ def _report(judged: list[dict[str, Any]]) -> None:
     print(f"MAE (現行の50固定)    : {default_mae:5.1f}   (参考。下回って当然)")
     print(f"バイアス (符号付き)   : {statistics.fmean(errors):+5.1f}")
     print(f"±10点以内            : {sum(1 for v in absolute if v <= 10)}/{len(usable)}")
-    if statistics.fmean(absolute) >= const_mae:
+    jev_mae = statistics.fmean(absolute)
+    improvements = [
+        abs(const - row["human_score"]) - abs(row["jev_total"] - row["human_score"])
+        for row in usable
+    ]
+    if len(improvements) >= 2:
+        critical = _student_t_95(len(improvements) - 1)
+        uncertainty = critical * statistics.stdev(improvements) / math.sqrt(len(improvements))
+    else:
+        uncertainty = float("inf")
+
+    if jev_mae >= const_mae:
         print("  ⚠ 最良定数に負けている。品名を読んでいる意味がない")
-    elif const_mae - statistics.fmean(absolute) < 1.5:
-        print(f"  ⚠ 差が {const_mae - statistics.fmean(absolute):.1f} 点。"
-              f"{len(usable)} 問では誤差 ±1.5 程度あり、有意とは言えない")
+    elif len(usable) < 5 or statistics.fmean(improvements) <= uncertainty:
+        margin = "算定不能" if not math.isfinite(uncertainty) else f"±{uncertainty:.1f}"
+        print(
+            f"  ⚠ 有効回答が {len(usable)} 問で、改善幅の95%誤差幅は {margin}。"
+            "優位とは判定しない"
+        )
     low = [item for row in usable for item in row["meta"].get("low_confidence_items", [])]
     if low:
         print(f"低確信の次元         : {dict(Counter(low))}")
@@ -566,8 +606,8 @@ def main() -> int:
         print(f"      {args.fixture}")
 
     rows = _load_fixture(args.fixture)
-    _print_corpus(rows)
     if not rows:
+        _print_corpus(rows)
         return 0
 
     problems = _validate(rows)
@@ -576,6 +616,8 @@ def main() -> int:
         for problem in problems:
             print(f"  {problem}")
         return 1
+
+    _print_corpus(rows)
 
     if args.inspect:
         _print_payloads(rows)

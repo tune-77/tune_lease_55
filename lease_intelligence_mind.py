@@ -1974,6 +1974,7 @@ def _classify_recipe_with_typesafe(
         if (
             recommendation not in {"auto", "discuss", "review"}
             or not math.isfinite(confidence)
+            or confidence > 1.0
             or confidence < confidence_threshold
         ):
             return None

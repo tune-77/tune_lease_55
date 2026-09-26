@@ -114,6 +114,13 @@ def action_safety_reason(
     if operation not in SAFE_OPERATIONS:
         return False, f"unsupported operation: {operation or 'missing'}"
 
+    # The pinned upstream browser API does not expose request interception.
+    # CLICK and SELECT can both dispatch page-defined event handlers. Until
+    # interception is available, never execute either operation in allowlisted
+    # auto mode: checking the URL after the action is already too late.
+    if operation in {"CLICK", "SELECT"} and allowed_hosts:
+        return False, f"{operation.lower()} events are disabled without request interception"
+
     # These choices do not submit data or activate a DOM target. Low confidence
     # may mean several harmless options are similarly plausible, so the bounded
     # step budget is the appropriate guard rather than a confidence threshold.
@@ -248,6 +255,10 @@ def run(args: argparse.Namespace) -> int:
 
         for _ in range(args.max_steps):
             state = agent.command("predict")
+            predicted_url = str((state.get("page") or {}).get("url") or "")
+            if not host_is_allowed(predicted_url, allowed_hosts):
+                print(f"STOPPED: predicted page left the allowlist: {predicted_url}")
+                return 2
             decision = state.get("decision") or {}
             safe, reason = action_safety_reason(
                 decision,
