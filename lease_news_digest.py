@@ -467,7 +467,8 @@ def _infer_news_action(item: dict) -> LeaseNewsAction:
     inferred_confidence = 0.75 - noise * 0.4 + (0.1 if risk_flags else 0.0)
     if classification_confidence > 0:
         inferred_confidence = classification_confidence
-        if has_structured_classification:
+        classification_source = str(item.get("classification_source") or "").strip().lower()
+        if has_structured_classification and classification_source == "rule":
             inferred_confidence = max(inferred_confidence, 0.55)
     if source_reliability == "high":
         inferred_confidence += 0.08

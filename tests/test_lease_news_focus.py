@@ -224,6 +224,23 @@ def test_lease_news_actions_treats_all_industries_as_wildcard(monkeypatch):
     assert "返済余力" in digest.lease_news_actions_as_text(industry="製造業")
 
 
+def test_low_gemini_classification_confidence_is_not_promoted():
+    action = digest._infer_news_action(
+        {
+            "title": "設備投資ニュース",
+            "industries": ["製造業"],
+            "lease_assets": ["生産設備"],
+            "screening_checks": ["受注状況を確認する"],
+            "classification_confidence": 0.1,
+            "classification_source": "gemini",
+            "source_reliability": "medium",
+        }
+    )
+
+    assert action.classification_confidence == 0.1
+    assert action.confidence < 0.55
+
+
 def test_feedback_scores_merge_and_deduplicate_durable_events(tmp_path, monkeypatch):
     local_path = tmp_path / "feedback.jsonl"
     local_path.write_text(
