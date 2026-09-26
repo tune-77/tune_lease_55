@@ -66,8 +66,9 @@ SEND_WARNING = (
     "含まれていないことを確認してから送信すること。--inspect で全文を表示できる。"
 )
 
-# Two-sided 95% Student-t critical values. For larger samples the t
-# distribution is sufficiently close to normal for this diagnostic.
+# Two-sided 95% Student-t critical values. Values beyond the exact table use
+# the lowest degrees of freedom in each range so the resulting margin is never
+# understated. The final 1.980 value is intentionally conservative for df>120.
 _T_975 = {
     1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
     6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
@@ -84,12 +85,12 @@ def _student_t_95(df: int) -> float:
     if df <= 30:
         return _T_975[df]
     if df <= 40:
-        return 2.021
+        return 2.040
     if df <= 60:
-        return 2.000
+        return 2.020
     if df <= 120:
-        return 1.980
-    return 1.960
+        return 2.000
+    return 1.980
 
 # ---------------------------------------------------------------------------
 # Corpus extraction
