@@ -116,3 +116,29 @@ def test_enforce_mode_sends_everything_without_credential(monkeypatch):
     )
 
     assert collector._news_guard_actions([_article("a")]) == ["send"]
+
+
+def test_shadow_mode_logs_each_article_verdict(monkeypatch, capsys):
+    """集計値だけでは「どれを落としたか」を後から復元できない。"""
+    monkeypatch.setenv("TYPESAFE_NEWS_MODE", "shadow")
+    monkeypatch.setattr(guard, "typesafe_available", lambda *a, **k: True)
+    monkeypatch.setattr(
+        guard,
+        "screen_articles",
+        lambda articles: {
+            "status": "applied",
+            "actions": ["send", "skip"],
+            "judgments": [
+                {"index": 0, "action": "send", "repayment": 0.71, "injection": 0.02},
+                {"index": 1, "action": "skip", "repayment": 0.32, "injection": 0.02},
+            ],
+            "counts": {"send": 1, "skip": 1, "quarantine": 0},
+        },
+    )
+
+    collector._news_guard_actions([_article("倒産110件"), _article("地域運送業者の破産")])
+
+    lines = [l for l in capsys.readouterr().err.splitlines() if l.startswith("[news-guard-item] ")]
+    assert len(lines) == 2
+    assert '"action":"skip"' in lines[1]
+    assert "地域運送業者の破産" in lines[1], "見出しが無いと、落とした記事を目視で確認できない"
