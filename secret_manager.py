@@ -27,7 +27,15 @@ def get_secret_value(key: str, fallback: Optional[str] = None) -> Optional[str]:
         value = st.secrets.get(key)
         if value:
             return value
-    except (AttributeError, KeyError):
+    except Exception:
+        # st.secrets は secrets.toml を見つけられないとき StreamlitSecretNotFoundError
+        # を投げる。これは FileNotFoundError のサブクラスで、AttributeError でも
+        # KeyError でもない。以前はこの2つしか捕捉しておらず、リポジトリ外を
+        # カレントディレクトリとして起動したジョブ（launchd の定期実行など）では
+        # 例外がそのまま呼び出し元へ抜け、手順3に到達していなかった。
+        # SECRETS_TOML_PATH は __file__ 基準の絶対パスなので、到達しさえすれば
+        # cwd に関係なく読める。手順2は優先順位つきフォールバックの途中段でしか
+        # ないため、失敗の種類を問わず次へ進めてよい。
         pass
 
     # 3. secrets.tomlから取得
