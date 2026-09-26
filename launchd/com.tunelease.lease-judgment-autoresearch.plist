@@ -21,6 +21,14 @@
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
+    <!-- REV-412: 出典突き合わせを shadow で計測（ノート本文は変えない）。
+         enforce へ上げる前に [research-verify] の1行JSONを1〜2週間集計する。 -->
+    <key>TYPESAFE_RESEARCH_VERIFY_MODE</key>
+    <string>shadow</string>
+    <!-- launchd は .zshrc を読まないため Keychain のサービス名をここで渡す
+         （鍵そのものはplistに置かない）。 -->
+    <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>
+    <string>typesafe-api-key</string>
     <key>PATH</key>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
   </dict>

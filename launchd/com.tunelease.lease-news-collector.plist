@@ -23,6 +23,14 @@
     <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
     <key>LEASE_NEWS_PROFILE</key>
     <string>industry-watch</string>
+    <!-- REV-411/412: Jevガードを shadow で計測（送信内容は変えない）。
+         enforce へ上げる前に [news-guard] の1行JSONを1〜2週間集計する。 -->
+    <key>TYPESAFE_NEWS_MODE</key>
+    <string>shadow</string>
+    <!-- launchd は .zshrc を読まないため Keychain のサービス名をここで渡す
+         （鍵そのものはplistに置かない）。 -->
+    <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>
+    <string>typesafe-api-key</string>
     <key>PYTHON_BIN</key>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
     <key>PATH</key>
@@ -30,6 +38,12 @@
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
   </dict>
+
+  <!-- secret_manager の st.secrets 参照は cwd 依存で、リポジトリ外から起動すると
+       StreamlitSecretNotFoundError になり GEMINI_API_KEY が空に落ちる。その結果
+       AI分類が無言でスキップされていた（autoresearch 側のplistには元からある）。 -->
+  <key>WorkingDirectory</key>
+  <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
 
   <key>StartCalendarInterval</key>
   <dict>
