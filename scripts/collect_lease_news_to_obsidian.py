@@ -381,7 +381,24 @@ def _rule_classification(article: Article) -> dict[str, Any]:
     elif direction == "positive":
         checks.append("改善効果が一時的な期待ではなく、受注・利益・キャッシュフローに反映される時期を確認する。")
 
-    reliability = "high" if article.source_kind == "official" else "medium"
+    source_text = " ".join([article.source, article.raw_source, article.link]).lower()
+    official_markers = (
+        ".go.jp",
+        ".lg.jp",
+        "pref.",
+        "city.",
+        "boj.or.jp",
+        "meti.go.jp",
+        "mlit.go.jp",
+        "fsa.go.jp",
+    )
+    weak_markers = ("おすすめ", "ランキング", "口コミ", "比較サイト", "まとめ")
+    if article.source_kind == "official" or any(marker in source_text for marker in official_markers):
+        reliability = "high"
+    elif any(marker in " ".join([article.title, article.source]).lower() for marker in weak_markers):
+        reliability = "low"
+    else:
+        reliability = "medium"
     impact = {
         "positive": "業績・投資回収・返済余力を改善する可能性がある。",
         "negative": "業績・資金繰り・返済余力を悪化させる可能性がある。",

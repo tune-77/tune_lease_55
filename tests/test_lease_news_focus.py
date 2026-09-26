@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -15,6 +16,9 @@ _SPEC.loader.exec_module(digest)
 
 
 def test_write_lease_news_focus_note_creates_project_note_and_daily_digest(tmp_path, monkeypatch):
+    monkeypatch.setattr(digest, "METRICS_PATH", tmp_path / "lease_news_metrics.json")
+    monkeypatch.setattr(digest, "_actions_json_path", lambda date_str: tmp_path / f"lease_news_actions_{date_str}.json")
+    monkeypatch.setattr(digest, "_actions_latest_path", lambda: tmp_path / "lease_news_actions_latest.json")
     monkeypatch.setattr(
         "novelist_agent.generate_daily_lease_grumble",
         lambda **_: [
@@ -38,6 +42,7 @@ tags: ["建設/不動産", "製造/DX"]
 region: 国内
 source: Example News
 importance: 中
+valid_until: 2099-12-31
 ---
 # 建設会社がAI導入で事務作業を効率化
 
@@ -112,3 +117,110 @@ importance: 中
     prompt_text = digest.lease_news_actions_as_text(vault=vault, industry="建設", asset_name="AI設備")
     assert "引っかかり:" in prompt_text
     assert "気持ち悪い点:" in prompt_text
+
+
+def test_structured_news_fields_survive_action_generation_and_gate_by_case(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    news_dir = vault / "05-クリップ_記事" / "業界リスクニュース"
+    news_dir.mkdir(parents=True)
+    note = news_dir / "2026-09-26_業界リスクニュース_建設倒産.md"
+    note.write_text(
+        """---
+date: 2026-09-26
+tags: ["建設/不動産"]
+region: 国内
+source: Example News
+importance: 高
+industries: "建設業, 不動産業"
+lease_assets: "建設機械, 建物附属設備"
+impact_direction: negative
+source_reliability: medium
+classification_confidence: 0.45
+valid_until: 2027-03-24
+classification_source: rule
+---
+# 建設業の倒産増加
+
+## 3行要約
+- 売上不振と人手不足が重なっている。
+
+## 活用メモ
+工期と資金繰りへの波及を確認する。
+
+## AI審査分類
+- 対象業種: 建設業, 不動産業
+
+### 審査上の確認事項
+- 価格転嫁、粗利、外注費、支払サイトを確認する。
+- 工期遅延が返済原資へ波及していないか確認する。
+""",
+        encoding="utf-8",
+    )
+
+    parsed = digest._parse_news_note(note)
+    assert parsed["industries"] == ["建設業", "不動産業"]
+    assert parsed["lease_assets"] == ["建設機械", "建物附属設備"]
+    assert parsed["source_reliability"] == "medium"
+    assert parsed["classification_confidence"] == 0.45
+    assert parsed["screening_checks"][0].startswith("価格転嫁")
+
+    action = digest._infer_news_action(parsed)
+    assert action.affected_industries == ("建設業", "不動産業")
+    assert action.affected_assets == ("建設機械", "建物附属設備")
+    assert action.recommended_checks[0].startswith("価格転嫁")
+    assert all("補助金" not in text for text in action.recommended_checks + action.condition_impacts)
+    assert action.source_reliability == "medium"
+    assert action.classification_confidence == 0.45
+
+    recorded: list[dict] = []
+    monkeypatch.setattr(digest, "record_lease_news_action_use", lambda *args, **kwargs: recorded.append(kwargs) or {})
+    assert digest.lease_news_actions_as_text(vault=vault) == ""
+    assert digest.lease_news_actions_as_text(vault=vault, industry="医療") == ""
+    matched = digest.lease_news_actions_as_text(vault=vault, industry="建設", asset_name="建設機械")
+    assert "価格転嫁" in matched
+    assert "補助金" not in matched
+    message_matched = digest.lease_news_actions_as_text(vault=vault, risk_context="建設業の倒産ニュースを確認したい")
+    assert "価格転嫁" in message_matched
+    assert len(recorded) == 2
+    assert all(item["matched_count"] == 1 for item in recorded)
+
+    feedback_path = tmp_path / "news-feedback.jsonl"
+    feedback_path.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "source_path": "05-クリップ_記事/業界リスクニュース/2026-09-26_業界リスクニュース_建設倒産.md",
+                    "outcome": "irrelevant",
+                },
+                ensure_ascii=False,
+            )
+            for _ in range(2)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(digest, "NEWS_USAGE_FEEDBACK_JSONL", feedback_path)
+    assert digest.lease_news_actions_as_text(vault=vault, industry="建設") == ""
+
+
+def test_record_lease_news_usage_feedback_writes_outcome_metrics(tmp_path, monkeypatch):
+    feedback_path = tmp_path / "feedback.jsonl"
+    metrics_path = tmp_path / "metrics.json"
+    monkeypatch.setattr(digest, "METRICS_PATH", metrics_path)
+
+    result = digest.record_lease_news_usage_feedback(
+        source_path="news/example.md",
+        source_title="設備投資ニュース",
+        outcome="question_changed",
+        surface="news_dashboard",
+        path=feedback_path,
+    )
+
+    assert result["event_id"].startswith("nf-")
+    assert result["outcome"] == "question_changed"
+    assert '"outcome": "question_changed"' in feedback_path.read_text(encoding="utf-8")
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    bucket = metrics["days"][dt.date.today().isoformat()]
+    assert bucket["feedback_total"] == 1
+    assert bucket["feedback_question_changed"] == 1
+    assert bucket["news_actions_used"] == 1

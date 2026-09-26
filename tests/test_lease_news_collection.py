@@ -45,6 +45,23 @@ def test_rule_classification_populates_searchable_fields():
     assert article.classification_source == "rule"
 
 
+def test_rule_classification_distinguishes_official_and_weak_sources():
+    official = _article(
+        source="pref.example.lg.jp",
+        link="https://www.pref.example.lg.jp/subsidy",
+        title="中小企業向け設備補助金",
+    )
+    weak = _article(
+        source="比較サイト",
+        title="おすすめカーリースランキング",
+    )
+
+    news.classify_articles([official, weak], use_ai=False)
+
+    assert official.source_reliability == "high"
+    assert weak.source_reliability == "low"
+
+
 def test_article_content_contains_ai_screening_classification():
     article = _article()
     news.classify_articles([article], use_ai=False)
