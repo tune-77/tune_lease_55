@@ -115,10 +115,11 @@ def action_safety_reason(
         return False, f"unsupported operation: {operation or 'missing'}"
 
     # The pinned upstream browser API does not expose request interception.
-    # CLICK and SELECT can both dispatch page-defined event handlers. Until
-    # interception is available, never execute either operation in allowlisted
-    # auto mode: checking the URL after the action is already too late.
-    if operation in {"CLICK", "SELECT"} and allowed_hosts:
+    # Every DOM-mutating operation can dispatch page-defined event handlers.
+    # TYPE_TEXT can trigger input/change/keyboard listeners just as CLICK and
+    # SELECT can. Until request interception is available, checking the URL
+    # after any of these actions is already too late.
+    if operation in {"CLICK", "SELECT", "TYPE_TEXT"} and allowed_hosts:
         return False, f"{operation.lower()} events are disabled without request interception"
 
     # These choices do not submit data or activate a DOM target. Low confidence
