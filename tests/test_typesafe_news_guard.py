@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import typesafe_news_guard as guard
 
 
@@ -97,3 +99,41 @@ def test_missing_answer_raises_instead_of_silently_dropping():
     except guard.TypeSafeRagError:
         return
     raise AssertionError("回答欠落を検出できていない")
+
+
+def test_criteria_travel_once_in_state_not_per_article():
+    """基準全文は state に1回。質問側に複製すると入力が記事数に比例して増える。"""
+    payload = guard.build_news_request(_articles(18))
+    full_text = guard.NEWS_CRITERIA["repayment"]["true"]
+
+    assert payload["state"]["news_criteria"]["repayment"]["true"] == full_text
+    serialized = json.dumps(payload["questions"], ensure_ascii=False)
+    assert full_text not in serialized, "質問側に全文が複製されている"
+    # 全文の所在を指していないと、短い版だけでは判断材料が欠ける
+    for question in payload["questions"].values():
+        assert any("news_criteria." in v for v in question["criteria"].values())
+
+
+def test_inline_criteria_restores_the_duplicated_shape():
+    """旧形状もA/B用に残す。切り替えは引数だけで済む。"""
+    inline = guard.build_news_request(_articles(18), inline_criteria=True)
+    shared = guard.build_news_request(_articles(18))
+
+    assert "news_criteria" not in inline["state"]
+    assert len(json.dumps(inline, ensure_ascii=False)) > len(
+        json.dumps(shared, ensure_ascii=False)
+    ), "共有形状の方が小さくならなければ意味がない"
+
+
+def test_gloss_and_full_criteria_must_cover_the_same_keys():
+    """片方だけ足すと、参照先の無い短文か、届かない全文が生まれる。"""
+    original = dict(guard.CRITERIA_GLOSS)
+    guard.CRITERIA_GLOSS.pop("injection")
+    try:
+        guard.build_news_request(_articles(1))
+    except guard.TypeSafeRagError:
+        return
+    finally:
+        guard.CRITERIA_GLOSS.clear()
+        guard.CRITERIA_GLOSS.update(original)
+    raise AssertionError("キー不一致を検出できていない")
