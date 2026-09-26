@@ -115,11 +115,11 @@ def action_safety_reason(
         return False, f"unsupported operation: {operation or 'missing'}"
 
     # The pinned upstream browser API does not expose request interception.
-    # A click can therefore be redirected by onclick/event listeners even when
-    # the observed href is allowed. Until interception is available, never
-    # execute model-selected clicks in allowlisted auto mode.
-    if operation == "CLICK" and allowed_hosts:
-        return False, "click navigation is disabled without request interception"
+    # CLICK and SELECT can both dispatch page-defined event handlers. Until
+    # interception is available, never execute either operation in allowlisted
+    # auto mode: checking the URL after the action is already too late.
+    if operation in {"CLICK", "SELECT"} and allowed_hosts:
+        return False, f"{operation.lower()} events are disabled without request interception"
 
     # These choices do not submit data or activate a DOM target. Low confidence
     # may mean several harmless options are similarly plausible, so the bounded

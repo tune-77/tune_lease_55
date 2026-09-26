@@ -280,3 +280,9 @@ def test_report_warns_when_only_a_few_responses_are_usable(capsys):
     output = capsys.readouterr().out
     assert "有効回答が 2 問" in output
     assert "優位とは判定しない" in output
+
+
+def test_student_t_margin_uses_small_sample_critical_value():
+    assert measure._student_t_95(4) == 2.776
+    assert measure._student_t_95(120) == 1.980
+    assert measure._student_t_95(121) == 1.960

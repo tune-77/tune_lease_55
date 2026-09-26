@@ -50,6 +50,17 @@ def test_click_is_blocked_without_request_interception():
     assert "request interception" in reason
 
 
+def test_select_is_blocked_without_request_interception():
+    safe, reason = action_safety_reason(
+        _decision("SELECT"),
+        _page("表示件数", role="combobox", kind="select"),
+        min_confidence=0.55,
+        allowed_hosts=("e-stat.go.jp",),
+    )
+    assert not safe
+    assert "request interception" in reason
+
+
 def test_link_destination_is_checked_before_navigation():
     safe, reason = action_safety_reason(
         _decision(),

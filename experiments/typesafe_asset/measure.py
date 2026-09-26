@@ -66,6 +66,31 @@ SEND_WARNING = (
     "含まれていないことを確認してから送信すること。--inspect で全文を表示できる。"
 )
 
+# Two-sided 95% Student-t critical values. For larger samples the t
+# distribution is sufficiently close to normal for this diagnostic.
+_T_975 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+    11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
+    16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
+    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
+}
+
+
+def _student_t_95(df: int) -> float:
+    if df < 1:
+        return float("inf")
+    if df <= 30:
+        return _T_975[df]
+    if df <= 40:
+        return 2.021
+    if df <= 60:
+        return 2.000
+    if df <= 120:
+        return 1.980
+    return 1.960
+
 # ---------------------------------------------------------------------------
 # Corpus extraction
 # ---------------------------------------------------------------------------
@@ -524,7 +549,8 @@ def _report(judged: list[dict[str, Any]]) -> None:
         for row in usable
     ]
     if len(improvements) >= 2:
-        uncertainty = 1.96 * statistics.stdev(improvements) / math.sqrt(len(improvements))
+        critical = _student_t_95(len(improvements) - 1)
+        uncertainty = critical * statistics.stdev(improvements) / math.sqrt(len(improvements))
     else:
         uncertainty = float("inf")
 
