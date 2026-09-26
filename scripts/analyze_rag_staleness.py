@@ -19,13 +19,17 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 from rev_ledger_utils import load_all_rev_sources, max_rev_number  # noqa: E402
 
 FEEDBACK_LOG = PROJECT_ROOT / "data" / "rag_feedback_log.jsonl"
@@ -33,6 +37,7 @@ HIT_LOG = PROJECT_ROOT / "data" / "rag_hit_log.jsonl"
 SEARCH_LOG = PROJECT_ROOT / "data" / "rag_search_log.jsonl"
 LEDGER_FILE = PROJECT_ROOT / "api" / "rule_engine" / "ledger_rules.json"
 REPORTS_DIR = PROJECT_ROOT / "reports"
+STALENESS_SHADOW_LOG = PROJECT_ROOT / "data" / "rag_staleness_shadow_log.jsonl"
 
 STALE_DAYS = 30
 
@@ -173,6 +178,111 @@ def already_exists(ledger: list[dict], ref: str, category: str) -> bool:
     return False
 
 
+def _staleness_shadow_mode() -> str:
+    """Return the configured shadow rollout mode; invalid values fail closed to off."""
+    mode = str(os.environ.get("TYPESAFE_STALENESS_MODE") or "off").strip().lower()
+    return mode if mode in {"off", "shadow"} else "off"
+
+
+def _env_truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def shadow_log_jev_relevance(
+    stale_nodes: list[dict],
+    important_nodes: list[dict],
+    chroma_ref_meta: dict[str, dict],
+    *,
+    limit_per_category: int = 8,
+) -> None:
+    """Best-effort: log Jev's relevance judgment next to the keyword heuristic.
+
+    Never raises and never changes the classification/report/ledger. Only
+    titles/tags (not note bodies) are sent externally, and only when both
+    TYPESAFE_STALENESS_MODE=shadow and the existing shared-Obsidian Jev
+    opt-ins are set. This exists purely to measure agreement before any
+    future decision to let Jev influence reduction candidates.
+    """
+    if _staleness_shadow_mode() != "shadow":
+        return
+    if not _env_truthy(os.environ.get("TYPESAFE_ALLOW_SHARED_CONTEXT")):
+        return
+    try:
+        from typesafe_rag_guard import (
+            build_passage_request,
+            request_system_one,
+            route_passage,
+            typesafe_rag_enabled,
+        )
+
+        if not typesafe_rag_enabled():
+            return
+        candidates = stale_nodes[:limit_per_category] + important_nodes[:limit_per_category]
+        if not candidates:
+            return
+        hits = []
+        for node in candidates:
+            meta = chroma_ref_meta.get(node["obsidian_ref"], {})
+            title = str(meta.get("title") or meta.get("file_name") or node["obsidian_ref"])[:200]
+            tags = str(meta.get("tags") or "")
+            hits.append({"title": title, "text": tags or title})
+        query = "このノートは現在も業務判断に役立つ重要な知識か"
+        payload = build_passage_request(query, hits)
+        try:
+            body = request_system_one(payload)
+        except Exception as exc:  # noqa: BLE001 - shadow logging must not break the pipeline
+            _append_shadow_record({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "mode": "shadow",
+                "status": "fallback",
+                "error_type": type(exc).__name__,
+            })
+            return
+        answers = body.get("answers") if isinstance(body, dict) else None
+        for index, node in enumerate(candidates):
+            judgment = {
+                "relevant": _read_noul(answers, f"p{index}_relevant"),
+                "evidence": _read_noul(answers, f"p{index}_evidence"),
+                "contradicts": _read_noul(answers, f"p{index}_contradicts"),
+                "injection": _read_noul(answers, f"p{index}_injection"),
+            }
+            jev_route = None if any(v is None for v in judgment.values()) else route_passage(judgment)
+            jev_keep = jev_route == "include"
+            heuristic_keep = node["category"] == "important_but_unused"
+            _append_shadow_record({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "mode": "shadow",
+                "obsidian_ref": node["obsidian_ref"],
+                "heuristic_category": node["category"],
+                "jev_route": jev_route,
+                "agreement": (jev_keep == heuristic_keep) if jev_route else None,
+                "model": str((body or {}).get("model") or ""),
+                "usage": dict((body or {}).get("usage") or {}),
+            })
+    except Exception:  # noqa: BLE001 - shadow logging is best-effort only
+        return
+
+
+def _read_noul(answers: Any, key: str) -> float | None:
+    raw = answers.get(key) if isinstance(answers, dict) else None
+    if not isinstance(raw, dict) or raw.get("type") != "noul":
+        return None
+    try:
+        value = float(raw["noul"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return value if 0.0 <= value <= 1.0 else None
+
+
+def _append_shadow_record(record: dict) -> None:
+    try:
+        STALENESS_SHADOW_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(STALENESS_SHADOW_LOG, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def main() -> None:
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=STALE_DAYS)
@@ -255,6 +365,8 @@ def main() -> None:
         f"[analyze_rag_staleness] stale={len(stale_nodes)} important_but_unused={len(important_nodes)} active={len(active_nodes)} → {output_path}",
         flush=True,
     )
+
+    shadow_log_jev_relevance(stale_nodes, important_nodes, chroma_ref_meta)
 
     if not stale_nodes and not important_nodes:
         return
