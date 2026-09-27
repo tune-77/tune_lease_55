@@ -559,8 +559,8 @@ export default function DebatePage() {
 
   // 確信マップをページ初回ロード時に取得
   useEffect(() => {
-    fetch("/api/shion/central-synthesis")
-      .then(r => r.json())
+    apiClient.get("/api/shion/central-synthesis")
+      .then(r => r.data)
       .then(d => setCentralData(d.commentary || null))
       .catch(() => {});
   }, []);
@@ -637,6 +637,7 @@ export default function DebatePage() {
     let res: Response;
     try {
       armIdleTimer();
+      // SSEストリームをreader経由で逐次読むためapiClient(axios)ではなくfetchを使う
       res = await fetch(`${API_BASE}/api/multi-agent-screening/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

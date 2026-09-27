@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScoringFormData } from '../../types';
-import { API_BASE } from '../../lib/api';
+import { apiClient } from '../../lib/api';
 import { focusNextScreeningNumber, parseHumanNumberInput } from '../../lib/numberInput';
 
 interface FormGeneralProps {
@@ -54,12 +54,10 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
   useEffect(() => {
     const fetchIndustries = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/master/industries`);
-        if (res.ok) {
-          const jsicData = await res.json();
-          setIndustryMaster(jsicData);
-          setMajors(Object.keys(jsicData));
-        }
+        const res = await apiClient.get('/api/master/industries');
+        const jsicData = res.data;
+        setIndustryMaster(jsicData);
+        setMajors(Object.keys(jsicData));
       } catch (err) {
         console.error("Failed to fetch industries:", err);
       }
@@ -85,17 +83,12 @@ export default function FormGeneral({ data, onChange }: FormGeneralProps) {
 
     const timer = window.setTimeout(async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/industry/suggest`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            asset_name: data.asset_name || '',
-            industry_detail: data.industry_detail || '',
-            company_name: data.company_name || '',
-          }),
+        const res = await apiClient.post('/api/industry/suggest', {
+          asset_name: data.asset_name || '',
+          industry_detail: data.industry_detail || '',
+          company_name: data.company_name || '',
         });
-        if (!res.ok) return;
-        const body = await res.json();
+        const body = res.data;
         setIndustrySuggestionResult({
           hint: hintText,
           items: (body.suggestions || []).filter((item: IndustrySuggestion) => (

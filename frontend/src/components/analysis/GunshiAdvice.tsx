@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import DOMPurify from 'dompurify';
 import { Activity, AlertTriangle, Bot, CheckCircle2, FileText, HelpCircle, Loader2, PenLine, Sparkles, Target, Users } from 'lucide-react';
 import type { ScoringFormData } from '@/types';
+import { apiClient } from '@/lib/api';
 
 interface GunshiAdviceProps {
   score: number;
@@ -260,6 +260,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
 
     try {
       const payload = buildStreamPayload();
+      // SSEストリームをreader経由で逐次読むためapiClient(axios)ではなくfetchを使う
       const response = await fetch('/api/gunshi/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -404,7 +405,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
       .reverse()
       .find((message) => message.role === 'assistant')?.text || '';
     try {
-      await axios.post('/api/judgment-feedback', {
+      await apiClient.post('/api/judgment-feedback', {
         case_id: feedbackCaseIdRef.current,
         model_decision: normalizedModelDecision,
         human_decision: humanDecision,
