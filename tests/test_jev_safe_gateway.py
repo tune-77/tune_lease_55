@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -42,6 +46,8 @@ def test_abstract_projection_keeps_mapping_local_and_writes_content_free_audit(t
     "effect,reason",
     [
         ("/Users/example/private/repo/app.py を変更", "private_path"),
+        ("/workspace/acme/service を変更", "private_path"),
+        ("/srv/internal/repository を変更", "private_path"),
         ("```python\ndef secret():\n    pass\n```", "raw_code_or_diff"),
         ("src/private_module.py の処理を変更", "raw_code_or_diff"),
         ("`InternalService` の処理を変更", "raw_code_or_diff"),
@@ -166,15 +172,16 @@ def test_aggregate_accepts_buckets_and_flags_but_rejects_raw_numbers():
             }
         )
 
-    blocked = prepare_gateway_request(
-        {
-            "mode": "aggregate",
-            "purpose": "集計済み特徴を分類する",
-            "items": [{"size_bucket": "12345678円"}],
-        }
-    )
-    assert blocked["status"] == "blocked"
-    assert "raw_numeric_value" in blocked["audit"]["reason_codes"]
+    for raw_value in ("12345678円", "年商 12345678円", "annual revenue 12345678 yen"):
+        blocked = prepare_gateway_request(
+            {
+                "mode": "aggregate",
+                "purpose": "集計済み特徴を分類する",
+                "items": [{"size_bucket": raw_value}],
+            }
+        )
+        assert blocked["status"] == "blocked"
+        assert "raw_numeric_value" in blocked["audit"]["reason_codes"]
 
 
 def test_unknown_fields_are_rejected_instead_of_silently_forwarded():
@@ -186,3 +193,36 @@ def test_unknown_fields_are_rejected_instead_of_silently_forwarded():
                 "items": [{"effect": "一般化した変更", "raw_diff": "+ secret"}],
             }
         )
+
+
+def test_cli_imports_root_module_when_project_root_is_already_on_pythonpath(tmp_path):
+    project_root = Path(__file__).resolve().parents[1]
+    payload = json.dumps(
+        {
+            "mode": "abstract",
+            "purpose": "変更候補を分類する",
+            "items": [{"effect": "既存画面へ操作を追加する"}],
+        },
+        ensure_ascii=False,
+    )
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(project_root)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(project_root / "scripts" / "jev_safe_gateway.py"),
+            "--input",
+            "-",
+            "--audit",
+            str(tmp_path / "audit.jsonl"),
+        ],
+        input=payload,
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["status"] == "allowed"

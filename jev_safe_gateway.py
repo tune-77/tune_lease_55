@@ -60,8 +60,8 @@ _PII_PATTERNS = (
     re.compile(r"(?:氏名|住所|電話番号|顧客名|会社名|申込者)\s*[:：]"),
 )
 _PRIVATE_PATH_PATTERNS = (
-    re.compile(r"(?:^|[\s'\"])/(?:Users|home|private|var|opt)/[^\s'\"]+"),
-    re.compile(r"\b[A-Za-z]:\\Users\\[^\s'\"]+", re.I),
+    re.compile(r"(?:^|[\s'\"])/(?!/)[^\s'\"]+"),
+    re.compile(r"\b[A-Za-z]:\\[^\s'\"]+", re.I),
 )
 _RAW_CODE_MARKERS = (
     re.compile(r"```"),
@@ -75,9 +75,7 @@ _RAW_CODE_MARKERS = (
     re.compile(r"\b[\w.-]+\.(?:py|ts|tsx|js|jsx|json|ya?ml|sql|sh|toml)\b", re.I),
 )
 _SAFE_TOKEN = re.compile(r"^[\w .:/+,-]+$", re.UNICODE)
-_RAW_NUMERIC_VALUE = re.compile(
-    r"^\s*[¥￥$€]?\s*[\d,.]+(?:円|万円|億円|%|か月|ヶ月|年)?\s*$", re.I
-)
+_RAW_NUMERIC_VALUE = re.compile(r"\d")
 
 
 class GatewayInputError(ValueError):
@@ -203,7 +201,7 @@ def _aggregate_item(item: Mapping[str, Any], index: int) -> tuple[dict[str, Any]
         else:
             scalar_values = [safe_value]
         if any(
-            isinstance(entry, str) and _RAW_NUMERIC_VALUE.fullmatch(entry)
+            isinstance(entry, str) and _RAW_NUMERIC_VALUE.search(entry)
             for entry in scalar_values
         ):
             findings.add("raw_numeric_value")
