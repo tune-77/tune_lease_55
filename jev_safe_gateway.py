@@ -41,11 +41,67 @@ AGGREGATE_FIELDS = (
     "boolean_signals",
 )
 LOCAL_ONLY_FIELDS = frozenset({"source_id", "local_id"})
+AGGREGATE_PURPOSES = frozenset(
+    {
+        "check_policy_fit",
+        "classify_review_route",
+        "classify_risk_level",
+        "prioritize_manual_review",
+    }
+)
+AGGREGATE_ALLOWED_VALUES = {
+    "industry_bucket": frozenset(
+        {
+            "agriculture",
+            "construction",
+            "finance_insurance",
+            "healthcare_welfare",
+            "hospitality",
+            "information_communications",
+            "manufacturing",
+            "other",
+            "professional_services",
+            "public_sector",
+            "real_estate",
+            "transport",
+            "utilities",
+            "wholesale_retail",
+        }
+    ),
+    "region_bucket": frozenset({"domestic", "mixed", "overseas", "unknown"}),
+    "size_bucket": frozenset({"enterprise", "large", "medium", "micro", "small", "unknown"}),
+    "risk_flags": frozenset(
+        {
+            "adverse_news",
+            "data_incomplete",
+            "governance_gap",
+            "high_concentration",
+            "high_leverage",
+            "industry_headwind",
+            "limited_collateral",
+            "short_history",
+            "volatile_earnings",
+            "weak_liquidity",
+        }
+    ),
+    "boolean_signals": frozenset(
+        {
+            "adverse_news_found",
+            "data_complete",
+            "delinquency_history",
+            "financials_verified",
+            "has_collateral",
+            "has_guarantor",
+            "positive_operating_cashflow",
+        }
+    ),
+}
 
 _SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"\b(?:sk|rk)-(?:live|test|proj)?[_-]?[A-Za-z0-9_-]{12,}\b", re.I),
     re.compile(r"\bgh[opusr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
     re.compile(
@@ -74,6 +130,14 @@ _RAW_CODE_MARKERS = (
         re.I,
     ),
     re.compile(r"\b[\w.-]+\.(?:py|ts|tsx|js|jsx|json|ya?ml|sql|sh|toml)\b", re.I),
+    re.compile(
+        r"(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]+\.[A-Za-z][A-Za-z0-9]{0,15}"
+        r"(?![A-Za-z0-9_])"
+    ),
+    re.compile(
+        r"(?<![A-Za-z0-9_])(?:Dockerfile|Makefile|Procfile|README)(?![A-Za-z0-9_])",
+        re.I,
+    ),
 )
 _SAFE_TOKEN = re.compile(r"^[\w .:/+,-]+$", re.UNICODE)
 _RAW_NUMERIC_VALUE = re.compile(r"\d")
@@ -172,27 +236,35 @@ def _aggregate_item(item: Mapping[str, Any], index: int) -> tuple[dict[str, Any]
         if field not in item:
             continue
         value = item[field]
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            raise GatewayInputError(f"items[{index}].{field} must be a bucket, flag, or boolean")
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        allowed_values = AGGREGATE_ALLOWED_VALUES[field]
+        if field == "risk_flags":
+            if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+                raise GatewayInputError(f"items[{index}].risk_flags must be an array")
             if len(value) > 20:
                 raise GatewayInputError(f"items[{index}].{field} has too many values")
-            safe_value = [
-                _safe_scalar(entry, f"items[{index}].{field}", max_chars=80) for entry in value
-            ]
-        elif isinstance(value, Mapping):
+            safe_value = []
+            for entry in value:
+                safe_entry = _safe_scalar(entry, f"items[{index}].{field}", max_chars=80)
+                if isinstance(safe_entry, bool) or safe_entry not in allowed_values:
+                    raise GatewayInputError(f"items[{index}].{field} contains an unknown value")
+                safe_value.append(safe_entry)
+        elif field == "boolean_signals":
+            if not isinstance(value, Mapping):
+                raise GatewayInputError(f"items[{index}].boolean_signals must be an object")
             if len(value) > 20:
                 raise GatewayInputError(f"items[{index}].{field} has too many values")
             safe_value = {}
             for key, entry in value.items():
                 safe_key = _safe_scalar(key, f"items[{index}].{field} key", max_chars=80)
-                if isinstance(safe_key, bool):
-                    raise GatewayInputError(f"items[{index}].{field} keys must be strings")
-                safe_value[safe_key] = _safe_scalar(
-                    entry, f"items[{index}].{field} value", max_chars=80
-                )
+                if isinstance(safe_key, bool) or safe_key not in allowed_values:
+                    raise GatewayInputError(f"items[{index}].{field} contains an unknown key")
+                if not isinstance(entry, bool):
+                    raise GatewayInputError(f"items[{index}].{field} values must be booleans")
+                safe_value[safe_key] = entry
         else:
             safe_value = _safe_scalar(value, f"items[{index}].{field}", max_chars=80)
+            if isinstance(safe_value, bool) or safe_value not in allowed_values:
+                raise GatewayInputError(f"items[{index}].{field} contains an unknown value")
         serialized = json.dumps(safe_value, ensure_ascii=False, sort_keys=True)
         findings |= _find_sensitive(serialized, reject_code=True)
         if isinstance(safe_value, Mapping):
@@ -280,6 +352,11 @@ def prepare_gateway_request(
         raise GatewayInputError("mode must be abstract, aggregate, or public_excerpt")
     purpose = _text(payload.get("purpose"), "purpose", max_chars=MAX_PURPOSE_CHARS)
     purpose_findings = _find_sensitive(purpose, reject_code=True)
+    if mode == "aggregate":
+        if purpose not in AGGREGATE_PURPOSES:
+            raise GatewayInputError("aggregate purpose must use a predefined value")
+        if _RAW_NUMERIC_VALUE.search(purpose):
+            purpose_findings.add("raw_numeric_value")
     raw_items = payload.get("items")
     if not isinstance(raw_items, list) or not raw_items:
         raise GatewayInputError("items must be a non-empty array")

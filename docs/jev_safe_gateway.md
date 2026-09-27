@@ -45,7 +45,7 @@ python scripts/jev_safe_gateway.py --input request.json
 ## 安全境界
 
 - `abstract` と `aggregate` は未知フィールドを拒否する。許可項目を増やす時はテストと規約も更新する。
-- `aggregate` に生の金額・比率・期間を入れず、ローカル処理でbucketへ変換する。
+- `aggregate` はpurpose、bucket、flag、boolean signalの閉じた語彙だけを受け付ける。生の金額・比率・期間や自由記述は、ローカル処理で許可済みカテゴリへ変換する。
 - `public_excerpt` は `visibility=public`、HTTPS、許可ホスト、秘密情報検査、文字数制限をすべて通す。
 - Jevの確率が0.7未満、選択肢外、または投影後の情報で判断不能ならCodex/Claudeへ戻す。
 - 削除、公開、mergeなど不可逆・外向きの操作はJevだけで決定しない。

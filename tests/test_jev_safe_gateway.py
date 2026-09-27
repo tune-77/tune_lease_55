@@ -145,11 +145,30 @@ def test_public_excerpt_still_blocks_a_secret():
     assert "secret_like_content" in result["audit"]["reason_codes"]
 
 
+def test_public_excerpt_blocks_fine_grained_github_token():
+    result = prepare_gateway_request(
+        {
+            "mode": "public_excerpt",
+            "purpose": "公開コードを分類する",
+            "items": [
+                {
+                    "visibility": "public",
+                    "public_source_url": "https://github.com/example/project/blob/main/config.py",
+                    "content": "github_pat_11AA22BB33CC44DD55EE66FF77GG88HH",
+                }
+            ],
+        }
+    )
+
+    assert result["status"] == "blocked"
+    assert "secret_like_content" in result["audit"]["reason_codes"]
+
+
 def test_aggregate_accepts_buckets_and_flags_but_rejects_raw_numbers():
     allowed = prepare_gateway_request(
         {
             "mode": "aggregate",
-            "purpose": "集計済み特徴から確認経路を分類する",
+            "purpose": "classify_review_route",
             "items": [
                 {
                     "source_id": "case-raw-id",
@@ -164,35 +183,70 @@ def test_aggregate_accepts_buckets_and_flags_but_rejects_raw_numbers():
     assert allowed["status"] == "allowed"
     assert "case-raw-id" not in json.dumps(allowed["outbound"])
 
-    with pytest.raises(GatewayInputError, match="bucket, flag, or boolean"):
+    with pytest.raises(GatewayInputError, match="must be a string"):
         prepare_gateway_request(
             {
                 "mode": "aggregate",
-                "purpose": "集計済み特徴を分類する",
+                "purpose": "classify_review_route",
                 "items": [{"size_bucket": 12345678}],
             }
         )
 
     for raw_value in ("12345678円", "年商 12345678円", "annual revenue 12345678 yen"):
-        blocked = prepare_gateway_request(
+        with pytest.raises(GatewayInputError, match="unknown value"):
+            prepare_gateway_request(
+                {
+                    "mode": "aggregate",
+                    "purpose": "classify_review_route",
+                    "items": [{"size_bucket": raw_value}],
+                }
+            )
+
+    with pytest.raises(GatewayInputError, match="unknown key"):
+        prepare_gateway_request(
             {
                 "mode": "aggregate",
-                "purpose": "集計済み特徴を分類する",
-                "items": [{"size_bucket": raw_value}],
+                "purpose": "classify_review_route",
+                "items": [{"boolean_signals": {"annual revenue 12345678 yen": True}}],
             }
         )
-        assert blocked["status"] == "blocked"
-        assert "raw_numeric_value" in blocked["audit"]["reason_codes"]
 
-    mapping_key = prepare_gateway_request(
+
+def test_aggregate_rejects_free_text_and_untrusted_purpose():
+    with pytest.raises(GatewayInputError, match="unknown value"):
+        prepare_gateway_request(
+            {
+                "mode": "aggregate",
+                "purpose": "classify_review_route",
+                "items": [{"industry_bucket": "株式会社秘密商事"}],
+            }
+        )
+
+    with pytest.raises(GatewayInputError, match="predefined value"):
+        prepare_gateway_request(
+            {
+                "mode": "aggregate",
+                "purpose": "classify annual revenue 12345678 yen",
+                "items": [{"size_bucket": "medium"}],
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "effect",
+    ["internal_config.goを変更", "README.mdを変更", "Dockerfileを変更", "Makefile を変更"],
+)
+def test_abstract_projection_blocks_generic_filenames(effect):
+    result = prepare_gateway_request(
         {
-            "mode": "aggregate",
-            "purpose": "集計済み特徴を分類する",
-            "items": [{"boolean_signals": {"annual revenue 12345678 yen": True}}],
+            "mode": "abstract",
+            "purpose": "変更候補を分類する",
+            "items": [{"effect": effect}],
         }
     )
-    assert mapping_key["status"] == "blocked"
-    assert "raw_numeric_value" in mapping_key["audit"]["reason_codes"]
+
+    assert result["status"] == "blocked"
+    assert "raw_code_or_diff" in result["audit"]["reason_codes"]
 
 
 def test_unknown_fields_are_rejected_instead_of_silently_forwarded():
