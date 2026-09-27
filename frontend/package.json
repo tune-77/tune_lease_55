@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
+    "postbuild": "node scripts/sync-standalone-assets.mjs",
     "start": "next start",
     "lint": "eslint src/",
     "lint:baseline": "node scripts/check-lint-baseline.mjs",
