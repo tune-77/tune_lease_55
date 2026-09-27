@@ -2,7 +2,9 @@ import type { NextConfig } from "next";
 
 const API_URL = process.env.FASTAPI_URL || "http://127.0.0.1:8000";
 const BROWSER_FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || "";
-const connectSrc = ["'self'", "http://127.0.0.1:8000", "http://localhost:8000", BROWSER_FASTAPI_URL]
+// REV-421: 紫苑音声通話はブラウザから Gemini Live へ直接 WebSocket 接続する
+const GEMINI_LIVE_ORIGIN = "wss://generativelanguage.googleapis.com";
+const connectSrc = ["'self'", "http://127.0.0.1:8000", "http://localhost:8000", BROWSER_FASTAPI_URL, GEMINI_LIVE_ORIGIN]
   .filter(Boolean)
   .join(" ");
 const scriptSrc = process.env.NODE_ENV === "production"
@@ -14,7 +16,7 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
   {
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains; preload",
