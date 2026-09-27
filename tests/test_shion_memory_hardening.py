@@ -21,9 +21,15 @@ from scripts.update_shion_memory_freshness import apply_freshness, load_feedback
 # ── ヘルスチェック ──────────────────────────────────────────────────────────
 
 
-def _write_index(path: Path, n: int) -> None:
+def _write_index(path: Path, n: int, *, layer: str | None = None) -> None:
     records = [
-        {"id": f"m{i}", "content": f"記憶{i}", "memory_type": "factual_memory", "status": "active"}
+        {
+            "id": f"m{i}",
+            "content": f"記憶{i}",
+            "memory_type": "factual_memory",
+            "status": "active",
+            **({"memory_layer": layer} if layer else {}),
+        }
         for i in range(n)
     ]
     path.write_text(json.dumps({"records": records}, ensure_ascii=False), encoding="utf-8")
@@ -44,6 +50,24 @@ class TestMemoryHealth:
         healthy, message = check(summary, {"total": 100})
         assert not healthy
         assert "急減" in message
+
+    def test_rolling_mid_term_drop_is_not_an_alarm(self, tmp_path):
+        index = tmp_path / "index.json"
+        records = [
+            {"id": f"long-{i}", "memory_type": "factual_memory", "status": "active", "memory_layer": "long_term"}
+            for i in range(200)
+        ] + [
+            {"id": f"mid-{i}", "memory_type": "dialogue_memory", "status": "active", "memory_layer": "mid_term"}
+            for i in range(50)
+        ]
+        index.write_text(json.dumps({"records": records}), encoding="utf-8")
+        summary = load_index_summary(index)
+        previous = {"total": 450, "by_layer": {"long_term": 200, "mid_term": 250}}
+
+        healthy, message = check(summary, previous)
+
+        assert healthy
+        assert "永続層" in message
 
     def test_alarm_on_missing_or_empty_index(self, tmp_path):
         healthy, _ = check(load_index_summary(tmp_path / "none.json"), {})

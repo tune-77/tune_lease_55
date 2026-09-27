@@ -28,6 +28,7 @@ WORKLOG_HEADING_RE = re.compile(r"^##\s+(?P<time>\d{2}:\d{2})\s+(?P<agent>Codex|
 SECTION_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$")
 PUBLIC_SECTIONS = {"Summary", "Chat Summary", "Decisions", "Changes", "Verification", "Open Items"}
 MAX_FIELD_CHARS = 420
+PROJECT_WORKLOG_RELATIVE_DIR = Path("Projects") / "tune_lease_55" / "Work Logs"
 
 
 def _clip(text: str, limit: int = MAX_FIELD_CHARS) -> str:
@@ -37,14 +38,15 @@ def _clip(text: str, limit: int = MAX_FIELD_CHARS) -> str:
     return value[:limit].rstrip() + "..."
 
 
-def _daily_note_paths(vault: Path, days: int) -> list[Path]:
+def _worklog_note_paths(vault: Path, days: int) -> list[Path]:
     today = dt.date.today()
     paths: list[Path] = []
     for offset in range(max(1, days)):
         day = today - dt.timedelta(days=offset)
-        path = vault / "Daily" / f"{day.isoformat()}.md"
-        if path.exists():
-            paths.append(path)
+        for root in (vault / "Daily", vault / PROJECT_WORKLOG_RELATIVE_DIR):
+            path = root / f"{day.isoformat()}.md"
+            if path.exists():
+                paths.append(path)
     return paths
 
 
@@ -125,6 +127,64 @@ def parse_work_logs(note_path: Path) -> list[dict[str, Any]]:
     return logs
 
 
+def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
+    """Projects/tune_lease_55/Work Logs の1日1ファイル形式を読む。"""
+    try:
+        lines = note_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return []
+
+    title = ""
+    sections: dict[str, list[str]] = {}
+    current_section = ""
+    section_lines: list[str] = []
+
+    def flush_section() -> None:
+        nonlocal section_lines
+        if current_section and section_lines:
+            sections[current_section] = _parse_bullets(section_lines)
+        section_lines = []
+
+    for line in lines:
+        if line.startswith("## ") and not title:
+            title = line[3:].strip()
+            continue
+        section_match = SECTION_RE.match(line)
+        if section_match:
+            flush_section()
+            current_section = section_match.group("title").strip()
+            continue
+        if current_section:
+            section_lines.append(line)
+    flush_section()
+
+    if not title:
+        return []
+
+    def collect(*keywords: str, limit: int = 3) -> list[str]:
+        values: list[str] = []
+        for heading, items in sections.items():
+            if any(keyword in heading for keyword in keywords):
+                values.extend(items)
+        return values[:limit]
+
+    summary = [title]
+    summary.extend(collect("何をした", "概要", "結論", limit=2))
+    return [{
+        "date": note_path.stem,
+        "time": "00:00",
+        "agent": "Agent",
+        "source_path": str(note_path),
+        "sections": {
+            "Summary": summary[:3],
+            "Decisions": collect("判断", "決定", "結論", limit=3),
+            "Changes": collect("変更", "実装", "何をした", limit=3),
+            "Verification": collect("検証", "確認", "証拠", limit=2),
+            "Open Items": collect("残件", "次", "未解決", limit=2),
+        },
+    }]
+
+
 def _summarize_log(log: dict[str, Any]) -> dict[str, Any]:
     sections = log.get("sections") if isinstance(log.get("sections"), dict) else {}
     summary = list(sections.get("Summary") or [])[:2]
@@ -155,10 +215,13 @@ MIN_NOTES_FOR_DRIFT_CHECK = 3
 
 
 def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]:
-    paths = _daily_note_paths(vault, days)
+    paths = _worklog_note_paths(vault, days)
     logs: list[dict[str, Any]] = []
     for path in paths:
-        logs.extend(parse_work_logs(path))
+        if path.parent == vault / PROJECT_WORKLOG_RELATIVE_DIR:
+            logs.extend(parse_project_work_log(path))
+        else:
+            logs.extend(parse_work_logs(path))
     logs.sort(key=lambda item: (str(item.get("date") or ""), str(item.get("time") or "")), reverse=True)
     items = [_summarize_log(log) for log in logs[: max(0, limit)]]
     return {

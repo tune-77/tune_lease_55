@@ -78,6 +78,41 @@ def test_build_digest_reports_note_files_scanned(tmp_path):
     assert result["source_count"] == 0
 
 
+def test_build_digest_reads_project_work_log_format(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    worklogs.mkdir(parents=True)
+    note_date = dt.date.today().isoformat()
+    (worklogs / f"{note_date}.md").write_text(
+        """
+---
+date: 2026-09-28
+type: work_log
+---
+
+## 作業: パイプライン障害の復旧
+
+### 何をしたか
+
+記憶ヘルスチェックと作業録ダイジェストを修正した。
+
+### 検証
+
+- 対象テストが成功した
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = digest.build_digest(vault, days=1, limit=5)
+
+    assert result["note_files_scanned"] == 1
+    assert result["source_count"] == 1
+    assert "パイプライン障害" in result["items"][0]["summary"][0]
+    assert result["items"][0]["verification"] == ["対象テストが成功した"]
+
+
 def test_main_warns_and_exits_nonzero_when_heading_format_drifts(tmp_path, monkeypatch, capsys):
     """WORKLOG_HEADING_RE がドリフトして日次ノートはあるのに作業録が0件の場合、
     無条件exit 0のまま無音停止しないことを確認する回帰テスト。"""

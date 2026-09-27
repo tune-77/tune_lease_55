@@ -41,10 +41,12 @@ def load_index_summary(index_path: Path) -> dict | None:
         return None
     by_type = Counter(str(r.get("memory_type") or "unknown") for r in records)
     by_status = Counter(str(r.get("status") or "active") for r in records)
+    by_layer = Counter(str(r.get("memory_layer") or "unknown") for r in records)
     return {
         "total": len(records),
         "by_type": dict(sorted(by_type.items())),
         "by_status": dict(sorted(by_status.items())),
+        "by_layer": dict(sorted(by_layer.items())),
     }
 
 
@@ -82,15 +84,35 @@ def check(
     if total == 0:
         return False, "記憶インデックスのレコードが0件です"
     prev_total = int(previous.get("total") or 0)
-    if prev_total > 0:
-        drop = prev_total - total
-        if drop > max_drop_records or (drop / prev_total) > max_drop_ratio:
+
+    # mid_term は直近14個の日次メモから作るローリング層であり、大きな日次メモが
+    # 期間外へ出るだけで数百件減ることがある。永続層の欠落検知では除外する。
+    # 旧state（by_layerなし）は従来どおり総件数で判定し、--accept-current を一度
+    # 実行すれば以後は安定層同士を比較できる。
+    current_layers = summary.get("by_layer") if isinstance(summary.get("by_layer"), dict) else {}
+    previous_layers = previous.get("by_layer") if isinstance(previous.get("by_layer"), dict) else {}
+    if current_layers and previous_layers:
+        checked_total = total - int(current_layers.get("mid_term") or 0)
+        prev_checked_total = prev_total - int(previous_layers.get("mid_term") or 0)
+        checked_label = "永続層"
+    else:
+        checked_total = total
+        prev_checked_total = prev_total
+        checked_label = "全層"
+
+    if prev_checked_total > 0:
+        drop = prev_checked_total - checked_total
+        if drop > max_drop_records or (drop / prev_checked_total) > max_drop_ratio:
             return False, (
-                f"記憶レコードが急減しています: {prev_total} → {total} 件（-{drop}）。"
+                f"記憶レコードが急減しています（{checked_label}）: "
+                f"{prev_checked_total} → {checked_total} 件（-{drop}）。"
                 " Vault/ソースの欠落を確認してください。意図的な削減なら"
                 " --accept-current で新基準として受け入れられます"
             )
-    return True, f"記憶インデックス健全: {total} 件（前回 {prev_total or '記録なし'}）"
+    return True, (
+        f"記憶インデックス健全: {total} 件（前回 {prev_total or '記録なし'}、"
+        f"比較対象={checked_label} {checked_total} 件）"
+    )
 
 
 def main() -> int:
@@ -128,6 +150,7 @@ def main() -> int:
         print(message)
         print(f"  種別内訳: {summary['by_type']}")
         print(f"  状態内訳: {summary['by_status']}")
+        print(f"  層別内訳: {summary['by_layer']}")
         save_state(args.state, summary)
         return 0
     report_pipeline_failure(message, level="警告")
