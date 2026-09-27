@@ -134,55 +134,55 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
     except OSError:
         return []
 
-    title = ""
-    sections: dict[str, list[str]] = {}
-    current_section = ""
-    section_lines: list[str] = []
+    starts = [index for index, line in enumerate(lines) if line.startswith("## 作業:")]
+    logs: list[dict[str, Any]] = []
+    for position, start in enumerate(starts):
+        end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+        block = lines[start:end]
+        title = block[0][3:].strip()
+        sections: dict[str, list[str]] = {}
+        current_section = ""
+        section_lines: list[str] = []
 
-    def flush_section() -> None:
-        nonlocal section_lines
-        if current_section and section_lines:
-            sections[current_section] = _parse_bullets(section_lines)
-        section_lines = []
+        def flush_section() -> None:
+            nonlocal section_lines
+            if current_section and section_lines:
+                sections[current_section] = _parse_bullets(section_lines)
+            section_lines = []
 
-    for line in lines:
-        if line.startswith("## ") and not title:
-            title = line[3:].strip()
-            continue
-        section_match = SECTION_RE.match(line)
-        if section_match:
-            flush_section()
-            current_section = section_match.group("title").strip()
-            continue
-        if current_section:
-            section_lines.append(line)
-    flush_section()
+        for line in block[1:]:
+            section_match = SECTION_RE.match(line)
+            if section_match:
+                flush_section()
+                current_section = section_match.group("title").strip()
+                continue
+            if current_section:
+                section_lines.append(line)
+        flush_section()
 
-    if not title:
-        return []
+        def collect(*keywords: str, limit: int = 3) -> list[str]:
+            values: list[str] = []
+            for heading, items in sections.items():
+                if any(keyword in heading for keyword in keywords):
+                    values.extend(items)
+            return values[:limit]
 
-    def collect(*keywords: str, limit: int = 3) -> list[str]:
-        values: list[str] = []
-        for heading, items in sections.items():
-            if any(keyword in heading for keyword in keywords):
-                values.extend(items)
-        return values[:limit]
-
-    summary = [title]
-    summary.extend(collect("何をした", "概要", "結論", limit=2))
-    return [{
-        "date": note_path.stem,
-        "time": "00:00",
-        "agent": "Agent",
-        "source_path": str(note_path),
-        "sections": {
-            "Summary": summary[:3],
-            "Decisions": collect("判断", "決定", "結論", limit=3),
-            "Changes": collect("変更", "実装", "何をした", limit=3),
-            "Verification": collect("検証", "確認", "証拠", limit=2),
-            "Open Items": collect("残件", "次", "未解決", limit=2),
-        },
-    }]
+        summary = [title]
+        summary.extend(collect("何をした", "概要", "結論", limit=2))
+        logs.append({
+            "date": note_path.stem,
+            "time": "00:00",
+            "agent": "Agent",
+            "source_path": str(note_path),
+            "sections": {
+                "Summary": summary[:3],
+                "Decisions": collect("判断", "決定", "結論", limit=3),
+                "Changes": collect("変更", "実装", "何をした", limit=3),
+                "Verification": collect("検証", "確認", "証拠", limit=2),
+                "Open Items": collect("残件", "次", "未解決", limit=2),
+            },
+        })
+    return logs
 
 
 def _summarize_log(log: dict[str, Any]) -> dict[str, Any]:

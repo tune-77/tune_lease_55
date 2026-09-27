@@ -113,6 +113,36 @@ type: work_log
     assert result["items"][0]["verification"] == ["対象テストが成功した"]
 
 
+def test_project_work_log_keeps_appended_tasks_separate(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    note = tmp_path / "2026-09-28.md"
+    note.write_text(
+        """
+## 作業: 最初の修正
+
+### 何をしたか
+最初の変更を実装した。
+
+## 作業: 二番目の修正
+
+### 何をしたか
+二番目の変更を実装した。
+
+### 次回どう切り分けるか
+次はログから確認する。
+""".strip(),
+        encoding="utf-8",
+    )
+
+    logs = digest.parse_project_work_log(note)
+
+    assert len(logs) == 2
+    assert logs[0]["sections"]["Summary"] == ["作業: 最初の修正", "最初の変更を実装した。"]
+    assert logs[1]["sections"]["Summary"] == ["作業: 二番目の修正", "二番目の変更を実装した。"]
+    assert logs[1]["sections"]["Open Items"] == ["次はログから確認する。"]
+
+
 def test_main_warns_and_exits_nonzero_when_heading_format_drifts(tmp_path, monkeypatch, capsys):
     """WORKLOG_HEADING_RE がドリフトして日次ノートはあるのに作業録が0件の場合、
     無条件exit 0のまま無音停止しないことを確認する回帰テスト。"""
