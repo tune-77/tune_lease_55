@@ -72,9 +72,11 @@ for review_source in \
   reflection_action_candidates.jsonl \
   prediction_error_update_candidates.jsonl \
   obsidian_memory_insight_candidates.jsonl \
-  memory_review_inbox_state.json; do
+  memory_review_inbox_state.json \
+  jev_memory_review_human_state.json; do
   copy_if_exists "$ROOT_DIR/data/$review_source" "$DATA_OUT/"
 done
+copy_if_exists "$ROOT_DIR/reports/jev_memory_review_shadow_latest.json" "$DATA_OUT/"
 
 # 紫苑の記憶索引を毎回ビルドして同梱する（無いと Cloud Run で想起メモが空になる）。
 # 改訂宣言（data/shion_memory_revisions.jsonl）はビルド内で再適用される。

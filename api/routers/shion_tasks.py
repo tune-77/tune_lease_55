@@ -45,6 +45,11 @@ class MemoryReviewRequest(BaseModel):
     edited_claim: str = ""
 
 
+class JevMemoryReviewRequest(BaseModel):
+    decision: Literal["retain", "revise", "archive_candidate", "held"]
+    note: str = Field(default="", max_length=1000)
+
+
 class ShionHydeDebugRequest(BaseModel):
     message: str
     industry: str = ""
@@ -584,6 +589,65 @@ def get_shion_memory_review_inbox(
     if status not in allowed_statuses:
         raise HTTPException(status_code=422, detail="invalid status")
     return list_inbox(status=status, source=source, q=q, limit=limit, offset=offset)
+
+
+@router.get("/api/shion/jev-memory-review")
+def get_jev_memory_review() -> dict:
+    """Jevのshadow判断と、別保存した人間判断を並べて返す。"""
+    from api.jev_memory_review import get_review_queue
+
+    return get_review_queue()
+
+
+@router.post("/api/shion/jev-memory-review/{memory_id}/decision")
+def post_jev_memory_review_decision(
+    memory_id: str,
+    req: JevMemoryReviewRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Jev結果を参考にした人間判断だけを保存する。記憶本体は変更しない。"""
+    from api.jev_memory_review import save_human_decision
+
+    try:
+        item = save_human_decision(memory_id, decision=req.decision, note=req.note)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Jev memory review candidate not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="jev_memory_review_human_decision",
+        surface="shion_memory_system",
+        payload={
+            "schema_version": 1,
+            "memory_id": memory_id,
+            "decision": req.decision,
+            "jev_shadow_route": item.get("shadow_route"),
+        },
+    )
+    return {"status": "ok", "item": item}
+
+
+@router.delete("/api/shion/jev-memory-review/{memory_id}")
+def delete_jev_memory_review_candidate(memory_id: str, background_tasks: BackgroundTasks) -> dict:
+    """レビュー候補を非表示にする。記憶本体とJevレポートは削除しない。"""
+    from api.jev_memory_review import delete_review_candidate
+
+    try:
+        result = delete_review_candidate(memory_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Jev memory review candidate not found")
+    background_tasks.add_task(
+        record_cloudrun_input_event,
+        event_type="jev_memory_review_candidate_deleted",
+        surface="shion_memory_system",
+        payload={
+            "schema_version": 1,
+            "memory_id": memory_id,
+            "memory_deleted": False,
+        },
+    )
+    return {"status": "ok", **result}
 
 
 @router.post("/api/shion/memory-review-inbox/{inbox_id}/review")

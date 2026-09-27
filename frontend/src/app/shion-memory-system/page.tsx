@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Sparkles,
   ThumbsUp,
+  Trash2,
 } from "lucide-react";
 
 import { apiClient } from "@/lib/api";
@@ -106,6 +107,34 @@ type MemoryReviewInboxResponse = {
     reason: string;
   };
   state_path: string;
+};
+
+type JevMemoryDecision = "pending" | "retain" | "revise" | "archive_candidate" | "held";
+
+type JevMemoryReviewItem = {
+  memory_id: string;
+  shadow_rank: number;
+  content_preview: string;
+  used_count: number;
+  composite_priority: number;
+  shadow_route: string;
+  scores: Record<string, number>;
+  confidence: Record<string, number>;
+  semantic_tags: string[];
+  human_decision: JevMemoryDecision;
+  human_note: string;
+  reviewed_at: string;
+};
+
+type JevMemoryReviewResponse = {
+  available: boolean;
+  status: string;
+  generated_at?: string;
+  model?: string;
+  confidence_threshold?: number;
+  summary: { total: number; pending: number; by_decision: Record<string, number> };
+  items: JevMemoryReviewItem[];
+  guardrail: string;
 };
 
 type PostHackathonSection = {
@@ -269,6 +298,236 @@ const REVIEW_SOURCE_LABEL: Record<string, string> = {
   prediction_error_candidates: "予測誤差",
   obsidian_memory_insight_candidates: "Obsidian候補",
 };
+
+const JEV_DECISION_LABEL: Record<JevMemoryDecision, string> = {
+  pending: "未判断",
+  retain: "維持",
+  revise: "改訂対象",
+  archive_candidate: "Archive候補",
+  held: "保留",
+};
+
+const JEV_ROUTE_LABEL: Record<string, string> = {
+  human_review_low_confidence: "低信頼度・人間確認",
+  review_for_revision: "改訂確認を推奨",
+  archive_candidate: "Archive候補",
+  retain_stale_for_feedback: "維持して反応観測",
+};
+
+function scorePercent(value: number | undefined): string {
+  if (value === undefined || Number.isNaN(value)) return "-";
+  return `${Math.round(value * 100)}%`;
+}
+
+function summarizeJevItems(items: JevMemoryReviewItem[]): JevMemoryReviewResponse["summary"] {
+  const byDecision = items.reduce<Record<string, number>>((counts, item) => {
+    counts[item.human_decision] = (counts[item.human_decision] || 0) + 1;
+    return counts;
+  }, {});
+  return { total: items.length, pending: byDecision.pending || 0, by_decision: byDecision };
+}
+
+function JevMemoryReviewPanel() {
+  const [data, setData] = useState<JevMemoryReviewResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+
+  const fetchReview = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiClient.get<JevMemoryReviewResponse>("/api/shion/jev-memory-review");
+      setData(res.data);
+    } catch {
+      setError("Jev記憶レビューを読み込めませんでした。");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // 初回取得だけを行う。状態更新はfetchReview内の非同期処理完了後に実行される。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchReview();
+  }, [fetchReview]);
+
+  const saveDecision = useCallback(async (item: JevMemoryReviewItem, decision: Exclude<JevMemoryDecision, "pending">) => {
+    setActionLoading((current) => ({ ...current, [item.memory_id]: true }));
+    setError("");
+    setMessage("");
+    try {
+      const response = await apiClient.post<{ item: JevMemoryReviewItem }>(`/api/shion/jev-memory-review/${encodeURIComponent(item.memory_id)}/decision`, {
+        decision,
+        note: notes[item.memory_id] ?? item.human_note ?? "",
+      });
+      setData((current) => {
+        if (!current) return current;
+        const items = current.items.map((candidate) => candidate.memory_id === item.memory_id ? response.data.item : candidate);
+        return { ...current, summary: summarizeJevItems(items), items };
+      });
+      setMessage(`${JEV_DECISION_LABEL[decision]}として人間判断を保存しました。記憶本体は変更していません。`);
+    } catch {
+      setError("人間判断の保存に失敗しました。");
+    } finally {
+      setActionLoading((current) => ({ ...current, [item.memory_id]: false }));
+    }
+  }, [notes]);
+
+  const deleteCandidate = useCallback(async (item: JevMemoryReviewItem) => {
+    if (!window.confirm("この項目をJevレビュー候補から削除しますか？ 元の記憶本体は削除されません。")) return;
+    setActionLoading((current) => ({ ...current, [item.memory_id]: true }));
+    setError("");
+    setMessage("");
+    try {
+      await apiClient.delete(`/api/shion/jev-memory-review/${encodeURIComponent(item.memory_id)}`);
+      setData((current) => {
+        if (!current) return current;
+        const items = current.items.filter((candidate) => candidate.memory_id !== item.memory_id);
+        return { ...current, summary: summarizeJevItems(items), items };
+      });
+      setMessage("レビュー候補から削除しました。元の記憶本体は削除していません。");
+    } catch {
+      setError("レビュー候補の削除に失敗しました。");
+    } finally {
+      setActionLoading((current) => ({ ...current, [item.memory_id]: false }));
+    }
+  }, []);
+
+  return (
+    <section className="mx-auto max-w-7xl px-5 pb-8 md:px-8">
+      <div className="rounded-lg border border-violet-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <Brain className="h-6 w-6 text-violet-600" />
+              <h2 className="text-2xl font-black">Jev記憶レビュー補助</h2>
+            </div>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+              Jevの参考判断を見ながら、人間が最終判断します。Jevは候補順位と4つのScoreを提示するだけで、記憶の削除・改訂・本番順位変更は行いません。
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-center sm:w-[330px]">
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-3">
+              <div className="text-2xl font-black text-violet-950">{formatNumber(data?.summary.total)}</div>
+              <div className="text-xs font-black text-violet-700">Jev評価済み</div>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+              <div className="text-2xl font-black text-amber-950">{formatNumber(data?.summary.pending)}</div>
+              <div className="text-xs font-black text-amber-700">人間判断待ち</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
+          <span className="rounded bg-slate-100 px-2 py-1">model {data?.model || "-"}</span>
+          <span className="rounded bg-slate-100 px-2 py-1">生成 {data?.generated_at || "-"}</span>
+          <span className="rounded bg-slate-100 px-2 py-1">採用閾値 {scorePercent(data?.confidence_threshold)}</span>
+          <button type="button" onClick={fetchReview} className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-50">
+            <RefreshCw className="h-3.5 w-3.5" /> 更新
+          </button>
+        </div>
+
+        {error && <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{error}</div>}
+        {message && <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{message}</div>}
+        {!loading && data && !data.available && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+            Jev shadowレポートがまだありません。評価実行後にここへ表示されます。
+          </div>
+        )}
+
+        <div className="mt-5 space-y-4">
+          {(data?.items || []).map((item) => {
+            const minimumConfidence = item.confidence.minimum;
+            const lowConfidence = minimumConfidence < (data?.confidence_threshold ?? 0.7);
+            return (
+              <article key={item.memory_id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded bg-violet-100 px-2 py-1 text-[11px] font-black text-violet-800">Jev #{item.shadow_rank}</span>
+                      <span className={`rounded px-2 py-1 text-[11px] font-black ${lowConfidence ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
+                        {JEV_ROUTE_LABEL[item.shadow_route] || item.shadow_route}
+                      </span>
+                      <span className="rounded bg-white px-2 py-1 text-[11px] font-black text-slate-700">
+                        人間: {JEV_DECISION_LABEL[item.human_decision] || item.human_decision}
+                      </span>
+                      {item.semantic_tags.map((tag) => <span key={tag} className="rounded bg-sky-100 px-2 py-1 text-[11px] font-black text-sky-800">{tag}</span>)}
+                    </div>
+                    <p className="mt-3 text-sm font-bold leading-7 text-slate-800">{item.content_preview}</p>
+                    <p className="mt-2 text-[11px] font-bold text-slate-500">{item.memory_id} / 想起 {formatNumber(item.used_count)}回</p>
+                  </div>
+                  <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:w-[430px]">
+                    {[
+                      ["総合優先度", item.composite_priority],
+                      ["時間依存", item.scores.time_sensitivity],
+                      ["放置リスク", item.scores.stale_harm],
+                      ["永続価値", item.scores.durable_value],
+                      ["確認価値", item.scores.review_information_gain],
+                      ["最低信頼度", minimumConfidence],
+                    ].map(([label, value]) => (
+                      <div key={String(label)} className="rounded border border-slate-200 bg-white px-2 py-2 text-center">
+                        <div className="text-sm font-black text-slate-950">{scorePercent(value as number)}</div>
+                        <div className="text-[10px] font-black text-slate-500">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {lowConfidence && (
+                  <div className="mt-3 flex items-center gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    信頼度が閾値未満です。Jevの順位を結論として使わず、内容を人間が確認してください。
+                  </div>
+                )}
+
+                <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_auto]">
+                  <textarea
+                    rows={2}
+                    maxLength={1000}
+                    value={notes[item.memory_id] ?? item.human_note ?? ""}
+                    onChange={(event) => setNotes((current) => ({ ...current, [item.memory_id]: event.target.value }))}
+                    placeholder="人間の判断理由（1000文字以内）"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold leading-6 text-slate-800"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    {([
+                      ["retain", "維持", "border-emerald-200 bg-emerald-50 text-emerald-700"],
+                      ["revise", "改訂対象", "border-cyan-200 bg-cyan-50 text-cyan-700"],
+                      ["archive_candidate", "Archive候補", "border-rose-200 bg-rose-50 text-rose-700"],
+                      ["held", "保留", "border-amber-200 bg-amber-50 text-amber-700"],
+                    ] as const).map(([decision, label, tone]) => (
+                      <button
+                        key={decision}
+                        type="button"
+                        disabled={Boolean(actionLoading[item.memory_id])}
+                        onClick={() => saveDecision(item, decision)}
+                        aria-pressed={item.human_decision === decision}
+                        className={`rounded-lg border px-3 py-2 text-xs font-black disabled:opacity-50 ${tone} ${item.human_decision === decision ? "ring-2 ring-slate-900 ring-offset-2" : "opacity-80 hover:opacity-100"}`}
+                      >
+                        {item.human_decision === decision ? `✓ ${label}` : label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={Boolean(actionLoading[item.memory_id])}
+                      onClick={() => deleteCandidate(item)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> 削除
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function MemoryReviewInbox() {
   const [data, setData] = useState<MemoryReviewInboxResponse | null>(null);
@@ -947,6 +1206,7 @@ export default function ShionMemorySystemPage() {
 
       <PostHackathonControlPlane />
       <MemoryEngineeringPanel />
+      <JevMemoryReviewPanel />
       <MemoryReviewInbox />
 
       <section className="mx-auto max-w-7xl px-5 py-8 md:px-8">
