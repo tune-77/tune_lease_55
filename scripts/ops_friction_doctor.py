@@ -7,6 +7,7 @@ import argparse
 import json
 import shlex
 import subprocess
+import time
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -19,6 +20,10 @@ DEFAULT_LOG_PATTERNS = (
     "reports/*_latest.md",
     ".claude/reports/*/latest.md",
 )
+# レポートが週次生成に変わると、同じ本文が最長6日間「今日の課題」として再掲される。
+# 何日前のレポート由来かを出力に刻み、古いヒットを今日の課題と読み違えないようにする。
+STALE_REPORT_DAYS = 2
+
 DEFAULT_OUTPUT_JSON = PROJECT_ROOT / "reports" / "ops_friction_latest.json"
 DEFAULT_OUTPUT_MD = PROJECT_ROOT / "reports" / "ops_friction_latest.md"
 
@@ -72,6 +77,7 @@ class LogHit:
     path: str
     count: int
     samples: list[str]
+    age_days: int = 0
 
 
 @dataclass(frozen=True)
@@ -133,11 +139,17 @@ def expand_logs(root: Path, patterns: Iterable[str]) -> list[Path]:
 
 def scan_logs(root: Path, patterns: Iterable[str], *, max_files: int = 40) -> dict[str, list[LogHit]]:
     results: dict[str, list[LogHit]] = {str(rule["id"]): [] for rule in FRICTION_RULES}
+    now = time.time()
     for path in expand_logs(root, patterns)[:max_files]:
         try:
             lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
         except OSError:
             continue
+        try:
+            age_days = max(0, int((now - path.stat().st_mtime) // 86400))
+        except OSError:
+            # mtime が読めない場合は鮮度不明。0 にして「古い」と誤表示しない。
+            age_days = 0
         rel = str(path.relative_to(root))
         lowered_lines = [line.lower() for line in lines]
         for rule in FRICTION_RULES:
@@ -157,7 +169,9 @@ def scan_logs(root: Path, patterns: Iterable[str], *, max_files: int = 40) -> di
                 if len(matched) < 3:
                     matched.append(raw.strip()[:180])
             if count:
-                results[str(rule["id"])].append(LogHit(path=rel, count=count, samples=matched))
+                results[str(rule["id"])].append(
+                    LogHit(path=rel, count=count, samples=matched, age_days=age_days)
+                )
     return results
 
 
@@ -187,8 +201,18 @@ def build_findings(root: Path = PROJECT_ROOT, patterns: Iterable[str] = DEFAULT_
         rid = str(rule["id"])
         hits = log_hits.get(rid, [])
         hit_count = sum(item.count for item in hits)
-        score = hit_count
-        reason = "recent logs mention this pattern %s times" % hit_count
+        fresh_count = sum(item.count for item in hits if item.age_days <= STALE_REPORT_DAYS)
+        stale_count = hit_count - fresh_count
+        # スコアは鮮度の新しいヒットだけで数える。週次生成に変わったレポートが
+        # 最長6日間「今日の課題」として満点で再掲されるのを止めるため。
+        # STALE_REPORT_DAYS 日より古いヒットしか無い項目は score 0 で findings から落ちる。
+        score = fresh_count
+        reason = "recent logs mention this pattern %s times" % fresh_count
+        if stale_count:
+            reason += "; %s more hits are from reports older than %s days and are not scored" % (
+                stale_count,
+                STALE_REPORT_DAYS,
+            )
         if rid == "gitship_noise" and dirty["generated_like"]:
             score += dirty["generated_like"]
             reason += "; current dirty tree has %s generated-like files" % dirty["generated_like"]
@@ -284,7 +308,11 @@ def render(report: OpsFrictionReport | list[Finding]) -> str:
                 lines.append("- auto-safe: %s" % item.auto_command)
             for hit in item.hits[:3]:
                 sample = " / ".join(text for text in hit.samples if text)
-                lines.append("- log: %s (%s hits)%s" % (hit.path, hit.count, ": " + sample if sample else ""))
+                stale = "（%s日前のレポート）" % hit.age_days if hit.age_days > STALE_REPORT_DAYS else ""
+                lines.append(
+                    "- log: %s (%s hits)%s%s"
+                    % (hit.path, hit.count, stale, ": " + sample if sample else "")
+                )
             lines.append("")
     if report.auto_actions:
         lines.extend(["", "## Auto-Safe Results"])
