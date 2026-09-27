@@ -2052,10 +2052,41 @@ def clear_all_pending_cases(background_tasks: BackgroundTasks):
     from data_cases import refresh_stats_caches
     try:
         with get_connection() as conn:
-            conn.execute(
-                "DELETE FROM past_cases "
-                "WHERE COALESCE(NULLIF(final_status, ''), '未登録') IN ('未登録', '稟議中', 'スコアリングのみ')"
+            # テストが関数単体を独自 namespace で実行するため、ここは関数内 import にする
+            from api.db_connection import current_backend as _current_backend
+            from api.db_connection import placeholder as _placeholder
+            from case_deletion_audit import begin_case_deletion_event, complete_case_deletion_event
+
+            ph = _placeholder()
+            pending_filter = (
+                "WHERE COALESCE(NULLIF(final_status, ''), '未登録') "
+                "IN ('未登録', '稟議中', 'スコアリングのみ')"
             )
+            deletion_cursor = conn.cursor()
+            audit_event = None
+            try:
+                deletion_cursor.execute(f"SELECT id FROM past_cases {pending_filter}")
+                target_ids = [str(row[0]) for row in deletion_cursor.fetchall()]
+                audit_event = begin_case_deletion_event(
+                    conn,
+                    target_ids,
+                    route="api.clear_all_pending_cases",
+                    reason="clear_pending_statuses",
+                    placeholder=ph,
+                    is_postgres=_current_backend() == "postgresql",
+                )
+            except Exception:
+                # fail-open: data_cases.delete_case と同じ方針
+                logger.exception("clear_all_pending_cases audit failed")
+            deletion_cursor.execute(f"DELETE FROM past_cases {pending_filter}")
+            if audit_event is not None:
+                # 件数が一致しない時は「どれが消えたか」を断定できないので deleted 扱いにしない
+                deleted_ids = (
+                    audit_event.matched_case_ids
+                    if deletion_cursor.rowcount == len(audit_event.matched_case_ids)
+                    else ()
+                )
+                complete_case_deletion_event(conn, audit_event, deleted_ids, placeholder=ph)
         refresh_stats_caches(allow_shrink=True)
         try:
             for item in _list_cloudrun_score_pending_cases(limit=200):
@@ -2071,6 +2102,36 @@ def clear_all_pending_cases(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/admin/deletion-audit")
+def get_case_deletion_audit(
+    limit: int = 50,
+    offset: int = 0,
+    status: str = "",
+    date_from: str = "",
+    date_to: str = "",
+):
+    """案件削除イベントを読み取り専用で返す。監査ログなので修復も再実行もしない。"""
+    from case_deletion_audit import list_case_deletion_events
+
+    try:
+        with get_connection() as conn:
+            return list_case_deletion_events(
+                conn,
+                limit=limit,
+                offset=offset,
+                placeholder=placeholder(),
+                status=status,
+                date_from=date_from,
+                date_to=date_to,
+            )
+    except ValueError as exc:
+        # 不正な status / 日付はクライアント側の誤りなので 422 で返す（500に混ぜない）
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("get_case_deletion_audit DB error: %s", exc)
+        raise HTTPException(status_code=500, detail="削除監査ログを取得できませんでした") from exc
+
+
 @app.delete("/api/cases/{case_id}")
 def delete_case(case_id: str, background_tasks: BackgroundTasks):
     """案件を past_cases から削除する"""
@@ -2081,7 +2142,12 @@ def delete_case(case_id: str, background_tasks: BackgroundTasks):
         elif _parse_cloudrun_event_case_id(case_id):
             deleted = _reject_cloudrun_event_pending_case(case_id, raise_on_error=True)
         else:
-            deleted = delete_case_from_db(case_id, raise_on_error=True)
+            deleted = delete_case_from_db(
+                case_id,
+                raise_on_error=True,
+                deletion_route="api.case_delete",
+                deletion_reason="api_request",
+            )
     except Exception:
         logger.exception("case deletion failed: %s", case_id)
         raise HTTPException(status_code=503, detail="案件の削除に失敗しました。再試行してください。")

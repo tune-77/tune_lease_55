@@ -24,6 +24,7 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
+from screening_record_lifecycle import active_screening_predicate
 
 try:
     from lightgbm import LGBMClassifier
@@ -365,8 +366,9 @@ def check_retraining_needed(
     """
     try:
         conn = sqlite3.connect(db_path)
+        active = active_screening_predicate(conn)
         (count,) = conn.execute(
-            "SELECT COUNT(*) FROM screening_records WHERE outcome IS NOT NULL"
+            f"SELECT COUNT(*) FROM screening_records WHERE {active} AND outcome IS NOT NULL"
         ).fetchone()
 
         # delinquent 件数（screening_outcomes 優先）
