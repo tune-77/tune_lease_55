@@ -21,6 +21,17 @@ _PROPOSALS_PATH = _DATA_DIR / "usage_loop_proposals.jsonl"
 
 _LOOKBACK_DAYS = 30
 
+# 重複提案チェック用: 既に承認確率・シナリオ分析・将来予測・金利提案を提供している
+# 主要画面。ここにある機能と同じ価値を新規提案しないよう、プロンプトに含める。
+# (出典: frontend/src/app/{screening,counterfactual,rate-engine,business-plan-check}/page.tsx,
+#  frontend/src/components/analysis/FutureSimulationPanel.tsx)
+_EXISTING_ANALYSIS_FEATURES = [
+    {"path": "/screening", "summary": "審査スコア・承認確率・判定根拠の本審査フロー（将来の売上/利益シミュレーションも結果内に埋め込み表示）"},
+    {"path": "/counterfactual", "summary": "承認スコアに届くための必要変化量・感度分析（What-ifシナリオ）"},
+    {"path": "/rate-engine", "summary": "動的金利提案エンジン（推奨金利のシミュレーション）"},
+    {"path": "/business-plan-check", "summary": "事業計画チェック（簡易版）"},
+]
+
 
 def record_visit(path: str, user_id: str = "default") -> None:
     """画面訪問イベントを1件追記する。失敗しても呼び出し元を止めない。"""
@@ -129,6 +140,9 @@ def _build_prompt(usage: dict[str, Any]) -> str:
         f"- {p['path']}: {p['visit_count']}回, 最終訪問 {p['last_visited']}"
         for p in usage["least_used"]
     ) or "（データなし）"
+    existing_features_lines = "\n".join(
+        f"- {f['path']}: {f['summary']}" for f in _EXISTING_ANALYSIS_FEATURES
+    )
     return f"""あなたはリース審査AIシステム「紫苑」です。ユーザーの画面利用状況を観察し、
 UI/UXや機能の改善案を考えるのがあなたの役目の一つです。
 
@@ -140,6 +154,14 @@ UI/UXや機能の改善案を考えるのがあなたの役目の一つです。
 
 あまり使われていない画面:
 {least_used_lines}
+
+【既に存在する主要な分析機能（重複提案を避けるため必ず確認）】
+{existing_features_lines}
+
+あまり使われていない画面について、上記の既存機能と同じ価値（承認確率・シナリオ分析・
+将来予測・金利提案など）をもう一度作り直す提案はしないでください。既存機能で対応できる
+場合は、新機能の新規開発ではなく「既存導線への統合・誘導」（例: 該当画面から既存機能への
+リンク追加、ラベル変更で実態と一致させる等）として提案してください。
 
 この利用状況を踏まえて、実務上価値のある改善案を3〜5件、以下のJSON配列形式のみで返してください
 （前後の説明テキストは不要）:
