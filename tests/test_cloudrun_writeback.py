@@ -162,6 +162,36 @@ def test_record_cloudrun_input_event_does_not_overwrite_on_read_error(tmp_path, 
     assert rows[0]["writeback_error"] == "temporary gcs failure"
 
 
+def test_news_feedback_is_written_to_daily_stream_and_shared_index(monkeypatch) -> None:
+    monkeypatch.setenv("K_SERVICE", "lease-api")
+    daily_blob, index_blob = MagicMock(), MagicMock()
+    daily_blob.reload.side_effect = NotFound("missing")
+    index_blob.reload.side_effect = NotFound("missing")
+    client = _install_fake_gcs(monkeypatch, daily_blob)
+    client.return_value.bucket.return_value.blob.side_effect = (
+        lambda name: index_blob if "lease-news-feedback" in name else daily_blob
+    )
+
+    result = writeback.record_lease_news_usage_feedback_event(
+        {"event_id": "nf-1", "source_path": "news/a.md", "outcome": "used"}
+    )
+
+    assert result["ok"] is True
+    daily_blob.upload_from_string.assert_called_once()
+    index_blob.upload_from_string.assert_called_once()
+
+
+def test_news_feedback_reads_payloads_from_shared_index(monkeypatch) -> None:
+    monkeypatch.setenv("K_SERVICE", "lease-api")
+    blob = MagicMock()
+    blob.download_as_text.return_value = json.dumps(
+        {"event_type": "lease_news_usage_feedback", "payload": {"event_id": "nf-1", "outcome": "used"}}
+    ) + "\n"
+    _install_fake_gcs(monkeypatch, blob)
+
+    assert writeback.read_lease_news_usage_feedback_events() == [{"event_id": "nf-1", "outcome": "used"}]
+
+
 def test_judgment_feedback_transaction_rejects_competing_successor(monkeypatch) -> None:
     monkeypatch.setenv("K_SERVICE", "lease-api")
     index_blob, daily_blob = MagicMock(), MagicMock()
