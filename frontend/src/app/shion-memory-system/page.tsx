@@ -349,6 +349,8 @@ function JevMemoryReviewPanel() {
   }, []);
 
   useEffect(() => {
+    // 初回取得だけを行う。状態更新はfetchReview内の非同期処理完了後に実行される。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchReview();
   }, [fetchReview]);
 
