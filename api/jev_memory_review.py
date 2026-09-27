@@ -25,6 +25,10 @@ REPORT_PATHS = (
 )
 STATE_PATH = DATA_DIR / "jev_memory_review_human_state.json"
 AUDIT_PATH = DATA_DIR / "jev_memory_review_human_audit.jsonl"
+GCS_STATE_OBJECT = os.environ.get(
+    "JEV_MEMORY_REVIEW_GCS_STATE_OBJECT",
+    "cloudrun-state/jev_memory_review_human_state.json",
+).strip("/")
 
 Decision = Literal["retain", "revise", "archive_candidate", "held"]
 ALLOWED_DECISIONS = {"retain", "revise", "archive_candidate", "held"}
@@ -43,8 +47,42 @@ def _report_path() -> Path | None:
     return next((path for path in REPORT_PATHS if path.exists()), None)
 
 
+def _cloudrun_state_enabled() -> bool:
+    return bool(os.environ.get("K_SERVICE", "").strip())
+
+
+def _read_gcs_state() -> dict[str, Any]:
+    from google.api_core.exceptions import NotFound  # type: ignore[import-untyped]
+    from google.cloud import storage  # type: ignore[import-untyped]
+    from api.cloudrun_writeback import _bucket_name
+
+    try:
+        text = storage.Client().bucket(_bucket_name()).blob(GCS_STATE_OBJECT).download_as_text()
+    except NotFound:
+        return {}
+    payload = json.loads(text)
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_gcs_state(state: dict[str, Any]) -> None:
+    from google.cloud import storage  # type: ignore[import-untyped]
+    from api.cloudrun_writeback import _bucket_name
+    from scripts.gcs_lock import GCSLock
+
+    bucket_name = _bucket_name()
+    with GCSLock(bucket_name=bucket_name, target_file=GCS_STATE_OBJECT, ttl_seconds=30):
+        blob = storage.Client().bucket(bucket_name).blob(GCS_STATE_OBJECT)
+        blob.upload_from_string(
+            json.dumps(state, ensure_ascii=False, indent=2),
+            content_type="application/json; charset=utf-8",
+        )
+
+
 def load_state(path: Path | None = None) -> dict[str, Any]:
-    payload = _read_json(path or STATE_PATH)
+    if path is None and _cloudrun_state_enabled():
+        payload = _read_gcs_state()
+    else:
+        payload = _read_json(path or STATE_PATH)
     reviews = payload.get("reviews")
     if not isinstance(reviews, dict):
         reviews = {}
@@ -67,6 +105,8 @@ def _save_state(state: dict[str, Any], path: Path | None = None) -> None:
         except OSError:
             pass
         raise
+    if path is None and _cloudrun_state_enabled():
+        _write_gcs_state(state)
 
 
 def _number_map(value: Any) -> dict[str, float]:
@@ -154,6 +194,8 @@ def save_human_decision(memory_id: str, *, decision: Decision, note: str = "") -
     review = {"decision": decision, "note": note.strip()[:1000], "reviewed_at": now}
     with _STATE_LOCK:
         state = load_state()
+        if state["reviews"].get(clean_id, {}).get("deleted_at"):
+            raise KeyError(clean_id)
         state["reviews"][clean_id] = review
         _save_state(state)
     AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)

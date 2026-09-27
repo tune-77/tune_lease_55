@@ -121,3 +121,39 @@ def test_unknown_review_candidate_cannot_be_deleted(tmp_path, monkeypatch):
 
     with pytest.raises(KeyError):
         review.delete_review_candidate("mem_missing")
+
+
+def test_decision_cannot_resurrect_candidate_deleted_after_queue_read(tmp_path, monkeypatch):
+    report_path, state_path, _ = _paths(tmp_path, monkeypatch)
+    _write_report(report_path)
+    original_get_queue = review.get_review_queue
+
+    def queue_then_delete():
+        queue = original_get_queue()
+        state_path.write_text(
+            json.dumps({"reviews": {"mem_1": {"deleted_at": "2026-09-27T13:00:00"}}}),
+            encoding="utf-8",
+        )
+        return queue
+
+    monkeypatch.setattr(review, "get_review_queue", queue_then_delete)
+
+    with pytest.raises(KeyError):
+        review.save_human_decision("mem_1", decision="retain")
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["reviews"]["mem_1"]["deleted_at"]
+
+
+def test_cloudrun_state_uses_durable_gcs_store(monkeypatch):
+    durable = {"reviews": {"mem_1": {"decision": "retain"}}}
+    written = []
+    monkeypatch.setattr(review, "_cloudrun_state_enabled", lambda: True)
+    monkeypatch.setattr(review, "_read_gcs_state", lambda: durable)
+    monkeypatch.setattr(review, "_write_gcs_state", written.append)
+
+    state = review.load_state()
+    review._save_state(state)
+
+    assert state["reviews"]["mem_1"]["decision"] == "retain"
+    assert written and written[0]["reviews"]["mem_1"]["decision"] == "retain"
