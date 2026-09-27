@@ -118,10 +118,14 @@ def plan_recoveries(
     latest: dict[str, dict[str, Any]],
     state: dict[str, Any],
     run_date: str,
+    *,
+    eligible_steps: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     attempts = state.get("attempts") if isinstance(state.get("attempts"), dict) else {}
     plans: list[dict[str, Any]] = []
     for step, definition in RECOVERY_RECIPES.items():
+        if eligible_steps is not None and step not in eligible_steps:
+            continue
         observed = latest.get(step)
         if not observed or int(observed.get("exit_code", 1)) == 0:
             continue
@@ -136,6 +140,11 @@ def plan_recoveries(
                 **definition,
             }
         )
+    plans.sort(
+        key=lambda plan: sum(
+            1 for key in attempts if str(key).endswith(f":{plan['step']}")
+        )
+    )
     return plans
 
 
@@ -283,7 +292,17 @@ def main() -> int:
         state["attempts"] = {}
 
     catalog = build_recovery_catalog(ledger)
-    plans = plan_recoveries(latest_step_results(log_path), state, args.run_date)
+    eligible_steps = {
+        str(recipe.get("step") or "")
+        for recipe in catalog.get("recipes", [])
+        if int(recipe.get("resolved_incident_count") or 0) > 0
+    }
+    plans = plan_recoveries(
+        latest_step_results(log_path),
+        state,
+        args.run_date,
+        eligible_steps=eligible_steps,
+    )
     selected = plans[: max(0, args.limit)]
     results: list[dict[str, Any]] = []
     if args.apply:
@@ -311,6 +330,7 @@ def main() -> int:
             "arbitrary_commands_from_history": False,
             "max_attempts_per_step_per_run_date": 1,
             "daily_limit": max(0, args.limit),
+            "resolved_evidence_required": True,
         },
     }
     _dump_json(report_path, report)

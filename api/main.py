@@ -2372,53 +2372,20 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
     }
 
 
-def _load_agent_worklog_digest(limit: int = 4) -> dict[str, Any]:
-    path = Path(_REPO_ROOT) / "reports" / "agent_worklog_digest_latest.json"
-    if not path.exists():
-        return {"available": False, "items": [], "source": str(path)}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {"available": False, "items": [], "source": str(path)}
-    items = [item for item in (payload.get("items") or []) if isinstance(item, dict)]
-    return {
-        "available": bool(items),
-        "source": str(path),
-        "generated_at": str(payload.get("generated_at") or ""),
-        "items": items[:limit],
-        "policy": payload.get("policy") if isinstance(payload.get("policy"), dict) else {},
-    }
-
-
 def _build_agent_worklog_digest_context(limit: int = 4) -> str:
-    digest = _load_agent_worklog_digest(limit=limit)
-    if not digest.get("available"):
+    """Retrieve work-log context through the shared Obsidian AI search path."""
+    try:
+        from obsidian_ai_context import build_obsidian_ai_context_block
+
+        return build_obsidian_ai_context_block(
+            "最近のCodex Claude作業ログ 判断 制約 実装 検証",
+            limit=limit,
+            max_chars=1800,
+            max_tokens=500,
+            heading="Codex/Claude 作業録",
+        )
+    except Exception:
         return ""
-    lines = [
-        "【Codex/Claude 作業録ダイジェスト】",
-        "これは全文ログではなく、紫苑の自己提案・運用相談向けに圧縮した作業要約です。",
-        "Userが何を意図し、どの判断を採用/保留し、どの制約を重視したかを、自己提案の補正情報として使ってください。",
-        "顧客情報の推測、Private Reflection原文引用、人間承認なしの判断資産昇格には使わないでください。",
-    ]
-    generated_at = str(digest.get("generated_at") or "").strip()
-    if generated_at:
-        lines.append(f"生成: {generated_at}")
-    for item in digest.get("items") or []:
-        if not isinstance(item, dict):
-            continue
-        title = f"{item.get('date') or ''} {item.get('time') or ''} {item.get('agent') or ''}".strip()
-        summary = " / ".join(str(x) for x in (item.get("summary") or []) if str(x).strip())[:180]
-        decisions = " / ".join(str(x) for x in (item.get("decisions") or []) if str(x).strip())[:220]
-        changes = " / ".join(str(x) for x in (item.get("changes") or []) if str(x).strip())[:180]
-        line = f"- {title}"
-        if summary:
-            line += f" / 要約: {summary}"
-        if decisions:
-            line += f" / 判断: {decisions}"
-        if changes:
-            line += f" / 変更: {changes}"
-        lines.append(line)
-    return "\n".join(lines)
 
 
 def _build_dialogue_improvement_report_context(limit: int = 4) -> str:

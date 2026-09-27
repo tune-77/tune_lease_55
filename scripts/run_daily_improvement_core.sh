@@ -238,6 +238,18 @@ if [ ${STEP0_EXIT} -ne 0 ]; then
     echo "警告: 改善インデックス抽出が終了コード ${STEP0_EXIT} で終了しました（パイプラインを継続します）"
 fi
 
+echo ""
+echo "[復旧] 過去の解決済み障害から許可済みレシピを選び、直近失敗を自動再検証中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/run_pipeline_auto_recovery.py" \
+    --apply \
+    --run-date "${LOG_DATE}" \
+    --limit 1
+PIPELINE_AUTO_RECOVERY_EXIT=$?
+log_step "pipeline_auto_recovery" ${PIPELINE_AUTO_RECOVERY_EXIT}
+if [ ${PIPELINE_AUTO_RECOVERY_EXIT} -ne 0 ]; then
+    echo "警告: パイプライン自動復旧の実行に失敗しました（終了コード ${PIPELINE_AUTO_RECOVERY_EXIT}）。通常の障害検出は継続します。"
+fi
+
 # エクスポートファイルが空 / 存在しない場合は中断
 if [ ! -s "${EXPORT_FILE}" ]; then
     echo "警告: ${EXPORT_FILE} が空またはが存在しません。パイプラインをスキップします。"
@@ -348,18 +360,6 @@ echo "[反映] RAG未評価通知の自動整理 — 古い/重複 RAG-UNRATED �
 echo ""
 echo "[反映] RAG 鮮度分析 — 長期アクセスなしノードを台帳に追記中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_rag_staleness.py"; log_step "analyze_rag_staleness" $?
-
-echo ""
-echo "[復旧] 過去の解決済み障害から許可済みレシピを選び、直近失敗を自動再検証中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/run_pipeline_auto_recovery.py" \
-    --apply \
-    --run-date "${LOG_DATE}" \
-    --limit 1
-PIPELINE_AUTO_RECOVERY_EXIT=$?
-log_step "pipeline_auto_recovery" ${PIPELINE_AUTO_RECOVERY_EXIT}
-if [ ${PIPELINE_AUTO_RECOVERY_EXIT} -ne 0 ]; then
-    echo "警告: パイプライン自動復旧の実行に失敗しました（終了コード ${PIPELINE_AUTO_RECOVERY_EXIT}）。通常の障害検出は継続します。"
-fi
 
 echo ""
 echo "[反映] パイプラインヘルス分析 — 失敗率の高いステップをルール台帳に追記中..."

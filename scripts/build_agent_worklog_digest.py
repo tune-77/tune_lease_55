@@ -26,6 +26,7 @@ DEFAULT_VAULT = resolve_obsidian_vault()
 
 WORKLOG_HEADING_RE = re.compile(r"^##\s+(?P<time>\d{2}:\d{2})\s+(?P<agent>Codex|Claude)\s+Work Log\s*$")
 SECTION_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$")
+PROJECT_TIMESTAMP_RE = re.compile(r"^<!--\s*worklog_at:\s*(?P<timestamp>[^>]+?)\s*-->$")
 PUBLIC_SECTIONS = {"Summary", "Chat Summary", "Decisions", "Changes", "Verification", "Open Items"}
 MAX_FIELD_CHARS = 420
 PROJECT_WORKLOG_RELATIVE_DIR = Path("Projects") / "tune_lease_55" / "Work Logs"
@@ -136,16 +137,28 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
 
     starts = [index for index, line in enumerate(lines) if line.startswith("## 作業:")]
     try:
-        # Project形式には時刻見出しがないため、最終追記時刻をDaily形式のHH:MMと
-        # 比較可能なキーとして使う。同一ファイル内はsequenceで新しい追記を優先する。
-        project_time = dt.datetime.fromtimestamp(note_path.stat().st_mtime).strftime("%H:%M:%S")
+        # 旧形式では最終ブロックだけファイル更新時刻を使う。過去ブロック全部へ同じ
+        # mtimeを付けると、古いProjectログが新しいDailyログを押し出すため。
+        file_time = dt.datetime.fromtimestamp(note_path.stat().st_mtime).strftime("%H:%M:%S")
     except OSError:
-        project_time = "00:00:00"
+        file_time = "00:00:00"
     logs: list[dict[str, Any]] = []
     for position, start in enumerate(starts):
         end = starts[position + 1] if position + 1 < len(starts) else len(lines)
         block = lines[start:end]
         title = block[0][3:].strip()
+        timestamp_match = next(
+            (PROJECT_TIMESTAMP_RE.match(line.strip()) for line in block[1:] if PROJECT_TIMESTAMP_RE.match(line.strip())),
+            None,
+        )
+        block_time = ""
+        if timestamp_match:
+            try:
+                block_time = dt.datetime.fromisoformat(timestamp_match.group("timestamp")).strftime("%H:%M:%S")
+            except ValueError:
+                block_time = ""
+        if not block_time:
+            block_time = file_time if position == len(starts) - 1 else "00:00:00"
         sections: dict[str, list[str]] = {}
         current_section = ""
         section_lines: list[str] = []
@@ -177,8 +190,8 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
         summary.extend(collect("何をした", "概要", "結論", limit=2))
         logs.append({
             "date": note_path.stem,
-            "time": project_time[:5],
-            "sort_time": project_time,
+            "time": block_time[:5],
+            "sort_time": block_time,
             "sequence": position,
             "agent": "Agent",
             "source_path": str(note_path),

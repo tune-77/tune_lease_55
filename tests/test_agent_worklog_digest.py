@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import datetime as dt
 import os
+from pathlib import Path
 
 
 def test_agent_worklog_digest_extracts_public_summary_sections(tmp_path):
@@ -186,6 +187,61 @@ def test_build_digest_compares_project_mtime_with_daily_log_time(tmp_path):
 
     assert result["items"][0]["summary"][0] == "作業: Project側"
     assert result["items"][0]["time"] == "11:00"
+
+
+def test_legacy_project_blocks_do_not_all_inherit_latest_file_mtime(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    daily = vault / "Daily"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    daily.mkdir(parents=True)
+    worklogs.mkdir(parents=True)
+    note_date = dt.date.today().isoformat()
+    (daily / f"{note_date}.md").write_text(
+        "## 14:00 Codex Work Log\n\n### Summary\n- Daily 14時",
+        encoding="utf-8",
+    )
+    project_note = worklogs / f"{note_date}.md"
+    blocks = [f"## 作業: old-{index}\n\n### 何をしたか\nold-change-{index}" for index in range(13)]
+    project_note.write_text("\n\n".join(blocks), encoding="utf-8")
+    project_timestamp = dt.datetime.combine(dt.date.today(), dt.time(15, 0)).timestamp()
+    os.utime(project_note, (project_timestamp, project_timestamp))
+
+    result = digest.build_digest(vault, days=1, limit=12)
+
+    assert result["items"][0]["summary"][0] == "作業: old-12"
+    assert result["items"][1]["summary"][0] == "Daily 14時"
+
+
+def test_project_block_uses_persisted_timestamp_before_file_mtime(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    note = tmp_path / "2026-09-28.md"
+    note.write_text(
+        "## 作業: timestamped\n"
+        "<!-- worklog_at: 2026-09-28T09:45:30 -->\n\n"
+        "### 何をしたか\n変更した",
+        encoding="utf-8",
+    )
+    future_timestamp = dt.datetime(2026, 9, 28, 18, 0).timestamp()
+    os.utime(note, (future_timestamp, future_timestamp))
+
+    [parsed] = digest.parse_project_work_log(note)
+
+    assert parsed["time"] == "09:45"
+    assert parsed["sort_time"] == "09:45:30"
+
+
+def test_ai_chat_worklog_context_uses_shared_obsidian_path() -> None:
+    source = (Path(__file__).resolve().parents[1] / "api" / "main.py").read_text(encoding="utf-8")
+    start = source.index("def _build_agent_worklog_digest_context")
+    end = source.index("def _build_dialogue_improvement_report_context", start)
+    helper = source[start:end]
+
+    assert "obsidian_ai_context" in helper
+    assert "build_obsidian_ai_context_block" in helper
+    assert "agent_worklog_digest_latest.json" not in helper
 
 
 def test_main_detects_project_format_drift_even_when_daily_parser_succeeds(tmp_path, monkeypatch, capsys):

@@ -52,6 +52,39 @@ def test_plan_does_not_retry_same_step_on_same_run_date() -> None:
     assert recovery.plan_recoveries(latest, state, "20260928") == []
 
 
+def test_plan_requires_resolved_incident_evidence() -> None:
+    latest = {"check_shion_memory_health": {"ts": "2026-09-28T01:00:00Z", "exit_code": 1}}
+
+    plans = recovery.plan_recoveries(
+        latest,
+        {"attempts": {}},
+        "20260928",
+        eligible_steps=set(),
+    )
+
+    assert plans == []
+
+
+def test_plan_rotates_away_from_more_frequently_attempted_recipe() -> None:
+    latest = {
+        "check_shion_memory_health": {"ts": "2026-09-28T01:00:00Z", "exit_code": 1},
+        "build_agent_worklog_digest": {"ts": "2026-09-28T01:01:00Z", "exit_code": 1},
+    }
+    state = {"attempts": {"20260927:check_shion_memory_health": {"success": False}}}
+
+    plans = recovery.plan_recoveries(
+        latest,
+        state,
+        "20260928",
+        eligible_steps=set(latest),
+    )
+
+    assert [plan["step"] for plan in plans] == [
+        "build_agent_worklog_digest",
+        "check_shion_memory_health",
+    ]
+
+
 def test_memory_health_recipe_migrates_legacy_layer_baseline(tmp_path: Path) -> None:
     data = tmp_path / "data"
     data.mkdir()
