@@ -12,10 +12,6 @@ import {
   Search,
   SkipForward,
 } from "lucide-react";
-import { apiClient } from "@/lib/api";
-
-const extractDrillErrorDetail = (err: unknown): string | undefined =>
-  (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
 
 type DrillItem = {
   case_id: string;
@@ -308,15 +304,14 @@ export default function JudgmentDrillPage() {
     setError("");
     setNotice("");
     try {
-      const res = await apiClient.get(`/api/judgment-drill?index=${index}`, {
-        headers: { "Cache-Control": "no-store" },
-      });
-      const data = res.data as DrillResponse & { error?: string };
+      const res = await fetch(`/api/judgment-drill?index=${index}`, { cache: "no-store" });
+      const data = (await res.json()) as DrillResponse & { error?: string };
+      if (!res.ok) throw new Error(data.error || "読み込みに失敗しました");
       setResponse(data);
       setForm(data.item ?? emptyItem);
       setSelectedConditions([]);
     } catch (err) {
-      setError(extractDrillErrorDetail(err) || (err instanceof Error ? err.message : "読み込みに失敗しました"));
+      setError(err instanceof Error ? err.message : "読み込みに失敗しました");
     } finally {
       setLoading(false);
     }
@@ -328,15 +323,16 @@ export default function JudgmentDrillPage() {
     setError("");
     setNotice("");
     try {
-      const res = await apiClient.get(`/api/judgment-drill?case_id=${encodeURIComponent(caseId.trim())}`, {
-        headers: { "Cache-Control": "no-store" },
+      const res = await fetch(`/api/judgment-drill?case_id=${encodeURIComponent(caseId.trim())}`, {
+        cache: "no-store",
       });
-      const data = res.data as DrillResponse & { error?: string };
+      const data = (await res.json()) as DrillResponse & { error?: string };
+      if (!res.ok) throw new Error(data.error || "読み込みに失敗しました");
       setResponse(data);
       setForm(data.item ?? emptyItem);
       setSelectedConditions([]);
     } catch (err) {
-      setError(extractDrillErrorDetail(err) || (err instanceof Error ? err.message : "読み込みに失敗しました"));
+      setError(err instanceof Error ? err.message : "読み込みに失敗しました");
     } finally {
       setLoading(false);
     }
@@ -428,28 +424,33 @@ export default function JudgmentDrillPage() {
       return sum + (Number.isFinite(value) ? value : 0);
     }, 0);
     try {
-      const res = await apiClient.patch("/api/judgment-drill", {
-        case_id: values.case_id,
-        values: {
-          credit_score_20: values.credit_score_20,
-          repayment_source_score_20: values.repayment_source_score_20,
-          asset_exit_score_20: values.asset_exit_score_20,
-          plan_specificity_score_20: values.plan_specificity_score_20,
-          uncertainty_control_score_20: values.uncertainty_control_score_20,
-          total_score_100: String(total),
-          user_decision: values.user_decision,
-          heaviest_issue: values.heaviest_issue,
-          additional_checks: values.additional_checks,
-          ringi_sentence: values.ringi_sentence,
-          score_decision_gap_note: values.score_decision_gap_note,
-          ai_feedback_outcome: values.ai_feedback_outcome,
-          ai_feedback_note: values.ai_feedback_note,
-          okf_candidate_tags: values.okf_candidate_tags,
-          presentation_use_ok: values.presentation_use_ok,
-          reviewer: values.reviewer,
-        },
+      const res = await fetch("/api/judgment-drill", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          case_id: values.case_id,
+          values: {
+            credit_score_20: values.credit_score_20,
+            repayment_source_score_20: values.repayment_source_score_20,
+            asset_exit_score_20: values.asset_exit_score_20,
+            plan_specificity_score_20: values.plan_specificity_score_20,
+            uncertainty_control_score_20: values.uncertainty_control_score_20,
+            total_score_100: String(total),
+            user_decision: values.user_decision,
+            heaviest_issue: values.heaviest_issue,
+            additional_checks: values.additional_checks,
+            ringi_sentence: values.ringi_sentence,
+            score_decision_gap_note: values.score_decision_gap_note,
+            ai_feedback_outcome: values.ai_feedback_outcome,
+            ai_feedback_note: values.ai_feedback_note,
+            okf_candidate_tags: values.okf_candidate_tags,
+            presentation_use_ok: values.presentation_use_ok,
+            reviewer: values.reviewer,
+          },
+        }),
       });
-      const data = res.data as DrillResponse & { error?: string };
+      const data = (await res.json()) as DrillResponse & { error?: string };
+      if (!res.ok) throw new Error(data.error || "保存に失敗しました");
       setResponse(data);
       setForm(data.item ?? emptyItem);
       setNotice("保存しました");
@@ -457,7 +458,7 @@ export default function JudgmentDrillPage() {
         await loadCase(data.index + 1);
       }
     } catch (err) {
-      setError(extractDrillErrorDetail(err) || (err instanceof Error ? err.message : "保存に失敗しました"));
+      setError(err instanceof Error ? err.message : "保存に失敗しました");
     } finally {
       setSaving(false);
     }
