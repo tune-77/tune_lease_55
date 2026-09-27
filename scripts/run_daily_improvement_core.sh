@@ -192,8 +192,8 @@ echo "[記憶] 記憶の矛盾候補を検出中（レポートのみ・自動�
 "${PYTHON}" "${PROJECT_ROOT}/scripts/detect_shion_memory_contradictions.py"; log_step "detect_shion_memory_contradictions" $?
 
 echo ""
-echo "[記憶] Memory Engineering レポートを生成中（書き込み費用・昇格率・忘却候補）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/build_memory_engineering_report.py"
+echo "[記憶] Memory Engineering のJSONを更新中（書き込み費用・昇格率・忘却候補／人間向けはMemory Sentinelへ統合）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_memory_engineering_report.py" --json-only
 MEMORY_ENGINEERING_EXIT=$?
 log_step "build_memory_engineering_report" ${MEMORY_ENGINEERING_EXIT}
 if [ ${MEMORY_ENGINEERING_EXIT} -ne 0 ]; then
@@ -369,27 +369,11 @@ echo ""
 echo "[反映] batch_apply — 台帳ルールを自動適用中..."
 "${PYTHON}" "${PROJECT_ROOT}/api/rule_engine/batch_apply.py" --apply; log_step "batch_apply" $?
 
-echo ""
-echo "[反映] 再帰的自己改善レポートを生成中..."
-RECURSIVE_JSON_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.json"
-RECURSIVE_MD_FILE="${PROJECT_ROOT}/reports/recursive_self_improvement_${LOG_DATE}.md"
-RECURSIVE_LATEST_JSON="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.json"
-RECURSIVE_LATEST_MD="${PROJECT_ROOT}/reports/recursive_self_improvement_latest.md"
-"${PYTHON}" "${PROJECT_ROOT}/scripts/recursive_self_improvement.py" \
-    --report "${LATEST_FILE}" \
-    --prompt-log "${PROJECT_ROOT}/data/prompt_feedback_log.jsonl" \
-    --output-json "${RECURSIVE_JSON_FILE}" \
-    --output-md "${RECURSIVE_MD_FILE}" \
-    --latest-json "${RECURSIVE_LATEST_JSON}" \
-    --latest-md "${RECURSIVE_LATEST_MD}"
-RECURSIVE_EXIT=$?
-log_step "recursive_self_improvement" ${RECURSIVE_EXIT}
-if [ ${RECURSIVE_EXIT} -ne 0 ]; then
-    echo "警告: 再帰的自己改善レポート生成に失敗しました（終了コード ${RECURSIVE_EXIT}）"
-    if [ ${FINAL_EXIT} -eq 0 ]; then
-        FINAL_EXIT=${RECURSIVE_EXIT}
-    fi
-fi
+# 再帰的自己改善レポートはここでは生成しない。
+# 入力の reports/latest.json は post 側の台帳補完とレポート再同期のあとで確定するため、
+# core で1回出しても post が同じ4ファイル（日付版/latest版 × json/md）を上書きする。
+# 生成は run_daily_improvement_post.sh の sync_improvement_reports_post 直後の1回だけ。
+# ここへ戻すと tests/test_sidecar_report_consolidation.py が落ちる。
 
 echo ""
 echo "[学習] PDCAルールのライフサイクル管理 — 効果のあるルールを自動延長中..."
