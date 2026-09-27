@@ -381,7 +381,24 @@ def _rule_classification(article: Article) -> dict[str, Any]:
     elif direction == "positive":
         checks.append("改善効果が一時的な期待ではなく、受注・利益・キャッシュフローに反映される時期を確認する。")
 
-    reliability = "high" if article.source_kind == "official" else "medium"
+    source_text = " ".join([article.source, article.raw_source, article.link]).lower()
+    official_markers = (
+        ".go.jp",
+        ".lg.jp",
+        "pref.",
+        "city.",
+        "boj.or.jp",
+        "meti.go.jp",
+        "mlit.go.jp",
+        "fsa.go.jp",
+    )
+    weak_markers = ("おすすめ", "ランキング", "口コミ", "比較サイト", "まとめ")
+    if article.source_kind == "official" or any(marker in source_text for marker in official_markers):
+        reliability = "high"
+    elif any(marker in " ".join([article.title, article.source]).lower() for marker in weak_markers):
+        reliability = "low"
+    else:
+        reliability = "medium"
     impact = {
         "positive": "業績・投資回収・返済余力を改善する可能性がある。",
         "negative": "業績・資金繰り・返済余力を悪化させる可能性がある。",
@@ -1020,6 +1037,44 @@ def _update_detail_link(raw: str, link: str) -> str:
     return re.sub(r"^- link:\s*.*$", f"- link: {link}", raw, count=1, flags=re.MULTILINE)
 
 
+def _update_screening_classification(raw: str, article: Article) -> str:
+    fields = {
+        "industries": _yaml_string(", ".join(article.industries)),
+        "lease_assets": _yaml_string(", ".join(article.lease_assets)),
+        "impact_direction": article.impact_direction,
+        "source_reliability": article.source_reliability,
+        "classification_confidence": f"{article.classification_confidence:.2f}",
+        "valid_until": article.valid_until,
+        "canonical_topic": _yaml_string(article.canonical_topic),
+        "classification_source": article.classification_source,
+    }
+    for key, value in fields.items():
+        raw = _update_frontmatter_field(raw, key, value)
+
+    section = f"""## AI審査分類
+- 対象業種: {", ".join(article.industries)}
+- リース物件: {", ".join(article.lease_assets)}
+- 信用リスクへの影響: {article.credit_risk_impact}
+- 影響方向: {article.impact_direction}
+- 情報の信頼度: {article.source_reliability}
+- 分類確信度: {article.classification_confidence:.2f}
+- 有効期限: {article.valid_until}
+- 同一トピック: {article.canonical_topic}
+
+### 審査上の確認事項
+{chr(10).join(f"- {item}" for item in article.screening_checks)}
+"""
+    if re.search(r"^## AI審査分類\n", raw, re.MULTILINE):
+        return re.sub(
+            r"^## AI審査分類\n.*?(?=^## 詳細\n)",
+            section + "\n",
+            raw,
+            count=1,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+    return re.sub(r"^## 詳細\n", section + "\n## 詳細\n", raw, count=1, flags=re.MULTILINE)
+
+
 def _merge_related_report(
     record: dict[str, Any],
     article: Article,
@@ -1054,11 +1109,13 @@ def _merge_related_report(
     raw = _update_frontmatter_field(raw, "importance", _infer_importance(article))
     raw = _update_frontmatter_field(raw, "source", _yaml_string(article.source or "Google News"))
     raw = _update_frontmatter_field(raw, "tags", json.dumps(list(article.tags), ensure_ascii=False))
+    raw = _update_screening_classification(raw, article)
     raw = _update_usage_memo(raw, _review_line(article.tags, article.theme))
     raw = _update_detail_link(raw, article.link)
     path = Path(record["path"])
     path.write_text(raw, encoding="utf-8")
     record["raw"] = raw
+    record["canonical_topic"] = article.canonical_topic
     return True
 
 

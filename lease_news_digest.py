@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from obsidian_query import split_query_terms
 from runtime_paths import resolve_obsidian_vault
 
 
@@ -24,6 +25,7 @@ DEFAULT_NEWS_REL_DIRS = (
 METRICS_PATH = Path(__file__).resolve().parent / "data" / "lease_news_metrics.json"
 NEWS_JUDGMENT_SIGNALS_JSONL = Path(__file__).resolve().parent / "data" / "news_judgment_signals.jsonl"
 NEWS_JUDGMENT_SIGNALS_LATEST_JSON = Path(__file__).resolve().parent / "data" / "news_judgment_signals_latest.json"
+NEWS_USAGE_FEEDBACK_JSONL = Path(__file__).resolve().parent / "data" / "lease_news_usage_feedback.jsonl"
 _GCS_VAULT_LOCAL_DIR = Path(os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vault"))
 _GCS_VAULT_RESYNC_INTERVAL = int(os.environ.get("GCS_VAULT_RESYNC_INTERVAL", "3600"))
 _GCS_VAULT_LAST_SYNC = 0.0
@@ -142,6 +144,10 @@ class LeaseNewsAction:
     condition_impacts: tuple[str, ...] = ()
     source_title: str = ""
     source_path: str = ""
+    region: str = ""
+    source_reliability: str = "medium"
+    classification_confidence: float = 0.0
+    impact_direction: str = "neutral"
     valid_until: str = ""
     confidence: float = 0.5
     noise_score: float = 0.0
@@ -158,6 +164,14 @@ class LeaseNewsActions:
     summary: str = ""
 
 
+def _normalize_news_source_path(value: object) -> str:
+    normalized = str(value or "").replace("\\", "/")
+    for anchor in ("05-クリップ_記事/", "業界リスクニュース/", "リースニュース/"):
+        if anchor in normalized:
+            return normalized[normalized.index(anchor):]
+    return Path(normalized).name if Path(normalized).is_absolute() else normalized
+
+
 def _parse_news_note(path: Path) -> dict:
     item: dict = {
         "date": "",
@@ -169,9 +183,18 @@ def _parse_news_note(path: Path) -> dict:
         "importance": "通常",
         "source": "",
         "article_url": "",
-        "file_path": str(path),
+        "file_path": _normalize_news_source_path(path),
         "week": "",
         "month": "",
+        "industries": [],
+        "lease_assets": [],
+        "impact_direction": "neutral",
+        "source_reliability": "medium",
+        "classification_confidence": 0.0,
+        "valid_until": "",
+        "canonical_topic": "",
+        "classification_source": "",
+        "screening_checks": [],
     }
     try:
         raw = path.read_text(encoding="utf-8", errors="ignore")
@@ -181,6 +204,16 @@ def _parse_news_note(path: Path) -> dict:
     fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", raw, re.DOTALL)
     if fm_match:
         fm = fm_match.group(1)
+        def parse_list(value: str) -> list[str]:
+            cleaned = value.strip().strip('"')
+            try:
+                parsed = json.loads(value.strip())
+            except Exception:
+                parsed = None
+            if isinstance(parsed, list):
+                return [str(part).strip() for part in parsed if str(part).strip()]
+            return [part.strip() for part in re.split(r"[,、]", cleaned) if part.strip()]
+
         for line in fm.splitlines():
             if line.startswith("date:"):
                 item["date"] = line.split(":", 1)[1].strip()
@@ -199,6 +232,25 @@ def _parse_news_note(path: Path) -> dict:
                 item["week"] = line.split(":", 1)[1].strip()
             elif line.startswith("month:"):
                 item["month"] = line.split(":", 1)[1].strip()
+            elif line.startswith("industries:"):
+                item["industries"] = parse_list(line.split(":", 1)[1])
+            elif line.startswith("lease_assets:"):
+                item["lease_assets"] = parse_list(line.split(":", 1)[1])
+            elif line.startswith("impact_direction:"):
+                item["impact_direction"] = line.split(":", 1)[1].strip()
+            elif line.startswith("source_reliability:"):
+                item["source_reliability"] = line.split(":", 1)[1].strip()
+            elif line.startswith("classification_confidence:"):
+                try:
+                    item["classification_confidence"] = float(line.split(":", 1)[1].strip())
+                except ValueError:
+                    pass
+            elif line.startswith("valid_until:"):
+                item["valid_until"] = line.split(":", 1)[1].strip()
+            elif line.startswith("canonical_topic:"):
+                item["canonical_topic"] = line.split(":", 1)[1].strip().strip('"')
+            elif line.startswith("classification_source:"):
+                item["classification_source"] = line.split(":", 1)[1].strip()
 
     title_match = re.search(r"^# (.+)$", raw, re.MULTILINE)
     if title_match:
@@ -215,6 +267,18 @@ def _parse_news_note(path: Path) -> dict:
     memo_match = re.search(r"## 活用メモ\s*\n(.+?)(?:\n##|\Z)", raw, re.DOTALL)
     if memo_match:
         item["usage_memo"] = memo_match.group(1).strip()
+
+    checks_match = re.search(
+        r"### 審査上の確認事項\s*\n(.+?)(?:\n## |\n### |\Z)",
+        raw,
+        re.DOTALL,
+    )
+    if checks_match:
+        item["screening_checks"] = [
+            re.sub(r"^\s*[-*]\s*", "", line).strip()
+            for line in checks_match.group(1).splitlines()
+            if re.match(r"^\s*[-*]\s+", line)
+        ][:5]
 
     link_match = re.search(r"^- link:\s*(.+)$", raw, re.MULTILINE)
     if link_match:
@@ -271,6 +335,10 @@ def _recent_news_items(vault: Path, limit: int = 10) -> list[dict]:
     parsed_items: list[dict] = []
     for fpath in md_files:
         item = _parse_news_note(fpath)
+        try:
+            item["file_path"] = str(fpath.relative_to(vault))
+        except ValueError:
+            item["file_path"] = fpath.name
         item_date = str(item.get("date") or "")[:10]
         file_date = _note_effective_date(fpath)
         item["_sort_date"] = item_date or file_date
@@ -335,33 +403,44 @@ def _infer_news_action(item: dict) -> LeaseNewsAction:
     summary_lines = tuple(str(line) for line in (item.get("summary_lines") or []) if str(line).strip())
     tags = tuple(str(tag) for tag in (item.get("tags") or []) if str(tag).strip())
     joined = " ".join([title, memo, " ".join(summary_lines), " ".join(tags)])
-    industries: list[str] = []
-    assets: list[str] = []
+    industries = [str(value).strip() for value in item.get("industries", []) if str(value).strip()]
+    assets = [str(value).strip() for value in item.get("lease_assets", []) if str(value).strip()]
     risk_flags: list[str] = []
-    checks: list[str] = []
+    checks = [str(value).strip() for value in item.get("screening_checks", []) if str(value).strip()]
     impacts: list[str] = []
+    has_explicit_industries = bool(industries)
+    has_explicit_assets = bool(assets)
+    has_explicit_checks = bool(checks)
+    has_structured_classification = bool(industries or assets or checks)
 
     def add(target: list[str], value: str) -> None:
         if value and value not in target:
             target.append(value)
 
-    if _has_any(joined, ("物流", "車両", "トラック", "カーリース", "EV", "自動車")):
+    if not has_explicit_industries and _has_any(joined, ("物流", "車両", "トラック", "カーリース", "EV", "自動車")):
         add(industries, "物流・運輸")
+    if not has_explicit_assets and _has_any(joined, ("物流", "車両", "トラック", "カーリース", "EV", "自動車")):
         add(assets, "車両")
+    if not has_explicit_checks and _has_any(joined, ("物流", "車両", "トラック", "カーリース", "EV", "自動車")):
         add(checks, "稼働率、走行距離、保守費、更新理由を確認する。")
         add(checks, "リース期間終了時の中古価値と再リース余地を確認する。")
+    if _has_any(joined, ("物流", "車両", "トラック", "カーリース", "EV", "自動車")):
         add(impacts, "走行距離・保守費が重い場合は期間短縮または前受金を検討する。")
     if _has_any(joined, ("金利", "利上げ", "金融", "資金調達", "与信")):
         add(risk_flags, "金利負担・返済余力")
         add(checks, "月額負担増に対する返済余力と競合提示金利を確認する。")
         add(impacts, "金利説明、保証、前受金、期間短縮の必要性を確認する。")
-    if _has_any(joined, ("設備投資", "省力化", "補助金", "助成金", "更新投資", "DX", "AI", "ロボット")):
+    if not has_explicit_industries and _has_any(joined, ("設備投資", "省力化", "補助金", "助成金", "更新投資", "DX", "AI", "ロボット")):
         add(industries, "製造・設備投資")
+    if not has_explicit_checks and _has_any(joined, ("設備投資", "省力化", "補助金", "助成金", "更新投資", "DX", "AI", "ロボット")):
         add(checks, "投資目的、補助金要件、回収期間、生産性改善効果を確認する。")
+    if _has_any(joined, ("補助金", "助成金")):
         add(impacts, "補助金前提なら採択前提条件と未採択時の資金繰りを確認する。")
-    if _has_any(joined, ("建設", "工場", "不動産", "工期")):
+    if not has_explicit_industries and _has_any(joined, ("建設", "工場", "不動産", "工期")):
         add(industries, "建設・不動産")
+    if not has_explicit_checks and _has_any(joined, ("建設", "工場", "不動産", "工期")):
         add(checks, "工期、稼働開始時期、移設可能性、現場稼働への影響を確認する。")
+    if _has_any(joined, ("建設", "工場", "不動産", "工期")):
         add(impacts, "稼働開始が遅れる場合は支払開始時期や猶予条件を確認する。")
     if _has_any(joined, ("リース会計", "会計基準", "税制", "制度", "規制", "法令")):
         add(risk_flags, "制度・会計変更")
@@ -374,13 +453,35 @@ def _infer_news_action(item: dict) -> LeaseNewsAction:
     if not risk_flags and _has_any(joined, ("赤字", "撤退", "解約", "難色", "不正", "破綻")):
         add(risk_flags, "信用悪化・事業継続")
 
+    impact_direction = str(item.get("impact_direction") or "neutral").strip().lower()
+    if impact_direction in {"negative", "risk", "悪化", "マイナス"}:
+        add(risk_flags, "業績・資金繰り悪化")
+    source_reliability = str(item.get("source_reliability") or "medium").strip().lower()
+    if source_reliability not in {"high", "medium", "low"}:
+        source_reliability = "medium"
     noise = _news_noise_score(item)
-    confidence = max(0.2, min(0.95, 0.75 - noise * 0.4 + (0.1 if risk_flags else 0.0)))
+    try:
+        classification_confidence = float(item.get("classification_confidence") or 0.0)
+    except (TypeError, ValueError):
+        classification_confidence = 0.0
+    inferred_confidence = 0.75 - noise * 0.4 + (0.1 if risk_flags else 0.0)
+    if classification_confidence > 0:
+        inferred_confidence = classification_confidence
+        classification_source = str(item.get("classification_source") or "").strip().lower()
+        if has_structured_classification and classification_source == "rule":
+            inferred_confidence = max(inferred_confidence, 0.55)
+    if source_reliability == "high":
+        inferred_confidence += 0.08
+    elif source_reliability == "low":
+        inferred_confidence -= 0.2
+    confidence = max(0.2, min(0.95, inferred_confidence))
     try:
         date_obj = dt.date.fromisoformat(str(item.get("date") or dt.date.today().isoformat())[:10])
     except Exception:
         date_obj = dt.date.today()
-    valid_until = (date_obj + dt.timedelta(days=90 if noise < 0.4 else 30)).isoformat()
+    valid_until = str(item.get("valid_until") or "").strip()
+    if not valid_until:
+        valid_until = (date_obj + dt.timedelta(days=90 if noise < 0.4 else 30)).isoformat()
     signal = title
     if tags:
         signal = f"{title}（{', '.join(tags[:3])}）"
@@ -400,7 +501,11 @@ def _infer_news_action(item: dict) -> LeaseNewsAction:
         recommended_checks=tuple(checks[:4]),
         condition_impacts=tuple(impacts[:3]),
         source_title=title,
-        source_path=str(item.get("file_path") or ""),
+        source_path=_normalize_news_source_path(item.get("file_path")),
+        region=str(item.get("region") or ""),
+        source_reliability=source_reliability,
+        classification_confidence=round(classification_confidence, 2),
+        impact_direction=impact_direction,
         valid_until=valid_until,
         confidence=round(confidence, 2),
         noise_score=round(noise, 2),
@@ -495,6 +600,10 @@ def _action_to_dict(action: LeaseNewsAction) -> dict:
         "condition_impacts": list(action.condition_impacts),
         "source_title": action.source_title,
         "source_path": action.source_path,
+        "region": action.region,
+        "source_reliability": action.source_reliability,
+        "classification_confidence": action.classification_confidence,
+        "impact_direction": action.impact_direction,
         "valid_until": action.valid_until,
         "confidence": action.confidence,
         "noise_score": action.noise_score,
@@ -512,7 +621,11 @@ def _action_from_dict(data: dict) -> LeaseNewsAction:
         recommended_checks=tuple(str(x) for x in data.get("recommended_checks", []) if str(x).strip()),
         condition_impacts=tuple(str(x) for x in data.get("condition_impacts", []) if str(x).strip()),
         source_title=str(data.get("source_title") or ""),
-        source_path=str(data.get("source_path") or ""),
+        source_path=_normalize_news_source_path(data.get("source_path")),
+        region=str(data.get("region") or ""),
+        source_reliability=str(data.get("source_reliability") or "medium"),
+        classification_confidence=float(data.get("classification_confidence") or 0.0),
+        impact_direction=str(data.get("impact_direction") or "neutral"),
         valid_until=str(data.get("valid_until") or ""),
         confidence=float(data.get("confidence") or 0.5),
         noise_score=float(data.get("noise_score") or 0.0),
@@ -1679,6 +1792,8 @@ def write_lease_news_actions_note(
 
 
 def get_latest_lease_news_actions(vault: Path | None = None) -> LeaseNewsActions:
+    if vault is not None:
+        return build_lease_news_actions(vault=vault)
     latest = _actions_latest_path()
     if not latest.exists():
         built = build_lease_news_actions(vault=vault)
@@ -1703,7 +1818,9 @@ def lease_news_actions_as_text(
     vault: Path | None = None,
     industry: str = "",
     asset_name: str = "",
-    limit: int = 3,
+    region: str = "",
+    risk_context: str = "",
+    limit: int = 1,
     surface: str = "",
 ) -> str:
     actions = get_latest_lease_news_actions(vault=vault)
@@ -1711,18 +1828,73 @@ def lease_news_actions_as_text(
         return ""
     industry_text = str(industry or "")
     asset_text = str(asset_name or "")
+    region_text = str(region or "")
+    risk_text = str(risk_context or "")
+    if not any(value.strip() for value in (industry_text, asset_text, region_text, risk_text)):
+        return ""
 
-    def score(action: LeaseNewsAction) -> tuple[int, float]:
+    def parts(value: str) -> list[str]:
+        return split_query_terms(value)
+
+    def overlaps(query: str, candidate: str) -> bool:
+        query_parts = parts(query)
+        candidate_parts = parts(candidate)
+        return any(
+            left in right or right in left
+            for left in query_parts
+            for right in candidate_parts
+        )
+
+    today = dt.date.today()
+    feedback_scores = _load_news_usage_feedback_scores()
+
+    def score(action: LeaseNewsAction) -> tuple[int, int, float, float]:
         match = 0
         joined_industries = " ".join(action.affected_industries)
         joined_assets = " ".join(action.affected_assets)
-        if industry_text and any(part and part in joined_industries for part in re.split(r"[\s/・,、]+", industry_text)):
+        joined_risks = " ".join(
+            (
+                action.signal,
+                action.source_title,
+                *action.affected_industries,
+                *action.affected_assets,
+                *action.risk_flags,
+                *action.recommended_checks,
+                *action.condition_impacts,
+            )
+        )
+        if industry_text and (
+            "全業種" in action.affected_industries
+            or overlaps(industry_text, joined_industries)
+        ):
+            match += 3
+        if asset_text and overlaps(asset_text, joined_assets):
+            match += 3
+        if region_text and overlaps(region_text, action.region):
+            match += 1
+        if risk_text and overlaps(risk_text, joined_risks):
             match += 2
-        if asset_text and any(part and part in joined_assets for part in re.split(r"[\s/・,、]+", asset_text)):
-            match += 2
-        return (match, action.confidence - action.noise_score)
+        feedback_score = feedback_scores.get(action.source_path, 0)
+        return (match, feedback_score, action.confidence - action.noise_score, action.confidence)
 
-    ranked = sorted(actions.action_items, key=score, reverse=True)[:limit]
+    eligible: list[LeaseNewsAction] = []
+    for action in actions.action_items:
+        if action.noise_score >= 0.7 or action.confidence < 0.55 or action.source_reliability == "low":
+            continue
+        if feedback_scores.get(action.source_path, 0) <= -4:
+            continue
+        if action.valid_until:
+            try:
+                if dt.date.fromisoformat(action.valid_until[:10]) < today:
+                    continue
+            except ValueError:
+                pass
+        if score(action)[0] <= 0:
+            continue
+        eligible.append(action)
+    ranked = sorted(eligible, key=score, reverse=True)[: max(1, min(int(limit), 3))]
+    if not ranked:
+        return ""
     try:
         record_lease_news_action_use(
             actions.date or dt.date.today().isoformat(),
@@ -1809,12 +1981,104 @@ def record_lease_news_view(date_str: str, note_path: str = "", tag_summary: str 
 def record_lease_news_action_use(date_str: str, surface: str = "", matched_count: int = 0) -> dict:
     data = _load_metrics()
     bucket = _ensure_day_bucket(data, date_str or dt.date.today().isoformat())
-    bucket["news_actions_used"] = int(bucket.get("news_actions_used", 0)) + 1
+    bucket["news_actions_surfaced"] = int(bucket.get("news_actions_surfaced", 0)) + 1
     bucket["last_actions_surface"] = surface
     bucket["last_actions_matched_count"] = int(matched_count)
     data["updated_at"] = dt.datetime.now().isoformat(timespec="seconds")
     _save_metrics(data)
     return bucket
+
+
+def record_lease_news_usage_feedback(
+    *,
+    source_path: str,
+    outcome: str,
+    source_title: str = "",
+    surface: str = "news_dashboard",
+    case_id: str = "",
+    note: str = "",
+    path: Path | None = None,
+) -> dict:
+    allowed = {"used", "irrelevant", "question_changed", "condition_changed"}
+    normalized_outcome = str(outcome or "").strip().lower()
+    if normalized_outcome not in allowed:
+        raise ValueError(f"unsupported news feedback outcome: {normalized_outcome}")
+    normalized_path = _normalize_news_source_path(source_path).strip()
+    if not normalized_path:
+        raise ValueError("source_path is required")
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    event_seed = "|".join([now, normalized_path, normalized_outcome, str(surface or ""), str(case_id or "")])
+    payload = {
+        "event_id": "nf-" + hashlib.sha256(event_seed.encode("utf-8")).hexdigest()[:16],
+        "recorded_at": now,
+        "source_path": normalized_path[:500],
+        "source_title": str(source_title or "")[:240],
+        "outcome": normalized_outcome,
+        "surface": str(surface or "news_dashboard")[:80],
+        "case_id": str(case_id or "")[:120],
+        "note": str(note or "")[:500],
+    }
+    target = path or NEWS_USAGE_FEEDBACK_JSONL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+
+    data = _load_metrics()
+    bucket = _ensure_day_bucket(data, dt.date.today().isoformat())
+    metric_key = f"feedback_{normalized_outcome}"
+    bucket[metric_key] = int(bucket.get(metric_key, 0)) + 1
+    bucket["feedback_total"] = int(bucket.get("feedback_total", 0)) + 1
+    if normalized_outcome in {"used", "question_changed", "condition_changed"}:
+        bucket["news_actions_used"] = int(bucket.get("news_actions_used", 0)) + 1
+    data["updated_at"] = now
+    _save_metrics(data)
+    return payload
+
+
+def _load_news_usage_feedback_scores(path: Path | None = None, limit: int = 2000) -> dict[str, int]:
+    target = path or NEWS_USAGE_FEEDBACK_JSONL
+    weights = {
+        "used": 1,
+        "irrelevant": -3,
+        "question_changed": 2,
+        "condition_changed": 2,
+    }
+    items: list[dict] = []
+    if target.exists():
+        try:
+            lines = target.read_text(encoding="utf-8", errors="ignore").splitlines()[-max(1, limit):]
+        except OSError:
+            lines = []
+        for line in lines:
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict):
+                items.append(item)
+
+    if path is None:
+        try:
+            from api.cloudrun_writeback import read_lease_news_usage_feedback_events
+
+            items.extend(read_lease_news_usage_feedback_events(limit=limit))
+        except Exception:
+            pass
+
+    scores: dict[str, int] = {}
+    seen_event_ids: set[str] = set()
+    for item in items[-max(1, limit):]:
+        event_id = str(item.get("event_id") or "").strip()
+        if event_id and event_id in seen_event_ids:
+            continue
+        if event_id:
+            seen_event_ids.add(event_id)
+        source_path = str(item.get("source_path") or "").strip()
+        outcome = str(item.get("outcome") or "").strip()
+        if not source_path or outcome not in weights:
+            continue
+        scores[source_path] = max(-6, min(6, scores.get(source_path, 0) + weights[outcome]))
+    return scores
 
 
 def record_lease_news_focus(

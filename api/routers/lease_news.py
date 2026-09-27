@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from api.background_executor import background_executor
-from api.cloudrun_writeback import record_cloudrun_input_event
+from api.cloudrun_writeback import record_cloudrun_input_event, record_lease_news_usage_feedback_event
 from api.knowledge.news_classifier import (
     build_classified_news_summary_from_vault,
     load_latest_classified_news_summary,
@@ -40,6 +40,7 @@ from lease_news_digest import (
     get_latest_lease_news_actions,
     get_latest_lease_news_focus,
     record_lease_news_collection,
+    record_lease_news_usage_feedback,
 )
 from runtime_paths import resolve_obsidian_vault
 
@@ -376,6 +377,15 @@ class LeaseNewsJudgmentChangeRequest(BaseModel):
     input_snapshot: dict = Field(default_factory=dict)
 
 
+class LeaseNewsUsageFeedbackRequest(BaseModel):
+    source_path: str = Field(min_length=1, max_length=500)
+    source_title: str = Field(default="", max_length=240)
+    outcome: str = Field(pattern="^(used|irrelevant|question_changed|condition_changed)$")
+    surface: str = Field(default="news_dashboard", max_length=80)
+    case_id: str = Field(default="", max_length=120)
+    note: str = Field(default="", max_length=500)
+
+
 @router.get("/focus")
 def get_lease_news_focus_api():
     """ホーム画面とAICHATで共通利用する最新ニュースの注目論点を返す。"""
@@ -399,6 +409,26 @@ def get_lease_news_actions_api():
     """日次ニュースを審査アクションへ変換した一覧を返す。"""
     try:
         return lease_news_actions_to_dict(get_latest_lease_news_actions())
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/feedback")
+def record_lease_news_usage_feedback_api(req: LeaseNewsUsageFeedbackRequest):
+    """Record whether a surfaced news action changed real screening work."""
+    try:
+        feedback = record_lease_news_usage_feedback(
+            source_path=req.source_path,
+            source_title=req.source_title,
+            outcome=req.outcome,
+            surface=req.surface,
+            case_id=req.case_id,
+            note=req.note,
+        )
+        writeback = record_lease_news_usage_feedback_event(feedback)
+        return {"status": "recorded", "feedback": feedback, "writeback": writeback}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
