@@ -1022,7 +1022,13 @@ def _sync_screening_outcome(case_id: str, final_status: str) -> None:
         )
 
 
-def delete_case(case_id: str, *, raise_on_error: bool = False) -> bool:
+def delete_case(
+    case_id: str,
+    *,
+    raise_on_error: bool = False,
+    deletion_route: str = "data_cases.delete_case",
+    deletion_reason: str = "manual_delete",
+) -> bool:
     """指定IDを削除。APIではraise_on_errorでDB障害と対象なしを区別する。"""
     if not _cloud_db_enabled() and not os.path.exists(DB_PATH):
         if raise_on_error:
@@ -1031,9 +1037,32 @@ def delete_case(case_id: str, *, raise_on_error: bool = False) -> bool:
     try:
         ph = _db_placeholder()
         with _case_db_connection() as conn:
+            from case_deletion_audit import begin_case_deletion_event, complete_case_deletion_event
+
+            # begin_* は監査行の記録と同時に子 screening_records を parent_deleted に印付けする。
+            # ここが失敗したまま DELETE が走ると、印のない孤児行が残る。
+            audit_event = None
+            try:
+                audit_event = begin_case_deletion_event(
+                    conn,
+                    [case_id],
+                    route=deletion_route,
+                    reason=deletion_reason,
+                    placeholder=ph,
+                    is_postgres=_cloud_db_enabled(),
+                )
+            except Exception:
+                # fail-open: 監査が整っていない環境で案件削除自体を止めない。
+                # 印の付かなかった孤児行は audit_case_deletion_integrity.py で検出できる。
+                logger.exception("delete_case audit failed: %s", case_id)
+
             cursor = conn.cursor()
             cursor.execute(f"DELETE FROM past_cases WHERE id = {ph}", (case_id,))
             deleted = cursor.rowcount > 0
+            if audit_event is not None:
+                complete_case_deletion_event(
+                    conn, audit_event, (case_id,) if deleted else (), placeholder=ph
+                )
             conn.commit()
     except Exception:
         if raise_on_error:
