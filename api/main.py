@@ -2102,6 +2102,36 @@ def clear_all_pending_cases(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/admin/deletion-audit")
+def get_case_deletion_audit(
+    limit: int = 50,
+    offset: int = 0,
+    status: str = "",
+    date_from: str = "",
+    date_to: str = "",
+):
+    """案件削除イベントを読み取り専用で返す。監査ログなので修復も再実行もしない。"""
+    from case_deletion_audit import list_case_deletion_events
+
+    try:
+        with get_connection() as conn:
+            return list_case_deletion_events(
+                conn,
+                limit=limit,
+                offset=offset,
+                placeholder=placeholder(),
+                status=status,
+                date_from=date_from,
+                date_to=date_to,
+            )
+    except ValueError as exc:
+        # 不正な status / 日付はクライアント側の誤りなので 422 で返す（500に混ぜない）
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("get_case_deletion_audit DB error: %s", exc)
+        raise HTTPException(status_code=500, detail="削除監査ログを取得できませんでした") from exc
+
+
 @app.delete("/api/cases/{case_id}")
 def delete_case(case_id: str, background_tasks: BackgroundTasks):
     """案件を past_cases から削除する"""
