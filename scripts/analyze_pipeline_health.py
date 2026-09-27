@@ -27,6 +27,12 @@ FAILURE_RATE_THRESHOLD = 0.5
 MIN_TOTAL_RUNS = 3
 LOOKBACK_DAYS = 7
 
+# 所要秒サマリー用。duration_s は pipeline_log_step.sh が自動計測した
+# 「前ステップからの経過秒」で、ステップ単体の実行時間の上限値。
+# 0 は「0秒」と「未計測（第3引数なしの旧ログ）」を区別できないため集計から除外する。
+SLOW_STEP_TOP_N = 5
+SLOW_STEP_MIN_SECONDS = 30
+
 # 2026-09-10に外部Gist配布を廃止。過去7日ログがウィンドウから抜けるまで、
 # 廃止済みステップを新しいパイプライン障害として再起票しない。
 NON_BLOCKING_STEPS = {"gist_update"}
@@ -77,7 +83,16 @@ def resolution_cutoff(ledger: list, step: str) -> str:
 
 def aggregate(entries, cutoffs: dict | None = None):
     cutoffs = cutoffs or {}
-    counts = defaultdict(lambda: {"good": 0, "bad": 0, "bad_days": set(), "latest_exit_code": None, "latest_ts": ""})
+    counts = defaultdict(
+        lambda: {
+            "good": 0,
+            "bad": 0,
+            "bad_days": set(),
+            "latest_exit_code": None,
+            "latest_ts": "",
+            "durations": [],
+        }
+    )
     for e in entries:
         step = e.get("step", "unknown")
         ts = str(e.get("ts") or "")
@@ -90,6 +105,9 @@ def aggregate(entries, cutoffs: dict | None = None):
         else:
             counts[step]["bad"] += 1
             counts[step]["bad_days"].add(e.get("run_date", ""))
+        duration = e.get("duration_s")
+        if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration > 0:
+            counts[step]["durations"].append(float(duration))
         if ts >= counts[step]["latest_ts"]:
             counts[step]["latest_ts"] = ts
             counts[step]["latest_exit_code"] = e.get("exit_code", 1)
@@ -104,6 +122,59 @@ def has_auto_fix_rule(ledger: list, step: str) -> bool:
         if step in str(entry.get("description") or ""):
             return True
     return False
+
+
+def slow_steps(counts, top_n=SLOW_STEP_TOP_N, min_seconds=SLOW_STEP_MIN_SECONDS):
+    """所要秒が記録されているステップから「遅い」ものを選び、遅い順のリストで返す。
+
+    引数:
+        counts: aggregate() の戻り値。counts[step]["durations"] に 0 より大きい
+                実測秒のリストが入る（未計測=0 は除外済み。空リストのステップもある）
+        top_n: 返す最大件数
+        min_seconds: これ未満のステップは報告しない下限秒
+
+    戻り値: [(step, 代表秒, 実測サンプル数), ...] を代表秒の降順で最大 top_n 件
+
+    代表秒は期間内の**最大値**。平均や最新値ではなくピークを採るのは、日次1回のため
+    サンプルが最大7件しかなく平均では単発の悪化が埋もれるから。反面、NTP補正や
+    一時的な外部API待ちによる1回だけのスパイクも拾うので、サンプル数を併記して
+    読み手が単発か慢性かを判断できるようにしている。
+    """
+    rows = []
+    for step, c in counts.items():
+        durations = c.get("durations") or []
+        if not durations:
+            # 未計測のステップ（旧ログや第3引数なしの0のみ）は報告対象外
+            continue
+        peak = max(durations)
+        if peak < min_seconds:
+            continue
+        rows.append((step, peak, len(durations)))
+    rows.sort(key=lambda r: -r[1])
+    return rows[:top_n]
+
+
+def print_duration_summary(counts):
+    """所要秒サマリーを標準出力に出す（朝レポートのログに残る）。"""
+    measured = sum(len(c["durations"]) for c in counts.values())
+    if measured == 0:
+        print(
+            f"\n所要秒の実測ログがまだありません（直近{LOOKBACK_DAYS}日）。"
+            "pipeline_log_step.sh の自動計測が入った翌朝から溜まります。",
+            flush=True,
+        )
+        return
+
+    rows = slow_steps(counts)
+    print(
+        f"\n=== 所要秒の重いステップ（直近{LOOKBACK_DAYS}日 / {SLOW_STEP_MIN_SECONDS}秒以上） ===",
+        flush=True,
+    )
+    if not rows:
+        print(f"  {SLOW_STEP_MIN_SECONDS}秒以上かかっているステップはありません。", flush=True)
+        return
+    for step, seconds, samples in rows:
+        print(f"  {step}: {seconds:.0f}秒 (実測{samples}回)", flush=True)
 
 
 def load_ledger():
@@ -155,6 +226,7 @@ def main():
     steps_seen = {e.get("step", "unknown") for e in entries}
     cutoffs = {step: cutoff for step in steps_seen if (cutoff := resolution_cutoff(ledger, step))}
     counts = aggregate(entries, cutoffs)
+    print_duration_summary(counts)
 
     penalty_steps = []
     for step, c in counts.items():

@@ -21,6 +21,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from obsidian_query import list_vault_md_files  # noqa: E402
+from scripts._pipeline_common import write_json_only_stub  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -370,6 +371,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-json", type=Path, default=DEFAULT_OUTPUT_JSON)
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
     parser.add_argument("--state-jsonl", type=Path, default=DEFAULT_STATE_JSONL)
+    parser.add_argument("--json-only", action="store_true", help="人間向けMarkdownを書かずJSONのみ更新する（md消費者は ops_friction_doctor の glob のみ）")
     return parser.parse_args()
 
 
@@ -384,8 +386,17 @@ def main() -> int:
         target_date=args.date,
     )
     _write_json(args.output_json, payload)
-    args.output_md.parent.mkdir(parents=True, exist_ok=True)
-    args.output_md.write_text(build_markdown(payload), encoding="utf-8")
+    if args.json_only:
+        write_json_only_stub(
+            args.output_md,
+            title="Obsidian Memory Effectiveness",
+            json_path=args.output_json,
+            generated_at=str(payload.get("generated_at") or ""),
+        )
+    else:
+        args.output_md.parent.mkdir(parents=True, exist_ok=True)
+        args.output_md.write_text(build_markdown(payload), encoding="utf-8")
+    # state jsonl は人間向けレポートではなく時系列データなので --json-only でも必ず更新する
     write_state_jsonl(args.state_jsonl, payload)
     summary = payload["summary"]
     print(
@@ -393,7 +404,10 @@ def main() -> int:
         f"total={summary['total']} recalled={summary['recalled']} "
         f"used={summary['used']} validated={summary['validated']} noisy={summary['noisy']}"
     )
-    print(f"report: {args.output_md}")
+    if args.json_only:
+        print(f"stub_md={args.output_md} (--json-only)")
+    else:
+        print(f"report: {args.output_md}")
 
     if knowledge_dir.exists() and summary["total"] == 0:
         print(

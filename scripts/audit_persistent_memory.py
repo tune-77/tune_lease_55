@@ -16,6 +16,10 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts._pipeline_common import write_json_only_stub  # noqa: E402
 DEFAULT_PERSISTENT = PROJECT_ROOT / "PERSISTENT_MEMORY.md"
 DEFAULT_OUTPUT_JSON = PROJECT_ROOT / "reports" / "persistent_memory_audit_latest.json"
 DEFAULT_OUTPUT_MD = PROJECT_ROOT / "reports" / "persistent_memory_audit_latest.md"
@@ -91,6 +95,7 @@ def main() -> int:
     parser.add_argument("--output-json", type=Path, default=DEFAULT_OUTPUT_JSON)
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--json-only", action="store_true", help="人間向けMarkdownを書かずJSONのみ更新する（md消費者は ops_friction_doctor の glob のみ）")
     args = parser.parse_args()
     text = args.persistent.read_text(encoding="utf-8", errors="ignore") if args.persistent.exists() else ""
     report = audit_text(text)
@@ -109,8 +114,17 @@ def main() -> int:
         return 0
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    args.output_md.write_text(markdown(report), encoding="utf-8")
     print(f"wrote={args.output_json}")
+    if args.json_only:
+        write_json_only_stub(
+            args.output_md,
+            title="Persistent Memory Audit",
+            json_path=args.output_json,
+            generated_at=str(report.get("generated_at") or ""),
+        )
+        print(f"stub_md={args.output_md} (--json-only)")
+        return 0
+    args.output_md.write_text(markdown(report), encoding="utf-8")
     print(f"wrote={args.output_md}")
     return 0
 

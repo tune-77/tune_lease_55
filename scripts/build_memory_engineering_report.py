@@ -15,12 +15,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts._pipeline_common import write_json_only_stub  # noqa: E402
 
 DEFAULT_OUTPUT_JSON = REPO_ROOT / "reports" / "memory_engineering_latest.json"
 DEFAULT_OUTPUT_MD = REPO_ROOT / "reports" / "memory_engineering_latest.md"
@@ -1273,9 +1278,19 @@ def build_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_outputs(payload: dict[str, Any], output_json: Path, output_md: Path) -> None:
+def write_outputs(
+    payload: dict[str, Any], output_json: Path, output_md: Path, json_only: bool = False
+) -> None:
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if json_only:
+        write_json_only_stub(
+            output_md,
+            title="Memory Engineering",
+            json_path=output_json,
+            generated_at=str(payload.get("generated_at") or ""),
+        )
+        return
     output_md.write_text(build_markdown(payload), encoding="utf-8")
 
 
@@ -1296,6 +1311,7 @@ def main() -> int:
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
     parser.add_argument("--date", default=None)
     parser.add_argument("--recent-days", type=int, default=30)
+    parser.add_argument("--json-only", action="store_true", help="人間向けMarkdownを書かずJSONのみ更新する（md消費者は ops_friction_doctor の glob のみ）")
     args = parser.parse_args()
 
     payload = build_report(
@@ -1314,12 +1330,15 @@ def main() -> int:
         target_date=args.date,
         recent_days=args.recent_days,
     )
-    write_outputs(payload, args.output_json, args.output_md)
+    write_outputs(payload, args.output_json, args.output_md, json_only=args.json_only)
+    destination = (
+        f"stub_md={args.output_md} (--json-only)" if args.json_only else str(args.output_md)
+    )
     print(
         "Memory Engineering report: "
         f"{payload['summary']['write_path_records']} write-path records, "
         f"{payload['summary']['active_canonical_rules']} active rules, "
-        f"{payload['summary']['open_human_review_records']} open reviews -> {args.output_md}"
+        f"{payload['summary']['open_human_review_records']} open reviews -> {destination}"
     )
     return 0
 
