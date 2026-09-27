@@ -186,21 +186,24 @@ def save_human_decision(memory_id: str, *, decision: Decision, note: str = "") -
     clean_id = memory_id.strip()
     if decision not in ALLOWED_DECISIONS:
         raise ValueError("invalid decision")
+    clean_note = note.strip()
+    if len(clean_note) > 1000:
+        raise ValueError("note must be 1000 characters or fewer")
     queue = get_review_queue()
     candidates = {str(item["memory_id"]): item for item in queue.get("items") or []}
     if clean_id not in candidates:
         raise KeyError(clean_id)
-    now = datetime.now().isoformat(timespec="seconds")
-    review = {"decision": decision, "note": note.strip()[:1000], "reviewed_at": now}
+    now = datetime.now().isoformat(timespec="microseconds")
+    review = {"decision": decision, "note": clean_note, "reviewed_at": now}
     with _STATE_LOCK:
         state = load_state()
         if state["reviews"].get(clean_id, {}).get("deleted_at"):
             raise KeyError(clean_id)
         state["reviews"][clean_id] = review
         _save_state(state)
-    AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with AUDIT_PATH.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"ts": now, "memory_id": clean_id, **review}, ensure_ascii=False) + "\n")
+        AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with AUDIT_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"ts": now, "memory_id": clean_id, **review}, ensure_ascii=False) + "\n")
     return {**candidates[clean_id], "human_decision": decision, "human_note": review["note"], "reviewed_at": now}
 
 
@@ -216,20 +219,19 @@ def delete_review_candidate(memory_id: str) -> dict[str, Any]:
     if clean_id not in candidates:
         raise KeyError(clean_id)
 
-    now = datetime.now().isoformat(timespec="seconds")
+    now = datetime.now().isoformat(timespec="microseconds")
     with _STATE_LOCK:
         state = load_state()
         previous = state["reviews"].get(clean_id, {})
         state["reviews"][clean_id] = {**previous, "deleted_at": now}
         _save_state(state)
-
-    AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with AUDIT_PATH.open("a", encoding="utf-8") as handle:
-        handle.write(
-            json.dumps(
-                {"ts": now, "memory_id": clean_id, "action": "delete_review_candidate"},
-                ensure_ascii=False,
+        AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with AUDIT_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {"ts": now, "memory_id": clean_id, "action": "delete_review_candidate"},
+                    ensure_ascii=False,
+                )
+                + "\n"
             )
-            + "\n"
-        )
     return {"memory_id": clean_id, "deleted_at": now, "memory_deleted": False}

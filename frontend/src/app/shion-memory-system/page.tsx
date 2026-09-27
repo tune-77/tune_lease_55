@@ -486,9 +486,10 @@ function JevMemoryReviewPanel() {
                 <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_auto]">
                   <textarea
                     rows={2}
+                    maxLength={1000}
                     value={notes[item.memory_id] ?? item.human_note ?? ""}
                     onChange={(event) => setNotes((current) => ({ ...current, [item.memory_id]: event.target.value }))}
-                    placeholder="人間の判断理由"
+                    placeholder="人間の判断理由（1000文字以内）"
                     className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold leading-6 text-slate-800"
                   />
                   <div className="flex flex-wrap items-center gap-2">

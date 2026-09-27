@@ -47,7 +47,7 @@ class MemoryReviewRequest(BaseModel):
 
 class JevMemoryReviewRequest(BaseModel):
     decision: Literal["retain", "revise", "archive_candidate", "held"]
-    note: str = ""
+    note: str = Field(default="", max_length=1000)
 
 
 class ShionHydeDebugRequest(BaseModel):

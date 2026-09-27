@@ -157,3 +157,13 @@ def test_cloudrun_state_uses_durable_gcs_store(monkeypatch):
 
     assert state["reviews"]["mem_1"]["decision"] == "retain"
     assert written and written[0]["reviews"]["mem_1"]["decision"] == "retain"
+
+
+def test_note_over_limit_is_rejected_without_silent_truncation(tmp_path, monkeypatch):
+    report_path, state_path, _ = _paths(tmp_path, monkeypatch)
+    _write_report(report_path)
+
+    with pytest.raises(ValueError, match="1000"):
+        review.save_human_decision("mem_1", decision="held", note="x" * 1001)
+
+    assert not state_path.exists()
