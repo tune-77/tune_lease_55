@@ -350,6 +350,18 @@ echo "[反映] RAG 鮮度分析 — 長期アクセスなしノードを台帳�
 "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_rag_staleness.py"; log_step "analyze_rag_staleness" $?
 
 echo ""
+echo "[復旧] 過去の解決済み障害から許可済みレシピを選び、直近失敗を自動再検証中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/run_pipeline_auto_recovery.py" \
+    --apply \
+    --run-date "${LOG_DATE}" \
+    --limit 1
+PIPELINE_AUTO_RECOVERY_EXIT=$?
+log_step "pipeline_auto_recovery" ${PIPELINE_AUTO_RECOVERY_EXIT}
+if [ ${PIPELINE_AUTO_RECOVERY_EXIT} -ne 0 ]; then
+    echo "警告: パイプライン自動復旧の実行に失敗しました（終了コード ${PIPELINE_AUTO_RECOVERY_EXIT}）。通常の障害検出は継続します。"
+fi
+
+echo ""
 echo "[反映] パイプラインヘルス分析 — 失敗率の高いステップをルール台帳に追記中..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_pipeline_health.py"; log_step "analyze_pipeline_health" $?
 
