@@ -16,6 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from screening_record_lifecycle import active_screening_predicate  # noqa: E402
+
 DEFAULT_DB = REPO_ROOT / "data" / "lease_data.db"
 DEFAULT_REPORT = REPO_ROOT / "reports" / "real_case_difference_learning_latest.json"
 
@@ -133,11 +135,12 @@ def load_outcome_signals(
 ) -> tuple[dict[str, int], list[dict[str, Any]]]:
     counts: dict[str, int] = {}
     candidates: list[dict[str, Any]] = []
+    active = active_screening_predicate(conn, "sr")
     for signal_type, definition in _SIGNAL_DEFINITIONS.items():
         where = definition["where"]
         counts[signal_type] = int(
             conn.execute(
-                f"SELECT COUNT(*) FROM screening_records sr WHERE {where}"
+                f"SELECT COUNT(*) FROM screening_records sr WHERE {active} AND ({where})"
             ).fetchone()[0]
             or 0
         )
@@ -147,7 +150,7 @@ def load_outcome_signals(
                    pc.industry_sub, pc.data
             FROM screening_records sr
             LEFT JOIN past_cases pc ON pc.id = sr.case_id
-            WHERE {where}
+            WHERE {active} AND ({where})
             ORDER BY sr.id DESC
             LIMIT ?
             """,

@@ -4,6 +4,7 @@
 screening_records は統計バッチ用（読み取り専用）。
 """
 import json
+import logging
 import os
 import sqlite3
 import time
@@ -13,6 +14,8 @@ from contextlib import closing
 
 import streamlit as st
 from runtime_paths import get_data_path
+
+logger = logging.getLogger(__name__)
 
 # DB パス（Cloud Run では /app/data）
 _LEASE_DB_PATH = get_data_path("lease_data.db")
@@ -369,7 +372,27 @@ def render_status_registration():
                         if st.button("🗑️ 案件レコードを完全に削除", key=f"del_full_{rec_id}", type="secondary"):
                             try:
                                 with closing(sqlite3.connect(_LEASE_DB_PATH)) as conn:
-                                    conn.execute("DELETE FROM past_cases WHERE id=?", (str(rec_id),))
+                                    from case_deletion_audit import (
+                                        begin_case_deletion_event,
+                                        complete_case_deletion_event,
+                                    )
+                                    audit_event = None
+                                    try:
+                                        audit_event = begin_case_deletion_event(
+                                            conn,
+                                            [str(rec_id)],
+                                            route="streamlit.form_status",
+                                            reason="manual_full_delete",
+                                        )
+                                    except Exception:
+                                        # fail-open: data_cases.delete_case と同じ方針
+                                        logger.exception("form_status delete audit failed: %s", rec_id)
+                                    cursor = conn.execute(
+                                        "DELETE FROM past_cases WHERE id=?", (str(rec_id),)
+                                    )
+                                    if audit_event is not None:
+                                        deleted_ids = audit_event.matched_case_ids if cursor.rowcount else ()
+                                        complete_case_deletion_event(conn, audit_event, deleted_ids)
                                     conn.commit()
                                 st.toast(f"🗑️ 案件を削除しました")
                                 time.sleep(0.5)
