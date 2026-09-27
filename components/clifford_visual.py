@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from runtime_paths import get_data_path
+from screening_record_lifecycle import active_screening_predicate
 
 try:
     import plotly.graph_objects as go
@@ -132,7 +133,8 @@ def _load_db() -> pd.DataFrame:
         return _load_past_cases()
     try:
         conn = sqlite3.connect(str(_DB_PATH))
-        query = "SELECT * FROM screening_records ORDER BY created_at DESC"
+        active = active_screening_predicate(conn)
+        query = f"SELECT * FROM screening_records WHERE {active} ORDER BY created_at DESC"
         query += f" LIMIT {_VIS_LIMIT}"
         df = pd.read_sql_query(query, conn)
         conn.close()
