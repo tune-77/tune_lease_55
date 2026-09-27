@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, ReferenceLine,
   AreaChart, Area
 } from 'recharts';
+import { apiClient } from '../../lib/api';
 
 interface Props {
   companyName?: string;
@@ -55,20 +56,13 @@ export default function RealGraphs({
       return;
     }
     Promise.resolve().then(() => setForecastLoading(true));
-    fetch('/api/timesfm/financial_paths', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        company_name: companyName || '（未入力）',
-        n_periods: 60,
-        current_revenue: Math.max(0, Number(nenshu || 0) * 1000),
-        current_revenue_unit: 'thousand_yen',
-      }),
+    apiClient.post('/api/timesfm/financial_paths', {
+      company_name: companyName || '（未入力）',
+      n_periods: 60,
+      current_revenue: Math.max(0, Number(nenshu || 0) * 1000),
+      current_revenue_unit: 'thousand_yen',
     })
-      .then(r => {
-        if (!r.ok) throw new Error(`forecast api failed: ${r.status}`);
-        return r.json();
-      })
+      .then(r => r.data)
       .then(d => {
         const median: number[] = d.gbm_median || [];
         if (!median.length) {

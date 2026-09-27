@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart2, Activity, Network, Box } from 'lucide-react';
+import { apiClient } from '../../lib/api';
 
 interface NetworkRiskResult {
   network_risk_pct: number;
@@ -69,12 +70,8 @@ export default function AdvancedAnalysis({ industrySub = "", companyName = "", s
   useEffect(() => {
     if (!industrySub) return;
     setTfmLoading(true);
-    fetch('/api/timesfm/industry_trend', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ industry: industrySub, horizon_months: 12 }),
-    })
-      .then(r => r.json())
+    apiClient.post('/api/timesfm/industry_trend', { industry: industrySub, horizon_months: 12 })
+      .then(r => r.data)
       .then((d: TfmResult) => setTfmResult(d))
       .catch(() => setTfmResult({ error: 'fetch failed' }))
       .finally(() => setTfmLoading(false));
@@ -83,8 +80,8 @@ export default function AdvancedAnalysis({ industrySub = "", companyName = "", s
   const analyzeNetworkRisk = async () => {
     setNetworkLoading(true);
     try {
-      const res = await fetch(`/api/analysis/network_risk?industry=${encodeURIComponent(industrySub)}`);
-      setNetworkResult(await res.json());
+      const res = await apiClient.get(`/api/analysis/network_risk?industry=${encodeURIComponent(industrySub)}`);
+      setNetworkResult(res.data);
     } catch {
       setNetworkResult(null);
     } finally {
@@ -96,12 +93,11 @@ export default function AdvancedAnalysis({ industrySub = "", companyName = "", s
     setMcLoading(true);
     setMcResult(null);
     try {
-      const res = await fetch('/api/timesfm/financial_paths', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: companyName || '（未入力）', n_periods: 60 }),
+      const res = await apiClient.post('/api/timesfm/financial_paths', {
+        company_name: companyName || '（未入力）',
+        n_periods: 60,
       });
-      setMcResult(await res.json());
+      setMcResult(res.data);
     } catch {
       setMcResult(null);
     } finally {
