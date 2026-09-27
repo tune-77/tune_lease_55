@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import datetime as dt
+import os
 
 
 def test_agent_worklog_digest_extracts_public_summary_sections(tmp_path):
@@ -158,6 +159,33 @@ def test_build_digest_prefers_newest_appended_project_tasks(tmp_path):
     assert result["source_count"] == 13
     assert result["items"][0]["summary"][0] == "作業: task-12"
     assert result["items"][-1]["summary"][0] == "作業: task-1"
+
+
+def test_build_digest_compares_project_mtime_with_daily_log_time(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    daily = vault / "Daily"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    daily.mkdir(parents=True)
+    worklogs.mkdir(parents=True)
+    note_date = dt.date.today().isoformat()
+    (daily / f"{note_date}.md").write_text(
+        "## 10:00 Codex Work Log\n\n### Summary\n- Daily側",
+        encoding="utf-8",
+    )
+    project_note = worklogs / f"{note_date}.md"
+    project_note.write_text(
+        "## 作業: Project側\n\n### 何をしたか\n新しい作業",
+        encoding="utf-8",
+    )
+    project_timestamp = dt.datetime.combine(dt.date.today(), dt.time(11, 0)).timestamp()
+    os.utime(project_note, (project_timestamp, project_timestamp))
+
+    result = digest.build_digest(vault, days=1, limit=1)
+
+    assert result["items"][0]["summary"][0] == "作業: Project側"
+    assert result["items"][0]["time"] == "11:00"
 
 
 def test_main_detects_project_format_drift_even_when_daily_parser_succeeds(tmp_path, monkeypatch, capsys):

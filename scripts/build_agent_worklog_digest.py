@@ -135,6 +135,12 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
         return []
 
     starts = [index for index, line in enumerate(lines) if line.startswith("## 作業:")]
+    try:
+        # Project形式には時刻見出しがないため、最終追記時刻をDaily形式のHH:MMと
+        # 比較可能なキーとして使う。同一ファイル内はsequenceで新しい追記を優先する。
+        project_time = dt.datetime.fromtimestamp(note_path.stat().st_mtime).strftime("%H:%M:%S")
+    except OSError:
+        project_time = "00:00:00"
     logs: list[dict[str, Any]] = []
     for position, start in enumerate(starts):
         end = starts[position + 1] if position + 1 < len(starts) else len(lines)
@@ -171,7 +177,8 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
         summary.extend(collect("何をした", "概要", "結論", limit=2))
         logs.append({
             "date": note_path.stem,
-            "time": "00:00",
+            "time": project_time[:5],
+            "sort_time": project_time,
             "sequence": position,
             "agent": "Agent",
             "source_path": str(note_path),
@@ -231,7 +238,7 @@ def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]
     logs.sort(
         key=lambda item: (
             str(item.get("date") or ""),
-            str(item.get("time") or ""),
+            str(item.get("sort_time") or item.get("time") or ""),
             int(item.get("sequence") or 0),
         ),
         reverse=True,

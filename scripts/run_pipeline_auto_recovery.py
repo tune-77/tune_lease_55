@@ -153,10 +153,12 @@ def _recover_memory_health(root: Path) -> tuple[bool, str]:
         return False, "旧基準が存在しないため通常ヘルスチェックに委ねる"
 
     current_total = int(summary.get("total") or 0)
-    drop_ratio = max(0, previous_total - current_total) / previous_total
-    if drop_ratio > 0.3:
+    drop_records = max(0, previous_total - current_total)
+    drop_ratio = drop_records / previous_total
+    if drop_records > 100 or drop_ratio > 0.3:
         return False, (
-            f"旧基準から{drop_ratio:.1%}減少しており既知のローリング層変動を超えるため、"
+            f"旧基準から{drop_records}件（{drop_ratio:.1%}）減少しており"
+            "通常ヘルスチェックの安全閾値を超えるため、"
             "自動移行しない"
         )
 

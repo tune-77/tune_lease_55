@@ -112,6 +112,32 @@ def test_memory_health_recipe_refuses_large_unexplained_drop(tmp_path: Path) -> 
     assert "自動移行しない" in detail
 
 
+def test_memory_health_recipe_preserves_absolute_drop_guard(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    records = [
+        {
+            "id": f"long-{index}",
+            "memory_type": "factual_memory",
+            "memory_layer": "long_term",
+            "status": "active",
+        }
+        for index in range(899)
+    ]
+    (data / "shion_memory_index.json").write_text(json.dumps({"records": records}), encoding="utf-8")
+    (data / "shion_memory_health_state.json").write_text(
+        json.dumps({"total": 1000, "by_type": {}, "by_status": {}}),
+        encoding="utf-8",
+    )
+
+    success, detail = recovery._recover_memory_health(tmp_path)
+
+    state = json.loads((data / "shion_memory_health_state.json").read_text(encoding="utf-8"))
+    assert success is False
+    assert state["total"] == 1000
+    assert "101件" in detail
+
+
 def test_execute_plan_appends_success_only_after_verification(tmp_path: Path, monkeypatch) -> None:
     log_path = tmp_path / "pipeline.jsonl"
     plan = {
