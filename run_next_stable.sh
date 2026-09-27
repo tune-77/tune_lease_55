@@ -85,27 +85,7 @@ sync_standalone_assets() {
   if [ ! -d "frontend/.next/standalone" ]; then
     return 0
   fi
-  if [ ! -d "frontend/.next/static" ]; then
-    echo "Standalone output exists, but frontend/.next/static is missing; static assets were not synced." >&2
-    return 1
-  fi
-
-  mkdir -p frontend/.next/standalone/.next/static frontend/.next/standalone/public
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete frontend/.next/static/ frontend/.next/standalone/.next/static/
-    rsync -a --delete frontend/public/ frontend/.next/standalone/public/
-  elif command -v ditto >/dev/null 2>&1; then
-    rm -rf frontend/.next/standalone/.next/static frontend/.next/standalone/public
-    mkdir -p frontend/.next/standalone/.next/static frontend/.next/standalone/public
-    ditto frontend/.next/static frontend/.next/standalone/.next/static
-    ditto frontend/public frontend/.next/standalone/public
-  else
-    rm -rf frontend/.next/standalone/.next/static frontend/.next/standalone/public
-    mkdir -p frontend/.next/standalone/.next frontend/.next/standalone
-    cp -R frontend/.next/static frontend/.next/standalone/.next/static
-    cp -R frontend/public frontend/.next/standalone/public
-  fi
-  echo "Synced standalone static/public assets."
+  (cd frontend && node scripts/sync-standalone-assets.mjs)
 }
 
 wait_for_http_ok() {

@@ -9,7 +9,7 @@ RUN npm ci
 COPY . ./
 ARG FASTAPI_URL=http://127.0.0.1:8000
 ENV FASTAPI_URL=$FASTAPI_URL
-RUN npm run build
+RUN SKIP_STANDALONE_ASSET_SYNC=1 npm run build
 
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
