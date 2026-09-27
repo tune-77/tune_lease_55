@@ -1,4 +1,6 @@
+import os
 import sys
+import time
 
 from scripts import ops_friction_doctor as doctor
 
@@ -137,3 +139,73 @@ def test_cloudrun_sync_gap_ignores_plain_cloudrun_mentions(tmp_path, monkeypatch
     findings = doctor.build_findings(tmp_path, ("memory/*.md",))
 
     assert "cloudrun_sync_gap" not in {item.id for item in findings}
+
+
+def test_scan_logs_records_report_age_in_days(tmp_path):
+    """REV-420: 週次生成レポートは最長6日間ヒットし続けるので鮮度を持たせる。"""
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    stale = reports / "instruction_debt_latest.md"
+    stale.write_text("Gitship dirty worktree generated/runtime artifact\n", encoding="utf-8")
+    old = time.time() - 5 * 86400
+    os.utime(stale, (old, old))
+
+    hits = doctor.scan_logs(tmp_path, ("reports/*_latest.md",))
+
+    assert hits["gitship_noise"][0].age_days == 5
+
+
+def test_render_marks_stale_hits_but_not_fresh_ones(tmp_path, monkeypatch):
+    monkeypatch.setattr(doctor, "git_dirty_counts", lambda root: {"total": 0, "generated_like": 0})
+    fresh = doctor.LogHit(path="reports/a_latest.md", count=1, samples=[], age_days=0)
+    stale = doctor.LogHit(path="reports/b_latest.md", count=1, samples=[], age_days=6)
+    finding = doctor.Finding(
+        id="gitship_noise",
+        title="Gitship dirty noise",
+        severity="low",
+        score=2,
+        scope="Gitship前",
+        reason="test",
+        command="python scripts/classify_git_ship_candidates.py",
+        auto_command="",
+        hits=[fresh, stale],
+    )
+
+    text = doctor.render([finding])
+
+    assert "reports/a_latest.md (1 hits)" in text
+    assert "日前のレポート" not in text.split("reports/b_latest.md")[0]
+    assert "reports/b_latest.md (1 hits)（6日前のレポート）" in text
+
+
+def test_stale_only_hits_are_dropped_from_findings(tmp_path, monkeypatch):
+    """REV-420: 鮮度切れのヒットだけの項目は score 0 になり「今日の課題」から外れる。"""
+    monkeypatch.setattr(doctor, "git_dirty_counts", lambda root: {"total": 0, "generated_like": 0})
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    stale = reports / "instruction_debt_latest.md"
+    stale.write_text("Gitship dirty worktree generated/runtime artifact\n", encoding="utf-8")
+    old = time.time() - 5 * 86400
+    os.utime(stale, (old, old))
+
+    findings = doctor.build_findings(tmp_path, ("reports/*_latest.md",))
+
+    assert [item.id for item in findings] == []
+
+
+def test_fresh_hits_are_scored_and_stale_ones_are_reported_but_not_scored(tmp_path, monkeypatch):
+    monkeypatch.setattr(doctor, "git_dirty_counts", lambda root: {"total": 0, "generated_like": 0})
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    fresh = reports / "ops_friction_source_latest.md"
+    fresh.write_text("Gitship dirty worktree\n", encoding="utf-8")
+    stale = reports / "instruction_debt_latest.md"
+    stale.write_text("Gitship dirty worktree\nanother dirty worktree line\n", encoding="utf-8")
+    old = time.time() - 5 * 86400
+    os.utime(stale, (old, old))
+
+    findings = doctor.build_findings(tmp_path, ("reports/*_latest.md",))
+
+    assert len(findings) == 1
+    assert findings[0].score == 1
+    assert "2 more hits are from reports older than" in findings[0].reason
