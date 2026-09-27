@@ -160,7 +160,7 @@ jobs:
           fi
 
           # 起動できなくても台帳はPRに入っており、承認待ちの run を手動で
-          # Approve and run すれば同じ結果になる。忘れても次の run の滞留検知が赤にする。
+          # Approve and run すれば同じ結果になる。滞留は後続ステップのサマリに残す。
           if gh workflow run "${TARGET_WORKFLOW}" --ref "$SYNC_BRANCH"; then
             echo "台帳PRの必須チェックを workflow_dispatch で起動しました（\`${SHA}\`）" >> "$GITHUB_STEP_SUMMARY"
           else
@@ -172,17 +172,18 @@ jobs:
             echo "::warning::pr-checks を起動できませんでした（台帳PRは手動承認待ちのままです）"
           fi
 
-      # 「PRを作れた＝成功」で終わらせない。成否は台帳が master へ入ったかで判定する。
+      # 台帳PRの滞留はサマリに残すが、この run の失敗にはしない。
       #
       # bot が作ったPRでは pr-checks.yml が action_required（承認待ち）のまま走らず、
       # required check が報告されないので auto-merge が永久に待つ。このときジョブは
       # 緑（PRは作れた・auto-merge も有効化できた）なのに台帳は master に届かない。
-      # REV-362 で潰したはずの「静かな滞留」が一段先で再発したため、
-      # 台帳PRが残り続けている状態そのものを赤にする。
+      # ただし pull_request.closed のたびに同じ滞留を exit 1 にすると、無関係なPRの
+      # タイトルで Ledger Sync の失敗通知が繰り返される。生成・検証・push・PR作成の
+      # 失敗は引き続き赤にし、作成済みPRの滞留だけは警告として扱う。
       #
       # push する差分が無かった run（pushed=false）でも滞留は起きているので、
       # if: always() で必ず通す。
-      - name: Fail when the ledger PR is stalled
+      - name: Report when the ledger PR is stalled
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -216,8 +217,7 @@ jobs:
             echo ""
             echo "PR: https://github.com/${GITHUB_REPOSITORY}/pull/${PR_NUM}"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::error::台帳PR #${PR_NUM} が ${AGE_MIN} 分マージされていません（台帳が master に届いていない）"
-          exit 1
+          echo "::warning::台帳PR #${PR_NUM} が ${AGE_MIN} 分マージされていません（台帳が master に届いていない）"
 
       - name: Notify Slack on failure
         if: failure()
