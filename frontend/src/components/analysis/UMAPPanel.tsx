@@ -6,7 +6,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceDot,
 } from 'recharts';
 import { Map, ChevronDown, ChevronUp, Info, Loader2 } from 'lucide-react';
-import axios from 'axios';
+import { apiClient } from '../../lib/api';
 
 type Point = { x: number; y: number; s: string };
 type SimilarPoint = { x: number; y: number; status: string };
@@ -47,7 +47,7 @@ export default function UMAPPanel({ score, umapX, umapY, similar, compact = fals
     if (_embeddingsCache) {
       return;
     }
-    axios.get<{ points: Point[] }>('/api/umap/embeddings')
+    apiClient.get<{ points: Point[] }>('/api/umap/embeddings')
       .then(res => {
         _embeddingsCache = res.data.points;
         setWonPoints(res.data.points.filter(p => p.s === '成約'));

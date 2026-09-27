@@ -3,6 +3,7 @@ import { Mic, MicOff, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-reac
 import { ScoringFormData } from '../../types';
 import SliderInput from '../SliderInput';
 import { focusNextScreeningNumber, parseHumanNumberInput } from '../../lib/numberInput';
+import { apiClient } from '../../lib/api';
 
 // REV-064: 物件ごとの法定耐用年数 / REV-068: 推奨業種
 const ASSET_INFO: Record<string, { usefulLifeYears: number; industryMajor: string }> = {
@@ -117,29 +118,26 @@ export default function FormQualitative({ data, onChange }: FormQualitativeProps
 
   // マスターデータの取得
   useEffect(() => {
-    const fetchMaster = async () => {
+    const fetchQual = async () => {
       try {
-        const [qualRes, assetRes] = await Promise.all([
-          fetch(`/api/master/qualitative`),
-          fetch(`/api/master/assets`)
-        ]);
-        
-        if (qualRes.ok) {
-          const qualData = await qualRes.json();
-          setQualItems(qualData.items || []);
-        }
-        
-        if (assetRes.ok) {
-          const assetData = await assetRes.json();
-          // lease_assets.json の構造に合わせて抽出
-          const items = assetData.items?.map((it: { name: string }) => it.name) || [];
-          setAssetItems(items);
-        }
+        const res = await apiClient.get('/api/master/qualitative');
+        setQualItems(res.data.items || []);
       } catch (err) {
-        console.error("Failed to fetch qual/asset master:", err);
+        console.error("Failed to fetch qual master:", err);
       }
     };
-    fetchMaster();
+    const fetchAssets = async () => {
+      try {
+        const res = await apiClient.get('/api/master/assets');
+        // lease_assets.json の構造に合わせて抽出
+        const items = res.data.items?.map((it: { name: string }) => it.name) || [];
+        setAssetItems(items);
+      } catch (err) {
+        console.error("Failed to fetch asset master:", err);
+      }
+    };
+    fetchQual();
+    fetchAssets();
   }, []);
   
   const handleSelect = (e: React.ChangeEvent<HTMLSelectElement | HTMLTextAreaElement | HTMLInputElement>) => {

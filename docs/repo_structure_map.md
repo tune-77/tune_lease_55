@@ -13,6 +13,17 @@
 
 新規実装は特に指示がない限り Next.js + FastAPI 側を優先する（`AGENTS.md` Part 2参照）。`scoring_core.py` はスコアリングロジックの正本で両系統から参照される共有コア。
 
+## ⚠️ ルート直下 `*.py` は「Streamlitレガシー」だけではない
+
+ルート直下の `*.py`（177本）のうち約4割（`novel_*` / `quantum_*` / `mahalanobis_*` / `aurion_*` / `lease_intelligence_*` / `obsidian_*` / `judgment_asset_*` / `typesafe_*` / `shion_*` / `shinsa_gunshi_*` など、通称「紫苑」エージェント基盤）は、Streamlitレガシー系統ではなく**現行Next.js+FastAPI側にも配線され本番稼働している**。特に注意:
+
+- `quantum_analysis_module.py` / `mahalanobis_engine.py` は `scoring_core.py` が直接import。`quantum_risk` / `mahalanobis_score` は本番スコア出力フィールド。
+- `api/main.py` は `lease_intelligence_*` 各種・`judgment_assets_router`・`gunshi_router`（`shinsa_gunshi_logic.py`）・`vault_hub_router`（`/api/agent_hub/novel/generate` 等、`novelist_agent.py`ベース）を組み込み済みで、到達可能な本番APIエンドポイント。
+
+→ 「怪しい名前＝レガシーで無視してよい」と判断せず、変更前に import元（`api/`・`scoring_core.py`）を確認すること。
+
+一方、同じ命名クラスタの中でも `flet_clifford_3d.py` / `flet_clifford_app.py` / `flet_aurion_wave.py`（Fletという他と無関係な第3のUIフレームワーク）・`sp500_prediction.py`・`humor_generator.py`（テストからのみ参照）は本稿確認時点でどこからもimportされていない未使用コードと確認し削除済み。`mahalanobis_ui.py`はオーナー判断により保持（他からのimportは未確認だが、削除対象から除外）。
+
 ## ディレクトリ早見表
 
 | パス | 役割 |
