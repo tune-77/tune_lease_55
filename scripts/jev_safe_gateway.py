@@ -12,7 +12,12 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from jev_safe_gateway import DEFAULT_AUDIT_PATH, GatewayInputError, prepare_gateway_request
+from jev_safe_gateway import (
+    DEFAULT_AUDIT_PATH,
+    GatewayInputError,
+    prepare_gateway_request,
+    verify_public_source,
+)
 
 
 def _read_payload(path: str) -> Any:
@@ -42,7 +47,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        result = prepare_gateway_request(_read_payload(args.input), audit_path=args.audit)
+        result = prepare_gateway_request(
+            _read_payload(args.input),
+            audit_path=args.audit,
+            public_source_verifier=verify_public_source,
+        )
     except (GatewayInputError, json.JSONDecodeError, OSError) as exc:
         print(json.dumps({"status": "invalid", "error": str(exc)}, ensure_ascii=False))
         return 1

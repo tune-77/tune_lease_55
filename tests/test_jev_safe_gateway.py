@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import jev_safe_gateway as gateway
 from jev_safe_gateway import GatewayInputError, prepare_gateway_request
 
 
@@ -16,15 +17,15 @@ def test_abstract_projection_keeps_mapping_local_and_writes_content_free_audit(t
     result = prepare_gateway_request(
         {
             "mode": "abstract",
-            "purpose": "変更候補を依頼との関連度で分類する",
+            "purpose": "classify_scope",
             "items": [
                 {
                     "source_id": "private-file-17",
-                    "artifact_kind": "application code",
+                    "artifact_kind": "application_code",
                     "change_kind": "feature",
                     "relation": "direct",
-                    "effect": "既存画面に利用者向けの操作を追加する",
-                    "verification_status": "focused tests passed",
+                    "effect": "add_user_action",
+                    "verification_status": "focused_tests_passed",
                 }
             ],
         },
@@ -60,7 +61,7 @@ def test_abstract_projection_blocks_sensitive_or_raw_content(effect, reason):
     result = prepare_gateway_request(
         {
             "mode": "abstract",
-            "purpose": "変更候補を分類する",
+            "purpose": "classify_scope",
             "items": [{"source_id": "local", "effect": effect}],
         }
     )
@@ -75,7 +76,7 @@ def test_public_excerpt_requires_an_approved_public_https_url():
         prepare_gateway_request(
             {
                 "mode": "public_excerpt",
-                "purpose": "公開コードの変更種別を分類する",
+                "purpose": "classify_public_excerpt",
                 "items": [
                     {
                         "source_id": "local",
@@ -93,7 +94,7 @@ def test_public_excerpt_rejects_credentials_or_query_in_public_url():
         prepare_gateway_request(
             {
                 "mode": "public_excerpt",
-                "purpose": "公開コードを分類する",
+                "purpose": "classify_public_excerpt",
                 "items": [
                     {
                         "visibility": "public",
@@ -109,7 +110,7 @@ def test_public_excerpt_allows_clean_bounded_public_code():
     result = prepare_gateway_request(
         {
             "mode": "public_excerpt",
-            "purpose": "公開コードの変更種別を分類する",
+            "purpose": "classify_public_excerpt",
             "items": [
                 {
                     "source_id": "local",
@@ -119,7 +120,8 @@ def test_public_excerpt_allows_clean_bounded_public_code():
                     "content": "def add(a, b):\n    return a + b\n",
                 }
             ],
-        }
+        },
+        public_source_verifier=lambda _url, _content: True,
     )
 
     assert result["status"] == "allowed"
@@ -130,7 +132,7 @@ def test_public_excerpt_still_blocks_a_secret():
     result = prepare_gateway_request(
         {
             "mode": "public_excerpt",
-            "purpose": "公開コードを分類する",
+            "purpose": "classify_public_excerpt",
             "items": [
                 {
                     "visibility": "public",
@@ -138,7 +140,8 @@ def test_public_excerpt_still_blocks_a_secret():
                     "content": "token = 'ghp_abcdefghijklmnopqrstuvwxyz123456'",
                 }
             ],
-        }
+        },
+        public_source_verifier=lambda _url, _content: True,
     )
 
     assert result["status"] == "blocked"
@@ -149,7 +152,7 @@ def test_public_excerpt_blocks_fine_grained_github_token():
     result = prepare_gateway_request(
         {
             "mode": "public_excerpt",
-            "purpose": "公開コードを分類する",
+            "purpose": "classify_public_excerpt",
             "items": [
                 {
                     "visibility": "public",
@@ -157,11 +160,114 @@ def test_public_excerpt_blocks_fine_grained_github_token():
                     "content": "github_pat_11AA22BB33CC44DD55EE66FF77GG88HH",
                 }
             ],
-        }
+        },
+        public_source_verifier=lambda _url, _content: True,
     )
 
     assert result["status"] == "blocked"
     assert "secret_like_content" in result["audit"]["reason_codes"]
+
+
+def test_public_excerpt_requires_source_match_and_closed_artifact_kind():
+    unverified = prepare_gateway_request(
+        {
+            "mode": "public_excerpt",
+            "purpose": "classify_public_excerpt",
+            "items": [
+                {
+                    "visibility": "public",
+                    "public_source_url": "https://github.com/example/project/blob/main/config.py",
+                    "artifact_kind": "code",
+                    "content": "safe excerpt",
+                }
+            ],
+        },
+        public_source_verifier=lambda _url, _content: False,
+    )
+    assert unverified["status"] == "blocked"
+    assert "public_source_unverified" in unverified["audit"]["reason_codes"]
+
+    bad_metadata = prepare_gateway_request(
+        {
+            "mode": "public_excerpt",
+            "purpose": "classify_public_excerpt",
+            "items": [
+                {
+                    "visibility": "public",
+                    "public_source_url": "https://github.com/example/project/blob/main/config.py",
+                    "artifact_kind": "InternalService",
+                    "content": "safe excerpt",
+                }
+            ],
+        },
+        public_source_verifier=lambda _url, _content: True,
+    )
+    assert bad_metadata["status"] == "blocked"
+    assert "unapproved_public_artifact_kind" in bad_metadata["audit"]["reason_codes"]
+
+
+def test_builtin_public_source_verifier_uses_anonymous_raw_github_content(monkeypatch):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def geturl(self):
+            return "https://raw.githubusercontent.com/example/project/main/config.py"
+
+        def read(self, _limit):
+            return b"prefix\nsafe excerpt\nsuffix\n"
+
+    def fake_urlopen(request, *, timeout):
+        assert request.full_url == (
+            "https://raw.githubusercontent.com/example/project/main/config.py"
+        )
+        assert request.get_header("Authorization") is None
+        assert timeout == 8.0
+        return Response()
+
+    monkeypatch.setattr(gateway, "urlopen", fake_urlopen)
+
+    source_url = "https://github.com/example/project/blob/main/config.py"
+    assert gateway.verify_public_source(source_url, "safe excerpt") is True
+    assert gateway.verify_public_source(source_url, "private replacement") is False
+    assert gateway.verify_public_source("https://github.com/", "safe excerpt") is False
+
+
+@pytest.mark.parametrize("effect", ["株式会社秘密商事向けの変更", "InternalServiceの処理を変更する"])
+def test_abstract_projection_rejects_unapproved_free_text(effect):
+    result = prepare_gateway_request(
+        {
+            "mode": "abstract",
+            "purpose": "classify_scope",
+            "items": [{"effect": effect}],
+        }
+    )
+
+    assert result["status"] == "blocked"
+    assert "unapproved_abstract_value" in result["audit"]["reason_codes"]
+
+
+@pytest.mark.parametrize(
+    "mode,purpose,item",
+    [
+        ("abstract", "株式会社秘密商事の変更を分類", {"effect": "add_user_action"}),
+        (
+            "public_excerpt",
+            "InternalServiceをレビュー",
+            {
+                "visibility": "public",
+                "public_source_url": "https://github.com/example/project/blob/main/config.py",
+                "content": "safe excerpt",
+            },
+        ),
+    ],
+)
+def test_all_outbound_purposes_use_closed_values(mode, purpose, item):
+    with pytest.raises(GatewayInputError, match="predefined value"):
+        prepare_gateway_request({"mode": mode, "purpose": purpose, "items": [item]})
 
 
 def test_aggregate_accepts_buckets_and_flags_but_rejects_raw_numbers():
@@ -240,7 +346,7 @@ def test_abstract_projection_blocks_generic_filenames(effect):
     result = prepare_gateway_request(
         {
             "mode": "abstract",
-            "purpose": "変更候補を分類する",
+            "purpose": "classify_scope",
             "items": [{"effect": effect}],
         }
     )
@@ -254,7 +360,7 @@ def test_unknown_fields_are_rejected_instead_of_silently_forwarded():
         prepare_gateway_request(
             {
                 "mode": "abstract",
-                "purpose": "変更候補を分類する",
+                "purpose": "classify_scope",
                 "items": [{"effect": "一般化した変更", "raw_diff": "+ secret"}],
             }
         )
@@ -270,8 +376,8 @@ def test_cli_imports_root_module_when_project_root_is_already_on_pythonpath(tmp_
     payload = json.dumps(
         {
             "mode": "abstract",
-            "purpose": "変更候補を分類する",
-            "items": [{"effect": "既存画面へ操作を追加する"}],
+            "purpose": "classify_scope",
+            "items": [{"effect": "add_user_action"}],
         },
         ensure_ascii=False,
     )

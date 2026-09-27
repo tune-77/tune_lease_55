@@ -13,8 +13,9 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 
 DEFAULT_AUDIT_PATH = Path(__file__).resolve().parent / "data" / "jev_safe_gateway_audit.jsonl"
@@ -33,6 +34,41 @@ ABSTRACT_FIELDS = (
     "risk_category",
     "verification_status",
 )
+ABSTRACT_ALLOWED_VALUES = {
+    "artifact_kind": frozenset(
+        {
+            "api",
+            "application_code",
+            "configuration",
+            "data_pipeline",
+            "documentation",
+            "migration",
+            "tests",
+            "ui",
+            "unknown",
+        }
+    ),
+    "change_kind": frozenset({"config", "docs", "feature", "fix", "generated", "refactor", "test"}),
+    "relation": frozenset({"direct", "supporting", "uncertain", "unrelated"}),
+    "effect": frozenset(
+        {
+            "add_test_coverage",
+            "add_user_action",
+            "change_configuration",
+            "change_existing_behavior",
+            "improve_error_handling",
+            "improve_observability",
+            "improve_security",
+            "improve_validation",
+            "preserve_behavior",
+            "update_documentation",
+        }
+    ),
+    "risk_category": frozenset({"high", "low", "medium", "unknown"}),
+    "verification_status": frozenset(
+        {"failed", "focused_tests_passed", "full_tests_passed", "not_run", "partial"}
+    ),
+}
 AGGREGATE_FIELDS = (
     "industry_bucket",
     "region_bucket",
@@ -49,6 +85,21 @@ AGGREGATE_PURPOSES = frozenset(
         "prioritize_manual_review",
     }
 )
+MODE_ALLOWED_PURPOSES = {
+    "abstract": frozenset(
+        {
+            "check_requirement_fit",
+            "classify_change_kind",
+            "classify_scope",
+            "rank_candidates",
+            "route_review",
+        }
+    ),
+    "aggregate": AGGREGATE_PURPOSES,
+    "public_excerpt": frozenset(
+        {"classify_public_excerpt", "compare_public_implementations", "review_public_excerpt"}
+    ),
+}
 AGGREGATE_ALLOWED_VALUES = {
     "industry_bucket": frozenset(
         {
@@ -96,6 +147,7 @@ AGGREGATE_ALLOWED_VALUES = {
         }
     ),
 }
+PUBLIC_ARTIFACT_KINDS = frozenset({"code", "configuration", "diff", "documentation", "test"})
 
 _SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -145,6 +197,9 @@ _RAW_NUMERIC_VALUE = re.compile(r"\d")
 
 class GatewayInputError(ValueError):
     """The local gateway request does not match the supported schema."""
+
+
+PublicSourceVerifier = Callable[[str, str], bool]
 
 
 def _text(value: Any, field: str, *, max_chars: int) -> str:
@@ -211,17 +266,11 @@ def _abstract_item(item: Mapping[str, Any], index: int) -> tuple[dict[str, Any],
     for field in ABSTRACT_FIELDS:
         if field not in item:
             continue
-        raw_value = item[field]
-        if isinstance(raw_value, bool):
-            value: str | bool = raw_value
-        else:
-            value = _text(raw_value, f"items[{index}].{field}", max_chars=MAX_ABSTRACT_CHARS)
-            value_findings = _find_sensitive(value, reject_code=True)
-            findings |= value_findings
-            if not value_findings and not _SAFE_TOKEN.fullmatch(value):
-                raise GatewayInputError(
-                    f"items[{index}].{field} contains unsupported characters"
-                )
+        value = _text(item[field], f"items[{index}].{field}", max_chars=MAX_ABSTRACT_CHARS)
+        value_findings = _find_sensitive(value, reject_code=True)
+        findings |= value_findings
+        if value not in ABSTRACT_ALLOWED_VALUES[field]:
+            findings.add("unapproved_abstract_value")
         projected[field] = value
     if len(projected) == 1:
         raise GatewayInputError(f"items[{index}] has no reviewable fields")
@@ -285,7 +334,10 @@ def _aggregate_item(item: Mapping[str, Any], index: int) -> tuple[dict[str, Any]
 
 
 def _public_item(
-    item: Mapping[str, Any], index: int, public_hosts: frozenset[str]
+    item: Mapping[str, Any],
+    index: int,
+    public_hosts: frozenset[str],
+    public_source_verifier: PublicSourceVerifier | None,
 ) -> tuple[dict[str, Any], set[str]]:
     allowed = {"content", "visibility", "public_source_url", "artifact_kind"}
     _reject_unknown(item, allowed, index)
@@ -310,10 +362,47 @@ def _public_item(
         "content": content,
     }
     if "artifact_kind" in item:
-        projected["artifact_kind"] = _safe_scalar(
+        artifact_kind = _safe_scalar(
             item["artifact_kind"], f"items[{index}].artifact_kind"
         )
+        if isinstance(artifact_kind, bool) or artifact_kind not in PUBLIC_ARTIFACT_KINDS:
+            findings.add("unapproved_public_artifact_kind")
+        projected["artifact_kind"] = artifact_kind
+    if public_source_verifier is None or not public_source_verifier(url, content):
+        findings.add("public_source_unverified")
     return projected, findings
+
+
+def _raw_public_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    if parsed.hostname == "raw.githubusercontent.com":
+        return url
+    if parsed.hostname != "github.com":
+        return None
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 5 or parts[2] != "blob":
+        return None
+    owner, repository, _, revision, *file_parts = parts
+    return f"https://raw.githubusercontent.com/{owner}/{repository}/{revision}/{'/'.join(file_parts)}"
+
+
+def verify_public_source(url: str, excerpt: str, *, timeout_seconds: float = 8.0) -> bool:
+    """Verify anonymously that ``excerpt`` occurs in the referenced public source."""
+    raw_url = _raw_public_url(url)
+    if raw_url is None:
+        return False
+    request = Request(raw_url, headers={"User-Agent": "jev-safe-gateway/1"})
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            final_host = (urlparse(response.geturl()).hostname or "").lower()
+            if final_host != "raw.githubusercontent.com":
+                return False
+            body = response.read(2_000_001)
+    except (OSError, ValueError):
+        return False
+    if len(body) > 2_000_000:
+        return False
+    return excerpt in body.decode("utf-8", errors="replace")
 
 
 def _audit_record(
@@ -343,6 +432,7 @@ def prepare_gateway_request(
     *,
     audit_path: Path | None = None,
     public_hosts: frozenset[str] = DEFAULT_PUBLIC_HOSTS,
+    public_source_verifier: PublicSourceVerifier | None = None,
 ) -> dict[str, Any]:
     """Validate and project a local request into an outbound Jev-safe payload."""
     if not isinstance(payload, Mapping):
@@ -352,9 +442,9 @@ def prepare_gateway_request(
         raise GatewayInputError("mode must be abstract, aggregate, or public_excerpt")
     purpose = _text(payload.get("purpose"), "purpose", max_chars=MAX_PURPOSE_CHARS)
     purpose_findings = _find_sensitive(purpose, reject_code=True)
+    if purpose not in MODE_ALLOWED_PURPOSES[mode]:
+        raise GatewayInputError(f"{mode} purpose must use a predefined value")
     if mode == "aggregate":
-        if purpose not in AGGREGATE_PURPOSES:
-            raise GatewayInputError("aggregate purpose must use a predefined value")
         if _RAW_NUMERIC_VALUE.search(purpose):
             purpose_findings.add("raw_numeric_value")
     raw_items = payload.get("items")
@@ -376,7 +466,9 @@ def prepare_gateway_request(
         elif mode == "aggregate":
             projected, item_findings = _aggregate_item(raw_item, index)
         else:
-            projected, item_findings = _public_item(raw_item, index, public_hosts)
+            projected, item_findings = _public_item(
+                raw_item, index, public_hosts, public_source_verifier
+            )
             total_public_chars += len(str(projected["content"]))
         projected_items.append(projected)
         findings |= item_findings
