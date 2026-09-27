@@ -172,6 +172,7 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
         logs.append({
             "date": note_path.stem,
             "time": "00:00",
+            "sequence": position,
             "agent": "Agent",
             "source_path": str(note_path),
             "sections": {
@@ -217,13 +218,28 @@ MIN_NOTES_FOR_DRIFT_CHECK = 3
 def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]:
     paths = _worklog_note_paths(vault, days)
     logs: list[dict[str, Any]] = []
+    daily_source_count = 0
+    project_source_count = 0
     for path in paths:
         if path.parent == vault / PROJECT_WORKLOG_RELATIVE_DIR:
-            logs.extend(parse_project_work_log(path))
+            parsed = parse_project_work_log(path)
+            project_source_count += len(parsed)
         else:
-            logs.extend(parse_work_logs(path))
-    logs.sort(key=lambda item: (str(item.get("date") or ""), str(item.get("time") or "")), reverse=True)
+            parsed = parse_work_logs(path)
+            daily_source_count += len(parsed)
+        logs.extend(parsed)
+    logs.sort(
+        key=lambda item: (
+            str(item.get("date") or ""),
+            str(item.get("time") or ""),
+            int(item.get("sequence") or 0),
+        ),
+        reverse=True,
+    )
     items = [_summarize_log(log) for log in logs[: max(0, limit)]]
+    project_root = vault / PROJECT_WORKLOG_RELATIVE_DIR
+    project_files_scanned = sum(path.parent == project_root for path in paths)
+    daily_files_scanned = len(paths) - project_files_scanned
     return {
         "label": "Codex/Claude 作業録ダイジェスト",
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
@@ -232,6 +248,10 @@ def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]
         "count": len(items),
         "source_count": len(logs),
         "note_files_scanned": len(paths),
+        "daily_note_files_scanned": daily_files_scanned,
+        "daily_source_count": daily_source_count,
+        "project_worklog_files_scanned": project_files_scanned,
+        "project_source_count": project_source_count,
         "items": items,
         "policy": {
             "raw_chat_logs_excluded": True,
@@ -289,12 +309,22 @@ def main() -> int:
     print(args.json)
     print(args.md)
 
-    if digest["note_files_scanned"] >= MIN_NOTES_FOR_DRIFT_CHECK and digest["source_count"] == 0:
-        print(
-            f"警告: 日次ノート{digest['note_files_scanned']}件を走査したが作業録が0件でした。"
-            "WORKLOG_HEADING_RE (`## HH:MM Codex|Claude Work Log`) の書式ドリフトを疑ってください。",
-            file=sys.stderr,
+    drifted_sources: list[str] = []
+    if digest["daily_note_files_scanned"] >= MIN_NOTES_FOR_DRIFT_CHECK and digest["daily_source_count"] == 0:
+        drifted_sources.append(
+            f"Daily {digest['daily_note_files_scanned']}件から作業録0件 "
+            "(`## HH:MM Codex|Claude Work Log`)"
         )
+    if (
+        digest["project_worklog_files_scanned"] >= MIN_NOTES_FOR_DRIFT_CHECK
+        and digest["project_source_count"] == 0
+    ):
+        drifted_sources.append(
+            f"Projects/tune_lease_55/Work Logs {digest['project_worklog_files_scanned']}件から作業録0件 "
+            "(`## 作業:`)"
+        )
+    if drifted_sources:
+        print("警告: 書式ドリフトを疑ってください: " + " / ".join(drifted_sources), file=sys.stderr)
         return 1
     return 0
 

@@ -143,6 +143,53 @@ def test_project_work_log_keeps_appended_tasks_separate(tmp_path):
     assert logs[1]["sections"]["Open Items"] == ["次はログから確認する。"]
 
 
+def test_build_digest_prefers_newest_appended_project_tasks(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    worklogs.mkdir(parents=True)
+    note_date = dt.date.today().isoformat()
+    blocks = [f"## 作業: task-{index}\n\n### 何をしたか\nchange-{index}" for index in range(13)]
+    (worklogs / f"{note_date}.md").write_text("\n\n".join(blocks), encoding="utf-8")
+
+    result = digest.build_digest(vault, days=1, limit=12)
+
+    assert result["source_count"] == 13
+    assert result["items"][0]["summary"][0] == "作業: task-12"
+    assert result["items"][-1]["summary"][0] == "作業: task-1"
+
+
+def test_main_detects_project_format_drift_even_when_daily_parser_succeeds(tmp_path, monkeypatch, capsys):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    daily = vault / "Daily"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    daily.mkdir(parents=True)
+    worklogs.mkdir(parents=True)
+    for offset in range(3):
+        day = dt.date.today() - dt.timedelta(days=offset)
+        (worklogs / f"{day.isoformat()}.md").write_text("## 別形式の作業ログ\n", encoding="utf-8")
+    (daily / f"{dt.date.today().isoformat()}.md").write_text(
+        "## 10:00 Codex Work Log\n\n### Summary\n- Daily側は正常",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_agent_worklog_digest.py",
+            "--vault", str(vault),
+            "--days", "3",
+            "--json", str(tmp_path / "out.json"),
+            "--md", str(tmp_path / "out.md"),
+        ],
+    )
+
+    assert digest.main() == 1
+    assert "Projects/tune_lease_55/Work Logs" in capsys.readouterr().err
+
+
 def test_main_warns_and_exits_nonzero_when_heading_format_drifts(tmp_path, monkeypatch, capsys):
     """WORKLOG_HEADING_RE がドリフトして日次ノートはあるのに作業録が0件の場合、
     無条件exit 0のまま無音停止しないことを確認する回帰テスト。"""
