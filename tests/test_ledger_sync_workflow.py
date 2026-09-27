@@ -7,7 +7,8 @@ bot のPRが一度マージされた後も承認待ちのままになること�
 
 ledger-sync.yml は push 後に pr-checks.yml を workflow_dispatch で起動して必須チェックを
 埋める。workflow_dispatch は GITHUB_TOKEN からでも発火する唯一の入口なので、この起動が
-消えると台帳PRは毎回人間の承認待ちで止まる（滞留検知が赤にするまで誰も気づけない）。
+消えると台帳PRは毎回人間の承認待ちで止まる。滞留検知はサマリと
+警告に残すが、無関係なPRのタイトルで毎回失敗通知しない。
 """
 
 from __future__ import annotations
@@ -66,11 +67,11 @@ def test_dispatch_skips_only_on_previous_dispatch() -> None:
 
 
 def test_dispatch_failure_does_not_fail_the_job() -> None:
-    """起動できなくても台帳自体はPRに入っている。ここで赤にすると滞留検知と二重に鳴る。"""
+    """起動できなくても台帳自体はPRに入っている。ここで赤にすると過剰に鳴る。"""
     run = _step("Run pr-checks on the sync branch")["run"]
 
     assert "::warning::" in run
-    assert "::error::" not in run, "起動失敗は警告どまりにする（滞留検知が本来の赤）"
+    assert "::error::" not in run, "起動失敗は警告どまりにする"
 
 
 def test_required_checks_exist_in_pr_checks() -> None:
@@ -81,9 +82,11 @@ def test_required_checks_exist_in_pr_checks() -> None:
     assert not missing, f"branch protection の必須チェックが pr-checks.yml に無い: {missing}"
 
 
-def test_stall_detection_still_guards_the_dispatch_path() -> None:
-    """dispatch が効かなかった場合の最後の砦（REV-366）が残っていること。"""
-    step = _step("Fail when the ledger PR is stalled")
+def test_stall_detection_warns_without_repeated_failure_notifications() -> None:
+    """滞留は可視化するが、後続PRのマージごとに Ledger Sync を赤にしない。"""
+    step = _step("Report when the ledger PR is stalled")
 
     assert step.get("if") == "always()"
-    assert "::error::" in step["run"], "滞留は赤にする"
+    assert "::warning::" in step["run"], "滞留は警告として残す"
+    assert "::error::" not in step["run"], "滞留だけでワークフローを失敗させない"
+    assert "exit 1" not in step["run"], "同じ滞留で毎回失敗通知しない"
