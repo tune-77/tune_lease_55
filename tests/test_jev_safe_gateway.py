@@ -50,6 +50,7 @@ def test_abstract_projection_keeps_mapping_local_and_writes_content_free_audit(t
         ("/srv/internal/repository を変更", "private_path"),
         ("```python\ndef secret():\n    pass\n```", "raw_code_or_diff"),
         ("src/private_module.py の処理を変更", "raw_code_or_diff"),
+        ("src/internal/service の処理を変更", "raw_code_or_diff"),
         ("`InternalService` の処理を変更", "raw_code_or_diff"),
         ("API_KEY=super-secret-value", "secret_like_content"),
         ("申込者: 山田太郎", "pii_like_content"),
@@ -183,6 +184,16 @@ def test_aggregate_accepts_buckets_and_flags_but_rejects_raw_numbers():
         assert blocked["status"] == "blocked"
         assert "raw_numeric_value" in blocked["audit"]["reason_codes"]
 
+    mapping_key = prepare_gateway_request(
+        {
+            "mode": "aggregate",
+            "purpose": "集計済み特徴を分類する",
+            "items": [{"boolean_signals": {"annual revenue 12345678 yen": True}}],
+        }
+    )
+    assert mapping_key["status"] == "blocked"
+    assert "raw_numeric_value" in mapping_key["audit"]["reason_codes"]
+
 
 def test_unknown_fields_are_rejected_instead_of_silently_forwarded():
     with pytest.raises(GatewayInputError, match="unsupported fields: raw_diff"):
@@ -193,6 +204,11 @@ def test_unknown_fields_are_rejected_instead_of_silently_forwarded():
                 "items": [{"effect": "一般化した変更", "raw_diff": "+ secret"}],
             }
         )
+
+
+def test_non_string_mode_is_reported_as_invalid_input():
+    with pytest.raises(GatewayInputError, match="mode must be"):
+        prepare_gateway_request({"mode": [], "purpose": "分類する", "items": [{}]})
 
 
 def test_cli_imports_root_module_when_project_root_is_already_on_pythonpath(tmp_path):

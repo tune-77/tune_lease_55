@@ -68,6 +68,7 @@ _RAW_CODE_MARKERS = (
     re.compile(r"`[^`]+`"),
     re.compile(r"(?:^|\n)\s*(?:def |class |function |import |from .+ import |@@ |diff --git )"),
     re.compile(r"(?:^|\n)\s*[+-]{3}\s+[ab]/"),
+    re.compile(r"(?:^|[\s'\"])(?:\.{1,2}/)?[\w.-]+(?:/[\w.-]+)+\b"),
     re.compile(
         r"(?:^|\s)(?:[\w.-]+/)+[\w.-]+\.(?:py|ts|tsx|js|jsx|json|ya?ml|md|sql|sh|toml)\b",
         re.I,
@@ -195,7 +196,7 @@ def _aggregate_item(item: Mapping[str, Any], index: int) -> tuple[dict[str, Any]
         serialized = json.dumps(safe_value, ensure_ascii=False, sort_keys=True)
         findings |= _find_sensitive(serialized, reject_code=True)
         if isinstance(safe_value, Mapping):
-            scalar_values = list(safe_value.values())
+            scalar_values = [*safe_value.keys(), *safe_value.values()]
         elif isinstance(safe_value, list):
             scalar_values = safe_value
         else:
@@ -275,7 +276,7 @@ def prepare_gateway_request(
     if not isinstance(payload, Mapping):
         raise GatewayInputError("request must be a JSON object")
     mode = payload.get("mode")
-    if mode not in {"abstract", "aggregate", "public_excerpt"}:
+    if not isinstance(mode, str) or mode not in {"abstract", "aggregate", "public_excerpt"}:
         raise GatewayInputError("mode must be abstract, aggregate, or public_excerpt")
     purpose = _text(payload.get("purpose"), "purpose", max_chars=MAX_PURPOSE_CHARS)
     purpose_findings = _find_sensitive(purpose, reject_code=True)
