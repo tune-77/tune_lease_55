@@ -5,7 +5,8 @@
 PROJECT_ROOT="${PROJECT_ROOT:-/Users/kobayashiisaoryou/clawd/tune_lease_55}"
 PYTHON="${PYTHON:-${PROJECT_ROOT}/.venv/bin/python}"
 PIPELINE_DATE="${PIPELINE_DATE:-$(date +%F)}"
-# analyze_pipeline_health は run_date を YYYYMMDD 形式で7日ウィンドウ判定するため合わせる
+# analyze_pipeline_health は run_date を YYYYMMDD 形式で評価窓判定するため合わせる
+# （通常ステップ7日 / 週次ゲート対象ステップ28日）
 LOG_DATE="${LOG_DATE:-$(date +%Y%m%d)}"
 # ステップ結果を構造化ログに記録するヘルパー（core と共通）。従来 post は log_step 未定義で
 # 全ステップが健全性監視の死角だった。主要ステップを pipeline_step_log.jsonl に記録する。

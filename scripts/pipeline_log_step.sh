@@ -17,7 +17,8 @@
 #
 # 前提の環境変数:
 #   PROJECT_ROOT  ログ出力先の起点
-#   LOG_DATE      YYYYMMDD 形式（analyze_pipeline_health の 7日ウィンドウ判定に使用）
+#   LOG_DATE      YYYYMMDD 形式（analyze_pipeline_health の評価窓判定に使用。
+#                 通常ステップ7日 / 週次ステップ28日）
 
 # 自動計測の起点。source 時点で初期化する（core と post は別プロセスなので各々が独立した起点を持つ）。
 _LOG_STEP_LAST_TS="$(date +%s)"

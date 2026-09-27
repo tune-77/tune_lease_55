@@ -41,13 +41,54 @@ NON_BLOCKING_STEPS = {"gist_update"}
 AUTO_FIX_MIN_FAILURE_DAYS = 5   # 7日中5日以上失敗していること
 AUTO_FIX_RULE_TYPES = {"patch_json", "config_value"}  # 対応ルール型
 
+# 週次ゲート（run_daily_improvement_post.sh の DETAILED_SIDECAR_REPORT_FREQUENCY=weekly、
+# 既定で月曜のみ実行）で走るステップ。7日ウィンドウでは実測が最大1件しか溜まらないため
+# MIN_TOTAL_RUNS=3 を永久に満たせず、毎週必ず失敗しても失敗検知に乗らなかった。
+# これらのステップだけ評価窓を4週間に広げ、週次の実行頻度に見合う閾値で判定する。
+#
+# build_judgment_asset_graph は週次ゲートの中にあるが、else 側が同じステップ名で
+# exit 0 を記録する（run_daily_improvement_post.sh:375,378）ため毎日ログが出る。
+# 通常ステップとして扱うのが正しいので、ここには含めない。
+WEEKLY_STEPS = frozenset(
+    {
+        "check_orphaned_scripts",
+        "build_instruction_debt_report",
+        "build_judgment_asset_ab_report",
+        "build_shion_growth_brief",
+        "evaluate_shion_growth",
+        "build_shion_architecture_layer_audit",
+    }
+)
+WEEKLY_LOOKBACK_DAYS = 28
+WEEKLY_MIN_TOTAL_RUNS = 2          # 4週のうち2回以上の実測があれば判定する
+WEEKLY_AUTO_FIX_MIN_FAILURE_DAYS = 2   # 2週連続で失敗していること
+
+# ログ読み込みは最長窓で行い、判定はステップごとの窓で切る（二段フィルタ）。
+# 読み込み窓だけ広げると通常ステップが3週前の失敗を数え始めてしまう。
+MAX_LOOKBACK_DAYS = max(LOOKBACK_DAYS, WEEKLY_LOOKBACK_DAYS)
+
+
+def step_lookback_days(step: str) -> int:
+    """当該ステップの評価窓（日数）。週次ステップだけ長い窓を使う。"""
+    return WEEKLY_LOOKBACK_DAYS if step in WEEKLY_STEPS else LOOKBACK_DAYS
+
+
+def step_min_total_runs(step: str) -> int:
+    """当該ステップを判定対象にするための最小実測件数。"""
+    return WEEKLY_MIN_TOTAL_RUNS if step in WEEKLY_STEPS else MIN_TOTAL_RUNS
+
+
+def step_auto_fix_min_days(step: str) -> int:
+    """auto_fix_allowed=true にするための最小失敗日数。"""
+    return WEEKLY_AUTO_FIX_MIN_FAILURE_DAYS if step in WEEKLY_STEPS else AUTO_FIX_MIN_FAILURE_DAYS
+
 
 def load_recent_logs():
     if not LOG_FILE.exists():
         print("pipeline_step_log.jsonl が存在しません。スキップします。", flush=True)
         return []
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).strftime("%Y%m%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=MAX_LOOKBACK_DAYS)).strftime("%Y%m%d")
     entries = []
     with LOG_FILE.open() as f:
         for line in f:
@@ -61,6 +102,24 @@ def load_recent_logs():
             except json.JSONDecodeError:
                 continue
     return entries
+
+
+def filter_to_step_windows(entries):
+    """最長窓で読み込んだログを、ステップごとの評価窓まで絞り込む。
+
+    load_recent_logs() が MAX_LOOKBACK_DAYS で読むため、この関数を通さないと
+    通常ステップが3週間前の失敗まで数えてしまう。"""
+    now = datetime.now(timezone.utc)
+    cutoff_by_days = {
+        days: (now - timedelta(days=days)).strftime("%Y%m%d")
+        for days in {LOOKBACK_DAYS, WEEKLY_LOOKBACK_DAYS}
+    }
+    kept = []
+    for e in entries:
+        step = e.get("step", "unknown")
+        if str(e.get("run_date", "")) >= cutoff_by_days[step_lookback_days(step)]:
+            kept.append(e)
+    return kept
 
 
 def resolution_cutoff(ledger: list, step: str) -> str:
@@ -159,7 +218,7 @@ def print_duration_summary(counts):
     measured = sum(len(c["durations"]) for c in counts.values())
     if measured == 0:
         print(
-            f"\n所要秒の実測ログがまだありません（直近{LOOKBACK_DAYS}日）。"
+            f"\n所要秒の実測ログがまだありません（通常{LOOKBACK_DAYS}日 / 週次{WEEKLY_LOOKBACK_DAYS}日）。"
             "pipeline_log_step.sh の自動計測が入った翌朝から溜まります。",
             flush=True,
         )
@@ -167,7 +226,7 @@ def print_duration_summary(counts):
 
     rows = slow_steps(counts)
     print(
-        f"\n=== 所要秒の重いステップ（直近{LOOKBACK_DAYS}日 / {SLOW_STEP_MIN_SECONDS}秒以上） ===",
+        f"\n=== 所要秒の重いステップ（通常{LOOKBACK_DAYS}日 / 週次{WEEKLY_LOOKBACK_DAYS}日 / {SLOW_STEP_MIN_SECONDS}秒以上） ===",
         flush=True,
     )
     if not rows:
@@ -222,6 +281,11 @@ def main():
     if not entries:
         return
 
+    entries = filter_to_step_windows(entries)
+    if not entries:
+        print("評価窓内のステップログがありません。スキップします。", flush=True)
+        return
+
     ledger = load_ledger()
     steps_seen = {e.get("step", "unknown") for e in entries}
     cutoffs = {step: cutoff for step in steps_seen if (cutoff := resolution_cutoff(ledger, step))}
@@ -233,7 +297,7 @@ def main():
         if step in NON_BLOCKING_STEPS:
             continue
         total = c["good"] + c["bad"]
-        if total < MIN_TOTAL_RUNS:
+        if total < step_min_total_runs(step):
             continue
         rate = c["bad"] / total
         if rate >= FAILURE_RATE_THRESHOLD:
@@ -249,7 +313,11 @@ def main():
                 json.dump(ledger, f, ensure_ascii=False, indent=2)
                 f.write("\n")
             print(f"復旧済みパイプライン障害を自動整理: {resolved} 件: {LEDGER_FILE}", flush=True)
-        print(f"直近{LOOKBACK_DAYS}日間で失敗率閾値({FAILURE_RATE_THRESHOLD*100:.0f}%)超のステップはありません。", flush=True)
+        print(
+            f"評価窓（通常{LOOKBACK_DAYS}日 / 週次ステップ{WEEKLY_LOOKBACK_DAYS}日）で"
+            f"失敗率閾値({FAILURE_RATE_THRESHOLD*100:.0f}%)超のステップはありません。",
+            flush=True,
+        )
         return
 
     added = 0
@@ -264,11 +332,12 @@ def main():
         base_rev += 1
         rev_id = f"REV-{base_rev:03d}a"
         pct = int(rate * 100)
-        description = f"[パイプライン自動検出] {step} が過去{LOOKBACK_DAYS}日で失敗率{pct}%（{bad}/{total}件, {bad_days}日失敗）"
+        window_days = step_lookback_days(step)
+        description = f"[パイプライン自動検出] {step} が過去{window_days}日で失敗率{pct}%（{bad}/{total}件, {bad_days}日失敗）"
 
-        # 7日中5日以上失敗 かつ patch_json/config_value 型ルールが存在する場合のみ自動修正許可
+        # 評価窓内で規定日数以上失敗 かつ patch_json/config_value 型ルールが存在する場合のみ自動修正許可
         can_auto_fix = (
-            bad_days >= AUTO_FIX_MIN_FAILURE_DAYS
+            bad_days >= step_auto_fix_min_days(step)
             and has_auto_fix_rule(ledger, step)
         )
 
@@ -298,15 +367,23 @@ def main():
         print("追記なし（すべて既存エントリと重複）。", flush=True)
 
     # サマリー出力
-    print("\n=== パイプラインヘルス サマリー（直近7日） ===", flush=True)
+    print(
+        f"\n=== パイプラインヘルス サマリー（通常{LOOKBACK_DAYS}日 / 週次ステップ{WEEKLY_LOOKBACK_DAYS}日） ===",
+        flush=True,
+    )
     for step, c in sorted(counts.items()):
         total = c["good"] + c["bad"]
         rate = c["bad"] / total if total else 0
         bad_days = len(c["bad_days"])
         active_failure = c.get("latest_exit_code") != 0
-        flag = " ⚠️" if active_failure and rate >= FAILURE_RATE_THRESHOLD and total >= MIN_TOTAL_RUNS else ""
+        flag = (
+            " ⚠️"
+            if active_failure and rate >= FAILURE_RATE_THRESHOLD and total >= step_min_total_runs(step)
+            else ""
+        )
+        weekly = f" [週次{step_lookback_days(step)}日窓]" if step in WEEKLY_STEPS else ""
         print(
-            f"  {step}: 成功{c['good']}/失敗{c['bad']}({bad_days}日) (失敗率{rate*100:.0f}%){flag}",
+            f"  {step}: 成功{c['good']}/失敗{c['bad']}({bad_days}日) (失敗率{rate*100:.0f}%){weekly}{flag}",
             flush=True,
         )
 
