@@ -6,6 +6,21 @@ from pathlib import Path
 from scripts import run_pipeline_auto_recovery as recovery
 
 
+def test_checked_in_ledger_seeds_every_allowlisted_recovery_recipe() -> None:
+    root = Path(__file__).resolve().parents[1]
+    ledger_path = root / "api" / "rule_engine" / "ledger_rules.json"
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+
+    catalog = recovery.build_recovery_catalog(ledger)
+    eligible_steps = {
+        str(recipe.get("step") or "")
+        for recipe in catalog["recipes"]
+        if int(recipe.get("resolved_incident_count") or 0) > 0
+    }
+
+    assert eligible_steps == set(recovery.RECOVERY_RECIPES)
+
+
 def test_catalog_uses_resolved_incidents_as_evidence_only() -> None:
     ledger = [
         {

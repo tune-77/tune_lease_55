@@ -1679,5 +1679,35 @@
     "risk": "low",
     "auto_fix_allowed": false,
     "note": "重要度高のため削除候補ではなく内容確認・再インデックスを推奨"
+  },
+  {
+    "rev_id": "REV-418a",
+    "type": "manual",
+    "pending_review": false,
+    "category": "pipeline_fix",
+    "description": "[パイプライン自動検出] check_shion_memory_health が過去7日で失敗率100%（3/3件, 3日失敗）",
+    "status": "stale_resolved",
+    "source": "analyze_pipeline_health",
+    "detected_at": "2026-09-27T19:03:51Z",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-09-27T21:08:45Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
+  },
+  {
+    "rev_id": "REV-419a",
+    "type": "manual",
+    "pending_review": false,
+    "category": "pipeline_fix",
+    "description": "[パイプライン自動検出] build_agent_worklog_digest が過去7日で失敗率55%（5/9件, 5日失敗）",
+    "status": "stale_resolved",
+    "source": "analyze_pipeline_health",
+    "detected_at": "2026-09-27T19:03:51Z",
+    "affected_files": [],
+    "risk": "medium",
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-09-27T21:08:45Z",
+    "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
   }
 ]
