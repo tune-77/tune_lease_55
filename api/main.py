@@ -2373,16 +2373,14 @@ def _load_latest_improvement_highlights(limit: int = 3) -> dict:
 
 
 def _build_agent_worklog_digest_context(limit: int = 4) -> str:
-    """Retrieve work-log context through the shared Obsidian AI search path."""
+    """Retrieve sanitized recent work logs through the shared AI context boundary."""
     try:
-        from obsidian_ai_context import build_obsidian_ai_context_block
+        from obsidian_ai_context import build_recent_worklog_ai_context_block
 
-        return build_obsidian_ai_context_block(
-            "最近のCodex Claude作業ログ 判断 制約 実装 検証",
+        return build_recent_worklog_ai_context_block(
             limit=limit,
+            days=14,
             max_chars=1800,
-            max_tokens=500,
-            heading="Codex/Claude 作業録",
         )
     except Exception:
         return ""

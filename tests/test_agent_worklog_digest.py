@@ -240,7 +240,7 @@ def test_ai_chat_worklog_context_uses_shared_obsidian_path() -> None:
     helper = source[start:end]
 
     assert "obsidian_ai_context" in helper
-    assert "build_obsidian_ai_context_block" in helper
+    assert "build_recent_worklog_ai_context_block" in helper
     assert "agent_worklog_digest_latest.json" not in helper
 
 
