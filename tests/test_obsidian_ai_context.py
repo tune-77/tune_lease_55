@@ -1,3 +1,6 @@
+import datetime as dt
+import json
+
 import obsidian_ai_context as oac
 
 
@@ -77,3 +80,86 @@ def test_shared_context_requires_separate_external_processing_opt_in(monkeypatch
     monkeypatch.delenv("TYPESAFE_ALLOW_SHARED_CONTEXT", raising=False)
 
     assert oac._load_typesafe_rag_filter("一般的なリース知識") is None
+
+
+def test_recent_worklog_context_filters_private_old_and_unrelated_items(tmp_path):
+    report = tmp_path / "worklogs.json"
+    report.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "date": "2026-09-28",
+                        "time": "10:00",
+                        "agent": "Codex",
+                        "source_path": "/vault/Daily/2026-09-28.md",
+                        "summary": ["公開要約"],
+                        "decisions": ["公開判断"],
+                        "changes": ["公開変更"],
+                        "private": ["これは出してはいけない"],
+                        "raw_note": "秘密の原文",
+                    },
+                    {
+                        "date": "2026-08-01",
+                        "time": "12:00",
+                        "agent": "Codex",
+                        "source_path": "/vault/Daily/2026-08-01.md",
+                        "summary": ["古い判断"],
+                    },
+                    {
+                        "date": "2026-09-28",
+                        "time": "11:00",
+                        "agent": "Agent",
+                        "source_path": "/vault/Projects/other/notes.md",
+                        "summary": ["無関係ノート"],
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    block = oac.build_recent_worklog_ai_context_block(
+        report_path=report,
+        today=dt.date(2026, 9, 28),
+        days=14,
+    )
+
+    assert "公開要約" in block
+    assert "公開判断" in block
+    assert "これは出してはいけない" not in block
+    assert "秘密の原文" not in block
+    assert "古い判断" not in block
+    assert "無関係ノート" not in block
+
+
+def test_recent_worklog_context_accepts_project_worklog_folder(tmp_path):
+    report = tmp_path / "worklogs.json"
+    report.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "date": "2026-09-28",
+                        "time": "15:30",
+                        "agent": "Agent",
+                        "source_path": "/vault/Projects/tune_lease_55/Work Logs/2026-09-28.md",
+                        "summary": ["復旧作業"],
+                        "decisions": [],
+                        "changes": ["安全策を追加"],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    block = oac.build_recent_worklog_ai_context_block(
+        report_path=report,
+        today=dt.date(2026, 9, 28),
+    )
+
+    assert "復旧作業" in block
+    assert "安全策を追加" in block
