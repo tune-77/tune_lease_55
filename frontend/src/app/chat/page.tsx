@@ -19,6 +19,7 @@ import { buildShionEntryGreeting, type ShionEntryGreeting } from "@/lib/shionEnt
 import { isImeComposing } from "@/lib/keyboard";
 import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
 import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
+import ShionVoiceCall from "@/components/chat/ShionVoiceCall";
 
 interface ChatMessage {
   id: number;
@@ -1444,6 +1445,7 @@ export default function ChatPage() {
           >
             {speaking ? <VolumeX className="w-4 h-4" /> : speechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
+          <ShionVoiceCall userId={userId} disabled={loading} onEnded={() => void loadHistory()} />
           <button
             onClick={sendMessage}
             disabled={loading || !input.trim()}
