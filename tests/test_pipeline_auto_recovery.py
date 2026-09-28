@@ -109,6 +109,17 @@ def test_memory_health_recipe_migrates_legacy_layer_baseline(tmp_path: Path) -> 
         json.dumps({"total": 5, "by_type": {}, "by_status": {}}),
         encoding="utf-8",
     )
+    (data / "shion_memory_index_previous_summary.json").write_text(
+        json.dumps(
+            {
+                "total": 5,
+                "by_type": {"dialogue_memory": 2, "factual_memory": 3},
+                "by_status": {"active": 5},
+                "by_layer": {"long_term": 3, "mid_term": 2},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     success, detail = recovery._recover_memory_health(tmp_path)
 
@@ -145,6 +156,36 @@ def test_memory_health_recipe_refuses_large_unexplained_drop(tmp_path: Path) -> 
     assert "自動移行しない" in detail
 
 
+def test_memory_health_recipe_refuses_mismatched_snapshot(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    records = [
+        {
+            "id": f"long-{index}",
+            "memory_type": "factual_memory",
+            "memory_layer": "long_term",
+            "status": "active",
+        }
+        for index in range(4)
+    ]
+    (data / "shion_memory_index.json").write_text(json.dumps({"records": records}), encoding="utf-8")
+    (data / "shion_memory_health_state.json").write_text(
+        json.dumps({"total": 5, "by_type": {}, "by_status": {}}),
+        encoding="utf-8",
+    )
+    (data / "shion_memory_index_previous_summary.json").write_text(
+        json.dumps({"total": 6, "by_layer": {"long_term": 4, "mid_term": 2}}),
+        encoding="utf-8",
+    )
+
+    success, detail = recovery._recover_memory_health(tmp_path)
+
+    state = json.loads((data / "shion_memory_health_state.json").read_text(encoding="utf-8"))
+    assert success is False
+    assert state["total"] == 5
+    assert "総件数が一致しない" in detail
+
+
 def test_memory_health_recipe_preserves_absolute_drop_guard(tmp_path: Path) -> None:
     data = tmp_path / "data"
     data.mkdir()
@@ -162,13 +203,17 @@ def test_memory_health_recipe_preserves_absolute_drop_guard(tmp_path: Path) -> N
         json.dumps({"total": 1000, "by_type": {}, "by_status": {}}),
         encoding="utf-8",
     )
+    (data / "shion_memory_index_previous_summary.json").write_text(
+        json.dumps({"total": 1000, "by_layer": {"long_term": 1000}}),
+        encoding="utf-8",
+    )
 
     success, detail = recovery._recover_memory_health(tmp_path)
 
     state = json.loads((data / "shion_memory_health_state.json").read_text(encoding="utf-8"))
     assert success is False
     assert state["total"] == 1000
-    assert "101件" in detail
+    assert "1000 → 899 件（-101）" in detail
 
 
 def test_execute_plan_appends_success_only_after_verification(tmp_path: Path, monkeypatch) -> None:

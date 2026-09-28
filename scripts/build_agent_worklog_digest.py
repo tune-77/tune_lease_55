@@ -313,22 +313,7 @@ def write_outputs(digest: dict[str, Any], json_path: Path, md_path: Path) -> Non
     md_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--vault", type=Path, default=DEFAULT_VAULT)
-    parser.add_argument("--days", type=int, default=14)
-    parser.add_argument("--limit", type=int, default=12)
-    parser.add_argument("--json", type=Path, default=DEFAULT_JSON)
-    parser.add_argument("--md", type=Path, default=DEFAULT_MD)
-    args = parser.parse_args()
-
-    vault = args.vault.expanduser()
-    digest = build_digest(vault, days=args.days, limit=args.limit)
-    write_outputs(digest, args.json, args.md)
-    print(f"agent_worklog_digest={digest['count']} source={digest['source_count']}")
-    print(args.json)
-    print(args.md)
-
+def find_drifted_sources(digest: dict[str, Any]) -> list[str]:
     drifted_sources: list[str] = []
     if digest["daily_note_files_scanned"] >= MIN_NOTES_FOR_DRIFT_CHECK and digest["daily_source_count"] == 0:
         drifted_sources.append(
@@ -343,9 +328,28 @@ def main() -> int:
             f"Projects/tune_lease_55/Work Logs {digest['project_worklog_files_scanned']}件から作業録0件 "
             "(`## 作業:`)"
         )
+    return drifted_sources
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--vault", type=Path, default=DEFAULT_VAULT)
+    parser.add_argument("--days", type=int, default=14)
+    parser.add_argument("--limit", type=int, default=12)
+    parser.add_argument("--json", type=Path, default=DEFAULT_JSON)
+    parser.add_argument("--md", type=Path, default=DEFAULT_MD)
+    args = parser.parse_args()
+
+    vault = args.vault.expanduser()
+    digest = build_digest(vault, days=args.days, limit=args.limit)
+    drifted_sources = find_drifted_sources(digest)
     if drifted_sources:
         print("警告: 書式ドリフトを疑ってください: " + " / ".join(drifted_sources), file=sys.stderr)
         return 1
+    write_outputs(digest, args.json, args.md)
+    print(f"agent_worklog_digest={digest['count']} source={digest['source_count']}")
+    print(args.json)
+    print(args.md)
     return 0
 
 

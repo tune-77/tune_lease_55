@@ -151,6 +151,7 @@ def plan_recoveries(
 def _recover_memory_health(root: Path) -> tuple[bool, str]:
     index_path = root / "data" / "shion_memory_index.json"
     state_path = root / "data" / "shion_memory_health_state.json"
+    previous_summary_path = root / "data" / "shion_memory_index_previous_summary.json"
     summary = load_index_summary(index_path)
     previous = load_memory_health_state(state_path)
     if summary is None or int(summary.get("total") or 0) <= 0:
@@ -161,15 +162,15 @@ def _recover_memory_health(root: Path) -> tuple[bool, str]:
     if previous_total <= 0:
         return False, "旧基準が存在しないため通常ヘルスチェックに委ねる"
 
-    current_total = int(summary.get("total") or 0)
-    drop_records = max(0, previous_total - current_total)
-    drop_ratio = drop_records / previous_total
-    if drop_records > 100 or drop_ratio > 0.3:
-        return False, (
-            f"旧基準から{drop_records}件（{drop_ratio:.1%}）減少しており"
-            "通常ヘルスチェックの安全閾値を超えるため、"
-            "自動移行しない"
-        )
+    previous_summary = _load_json(previous_summary_path, {})
+    if not isinstance(previous_summary, dict) or not previous_summary.get("by_layer"):
+        return False, "置換前インデックスの層別証拠がないため自動移行しない"
+    if int(previous_summary.get("total") or 0) != previous_total:
+        return False, "置換前インデックスと旧基準の総件数が一致しないため自動移行しない"
+
+    stable_healthy, stable_message = check_memory_health(summary, previous_summary)
+    if not stable_healthy:
+        return False, f"置換前インデックスとの永続層比較が異常のため自動移行しない: {stable_message}"
 
     layers = summary.get("by_layer") if isinstance(summary.get("by_layer"), dict) else {}
     stable_total = sum(int(layers.get(name) or 0) for name in ("long_term", "persistent", "retrieval"))
@@ -178,7 +179,7 @@ def _recover_memory_health(root: Path) -> tuple[bool, str]:
 
     save_memory_health_state(state_path, summary)
     healthy, message = check_memory_health(summary, summary)
-    return healthy, f"層別基準へ移行して再検証: {message}"
+    return healthy, f"置換前インデックスで永続層を検証し、層別基準へ移行: {message}"
 
 
 def _recover_worklog_digest(root: Path) -> tuple[bool, str]:

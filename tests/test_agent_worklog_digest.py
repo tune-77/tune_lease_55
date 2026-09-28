@@ -259,19 +259,25 @@ def test_main_detects_project_format_drift_even_when_daily_parser_succeeds(tmp_p
         "## 10:00 Codex Work Log\n\n### Summary\n- Daily側は正常",
         encoding="utf-8",
     )
+    json_output = tmp_path / "out.json"
+    md_output = tmp_path / "out.md"
+    json_output.write_text('{"count": 1, "status": "last-good"}\n', encoding="utf-8")
+    md_output.write_text("# last-good\n", encoding="utf-8")
     monkeypatch.setattr(
         "sys.argv",
         [
             "build_agent_worklog_digest.py",
             "--vault", str(vault),
             "--days", "3",
-            "--json", str(tmp_path / "out.json"),
-            "--md", str(tmp_path / "out.md"),
+            "--json", str(json_output),
+            "--md", str(md_output),
         ],
     )
 
     assert digest.main() == 1
     assert "Projects/tune_lease_55/Work Logs" in capsys.readouterr().err
+    assert json_output.read_text(encoding="utf-8") == '{"count": 1, "status": "last-good"}\n'
+    assert md_output.read_text(encoding="utf-8") == "# last-good\n"
 
 
 def test_main_warns_and_exits_nonzero_when_heading_format_drifts(tmp_path, monkeypatch, capsys):
