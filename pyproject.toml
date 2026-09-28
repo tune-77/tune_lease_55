@@ -18,7 +18,7 @@ dependencies = [
     "llvmlite<0.44",
     "numba<0.68",
     "lightgbm==4.7.0",
-    "reportlab==4.4.10",
+    "reportlab==5.0.1",
     "requests==2.32.5",
     "tenacity==9.1.4",
     "ollama==0.6.2",
