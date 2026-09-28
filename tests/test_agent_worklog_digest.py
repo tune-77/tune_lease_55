@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import datetime as dt
+import os
+from pathlib import Path
 
 
 def test_agent_worklog_digest_extracts_public_summary_sections(tmp_path):
@@ -78,6 +80,241 @@ def test_build_digest_reports_note_files_scanned(tmp_path):
     assert result["source_count"] == 0
 
 
+def test_build_digest_reads_project_work_log_format(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    worklogs.mkdir(parents=True)
+    note_date = dt.date.today().isoformat()
+    (worklogs / f"{note_date}.md").write_text(
+        """
+---
+date: 2026-09-28
+type: work_log
+---
+
+## 作業: パイプライン障害の復旧
+
+### 何をしたか
+
+記憶ヘルスチェックと作業録ダイジェストを修正した。
+
+### 検証
+
+- 対象テストが成功した
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = digest.build_digest(vault, days=1, limit=5)
+
+    assert result["note_files_scanned"] == 1
+    assert result["source_count"] == 1
+    assert "記憶ヘルスチェック" in result["items"][0]["summary"][0]
+    assert result["items"][0]["verification"] == ["対象テストが成功した"]
+
+
+def test_project_work_log_keeps_appended_tasks_separate(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    note = tmp_path / "2026-09-28.md"
+    note.write_text(
+        """
+## 作業: 最初の修正
+
+### 何をしたか
+最初の変更を実装した。
+
+## 作業: 二番目の修正
+
+### 何をしたか
+二番目の変更を実装した。
+
+### 次回どう切り分けるか
+次はログから確認する。
+""".strip(),
+        encoding="utf-8",
+    )
+
+    logs = digest.parse_project_work_log(note)
+
+    assert len(logs) == 2
+    assert logs[0]["sections"]["Summary"] == ["最初の変更を実装した。"]
+    assert logs[1]["sections"]["Summary"] == ["二番目の変更を実装した。"]
+    assert logs[1]["sections"]["Open Items"] == ["次はログから確認する。"]
+
+
+def test_project_work_log_only_publishes_allowlisted_headings(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    note = tmp_path / "2026-09-28.md"
+    note.write_text(
+        """
+## 作業: 顧客A社 CASE-123 公開範囲を確認
+
+### 何をしたか
+公開できる変更
+
+### 非公開の判断
+顧客固有の秘密
+
+### 秘密の実装メモ
+外へ出してはいけない値
+
+### 検証
+対象テスト成功
+""".strip(),
+        encoding="utf-8",
+    )
+
+    [parsed] = digest.parse_project_work_log(note)
+    serialized = json.dumps(parsed, ensure_ascii=False)
+
+    assert parsed["sections"]["Summary"] == ["公開できる変更"]
+    assert parsed["sections"]["Changes"] == ["公開できる変更"]
+    assert parsed["sections"]["Verification"] == ["対象テスト成功"]
+    assert "顧客固有の秘密" not in serialized
+    assert "外へ出してはいけない値" not in serialized
+    assert "顧客A社" not in serialized
+    assert "CASE-123" not in serialized
+
+
+def test_build_digest_prefers_newest_appended_project_tasks(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    worklogs.mkdir(parents=True)
+    note_date = dt.date.today().isoformat()
+    blocks = [f"## 作業: task-{index}\n\n### 何をしたか\nchange-{index}" for index in range(13)]
+    (worklogs / f"{note_date}.md").write_text("\n\n".join(blocks), encoding="utf-8")
+
+    result = digest.build_digest(vault, days=1, limit=12)
+
+    assert result["source_count"] == 13
+    assert result["items"][0]["summary"][0] == "change-12"
+    assert result["items"][-1]["summary"][0] == "change-1"
+
+
+def test_build_digest_compares_project_mtime_with_daily_log_time(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    daily = vault / "Daily"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    daily.mkdir(parents=True)
+    worklogs.mkdir(parents=True)
+    note_date = dt.date.today().isoformat()
+    (daily / f"{note_date}.md").write_text(
+        "## 10:00 Codex Work Log\n\n### Summary\n- Daily側",
+        encoding="utf-8",
+    )
+    project_note = worklogs / f"{note_date}.md"
+    project_note.write_text(
+        "## 作業: Project側\n\n### 何をしたか\n新しい作業",
+        encoding="utf-8",
+    )
+    project_timestamp = dt.datetime.combine(dt.date.today(), dt.time(11, 0)).timestamp()
+    os.utime(project_note, (project_timestamp, project_timestamp))
+
+    result = digest.build_digest(vault, days=1, limit=1)
+
+    assert result["items"][0]["summary"][0] == "新しい作業"
+    assert result["items"][0]["time"] == "11:00"
+
+
+def test_legacy_project_blocks_do_not_all_inherit_latest_file_mtime(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    daily = vault / "Daily"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    daily.mkdir(parents=True)
+    worklogs.mkdir(parents=True)
+    note_date = dt.date.today().isoformat()
+    (daily / f"{note_date}.md").write_text(
+        "## 14:00 Codex Work Log\n\n### Summary\n- Daily 14時",
+        encoding="utf-8",
+    )
+    project_note = worklogs / f"{note_date}.md"
+    blocks = [f"## 作業: old-{index}\n\n### 何をしたか\nold-change-{index}" for index in range(13)]
+    project_note.write_text("\n\n".join(blocks), encoding="utf-8")
+    project_timestamp = dt.datetime.combine(dt.date.today(), dt.time(15, 0)).timestamp()
+    os.utime(project_note, (project_timestamp, project_timestamp))
+
+    result = digest.build_digest(vault, days=1, limit=12)
+
+    assert result["items"][0]["summary"][0] == "old-change-12"
+    assert result["items"][1]["summary"][0] == "Daily 14時"
+
+
+def test_project_block_uses_persisted_timestamp_before_file_mtime(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    note = tmp_path / "2026-09-28.md"
+    note.write_text(
+        "## 作業: timestamped\n"
+        "<!-- worklog_at: 2026-09-28T09:45:30 -->\n\n"
+        "### 何をしたか\n変更した",
+        encoding="utf-8",
+    )
+    future_timestamp = dt.datetime(2026, 9, 28, 18, 0).timestamp()
+    os.utime(note, (future_timestamp, future_timestamp))
+
+    [parsed] = digest.parse_project_work_log(note)
+
+    assert parsed["time"] == "09:45"
+    assert parsed["sort_time"] == "09:45:30"
+
+
+def test_ai_chat_worklog_context_uses_shared_obsidian_path() -> None:
+    source = (Path(__file__).resolve().parents[1] / "api" / "main.py").read_text(encoding="utf-8")
+    start = source.index("def _build_agent_worklog_digest_context")
+    end = source.index("def _build_dialogue_improvement_report_context", start)
+    helper = source[start:end]
+
+    assert "obsidian_ai_context" in helper
+    assert "build_recent_worklog_ai_context_block" in helper
+    assert "agent_worklog_digest_latest.json" not in helper
+
+
+def test_main_detects_project_format_drift_even_when_daily_parser_succeeds(tmp_path, monkeypatch, capsys):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    daily = vault / "Daily"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    daily.mkdir(parents=True)
+    worklogs.mkdir(parents=True)
+    for offset in range(3):
+        day = dt.date.today() - dt.timedelta(days=offset)
+        (worklogs / f"{day.isoformat()}.md").write_text("## 別形式の作業ログ\n", encoding="utf-8")
+    (daily / f"{dt.date.today().isoformat()}.md").write_text(
+        "## 10:00 Codex Work Log\n\n### Summary\n- Daily側は正常",
+        encoding="utf-8",
+    )
+    json_output = tmp_path / "out.json"
+    md_output = tmp_path / "out.md"
+    json_output.write_text('{"count": 1, "status": "last-good"}\n', encoding="utf-8")
+    md_output.write_text("# last-good\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_agent_worklog_digest.py",
+            "--vault", str(vault),
+            "--days", "3",
+            "--json", str(json_output),
+            "--md", str(md_output),
+        ],
+    )
+
+    assert digest.main() == 1
+    assert "Projects/tune_lease_55/Work Logs" in capsys.readouterr().err
+    assert json_output.read_text(encoding="utf-8") == '{"count": 1, "status": "last-good"}\n'
+    assert md_output.read_text(encoding="utf-8") == "# last-good\n"
+
+
 def test_main_warns_and_exits_nonzero_when_heading_format_drifts(tmp_path, monkeypatch, capsys):
     """WORKLOG_HEADING_RE がドリフトして日次ノートはあるのに作業録が0件の場合、
     無条件exit 0のまま無音停止しないことを確認する回帰テスト。"""
@@ -89,7 +326,7 @@ def test_main_warns_and_exits_nonzero_when_heading_format_drifts(tmp_path, monke
     for offset in range(3):
         day = dt.date.today() - dt.timedelta(days=offset)
         (daily / f"{day.isoformat()}.md").write_text(
-            "## 10:00 何らかの別形式ログ\n- 中身\n", encoding="utf-8"
+            "## 10:00 Codex 作業ログ\n- 中身\n", encoding="utf-8"
         )
 
     monkeypatch.setattr(
@@ -107,6 +344,39 @@ def test_main_warns_and_exits_nonzero_when_heading_format_drifts(tmp_path, monke
 
     assert exit_code == 1
     assert "書式ドリフト" in capsys.readouterr().err
+
+
+def test_main_does_not_treat_ordinary_daily_notes_as_format_drift(tmp_path, monkeypatch):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    daily = vault / "Daily"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    daily.mkdir(parents=True)
+    worklogs.mkdir(parents=True)
+    for offset in range(3):
+        day = dt.date.today() - dt.timedelta(days=offset)
+        (daily / f"{day.isoformat()}.md").write_text("# 普通の日次メモ\n", encoding="utf-8")
+    note_date = dt.date.today().isoformat()
+    (worklogs / f"{note_date}.md").write_text(
+        "## 作業: 正常なProjectログ\n\n### 何をしたか\n復旧した",
+        encoding="utf-8",
+    )
+    json_output = tmp_path / "out.json"
+    md_output = tmp_path / "out.md"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_agent_worklog_digest.py",
+            "--vault", str(vault),
+            "--days", "3",
+            "--json", str(json_output),
+            "--md", str(md_output),
+        ],
+    )
+
+    assert digest.main() == 0
+    assert json.loads(json_output.read_text(encoding="utf-8"))["source_count"] == 1
 
 
 def test_main_returns_zero_when_too_few_notes_to_judge_drift(tmp_path, monkeypatch, capsys):

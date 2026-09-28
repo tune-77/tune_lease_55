@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import datetime as dt
+import json
 import os
+from pathlib import Path
 from typing import Any
 
 DEFAULT_CONTEXT_TOKEN_BUDGET = 700
+DEFAULT_WORKLOG_DIGEST = Path(__file__).resolve().parent / "reports" / "agent_worklog_digest_latest.json"
 
 
 def _load_obsidian_bridge():
@@ -152,4 +156,82 @@ def build_obsidian_ai_context_block(
     )
 
 
-__all__ = ["build_obsidian_ai_context_block", "collect_obsidian_ai_context"]
+def build_recent_worklog_ai_context_block(
+    *,
+    limit: int = 4,
+    days: int = 14,
+    max_chars: int = 1800,
+    report_path: Path = DEFAULT_WORKLOG_DIGEST,
+    today: dt.date | None = None,
+) -> str:
+    """Build sanitized, recent work-log context through the shared AI context module.
+
+    The batch digest has already reduced Vault notes to public fields.  This
+    boundary re-validates source folders and dates, and never exposes raw note
+    text or unknown sections to an AI prompt.
+    """
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return ""
+
+    current_day = today or dt.date.today()
+    cutoff = current_day - dt.timedelta(days=max(1, days) - 1)
+    allowed_markers = ("/Daily/", "/Projects/tune_lease_55/Work Logs/")
+    eligible: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        source = "/" + str(item.get("source_path") or "").replace("\\", "/").lstrip("/")
+        if not any(marker in source for marker in allowed_markers):
+            continue
+        try:
+            item_day = dt.date.fromisoformat(str(item.get("date") or ""))
+        except ValueError:
+            continue
+        if item_day < cutoff or item_day > current_day:
+            continue
+        eligible.append(item)
+
+    eligible.sort(
+        key=lambda item: (str(item.get("date") or ""), str(item.get("time") or "")),
+        reverse=True,
+    )
+    selected = eligible[: max(0, limit)]
+    if not selected:
+        return ""
+
+    def public_text(item: dict[str, Any], field: str, char_limit: int) -> str:
+        values = item.get(field)
+        if not isinstance(values, list):
+            return ""
+        return " / ".join(str(value).strip() for value in values if str(value).strip())[:char_limit]
+
+    lines = [
+        "【Codex/Claude 作業録】",
+        f"直近{max(1, days)}日以内の公開フィールドだけを使用しています。",
+    ]
+    for item in selected:
+        title = f"{item.get('date') or ''} {item.get('time') or ''} {item.get('agent') or ''}".strip()
+        summary = public_text(item, "summary", 180)
+        decisions = public_text(item, "decisions", 220)
+        changes = public_text(item, "changes", 180)
+        line = f"- {title}"
+        if summary:
+            line += f" / 要約: {summary}"
+        if decisions:
+            line += f" / 判断: {decisions}"
+        if changes:
+            line += f" / 変更: {changes}"
+        lines.append(line)
+    return "\n".join(lines)[:max_chars]
+
+
+__all__ = [
+    "build_obsidian_ai_context_block",
+    "build_recent_worklog_ai_context_block",
+    "collect_obsidian_ai_context",
+]

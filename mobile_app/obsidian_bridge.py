@@ -1551,6 +1551,7 @@ def append_work_log(
     pr_suffix = f"（PR #{pr}）" if pr else ""
     section_lines = [
         f"## 作業: {title}{pr_suffix}",
+        f"<!-- worklog_at: {dt.datetime.now().isoformat(timespec='seconds')} -->",
         "",
         "### 何をしたか",
         (what or "").strip(),
