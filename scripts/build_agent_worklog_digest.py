@@ -177,7 +177,6 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
     for position, start in enumerate(starts):
         end = starts[position + 1] if position + 1 < len(starts) else len(lines)
         block = lines[start:end]
-        title = block[0][3:].strip()
         timestamp_match = next(
             (PROJECT_TIMESTAMP_RE.match(line.strip()) for line in block[1:] if PROJECT_TIMESTAMP_RE.match(line.strip())),
             None,
@@ -217,8 +216,9 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
                     values.extend(items)
             return values[:limit]
 
-        summary = [title]
-        summary.extend(collect("Summary", limit=2))
+        # `## 作業:` のタイトルは案件名などの非公開情報を含み得るため、
+        # 明示的に許可した本文見出しだけから公開要約を作る。
+        summary = collect("Summary", limit=2)
         logs.append({
             "date": note_path.stem,
             "time": block_time[:5],

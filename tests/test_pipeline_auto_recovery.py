@@ -27,6 +27,7 @@ def test_catalog_uses_resolved_incidents_as_evidence_only() -> None:
             "rev_id": "REV-418a",
             "category": "pipeline_fix",
             "status": "stale_resolved",
+            "auto_fix_allowed": True,
             "description": "[パイプライン自動検出] check_shion_memory_health が失敗",
             "resolution_reason": "手動で基準移行して復旧",
             "resolved_at": "2026-09-27T21:08:45Z",
@@ -35,6 +36,7 @@ def test_catalog_uses_resolved_incidents_as_evidence_only() -> None:
             "rev_id": "REV-X",
             "category": "pipeline_fix",
             "status": "pending_review",
+            "auto_fix_allowed": False,
             "description": "check_shion_memory_health が失敗",
             "resolution_reason": "rm -rf /",
         },
@@ -46,6 +48,24 @@ def test_catalog_uses_resolved_incidents_as_evidence_only() -> None:
     assert recipe["resolved_incident_count"] == 1
     assert recipe["learned_from"][0]["rev_id"] == "REV-418a"
     assert "rm -rf" not in json.dumps(catalog, ensure_ascii=False)
+
+
+def test_catalog_rejects_resolved_incident_without_auto_fix_authorization() -> None:
+    ledger = [
+        {
+            "rev_id": "REV-X",
+            "category": "pipeline_fix",
+            "status": "resolved",
+            "auto_fix_allowed": False,
+            "description": "check_shion_memory_health が失敗",
+            "resolution_reason": "手動復旧済み",
+        }
+    ]
+
+    catalog = recovery.build_recovery_catalog(ledger)
+
+    [recipe] = [r for r in catalog["recipes"] if r["step"] == "check_shion_memory_health"]
+    assert recipe["resolved_incident_count"] == 0
 
 
 def test_plan_only_selects_allowlisted_latest_failures() -> None:

@@ -111,7 +111,7 @@ type: work_log
 
     assert result["note_files_scanned"] == 1
     assert result["source_count"] == 1
-    assert "パイプライン障害" in result["items"][0]["summary"][0]
+    assert "記憶ヘルスチェック" in result["items"][0]["summary"][0]
     assert result["items"][0]["verification"] == ["対象テストが成功した"]
 
 
@@ -140,8 +140,8 @@ def test_project_work_log_keeps_appended_tasks_separate(tmp_path):
     logs = digest.parse_project_work_log(note)
 
     assert len(logs) == 2
-    assert logs[0]["sections"]["Summary"] == ["作業: 最初の修正", "最初の変更を実装した。"]
-    assert logs[1]["sections"]["Summary"] == ["作業: 二番目の修正", "二番目の変更を実装した。"]
+    assert logs[0]["sections"]["Summary"] == ["最初の変更を実装した。"]
+    assert logs[1]["sections"]["Summary"] == ["二番目の変更を実装した。"]
     assert logs[1]["sections"]["Open Items"] == ["次はログから確認する。"]
 
 
@@ -151,7 +151,7 @@ def test_project_work_log_only_publishes_allowlisted_headings(tmp_path):
     note = tmp_path / "2026-09-28.md"
     note.write_text(
         """
-## 作業: 公開範囲を確認
+## 作業: 顧客A社 CASE-123 公開範囲を確認
 
 ### 何をしたか
 公開できる変更
@@ -171,11 +171,13 @@ def test_project_work_log_only_publishes_allowlisted_headings(tmp_path):
     [parsed] = digest.parse_project_work_log(note)
     serialized = json.dumps(parsed, ensure_ascii=False)
 
-    assert parsed["sections"]["Summary"] == ["作業: 公開範囲を確認", "公開できる変更"]
+    assert parsed["sections"]["Summary"] == ["公開できる変更"]
     assert parsed["sections"]["Changes"] == ["公開できる変更"]
     assert parsed["sections"]["Verification"] == ["対象テスト成功"]
     assert "顧客固有の秘密" not in serialized
     assert "外へ出してはいけない値" not in serialized
+    assert "顧客A社" not in serialized
+    assert "CASE-123" not in serialized
 
 
 def test_build_digest_prefers_newest_appended_project_tasks(tmp_path):
@@ -191,8 +193,8 @@ def test_build_digest_prefers_newest_appended_project_tasks(tmp_path):
     result = digest.build_digest(vault, days=1, limit=12)
 
     assert result["source_count"] == 13
-    assert result["items"][0]["summary"][0] == "作業: task-12"
-    assert result["items"][-1]["summary"][0] == "作業: task-1"
+    assert result["items"][0]["summary"][0] == "change-12"
+    assert result["items"][-1]["summary"][0] == "change-1"
 
 
 def test_build_digest_compares_project_mtime_with_daily_log_time(tmp_path):
@@ -218,7 +220,7 @@ def test_build_digest_compares_project_mtime_with_daily_log_time(tmp_path):
 
     result = digest.build_digest(vault, days=1, limit=1)
 
-    assert result["items"][0]["summary"][0] == "作業: Project側"
+    assert result["items"][0]["summary"][0] == "新しい作業"
     assert result["items"][0]["time"] == "11:00"
 
 
@@ -243,7 +245,7 @@ def test_legacy_project_blocks_do_not_all_inherit_latest_file_mtime(tmp_path):
 
     result = digest.build_digest(vault, days=1, limit=12)
 
-    assert result["items"][0]["summary"][0] == "作業: old-12"
+    assert result["items"][0]["summary"][0] == "old-change-12"
     assert result["items"][1]["summary"][0] == "Daily 14時"
 
 

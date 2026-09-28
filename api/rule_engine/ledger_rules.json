@@ -1691,7 +1691,7 @@
     "detected_at": "2026-09-27T19:03:51Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false,
+    "auto_fix_allowed": true,
     "resolved_at": "2026-09-27T21:08:45Z",
     "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
   },
@@ -1706,7 +1706,7 @@
     "detected_at": "2026-09-27T19:03:51Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false,
+    "auto_fix_allowed": true,
     "resolved_at": "2026-09-27T21:08:45Z",
     "resolution_reason": "直近の同ステップ実行が成功しているため、過去検出を解決済みに更新"
   }

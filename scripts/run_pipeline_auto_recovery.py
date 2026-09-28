@@ -87,6 +87,8 @@ def build_recovery_catalog(ledger: list[dict[str, Any]]) -> dict[str, Any]:
             continue
         if entry.get("status") not in {"resolved", "stale_resolved"}:
             continue
+        if entry.get("auto_fix_allowed") is not True:
+            continue
         description = str(entry.get("description") or "")
         for step in RECOVERY_RECIPES:
             if step not in description:
