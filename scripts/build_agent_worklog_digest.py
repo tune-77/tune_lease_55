@@ -26,8 +26,26 @@ DEFAULT_VAULT = resolve_obsidian_vault()
 
 WORKLOG_HEADING_RE = re.compile(r"^##\s+(?P<time>\d{2}:\d{2})\s+(?P<agent>Codex|Claude)\s+Work Log\s*$")
 SECTION_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$")
+PROJECT_TIMESTAMP_RE = re.compile(r"^<!--\s*worklog_at:\s*(?P<timestamp>[^>]+?)\s*-->$")
 PUBLIC_SECTIONS = {"Summary", "Chat Summary", "Decisions", "Changes", "Verification", "Open Items"}
+PROJECT_PUBLIC_SECTION_MAP: dict[str, tuple[str, ...]] = {
+    "何をしたか": ("Summary", "Changes"),
+    "概要": ("Summary",),
+    "結論": ("Summary", "Decisions"),
+    "判断": ("Decisions",),
+    "決定": ("Decisions",),
+    "変更": ("Changes",),
+    "実装": ("Changes",),
+    "検証": ("Verification",),
+    "確認": ("Verification",),
+    "証拠": ("Verification",),
+    "残件": ("Open Items",),
+    "次": ("Open Items",),
+    "次回どう切り分けるか": ("Open Items",),
+    "未解決": ("Open Items",),
+}
 MAX_FIELD_CHARS = 420
+PROJECT_WORKLOG_RELATIVE_DIR = Path("Projects") / "tune_lease_55" / "Work Logs"
 
 
 def _clip(text: str, limit: int = MAX_FIELD_CHARS) -> str:
@@ -37,14 +55,15 @@ def _clip(text: str, limit: int = MAX_FIELD_CHARS) -> str:
     return value[:limit].rstrip() + "..."
 
 
-def _daily_note_paths(vault: Path, days: int) -> list[Path]:
+def _worklog_note_paths(vault: Path, days: int) -> list[Path]:
     today = dt.date.today()
     paths: list[Path] = []
     for offset in range(max(1, days)):
         day = today - dt.timedelta(days=offset)
-        path = vault / "Daily" / f"{day.isoformat()}.md"
-        if path.exists():
-            paths.append(path)
+        for root in (vault / "Daily", vault / PROJECT_WORKLOG_RELATIVE_DIR):
+            path = root / f"{day.isoformat()}.md"
+            if path.exists():
+                paths.append(path)
     return paths
 
 
@@ -58,6 +77,21 @@ def _parse_bullets(lines: list[str]) -> list[str]:
         if line:
             items.append(_clip(line))
     return items
+
+
+def _daily_worklog_format_expected(note_path: Path) -> bool:
+    """Return whether a Daily note contains evidence of an agent work-log block."""
+    try:
+        text = note_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return bool(
+        re.search(
+            r"^##\s+.*(?:Codex|Claude).*(?:Work\s*Log|作業(?:ログ|録))",
+            text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+    )
 
 
 def parse_work_logs(note_path: Path) -> list[dict[str, Any]]:
@@ -125,6 +159,84 @@ def parse_work_logs(note_path: Path) -> list[dict[str, Any]]:
     return logs
 
 
+def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
+    """Projects/tune_lease_55/Work Logs の1日1ファイル形式を読む。"""
+    try:
+        lines = note_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return []
+
+    starts = [index for index, line in enumerate(lines) if line.startswith("## 作業:")]
+    try:
+        # 旧形式では最終ブロックだけファイル更新時刻を使う。過去ブロック全部へ同じ
+        # mtimeを付けると、古いProjectログが新しいDailyログを押し出すため。
+        file_time = dt.datetime.fromtimestamp(note_path.stat().st_mtime).strftime("%H:%M:%S")
+    except OSError:
+        file_time = "00:00:00"
+    logs: list[dict[str, Any]] = []
+    for position, start in enumerate(starts):
+        end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+        block = lines[start:end]
+        timestamp_match = next(
+            (PROJECT_TIMESTAMP_RE.match(line.strip()) for line in block[1:] if PROJECT_TIMESTAMP_RE.match(line.strip())),
+            None,
+        )
+        block_time = ""
+        if timestamp_match:
+            try:
+                block_time = dt.datetime.fromisoformat(timestamp_match.group("timestamp")).strftime("%H:%M:%S")
+            except ValueError:
+                block_time = ""
+        if not block_time:
+            block_time = file_time if position == len(starts) - 1 else "00:00:00"
+        sections: dict[str, list[str]] = {}
+        current_section = ""
+        section_lines: list[str] = []
+
+        def flush_section() -> None:
+            nonlocal section_lines
+            if current_section and section_lines:
+                sections[current_section] = _parse_bullets(section_lines)
+            section_lines = []
+
+        for line in block[1:]:
+            section_match = SECTION_RE.match(line)
+            if section_match:
+                flush_section()
+                current_section = section_match.group("title").strip()
+                continue
+            if current_section:
+                section_lines.append(line)
+        flush_section()
+
+        def collect(public_field: str, limit: int = 3) -> list[str]:
+            values: list[str] = []
+            for heading, items in sections.items():
+                if public_field in PROJECT_PUBLIC_SECTION_MAP.get(heading, ()):
+                    values.extend(items)
+            return values[:limit]
+
+        # `## 作業:` のタイトルは案件名などの非公開情報を含み得るため、
+        # 明示的に許可した本文見出しだけから公開要約を作る。
+        summary = collect("Summary", limit=2)
+        logs.append({
+            "date": note_path.stem,
+            "time": block_time[:5],
+            "sort_time": block_time,
+            "sequence": position,
+            "agent": "Agent",
+            "source_path": str(note_path),
+            "sections": {
+                "Summary": summary[:3],
+                "Decisions": collect("Decisions", limit=3),
+                "Changes": collect("Changes", limit=3),
+                "Verification": collect("Verification", limit=2),
+                "Open Items": collect("Open Items", limit=2),
+            },
+        })
+    return logs
+
+
 def _summarize_log(log: dict[str, Any]) -> dict[str, Any]:
     sections = log.get("sections") if isinstance(log.get("sections"), dict) else {}
     summary = list(sections.get("Summary") or [])[:2]
@@ -148,19 +260,40 @@ def _summarize_log(log: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# この件数以上、日次ノートが見つかっているのに作業録が1件も拾えないと、
+# この件数以上、エージェント作業録らしい日次見出しが見つかっているのに
+# 作業録が1件も拾えないと、
 # WORKLOG_HEADING_RE の書式ドリフトを疑う（sync_memory_from_daily.pyと同型の
 # 「無音の書式依存＋無条件exit 0」を防ぐ）。
 MIN_NOTES_FOR_DRIFT_CHECK = 3
 
 
 def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]:
-    paths = _daily_note_paths(vault, days)
+    paths = _worklog_note_paths(vault, days)
     logs: list[dict[str, Any]] = []
+    daily_source_count = 0
+    project_source_count = 0
+    daily_worklog_candidate_files = 0
     for path in paths:
-        logs.extend(parse_work_logs(path))
-    logs.sort(key=lambda item: (str(item.get("date") or ""), str(item.get("time") or "")), reverse=True)
+        if path.parent == vault / PROJECT_WORKLOG_RELATIVE_DIR:
+            parsed = parse_project_work_log(path)
+            project_source_count += len(parsed)
+        else:
+            parsed = parse_work_logs(path)
+            daily_source_count += len(parsed)
+            daily_worklog_candidate_files += int(_daily_worklog_format_expected(path))
+        logs.extend(parsed)
+    logs.sort(
+        key=lambda item: (
+            str(item.get("date") or ""),
+            str(item.get("sort_time") or item.get("time") or ""),
+            int(item.get("sequence") or 0),
+        ),
+        reverse=True,
+    )
     items = [_summarize_log(log) for log in logs[: max(0, limit)]]
+    project_root = vault / PROJECT_WORKLOG_RELATIVE_DIR
+    project_files_scanned = sum(path.parent == project_root for path in paths)
+    daily_files_scanned = len(paths) - project_files_scanned
     return {
         "label": "Codex/Claude 作業録ダイジェスト",
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
@@ -169,6 +302,11 @@ def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]
         "count": len(items),
         "source_count": len(logs),
         "note_files_scanned": len(paths),
+        "daily_note_files_scanned": daily_files_scanned,
+        "daily_worklog_candidate_files": daily_worklog_candidate_files,
+        "daily_source_count": daily_source_count,
+        "project_worklog_files_scanned": project_files_scanned,
+        "project_source_count": project_source_count,
         "items": items,
         "policy": {
             "raw_chat_logs_excluded": True,
@@ -210,6 +348,27 @@ def write_outputs(digest: dict[str, Any], json_path: Path, md_path: Path) -> Non
     md_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
+def find_drifted_sources(digest: dict[str, Any]) -> list[str]:
+    drifted_sources: list[str] = []
+    if (
+        digest["daily_worklog_candidate_files"] >= MIN_NOTES_FOR_DRIFT_CHECK
+        and digest["daily_source_count"] == 0
+    ):
+        drifted_sources.append(
+            f"Dailyの作業録候補 {digest['daily_worklog_candidate_files']}件から作業録0件 "
+            "(`## HH:MM Codex|Claude Work Log`)"
+        )
+    if (
+        digest["project_worklog_files_scanned"] >= MIN_NOTES_FOR_DRIFT_CHECK
+        and digest["project_source_count"] == 0
+    ):
+        drifted_sources.append(
+            f"Projects/tune_lease_55/Work Logs {digest['project_worklog_files_scanned']}件から作業録0件 "
+            "(`## 作業:`)"
+        )
+    return drifted_sources
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--vault", type=Path, default=DEFAULT_VAULT)
@@ -221,18 +380,14 @@ def main() -> int:
 
     vault = args.vault.expanduser()
     digest = build_digest(vault, days=args.days, limit=args.limit)
+    drifted_sources = find_drifted_sources(digest)
+    if drifted_sources:
+        print("警告: 書式ドリフトを疑ってください: " + " / ".join(drifted_sources), file=sys.stderr)
+        return 1
     write_outputs(digest, args.json, args.md)
     print(f"agent_worklog_digest={digest['count']} source={digest['source_count']}")
     print(args.json)
     print(args.md)
-
-    if digest["note_files_scanned"] >= MIN_NOTES_FOR_DRIFT_CHECK and digest["source_count"] == 0:
-        print(
-            f"警告: 日次ノート{digest['note_files_scanned']}件を走査したが作業録が0件でした。"
-            "WORKLOG_HEADING_RE (`## HH:MM Codex|Claude Work Log`) の書式ドリフトを疑ってください。",
-            file=sys.stderr,
-        )
-        return 1
     return 0
 
 

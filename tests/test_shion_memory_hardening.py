@@ -14,6 +14,7 @@ from scripts.check_shion_memory_health import check, load_index_summary, load_st
 from scripts.detect_shion_memory_contradictions import find_contradictions  # noqa: E402
 from scripts.build_shion_eval_candidates import collect_candidates as collect_eval_candidates  # noqa: E402
 from scripts.build_shion_memory_promotion_queue import collect_candidates as collect_promotions  # noqa: E402
+from scripts.build_shion_memory_index import _snapshot_previous_index  # noqa: E402
 from scripts.apply_shion_memory_promotions import apply_promotions  # noqa: E402
 from scripts.update_shion_memory_freshness import apply_freshness, load_feedback_signals  # noqa: E402
 
@@ -21,12 +22,53 @@ from scripts.update_shion_memory_freshness import apply_freshness, load_feedback
 # ── ヘルスチェック ──────────────────────────────────────────────────────────
 
 
-def _write_index(path: Path, n: int) -> None:
+def _write_index(path: Path, n: int, *, layer: str | None = None) -> None:
     records = [
-        {"id": f"m{i}", "content": f"記憶{i}", "memory_type": "factual_memory", "status": "active"}
+        {
+            "id": f"m{i}",
+            "content": f"記憶{i}",
+            "memory_type": "factual_memory",
+            "status": "active",
+            **({"memory_layer": layer} if layer else {}),
+        }
         for i in range(n)
     ]
     path.write_text(json.dumps({"records": records}, ensure_ascii=False), encoding="utf-8")
+
+
+def test_snapshot_previous_index_preserves_layer_evidence(tmp_path: Path) -> None:
+    index = tmp_path / "index.json"
+    summary = tmp_path / "previous-summary.json"
+    index.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-09-27T23:00:00",
+                "records": [
+                    {
+                        "id": "long-1",
+                        "memory_type": "factual_memory",
+                        "status": "active",
+                        "memory_layer": "long_term",
+                    },
+                    {
+                        "id": "mid-1",
+                        "memory_type": "dialogue_memory",
+                        "status": "active",
+                        "memory_layer": "mid_term",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _snapshot_previous_index(index, summary) is True
+
+    payload = json.loads(summary.read_text(encoding="utf-8"))
+    assert payload["source_generated_at"] == "2026-09-27T23:00:00"
+    assert payload["total"] == 2
+    assert payload["by_layer"] == {"long_term": 1, "mid_term": 1}
+    assert payload["by_type"] == {"dialogue_memory": 1, "factual_memory": 1}
 
 
 class TestMemoryHealth:
@@ -44,6 +86,24 @@ class TestMemoryHealth:
         healthy, message = check(summary, {"total": 100})
         assert not healthy
         assert "急減" in message
+
+    def test_rolling_mid_term_drop_is_not_an_alarm(self, tmp_path):
+        index = tmp_path / "index.json"
+        records = [
+            {"id": f"long-{i}", "memory_type": "factual_memory", "status": "active", "memory_layer": "long_term"}
+            for i in range(200)
+        ] + [
+            {"id": f"mid-{i}", "memory_type": "dialogue_memory", "status": "active", "memory_layer": "mid_term"}
+            for i in range(50)
+        ]
+        index.write_text(json.dumps({"records": records}), encoding="utf-8")
+        summary = load_index_summary(index)
+        previous = {"total": 450, "by_layer": {"long_term": 200, "mid_term": 250}}
+
+        healthy, message = check(summary, previous)
+
+        assert healthy
+        assert "永続層" in message
 
     def test_alarm_on_missing_or_empty_index(self, tmp_path):
         healthy, _ = check(load_index_summary(tmp_path / "none.json"), {})

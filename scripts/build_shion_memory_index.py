@@ -22,6 +22,7 @@ from api.shion_memory_taxonomy import MEMORY_TYPES, RECALL_ROUTES, make_memory_r
 from obsidian_query import list_vault_md_files
 
 DEFAULT_OUTPUT = REPO_ROOT / "data" / "shion_memory_index.json"
+DEFAULT_PREVIOUS_SUMMARY = REPO_ROOT / "data" / "shion_memory_index_previous_summary.json"
 
 _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...], str], ...] = (
     (
@@ -661,9 +662,51 @@ def _is_demo_unsafe(record: dict[str, Any]) -> bool:
     return str(record.get("memory_type") or "") in {"dialogue_memory", "reflection_memory"}
 
 
+def _snapshot_previous_index(index_path: Path, summary_path: Path) -> bool:
+    """Preserve the prior layer counts as migration evidence before replacement."""
+    try:
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    records = payload.get("records") if isinstance(payload, dict) else None
+    if not isinstance(records, list) or not records:
+        return False
+    by_type = Counter(str(record.get("memory_type") or "unknown") for record in records)
+    by_status = Counter(str(record.get("status") or "active") for record in records)
+    by_layer = Counter(str(record.get("memory_layer") or "unknown") for record in records)
+    snapshot = {
+        "captured_at": datetime.now().isoformat(timespec="seconds"),
+        "source_generated_at": str(payload.get("generated_at") or ""),
+        "total": len(records),
+        "by_type": dict(sorted(by_type.items())),
+        "by_status": dict(sorted(by_status.items())),
+        "by_layer": dict(sorted(by_layer.items())),
+    }
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{summary_path.name}.",
+        suffix=".tmp",
+        dir=summary_path.parent,
+    )
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(summary_path)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build Shion memory taxonomy index.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--previous-summary",
+        type=Path,
+        default=None,
+        help="置換前インデックスの層別件数を保存するパス（既定出力時はdata配下）",
+    )
     parser.add_argument(
         "--demo-safe",
         action="store_true",
@@ -671,6 +714,12 @@ def main() -> int:
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    previous_summary = args.previous_summary
+    if previous_summary is None and args.output.resolve() == DEFAULT_OUTPUT.resolve():
+        previous_summary = DEFAULT_PREVIOUS_SUMMARY
+    if not args.dry_run and previous_summary is not None and args.output.exists():
+        _snapshot_previous_index(args.output, previous_summary)
 
     # 引き継ぎ元は出力先の既存索引。初回出力先（デモ用の別パス等）はローカル既定索引から引き継ぐ
     previous = args.output if args.output.exists() else None
