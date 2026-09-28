@@ -646,6 +646,9 @@ app.include_router(vertex_search_router)
 from api.routers.debate import router as debate_router
 app.include_router(debate_router)
 
+from api.routers.shion_voice import router as shion_voice_router
+app.include_router(shion_voice_router)
+
 
 _MAIN_COMPAT_EXPORTS = {
     "ImprovementTriageApproveRequest": ("api.routers.improvement", "ImprovementTriageApproveRequest"),

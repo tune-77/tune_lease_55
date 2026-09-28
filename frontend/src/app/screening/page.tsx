@@ -2222,7 +2222,7 @@ export default function Dashboard() {
         response_mode: "shion",
         debug_memory: true,
       }, {
-        timeout: 18000,
+        timeout: 120000,
       });
       if (seq !== shionReviewRequestSeq.current) return;
       const memoryDebug = res.data?.memory_debug || {};
