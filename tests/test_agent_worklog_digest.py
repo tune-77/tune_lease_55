@@ -145,6 +145,39 @@ def test_project_work_log_keeps_appended_tasks_separate(tmp_path):
     assert logs[1]["sections"]["Open Items"] == ["次はログから確認する。"]
 
 
+def test_project_work_log_only_publishes_allowlisted_headings(tmp_path):
+    import scripts.build_agent_worklog_digest as digest
+
+    note = tmp_path / "2026-09-28.md"
+    note.write_text(
+        """
+## 作業: 公開範囲を確認
+
+### 何をしたか
+公開できる変更
+
+### 非公開の判断
+顧客固有の秘密
+
+### 秘密の実装メモ
+外へ出してはいけない値
+
+### 検証
+対象テスト成功
+""".strip(),
+        encoding="utf-8",
+    )
+
+    [parsed] = digest.parse_project_work_log(note)
+    serialized = json.dumps(parsed, ensure_ascii=False)
+
+    assert parsed["sections"]["Summary"] == ["作業: 公開範囲を確認", "公開できる変更"]
+    assert parsed["sections"]["Changes"] == ["公開できる変更"]
+    assert parsed["sections"]["Verification"] == ["対象テスト成功"]
+    assert "顧客固有の秘密" not in serialized
+    assert "外へ出してはいけない値" not in serialized
+
+
 def test_build_digest_prefers_newest_appended_project_tasks(tmp_path):
     import scripts.build_agent_worklog_digest as digest
 
@@ -291,7 +324,7 @@ def test_main_warns_and_exits_nonzero_when_heading_format_drifts(tmp_path, monke
     for offset in range(3):
         day = dt.date.today() - dt.timedelta(days=offset)
         (daily / f"{day.isoformat()}.md").write_text(
-            "## 10:00 何らかの別形式ログ\n- 中身\n", encoding="utf-8"
+            "## 10:00 Codex 作業ログ\n- 中身\n", encoding="utf-8"
         )
 
     monkeypatch.setattr(
@@ -309,6 +342,39 @@ def test_main_warns_and_exits_nonzero_when_heading_format_drifts(tmp_path, monke
 
     assert exit_code == 1
     assert "書式ドリフト" in capsys.readouterr().err
+
+
+def test_main_does_not_treat_ordinary_daily_notes_as_format_drift(tmp_path, monkeypatch):
+    import scripts.build_agent_worklog_digest as digest
+
+    vault = tmp_path / "Vault"
+    daily = vault / "Daily"
+    worklogs = vault / "Projects" / "tune_lease_55" / "Work Logs"
+    daily.mkdir(parents=True)
+    worklogs.mkdir(parents=True)
+    for offset in range(3):
+        day = dt.date.today() - dt.timedelta(days=offset)
+        (daily / f"{day.isoformat()}.md").write_text("# 普通の日次メモ\n", encoding="utf-8")
+    note_date = dt.date.today().isoformat()
+    (worklogs / f"{note_date}.md").write_text(
+        "## 作業: 正常なProjectログ\n\n### 何をしたか\n復旧した",
+        encoding="utf-8",
+    )
+    json_output = tmp_path / "out.json"
+    md_output = tmp_path / "out.md"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_agent_worklog_digest.py",
+            "--vault", str(vault),
+            "--days", "3",
+            "--json", str(json_output),
+            "--md", str(md_output),
+        ],
+    )
+
+    assert digest.main() == 0
+    assert json.loads(json_output.read_text(encoding="utf-8"))["source_count"] == 1
 
 
 def test_main_returns_zero_when_too_few_notes_to_judge_drift(tmp_path, monkeypatch, capsys):

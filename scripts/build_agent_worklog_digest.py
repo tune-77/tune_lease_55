@@ -28,6 +28,22 @@ WORKLOG_HEADING_RE = re.compile(r"^##\s+(?P<time>\d{2}:\d{2})\s+(?P<agent>Codex|
 SECTION_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$")
 PROJECT_TIMESTAMP_RE = re.compile(r"^<!--\s*worklog_at:\s*(?P<timestamp>[^>]+?)\s*-->$")
 PUBLIC_SECTIONS = {"Summary", "Chat Summary", "Decisions", "Changes", "Verification", "Open Items"}
+PROJECT_PUBLIC_SECTION_MAP: dict[str, tuple[str, ...]] = {
+    "何をしたか": ("Summary", "Changes"),
+    "概要": ("Summary",),
+    "結論": ("Summary", "Decisions"),
+    "判断": ("Decisions",),
+    "決定": ("Decisions",),
+    "変更": ("Changes",),
+    "実装": ("Changes",),
+    "検証": ("Verification",),
+    "確認": ("Verification",),
+    "証拠": ("Verification",),
+    "残件": ("Open Items",),
+    "次": ("Open Items",),
+    "次回どう切り分けるか": ("Open Items",),
+    "未解決": ("Open Items",),
+}
 MAX_FIELD_CHARS = 420
 PROJECT_WORKLOG_RELATIVE_DIR = Path("Projects") / "tune_lease_55" / "Work Logs"
 
@@ -61,6 +77,21 @@ def _parse_bullets(lines: list[str]) -> list[str]:
         if line:
             items.append(_clip(line))
     return items
+
+
+def _daily_worklog_format_expected(note_path: Path) -> bool:
+    """Return whether a Daily note contains evidence of an agent work-log block."""
+    try:
+        text = note_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return bool(
+        re.search(
+            r"^##\s+.*(?:Codex|Claude).*(?:Work\s*Log|作業(?:ログ|録))",
+            text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+    )
 
 
 def parse_work_logs(note_path: Path) -> list[dict[str, Any]]:
@@ -179,15 +210,15 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
                 section_lines.append(line)
         flush_section()
 
-        def collect(*keywords: str, limit: int = 3) -> list[str]:
+        def collect(public_field: str, limit: int = 3) -> list[str]:
             values: list[str] = []
             for heading, items in sections.items():
-                if any(keyword in heading for keyword in keywords):
+                if public_field in PROJECT_PUBLIC_SECTION_MAP.get(heading, ()):
                     values.extend(items)
             return values[:limit]
 
         summary = [title]
-        summary.extend(collect("何をした", "概要", "結論", limit=2))
+        summary.extend(collect("Summary", limit=2))
         logs.append({
             "date": note_path.stem,
             "time": block_time[:5],
@@ -197,10 +228,10 @@ def parse_project_work_log(note_path: Path) -> list[dict[str, Any]]:
             "source_path": str(note_path),
             "sections": {
                 "Summary": summary[:3],
-                "Decisions": collect("判断", "決定", "結論", limit=3),
-                "Changes": collect("変更", "実装", "何をした", limit=3),
-                "Verification": collect("検証", "確認", "証拠", limit=2),
-                "Open Items": collect("残件", "次", "未解決", limit=2),
+                "Decisions": collect("Decisions", limit=3),
+                "Changes": collect("Changes", limit=3),
+                "Verification": collect("Verification", limit=2),
+                "Open Items": collect("Open Items", limit=2),
             },
         })
     return logs
@@ -229,7 +260,8 @@ def _summarize_log(log: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# この件数以上、日次ノートが見つかっているのに作業録が1件も拾えないと、
+# この件数以上、エージェント作業録らしい日次見出しが見つかっているのに
+# 作業録が1件も拾えないと、
 # WORKLOG_HEADING_RE の書式ドリフトを疑う（sync_memory_from_daily.pyと同型の
 # 「無音の書式依存＋無条件exit 0」を防ぐ）。
 MIN_NOTES_FOR_DRIFT_CHECK = 3
@@ -240,6 +272,7 @@ def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]
     logs: list[dict[str, Any]] = []
     daily_source_count = 0
     project_source_count = 0
+    daily_worklog_candidate_files = 0
     for path in paths:
         if path.parent == vault / PROJECT_WORKLOG_RELATIVE_DIR:
             parsed = parse_project_work_log(path)
@@ -247,6 +280,7 @@ def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]
         else:
             parsed = parse_work_logs(path)
             daily_source_count += len(parsed)
+            daily_worklog_candidate_files += int(_daily_worklog_format_expected(path))
         logs.extend(parsed)
     logs.sort(
         key=lambda item: (
@@ -269,6 +303,7 @@ def build_digest(vault: Path, days: int = 14, limit: int = 12) -> dict[str, Any]
         "source_count": len(logs),
         "note_files_scanned": len(paths),
         "daily_note_files_scanned": daily_files_scanned,
+        "daily_worklog_candidate_files": daily_worklog_candidate_files,
         "daily_source_count": daily_source_count,
         "project_worklog_files_scanned": project_files_scanned,
         "project_source_count": project_source_count,
@@ -315,9 +350,12 @@ def write_outputs(digest: dict[str, Any], json_path: Path, md_path: Path) -> Non
 
 def find_drifted_sources(digest: dict[str, Any]) -> list[str]:
     drifted_sources: list[str] = []
-    if digest["daily_note_files_scanned"] >= MIN_NOTES_FOR_DRIFT_CHECK and digest["daily_source_count"] == 0:
+    if (
+        digest["daily_worklog_candidate_files"] >= MIN_NOTES_FOR_DRIFT_CHECK
+        and digest["daily_source_count"] == 0
+    ):
         drifted_sources.append(
-            f"Daily {digest['daily_note_files_scanned']}件から作業録0件 "
+            f"Dailyの作業録候補 {digest['daily_worklog_candidate_files']}件から作業録0件 "
             "(`## HH:MM Codex|Claude Work Log`)"
         )
     if (
