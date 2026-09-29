@@ -22,3 +22,12 @@ for _mod in [
     "lightgbm", "shap",
 ]:
     sys.modules.setdefault(_mod, MagicMock())
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_jev_judgment_log(tmp_path, monkeypatch):
+    """Jev判定ログ（REV-424）をテストがリポジトリの data/ へ書かないようにする。"""
+    monkeypatch.setenv("JEV_JUDGMENT_LOG_PATH", str(tmp_path / "jev_judgment_log.jsonl"))

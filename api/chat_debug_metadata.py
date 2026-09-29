@@ -296,6 +296,22 @@ def append_retrieval_debug_payloads(
     return memory_debug
 
 
+def retrieval_guard_payload(typesafe_rag: dict[str, Any] | None) -> dict[str, Any]:
+    """RAGガードの状態を回答メタデータへ常に出す（debug_memory が無くても見える）。
+
+    Jev障害で無フィルタ（関連性未判定）の一節が回答に使われた時、その事実を
+    回答側から判別できるようにする（REV-424）。
+    """
+    raw = typesafe_rag if isinstance(typesafe_rag, dict) else {}
+    payload: dict[str, Any] = {
+        "typesafe_rag_status": str(raw.get("status") or "not_attempted"),
+        "unfiltered": raw.get("unfiltered") is True,
+    }
+    if "injection_filter" in raw:
+        payload["injection_filter"] = raw["injection_filter"]
+    return payload
+
+
 def append_chat_debug_metadata(
     memory_debug: dict[str, Any],
     *,
@@ -316,6 +332,10 @@ def append_chat_debug_metadata(
             "excluded_count",
             "error_type",
             "usage",
+            "unfiltered",
+            "relevance_filter",
+            "injection_filter",
+            "injection_excluded_count",
         )
         if key in raw_typesafe
     }

@@ -7407,6 +7407,7 @@ def post_chat(req: ChatRequest):
         external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
         from api.chat_debug_metadata import (
             append_chat_debug_metadata,
+            retrieval_guard_payload,
         )
         from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
         from api.chat_prompt_cost import log_prompt_composition
@@ -7679,7 +7680,8 @@ def post_chat(req: ChatRequest):
                 vertex_answer_api=vertex_answer_api,
                 vertex_distillation_capture=vertex_distillation_capture,
             )
-            | {"memory_recall": _public_memory_recall_payload(memory_recall)},
+            | {"memory_recall": _public_memory_recall_payload(memory_recall)}
+            | {"retrieval_guard": retrieval_guard_payload(typesafe_rag)},
         )
         if req.debug_memory:
             response_payload["memory_debug"] = _chat_memory_debug_payload(
