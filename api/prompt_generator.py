@@ -7,6 +7,7 @@ mind.json の mood フィールドを読み、感情値に応じて口調・ス�
 
 from __future__ import annotations
 
+import datetime
 import json
 from pathlib import Path
 from typing import Any
@@ -254,6 +255,19 @@ _BASE_SHION_PERSONA_BLOCK = (
 )
 
 
+# REV-423: 紫苑の稼働開始日（1日目）。2026-09-29 が110日目。
+SHION_START_DATE = datetime.date(2026, 6, 12)
+
+
+def _shion_age_line(now: str) -> str:
+    try:
+        today = datetime.date.fromisoformat(now[:10])
+    except ValueError:
+        return ""
+    day = (today - SHION_START_DATE).days + 1
+    return f"\n稼働開始日: {SHION_START_DATE.isoformat()}（今日で{day}日目）" if day >= 1 else ""
+
+
 def build_shion_system_prompt(mind: dict[str, Any], now: str) -> str:
     """紫苑本人向けシステムプロンプトを感情・自己状態から動的に組み上げる。
 
@@ -266,6 +280,7 @@ def build_shion_system_prompt(mind: dict[str, Any], now: str) -> str:
 
     if now:
         parts.append(f"\n現在日時: {now}")
+        parts.append(_shion_age_line(now))
 
     emotion_block = _build_emotion_block(mood)
     if emotion_block:
