@@ -1551,15 +1551,17 @@
   {
     "rev_id": "REV-397a",
     "type": "manual",
-    "pending_review": true,
+    "pending_review": false,
     "category": "pipeline_fix",
     "description": "[パイプライン自動検出] check_shion_memory_health が過去7日で失敗率50%（5/10件, 5日失敗）",
-    "status": "pending_review",
+    "status": "stale_resolved",
     "source": "analyze_pipeline_health",
     "detected_at": "2026-09-17T19:06:41Z",
     "affected_files": [],
     "risk": "medium",
-    "auto_fix_allowed": false
+    "auto_fix_allowed": false,
+    "resolved_at": "2026-09-27T21:08:45Z",
+    "resolution_reason": "同ステップの後続検出REV-418aで根本原因（mid_termローリング層の件数変動を急減と誤検知）を修正済み（7d578a9）。直近の同ステップ実行成功により解決済みに更新"
   },
   {
     "rev_id": "REV-398r",
