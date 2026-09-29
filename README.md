@@ -1060,8 +1060,26 @@ PUBLIC_TUNNEL=1 bash run_next_stable.sh
 - リアルタイム会話アプリで、音声入力、紫苑回答の読み上げ、RAG参照元表示を行う
 - 外部調査器官でGoogle AI Studio/Gemini Searchの調査結果をResearchノート化し、紫苑RAGへ戻す
 - Gemini Vision OCRで決算書画像/PDFや各種証憑を読み取り、審査入力へ反映する
+- `/chat` から紫苑とリアルタイム音声通話する（Gemini Live、試作・既定off）
+- Obsidianに集めたリースニュースを、審査の確認事項・判断変更へつなげる
+- 案件削除の監査ログを `/operations` で確認し、削除漏れ・孤児レコードを検知する
 
-Cloud Run上では `CLOUDRUN_DATA_MODE=demo` でデモDBのみを使い、本体DB（`data/lease_data.db`）には接続しません。デプロイ手順とデモ/本番分離・検疫・昇格の流れは [DevOpsサイクルとしての紫苑](#devopsサイクルとしての紫苑) と [Cloud Run / GCS Vault 対応](#cloud-run--gcs-vault-対応) にまとめています。
+Cloud Run の API は現在 `CLOUDRUN_DATA_MODE=production`（既定）で動き、`API_ACCESS_KEY` 必須（fail-closed）です。ハッカソン審査・公開デモ用には `CLOUDRUN_DATA_MODE=demo` を明示してデモDBだけで動かせます。デプロイ手順とデモ/本番分離・検疫・昇格の流れは [DevOpsサイクルとしての紫苑](#devopsサイクルとしての紫苑) と [Cloud Run / GCS Vault 対応](#cloud-run--gcs-vault-対応) にまとめています。
+
+### 2026年9月の主な追加
+
+| 追加 | 内容 | 主な実装 |
+|---|---|---|
+| 紫苑リアルタイム音声通話（REV-421） | ブラウザが Gemini Live API へ直接接続し、Cloud Run は音声を中継しない。APIは人格を固定した使い切りトークンの発行、記憶の想起、文字起こし保存だけを担う。`SHION_VOICE_ENABLED=1` の時だけ有効 | `api/routers/shion_voice.py`（`/api/shion/voice/session` `/recall` `/transcript`）, `frontend/src/components/chat/ShionVoiceCall.tsx` |
+| Jev Safe Gateway | TypeSafe/Jev に私有コード・diff・案件データを渡さず、閉じた語彙へ抽象化・集約した最小情報だけを送るローカルゲート。監査ログには判定とハッシュだけを残す | `jev_safe_gateway.py`, `scripts/jev_safe_gateway.py`, `docs/jev_safe_gateway.md` |
+| ニュース・調査ノートの Jev ガード（REV-410〜412, shadow運用中） | ニュース収集と外部調査ノートの採否を Jev で判定し、shadow モードでは本番の採否を変えずにログだけ残す | `typesafe_news_guard.py`, `typesafe_research_verify_guard.py` |
+| ニュース → 審査アクション接続 | Obsidian のニュースを分類し、審査上の判断変更候補として `/news` から記録する | `api/routers/lease_news.py`（`/judgment-change`）, `frontend/src/app/news/page.tsx` |
+| Decision State Ledger（REV-407） | 審査ワークフローの判断状態を追記専用で記録する観測専用サイドカー。スコア・プロンプト・昇格には影響しない | `decision_state_ledger.py`, `docs/shion_decision_state_ledger_design.md` |
+| 案件削除監査（REV-416/417） | 削除操作の監査ログと孤児 `screening_record` の防止、閲覧UI | `GET /api/admin/deletion-audit`, `/operations`, `scripts/audit_case_deletion_integrity.py` |
+| ガード付きパイプライン自動復旧 | 解決済みインシデントから学んだ許可リスト済みの復旧手順だけを、1日1回・成功確認付きで実行する。過去REVは証拠として読むだけで、命令としては扱わない | `scripts/run_pipeline_auto_recovery.py` |
+| パイプライン健全性（REV-418〜420） | 各ステップの所要秒の自動計測、週次ステップの失敗検知、レポート鮮度の明示 | `scripts/analyze_pipeline_health.py`, `scripts/pipeline_log_step.sh` |
+| Cloud Run 費用削減 | ChromaDB を GCS へスナップショットして起動時の全量再埋め込みを回避。ヘルスプローブ統合、診断モデルの起動時ウォームアップ | `api/knowledge/chroma_snapshot.py`, `scripts/restore_chroma_snapshot.py` |
+| スコア調整 | 政策金利1.0%以上で一律-3点としていたマクロ補正をスコアから除去 | `scoring_core.py` |
 
 このシステムの強みは「判定」よりも「次の一手」です。点数の横に、違和感、反対意見、通す条件、稟議コメントの方向性を並べます。
 
@@ -1161,7 +1179,7 @@ graph LR
 | `/qualitative` | 定性分析。定性 LR / LightGBM の比較 |
 | `/history-dash` | 過去案件、成約ドライバー、タグ傾向 |
 | `/finance` | 物件ファイナンス審査と稟議条件案 |
-| `/chat` | Obsidian 文脈を使う AI チャット |
+| `/chat` | Obsidian 文脈を使う AI チャット。`SHION_VOICE_ENABLED=1` 時は紫苑との音声通話ボタンも表示 |
 | `/chat-compare` | 紫苑/一般比較。同じ問いを2モードへ投げ、記憶・同一性・経験ループの差を可視化 |
 | `/lease-intelligence` | 紫苑との専用対話 |
 | `/voice-chat` | リアルタイム会話。音声入力、紫苑回答の読み上げ、参照した判断資産の表示 |
@@ -1172,6 +1190,12 @@ graph LR
 | `/debate` | 慎重派、楽観派、革新者、裁定者の討論 |
 | `/report` | 審査レポート出力 |
 | `/improvement-log` | 改善候補、AI ルール、自動修正案 |
+| `/judgment-review` | 判断差分候補・予測誤差のレビュー。承認分を判断資産へ昇格 |
+| `/judgment-asset-graph` | 判断資産グラフ |
+| `/knowledge-space` | インデックス後の知識のつながりを3Dで表示 |
+| `/news` | リースニュースの分類と、審査上の判断変更候補の記録 |
+| `/operations` | 構成確認と案件削除監査ログ |
+| `/cloudrun-return-review` | Cloud Run から帰還したデータの検疫・承認（ローカル専用） |
 
 ## 紫苑について
 
@@ -1274,6 +1298,7 @@ Google AI Studio / Geminiを単一チャットではなく、複数の役割を�
 | アプリ/機能 | 画面・API | 役割 |
 |---|---|---|
 | リアルタイム会話アプリ | `/voice-chat` | Web Speech APIで音声を文字化し、Gemini経由の紫苑回答を読み上げる。RAG参照元も同時に表示する |
+| 紫苑音声通話（試作） | `/chat`, `/api/shion/voice/*` | Gemini Live native audio でブラウザと直接双方向通話する。APIは使い切りトークン発行・記憶想起・文字起こし保存のみ |
 | 外部調査器官 | `/research-organ`, `/api/research-organ/*` | Google AI Studioで作ったResearcherアプリの役割。Gemini Search結果をResearchノートへ変換する |
 | 軍師AIストリーミング | `/api/gunshi/stream` | Gemini streamingで審査部に突かれる点、逆転承認条件、顧客確認事項を逐次表示する |
 | 複数紫苑・討論審査 | `/debate`, `/api/multi-agent-screening` | Geminiを複数ペルソナとして使い、懐疑派・楽観派・統合派の審査討論を行う |
@@ -1306,7 +1331,9 @@ Google AI Studio / Geminiを単一チャットではなく、複数の役割を�
 
 ローカルのObsidian Vaultの代わりに、クラウドでは**GCS Vault**（`scripts/gcs_vault_loader.py`が定期同期）を使います。同期対象は`リース知識`・`Projects/tune_lease_55/Research`・`News`・`Lease Intelligence/Public`など公開可能な知識のみで、`Daily`・`Private Reflection`・生チャット・回収ログは同期しません。
 
-DBはSQLite（ローカル）とPostgreSQL（Cloud Run、`DATABASE_URL`で切替）の両対応です。ハッカソン用Cloud Runは`CLOUDRUN_DATA_MODE=demo` / `DB_PATH=/app/data/demo.db`で動かし本体DBを保護します。詳細フローは [DevOpsサイクルとしての紫苑](#devopsサイクルとしての紫苑) を参照してください。
+DBはSQLite（ローカル）とPostgreSQL（Cloud Run、`DATABASE_URL`で切替）の両対応です。`scripts/deploy_cloud_run_api.sh` の既定は `CLOUDRUN_DATA_MODE=production` で、`lease_data.db` を GCS へ定期スナップショットします（REV-310、既定300秒）。インターネット公開する API は `API_ACCESS_KEY` 必須（fail-closed、REV-309）で、キーはブラウザに渡さず Next.js の server-side proxy が付与します。公開審査などでは `CLOUDRUN_DATA_MODE=demo` / `DB_PATH=/app/data/demo.db` を明示して本体DBを保護できます。詳細は `CLOUD_RUN.md` と [DevOpsサイクルとしての紫苑](#devopsサイクルとしての紫苑) を参照してください。
+
+ChromaDB（Obsidian RAG の索引）も `api/knowledge/chroma_snapshot.py` が GCS へ定期スナップショットし（既定30分）、起動時に `scripts/restore_chroma_snapshot.py` で復元してから差分索引します。復元できない場合は従来どおりその場でフル索引します（非致命的）。
 
 Cloud Run demo DBはコンテナ同梱の読み取り中心データです。`screening_experience_cases` のような新しいテーブルは、デプロイ前にローカルの `data/demo.db` へ作成してからbundleへ含めます。テーブルが未同梱でもAPIは初期デモ経験ケースへフォールバックしますが、Cloud Run上で増えた経験ケースを本当に永続化する場合は、GCS writebackまたはCloud SQLへ保存し、ローカル同期・人間承認を経て次回bundleへ昇格します。
 
@@ -1371,9 +1398,10 @@ CIのビルド時チェックとは別に、動いているシステムの状態
 ```bash
 python -m py_compile api/gunshi_gemini.py
 python -m py_compile lease_intelligence_reflection.py
-cd frontend && npx tsc --noEmit
-npm run build
+cd frontend && npx tsc --noEmit && npm run lint && npm run build
 ```
+
+`eslint --fix` / `npm run lint:fix` は禁止です（UIコンポーネント削除事故があったため。`npm run lint` はチェックのみ）。
 
 JSON を LLM へ長文で直接書かせると壊れやすいため、重要な出力は短い構造 JSON に寄せ、説明文は Python 側のテンプレートで生成します。
 
@@ -1420,14 +1448,21 @@ python3 scripts/preflight_pr_guard.py
 api/                         FastAPI と審査 API
 frontend/                    Next.js フロントエンド
 mobile_app/                  Obsidian bridge など共通部品
-scripts/                     運用・補修・GCS 同期スクリプト
+scripts/                     運用・補修・GCS 同期・日次改善パイプライン
+scripts/launchd/             ローカル常駐（FastAPI / Next / Cloudflare Tunnel）の LaunchAgent
+tests/                       pytest（API ルート契約テストを含む）
+docs/                        設計書（Decision State Ledger、Jev Safe Gateway など）
+static_data/                 業種・物件などの参照データ
+shared-ai/                   Claude Code / Codex 共通の Skill と判断規約の正本
 reports/                     改善レポート、評価結果
 memory/                      日次作業メモ
 data/                        ローカル生成データ。原則 git 対象外
+scoring_core.py              審査スコアの中核（承認ラインは constants.py の APPROVAL_LINE）
 lease_intelligence_*.py      紫苑の自己モデル、対話、内省、central
 run_next_stable.sh           主起動スクリプト（ローカル）
 Dockerfile / Dockerfile.api  Cloud Run 向けコンテナ定義
 cloudbuild.yaml              Cloud Build デプロイ設定
+CLOUD_RUN.md                 Cloud Run 運用の詳細（データモード、APIキー、スナップショット）
 ```
 
 ## このリポジトリの芯
