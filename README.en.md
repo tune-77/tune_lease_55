@@ -170,6 +170,21 @@ After it starts:
 
 The stack is **Next.js + FastAPI + SQLite/PostgreSQL**, with Gemini + ADK (Agent Development Kit) for the agent layer and Cloud Run for deployment (API and Web deployed separately). See the Japanese README for full deployment, tunneling, and Obsidian/RAG setup instructions.
 
+On Cloud Run, the API runs with `CLOUDRUN_DATA_MODE=production` by default and requires `API_ACCESS_KEY` (fail-closed; the key is attached by the Next.js server-side proxy, never sent to the browser). For public demos, set `CLOUDRUN_DATA_MODE=demo` explicitly to run against the demo DB only. Details: `CLOUD_RUN.md`.
+
+## Recent additions (September 2026)
+
+| Addition | What it does |
+|---|---|
+| Real-time voice call with SHION (REV-421, prototype) | The browser connects directly to the Gemini Live API; Cloud Run never relays audio. The API only issues single-use persona-locked tokens, recalls memory, and saves transcripts. Enabled only when `SHION_VOICE_ENABLED=1` (`api/routers/shion_voice.py`) |
+| Jev Safe Gateway | A local gate that never sends private code, diffs, or case data to TypeSafe/Jev — only abstracted, closed-vocabulary summaries. The audit log keeps verdicts and hashes only (`docs/jev_safe_gateway.md`) |
+| Jev guards for news and research notes (REV-410–412) | Judges which news items and external research notes to keep; runs in shadow mode, logging without changing production decisions |
+| News → screening actions | Classified Obsidian news can be recorded as judgment-change candidates from `/news` |
+| Decision State Ledger (REV-407) | Append-only, observation-only sidecar of screening decision states; never alters scoring, prompts, or promotion |
+| Case-deletion audit (REV-416/417) | Audit log for case deletion, prevention of orphaned screening records, and a viewer in `/operations` |
+| Guarded pipeline auto-recovery | Runs only allowlisted, verified recovery recipes, at most once per step per day; past incident records are evidence, never commands |
+| Cloud Run cost reduction | ChromaDB is snapshotted to GCS and restored at startup to avoid full re-embedding on every cold start |
+
 ## Main screens
 
 | Screen | Role |
@@ -179,7 +194,7 @@ The stack is **Next.js + FastAPI + SQLite/PostgreSQL**, with Gemini + ADK (Agent
 | `/screening` | Screening input and analysis: numbers on the left, the "strategist AI" on the right |
 | `/quantitative` / `/qualitative` | Quantitative / qualitative model comparison (LR / RandomForest / LightGBM) |
 | `/history-dash` | Past deals, deal-closing drivers, tag trends |
-| `/chat` | AI chat grounded in the Obsidian knowledge base |
+| `/chat` | AI chat grounded in the Obsidian knowledge base; shows a voice-call button when `SHION_VOICE_ENABLED=1` |
 | `/chat-compare` | SHION vs. a generic AI on the same question, to visualize the effect of memory/identity/experience loops |
 | `/lease-intelligence` | Dedicated dialogue with SHION |
 | `/voice-chat` | Real-time voice conversation with SHION |
@@ -187,6 +202,11 @@ The stack is **Next.js + FastAPI + SQLite/PostgreSQL**, with Gemini + ADK (Agent
 | `/debate` | Multi-persona debate: cautious, optimistic, innovator, and arbiter |
 | `/report` | Screening report export |
 | `/improvement-log` | Improvement candidates, AI-proposed rules, and auto-fix suggestions |
+| `/judgment-review` | Review judgment-diff candidates and prediction errors; approved items are promoted to judgment assets |
+| `/judgment-asset-graph` | Judgment-asset graph |
+| `/news` | Lease news classification and judgment-change candidates |
+| `/operations` | System configuration and case-deletion audit log |
+| `/cloudrun-return-review` | Quarantine and approval of data returned from Cloud Run (local only) |
 
 ## Learn more
 
