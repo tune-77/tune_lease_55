@@ -14,6 +14,7 @@ import {
 import { Send, Trash2, Loader2, MessageCircle, Bot, User, NotebookPen, Mic, Network, Database, ChevronDown, ChevronUp, Lightbulb, Volume2, VolumeX, ArrowLeft, ThumbsUp, ThumbsDown } from "lucide-react";
 import { extractPrefectureFromText, normalizePrefecture } from "@/lib/prefecture";
 import { formatLocalDateKey } from "@/lib/date";
+import { getMorningLocation } from "@/lib/morningLocation";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import { buildShionEntryGreeting, type ShionEntryGreeting } from "@/lib/shionEntryGreeting";
 import { isImeComposing } from "@/lib/keyboard";
@@ -550,6 +551,7 @@ export default function ChatPage() {
         prefecture: normalizePrefecture(newsPrefecture),
         industry: chatContext.industry_sub || chatContext.industry_major || "",
         response_mode: answerMode,
+        ...(await getMorningLocation()),
       });
       if (res.data?.lease_news_focus) {
         setLeaseNewsFocus(res.data.lease_news_focus);
@@ -620,6 +622,7 @@ export default function ChatPage() {
         prefecture: normalizePrefecture(newsPrefecture),
         industry: chatContext.industry_sub || chatContext.industry_major || "",
         response_mode: answerMode,
+        ...(await getMorningLocation()),
       });
       if (res.data?.lease_news_focus) {
         setLeaseNewsFocus(res.data.lease_news_focus);
@@ -679,6 +682,7 @@ export default function ChatPage() {
         prefecture: normalizePrefecture(newsPrefecture),
         industry: chatContext.industry_sub || chatContext.industry_major || "",
         response_mode: answerMode,
+        ...(await getMorningLocation()),
         allow_external_research: true,
         external_research_topic: request.topic,
       });
