@@ -90,18 +90,3 @@ def test_location_is_used_for_fetch_url(monkeypatch):
     monkeypatch.setattr(shion_weather.urllib.request, "urlopen", fake_urlopen)
     shion_weather.weather_context_block(34.7, 135.5)
     assert calls[0].endswith("/270000.json")
-
-
-def test_prefecture_from_location():
-    assert shion_weather.prefecture_from_location(35.4, 139.6) == "神奈川県"
-    assert shion_weather.prefecture_from_location(41.8, 140.7) == "北海道"
-    assert shion_weather.prefecture_from_location(31.6, 130.6) == "鹿児島県"
-    assert shion_weather.prefecture_from_location(26.2, 127.7) == "沖縄県"
-    assert shion_weather.prefecture_from_location(48.9, 2.3) == ""
-    assert shion_weather.prefecture_from_location(None, None) == ""
-
-
-def test_every_area_code_maps_to_matching_prefecture():
-    for code, (lat, lon) in shion_weather._AREA_POINTS.items():
-        pref = shion_weather.prefecture_from_location(lat, lon)
-        assert pref == shion_weather._PREFECTURES[int(code[:2]) - 1]

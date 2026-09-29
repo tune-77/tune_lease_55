@@ -42,37 +42,17 @@ _AREA_POINTS: dict[str, tuple[float, float]] = {
     "471000": (26.21, 127.68), "473000": (24.80, 125.28), "474000": (24.34, 124.16),
 }
 _MAX_AREA_DISTANCE_DEG = 3.0  # これより遠い（国外など）座標は既定地域へ
-# 予報区コード先頭2桁 = 都道府県JISコード
-_PREFECTURES = (
-    "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県",
-    "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
-    "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
-    "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県",
-    "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
-)
-
-
-def _nearest_area(lat: float | None, lon: float | None) -> str | None:
-    if lat is None or lon is None or not (math.isfinite(lat) and math.isfinite(lon)):
-        return None
-    scale = math.cos(math.radians(lat))
-    code, dist = min(
-        ((c, math.hypot(lat - p[0], (lon - p[1]) * scale)) for c, p in _AREA_POINTS.items()),
-        key=lambda item: item[1],
-    )
-    return code if dist <= _MAX_AREA_DISTANCE_DEG else None
-
-
-def prefecture_from_location(lat: float | None, lon: float | None) -> str:
-    """その日最初の現在地から都道府県名を返す（地域ニュース・地域経済文脈用）。不明なら空文字。"""
-    code = _nearest_area(lat, lon)
-    return _PREFECTURES[int(code[:2]) - 1] if code else ""
 
 
 def _area_code(lat: float | None = None, lon: float | None = None) -> str:
-    nearest = _nearest_area(lat, lon)
-    if nearest:
-        return nearest
+    if lat is not None and lon is not None and math.isfinite(lat) and math.isfinite(lon):
+        scale = math.cos(math.radians(lat))
+        code, dist = min(
+            ((c, math.hypot(lat - p[0], (lon - p[1]) * scale)) for c, p in _AREA_POINTS.items()),
+            key=lambda item: item[1],
+        )
+        if dist <= _MAX_AREA_DISTANCE_DEG:
+            return code
     code = os.environ.get("SHION_WEATHER_AREA_CODE", "130000").strip()
     return code if code.isdigit() else "130000"
 
