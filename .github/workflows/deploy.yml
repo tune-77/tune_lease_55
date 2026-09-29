@@ -329,9 +329,13 @@ jobs:
         env:
           DATABASE_SECRET_NAME: DATABASE_URL
           CLOUDSQL_INSTANCE: ${{ secrets.CLOUDSQL_INSTANCE }}
+          # Jevのキーは明示オプトイン（このSAはシークレットをdescribeできないため）。
+          # 詳細は scripts/lib/jev_cloud_run_config.sh。
+          TYPESAFE_API_KEY_SECRET: ${{ vars.TYPESAFE_API_KEY_SECRET }}
         run: |
           set -Eeuo pipefail
           source scripts/lib/require_api_access_key_secret.sh
+          source scripts/lib/jev_cloud_run_config.sh
 
           deploy_args=(
             run deploy "${SERVICE_NAME}"
@@ -347,12 +351,17 @@ jobs:
             --concurrency 1
             --min-instances 0
             --max-instances 1
-            --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=1,REQUIRE_API_ACCESS_KEY=1,ENABLE_SYNC_SCORING_DIAGNOSTICS=1,TZ=Asia/Tokyo"
+            --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=1,REQUIRE_API_ACCESS_KEY=1,ENABLE_SYNC_SCORING_DIAGNOSTICS=1,TZ=Asia/Tokyo,${JEV_CLOUD_RUN_ENV_VARS}"
             --allow-unauthenticated
           )
 
           api_access_key_ref="$(require_api_access_key_secret "${PROJECT_ID}" "API")" || exit 1
           secret_args=("GEMINI_API_KEY=GEMINI_API_KEY:latest" "API_ACCESS_KEY=${api_access_key_ref}")
+
+          jev_ref="$(jev_typesafe_secret_ref "${PROJECT_ID}")"
+          if [ -n "${jev_ref}" ]; then
+            secret_args+=("TYPESAFE_API_KEY=${jev_ref}")
+          fi
 
           if [ -n "${CLOUDSQL_INSTANCE}" ]; then
             secret_args+=("DATABASE_URL=${DATABASE_SECRET_NAME}:latest")

@@ -1,7 +1,8 @@
 """Optional TypeSafe/Jev judgments for the shared Obsidian RAG path.
 
 The module is deliberately opt-in.  It never contacts TypeSafe unless
-``TYPESAFE_RAG_ENABLED=1`` and ``TYPESAFE_API_KEY`` are both present.  Callers
+``TYPESAFE_RAG_MODE`` (or legacy ``TYPESAFE_RAG_ENABLED=1``) and
+``TYPESAFE_API_KEY`` are both present.  Callers
 must keep deterministic retrieval and fallback behavior in code.
 """
 
@@ -23,6 +24,7 @@ TYPESAFE_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 DEFAULT_MODEL = "jev-latest"
 DEFAULT_TIMEOUT_SECONDS = 8.0
 DEFAULT_MAX_CANDIDATES = 8
+TYPESAFE_RAG_MODES = ("off", "shadow", "enforce")
 
 # httpx's timeout does not reliably bound DNS resolution on every platform: a
 # black-holed DNS query can block the underlying socket call well past the
@@ -73,10 +75,19 @@ def _resolve_api_key(environ: Mapping[str, str] | None = None) -> str:
     return result.stdout.strip()
 
 
+def typesafe_rag_mode(environ: Mapping[str, str] | None = None) -> str:
+    """off/shadow/enforce（REV-425）。未設定なら従来の TYPESAFE_RAG_ENABLED=1 を enforce とみなす。"""
+    env = os.environ if environ is None else environ
+    raw = str(env.get("TYPESAFE_RAG_MODE") or "").strip().lower()
+    if raw:
+        return raw if raw in TYPESAFE_RAG_MODES else "off"
+    return "enforce" if _env_truthy(env.get("TYPESAFE_RAG_ENABLED")) else "off"
+
+
 def typesafe_rag_enabled(environ: Mapping[str, str] | None = None) -> bool:
     """Return true only when the external RAG gate is explicitly enabled."""
     env = os.environ if environ is None else environ
-    return _env_truthy(env.get("TYPESAFE_RAG_ENABLED")) and bool(_resolve_api_key(env))
+    return typesafe_rag_mode(env) != "off" and bool(_resolve_api_key(env))
 
 
 def _max_candidates(environ: Mapping[str, str] | None = None) -> int:
@@ -272,11 +283,21 @@ def judge_passages(
 
 
 def _log_usage(metadata: Mapping[str, Any]) -> None:
-    """Append one usage record for effectiveness reporting; a no-op unless opted in."""
+    """Print one usage record to stdout (Cloud Logging); also append to a file when opted in.
+
+    metadata は状態・件数・モデル・usage だけで、質問文や一節の本文は含めない。
+    """
+    record = {"timestamp": datetime.now(timezone.utc).isoformat(), **metadata}
+    try:
+        print(
+            "[TypeSafeRAG] " + json.dumps(record, ensure_ascii=False, separators=(",", ":")),
+            flush=True,
+        )
+    except Exception:
+        pass
     log_path = str(os.environ.get("TYPESAFE_RAG_USAGE_LOG_PATH") or "").strip()
     if not log_path:
         return
-    record = {"timestamp": datetime.now(timezone.utc).isoformat(), **metadata}
     try:
         with open(log_path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -294,6 +315,23 @@ def filter_hits_if_enabled(
     original = [dict(hit) for hit in hits]
     if request_fn is None and not typesafe_rag_enabled():
         return original, {"status": "disabled"}
+    if typesafe_rag_mode() == "shadow":
+        # shadow は判定を記録するだけで検索結果を一切変えない（障害時の劣化方式も適用しない）。
+        try:
+            _judged, judged_meta = judge_passages(query, original, request_fn=request_fn)
+            metadata = {
+                **judged_meta,
+                "status": "shadow",
+                "would_exclude_count": judged_meta.get("excluded_count", 0),
+            }
+        except Exception as exc:
+            metadata = {
+                "status": "shadow_error",
+                "error_type": type(exc).__name__,
+                "candidate_count": len(original),
+            }
+        _log_usage(metadata)
+        return original, metadata
     try:
         filtered, metadata = judge_passages(query, original, request_fn=request_fn)
     except Exception as exc:
