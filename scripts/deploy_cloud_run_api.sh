@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/require_api_access_key_secret.sh"
+source "$ROOT_DIR/scripts/lib/jev_cloud_run_config.sh"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-asia-northeast1}"
@@ -104,7 +105,7 @@ deploy_args=(
   # フォールバックに落ちる（根幹の知識ベースが機能しない状態が続く）。
   # ENABLE_GUNSHI_RAG は別経路（リクエスト同期でembeddingモデルを読む）で
   # 過去に共有プロセスの不安定化を招いた実績があるため、意図的に false のまま。
-  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/lease_data.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=${SHION_MEMORY_HYBRID},REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY},GCS_DB_SNAPSHOT_INTERVAL_SECONDS=${GCS_DB_SNAPSHOT_INTERVAL_SECONDS},GCS_CHROMA_SNAPSHOT_INTERVAL_SECONDS=${GCS_CHROMA_SNAPSHOT_INTERVAL_SECONDS},SHION_ENABLE_VERTEX_TOOLS=${SHION_ENABLE_VERTEX_TOOLS},VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED=${VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED},TZ=Asia/Tokyo"
+  --set-env-vars "DATA_DIR=/app/data,ENABLE_OBSIDIAN_INDEXING=true,ENABLE_FEEDBACK_LOADING=true,ENABLE_GUNSHI_RAG=false,OBSIDIAN_VAULT_PATH=/app/obsidian_vault,CLOUDRUN_BUNDLE_DIR=/app/.cloudrun_bundle,CLOUDRUN_DATA_MODE=${CLOUDRUN_DATA_MODE},DEMO_READONLY=${DEMO_READONLY},DB_PATH=/app/data/lease_data.db,USE_GCS_VAULT=true,GCS_VAULT_RESYNC_INTERVAL=3600,SHION_MEMORY_HYBRID=${SHION_MEMORY_HYBRID},REQUIRE_API_ACCESS_KEY=${REQUIRE_API_ACCESS_KEY},GCS_DB_SNAPSHOT_INTERVAL_SECONDS=${GCS_DB_SNAPSHOT_INTERVAL_SECONDS},GCS_CHROMA_SNAPSHOT_INTERVAL_SECONDS=${GCS_CHROMA_SNAPSHOT_INTERVAL_SECONDS},SHION_ENABLE_VERTEX_TOOLS=${SHION_ENABLE_VERTEX_TOOLS},VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED=${VERTEX_GOOGLE_SEARCH_GROUNDING_ENABLED},TZ=Asia/Tokyo,${JEV_CLOUD_RUN_ENV_VARS}"
 )
 
 has_replacement_secrets=0
@@ -121,6 +122,12 @@ if gcloud secrets describe ESTAT_APP_ID --project "$PROJECT_ID" >/dev/null 2>&1;
   has_replacement_secrets=1
 else
   echo "Warning: Secret Manager secret ESTAT_APP_ID was not found." >&2
+fi
+
+jev_ref="$(jev_typesafe_secret_ref "$PROJECT_ID")"
+if [[ -n "$jev_ref" ]]; then
+  deploy_args+=(--set-secrets "TYPESAFE_API_KEY=${jev_ref}")
+  has_replacement_secrets=1
 fi
 
 api_access_key_ref="$(require_api_access_key_secret "$PROJECT_ID" "API")" || exit 1
