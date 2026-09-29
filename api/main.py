@@ -6961,6 +6961,9 @@ def post_chat(req: ChatRequest):
                     req.external_research_topic or str(research_suggestion.get("topic") or "") or req.message
                 )
             base_system_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
+            if not is_general_response_mode:
+                from api.shion_weather import weather_context_block
+                base_system_root += wrap_untrusted_context(weather_context_block(), label="今日の天気", logger=logger)
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
             external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
             from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
@@ -7395,6 +7398,9 @@ def post_chat(req: ChatRequest):
             )
 
         base_prompt_root = neutral_general_system_prompt if is_general_response_mode else _pg_build_ssp(_chat_mind, _chat_now)
+        if not is_general_response_mode:
+            from api.shion_weather import weather_context_block
+            base_prompt_root += wrap_untrusted_context(weather_context_block(), label="今日の天気", logger=logger)
         basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
         external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
         from api.chat_debug_metadata import (
