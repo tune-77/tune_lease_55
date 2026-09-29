@@ -9,6 +9,12 @@ scripts/restore_lease_db_snapshot.py と同じ位置づけ
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# `python scripts/restore_chroma_snapshot.py` だと sys.path[0] が scripts/ になり api を import できない
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 
 def main() -> None:
     from api.knowledge.chroma_snapshot import restore

@@ -158,6 +158,14 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
     setStatus("connecting");
     turnsRef.current = [];
     setTurns([]);
+    // iOS Safari はタップ直後（最初の await より前）に作って resume しないと suspended のまま無音になる。
+    // マイク側は端末既定レートのまま使い、実レートを mimeType で伝える（Live API 側で再サンプルされる）。
+    const outCtx = new AudioContext({ sampleRate: 24000 });
+    const micCtx = new AudioContext();
+    outCtxRef.current = outCtx;
+    micCtxRef.current = micCtx;
+    void outCtx.resume();
+    void micCtx.resume();
     try {
       // マイク許可を先に取る（拒否時に1日の発行枠を消費しないため）
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -165,9 +173,6 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
       });
       streamRef.current = stream;
       const { data } = await apiClient.post("/api/shion/voice/session", { user_id: userId });
-      outCtxRef.current = new AudioContext({ sampleRate: 24000 });
-      const micCtx = new AudioContext({ sampleRate: 16000 });
-      micCtxRef.current = micCtx;
 
       const ai = new GoogleGenAI({ apiKey: data.token, httpOptions: { apiVersion: "v1alpha" } });
       const session = await ai.live.connect({
@@ -184,7 +189,7 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
       await micCtx.audioWorklet.addModule("/pcm-capture-worklet.js");
       const node = new AudioWorkletNode(micCtx, "pcm-capture");
       node.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-        sessionRef.current?.sendRealtimeInput({ audio: { data: toBase64(e.data), mimeType: "audio/pcm;rate=16000" } });
+        sessionRef.current?.sendRealtimeInput({ audio: { data: toBase64(e.data), mimeType: `audio/pcm;rate=${micCtx.sampleRate}` } });
       };
       micCtx.createMediaStreamSource(stream).connect(node);
 
