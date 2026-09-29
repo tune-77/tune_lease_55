@@ -6554,8 +6554,11 @@ def post_chat(req: ChatRequest):
         news_focus_text = lease_news_focus_as_text() if news_focus.get("available") else ""
         news_focus_text = wrap_untrusted_context(news_focus_text, label="ニュース注目論点", logger=logger)
         news_focus_context = f"\n\n【最新ニュースの注目論点】\n{news_focus_text}" if news_focus_text else ""
+        from api.shion_weather import prefecture_from_location
+        # REV-422: 審査文脈の都道府県が無い時は、その日最初のチャット時の現在地で地域ニュース・地域経済を引く
+        news_prefecture = req.prefecture or prefecture_from_location(req.weather_lat, req.weather_lon)
         news_brief = _lease_news_brief_to_dict(
-            build_lease_news_brief(prefecture=req.prefecture or "", industry=req.industry or "")
+            build_lease_news_brief(prefecture=news_prefecture, industry=req.industry or "")
         )
         news_actions = _lease_news_actions_to_dict(get_latest_lease_news_actions())
         news_actions_text = lease_news_actions_as_text(
