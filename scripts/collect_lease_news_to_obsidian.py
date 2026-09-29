@@ -486,6 +486,47 @@ def _apply_classification(article: Article, value: dict[str, Any] | None) -> Non
     article.classification_source = normalized["classification_source"]
 
 
+def _log_news_judgments(articles: list[Article], result: dict[str, Any], mode: str) -> None:
+    """記事×質問ごとの判定を共通判定ログへ残す（REV-424）。見出し・要約は書かない。
+
+    send だけでなく skip も抜き取り対象にする。enforce で最も高くつくのは
+    「効く記事を落とした」誤りで、その較正には落とした側のラベルが要る。
+    """
+    try:
+        import jev_judgment_log
+
+        thresholds = dict(result.get("thresholds") or {})
+        items = []
+        for item in result.get("judgments") or []:
+            index = item.get("index")
+            if not isinstance(index, int) or not 0 <= index < len(articles):
+                continue
+            article = articles[index]
+            action = str(item.get("action") or "")
+            for question in ("repayment", "injection"):
+                items.append(
+                    {
+                        "subject": article.link or article.title,
+                        "question": question,
+                        "probability": item.get(question),
+                        "route": action,
+                        "auto_passed": action in {"send", "skip"},
+                        "thresholds": thresholds,
+                    }
+                )
+        jev_judgment_log.append_records(
+            jev_judgment_log.build_records(
+                guard="news",
+                run_id=jev_judgment_log.new_run_id(),
+                mode=mode,
+                model=str(result.get("model") or ""),
+                items=items,
+            )
+        )
+    except Exception as exc:
+        print(f"[news-guard] judgment log skipped: {type(exc).__name__}", file=sys.stderr)
+
+
 def _news_guard_actions(articles: list[Article]) -> list[str]:
     """Jevで記事を選別し、記事順の行動リストを返す。
 
@@ -549,6 +590,7 @@ def _news_guard_actions(articles: list[Article]) -> list[str]:
             ),
             file=sys.stderr,
         )
+    _log_news_judgments(articles, result, mode)
     actions = list(result.get("actions") or ["send"] * len(articles))
     quarantined = [item for item in result.get("judgments") or [] if item.get("action") == "quarantine"]
     if quarantined:

@@ -297,11 +297,49 @@ def filter_hits_if_enabled(
     try:
         filtered, metadata = judge_passages(query, original, request_fn=request_fn)
     except Exception as exc:
-        metadata = {"status": "fallback", "error_type": type(exc).__name__}
+        kept, metadata = _deterministic_fallback(original)
+        metadata = {"status": "fallback", "error_type": type(exc).__name__, **metadata}
         _log_usage(metadata)
-        return original, metadata
+        return kept, metadata
     _log_usage(metadata)
     return filtered, metadata
+
+
+def _deterministic_fallback(
+    hits: Sequence[Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Jev障害時の劣化方式（REV-424）: 注入検査は落とす側、関連性は通す側。
+
+    関連性で落とすと障害のたびに回答材料が消えるので全件通す。一方、注入疑いを
+    そのまま通すと障害が攻撃経路になるため、既知パターンに当たる一節だけ落とす。
+    無フィルタで返したことは metadata の unfiltered で回答側へ明示する。
+    """
+    try:
+        from api.prompt_injection_guard import scan_for_injection_patterns
+    except Exception:
+        return [dict(hit) for hit in hits], {
+            "unfiltered": True,
+            "relevance_filter": "skipped",
+            "injection_filter": "unavailable",
+            "injection_excluded_count": 0,
+            "candidate_count": len(hits),
+            "accepted_count": len(hits),
+        }
+    kept = [
+        dict(hit)
+        for hit in hits
+        if not scan_for_injection_patterns(
+            f"{hit.get('title') or ''}\n{hit.get('snippet') or hit.get('text') or ''}"
+        )
+    ]
+    return kept, {
+        "unfiltered": True,
+        "relevance_filter": "skipped",
+        "injection_filter": "deterministic_patterns",
+        "injection_excluded_count": len(hits) - len(kept),
+        "candidate_count": len(hits),
+        "accepted_count": len(kept),
+    }
 
 
 def verify_citation_support(

@@ -345,6 +345,39 @@ def _fallback_decision_body(topic: ResearchTopic, raw_research: str, sources: li
 - 参照元URLが古くなった、またはより一次情報に近い資料が見つかった場合。"""
 
 
+def _log_verify_judgments(result: dict[str, Any], mode: str) -> None:
+    """主張ごとの判定を共通判定ログへ残す（本文はハッシュのみ）。失敗しても止めない。"""
+    try:
+        import jev_judgment_log
+        import typesafe_research_verify_guard as guard
+
+        items = []
+        for item in result.get("results") or []:
+            route = guard.judgment_route(item)
+            items.append(
+                {
+                    "subject": item.get("claim") or "",
+                    "question": "verdict",
+                    "probability": item.get("confidence"),
+                    "choice": item.get("verdict"),
+                    "route": route,
+                    "auto_passed": route == "verified",
+                    "thresholds": {"confidence_min": guard.DEFAULT_CONFIDENCE_MIN},
+                }
+            )
+        jev_judgment_log.append_records(
+            jev_judgment_log.build_records(
+                guard="research_verify",
+                run_id=jev_judgment_log.new_run_id(),
+                mode=mode,
+                model=str(result.get("model") or ""),
+                items=items,
+            )
+        )
+    except Exception as exc:
+        print(f"[research-verify] judgment log skipped: {type(exc).__name__}", file=sys.stderr)
+
+
 def _verify_note_claims(body: str, raw_research: str) -> tuple[str, dict[str, Any]]:
     """合成後のノートを調査原文と突き合わせる。
 
@@ -358,13 +391,21 @@ def _verify_note_claims(body: str, raw_research: str) -> tuple[str, dict[str, An
     mode = guard.verify_mode()
     if mode == "off":
         return body, {"status": "skipped", "reason": "mode_off"}
+    # enforce でガードが動かなかった時に黙って保存すると、未検証のノートが
+    # 検証済みと同じ見え方になる。その場合は未検証である旨を末尾へ残す（REV-424）。
     if not guard.typesafe_available():
+        if mode == "enforce":
+            body = body + guard.render_unverified_section("credential_missing")
         return body, {"status": "skipped", "reason": "credential_missing"}
     try:
         result = guard.verify_note_claims(body, raw_research)
     except Exception as exc:
         print(f"[research-verify] skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+        if mode == "enforce":
+            body = body + guard.render_unverified_section(type(exc).__name__)
         return body, {"status": "skipped", "reason": type(exc).__name__}
+    if result.get("status") == "applied":
+        _log_verify_judgments(result, mode)
     print(
         "[research-verify] "
         + json.dumps(
@@ -374,6 +415,7 @@ def _verify_note_claims(body: str, raw_research: str) -> tuple[str, dict[str, An
                 "claim_count": result.get("claim_count"),
                 "counts": result.get("counts"),
                 "flagged": len(result.get("flagged") or []),
+                "needs_review": len(result.get("needs_review") or []),
                 "usage": result.get("usage"),
             },
             ensure_ascii=False,
@@ -389,6 +431,7 @@ def _verify_note_claims(body: str, raw_research: str) -> tuple[str, dict[str, An
         "claim_count": result.get("claim_count"),
         "counts": result.get("counts"),
         "flagged_count": len(result.get("flagged") or []),
+        "needs_review_count": len(result.get("needs_review") or []),
     }
 
 

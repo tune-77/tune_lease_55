@@ -142,3 +142,44 @@ def test_shadow_mode_logs_each_article_verdict(monkeypatch, capsys):
     assert len(lines) == 2
     assert '"action":"skip"' in lines[1]
     assert "地域運送業者の破産" in lines[1], "見出しが無いと、落とした記事を目視で確認できない"
+
+
+def test_guard_judgments_are_logged_without_article_text(monkeypatch, tmp_path):
+    """REV-424: 記事×質問ごとに共通判定ログへ残し、見出し・URLの本文は書かない。"""
+    import json
+
+    log = tmp_path / "judgments.jsonl"
+    monkeypatch.setenv("JEV_JUDGMENT_LOG_PATH", str(log))
+    monkeypatch.setenv("JEV_JUDGMENT_SAMPLE_RATE", "1")
+    monkeypatch.setenv("TYPESAFE_NEWS_MODE", "shadow")
+    monkeypatch.setattr(guard, "typesafe_available", lambda *a, **k: True)
+    monkeypatch.setattr(
+        guard,
+        "screen_articles",
+        lambda articles: {
+            "status": "applied",
+            "model": "jev-test",
+            "actions": ["skip", "quarantine"],
+            "judgments": [
+                {"index": 0, "action": "skip", "repayment": 0.1, "injection": 0.0},
+                {"index": 1, "action": "quarantine", "repayment": 0.9, "injection": 0.9},
+            ],
+            "thresholds": {"relevant_min": 0.35, "injection_max": 0.7},
+        },
+    )
+
+    collector._news_guard_actions([_article("秘密の見出しA"), _article("見出しB")])
+
+    text = log.read_text(encoding="utf-8")
+    assert "秘密の見出しA" not in text and "example.com" not in text
+    rows = [json.loads(line) for line in text.splitlines()]
+    assert [(r["question"], r["route"]) for r in rows] == [
+        ("repayment", "skip"),
+        ("injection", "skip"),
+        ("repayment", "quarantine"),
+        ("injection", "quarantine"),
+    ]
+    assert {r["guard"] for r in rows} == {"news"} and {r["model"] for r in rows} == {"jev-test"}
+    # skip は自動通過として抜き取り対象、quarantine は対象外
+    assert [r["sampled_for_review"] for r in rows] == [True, True, False, False]
+    assert rows[0]["thresholds"] == {"relevant_min": 0.35, "injection_max": 0.7}

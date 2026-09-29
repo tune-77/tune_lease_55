@@ -4,6 +4,7 @@ from api.chat_debug_metadata import (
     chat_memory_debug_payload,
     dialogue_shared_memory_public_payload,
     relationship_loop_engineering_payload,
+    retrieval_guard_payload,
     user_personal_memory_debug_payload,
     vertex_answer_public_payload,
     vertex_search_public_payload,
@@ -237,3 +238,43 @@ def test_vertex_retrieval_response_extra_keeps_public_response_shape():
         "support_count": 0,
         "refs": ["x"],
     }
+
+
+def test_retrieval_guard_payload_marks_unfiltered_fallback():
+    """REV-424: Jev障害で無フィルタの一節を使った事実を回答メタデータで判別できる。"""
+    assert retrieval_guard_payload(None) == {"typesafe_rag_status": "not_attempted", "unfiltered": False}
+    assert retrieval_guard_payload({"status": "applied", "accepted_count": 2}) == {
+        "typesafe_rag_status": "applied",
+        "unfiltered": False,
+    }
+    assert retrieval_guard_payload(
+        {
+            "status": "fallback",
+            "unfiltered": True,
+            "injection_filter": "deterministic_patterns",
+            "error_type": "TimeoutError",
+        }
+    ) == {
+        "typesafe_rag_status": "fallback",
+        "unfiltered": True,
+        "injection_filter": "deterministic_patterns",
+    }
+
+
+def test_debug_metadata_exposes_fallback_filter_flags():
+    memory_debug = append_chat_debug_metadata(
+        {},
+        user_personal_memory={},
+        vertex_ai_search={},
+        vertex_answer_api={},
+        typesafe_rag={
+            "status": "fallback",
+            "error_type": "TimeoutError",
+            "unfiltered": True,
+            "relevance_filter": "skipped",
+            "injection_filter": "deterministic_patterns",
+            "injection_excluded_count": 1,
+        },
+    )
+    assert memory_debug["typesafe_rag"]["unfiltered"] is True
+    assert memory_debug["typesafe_rag"]["injection_excluded_count"] == 1

@@ -15,6 +15,7 @@ Jevは1リクエストで主張ごとに独立したChoiceを返す。主張同�
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from collections.abc import Mapping, Sequence
@@ -37,6 +38,12 @@ VERDICTS = ("verified", "contradicted", "unsupported")
 # 裏が取れない主張だけを人間に見せたい。verified を落としても損失は無いが、
 # unsupported を見逃すと未検証の数値が判断資産へ流れる。
 DEFAULT_CONFIDENCE_MIN = 0.60
+
+_NEEDS_REVIEW_LABELS = {
+    "low_confidence_unsupported": "確信低",
+    "missing_answer": "判定なし",
+    "invalid_answer": "判定不正",
+}
 
 _CLAIM_SECTION = "## 判断に使える確認済み事実"
 _BULLET_RE = re.compile(r"^\s*[-*・]\s*(.+?)\s*$")
@@ -124,23 +131,39 @@ def build_verify_request(
 
 
 def parse_verify_output(body: Mapping[str, Any], claims: Sequence[str]) -> list[dict[str, Any]]:
+    """主張ごとの判定を返す。欠落・不正な回答も捨てずに `problem` 付きで返す。
+
+    以前は `continue` で黙って捨てていたため、判定できなかった主張が
+    「flagged に無い＝問題なし」と同じ見え方になっていた（REV-424）。
+    """
     answers = body.get("answers")
     if not isinstance(answers, Mapping):
         raise TypeSafeRagError("TypeSafe verify response is missing answers")
     results: list[dict[str, Any]] = []
     for index, claim in enumerate(claims):
+        base = {"index": index, "claim": claim}
         answer = answers.get(f"c{index}_verdict")
         if not isinstance(answer, Mapping):
+            results.append({**base, "problem": "missing_answer"})
             continue
         verdict = str(answer.get("choice") or "").strip().lower()
         try:
             confidence = float(answer.get("confidence"))
         except (TypeError, ValueError):
-            continue
+            confidence = math.nan
         if verdict not in VERDICTS or not 0.0 <= confidence <= 1.0:
+            results.append({**base, "problem": "invalid_answer"})
             continue
-        results.append({"claim": claim, "verdict": verdict, "confidence": confidence})
+        results.append({**base, "verdict": verdict, "confidence": confidence})
     return results
+
+
+def _needs_review_reason(item: Mapping[str, Any]) -> str | None:
+    if item.get("problem"):
+        return str(item["problem"])
+    if item["verdict"] != "verified" and item["confidence"] < DEFAULT_CONFIDENCE_MIN:
+        return "low_confidence_unsupported"
+    return None
 
 
 def verify_note_claims(
@@ -158,34 +181,67 @@ def verify_note_claims(
         request_fn = request_system_one
     payload = build_verify_request(claims, evidence)
     response = request_fn(payload)
-    results = parse_verify_output(response, claims)
+    parsed = parse_verify_output(response, claims)
+    results = [item for item in parsed if not item.get("problem")]
     flagged = [
         item
         for item in results
         if item["verdict"] != "verified" and item["confidence"] >= DEFAULT_CONFIDENCE_MIN
     ]
+    # 確信の低い「裏が取れない」判定と、判定できなかった主張は黙って通さず要確認へ。
+    needs_review = [
+        {**item, "reason": reason}
+        for item in parsed
+        if (reason := _needs_review_reason(item)) is not None
+    ]
+    counts = {name: sum(1 for item in results if item["verdict"] == name) for name in VERDICTS}
+    counts["needs_review"] = len(needs_review)
     return {
         "status": "applied",
         "model": str(response.get("model") or payload["model"]),
         "claim_count": len(claims),
         "judged_count": len(results),
+        "results": parsed,
         "flagged": flagged,
-        "counts": {name: sum(1 for item in results if item["verdict"] == name) for name in VERDICTS},
+        "needs_review": needs_review,
+        "counts": counts,
         "usage": dict(response.get("usage") or {}),
     }
+
+
+def judgment_route(item: Mapping[str, Any]) -> str:
+    """判定ログ用の行き先。verified 以外は人が見る側。"""
+    if _needs_review_reason(item) is not None:
+        return "needs_review"
+    return "verified" if item["verdict"] == "verified" else "flagged"
 
 
 def render_verification_section(result: Mapping[str, Any]) -> str:
     """裏が取れなかった主張だけをノート末尾へ足す文面を作る。"""
     flagged = list(result.get("flagged") or [])
-    if not flagged:
+    needs_review = list(result.get("needs_review") or [])
+    if not flagged and not needs_review:
         return ""
-    lines = [
-        "",
-        "## 出典突き合わせ（自動）",
-        f"調査原文と照合し、{len(flagged)}件の主張で裏が取れませんでした。採用前に一次情報で確認してください。",
-    ]
-    for item in flagged:
-        label = "原文と矛盾" if item["verdict"] == "contradicted" else "原文に記載なし"
-        lines.append(f"- `{label}` {item['claim']}")
+    lines = ["", "## 出典突き合わせ（自動）"]
+    if flagged:
+        lines.append(
+            f"調査原文と照合し、{len(flagged)}件の主張で裏が取れませんでした。採用前に一次情報で確認してください。"
+        )
+        for item in flagged:
+            label = "原文と矛盾" if item["verdict"] == "contradicted" else "原文に記載なし"
+            lines.append(f"- `{label}` {item['claim']}")
+    if needs_review:
+        lines += ["", "### 要確認（自動判定の確信が低い・判定できなかった）"]
+        for item in needs_review:
+            label = _NEEDS_REVIEW_LABELS.get(item["reason"], "要確認")
+            lines.append(f"- `{label}` {item['claim']}")
     return "\n".join(lines) + "\n"
+
+
+def render_unverified_section(reason: str) -> str:
+    """enforce でガード自体が動かなかった時、未検証であることをノートに残す。"""
+    return (
+        "\n## 出典突き合わせ（自動）\n"
+        f"自動検証を実行できませんでした（理由: {reason}）。"
+        "『判断に使える確認済み事実』は未検証です。採用前に一次情報で確認してください。\n"
+    )
