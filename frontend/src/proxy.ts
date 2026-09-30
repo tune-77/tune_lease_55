@@ -85,8 +85,11 @@ export async function proxy(request: NextRequest) {
     === "/api/dashboard/data-health";
   const isTunnelRequest = process.env.PUBLIC_TUNNEL === "1"
     && (request.headers.has("cf-connecting-ip") || !isLocalHost);
+  // 明示オプトイン時のみトンネルのWeb境界認証を外す（URLを知る誰でも利用可能になる）。
+  // /api/* への x-api-key 付与は下で従来どおり行い、FastAPI 側の鍵は維持する。
+  const isTunnelAuthDisabled = process.env.PUBLIC_TUNNEL_DISABLE_AUTH === "1";
   let shouldCreateTunnelSession = false;
-  if (isTunnelRequest) {
+  if (isTunnelRequest && !isTunnelAuthDisabled) {
     let isAuthorized = false;
     if (isKnowledgeSyncProbe) {
       isAuthorized = !!syncProbeToken

@@ -247,6 +247,11 @@ def test_public_tunnel_requires_web_auth_and_same_origin_api_proxy():
     assert "x-sync-probe-key" in proxy
     assert 'return "http://127.0.0.1:8000"' not in api_client
     assert judgment_drill.count("internalApiAuthHeaders()") == 3
+    # 認証撤廃は "1" の明示オプトインのみ。既定は認証必須、x-api-key 付与は維持。
+    assert 'process.env.PUBLIC_TUNNEL_DISABLE_AUTH === "1"' in proxy
+    assert "if (isTunnelRequest && !isTunnelAuthDisabled)" in proxy
+    assert 'requestHeaders.set("x-api-key", key)' in proxy
+    assert "認証なしで公開中" in launcher
 
 
 def test_smart_web_check_retries_with_identity_without_printing_token(tmp_path):

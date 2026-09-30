@@ -46,6 +46,10 @@ if [ "$PUBLIC_TUNNEL" = "1" ]; then
     exit 1
   fi
   export PUBLIC_TUNNEL PUBLIC_TUNNEL_AUTH
+  if [ "${PUBLIC_TUNNEL_DISABLE_AUTH:-0}" = "1" ]; then
+    export PUBLIC_TUNNEL_DISABLE_AUTH
+    echo "WARNING: PUBLIC_TUNNEL_DISABLE_AUTH=1 — 公開トンネルを認証なしで公開中（URLを知る誰でも審査データ・チャット・API・音声通話を利用可能）" >&2
+  fi
   export REQUIRE_API_ACCESS_KEY=1
   if [ -z "${API_ACCESS_KEY:-}" ] && [ -n "$API_ACCESS_KEY_FILE" ] && [ -r "$API_ACCESS_KEY_FILE" ]; then
     IFS= read -r API_ACCESS_KEY < "$API_ACCESS_KEY_FILE" || true
@@ -134,7 +138,11 @@ print_status() {
   echo "  Next : ${next_state} http://${NEXT_HOST}:${NEXT_PORT}"
   if [ -n "$tunnel_url" ]; then
     echo "  Tunnel: ${tunnel_url}"
-    echo "  Login : user 'lease' with the PUBLIC_TUNNEL_AUTH password"
+    if [ "${PUBLIC_TUNNEL_DISABLE_AUTH:-0}" = "1" ]; then
+      echo "  Login : NONE (WARNING: 認証なしで公開中)"
+    else
+      echo "  Login : user 'lease' with the PUBLIC_TUNNEL_AUTH password"
+    fi
   else
     echo "  Tunnel: not found"
   fi
