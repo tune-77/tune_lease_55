@@ -23,6 +23,7 @@ API_HOST="${API_HOST:-127.0.0.1}"
 NEXT_HOST="${NEXT_HOST:-127.0.0.1}"
 PUBLIC_TUNNEL="${PUBLIC_TUNNEL:-0}"
 PUBLIC_TUNNEL_AUTH_FILE="${PUBLIC_TUNNEL_AUTH_FILE:-${HOME:-}/Library/Application Support/tune_lease_55/public_tunnel_auth}"
+API_ACCESS_KEY_FILE="${API_ACCESS_KEY_FILE:-${HOME:-}/Library/Application Support/tune_lease_55/api_access_key}"
 # Named Tunnel（固定URL・認証あり）を使う場合はこの2つを設定する。
 # 未設定なら従来どおり quick tunnel（認証不要・URL変動・本番非推奨）にフォールバックする。
 CLOUDFLARE_TUNNEL_CONFIG="${CLOUDFLARE_TUNNEL_CONFIG:-}"
@@ -31,8 +32,10 @@ LOG_DIR="logs/next"
 mkdir -p "$LOG_DIR"
 
 # An internet-facing tunnel must never inherit local development's auth opt-out.
-# Generate an ephemeral server-side key when the operator did not provide one;
-# FastAPI and Next.js inherit the same value without exposing it to the browser.
+# FastAPI and Next.js inherit the same server-side key without exposing it to the browser.
+# Next.js Proxy fixes server-only environment variables at build time, so rotating this key
+# on a launcher restart while reusing the existing build makes every /api/* request fail 401.
+# Persist an auto-generated key and reuse it across restarts/build skips.
 if [ "$PUBLIC_TUNNEL" = "1" ]; then
   if [ -z "${PUBLIC_TUNNEL_AUTH:-}" ] && [ -n "$PUBLIC_TUNNEL_AUTH_FILE" ] && [ -r "$PUBLIC_TUNNEL_AUTH_FILE" ]; then
     IFS= read -r PUBLIC_TUNNEL_AUTH < "$PUBLIC_TUNNEL_AUTH_FILE" || true
@@ -44,15 +47,24 @@ if [ "$PUBLIC_TUNNEL" = "1" ]; then
   fi
   export PUBLIC_TUNNEL PUBLIC_TUNNEL_AUTH
   export REQUIRE_API_ACCESS_KEY=1
+  if [ -z "${API_ACCESS_KEY:-}" ] && [ -n "$API_ACCESS_KEY_FILE" ] && [ -r "$API_ACCESS_KEY_FILE" ]; then
+    IFS= read -r API_ACCESS_KEY < "$API_ACCESS_KEY_FILE" || true
+  fi
   if [ -z "${API_ACCESS_KEY:-}" ]; then
     if ! command -v openssl >/dev/null 2>&1; then
       echo "PUBLIC_TUNNEL=1 requires API_ACCESS_KEY or openssl for secure key generation." >&2
       exit 1
     fi
     export API_ACCESS_KEY="$(openssl rand -hex 32)"
-    FORCE_RESTART=1
-    echo "Generated an ephemeral API access key for this public tunnel session."
+    if [ -n "$API_ACCESS_KEY_FILE" ]; then
+      mkdir -p "$(dirname "$API_ACCESS_KEY_FILE")"
+      umask 077
+      printf '%s\n' "$API_ACCESS_KEY" > "$API_ACCESS_KEY_FILE"
+      chmod 600 "$API_ACCESS_KEY_FILE"
+    fi
+    echo "Generated a persistent internal API access key."
   fi
+  export API_ACCESS_KEY
 fi
 
 named_tunnel_active() {
