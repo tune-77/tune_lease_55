@@ -109,6 +109,10 @@ if ! command -v gcloud >/dev/null 2>&1; then
 fi
 echo "gcloud: $(command -v gcloud || echo '見つかりません（クラウド連携ステップは失敗します）')"
 
+# torch と LightGBM が同居するステップの SIGSEGV 防止（LightGBM スレッド上限1）。
+# venv 作り直しで .pth が消えても毎朝ここで再登録する。
+"${PYTHON}" "${PROJECT_ROOT}/scripts/install_lgbm_thread_guard.py" || true
+
 echo ""
 echo "[core] 改善コア処理を実行中..."
 bash "${PROJECT_ROOT}/scripts/run_daily_improvement_core.sh"
