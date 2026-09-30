@@ -477,7 +477,7 @@ def _markdown_snippets(text: str) -> list[str]:
 
 
 def _load_previous_fields(path: Path) -> dict[str, dict[str, str]]:
-    """前回索引から、引き継ぐべきフィールド（初出日・最終使用日）をIDごとに読む。"""
+    """前回索引から、再構築で失ってはいけない鮮度フィールドをIDごとに読む。"""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -491,6 +491,7 @@ def _load_previous_fields(path: Path) -> dict[str, dict[str, str]]:
             previous[rid] = {
                 "created_at": str(record.get("created_at") or ""),
                 "last_used_at": str(record.get("last_used_at") or ""),
+                "status": str(record.get("status") or "active"),
             }
     return previous
 
@@ -586,7 +587,9 @@ def build_index(
 
     # 再生成のたびに created_at（初出日）が今日へリセットされると、鮮度更新の
     # 「作成から45日超かつ未使用 → stale」が永久に発火しないため、前回索引から
-    # 初出日と最終使用日を引き継ぐ。
+    # 初出日・最終使用日と stale 状態を引き継ぐ。stale を落とすと、再構築から
+    # 次の鮮度更新まで古い記憶が active に戻り、効果レポートのレビュー対象も消える。
+    # private/revised/deprecated は各正本・改訂宣言から再生成するため、ここでは引き継がない。
     previous = _load_previous_fields(
         previous_index_path or (REPO_ROOT / "data" / "shion_memory_index.json")
     )
@@ -598,6 +601,8 @@ def build_index(
             record["created_at"] = prev["created_at"]
         if prev.get("last_used_at") and not record.get("last_used_at"):
             record["last_used_at"] = prev["last_used_at"]
+        if prev.get("status") == "stale" and str(record.get("status") or "active") == "active":
+            record["status"] = "stale"
 
     # 改訂宣言（data/shion_memory_revisions.jsonl）を再適用する。
     # 宣言ファイルが真実の源なので、索引を再生成しても revised / supersedes が消えない。
