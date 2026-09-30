@@ -35,9 +35,9 @@ def _gemini_call(prompt: str, max_tokens: int = 4000) -> str | None:
     )
     if not api_key:
         return None
-    model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT) or "gemini-2.0-flash"
+    model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT) or GEMINI_MODEL_DEFAULT
     if "1.5" in model:
-        model = "gemini-2.0-flash"
+        model = GEMINI_MODEL_DEFAULT
 
     try:
         import google.genai as _genai

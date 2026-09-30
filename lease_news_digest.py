@@ -6,6 +6,8 @@ import datetime as dt
 import hashlib
 import json
 import os
+
+from config import get_gemini_model
 import re
 import threading
 import time
@@ -1383,7 +1385,7 @@ def _generate_llm_news_signal_candidates(base_signals: list[dict]) -> dict:
         )
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            model=get_gemini_model(),
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.1,

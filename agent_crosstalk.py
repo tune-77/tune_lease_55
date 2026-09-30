@@ -223,7 +223,7 @@ JSON配列のみ出力してください。"""
         import os as _os
 
         api_key = _get_gemini_key_from_secrets() or _os.environ.get("GEMINI_API_KEY", "")
-        gemini_model = GEMINI_MODEL_DEFAULT or "gemini-2.0-flash"
+        gemini_model = GEMINI_MODEL_DEFAULT
 
         if not api_key:
             conversation = _fallback_crosstalk(topic_info)
@@ -458,7 +458,7 @@ JSON配列のみ出力してください。"""
         import re
 
         api_key = _get_gemini_key_from_secrets() or os.environ.get("GEMINI_API_KEY", "")
-        gemini_model = GEMINI_MODEL_DEFAULT or "gemini-2.0-flash"
+        gemini_model = GEMINI_MODEL_DEFAULT
 
         if not api_key:
             return []

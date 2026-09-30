@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import os
+
+from config import get_gemini_model
 import re
 from pathlib import Path
 from typing import Any
@@ -40,7 +42,7 @@ def call_gemini_json(prompt: str, *, temperature: float = 0.4, max_output_tokens
     """Gemini に JSON 出力を要求し、パース済みの値（list/dict）を返す。失敗時は例外を投げる。"""
     import requests
 
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     api_key = gemini_api_key()
     if not api_key:

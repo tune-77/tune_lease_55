@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import ipaddress
-import os
+from config import get_gemini_model
 import socket
 import sys
 from html.parser import HTMLParser
@@ -56,7 +56,7 @@ _NEWS_OBSIDIAN_DIR_ALIASES = (
 
 
 def _gemini_generate_url() -> str:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 

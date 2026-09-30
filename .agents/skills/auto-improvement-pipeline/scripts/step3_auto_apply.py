@@ -21,6 +21,10 @@ _DISPATCH_NOTIFIER_AVAILABLE = False
 _scripts_dir = Path(__file__).resolve().parent
 if str(_scripts_dir) not in sys.path:
     sys.path.insert(0, str(_scripts_dir))
+_REPO_ROOT_FOR_CONFIG = str(Path(__file__).resolve().parents[4])
+if _REPO_ROOT_FOR_CONFIG not in sys.path:
+    sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
+from config import get_gemini_model  # noqa: E402
 
 try:
     from improvement_classifier import classify_improvement  # type: ignore[import]
@@ -777,8 +781,7 @@ class Step3AutoApplier:
             return None
         try:
             import requests  # type: ignore[import-untyped]
-            # gemini-2.5-flash → フォールバックで gemini-2.5-pro
-            for model_name in ("gemini-2.5-flash", "gemini-2.5-pro"):
+            for model_name in (get_gemini_model(),):
                 url = (
                     "https://generativelanguage.googleapis.com/v1beta"
                     f"/models/{model_name}:generateContent"

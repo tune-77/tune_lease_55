@@ -713,8 +713,14 @@ def build_chat_reply(
         from google import genai
         from google.genai import types
 
+        import sys as _sys
+        _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        from config import get_gemini_model
+
         client = genai.Client(api_key=api_key)
-        model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        model = get_gemini_model()
         response = client.models.generate_content(
             model=model,
             contents=final_prompt,

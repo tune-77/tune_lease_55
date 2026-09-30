@@ -62,7 +62,7 @@ reads_from: []
 ```
 GET https://generativelanguage.googleapis.com/v1beta/models?key=<GEMINI_API_KEY>
 ```
-- 200 OK かつ `models` リストに `gemini-2.0-flash` が存在 → ✅
+- 200 OK かつ `models` リストに `gemini-3.1-flash-lite`（config.GEMINI_MODEL_DEFAULT）が存在 → ✅
 - 400/401/403 → ❌ APIキー問題
 - タイムアウト（5秒）→ ⚠️ 低速
 

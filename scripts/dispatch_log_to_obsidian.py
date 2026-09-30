@@ -13,6 +13,8 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from config import get_gemini_model  # noqa: E402
 from mobile_app.obsidian_bridge import find_vault
 
 _REPO_ROOT = Path(__file__).parent.parent
@@ -39,7 +41,7 @@ def _get_gemini_api_key() -> str:
 
 
 def _gemini_url() -> str:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     return (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:generateContent"

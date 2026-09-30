@@ -32,6 +32,8 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from config import get_gemini_model  # noqa: E402
+
 from lease_news_digest import (
     get_lease_news_metrics,
     record_lease_news_collection,
@@ -650,7 +652,7 @@ def classify_articles(articles: list[Article], use_ai: bool = True) -> None:
         )
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            model=get_gemini_model(),
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.1,

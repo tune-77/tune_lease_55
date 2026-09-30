@@ -34,6 +34,8 @@ import shlex
 import shutil
 import sys
 import os
+
+from config import get_gemini_model
 from pathlib import Path
 from runtime_paths import get_data_path, get_db_path
 
@@ -128,7 +130,7 @@ _load_secrets_to_env()
 
 
 def _gemini_generate_url() -> str:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 

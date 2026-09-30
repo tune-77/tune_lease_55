@@ -107,7 +107,8 @@ def _ocr_with_gemini(image_bytes: bytes, mime_type: str, api_key: str) -> dict[s
     image_bytes, mime_type = _resize_image_bytes(image_bytes, mime_type)
     image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-    model = "gemini-1.5-flash"
+    from config import get_gemini_model
+    model = get_gemini_model()
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:generateContent?key={api_key}"

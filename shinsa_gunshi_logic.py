@@ -14,6 +14,7 @@ import time
 from contextlib import closing
 from datetime import datetime
 from typing import Generator
+from config import GEMINI_MODEL_DEFAULT
 from runtime_paths import get_data_path
 from prompt_feedback import build_pdca_prompt_block
 
@@ -44,7 +45,7 @@ OLLAMA_STREAM_URL = OLLAMA_BASE + "/api/generate"
 DEFAULT_MODEL = "llama3"
 
 # Gemini API（環境変数 or サイドバー入力を実行時に参照）
-_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+_GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_DEFAULT}:generateContent"
 
 # 車種別ベイズ追加ブースト（_ASSET_RESALE_MAP のリセール評価に加えて上乗せ）
 _VEHICLE_EXTRA_BOOST: list[tuple[list[str], float, str]] = [
@@ -130,7 +131,7 @@ def _get_asset_market_ctx() -> str:
 
 # 後方互換用（古いコードが参照している場合のため）
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+_GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_DEFAULT}:generateContent"
 
 # ==============================================================================
 # 100選マスターデータ
@@ -739,7 +740,7 @@ def _gemini_generate(prompt: str) -> Generator[str, None, None]:
     if not api_key:
         yield "\n\n⚠️ Gemini APIキー未設定。サイドバーで入力するか、GEMINI_API_KEY 環境変数を設定してください。"
         return
-    model = st.session_state.get("gemini_model", "gemini-2.0-flash")
+    model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
         resp = requests.post(

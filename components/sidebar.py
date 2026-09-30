@@ -171,17 +171,18 @@ def _render_ai_model_settings() -> None:
                     f'GEMINI_API_KEY = "{widget_key.strip()}"\n', encoding="utf-8"
                 )
                 st.sidebar.success("✅ 保存しました！次回から自動入力されます。")
-        GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro"]
+        from config import GEMINI_MODEL_DEFAULT
+        GEMINI_MODELS = [GEMINI_MODEL_DEFAULT]
         st.session_state["gemini_model"] = st.sidebar.selectbox(
             "Gemini モデル",
             GEMINI_MODELS,
             index=0,
-            help="gemini-2.0-flash がおすすめです。",
+            help=f"{GEMINI_MODEL_DEFAULT} がおすすめです（config.py で変更）。",
         )
         if not st.session_state.get("gemini_api_key", "").strip():
             st.sidebar.warning("⚠️ APIキー未設定。[Google AI Studio](https://aistudio.google.com/app/apikey) で無料取得 → 上欄に貼り付けてください。")
         else:
-            st.sidebar.caption("✅ Gemini 2.0 Flash：月50件審査なら無料枠で収まります。")
+            st.sidebar.caption(f"✅ {GEMINI_MODEL_DEFAULT}")
     else:
         MODEL_OPTIONS = [
             "自動（デフォルト設定）",

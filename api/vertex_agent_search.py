@@ -10,6 +10,8 @@ from __future__ import annotations
 import html
 import json
 import os
+
+from config import GEMINI_MODEL_DEFAULT
 import re
 import subprocess
 import time
@@ -28,7 +30,7 @@ DEFAULT_ANSWER_PREAMBLE = (
     "補助金、物件、耐用年数、残価、返済余力、業界リスクの確認事項を日本語で簡潔に整理してください。"
     "根拠が弱い場合は断定せず、追加確認事項として扱ってください。"
 )
-GROUNDING_DEFAULT_MODEL = "gemini-2.5-flash"
+GROUNDING_DEFAULT_MODEL = GEMINI_MODEL_DEFAULT
 
 
 @dataclass(frozen=True)

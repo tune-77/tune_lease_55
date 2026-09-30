@@ -32,6 +32,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from config import get_gemini_model  # noqa: E402
+
 from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault  # noqa: E402
 from screening_record_lifecycle import active_screening_predicate  # noqa: E402
 
@@ -944,7 +946,7 @@ def _generate_conclusions_with_llm(
 - 箇条書きで、各項目は1文（40〜80字）
 - JSON配列のみ返す（他のテキスト不要）: ["結論1", "結論2", ...]"""
 
-    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    gemini_model = get_gemini_model()
     try:
         rest_url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"

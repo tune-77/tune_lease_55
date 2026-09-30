@@ -8,7 +8,12 @@ import re
 import sys
 import urllib.request
 
-_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+_REPO_ROOT_FOR_CONFIG = str(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _REPO_ROOT_FOR_CONFIG not in sys.path:
+    sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
+from config import get_gemini_model  # noqa: E402
+
+_GEMINI_MODEL = get_gemini_model()
 _GEMINI_REST_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     f"{_GEMINI_MODEL}:generateContent"

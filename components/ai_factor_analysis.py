@@ -124,9 +124,9 @@ def _call_gemini(prompt: str, max_tokens: int = 3000) -> str:
     if not api_key:
         return "⚠️ Gemini APIキーが設定されていません。サイドバーの「AIモデル設定」で設定してください。"
 
-    model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT) or "gemini-2.0-flash"
+    model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT) or GEMINI_MODEL_DEFAULT
     if "1.5" in model:
-        model = "gemini-2.0-flash"
+        model = GEMINI_MODEL_DEFAULT
 
     # 新SDK優先、旧SDKにフォールバック
     try:

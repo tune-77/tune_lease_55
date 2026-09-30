@@ -10,6 +10,8 @@ import argparse
 import datetime as dt
 import json
 import os
+
+from config import get_gemini_model
 import re
 import sys
 import tempfile
@@ -18,7 +20,7 @@ from pathlib import Path
 _FEED_PATH = Path(__file__).parent / "data" / "world_feed.jsonl"
 _MIND_PATH = Path(__file__).parent / "data" / "mind.json"
 _DEFAULT_LIMIT = 20
-_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+_GEMINI_MODEL = get_gemini_model()
 
 
 def _gemini_api_key() -> str:

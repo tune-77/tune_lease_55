@@ -150,10 +150,10 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
     if not contents:
         return {"message": {"content": "送信する内容がありません。"}}
 
-    # gemini-1.5-* は廃止済み → 2.0-flash にフォールバック
-    _model = model or "gemini-2.0-flash"
+    # gemini-1.5-* は廃止済み → 既定モデルにフォールバック
+    _model = model or GEMINI_MODEL_DEFAULT
     if "1.5" in _model:
-        _model = "gemini-2.0-flash"
+        _model = GEMINI_MODEL_DEFAULT
 
     def _handle_error(e):
         err = str(e).strip().lower()
@@ -258,7 +258,7 @@ def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: i
             return {"message": {"content": "Gemini APIキーが設定されていません。環境変数 GEMINI_API_KEY またはサイドバーで入力してください。"}}
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                future = ex.submit(_gemini_chat, api_key, gemini_model or "gemini-2.0-flash", messages, timeout_seconds, max_output_tokens)
+                future = ex.submit(_gemini_chat, api_key, gemini_model or GEMINI_MODEL_DEFAULT, messages, timeout_seconds, max_output_tokens)
                 return future.result(timeout=timeout_seconds + 30)
         except Exception as e:
             return {"message": {"content": f"Gemini が応答しませんでした。\n\n【詳細】{str(e)}"}}

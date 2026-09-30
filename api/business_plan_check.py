@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import json
 import os
+
+from config import get_gemini_model
 import re
 
 import requests
@@ -227,7 +229,7 @@ def validate_business_plan(params: dict) -> dict:
 # ── Gemini 講評（任意。不通でも機械チェックだけで応答する） ─────────────────────
 
 def _gemini_url() -> str:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 

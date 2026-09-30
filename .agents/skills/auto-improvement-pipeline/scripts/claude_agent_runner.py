@@ -12,6 +12,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT_FOR_CONFIG = str(Path(__file__).resolve().parents[4])
+if _REPO_ROOT_FOR_CONFIG not in sys.path:
+    sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
+from config import get_gemini_model  # noqa: E402
 from implementation_verifier import IndependentImprovementVerifier
 from loop_constraints import evaluate_execution_constraints, load_loop_constraints
 
@@ -60,10 +64,10 @@ def _extract_pr_number(text: str) -> int | None:
 
 
 def _call_gemini(api_key: str, prompt: str) -> str | None:
-    """Gemini REST API を呼び出す（gemini-2.5-flash → gemini-2.5-pro フォールバック）."""
+    """Gemini REST API を呼び出す（モデルは config.GEMINI_MODEL_DEFAULT）."""
     try:
         import requests  # type: ignore[import-untyped]
-        for model_name in ("gemini-2.5-flash", "gemini-2.5-pro"):
+        for model_name in (get_gemini_model(),):
             url = (
                 "https://generativelanguage.googleapis.com/v1beta"
                 f"/models/{model_name}:generateContent"

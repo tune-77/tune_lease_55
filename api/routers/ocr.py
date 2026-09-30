@@ -1,6 +1,8 @@
 import base64
 import json
 import os
+
+from config import get_gemini_model
 import re
 from typing import Optional
 
@@ -45,7 +47,7 @@ def _get_api_key() -> str:
 
 
 def _ocr_url() -> str:
-    model = (os.environ.get("GEMINI_OCR_MODEL") or "gemini-2.0-flash").strip()
+    model = (os.environ.get("GEMINI_OCR_MODEL") or "").strip() or get_gemini_model()
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 

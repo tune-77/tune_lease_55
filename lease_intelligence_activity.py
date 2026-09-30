@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+
+from config import get_gemini_model
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -272,7 +274,7 @@ def _generate_observation_with_llm(
 JSON形式で返してください:
 {{"understanding": "...", "curiosity": "..."}}"""
 
-    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    gemini_model = get_gemini_model()
     try:
         rest_url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"

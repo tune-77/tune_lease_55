@@ -2,6 +2,8 @@
 import asyncio
 import json
 import os
+
+from config import get_gemini_model
 import httpx
 from api.context.time_context import with_current_datetime_context
 from prompt_feedback import build_pdca_prompt_block, record_prompt_feedback
@@ -15,7 +17,7 @@ from shinsa_gunshi_logic import (
 
 
 def _gemini_stream_url() -> str:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     return (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:streamGenerateContent"
@@ -643,7 +645,7 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
                     "pd_pct": pd_pct,
                     "industry_cat": industry_cat,
                     "asset_name": str(params.get("asset_name") or ""),
-                    "llm_model": os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+                    "llm_model": get_gemini_model(),
                     "fallback_reason": reason,
                 },
             )

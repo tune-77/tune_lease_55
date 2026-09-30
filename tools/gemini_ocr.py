@@ -26,6 +26,11 @@ from pathlib import Path
 import requests
 import pandas as pd
 
+_REPO_ROOT_FOR_CONFIG = str(Path(__file__).resolve().parents[1])
+if _REPO_ROOT_FOR_CONFIG not in sys.path:
+    sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
+from config import get_gemini_model  # noqa: E402
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 出力列定義（batch_scoring.py の _CSV_COLUMNS と完全一致）
 # ─────────────────────────────────────────────────────────────────────────────
@@ -182,7 +187,7 @@ def main():
     parser.add_argument("--images", "-i", nargs="+", required=True, help="入力画像ファイル")
     parser.add_argument("--output", "-o", default="batch_ready.csv", help="出力CSVファイル")
     parser.add_argument("--api-key", "-k", help="Gemini APIキー（省略時はGEMINI_API_KEY環境変数）")
-    parser.add_argument("--model", "-m", default="gemini-2.0-flash", help="使用モデル名")
+    parser.add_argument("--model", "-m", default=get_gemini_model(), help="使用モデル名")
     parser.add_argument("--delay", "-d", type=float, default=2.0, help="APIリクエスト間の待機秒数")
     args = parser.parse_args()
 

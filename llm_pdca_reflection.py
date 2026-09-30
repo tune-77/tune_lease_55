@@ -107,9 +107,10 @@ def run_monthly_pdca_reflection(force: bool = False, max_cases: int = 20) -> Opt
         # そのため、このスクリプトは Streamlit 経由 (components 内部など) で呼ばれる想定。
         # 単独実行時はモックの session_state が必要。
         import streamlit as st
+        from config import GEMINI_MODEL_DEFAULT
         # dummy wrapper if not in context
         if not hasattr(st, "session_state") or not st.session_state:
-             st.session_state = {"ai_engine": "gemini", "gemini_model": "gemini-2.0-flash"}
+             st.session_state = {"ai_engine": "gemini", "gemini_model": GEMINI_MODEL_DEFAULT}
 
         ans = chat_with_retry(
             model=model,

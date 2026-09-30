@@ -12,7 +12,7 @@ google.adk はモジュール先頭で import する方針を採る。
 from __future__ import annotations
 
 import json
-import os
+from config import get_gemini_model
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -202,7 +202,7 @@ _AGENT_TOOL_FUNCS = [
 
 shion_agent = LlmAgent(
     name="shion",
-    model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+    model=get_gemini_model(),
     instruction=_INSTRUCTION,
     tools=_AGENT_TOOL_FUNCS,
 )

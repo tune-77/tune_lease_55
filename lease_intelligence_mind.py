@@ -9,6 +9,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+
+from config import get_gemini_model
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -2009,7 +2011,7 @@ def _call_gemini_for_classify(prompt: str) -> str | None:
     )
     if not api_key:
         return None
-    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    gemini_model = get_gemini_model()
     try:
         import google.generativeai as genai  # type: ignore
 
@@ -2059,7 +2061,7 @@ def _call_gemini_for_reflection(prompt: str) -> str | None:
     )
     if not api_key:
         return None
-    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    gemini_model = get_gemini_model()
     # REST API 経由で thinkingBudget=0 を指定して確実に長文を取得する
     try:
         rest_url = (
