@@ -1,0 +1,126 @@
+# .github/workflows/cloudrun-pause.yml
+#
+# 2026-10-01 00:00 JST から Cloud Run（tune-lease-55-api / tune-lease-55-web）を
+# 一旦停止する。サービスとイメージは残し、次の2点で「誰も起動できない・課金されない」
+# 状態にする。
+#   1. allUsers の roles/run.invoker を外す → 未認証リクエストは Google 側で403になり、
+#      インスタンスが起動しない（min-instances=0 と合わせてアイドル課金ゼロ）。
+#   2. min-instances を 0 に戻す（scripts/demo_warm.sh on の消し忘れ対策）。
+#
+# 停止中に再公開・無駄な失敗通知が出ないよう、deploy.yml / dashboard-data-health.yml
+# の schedule も同じPRで止めている（cloudrun-cost-guard.yml は describe と古い
+# リビジョン削除だけで、起動も再公開もしないため残す）。
+#
+# 再開手順:
+#   for s in tune-lease-55-api tune-lease-55-web; do
+#     gcloud run services add-iam-policy-binding "$s" \
+#       --project gen-lang-client-0420497423 --region asia-northeast1 \
+#       --member=allUsers --role=roles/run.invoker
+#   done
+#   その後、上記2ワークフローの schedule を戻す（このファイルは削除してよい）。
+
+name: Cloud Run Pause
+
+on:
+  schedule:
+    # 2026-10-01 00:07 / 00:37 / 01:07 / 01:37 JST。GitHubのscheduleは高負荷時に
+    # 遅延・欠落することがあるため複数回撃つ（処理は冪等）。毎年9/30に発火するので
+    # 下の日付ガードで2026年だけに限定する。
+    - cron: "7,37 15-16 30 9 *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_ID: gen-lang-client-0420497423
+  REGION: asia-northeast1
+
+jobs:
+  pause:
+    name: Stop public access to Cloud Run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # WIF に必須
+    steps:
+      - name: Date guard (schedule only)
+        id: guard
+        if: github.event_name == 'schedule'
+        run: |
+          today="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
+          echo "JST date: ${today}"
+          if [ "${today}" = "2026-10-01" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::2026-10-01(JST)以外の定期発火のためスキップします。"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.guard.outputs.run != 'false'
+
+      - name: Authenticate to GCP
+        if: steps.guard.outputs.run != 'false'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        if: steps.guard.outputs.run != 'false'
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Remove public invoker & force min-instances=0
+        if: steps.guard.outputs.run != 'false'
+        run: |
+          set -Eeuo pipefail
+          for service in tune-lease-55-api tune-lease-55-web; do
+            if gcloud run services get-iam-policy "${service}" \
+                --project "${PROJECT_ID}" --region "${REGION}" \
+                --flatten="bindings[].members" \
+                --filter="bindings.role=roles/run.invoker AND bindings.members=allUsers" \
+                --format="value(bindings.members)" | grep -q allUsers; then
+              gcloud run services remove-iam-policy-binding "${service}" \
+                --project "${PROJECT_ID}" --region "${REGION}" \
+                --member=allUsers --role=roles/run.invoker
+            else
+              echo "${service}: allUsers invoker は既に外れています"
+            fi
+
+            min_instances="$(gcloud run services describe "${service}" \
+              --project "${PROJECT_ID}" --region "${REGION}" \
+              --format="value(spec.template.metadata.annotations['autoscaling.knative.dev/minScale'])")"
+            if [ "${min_instances:-0}" != "0" ]; then
+              gcloud run services update "${service}" \
+                --project "${PROJECT_ID}" --region "${REGION}" --min-instances 0
+            fi
+          done
+
+      # 停止できたことを外形で確認する（未認証アクセスが403になること）。
+      - name: Verify public access is blocked
+        if: steps.guard.outputs.run != 'false'
+        run: |
+          set -Eeuo pipefail
+          for service in tune-lease-55-api tune-lease-55-web; do
+            url="$(gcloud run services describe "${service}" \
+              --project "${PROJECT_ID}" --region "${REGION}" --format='value(status.url)')"
+            # IAM反映は最大数分かかるため待ちながら確認する
+            for i in $(seq 1 20); do
+              code="$(curl -s -o /dev/null -w '%{http_code}' "${url}/" || true)"
+              [ "${code}" = "403" ] && break
+              sleep 15
+            done
+            echo "${service}: ${url} -> HTTP ${code}"
+            if [ "${code}" != "403" ]; then
+              echo "::error::${service} がまだ公開されています (HTTP ${code})"
+              exit 1
+            fi
+          done
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/actions/notify-slack-failure
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          workflow-name: "Cloud Run Pause"
