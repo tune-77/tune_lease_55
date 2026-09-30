@@ -18,6 +18,8 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from config import get_gemini_model  # noqa: E402
+
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 
 DEFAULT_VAULT = resolve_obsidian_vault()
@@ -490,7 +492,7 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
         credentials=OAuthCredentials(token=sdk_token),
         http_options=types.HttpOptions(api_version="v1"),
     )
-    model = os.environ.get("GEMINI_RESEARCH_MODEL") or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.environ.get("GEMINI_RESEARCH_MODEL") or get_gemini_model()
     search_response = None
     raw_research = ""
     sources: list[dict[str, str]] = []

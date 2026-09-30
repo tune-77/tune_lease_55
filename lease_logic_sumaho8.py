@@ -30,11 +30,11 @@ from sklearn.preprocessing import StandardScaler
 # ============================================
 # AI エンジン設定（Ollama / Gemini API）
 # ・Ollama: 環境変数 OLLAMA_MODEL、サイドバーでモデル選択
-# ・Gemini: 環境変数 GEMINI_API_KEY または サイドバーでAPIキー入力、モデルは gemini-2.0-flash 等
+# ・Gemini: 環境変数 GEMINI_API_KEY または サイドバーでAPIキー入力、モデルは config.GEMINI_MODEL_DEFAULT
 # ============================================
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "lease-anna")
 GEMINI_API_KEY_ENV = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL_DEFAULT = "gemini-2.0-flash"  # または gemini-1.5-pro, gemini-1.5-flash
+from config import GEMINI_MODEL_DEFAULT  # noqa: E402
 
 
 def _get_gemini_key_from_secrets() -> str:
@@ -1679,7 +1679,7 @@ def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: i
             return {"message": {"content": "Gemini APIキーが設定されていません。環境変数 GEMINI_API_KEY またはサイドバーで入力してください。"}}
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                future = ex.submit(_gemini_chat, api_key, gemini_model or "gemini-2.0-flash", messages, timeout_seconds)
+                future = ex.submit(_gemini_chat, api_key, gemini_model or GEMINI_MODEL_DEFAULT, messages, timeout_seconds)
                 return future.result(timeout=min(timeout_seconds + 30, 90))
         except Exception as e:
             return {"message": {"content": f"Gemini が応答しませんでした。\n\n【詳細】{str(e)}"}}
@@ -2691,12 +2691,12 @@ if st.session_state["ai_engine"] == "gemini":
         or GEMINI_API_KEY_ENV
         or ""
     )
-    GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"]
+    GEMINI_MODELS = [GEMINI_MODEL_DEFAULT]
     st.session_state["gemini_model"] = st.sidebar.selectbox(
         "Gemini モデル",
         GEMINI_MODELS,
         index=0,
-        help="gemini-2.0-flash がおすすめです。",
+        help=f"{GEMINI_MODEL_DEFAULT} がおすすめです（config.py で変更）。",
     )
     st.sidebar.caption("⚠️ 無料枠は1日あたりのリクエスト数に上限があります。動かない場合は翌日までお待ちか、Google AI Studio で利用状況を確認してください。")
 else:

@@ -27,10 +27,11 @@ import requests
 import streamlit as st
 
 from category_config import CATEGORY_SCORE_ITEMS, SCORE_GRADES
+from config import GEMINI_MODEL_DEFAULT
 
 _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.0-flash:generateContent"
+    f"{GEMINI_MODEL_DEFAULT}:generateContent"
 )
 
 

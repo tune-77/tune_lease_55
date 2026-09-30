@@ -25,7 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 from scripts.evaluate_answer_quality import DEFAULT_EVAL_SET, evaluate_answers
 
 DEFAULT_OUTPUT = REPO_ROOT / "reports" / "vertex_answer_quality_latest.json"
-DEFAULT_MODEL = "gemini-2.5-flash"
+from config import GEMINI_MODEL_DEFAULT as DEFAULT_MODEL  # noqa: E402
 JUDGE_DIMENSIONS = (
     "grounding",
     "practical_usefulness",

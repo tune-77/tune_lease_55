@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+from config import GEMINI_MODEL_DEFAULT as DEFAULT_MODEL  # noqa: E402
 
 
 def _compact_text(value: Any, limit: int) -> str:

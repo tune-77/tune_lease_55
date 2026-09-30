@@ -34,6 +34,10 @@ from typing import Any
 SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+_REPO_ROOT_FOR_CONFIG = str(Path(__file__).resolve().parents[1])
+if _REPO_ROOT_FOR_CONFIG not in sys.path:
+    sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
+from config import get_gemini_model  # noqa: E402
 
 from shion_triage import (  # noqa: E402
     TRIAGE_FILE_RELPATH,
@@ -101,7 +105,7 @@ def call_gemini(prompt: str, api_key: str) -> str:
     import google.generativeai as genai  # type: ignore[import-untyped]
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    model = genai.GenerativeModel(get_gemini_model())
     response = model.generate_content(prompt)
     return response.text or ""
 

@@ -6,6 +6,8 @@ chat_messages テーブルを lease_data.db 内に作成し、
 from __future__ import annotations
 
 import os
+
+from config import get_gemini_model
 import time
 from typing import Any, Callable
 import requests
@@ -18,7 +20,7 @@ _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
 def _gemini_model() -> str:
-    return os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    return get_gemini_model()
 
 
 def _gemini_url() -> str:

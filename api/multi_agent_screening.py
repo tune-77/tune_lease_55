@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import json
 import os
+
+from config import get_gemini_model
 import re
 import time
 import requests
@@ -49,7 +51,7 @@ from scoring_core import APPROVAL_LINE
 # 紫苑（懐疑派）・紫苑（楽観派）: Gemini Flash（temperature差で視点を分離）
 # 紫苑（統合派）: Gemini Flash（temperature=0.3 で統合裁定役）
 def _gemini_url() -> str:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 

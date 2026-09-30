@@ -12,6 +12,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT_FOR_CONFIG = str(Path(__file__).resolve().parents[1])
+if _REPO_ROOT_FOR_CONFIG not in sys.path:
+    sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
+from config import get_gemini_model  # noqa: E402
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -110,14 +115,14 @@ def _get_gemini_api_key(root: Path) -> str:
 
 
 def _try_gemini(prompt: str, api_key: str) -> tuple[int, str, str]:
-    """gemini-2.5-flash で prompt を実行し (exit_code, stdout, stderr) を返す."""
+    """既定の Gemini モデル（config.GEMINI_MODEL_DEFAULT）で prompt を実行し (exit_code, stdout, stderr) を返す."""
     try:
         import google.generativeai as genai  # type: ignore[import-untyped]
     except ImportError:
         return -1, "", "google-generativeai パッケージ未インストール"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel(get_gemini_model())
         response = model.generate_content(prompt)
         text = response.text or ""
         if not text.strip():
@@ -263,7 +268,7 @@ def main() -> None:
 
     gemini_api_key = _get_gemini_api_key(root)
     if gemini_api_key:
-        print("[execute_codex_queue] Gemini fallback: enabled (gemini-2.5-flash)")
+        print(f"[execute_codex_queue] Gemini fallback: enabled ({get_gemini_model()})")
     else:
         print("[execute_codex_queue] Gemini fallback: disabled (GEMINI_API_KEY not set)")
 

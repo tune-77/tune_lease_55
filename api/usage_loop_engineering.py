@@ -11,6 +11,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+
+from config import get_gemini_model
 import re
 from pathlib import Path
 from typing import Any
@@ -113,7 +115,7 @@ def _gemini_api_key() -> str:
 def _call_gemini(prompt: str) -> str:
     import requests
 
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     api_key = _gemini_api_key()
     if not api_key:

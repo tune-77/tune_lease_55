@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 import json
 import os
+
+from config import get_gemini_model
 import re
 from pathlib import Path
 from typing import Any
@@ -723,7 +725,7 @@ def _apply_llm_diff(rule: ImprovementRule) -> ApplyResult:
         return ApplyResult(rule.rev_id, False, "GEMINI_API_KEY が設定されていません")
 
     current_content = target_path.read_text(encoding="utf-8")
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = get_gemini_model()
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:generateContent"

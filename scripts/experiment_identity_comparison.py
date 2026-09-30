@@ -23,6 +23,8 @@ import requests
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from config import get_gemini_model  # noqa: E402
+
 from runtime_paths import get_data_path
 
 
@@ -70,7 +72,7 @@ DEFAULT_QUESTIONS = [
 # ── Gemini single-shot ──────────────────────────────────────────────────────
 
 def _gemini_model() -> str:
-    return os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    return get_gemini_model()
 
 
 def run_gemini_shion(question: str, mind_path: Path) -> dict:

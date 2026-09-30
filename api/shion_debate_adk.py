@@ -26,7 +26,7 @@ api/shion_agent.py（本流・ツール呼び出し可能・継続的に機能�
 
 from __future__ import annotations
 
-import os
+from config import get_gemini_model
 from typing import Any
 
 _VALID_FINALS = {"承認", "条件付承認", "否決"}
@@ -122,7 +122,7 @@ def build_adk_debate_agent():
     from google.adk.agents import LlmAgent, ParallelAgent, SequentialAgent
     from google.genai.types import GenerateContentConfig
 
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = get_gemini_model()
 
     skeptic = LlmAgent(
         name="skeptic", model=model, instruction=_SKEPTIC_INSTRUCTION,

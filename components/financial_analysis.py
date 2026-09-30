@@ -15,6 +15,8 @@ components/financial_analysis.py
 from __future__ import annotations
 
 import os
+
+from config import get_gemini_model
 from typing import Optional
 
 import numpy as np
@@ -320,7 +322,7 @@ def _call_gemini(prompt: str, api_key: str, timeout: int = 90) -> str:
 
     try:
         client = genai.Client(api_key=api_key)
-        model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+        model_name = get_gemini_model()
         response = client.models.generate_content(
             model=model_name,
             contents=prompt,
@@ -652,7 +654,7 @@ def render_financial_analysis() -> None:
         st.subheader("④ Gemini 審査コメント（AI自動生成）")
         st.caption(
             "Gemini APIが予測値を踏まえた3行の審査コメントを生成します。"
-            f"　使用モデル: `{os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')}`"
+            f"　使用モデル: `{get_gemini_model()}`"
         )
 
         # APIキー取得（環境変数 / secrets.toml → なければ手動入力）

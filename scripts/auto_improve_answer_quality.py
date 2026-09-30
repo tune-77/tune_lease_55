@@ -15,6 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from config import get_gemini_model  # noqa: E402
+
 from scripts.evaluate_answer_quality import (
     DEFAULT_EVAL_SET,
     evaluate_answers,
@@ -315,9 +317,7 @@ def research_failed_answer(
         credentials=OAuthCredentials(token=sdk_token),
         http_options=types.HttpOptions(api_version="v1"),
     )
-    model = os.environ.get("GEMINI_RESEARCH_MODEL") or os.environ.get(
-        "GEMINI_MODEL", "gemini-2.5-flash"
-    )
+    model = os.environ.get("GEMINI_RESEARCH_MODEL") or get_gemini_model()
     response = client.models.generate_content(
         model=model,
         contents=prompt,

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import os
+
+from config import get_gemini_model
 import re
 import requests
 from datetime import datetime, timezone, timedelta
@@ -27,7 +29,7 @@ _KEYPOINTS_LIMIT = 50
 
 
 def _gemini_url() -> str:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 

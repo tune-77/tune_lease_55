@@ -19,7 +19,14 @@ SCORING_MODELS_DIR = os.environ.get("LEASE_SCORING_MODELS_DIR", os.path.join(_PK
 # AI エンジン
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "lease-anna")
 GEMINI_API_KEY_ENV = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL_DEFAULT = "gemini-2.5-flash"
+# Gemini テキストモデルの唯一の既定値。モデル変更時はここだけ書き換える
+# （一時的な切替は環境変数 GEMINI_MODEL で上書き可能）
+GEMINI_MODEL_DEFAULT = "gemini-3.1-flash-lite"
+
+
+def get_gemini_model() -> str:
+    """環境変数 GEMINI_MODEL があれば優先し、なければ GEMINI_MODEL_DEFAULT を返す。"""
+    return os.environ.get("GEMINI_MODEL", "").strip() or GEMINI_MODEL_DEFAULT
 
 # ファイルパス
 CASES_FILE = os.path.join(BASE_DIR, "past_cases.jsonl")

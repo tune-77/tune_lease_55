@@ -7,6 +7,8 @@ API 未設定・失敗時は原文にない事実を捏造しないため、空�
 from __future__ import annotations
 
 import os
+
+from config import get_gemini_model
 import re
 import time
 from typing import Any
@@ -75,7 +77,7 @@ def mask_pii_best_effort(text: str) -> str:
 
 
 def _gemini_url() -> str:
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = get_gemini_model()
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
