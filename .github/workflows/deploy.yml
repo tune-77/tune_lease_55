@@ -34,9 +34,10 @@
 name: Deploy to Cloud Run
 
 on:
-  schedule:
-    # 毎週日曜 19:00 UTC = 月曜 4:00 JST。push トリガーは廃止済み。
-    - cron: '0 19 * * 0'
+  # 2026-10-01〜 Cloud Run一時停止中のため schedule を停止（cloudrun-pause.yml 参照）。再開時に戻す。
+  # schedule:
+  #   # 毎週日曜 19:00 UTC = 月曜 4:00 JST。push トリガーは廃止済み。
+  #   - cron: '0 19 * * 0'
   workflow_dispatch:
     inputs:
       force_deploy:

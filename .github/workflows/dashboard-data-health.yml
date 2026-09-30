@@ -1,13 +1,14 @@
 name: Dashboard Data Health
 
 on:
-  schedule:
-    # 平日のJST 9:17 / 13:17 / 17:17 の1日3回（cronはUTC）。min-instances=0のため
-    # このプローブ自体がCloud Run(web→proxy.ts経由でapiまで)のコールドスタートを
-    # 毎回誘発する。2026-09のCloud Run費用調査で、旧knowledge-sync-health.yml
-    # （2時間おき27分）と合わせ1日12回の起動になっていたため、両チェックを
-    # このジョブへ統合し1回の起動で済ませ、業務時間帯のみに絞った。
-    - cron: "17 0,4,8 * * 1-5"
+  # 2026-10-01〜 Cloud Run一時停止中のため schedule を停止（cloudrun-pause.yml 参照）。再開時に戻す。
+  # schedule:
+  #   # 平日のJST 9:17 / 13:17 / 17:17 の1日3回（cronはUTC）。min-instances=0のため
+  #   # このプローブ自体がCloud Run(web→proxy.ts経由でapiまで)のコールドスタートを
+  #   # 毎回誘発する。2026-09のCloud Run費用調査で、旧knowledge-sync-health.yml
+  #   # （2時間おき27分）と合わせ1日12回の起動になっていたため、両チェックを
+  #   # このジョブへ統合し1回の起動で済ませ、業務時間帯のみに絞った。
+  #   - cron: "17 0,4,8 * * 1-5"
   workflow_dispatch:
 
 permissions:
