@@ -17,6 +17,19 @@ _os_early.environ.setdefault("HF_HUB_OFFLINE", "1")
 _os_early.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 del _os_early
 
+# torch 同梱の libiomp5 と LightGBM/sklearn の libomp が同一プロセスに同居しており
+# （KMP_DUPLICATE_LIB_OK で重複検出を抑止中）、LightGBM が並列予測すると
+# OpenMP ワーカーが別ランタイムの関数を呼んで SIGSEGV する。pickle 済みモデルは
+# n_jobs=-1（num_threads=6）を保持し OMP_NUM_THREADS を無視するため、プロセス全体で上限1に固定する。
+try:
+    import ctypes as _ctypes
+    import lightgbm.basic as _lgb_basic
+
+    _lgb_basic._LIB.LGBM_SetMaxThreads(_ctypes.c_int(1))
+    del _ctypes, _lgb_basic
+except Exception:
+    pass
+
 
 from contextlib import asynccontextmanager
 
