@@ -9,26 +9,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-CHAT_JUDGMENT_ASSET_TRIGGERS = (
-    "審査では",
-    "判断方法",
-    "判断基準",
-    "判断資産",
-    "稟議では",
-    "条件付き承認",
-    "否決",
-    "承認",
-)
-CHAT_JUDGMENT_ASSET_ACTIONS = (
-    "見る",
-    "確認",
-    "注意",
-    "警戒",
-    "疑う",
-    "止める",
-    "登録",
-    "残す",
-)
+# チャット由来の候補は、人が /judgment-review で確かめるまで要確認にしておく（自動昇格しない）。
+CHAT_TEACHING_TOPIC = "chat_judgment_teaching"
+CHAT_TEACHING_PROMOTION_STATUS = "needs_review_quality"
 
 
 class JudgmentAssetCandidateValidationError(ValueError):
@@ -92,7 +75,7 @@ def create_manual_judgment_asset_candidate(
         "candidate_type": candidate_type,
         "research_topic": topic,
         "research_title": "Manual Judgment Asset",
-        "research_date": now.date().isoformat(),
+        "research_date": str(getattr(req, "research_date", "") or "") or now.date().isoformat(),
         "claim": claim,
         "effective_claim": claim,
         "edited_claim": claim,
@@ -103,7 +86,7 @@ def create_manual_judgment_asset_candidate(
         "review_status": "candidate",
         "asset_quality": "actionable",
         "quality_reasons": [],
-        "promotion_status": "not_promoted",
+        "promotion_status": CHAT_TEACHING_PROMOTION_STATUS if topic == CHAT_TEACHING_TOPIC else "not_promoted",
         "use_count": 0,
         "useful_count": 0,
         "rejected_count": 0,
@@ -146,32 +129,16 @@ def create_manual_judgment_asset_candidate(
 
 
 def extract_chat_judgment_asset_claim(message: str) -> str:
+    """ノウハウ教示なら保存する本文を、そうでなければ空文字を返す。
+
+    判定は ``memory_promotion_policy.classify_lease_teaching`` の1段だけで行う。
+    以前のトリガー語×行動語の二段判定と「何」「とは」の部分一致除外は、
+    「ということは」のような普通の文まで落としていたため廃止した。
+    """
+    from memory_promotion_policy import classify_lease_teaching
+
     text = " ".join(str(message or "").strip().split())
-    if len(text) < 12 or len(text) > 600:
-        return ""
-    prompt_noise_markers = (
-        "【審査分析画面からの紫苑レビュー依頼】",
-        "【Vertex補助検索ヒント】",
-        "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
-    )
-    if any(marker in text for marker in prompt_noise_markers):
-        return ""
-    if text.endswith("?") or text.endswith("？"):
-        return ""
-    if not any(trigger in text for trigger in CHAT_JUDGMENT_ASSET_TRIGGERS):
-        return ""
-    if not any(action in text for action in CHAT_JUDGMENT_ASSET_ACTIONS):
-        return ""
-    weak_markers = (
-        "どう思う",
-        "教えて",
-        "とは",
-        "なに",
-        "何",
-        "わからない",
-        "分からない",
-    )
-    if any(marker in text for marker in weak_markers) and not any(marker in text for marker in ("判断資産に登録", "判断資産として")):
+    if not classify_lease_teaching(text)[0]:
         return ""
     return text[:500]
 
@@ -219,7 +186,7 @@ def capture_chat_judgment_asset_if_needed(
             request_factory(
                 claim=claim,
                 candidate_type=chat_judgment_asset_candidate_type(claim),
-                research_topic="chat_judgment_teaching",
+                research_topic=CHAT_TEACHING_TOPIC,
                 case_id=f"chat:{user_id}",
             )
         )

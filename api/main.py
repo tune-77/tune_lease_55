@@ -6156,6 +6156,58 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         improvement_triage_context = _build_dialogue_triage_context(limit=4)
         judgment_response_shape_context = _build_shion_judgment_response_shape_prompt_block(full_message)
 
+        # 教わったノウハウは回答前に決定的に保存する（LLM・バックグラウンド任せにしない）。
+        # 保存結果をプロンプトへ渡し、紫苑が保存の成否と違うことを言わないようにする。
+        from api.chat_teaching_capture import (
+            build_recall_prompt_block,
+            build_save_result_prompt_block,
+            enforce_save_honesty,
+            recall_taught_knowledge,
+            record_funnel_event,
+            save_lease_teaching,
+            used_in_reply,
+        )
+        from memory_promotion_policy import has_domain_keyword as _has_domain_keyword
+
+        _previous_user_message = next(
+            (str(m.get("content") or "") for m in reversed(history) if str(m.get("role") or "") == "user"),
+            "",
+        )
+        teaching_save = save_lease_teaching(
+            message,
+            vault=vault,
+            surface="lease_intelligence_dialogue",
+            candidate_saver=lambda claim: _capture_chat_judgment_asset_if_needed(
+                claim,
+                user_id=DIALOGUE_USER_ID,
+                surface="lease_intelligence_dialogue",
+                response_mode="shion",
+            ),
+            previous_user_message=_previous_user_message,
+        )
+        teaching_save_context = build_save_result_prompt_block(teaching_save)
+
+        # 雑談モードでも、ドメインの問いでは回答前に Knowledge と RAG を引く。
+        # 以前は回答後に参照ボタン用に検索するだけで、回答には届いていなかった。
+        pre_recall_items: list[dict] = []
+        _rag_hits: list[dict] = []
+        if _has_domain_keyword(message) and not teaching_save.get("is_teaching"):
+            pre_recall_items = recall_taught_knowledge(vault, message, limit=3)
+            try:
+                from api.knowledge.vector_store import get_store
+
+                _rag_hits = get_store().search(message, top_k=5, surface="next_chat_rag")
+            except Exception as _pre_rag_exc:
+                print(f"[DialoguePreRecall] RAG検索に失敗: {_pre_rag_exc}")
+        pre_recall_context = build_recall_prompt_block(pre_recall_items, _rag_hits[:3])
+        for _item in pre_recall_items:
+            record_funnel_event(
+                "recalled",
+                surface="lease_intelligence_dialogue",
+                path=_item.get("path"),
+                user_taught=bool(_item.get("user_taught")),
+            )
+
         if not vault:
             from lease_finance_knowledge import build_basic_lease_question_block, build_lease_finance_knowledge_block
             from api.shion_prompt_priority import build_shion_prompt_priority_block
@@ -6197,12 +6249,15 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     {reasoner_consultation_context}
     {improvement_triage_context}
     {judgment_response_shape_context}
+    {teaching_save_context}
+    {pre_recall_context}
     {build_shion_feminine_tone_block()}
     """
             try:
                 reply = call_gemini_chat(fallback_prompt, history, full_message).strip()
             except Exception as exc:
                 raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {str(exc)[:300]}")
+            reply = enforce_save_honesty(reply, teaching_save)
             save_message(DIALOGUE_USER_ID, "user", message)
             save_message(DIALOGUE_USER_ID, "assistant", reply)
             _record_cloudrun_chat_exchange(
@@ -6267,6 +6322,9 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             system_prompt += f"\n\n{improvement_triage_context}"
         if judgment_response_shape_context:
             system_prompt += f"\n\n{judgment_response_shape_context}"
+        if pre_recall_context:
+            system_prompt += f"\n\n{pre_recall_context}"
+        system_prompt += f"\n\n{teaching_save_context}"
         consultation_ids: list[str] = []
 
         def _tool_executor(name: str, args: dict) -> object:
@@ -6295,6 +6353,16 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                     f" 原因: {detail[:220]}"
                 )
             raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {detail}")
+
+        reply = enforce_save_honesty(reply, teaching_save)
+        for _item in pre_recall_items:
+            if used_in_reply(_item, reply):
+                record_funnel_event(
+                    "used",
+                    surface="lease_intelligence_dialogue",
+                    path=_item.get("path"),
+                    user_taught=bool(_item.get("user_taught")),
+                )
 
         save_message(DIALOGUE_USER_ID, "user", message)
         save_message(DIALOGUE_USER_ID, "assistant", reply)
@@ -6363,6 +6431,9 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                                 _dt.date.today().isoformat(),
                             )
 
+                    if teaching_save.get("is_teaching"):
+                        # 回答前に保存済み。LLM抽出で同じ内容を別ノートに二重保存しない。
+                        return
                     if destination == "knowledge" and is_knowledge_teaching(message):
                         knowledge = extract_lease_knowledge(message)
                         if knowledge:
@@ -6396,7 +6467,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         rag_knowledge_refs: list[dict] = []
         try:
             from api.knowledge.vector_store import confidence_for_hit, get_store
-            _rag_hits = get_store().search(message, top_k=5, surface="next_chat_rag")
+            if not _rag_hits:
+                _rag_hits = get_store().search(message, top_k=5, surface="next_chat_rag")
             rag_knowledge_refs = []
             for h in _rag_hits:
                 if not (h.get("doc_id") or h.get("ref") or h.get("file_name")):
@@ -6438,6 +6510,11 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             "long_input_mode": compact_dialogue,
             "context_mode": dialogue_mode,
             "history_messages_sent": len(history),
+            "teaching_save": teaching_save,
+            "pre_recall": [
+                {"path": item.get("path"), "score": item.get("score"), "user_taught": item.get("user_taught")}
+                for item in pre_recall_items
+            ],
         }
     except HTTPException:
         raise

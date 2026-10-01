@@ -1171,6 +1171,33 @@ def _md_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
     return "\n".join(lines)
 
 
+def teaching_funnel_lines(target_date: str | None = None) -> list[str]:
+    """チャットで教えたノウハウが 保存→想起→回答 まで届いたかを朝報に出す。"""
+    day = target_date or (now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    try:
+        from api.chat_teaching_capture import funnel_summary
+
+        summary = funnel_summary(day)
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return ["", "## Chat Teaching Funnel", "", f"- 集計に失敗: `{type(exc).__name__}`"]
+    d, t = summary["day"], summary["total"]
+    return [
+        "",
+        "## Chat Teaching Funnel",
+        "",
+        f"> 対話で教えたノウハウ → 保存 → 回答前に想起 → 回答で使用（{day}）",
+        "",
+        "| 指標 | 前日 | 累計 |",
+        "|---|---|---|",
+        f"| 教えた（審査ノウハウ判定） | {d['taught']} | {t['taught']} |",
+        f"| 保存した（Knowledge/判断資産候補） | {d['saved']} | {t['saved']} |",
+        f"| 回答前に想起した | {d['recalled']} | {t['recalled']} |",
+        f"| 回答で使われた | {d['used']} | {t['used']} |",
+        "",
+        "- 判断資産候補は /judgment-review の要確認に入る。自動昇格はしない。",
+    ]
+
+
 def write_morning_report(
     state: dict[str, Any],
     db: dict[str, Any],
@@ -1337,6 +1364,7 @@ def write_morning_report(
     else:
         lines.append("- No suspected registration gaps in recent commits.")
 
+    lines.extend(teaching_funnel_lines())
     lines.extend(
         [
             "",
