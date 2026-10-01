@@ -146,7 +146,7 @@ def test_extract_candidates_merges_feedback_state(tmp_path):
     assert updated["edit_count"] == 1
 
 
-def test_textbook_general_candidate_cannot_be_promoted_even_with_feedback(tmp_path):
+def test_textbook_general_candidate_goes_to_human_review_even_with_feedback(tmp_path):
     vault = tmp_path / "Obsidian Vault"
     target = vault / research.DEFAULT_OUTPUT_DIR
     target.mkdir(parents=True)
@@ -165,7 +165,9 @@ def test_textbook_general_candidate_cannot_be_promoted_even_with_feedback(tmp_pa
     )
     textbook = next(item for item in first_pass if item["claim"] == textbook_claim)
     assert textbook["asset_quality"] == "textbook_general"
-    assert textbook["promotion_status"] == "not_promoted_textbook_general"
+    # 捨てずに人間の要確認へ回す。自動で ready_for_promotion にはしない。
+    assert textbook["promotion_status"] == "needs_review_quality"
+    assert textbook["needs_review"] is True
 
     state_path = tmp_path / "candidate_state.json"
     state_path.write_text(
@@ -197,7 +199,7 @@ def test_textbook_general_candidate_cannot_be_promoted_even_with_feedback(tmp_pa
     assert updated["useful_count"] == 2
     assert updated["verified_status"] == "supported"
     assert updated["asset_quality"] == "textbook_general"
-    assert updated["promotion_status"] == "not_promoted_textbook_general"
+    assert updated["promotion_status"] == "needs_review_quality"
     assert "textbook_general_marker" in updated["quality_reasons"]
 
 
@@ -662,3 +664,35 @@ def test_write_report_describes_promotion_policy(tmp_path, monkeypatch):
     assert "Metrics: use=0, useful=0, rejected=0, neutral=0, verified=unverified" in md
     assert "Deduped similar candidates: 2" in md
     assert "Deduped similar: 2" in md
+
+
+def test_legacy_suppressed_status_in_state_is_recomputed_and_cleared(tmp_path):
+    vault = tmp_path / "Obsidian Vault"
+    target = vault / research.DEFAULT_OUTPUT_DIR
+    target.mkdir(parents=True)
+    textbook_claim = "財務内容を確認し、返済原資を確認する。"
+    body = _substantive_body().replace(
+        "- 直近3か月の仕入価格と販売価格への転嫁状況を確認する。",
+        f"- {textbook_claim}",
+    )
+    (target / "2026-07-13_industry-risk.md").write_text(_note(body), encoding="utf-8")
+    first = builder.extract_candidates(
+        vault=vault, output_dir=research.DEFAULT_OUTPUT_DIR, end_date=dt.date(2026, 7, 13), days=1,
+    )
+    textbook_id = next(item["id"] for item in first if item["claim"] == textbook_claim)
+    state_path = tmp_path / "candidate_state.json"
+    state_path.write_text(
+        json.dumps({textbook_id: {"promotion_status": "not_promoted_textbook_general"}}),
+        encoding="utf-8",
+    )
+
+    candidates = builder.extract_candidates(
+        vault=vault, output_dir=research.DEFAULT_OUTPUT_DIR, end_date=dt.date(2026, 7, 13), days=1,
+        state_path=state_path,
+    )
+    rescued = next(item for item in candidates if item["id"] == textbook_id)
+    assert rescued["promotion_status"] == "needs_review_quality"
+
+    builder.write_state(state_path, candidates, builder.load_state(state_path))
+    stored = json.loads(state_path.read_text(encoding="utf-8"))
+    assert stored[textbook_id]["promotion_status"] == ""
