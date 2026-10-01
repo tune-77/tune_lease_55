@@ -224,3 +224,19 @@ def test_main_writes_json_and_markdown(tmp_path):
 
     assert json.loads(output_json.read_text(encoding="utf-8"))["summary"]["ready_for_review"] == 1
     assert "Judgment Asset Promotion Readiness" in output_md.read_text(encoding="utf-8")
+
+
+def test_rule_flagged_candidate_is_never_auto_apply_eligible():
+    candidates = [
+        {"id": "cand-flag", "claim": "十分に長い判断資産候補の文面です。", "research_topic": "topic-auto",
+         "asset_quality": "textbook_general"},
+    ]
+    state = {"cand-flag": {"useful_count": 2, "edit_count": 1, "rejected_count": 0,
+                           "promotion_status": "needs_review_quality"}}
+
+    payload = readiness.build_report(
+        target_date="2026-08-20", candidates=candidates, state=state, canonical={},
+    )
+
+    assert payload["summary"]["ready_for_review"] == 1
+    assert payload["summary"]["auto_apply_eligible"] == 0

@@ -175,8 +175,14 @@ def evaluate_candidate(
             reasons.append(f"score={score}、reject無し。人間レビューへ回してよい状態。")
 
     evidence_count = useful_count + edit_count + use_count
+    # ルールが一般論と見なした候補は、使用実績が付いても自動適用せず必ず人間が判断する。
+    rule_flagged = (
+        promotion_status in {"needs_review_quality", "not_promoted_textbook_general"}
+        or str(merged.get("asset_quality") or "actionable") == "textbook_general"
+    )
     auto_apply_eligible = (
         bucket == "ready_for_review"
+        and not rule_flagged
         and score is not None
         and score >= AUTO_APPLY_MIN_SCORE
         and evidence_count >= AUTO_APPLY_MIN_EVIDENCE_COUNT

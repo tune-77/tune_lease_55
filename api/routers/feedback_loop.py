@@ -1510,6 +1510,17 @@ def _write_judgment_asset_candidate_state(state: dict[str, Any]) -> None:
     )
 
 
+_RULE_REVIEW_PROMOTION_STATUSES = {"needs_review_quality", "not_promoted_textbook_general"}
+# ルールが一般論とした候補の人手ラベル（2026-10-01〜02、61件）での「採用してよい」率:
+# caution 19/21, confirmation_question 12/13, condition_signal 14/16, application_rule 8/11。
+_RULE_REVIEW_TYPE_PRIORITY = {
+    "caution": 3,
+    "confirmation_question": 2,
+    "condition_signal": 1,
+    "application_rule": 0,
+}
+
+
 def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str, Any]]:
     state = _read_judgment_asset_candidate_state()
     rows = _load_autoresearch_judgment_asset_candidates(limit=1000)
@@ -1526,6 +1537,17 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
         promotion_status = str(merged.get("promotion_status") or item.get("promotion_status") or "not_promoted")
         if promotion_status in {"active", "promoted", "held", "rejected_or_deprioritized", "rejected"}:
             continue
+        # キーワードルールが一般論と見なした候補。実案件の使用実績がまだ無くても捨てず、
+        # 人間の要確認として一覧の後段に出す（自動昇格の対象にはしない）。
+        rule_review = (
+            promotion_status in _RULE_REVIEW_PROMOTION_STATUSES
+            or (
+                promotion_status == "not_promoted"
+                and str(merged.get("asset_quality") or "actionable") == "textbook_general"
+            )
+        )
+        if rule_review:
+            promotion_status = "needs_review_quality"
         use_count = int(merged.get("use_count") or 0)
         useful_count = int(merged.get("useful_count") or 0)
         rejected_count = int(merged.get("rejected_count") or 0)
@@ -1538,7 +1560,7 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
         if already_active_statement and useful_count <= 0 and edit_count <= 0:
             continue
         score = useful_count * 4 + edit_count * 3 + use_count + (2 if is_manual else 0) - rejected_count * 5
-        if score <= 0 and not is_manual:
+        if score <= 0 and not is_manual and not rule_review:
             continue
         candidates.append({
             "id": candidate_id,
@@ -1565,9 +1587,17 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
             "score": score,
             "already_active_statement": already_active_statement,
             "source": str(merged.get("source") or "autoresearch_judgment_asset_candidates"),
+            "rule_review": rule_review,
+            "quality_reasons": list(merged.get("quality_reasons") or []),
+            "research_date": str(merged.get("research_date") or ""),
         })
     candidates.sort(
         key=lambda item: (
+            # 実績のある候補を先に。ルール要確認は使用実績が無い分だけ後ろへ回し、
+            # その中では人手ラベルで○率が高かった種別→新しい順に並べる。
+            0 if item.get("rule_review") and int(item.get("score") or 0) <= 0 else 1,
+            _RULE_REVIEW_TYPE_PRIORITY.get(str(item.get("candidate_type") or ""), 0) if item.get("rule_review") else 0,
+            str(item.get("research_date") or "") if item.get("rule_review") else "",
             0 if item.get("already_active_statement") else 1,
             1 if int(item.get("edit_count") or 0) > 0 else 0,
             int(item.get("score") or 0),

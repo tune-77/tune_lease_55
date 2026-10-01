@@ -87,6 +87,13 @@ SUPPRESSED_PROMOTION_STATUSES = {
     "rejected_or_deprioritized",
 }
 
+# ルールが一般論と見なした候補は捨てずに人間レビューへ回す。2026-10-01〜02 の人手ラベル
+# 100件で、ルールが一般論とした61件のうち53件（87%）が「採用してよい」だったため。
+RULE_REVIEW_PROMOTION_STATUS = "needs_review_quality"
+# 旧版が付けていた黙殺ステータス。状態ファイルに残っていても再判定させる。
+LEGACY_RULE_SUPPRESSED_STATUS = "not_promoted_textbook_general"
+RULE_DERIVED_PROMOTION_STATUSES = {RULE_REVIEW_PROMOTION_STATUS, LEGACY_RULE_SUPPRESSED_STATUS}
+
 CANDIDATE_SECTIONS = {
     "リース審査への適用": "application_rule",
     "担当者が確認する質問": "confirmation_question",
@@ -250,6 +257,10 @@ def write_state(path: Path, candidates: list[dict[str, Any]], existing: dict[str
     merged = dict(existing)
     for item in candidates:
         merged.setdefault(str(item["id"]), _candidate_state(item))
+    for value in merged.values():
+        # ルール由来のステータスは毎回再計算する。状態ファイルは人間の信号だけを残す。
+        if value.get("promotion_status") in RULE_DERIVED_PROMOTION_STATUSES:
+            value["promotion_status"] = ""
     path.write_text(json.dumps(merged, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -424,7 +435,7 @@ def _promotion_status(state: dict[str, Any], asset_quality: str = "actionable") 
     if existing_status in SUPPRESSED_PROMOTION_STATUSES or existing_status in PRESERVED_PROMOTION_STATUSES:
         return existing_status
     if asset_quality != "actionable":
-        return "not_promoted_textbook_general"
+        return RULE_REVIEW_PROMOTION_STATUS
     if state["verified_status"] == "supported" and (int(state["useful_count"]) > 0 or int(state.get("edit_count") or 0) > 0):
         return "ready_for_promotion"
     if state["verified_status"] == "contradicted" or int(state["rejected_count"]) > int(state["useful_count"]):
@@ -539,7 +550,10 @@ def _note_candidates(path: Path, *, vault: Path, states: dict[str, dict[str, Any
             candidate_id = _candidate_id(date, topic, candidate_type, item)
             state = _candidate_state(states.get(candidate_id))
             asset_quality, quality_reasons = _judgment_asset_quality(item, candidate_type)
-            promotion_status = str(state.get("promotion_status") or "") or _promotion_status(state, asset_quality)
+            stored_status = str(state.get("promotion_status") or "")
+            if stored_status in RULE_DERIVED_PROMOTION_STATUSES:
+                stored_status = ""
+            promotion_status = stored_status or _promotion_status(state, asset_quality)
             candidates.append(
                 {
                     "id": candidate_id,
@@ -558,7 +572,7 @@ def _note_candidates(path: Path, *, vault: Path, states: dict[str, dict[str, Any
                     "quality_confidence": None,
                     "quality_margin": None,
                     "typesafe_asset_quality": "",
-                    "needs_review": False,
+                    "needs_review": promotion_status == RULE_REVIEW_PROMOTION_STATUS,
                     **state,
                     "promotion_status": promotion_status,
                     "requires_human_use_feedback": True,
@@ -715,6 +729,7 @@ def _markdown(candidates: list[dict[str, Any]], *, end_date: dt.date, days: int)
         "- Auto Research is material, not memory.",
         "- Candidates stay `not_promoted` until a human uses them in a case and confirms they changed or improved judgment.",
         "- Do not promote textbook generalities. A candidate must change a case action, approval condition, rebuttal, or rejection reason.",
+        "- The keyword rule only flags likely generalities. Flagged candidates go to `needs_review_quality` for a human; they are never dropped silently.",
         "- Rule: `当たり前なこと言ってやった気になるな`.",
         "- Edited candidates are prioritized because a human has already shaped them into a usable judgment.",
         "- Weak notes that fail the substantive section gate are excluded.",

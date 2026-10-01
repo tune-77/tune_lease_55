@@ -113,3 +113,31 @@ def test_no_hardcoded_demo_candidate_survives_state_reload(tmp_path, monkeypatch
 
     rows = feedback_loop._load_autoresearch_judgment_asset_candidates(limit=100)
     assert all(row.get("id") != "demo-renewal-asset-candidate" for row in rows)
+
+
+def test_rule_flagged_candidate_without_usage_reaches_review_list_after_evidence(tmp_path, monkeypatch):
+    candidates_jsonl, state_json, _canonical_json = _patch_paths(monkeypatch, tmp_path)
+    base = {
+        "edited_claim": "", "edit_count": 0, "use_count": 0, "useful_count": 0, "rejected_count": 0,
+        "verified_status": "unverified", "source_section": "担当者が確認する質問", "research_topic": "topic",
+    }
+    rows = [
+        {**base, "id": "used", "claim": "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べて確認する。",
+         "candidate_type": "application_rule", "promotion_status": "not_promoted", "asset_quality": "actionable",
+         "use_count": 2, "useful_count": 1},
+        {**base, "id": "flag-rule", "claim": "黒字だけで資金繰りが健全と過信しない運用ルールの候補です。",
+         "candidate_type": "application_rule", "promotion_status": "needs_review_quality",
+         "asset_quality": "textbook_general", "research_date": "2026-09-30"},
+        {**base, "id": "flag-caution", "claim": "物件受領証があっても納入済みとは限らないと考える戒めの候補です。",
+         "candidate_type": "caution", "asset_quality": "textbook_general", "research_date": "2026-09-01"},
+        {**base, "id": "plain-unused", "claim": "使用実績のない通常候補は従来どおり一覧に出さないことを確認する。",
+         "candidate_type": "caution", "promotion_status": "not_promoted", "asset_quality": "actionable"},
+    ]
+    candidates_jsonl.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    # 旧版が状態ファイルに残した黙殺ステータスでも要確認として出る
+    state_json.write_text(json.dumps({"flag-caution": {"promotion_status": "not_promoted_textbook_general"}}), encoding="utf-8")
+
+    listed = feedback_loop._load_judgment_asset_promotion_candidates(limit=30)
+    ids = [item["id"] for item in listed]
+    assert ids == ["used", "flag-caution", "flag-rule"]
+    assert all(item["promotion_status"] == "needs_review_quality" for item in listed if item["rule_review"])
