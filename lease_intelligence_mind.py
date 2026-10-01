@@ -200,26 +200,58 @@ def _load_project_mind_full_name() -> str:
     return ""
 
 
+# Private Reflection は毎日ほぼ同じ文を2件ずつ足すため、日付が違うだけの定型文が
+# キーポイント枠を埋めていた。システム発の定型文は日付を無視して最新の1件だけ残し、
+# ユーザー発のキーポイントには別枠（SYSTEM 枠を除いた残り）を確保する。
+SYSTEM_KEYPOINT_SESSIONS = frozenset({"private_reflection_feedback_loop"})
+SYSTEM_KEYPOINT_LIMIT = 20
+
+
+def _is_system_keypoint(item: dict[str, Any]) -> bool:
+    return str(item.get("session_id", "")).strip() in SYSTEM_KEYPOINT_SESSIONS
+
+
 def _dedupe_conversation_keypoints(items: list[Any]) -> list[dict[str, Any]]:
-    cleaned: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
+    normalized_items: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
             continue
         content = str(item.get("content", "")).strip()
         if not content:
             continue
-        date = str(item.get("date", "")).strip()
-        session_id = str(item.get("session_id", "")).strip()
-        key = (date, session_id, content)
-        if key in seen:
-            continue
-        seen.add(key)
         normalized = dict(item)
         normalized["type"] = "conversation_keypoint"
         normalized["content"] = content
-        cleaned.append(normalized)
+        normalized_items.append(normalized)
+
+    # システム発の定型文は内容だけで重複判定し、最後（最新）の1件を残す。
+    last_system_index: dict[str, int] = {}
+    for index, item in enumerate(normalized_items):
+        if _is_system_keypoint(item):
+            last_system_index[item["content"]] = index
+
+    cleaned: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for index, item in enumerate(normalized_items):
+        if _is_system_keypoint(item):
+            if last_system_index.get(item["content"]) != index:
+                continue
+        else:
+            key = (str(item.get("date", "")).strip(), str(item.get("session_id", "")).strip(), item["content"])
+            if key in seen:
+                continue
+            seen.add(key)
+        cleaned.append(item)
     return cleaned
+
+
+def _limit_conversation_keypoints(items: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    """システム枠を SYSTEM_KEYPOINT_LIMIT 件に抑え、残りをユーザー発に確保して新しい順に残す。"""
+    system_budget = min(SYSTEM_KEYPOINT_LIMIT, limit)
+    system_keep = {id(item) for item in [i for i in items if _is_system_keypoint(i)][-system_budget:]}
+    user_items = [i for i in items if not _is_system_keypoint(i)]
+    user_keep = {id(item) for item in user_items[-(limit - len(system_keep)):]} if limit > len(system_keep) else set()
+    return [item for item in items if id(item) in system_keep or id(item) in user_keep]
 
 
 def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
@@ -261,9 +293,10 @@ def load_lease_intelligence_mind(vault: Path) -> dict[str, Any]:
         for item in raw_long_term
         if not (isinstance(item, dict) and item.get("type") == "conversation_keypoint")
     ][-LONG_TERM_LIMIT:]
-    state["conversation_keypoints"] = _dedupe_conversation_keypoints(
-        list(state.get("conversation_keypoints") or []) + migrated_keypoints
-    )[-CONVERSATION_KEYPOINT_LIMIT:]
+    state["conversation_keypoints"] = _limit_conversation_keypoints(
+        _dedupe_conversation_keypoints(list(state.get("conversation_keypoints") or []) + migrated_keypoints),
+        CONVERSATION_KEYPOINT_LIMIT,
+    )
     state["pending_dissonance"] = list(state.get("pending_dissonance") or [])[-DISSONANCE_LIMIT:]
     state["reasoning_learnings"] = list(state.get("reasoning_learnings") or [])[-12:]
     for item in state["pending_dissonance"]:
@@ -1301,9 +1334,9 @@ def save_conversation_keypoints(
                 "confidence": 0.7,
             }
         )
-    state["conversation_keypoints"] = _dedupe_conversation_keypoints(keypoints_store)[
-        -CONVERSATION_KEYPOINT_LIMIT:
-    ]
+    state["conversation_keypoints"] = _limit_conversation_keypoints(
+        _dedupe_conversation_keypoints(keypoints_store), CONVERSATION_KEYPOINT_LIMIT
+    )
     _write_state(vault, state)
     try:
         _append_keypoints_to_daily_memory(vault, date_str, cleaned)

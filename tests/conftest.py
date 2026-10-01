@@ -31,3 +31,10 @@ import pytest  # noqa: E402
 def _isolate_jev_judgment_log(tmp_path, monkeypatch):
     """Jev判定ログ（REV-424）をテストがリポジトリの data/ へ書かないようにする。"""
     monkeypatch.setenv("JEV_JUDGMENT_LOG_PATH", str(tmp_path / "jev_judgment_log.jsonl"))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_shion_vault_memory_sources(tmp_path, monkeypatch):
+    """記憶索引が実 Vault を読まず、教示ファネルも data/ へ書かないようにする。"""
+    monkeypatch.setenv("SHION_MEMORY_INDEX_VAULT", "off")
+    monkeypatch.setenv("SHION_TEACHING_FUNNEL_PATH", str(tmp_path / "shion_teaching_funnel.jsonl"))

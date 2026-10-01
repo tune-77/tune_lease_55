@@ -15,6 +15,7 @@ Memory layers are separate from judgment assets:
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass
 
 
@@ -39,12 +40,14 @@ TEACHING_PATTERNS = (
 
 QUESTION_ENDINGS = ("？", "?", "か？", "ですか", "ますか", "でしょうか")
 
+# 「説明」「提案」「間違い」は審査ノウハウの文にも普通に出る（「説明が付かない資金使途は要注意」
+# 「金利を提案する」）ため、改善要望の判定語から外している。訂正は CORRECTION_KEYWORDS が拾う。
 IMPROVEMENT_KEYWORDS = (
-    "改善", "わかりにくい", "分かりにくい", "使いにくい", "説明",
+    "改善", "わかりにくい", "分かりにくい", "使いにくい",
     "入力しにくい", "導線", "バグ", "不具合", "直して", "変えて",
-    "修正して", "追加して", "欲しい", "要望", "提案", "未特定",
+    "修正して", "追加して", "欲しい", "要望", "未特定",
     "対象ファイル", "システム", "記憶システム", "プロセス", "パイプライン",
-    "変わってない", "反映されてない", "間違", "違っている", "おかしい",
+    "変わってない", "反映されてない", "おかしい",
 )
 
 PERSISTENT_MEMORY_KEYWORDS = (
@@ -152,15 +155,86 @@ def is_long_term_memory_candidate(text: str) -> bool:
     return any(keyword in text for keyword in LONG_TERM_MEMORY_KEYWORDS)
 
 
+# --- チャットで教えられた審査ノウハウの1段判定 ---------------------------------
+# 以前は「トリガー語」と「行動語」の二段判定で、どちらかが欠けると捨てていた。さらに
+# 「何」「とは」を含むだけで除外したため「ということは」でも落ちた。全1,371発言で
+# 候補0件だったので、LLMに頼らず「ドメイン語を含む断定・ノウハウ文」を1段で拾う。
+# 拾った候補は要確認（needs_review_quality）に回るだけで、自動昇格はしない。
+TEACHING_DOMAIN_TERMS = (
+    "リース", "審査", "判断資産", "稟議", "与信", "物件", "見積", "残価", "中古", "新車", "走行",
+    "耐用年数", "補助金", "省力化", "銀行", "借入", "取引", "延滞", "増額", "保証", "担保", "決算",
+    "財務", "売上", "利益", "返済", "資金繰り", "業種", "業界", "設備", "機械", "車", "トラック",
+    "ナンバー", "ディーラー", "販売店", "サプライヤー", "検収", "契約", "満了", "再リース", "買取",
+    "売却", "金利", "料率", "格付", "承認", "否決", "条件付き", "信用", "債務", "自己資本", "赤字",
+    "黒字", "倒産", "法定", "税制", "会計", "保険",
+)
+# 保存を頼む言い方。「判断資産」という語だけでは質問や画面要望（「判断資産グラフを直して」）も
+# 含むので、頼む形に限る。
+TEACHING_EXPLICIT_MARKERS = (
+    "判断資産にし", "判断資産に入れ", "判断資産に登録", "判断資産として", "判断資産へ",
+    "覚えて", "覚えと", "記録して", "メモして", "登録して", "に入れて", "として残", "知識として",
+)
+_TEACHING_INTERROGATIVES = (
+    "?", "？", "とはなん", "とは何", "って何", "ってなに", "は何", "はなに", "なんだろ", "どう思", "どう考",
+    "どう見", "どうする", "どうすれ", "どうしたら", "どうなる", "どうや", "どうか", "いつ頃", "いつから",
+    "いつまで", "どこで", "どこに", "どこが", "誰が", "誰に", "どれが", "どれくらい", "どのくらい", "どの程度",
+    "ですか", "ますか", "でしょうか", "ないか",
+)
+# 「付かない」の「かな」、「いつも」の「いつ」のように部分一致で誤爆する語は文末だけで見る。
+_TEACHING_REQUEST_WORDS = (
+    "教えて", "調べて", "検索", "確認してくれ", "見せて", "まとめて", "説明して", "分析", "比較し",
+    "答えて", "作って", "出して",
+)
+_TEACHING_SYSTEM_TERMS = (
+    "画面", "ボタン", "表示", "バグ", "不具合", "エラー", "UI", "API", "コード", "実装", "機能", "アプリ",
+    "ページ", "プロンプト", "Codex", "Claude", "Gemini", "PR", "デプロイ", "ログ", "パイプライン", "システム",
+    "紫苑", "あなた", "AI", "記憶", "レポート", "Obsidian", "オブディシアン",
+)
+_TEACHING_KNOWHOW_MARKERS = (
+    "なら", "たら", "場合", "とき", "時は", "要注意", "注意", "危な", "危険", "しない", "ない", "できない",
+    "難しい", "やる", "やっちゃう", "取り扱", "取扱", "付き合", "増えて", "増える", "増加", "減る", "減少",
+    "変わる", "かかる", "別途", "必要", "べき", "重要", "基準", "目安", "以内", "以上", "以下", "から",
+    "ので", "ため", "傾向", "多い", "少ない", "高い", "低い", "使える", "対象", "確認する", "見る", "上が",
+    "下が", "求め", "優先", "依存",
+)
+_TEACHING_PROMPT_NOISE = (
+    "【審査分析画面からの紫苑レビュー依頼】",
+    "【Vertex補助検索ヒント】",
+    "この案件を、審査担当者の横にいる紫苑としてレビュー",
+)
+_TEACHING_REQUEST_END = re.compile(r"(て|てくれ|てください|下さい|ください|てね|てよ|ろ|せよ|答えて)[。！!」\s]*$")
+_TEACHING_QUESTION_END = re.compile(r"(の|のか|かな|かしら|だろう|でしょ|いつ|どこ|誰|どれ)[。]?$")
+
+
+def classify_lease_teaching(text: str | None) -> tuple[bool, str]:
+    """チャット発言がリース審査のノウハウ教示かを1段で判定する。戻り値は (該当, 理由)。"""
+    t = " ".join(_text(text).split())
+    if len(t) < 12 or len(t) > 600:
+        return False, "length"
+    if any(marker in t for marker in _TEACHING_PROMPT_NOISE):
+        return False, "prompt_noise"
+    if not any(term in t for term in TEACHING_DOMAIN_TERMS):
+        return False, "no_domain"
+    if any(marker in t for marker in TEACHING_EXPLICIT_MARKERS) and not is_improvement_candidate(t):
+        return True, "explicit"
+    probe = t.replace("なぜなら", "")
+    if any(word in probe for word in _TEACHING_INTERROGATIVES) or "なぜ" in probe or _TEACHING_QUESTION_END.search(t):
+        return False, "question"
+    if _TEACHING_REQUEST_END.search(t) or any(word in t for word in _TEACHING_REQUEST_WORDS):
+        return False, "request"
+    if any(term in t for term in _TEACHING_SYSTEM_TERMS):
+        return False, "system_or_meta"
+    if not any(marker in t for marker in _TEACHING_KNOWHOW_MARKERS):
+        return False, "no_knowhow_marker"
+    return True, "domain_statement"
+
+
+def is_lease_teaching(text: str | None) -> bool:
+    return classify_lease_teaching(text)[0]
+
+
 def is_judgment_asset_candidate(text: str) -> bool:
-    text = _text(text)
-    if len(text) < 16 or is_question(text):
-        return False
-    if is_improvement_candidate(text) and not any(marker in text for marker in ("判断資産として", "判断資産に登録")):
-        return False
-    if "判断資産" in text:
-        return True
-    return has_domain_keyword(text) and any(keyword in text for keyword in JUDGMENT_ASSET_KEYWORDS)
+    return is_lease_teaching(text)
 
 
 def is_correction_candidate(text: str) -> bool:

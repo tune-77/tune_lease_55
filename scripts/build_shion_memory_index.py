@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from api.shion_memory_taxonomy import MEMORY_TYPES, RECALL_ROUTES, make_memory_record
 from obsidian_query import list_vault_md_files
+from memory_promotion_policy import TEACHING_DOMAIN_TERMS
 
 DEFAULT_OUTPUT = REPO_ROOT / "data" / "shion_memory_index.json"
 DEFAULT_PREVIOUS_SUMMARY = REPO_ROOT / "data" / "shion_memory_index_previous_summary.json"
@@ -299,6 +300,82 @@ def _skip_markdown_bullet(content: str) -> bool:
     return False
 
 
+def _display_source_path(path: Path) -> str:
+    """リポジトリ内ならリポジトリ相対、Vault 側なら Vault 相対の表記にする。"""
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        pass
+    vault = _vault_root()
+    if vault is not None:
+        try:
+            return "vault:" + str(path.relative_to(vault))
+        except ValueError:
+            pass
+    return path.name
+
+
+def _vault_root() -> Path | None:
+    if os.environ.get("SHION_MEMORY_INDEX_VAULT", "").strip().lower() in {"0", "off", "false", "no"}:
+        return None
+    try:
+        from lease_news_digest import find_vault
+
+        vault = find_vault()
+    except Exception:  # noqa: BLE001 - Vault 未接続環境（CI・Cloud Run）では読まない
+        return None
+    return Path(vault) if vault else None
+
+
+def _vault_lease_intelligence_dir() -> Path | None:
+    vault = _vault_root()
+    if vault is None:
+        return None
+    try:
+        from lease_intelligence_mind import mind_directory
+
+        return mind_directory(vault)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _vault_knowledge_records(knowledge_dir: Path) -> list[dict[str, Any]]:
+    """対話で教わった知識（Lease Intelligence/Knowledge/*.md）を想起の入力にする。"""
+    records: list[dict[str, Any]] = []
+    for path in sorted(knowledge_dir.glob("*.md")):
+        text = _read_text(path)
+        title = _note_title(text)
+        # 索引に載せるのはユーザーの言葉をそのまま残したノート（chat_teaching）だけ。
+        # 旧来の LLM 要約ノート（user_teaching）は中身の薄いものが整備済みルールを想起上位から
+        # 押し出した（想起評価で悪化）ため、対話の回答前 Knowledge 検索だけで使う。
+        if "chat_teaching" not in text:
+            continue
+        user_taught = True
+        # 1ノート1レコードにする。断片ごとに分けると同じノートが想起上位を占め、
+        # knowledge_base の整備済みルールを押し出した（想起評価で3件悪化）。
+        snippets = _markdown_snippets(text)
+        if not snippets:
+            continue
+        # 紫苑の役割・呼称などのメタなノートは審査の想起を邪魔するので、見出しか本文先頭に
+        # リース審査の語があるノートだけを載せる。
+        head = f"{title} {snippets[0]}"
+        if not any(term in head for term in TEACHING_DOMAIN_TERMS):
+            continue
+        record = make_memory_record(
+            " ".join(snippets[:2])[:240],
+            source="lease_intelligence.knowledge",
+            source_path=_display_source_path(path),
+            # 未検証の対話由来。採用済みの判断ルール（judgment_memory）と同じ優先度を与えない。
+            memory_type="factual_memory",
+            confidence=0.5,
+        ).to_dict()
+        if title:
+            record["topic"] = title
+        record["user_taught"] = user_taught
+        records.append(record)
+    return records
+
+
 def _mind_records(path: Path) -> list[dict[str, Any]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -318,7 +395,7 @@ def _mind_records(path: Path) -> list[dict[str, Any]]:
             make_memory_record(
                 content,
                 source="mind.upper_authority",
-                source_path=str(path.relative_to(REPO_ROOT)),
+                source_path=_display_source_path(path),
                 memory_type="value_memory",
                 confidence=0.95,
             ).to_dict()
@@ -332,7 +409,7 @@ def _mind_records(path: Path) -> list[dict[str, Any]]:
                 make_memory_record(
                     summary,
                     source="mind.world_view",
-                    source_path=str(path.relative_to(REPO_ROOT)),
+                    source_path=_display_source_path(path),
                     memory_type="factual_memory",
                     confidence=0.75,
                 ).to_dict()
@@ -342,7 +419,7 @@ def _mind_records(path: Path) -> list[dict[str, Any]]:
                 make_memory_record(
                     str(signal),
                     source="mind.world_view.key_signal",
-                    source_path=str(path.relative_to(REPO_ROOT)),
+                    source_path=_display_source_path(path),
                     memory_type="factual_memory",
                     confidence=0.7,
                 ).to_dict()
@@ -358,7 +435,7 @@ def _mind_records(path: Path) -> list[dict[str, Any]]:
             make_memory_record(
                 content,
                 source=str(kp.get("source") or "mind.conversation_keypoint"),
-                source_path=str(path.relative_to(REPO_ROOT)),
+                source_path=_display_source_path(path),
                 memory_type=kp.get("memory_type") or None,
                 confidence=_safe_float(kp.get("confidence"), 0.75),
             ).to_dict()
@@ -554,6 +631,18 @@ def build_index(
     mind_path = REPO_ROOT / "data" / "mind.json"
     if mind_path.exists():
         records.extend(_safe_records(str(mind_path.relative_to(REPO_ROOT)), lambda: _mind_records(mind_path)))
+
+    # 対話室のキーポイントと教わった知識は Vault 側にある。リポジトリ側 data/mind.json だけを
+    # 読んでいた頃は、ユーザー発のキーポイントも Knowledge も想起に一度も載らなかった。
+    # 公開デモ（demo_safe）には対話由来の記憶を載せない。
+    li_dir = None if demo_safe else _vault_lease_intelligence_dir()
+    if li_dir is not None:
+        vault_mind = li_dir / "mind.json"
+        if vault_mind.exists():
+            records.extend(_safe_records("vault:mind.json", lambda: _mind_records(vault_mind)))
+        vault_knowledge = li_dir / "Knowledge"
+        if vault_knowledge.exists():
+            records.extend(_safe_records("vault:Knowledge", lambda: _vault_knowledge_records(vault_knowledge)))
 
     # 会話から承認を経て昇格した長期記憶（apply_shion_memory_promotions.py が追記）
     promoted_path = REPO_ROOT / "knowledge_base" / "shion_promoted_memories.md"
