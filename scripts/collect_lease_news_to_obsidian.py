@@ -1094,9 +1094,10 @@ def _same_event(a: Article, b: Article) -> bool:
     tail_a, tail_b = "".join(rest_a), "".join(rest_b)
     if rest_a and rest_b and head_a == head_b and len(head_a) >= 6 and tail_a != tail_b:
         return _bigram_dice(_normalized_title(tail_a), _normalized_title(tail_b)) >= 0.85
-    percents_a, percents_b = set(_PERCENT.findall(title_a)), set(_PERCENT.findall(title_b))
-    if percents_a and percents_b and not percents_a & percents_b:
-        return False  # 64%増と44%増のように数値が食い違えば別の出来事
+    percents_a = [float(v[:-1]) for v in _PERCENT.findall(title_a)]
+    percents_b = [float(v[:-1]) for v in _PERCENT.findall(title_b)]
+    if percents_a and percents_b and not any(abs(x - y) <= 1.0 for x in percents_a for y in percents_b):
+        return False  # 64%増と44%増のように数値が食い違えば別の出来事（64.7%と64%は丸めの差）
     dice = _bigram_dice(key_a, key_b)
     if dice >= 0.6:
         return True
