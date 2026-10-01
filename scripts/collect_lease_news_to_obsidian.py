@@ -173,6 +173,8 @@ class Article:
     valid_until: str = ""
     canonical_topic: str = ""
     classification_source: str = "rule"
+    # 同一実行内で同じ出来事と判定し、この記事へまとめた他媒体の記事
+    related: tuple["Article", ...] = ()
 
     @property
     def published_iso(self) -> str:
@@ -1052,6 +1054,86 @@ def _find_duplicate(article: Article, records: list[dict[str, Any]]) -> dict[str
     return best[1]
 
 
+_SERIES_SPLIT = re.compile(r"[:：=＝]")
+_PERCENT = re.compile(r"\d+(?:\.\d+)?%")
+_COMPANY = re.compile(r"([一-龥ァ-ヶー]{2,12})株式会社")
+_BRACKETED = re.compile(r"「([^」]{2,20})」")
+
+
+def _event_title(article: Article) -> str:
+    title = _canonical_topic_from_title(article).replace("(株)", "株式会社")
+    return re.sub(r"\s*[-｜|]\s*[^-｜|]{2,30}$", "", title)
+
+
+def _bigram_dice(a: str, b: str) -> float:
+    grams_a = {a[i : i + 2] for i in range(len(a) - 1)}
+    grams_b = {b[i : i + 2] for i in range(len(b) - 1)}
+    if not grams_a or not grams_b:
+        return 0.0
+    return 2 * len(grams_a & grams_b) / (len(grams_a) + len(grams_b))
+
+
+def _event_anchors(title: str) -> set[str]:
+    """同一出来事の決め手になる語：社名・括弧内の固有名・パーセント値。"""
+    return set(_COMPANY.findall(title)) | set(_BRACKETED.findall(title)) | set(_PERCENT.findall(title))
+
+
+def _same_event(a: Article, b: Article) -> bool:
+    """言い回しの違う同一出来事の見出しかを判定する。
+
+    埋め込み類似度は使わない：実ログでは連載特集の別回（別記事）が、
+    言い回し違いの同一出来事より高い類似度になり、誤統合を防げなかった。
+    """
+    title_a, title_b = _event_title(a), _event_title(b)
+    key_a, key_b = _normalized_title(title_a), _normalized_title(title_b)
+    if not key_a or not key_b:
+        return False
+    # 「特集…:回ごとの副題」のような連載は、共通の頭書きを除いた副題で比べる
+    head_a, *rest_a = _SERIES_SPLIT.split(title_a, 1)
+    head_b, *rest_b = _SERIES_SPLIT.split(title_b, 1)
+    tail_a, tail_b = "".join(rest_a), "".join(rest_b)
+    if rest_a and rest_b and head_a == head_b and len(head_a) >= 6 and tail_a != tail_b:
+        return _bigram_dice(_normalized_title(tail_a), _normalized_title(tail_b)) >= 0.85
+    percents_a = [float(v[:-1]) for v in _PERCENT.findall(title_a)]
+    percents_b = [float(v[:-1]) for v in _PERCENT.findall(title_b)]
+    if percents_a and percents_b and not any(abs(x - y) <= 1.0 for x in percents_a for y in percents_b):
+        return False  # 64%増と44%増のように数値が食い違えば別の出来事（64.7%と64%は丸めの差）
+    dice = _bigram_dice(key_a, key_b)
+    if dice >= 0.6:
+        return True
+    return dice >= 0.35 and bool(_event_anchors(title_a) & _event_anchors(title_b))
+
+
+def merge_same_event_articles(articles: list[Article]) -> list[Article]:
+    """同一実行内の同じ出来事の記事を1本にまとめる（Jev判定・Gemini分類の前に呼ぶ）。
+
+    並び順で先の記事を代表にし、他媒体の記事は代表の related に残す。
+    """
+    representatives: list[Article] = []
+    for article in articles:
+        for rep in representatives:
+            if _same_event(rep, article):
+                rep.related = (*rep.related, article)
+                break
+        else:
+            representatives.append(article)
+    return representatives
+
+
+def _append_related_reports(raw: str, related: Iterable[Article]) -> str:
+    lines = [
+        f"- {art.published_iso or dt.date.today().isoformat()} | {art.source or '不明'} | [{art.title}]({art.link})"
+        for art in related
+        if art.link and art.link not in raw and _canonical_url(art.link) not in raw
+    ]
+    if not lines:
+        return raw
+    heading = "## 関連報道"
+    if heading in raw:
+        return raw.rstrip() + "\n" + "\n".join(lines) + "\n"
+    return raw.rstrip() + f"\n\n{heading}\n" + "\n".join(lines) + "\n"
+
+
 def _update_frontmatter_field(raw: str, key: str, value: str) -> str:
     match = re.match(r"^---\s*\n(.*?\n)---\s*\n", raw, re.DOTALL)
     if not match:
@@ -1192,12 +1274,18 @@ def _save_articles_to_obsidian(
     for art in articles:
         duplicate = _find_duplicate(art, existing)
         if duplicate:
-            if _merge_related_report(duplicate, art, date_str, week, month):
+            merged = _merge_related_report(duplicate, art, date_str, week, month)
+            raw = _append_related_reports(str(duplicate["raw"]), art.related)
+            if raw != duplicate["raw"]:
+                Path(duplicate["path"]).write_text(raw, encoding="utf-8")
+                duplicate["raw"] = raw
+                merged = True
+            if merged:
                 saved.append(Path(duplicate["path"]))
             continue
         fname = f"{date_str}_業界リスクニュース_{_safe_filename(art.title)}.md"
         fpath = _safe_note_path(vault, f"{news_dir}/{fname}")
-        content = _build_article_content(art, date_str, week, month, profile)
+        content = _append_related_reports(_build_article_content(art, date_str, week, month, profile), art.related)
         fpath.write_text(content, encoding="utf-8")
         saved.append(fpath)
         existing.append(
@@ -1309,7 +1397,8 @@ def main(argv: list[str] | None = None) -> int:
         per_query=max(1, int(args.per_query)),
         per_feed=max(1, int(args.per_feed)),
     )
-    articles = articles[: max(1, int(args.limit))]
+    # 判定・分類の前に同一出来事をまとめる。重複が limit 枠と判定コストを食うのを防ぐ
+    articles = merge_same_event_articles(articles)[: max(1, int(args.limit))]
     classify_articles(
         articles,
         use_ai=not args.no_ai_classify and os.environ.get("LEASE_NEWS_AI_CLASSIFY", "1") != "0",

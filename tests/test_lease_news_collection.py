@@ -493,3 +493,59 @@ def test_find_vault_refreshes_cloudrun_gcs_vault(monkeypatch, tmp_path):
     assert result == vault
     assert calls == [lease_news_digest._GCS_VAULT_LOCAL_DIR]
     assert lease_news_digest.find_vault() == vault
+
+
+# 見出しは 2026-09〜10 の lease-news-collector 実ログから採った同一出来事／別記事の組
+_SAME_EVENT_PAIRS = [
+    (
+        "中小企業の資金繰り支援へ 三重県信用保証協会と三十三銀行が提携商品を創設(三重テレビ放送) - Yahoo!ニュース",
+        "中小企業の資金繰り支援 超長期保証商品を創設 県信用保証協会と三十三銀行 - 伊勢新聞",
+    ),
+    ("大勝建設(株)ほか1社 | TSR速報 | 倒産・注目企業情報 - 東京商工リサーチ", "大勝建設株式会社など2社 - tdb.co.jp"),
+    (
+        "地域小規模運送業者・振興物産株式会社(鳥取県岩美町)の破産手続き開始 2026.09.25",
+        "貨物自動車運送業者「振興物産」破産手続き開始決定 負債は約1億8000万円 鳥取県岩美町 (日本海テレビ)",
+    ),
+    ("工作機械受注、8月64%増 北米アジア伸び歴代2位 - 日刊工業新聞", "8月の工作機械受注 64%増 北米アジア伸び歴代2位 - 日刊工業新聞"),
+    ("8月工作機械受注は前年比64.7%増、14カ月連続プラス=工作機械工業会", "8月の工作機械受注 64.7%増 14カ月連続プラス"),
+]
+_DIFFERENT_EVENT_PAIRS = [
+    (
+        "特集・食品工場のスマートファクトリー化と省力化・自動化2026:FOOMAセミナー - 日本食糧新聞",
+        "特集・食品工場のスマートファクトリー化と省力化・自動化2026:解説2=OTセキュリティー - 日本食糧新聞",
+    ),
+    ("車向け工作機械受注、8月は44%増 老朽機更新で大型案件 - 日本経済新聞", "工作機械受注、8月64%増 北米アジア伸び歴代2位 - 日刊工業新聞"),
+    ("8月の工作機械受注65%増 AI関連・航空宇宙が好調 - 日本経済新聞", "8月の工作機械受注 64%増 北米アジア伸び歴代2位 - 日刊工業新聞"),
+    (
+        "【倒産情報】負債総額は45億円...創業79年の総合建設業が破産申請へ",
+        "【倒産速報】売上高が10.5億円→3.1億円に... 土地売買・建築工事会社が事業停止→自己破産申請へ",
+    ),
+    ("100年経営「老舗企業」の倒産動向調査(2026年1-8月) - tdb.co.jp", "老舗倒産112件“過去最多”ペース...「100年企業」に何が? 製造・卸売・小売で相次ぐ"),
+]
+
+
+def test_same_event_headlines_with_different_wording_are_merged():
+    for a, b in _SAME_EVENT_PAIRS:
+        assert news._same_event(_article(title=a, source=""), _article(title=b, source="")), (a, b)
+
+
+def test_distinct_events_and_series_installments_are_not_merged():
+    for a, b in _DIFFERENT_EVENT_PAIRS:
+        assert not news._same_event(_article(title=a, source=""), _article(title=b, source="")), (a, b)
+
+
+def test_merge_keeps_first_as_representative_and_other_urls_as_related(tmp_path):
+    rep = _article(title=_SAME_EVENT_PAIRS[0][0], link="https://news.yahoo.co.jp/a/1", source="Yahoo!ニュース")
+    dup = _article(title=_SAME_EVENT_PAIRS[0][1], link="https://www.isenp.co.jp/b/2", source="伊勢新聞")
+    other = _article(title=_DIFFERENT_EVENT_PAIRS[0][0], link="https://example.com/c/3")
+
+    merged = news.merge_same_event_articles([rep, dup, other])
+
+    assert merged == [rep, other]
+    assert rep.related == (dup,)
+    news.classify_articles(merged, use_ai=False)
+    news._save_articles_to_obsidian(merged, tmp_path, "news", "2026-10-01", "industry-watch")
+    note = next(p for p in (tmp_path / "news").glob("*.md") if "三重" in p.name or "資金繰り" in p.name)
+    text = note.read_text(encoding="utf-8")
+    assert "## 関連報道" in text
+    assert "https://www.isenp.co.jp/b/2" in text
