@@ -55,7 +55,7 @@ def test_records_keep_hash_not_text_and_carry_full_schema():
     record = records[0]
     assert set(record) == {
         "schema_version", "record_type", "ts", "judgment_id", "run_id", "guard", "mode",
-        "model", "question", "subject_hash", "probability", "choice", "route", "thresholds",
+        "model", "question", "subject_hash", "probability", "probability_calibrated", "choice", "route", "thresholds",
         "auto_passed", "sampled_for_review", "label", "label_source", "labeled_at",
     }
     assert record["subject_hash"] == jlog.subject_hash("  社外秘の見出し ")

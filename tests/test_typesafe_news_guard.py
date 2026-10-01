@@ -60,6 +60,27 @@ def test_ambiguous_article_is_sent_not_dropped():
     )
 
 
+def test_threshold_applies_to_calibrated_repayment():
+    """生0.30は較正後0.57で送る（人手ラベルで生0.2-0.35帯の6割が有用）。生0.20は落とす。"""
+
+    def fake_request(payload):
+        answers = {}
+        for index, raw in enumerate((0.30, 0.20)):
+            answers[f"a{index}_repayment"] = _noul(raw)
+            answers[f"a{index}_injection"] = _noul(0.02)
+        return {"answers": answers, "model": "jev-latest"}
+
+    result = guard.screen_articles(_articles(2), request_fn=fake_request, environ={})
+
+    assert result["actions"] == ["send", "skip"]
+    assert result["judgments"][0]["repayment"] == 0.30
+    assert 0.55 < result["judgments"][0]["repayment_calibrated"] < 0.6
+    assert result["thresholds"]["repayment_calibration"] == {
+        "a": guard.REPAYMENT_PLATT_A,
+        "b": guard.REPAYMENT_PLATT_B,
+    }
+
+
 def test_screen_articles_batches_every_judgment_into_one_request():
     captured: list[dict] = []
 
