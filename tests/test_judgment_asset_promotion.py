@@ -141,3 +141,60 @@ def test_rule_flagged_candidate_without_usage_reaches_review_list_after_evidence
     ids = [item["id"] for item in listed]
     assert ids == ["used", "flag-caution", "flag-rule"]
     assert all(item["promotion_status"] == "needs_review_quality" for item in listed if item["rule_review"])
+
+
+def _write_chat_candidates(path, count):
+    rows = [
+        {
+            "id": f"chat-{n:03d}",
+            "claim": f"取引先{n}番の見積書は、銀行の融資実行日と日付が一致しているかを確認する。",
+            "candidate_type": "caution",
+            "research_topic": "chat_judgment_teaching",
+            "research_date": "2026-10-02",
+            "source_section": "manual_input",
+            "promotion_status": "needs_review_quality",
+            "edit_count": 1,
+        }
+        for n in range(count)
+    ]
+    path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    return rows
+
+
+def test_list_reports_total_beyond_page_and_promotes_past_rank_100(tmp_path, monkeypatch):
+    """2026-10-02: 一覧は上限30件で切った件数を「昇格候補」に出していたため、押しても件数が
+    動かず「消えない」ように見えた。昇格も上限100件の中しか探さず101位以下は404だった。"""
+    candidates_jsonl, _state, _canonical = _patch_paths(monkeypatch, tmp_path)
+    rows = _write_chat_candidates(candidates_jsonl, 120)
+
+    listed = feedback_loop.get_judgment_asset_promotion_candidates(limit=30)
+    assert listed["count"] == 30 and listed["total_count"] == 120
+
+    ranked_ids = [item["id"] for item in feedback_loop._rank_judgment_asset_promotion_candidates()]
+    last = ranked_ids[-1]
+    assert feedback_loop._promote_judgment_asset_candidate_to_canonical(last)["status"] == "promoted"
+    assert feedback_loop.get_judgment_asset_promotion_candidates(limit=30)["total_count"] == len(rows) - 1
+
+
+def test_reviewed_chat_candidates_stay_out_after_daily_recompute(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from scripts import build_autoresearch_judgment_asset_candidates as builder
+
+    candidates_jsonl, state_json, _canonical = _patch_paths(monkeypatch, tmp_path)
+    _write_chat_candidates(candidates_jsonl, 3)
+    feedback_loop._promote_judgment_asset_candidate_to_canonical("chat-000")
+    feedback_loop._review_judgment_asset_promotion_candidate(
+        "chat-001", SimpleNamespace(action="reject", comment="")
+    )
+
+    # 日次再計算（main と同じ順: write_state → preserve_reviewed_candidates → write_jsonl）
+    builder.write_state(state_json, [], builder.load_state(state_json))
+    kept = builder.preserve_reviewed_candidates([], existing_jsonl=candidates_jsonl, state_path=state_json)
+    builder.write_jsonl(candidates_jsonl, kept)
+
+    listed = [item["id"] for item in feedback_loop._rank_judgment_asset_promotion_candidates()]
+    assert listed == ["chat-002"]
+    state = json.loads(state_json.read_text(encoding="utf-8"))
+    assert state["chat-000"]["promotion_status"] == "promoted"
+    assert state["chat-001"]["promotion_status"] == "rejected"
