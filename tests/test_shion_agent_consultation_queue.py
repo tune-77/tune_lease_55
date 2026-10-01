@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -68,3 +69,22 @@ def test_prompt_block_exposes_pending_items_without_execution(tmp_path: Path):
     assert "直接実行しない" in block
     assert "judgment-asset-auditor" in block
     assert "候補保全監査" in block
+    assert "0日前" in block
+    assert "要再検証】" not in block
+
+
+def test_prompt_block_marks_stale_items_with_created_date(tmp_path: Path):
+    path = tmp_path / "queue.jsonl"
+    item = queue.request_consultation(
+        agent="judgment-asset-auditor",
+        title="ニュース収集停止の調査",
+        reason="本日分が未収集に見える。",
+        path=path,
+    )
+    created = datetime.fromisoformat(item["created_at"])
+
+    block = queue.build_agent_consultation_prompt_block(path=path, now=created + timedelta(days=40))
+
+    assert f"作成 {item['created_at'][:10]}・40日前" in block
+    assert "【古い・要再検証】" in block
+    assert "再検証できるまで" in block
