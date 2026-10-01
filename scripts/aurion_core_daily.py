@@ -1194,6 +1194,14 @@ def teaching_funnel_lines(target_date: str | None = None) -> list[str]:
         f"| 回答前に想起した | {d['recalled']} | {t['recalled']} |",
         f"| 回答で使われた | {d['used']} | {t['used']} |",
         "",
+        "- 前日の経路別（教えた/保存/想起/使用）: "
+        + (
+            "・".join(
+                f"{label} {c['taught']}/{c['saved']}/{c['recalled']}/{c['used']}"
+                for label, c in sorted(summary.get("day_by_surface", {}).items())
+            )
+            or "なし"
+        ),
         "- 判断資産候補は /judgment-review の要確認に入る。自動昇格はしない。",
     ]
 

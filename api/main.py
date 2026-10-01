@@ -6158,22 +6158,11 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
         # 教わったノウハウは回答前に決定的に保存する（LLM・バックグラウンド任せにしない）。
         # 保存結果をプロンプトへ渡し、紫苑が保存の成否と違うことを言わないようにする。
-        from api.chat_teaching_capture import (
-            build_recall_prompt_block,
-            build_save_result_prompt_block,
-            enforce_save_honesty,
-            recall_taught_knowledge,
-            record_funnel_event,
-            save_lease_teaching,
-            used_in_reply,
-        )
-        from memory_promotion_policy import has_domain_keyword as _has_domain_keyword
+        # 雑談モードでも、ドメインの問いでは回答前に Knowledge と RAG を引く。
+        # 以前は回答後に参照ボタン用に検索するだけで、回答には届いていなかった。
+        from api.chat_teaching_capture import prepare_teaching_turn, previous_user_message, vector_store_rag_search
 
-        _previous_user_message = next(
-            (str(m.get("content") or "") for m in reversed(history) if str(m.get("role") or "") == "user"),
-            "",
-        )
-        teaching_save = save_lease_teaching(
+        teaching_turn = prepare_teaching_turn(
             message,
             vault=vault,
             surface="lease_intelligence_dialogue",
@@ -6183,30 +6172,13 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 surface="lease_intelligence_dialogue",
                 response_mode="shion",
             ),
-            previous_user_message=_previous_user_message,
+            previous_user_message=previous_user_message(history),
+            rag_search=vector_store_rag_search("next_chat_rag"),
         )
-        teaching_save_context = build_save_result_prompt_block(teaching_save)
-
-        # 雑談モードでも、ドメインの問いでは回答前に Knowledge と RAG を引く。
-        # 以前は回答後に参照ボタン用に検索するだけで、回答には届いていなかった。
-        pre_recall_items: list[dict] = []
-        _rag_hits: list[dict] = []
-        if _has_domain_keyword(message) and not teaching_save.get("is_teaching"):
-            pre_recall_items = recall_taught_knowledge(vault, message, limit=3)
-            try:
-                from api.knowledge.vector_store import get_store
-
-                _rag_hits = get_store().search(message, top_k=5, surface="next_chat_rag")
-            except Exception as _pre_rag_exc:
-                print(f"[DialoguePreRecall] RAG検索に失敗: {_pre_rag_exc}")
-        pre_recall_context = build_recall_prompt_block(pre_recall_items, _rag_hits[:3])
-        for _item in pre_recall_items:
-            record_funnel_event(
-                "recalled",
-                surface="lease_intelligence_dialogue",
-                path=_item.get("path"),
-                user_taught=bool(_item.get("user_taught")),
-            )
+        teaching_save = teaching_turn.save
+        teaching_save_context = teaching_turn.save_context
+        pre_recall_context = teaching_turn.recall_context
+        _rag_hits = teaching_turn.rag_hits
 
         if not vault:
             from lease_finance_knowledge import build_basic_lease_question_block, build_lease_finance_knowledge_block
@@ -6257,7 +6229,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 reply = call_gemini_chat(fallback_prompt, history, full_message).strip()
             except Exception as exc:
                 raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {str(exc)[:300]}")
-            reply = enforce_save_honesty(reply, teaching_save)
+            reply = teaching_turn.finalize(reply)
             save_message(DIALOGUE_USER_ID, "user", message)
             save_message(DIALOGUE_USER_ID, "assistant", reply)
             _record_cloudrun_chat_exchange(
@@ -6354,15 +6326,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 )
             raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {detail}")
 
-        reply = enforce_save_honesty(reply, teaching_save)
-        for _item in pre_recall_items:
-            if used_in_reply(_item, reply):
-                record_funnel_event(
-                    "used",
-                    surface="lease_intelligence_dialogue",
-                    path=_item.get("path"),
-                    user_taught=bool(_item.get("user_taught")),
-                )
+        reply = teaching_turn.finalize(reply)
 
         save_message(DIALOGUE_USER_ID, "user", message)
         save_message(DIALOGUE_USER_ID, "assistant", reply)
@@ -6510,11 +6474,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             "long_input_mode": compact_dialogue,
             "context_mode": dialogue_mode,
             "history_messages_sent": len(history),
-            "teaching_save": teaching_save,
-            "pre_recall": [
-                {"path": item.get("path"), "score": item.get("score"), "user_taught": item.get("user_taught")}
-                for item in pre_recall_items
-            ],
+            **teaching_turn.response_extra(),
         }
     except HTTPException:
         raise
@@ -6932,6 +6892,43 @@ def post_chat(req: ChatRequest):
             total = get_message_count(req.user_id)
             return {"reply": reply, "total_messages": total, "lease_news_focus": news_focus, "lease_news_brief": news_brief, "lease_news_actions": news_actions}
 
+        # 対話室と同じく、教わったノウハウは回答前に決定的に保存し、審査の問いでは回答前に想起する。
+        # 判断資産候補の保存はここで1回だけ行い、回答後はその結果を使う（指示語だけの教示で二重登録しない）。
+        from api.chat_teaching_capture import prepare_teaching_turn, previous_user_message, vector_store_rag_search
+        from lease_news_digest import find_vault as _find_teaching_vault
+
+        teaching_surface = "next_chat_general" if question_category == "general" else "next_chat_rag"
+        teaching_candidate_capture: dict[str, Any] = {}
+
+        def _save_teaching_candidate(claim: str) -> dict[str, Any]:
+            teaching_candidate_capture.update(
+                _capture_chat_judgment_asset_if_needed(
+                    claim,
+                    user_id=req.user_id,
+                    surface=teaching_surface,
+                    response_mode=req.response_mode,
+                )
+            )
+            return teaching_candidate_capture
+
+        teaching_turn = prepare_teaching_turn(
+            req.message,
+            vault=_find_teaching_vault(),
+            surface=teaching_surface,
+            candidate_saver=_save_teaching_candidate,
+            previous_user_message=previous_user_message(get_recent_messages(req.user_id, limit=6)),
+            # RAG 分岐は build_chat_retrieval_context で引くので、RAG を飛ばす general だけ渡す。
+            rag_search=vector_store_rag_search("next_chat_general") if question_category == "general" else None,
+        )
+        teaching_prompt_context = "".join(
+            f"\n\n{block}" for block in (teaching_turn.save_context, teaching_turn.recall_context) if block
+        )
+        # 回答後の判断資産候補の結果。判定器は回答前と同じなので、ここで改めて登録しない。
+        teaching_judgment_asset_capture = teaching_candidate_capture or {
+            "captured": False,
+            "reason": "not_judgment_asset_teaching" if not teaching_turn.save.get("is_teaching") else "not_captured",
+        }
+
         # general なら RAG をスキップして直接回答
         if question_category == "general":
             history = get_recent_messages(req.user_id, limit=int(context_budget["history_limit"]))
@@ -7026,7 +7023,7 @@ def post_chat(req: ChatRequest):
                 response_mode=req.response_mode,
             )
             if research_suggestion.get("needed") and not req.allow_external_research:
-                reply = external_research_permission_reply(research_suggestion)
+                reply = teaching_turn.finalize(external_research_permission_reply(research_suggestion))
                 save_message(req.user_id, "user", req.message)
                 save_message(req.user_id, "assistant", reply)
                 _record_cloudrun_chat_exchange(
@@ -7074,6 +7071,7 @@ def post_chat(req: ChatRequest):
                 mode_instruction,
                 response_mode_context,
                 basic_lease_question_prompt,
+                teaching_prompt_context,
                 news_focus_context,
                 news_brief_context,
                 news_actions_context,
@@ -7140,7 +7138,7 @@ def post_chat(req: ChatRequest):
                     event="injected",
                     question=req.message,
                 )
-            reply = call_gemini_chat(effective_system_prompt, history_for_gemini, req.message)
+            reply = teaching_turn.finalize(call_gemini_chat(effective_system_prompt, history_for_gemini, req.message))
             obsidian_daily_effect = {}
             if obsidian_daily_context:
                 obsidian_daily_effect = record_obsidian_daily_intelligence_event(
@@ -7176,12 +7174,7 @@ def post_chat(req: ChatRequest):
                 response_mode=req.response_mode,
                 category="general",
             )
-            judgment_asset_capture = _capture_chat_judgment_asset_if_needed(
-                req.message,
-                user_id=req.user_id,
-                surface="next_chat_general",
-                response_mode=req.response_mode,
-            )
+            judgment_asset_capture = teaching_judgment_asset_capture
             if not is_general_response_mode:
                 try:
                     from api.shion_experience_loop import record_experience_event
@@ -7254,7 +7247,7 @@ def post_chat(req: ChatRequest):
                     injected=obsidian_daily_injected,
                     effect=obsidian_daily_effect,
                 ),
-                extra={"memory_recall": _public_memory_recall_payload(memory_recall)},
+                extra={"memory_recall": _public_memory_recall_payload(memory_recall), **teaching_turn.response_extra()},
             )
             if req.debug_memory:
                 response_payload["memory_debug"] = _chat_memory_debug_payload(
@@ -7309,7 +7302,7 @@ def post_chat(req: ChatRequest):
             response_mode=req.response_mode,
         )
         if research_suggestion.get("needed") and not req.allow_external_research:
-            reply = external_research_permission_reply(research_suggestion)
+            reply = teaching_turn.finalize(external_research_permission_reply(research_suggestion))
             save_message(req.user_id, "user", req.message)
             save_message(req.user_id, "assistant", reply)
             _record_cloudrun_chat_exchange(
@@ -7521,6 +7514,7 @@ def post_chat(req: ChatRequest):
             mode_instruction,
             response_mode_context,
             basic_lease_question_prompt,
+            teaching_prompt_context,
             news_focus_context,
             news_brief_context,
             news_actions_context,
@@ -7595,6 +7589,7 @@ def post_chat(req: ChatRequest):
             )
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
         estimated_user_emotion, reply = extract_estimated_user_emotion(reply)
+        reply = teaching_turn.finalize(reply)
         obsidian_daily_effect = {}
         if obsidian_daily_context:
             obsidian_daily_effect = record_obsidian_daily_intelligence_event(
@@ -7638,12 +7633,7 @@ def post_chat(req: ChatRequest):
             response_mode=req.response_mode,
             category=question_category,
         )
-        judgment_asset_capture = _capture_chat_judgment_asset_if_needed(
-            req.message,
-            user_id=req.user_id,
-            surface="next_chat_rag",
-            response_mode=req.response_mode,
-        )
+        judgment_asset_capture = teaching_judgment_asset_capture
         if not is_general_response_mode:
             try:
                 from api.shion_experience_loop import record_experience_event
@@ -7730,7 +7720,8 @@ def post_chat(req: ChatRequest):
 
         # 重要な知見をObsidianへ自動保存（AIが取捨選択・バックグラウンド実行でレスポンス遅延なし）
         # 改善キーワードを含むメッセージはImprovementLogで既に処理済みのためスキップ
-        if should_auto_save_chat(improvement_mode=_is_improvement_msg):
+        # 回答前に保存済みなら、LLM 抽出の自動保存で同じ内容を別ノートに二重保存しない。
+        if should_auto_save_chat(improvement_mode=_is_improvement_msg) and not teaching_turn.save.get("is_teaching"):
             _background_executor.submit(_auto_save_chat_to_obsidian, req.message, reply)
 
         # REV-222: 対話ごとに関係性スコアを更新（バックグラウンド実行）
@@ -7773,7 +7764,8 @@ def post_chat(req: ChatRequest):
                 vertex_distillation_capture=vertex_distillation_capture,
             )
             | {"memory_recall": _public_memory_recall_payload(memory_recall)}
-            | {"retrieval_guard": retrieval_guard_payload(typesafe_rag)},
+            | {"retrieval_guard": retrieval_guard_payload(typesafe_rag)}
+            | teaching_turn.response_extra(),
         )
         if req.debug_memory:
             response_payload["memory_debug"] = _chat_memory_debug_payload(
