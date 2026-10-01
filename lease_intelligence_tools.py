@@ -792,6 +792,9 @@ def lookup_judgment_rules(query: str = "", category: str = "") -> dict[str, Any]
     for r in rules:
         if not isinstance(r, dict):
             continue
+        # 統合元（merged）・降格済み（demoted）は返さない。代表資産だけを引かせる。
+        if str(r.get("status") or "") != "active":
+            continue
         stmt = str(r.get("canonical_statement", ""))
         concept = str(r.get("concept", ""))
         if q and q not in stmt.lower() and q not in concept.lower():

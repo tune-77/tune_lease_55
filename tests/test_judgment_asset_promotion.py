@@ -198,3 +198,30 @@ def test_reviewed_chat_candidates_stay_out_after_daily_recompute(tmp_path, monke
     state = json.loads(state_json.read_text(encoding="utf-8"))
     assert state["chat-000"]["promotion_status"] == "promoted"
     assert state["chat-001"]["promotion_status"] == "rejected"
+
+
+def test_promote_statement_of_merged_rule_adds_evidence_to_representative(tmp_path, monkeypatch):
+    candidates_jsonl, _state_json, canonical_json = _patch_paths(monkeypatch, tmp_path)
+    statement = "更新設備の申込では、既存設備の稼働実績と受注増の根拠を並べて確認する。"
+    _write_candidate(candidates_jsonl, id="cand-3", claim=statement)
+    canonical_json.write_text(
+        json.dumps(
+            {
+                "rules": [
+                    {"id": "rep", "status": "active", "domain": "lease_screening", "canonical_statement": "代表の判断資産として統合後に整えた本文です。", "evidence_paths": []},
+                    {"id": "src", "status": "merged", "merged_into": "rep", "domain": "lease_screening", "canonical_statement": statement, "evidence_paths": []},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = feedback_loop._promote_judgment_asset_candidate_to_canonical("cand-3")
+
+    assert result["status"] == "updated"
+    assert result["rule"]["id"] == "rep"
+    by_id = {rule["id"]: rule for rule in json.loads(canonical_json.read_text(encoding="utf-8"))["rules"]}
+    assert by_id["rep"]["evidence_paths"]
+    assert by_id["src"]["status"] == "merged"
+    assert result["active_rules"] == 1

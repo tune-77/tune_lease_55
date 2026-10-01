@@ -1667,7 +1667,21 @@ def _promote_judgment_asset_candidate_to_canonical(
         if not isinstance(rules, list):
             rules = []
         normalized_statement = " ".join(statement.split())
-        existing = next((rule for rule in rules if " ".join(str(rule.get("canonical_statement") or "").split()) == normalized_statement), None)
+        existing = next(
+            (
+                rule
+                for rule in rules
+                if normalized_statement
+                in {
+                    " ".join(str(rule.get("canonical_statement") or "").split()),
+                    " ".join(str(rule.get("pre_merge_statement") or "").split()),
+                }
+            ),
+            None,
+        )
+        # 重複統合済みの統合元に当たったら、証跡は代表資産へ寄せる。
+        if existing and existing.get("merged_into"):
+            existing = next((rule for rule in rules if rule.get("id") == existing.get("merged_into")), existing)
         if existing:
             existing["updated_at"] = now
             existing["evidence_count"] = max(int(existing.get("evidence_count") or 0), int(candidate.get("use_count") or 0) + 1)

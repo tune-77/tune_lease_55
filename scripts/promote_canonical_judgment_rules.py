@@ -194,6 +194,8 @@ def promote_rules(preview_rules: list[dict[str, Any]], existing_store: dict[str,
             by_semantic[key] = _merge_rule_dicts(by_semantic[key], rule)
         else:
             by_semantic[key] = dict(rule)
+    # 重複統合で代表の本文を書き換えても、同じidの再昇格は既存行へ寄せる（行の重複防止）。
+    key_by_id = {str(rule.get("id") or ""): key for key, rule in by_semantic.items() if rule.get("id")}
     promoted_count = 0
     updated_count = 0
     skipped_count = 0
@@ -206,7 +208,8 @@ def promote_rules(preview_rules: list[dict[str, Any]], existing_store: dict[str,
         if not rid:
             skipped_count += 1
             continue
-        key = _semantic_key(rule)
+        key = key_by_id.get(rid) or _semantic_key(rule)
+        key_by_id.setdefault(rid, key)
         previous = by_semantic.get(key)
         promoted = _promoted_rule(rule, now=now, previous=previous)
         by_semantic[key] = _merge_rule_dicts(previous, promoted) if previous else promoted

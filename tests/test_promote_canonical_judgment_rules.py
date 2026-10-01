@@ -195,3 +195,46 @@ def test_promoted_markdown_declares_active_store_not_obsidian():
     assert "judgment_memory" in md
     assert "親判断:" in md
     assert "派生理由:" in md
+
+
+def test_repromoting_merged_representative_by_id_does_not_duplicate_or_revert():
+    existing = {
+        "rules": [
+            {
+                "id": "rep",
+                "status": "active",
+                "concept": "asset_life_and_residual",
+                "canonical_statement": "統合後の代表文。",
+                "pre_merge_statement": "統合前の本文。",
+                "merged_from": [{"id": "src"}],
+                "evidence_count": 3,
+            },
+            {
+                "id": "src",
+                "status": "merged",
+                "merged_into": "rep",
+                "concept": "asset_operation",
+                "canonical_statement": "統合元の本文。",
+            },
+        ]
+    }
+    preview = [
+        {
+            "id": "rep",
+            "status": "accepted_preview",
+            "preview": True,
+            "private": False,
+            "concept": "asset_life_and_residual",
+            "canonical_statement": "統合前の本文。",
+            "evidence_count": 5,
+        }
+    ]
+
+    store = promote.promote_rules(preview, existing, now="2026-10-02T00:00:00")
+
+    by_id = {rule["id"]: rule for rule in store["rules"]}
+    assert len(store["rules"]) == 2
+    assert by_id["rep"]["canonical_statement"] == "統合後の代表文。"
+    assert by_id["rep"]["merged_from"] == [{"id": "src"}]
+    assert by_id["src"]["status"] == "merged"
+    assert store["summary"]["active_rules"] == 1
