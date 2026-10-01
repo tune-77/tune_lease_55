@@ -98,6 +98,7 @@ def build_records(
                 "question": str(item.get("question") or ""),
                 "subject_hash": digest,
                 "probability": item.get("probability"),
+                "probability_calibrated": item.get("probability_calibrated"),
                 "choice": item.get("choice"),
                 "route": str(item.get("route") or ""),
                 "thresholds": dict(item.get("thresholds") or {}),

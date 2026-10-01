@@ -14,7 +14,7 @@ HTTP・資格情報・タイムアウトは `typesafe_rag_guard` の実装を再
 
 環境変数:
   TYPESAFE_NEWS_MODE       off（既定） | shadow | enforce
-  TYPESAFE_NEWS_RELEVANT_MIN   返済力関連とみなす下限（既定 0.35）
+  TYPESAFE_NEWS_RELEVANT_MIN   返済力関連とみなす下限。較正後の確率に対して効く（既定 0.5）
   TYPESAFE_NEWS_INJECTION_MAX  これを超えたら除外（既定 0.70）
 """
 
@@ -38,8 +38,16 @@ DEFAULT_MODEL = "jev-latest"
 # 落とす側の誤りが高くつく。審査に効く記事を1件落とすと、その日の判断材料が
 # 欠けたまま誰も気づけない。一方で余計に1件Geminiへ渡す損は出力トークン数百分。
 # そこで「効くという確信」ではなく「効かないという確信」が得られたときだけ落とす。
-# 下限を 0.5 未満に置くのは意図的で、0.5付近の曖昧な記事は送る側へ倒れる。
-DEFAULT_RELEVANT_MIN = 0.35
+# この閾値は較正後の確率に対して効く。Jevの生の repayment は控えめに出る
+# （人手ラベル99件で、生0.2〜0.35帯の記事も61%が審査に有用だった）ため、
+# 生確率に0.35を当てると「効く見込み66%」の記事まで落としていた。
+# 較正後0.5＝「効かない方が効くより確からしい」時だけ落とす（生確率でおよそ0.26）。
+DEFAULT_RELEVANT_MIN = 0.5
+# 生確率 p → sigmoid(a*logit(p)+b)。人手ラベル99件（2026-10-01、shadow49件＋
+# offline再判定50件）で当てはめた。第1弾49件の当てはめを第2弾50件へ外部適用して
+# Brier 0.178→0.109 を確認済み。順序は変わらないのでAUCは不変。
+REPAYMENT_PLATT_A = 1.551
+REPAYMENT_PLATT_B = 1.604
 # rag guard と同じ値。同じ性質の検査で閾値がずれると運用時に説明できない。
 DEFAULT_INJECTION_MAX = 0.70
 
@@ -71,6 +79,13 @@ def _threshold(name: str, default: float, environ: Mapping[str, str] | None = No
 
 def relevant_min(environ: Mapping[str, str] | None = None) -> float:
     return _threshold("TYPESAFE_NEWS_RELEVANT_MIN", DEFAULT_RELEVANT_MIN, environ)
+
+
+def calibrate_repayment(probability: float) -> float:
+    """Jevの生の repayment 確率を、人手ラベルで較正した確率へ写す。"""
+    p = min(max(probability, 1e-4), 1 - 1e-4)
+    z = REPAYMENT_PLATT_A * math.log(p / (1 - p)) + REPAYMENT_PLATT_B
+    return round(1 / (1 + math.exp(-z)), 4)
 
 
 def injection_max(environ: Mapping[str, str] | None = None) -> float:
@@ -286,13 +301,15 @@ def screen_articles(
     injection_limit = injection_max(environ)
     detail: list[dict[str, Any]] = []
     for position, index in enumerate(safe_indices):
+        judgment = judgments[position]
+        calibrated = calibrate_repayment(judgment["repayment"])
         action = decide_article_action(
-            judgments[position],
+            {**judgment, "repayment": calibrated},
             relevant_threshold=threshold,
             injection_threshold=injection_limit,
         )
         actions[index] = action
-        detail.append({"index": index, "action": action, **judgments[position]})
+        detail.append({"index": index, "action": action, **judgment, "repayment_calibrated": calibrated})
 
     counts = {name: actions.count(name) for name in ("send", "skip", "quarantine")}
     return {
@@ -302,6 +319,10 @@ def screen_articles(
         "judgments": detail,
         "excluded_count": len(items) - len(safe_indices),
         "counts": counts,
-        "thresholds": {"relevant_min": threshold, "injection_max": injection_limit},
+        "thresholds": {
+            "relevant_min": threshold,
+            "injection_max": injection_limit,
+            "repayment_calibration": {"a": REPAYMENT_PLATT_A, "b": REPAYMENT_PLATT_B},
+        },
         "usage": dict(body.get("usage") or {}),
     }
