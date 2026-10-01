@@ -656,7 +656,12 @@ def classify_articles(articles: list[Article], use_ai: bool = True) -> None:
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.1,
-                max_output_tokens=6000,
+                # thinking 対応モデル（gemini-2.5-flash 等）では思考トークンも
+                # max_output_tokens を消費し、18件で思考約5,600トークンを使って
+                # JSON が数百文字で MAX_TOKENS 打ち切りになっていた。分類に思考は
+                # 不要なので明示的に切り、出力側にも余裕を持たせる。
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                max_output_tokens=16000,
                 response_mime_type="application/json",
                 response_json_schema={
                     "type": "object",
@@ -697,6 +702,12 @@ def classify_articles(articles: list[Article], use_ai: bool = True) -> None:
                 http_options=types.HttpOptions(timeout=30000),
             ),
         )
+        finish_reason = str(getattr((response.candidates or [None])[0], "finish_reason", "") or "")
+        if "MAX_TOKENS" in finish_reason:
+            raise RuntimeError(
+                f"Gemini output truncated (finish_reason={finish_reason}, "
+                f"usage={getattr(response, 'usage_metadata', None)})"
+            )
         parsed = json.loads(response.text or "{}")
         for item in parsed.get("classifications", []):
             index = int(item.get("article_index", -1))

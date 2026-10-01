@@ -45,6 +45,54 @@ def test_rule_classification_populates_searchable_fields():
     assert article.classification_source == "rule"
 
 
+def _fake_gemini(monkeypatch, finish_reason: str, text: str) -> dict:
+    from google import genai
+
+    captured: dict = {}
+
+    class _Models:
+        def generate_content(self, **kwargs):
+            captured.update(kwargs)
+            candidate = type("Candidate", (), {"finish_reason": finish_reason})()
+            return type("Response", (), {"candidates": [candidate], "text": text, "usage_metadata": None})()
+
+    class _Client:
+        def __init__(self, **_kwargs):
+            self.models = _Models()
+
+    monkeypatch.setattr(genai, "Client", _Client)
+    monkeypatch.setattr(news, "_get_gemini_key", lambda: "test-key")
+    monkeypatch.setattr(news, "_news_guard_actions", lambda articles: ["send"] * len(articles))
+    return captured
+
+
+def test_gemini_classification_disables_thinking_budget(monkeypatch):
+    captured = _fake_gemini(
+        monkeypatch,
+        "STOP",
+        '{"classifications": [{"article_index": 0, "industries": ["建設業"], "lease_assets": [],'
+        ' "credit_risk_impact": "x", "screening_checks": [], "impact_direction": "neutral",'
+        ' "classification_confidence": 0.8, "source_reliability": "medium",'
+        ' "valid_until": "2027-01-01", "canonical_topic": "t"}]}',
+    )
+    article = _article()
+
+    news.classify_articles([article])
+
+    assert captured["config"].thinking_config.thinking_budget == 0
+    assert article.classification_source == "gemini"
+
+
+def test_truncated_gemini_output_keeps_rule_fallback(monkeypatch, capsys):
+    _fake_gemini(monkeypatch, "FinishReason.MAX_TOKENS", '{"classifications": [{"article_index": 0, "industr')
+    article = _article()
+
+    news.classify_articles([article])
+
+    assert article.classification_source == "rule"
+    assert "truncated" in capsys.readouterr().err
+
+
 def test_rule_classification_distinguishes_official_and_weak_sources():
     official = _article(
         source="pref.example.lg.jp",

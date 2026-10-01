@@ -21,6 +21,8 @@ SCHEMA_VERSION = 1
 QUEUE_PATH = Path(get_data_path("shion_agent_consultation_queue.jsonl"))
 VALID_STATUSES = {"open", "in_review", "done", "cancelled"}
 VALID_PRIORITIES = {"low", "medium", "high"}
+# これを超えた未処理の相談票は、紫苑が再検証せずに現在の不具合として報告しない。
+STALE_AFTER_DAYS = 7
 VALID_AGENT_NAMES = {
     "judgment-asset-auditor",
     "ledger-consistency-auditor",
@@ -209,17 +211,39 @@ def set_consultation_status(
     return _apply_events(_read_events(path))[queue_id]
 
 
-def build_agent_consultation_prompt_block(limit: int = 3, *, path: Path | None = None) -> str:
+def _age_days(created_at: str, now: datetime) -> int | None:
+    try:
+        created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    return max(0, (now - created).days)
+
+
+def build_agent_consultation_prompt_block(
+    limit: int = 3,
+    *,
+    path: Path | None = None,
+    now: datetime | None = None,
+) -> str:
     items = list_consultations(status="open", limit=limit, path=path)
+    now = now or datetime.now(timezone.utc)
     lines = [
         "【AGENT相談キュー（read-only）】",
         "紫苑はCodex AGENTを直接実行しない。異常・断線・監査が必要な時は request_agent_consultation で相談票を作る。",
         "相談票は後でCodexが読み、必要なAGENTを実行して .claude/reports/.../latest.md に結果を書く。",
+        "相談票は作成時点の観測であり、現在の状態ではない。報告するときは必ず作成日を添える。"
+        f"{STALE_AFTER_DAYS}日を超えた相談票は、最新のログや状態で再検証できるまで「現在の不具合」として報告しない。",
     ]
     if items:
         lines.append("未処理の相談票:")
         for item in items[:limit]:
-            lines.append(f"- {item['id']} / {item['agent']} / {item['priority']}: {item['title']}")
+            created = str(item.get("created_at") or "")
+            age = _age_days(created, now)
+            when = f"作成 {created[:10]}・{age}日前" if age is not None else "作成日不明"
+            stale = "【古い・要再検証】" if age is None or age > STALE_AFTER_DAYS else ""
+            lines.append(f"- {stale}{item['id']} / {item['agent']} / {item['priority']} / {when}: {item['title']}")
     else:
         lines.append("未処理の相談票: なし")
     return "\n".join(lines)

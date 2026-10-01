@@ -23,8 +23,11 @@ import fnmatch
 import json
 import os
 import shutil
+import stat
+import subprocess
 import sys
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -90,6 +93,36 @@ class BackupSummary:
     total_bytes: int
     excluded_count: int
     dry_run: bool
+    failed: list[dict[str, str]] = field(default_factory=list)
+
+
+# iCloud で「最適化」されて実体がローカルに無いファイル（dataless）。
+# launchd 配下ではコピー時に実体化できず EDEADLK（Errno 11）で失敗する。
+_SF_DATALESS = getattr(stat, "SF_DATALESS", 0x40000000)
+DATALESS_WAIT_SECONDS = 60
+
+
+def _is_dataless(path: Path) -> bool:
+    try:
+        return bool(getattr(path.stat(), "st_flags", 0) & _SF_DATALESS)
+    except OSError:
+        return False
+
+
+def _materialize_dataless(files: list[Path], wait_seconds: float = DATALESS_WAIT_SECONDS) -> None:
+    """dataless ファイルを brctl download で取得し、最大 wait_seconds 待つ（取れなくても続行）。"""
+    pending = [p for p in files if _is_dataless(p)]
+    if not pending or not shutil.which("brctl"):
+        return
+    for path in pending:
+        try:
+            subprocess.run(["brctl", "download", str(path)], capture_output=True, timeout=30, check=False)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    deadline = time.monotonic() + wait_seconds
+    while pending and time.monotonic() < deadline:
+        time.sleep(2)
+        pending = [p for p in pending if _is_dataless(p)]
 
 
 def _candidate_vaults() -> list[Path]:
@@ -193,17 +226,29 @@ def backup_vault(
     backup_root.mkdir(parents=True, exist_ok=True)
     dest.mkdir(parents=True, exist_ok=False)
 
+    _materialize_dataless(files)
+    # 1ファイルの失敗（iCloud 未ダウンロード等）でスナップショット全体を止めない。
+    failed: list[dict[str, str]] = []
     for src in files:
         rel = src.relative_to(vault)
         target = dest / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, target)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, target)
+        except OSError as exc:
+            target.unlink(missing_ok=True)
+            reason = "icloud_dataless" if _is_dataless(src) else "copy_error"
+            failed.append({"path": rel.as_posix(), "reason": reason, "error": str(exc)[:200]})
 
     manifest = {
         "vault": str(vault),
         "destination": str(dest),
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "status": "partial" if failed else "complete",
         "file_count": len(files),
+        "copied_count": len(files) - len(failed),
+        "failed_count": len(failed),
+        "failed": failed,
         "total_bytes": total_bytes,
         "excluded_count": excluded_count,
         "excludes": excludes,
@@ -221,6 +266,7 @@ def backup_vault(
         total_bytes=total_bytes,
         excluded_count=excluded_count,
         dry_run=False,
+        failed=failed,
     )
 
 
@@ -265,6 +311,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"vault: {summary.vault}")
     print(f"destination: {summary.destination}")
+    if summary.failed:
+        print(
+            f"WARN: {len(summary.failed)} files could not be copied (see backup_manifest.json): "
+            + ", ".join(item["path"] for item in summary.failed[:5]),
+            file=sys.stderr,
+        )
     return 0
 
 
