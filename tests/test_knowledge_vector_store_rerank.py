@@ -102,7 +102,7 @@ def test_rerank_prefers_matching_construction_asset_note():
         | {"score": 16},
         _hit(
             "Projects/tune_lease_55/Asset Knowledge/建機/コマツ PC200 油圧ショベル 残価・再販リスク.md",
-            text="PC200 油圧ショベル アワーメーター 油圧系 再販リスク",
+            text="PC200 油圧ショベルは、アワーメーターと油圧系で再販リスクを見る。",
             distance=None,
         )
         | {"score": 16},
@@ -119,12 +119,12 @@ def test_rerank_pushes_chat_logs_below_curated_knowledge_for_domain_queries():
     hits = [
         _hit(
             "Projects/tune_lease_55/AI Chat/Cloud Run Conversation Log/2026-07-08.md",
-            text="競合 低い料率 営業 説明 条件差 見積比較 観点",
+            text="競合の低い料率について、営業が説明する条件差と見積比較の観点を話した。",
             distance=0.1,
         ),
         _hit(
             "Projects/tune_lease_55/Research/Vertex Distilled/2026-08-08_knowledge_audit_金利・料率・競合条件の組み立て_0cfbafc1d1e41613.md",
-            text="競合条件 料率 金利 見積 比較 営業説明",
+            text="競合条件は、料率・金利・見積の比較で営業説明する。",
             distance=0.2,
         ),
     ]
@@ -204,3 +204,32 @@ def test_rerank_drops_negative_low_priority_noise():
 
     assert ranked
     assert all("AI Chat/" not in hit["file_path"] for hit in ranked)
+
+
+def test_rerank_collapses_identical_text_from_different_notes():
+    store = KnowledgeVectorStore(chroma_dir="/tmp/unused-rag-test")
+    boilerplate = "- 直近のニュースを踏まえ、提示条件と審査コメントを更新する。"
+    hits = [
+        _hit(f"Projects/tune_lease_55/News/2026-08-{day:02d}_industry-risk-news-reflection.md", text=boilerplate, distance=0.1)
+        for day in range(1, 6)
+    ]
+    hits.append(_hit("リース知識/審査コメントの書き方.md", text="審査コメントは本文2文とひとこと1文で書く。", distance=0.3))
+
+    ranked = store._rerank_hits("審査コメントのルールを確認したい", hits, top_k=5)
+
+    texts = [hit["text"] for hit in ranked]
+    assert texts.count(boilerplate) == 1
+    assert "審査コメントは本文2文とひとこと1文で書く。" in texts
+
+
+def test_rerank_drops_keyword_stub_chunks():
+    store = KnowledgeVectorStore(chroma_dir="/tmp/unused-rag-test")
+    stub = "物件別の中古流動性と残価リスク 審査 根拠 確認論点 条件 リスク 出典 稟議 コメント"
+    hits = [
+        _hit("Projects/tune_lease_55/Research/Vertex Distilled/a.md", text=stub, distance=0.05),
+        _hit("リース知識/残価.md", text="中古市場の厚み、撤去費、陳腐化速度で残価を保守的に見る。", distance=0.3),
+    ]
+
+    ranked = store._rerank_hits("物件の残価や中古売却価格が弱い場合の見方は？", hits, top_k=5)
+
+    assert [hit["text"] for hit in ranked] == ["中古市場の厚み、撤去費、陳腐化速度で残価を保守的に見る。"]
