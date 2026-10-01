@@ -99,7 +99,7 @@ def test_recall_finds_taught_knowledge(tmp_path, monkeypatch):
         candidate_saver=lambda claim: {"captured": True, "candidate": {"id": "c"}},
         date_str="2026-10-02",
     )
-    items = capture.recall_taught_knowledge(vault, "希望ナンバーの車の見積書はどう見る？")
+    items = capture.recall_taught_knowledge(vault, "希望ナンバーの車の見積書はどう見る？", candidates=[])
     assert items and items[0]["user_taught"] is True
     block = capture.build_recall_prompt_block(items)
     assert "ユーザーが教えた知識" in block
@@ -200,3 +200,36 @@ def test_memory_index_reads_vault_mind_and_knowledge(tmp_path, monkeypatch):
 
     demo = idx.build_index(tmp_path / "missing.json", demo_safe=True)["records"]
     assert not [r for r in demo if str(r.get("source_path", "")).startswith("vault:")]
+
+
+def test_recall_matches_short_note_by_shared_domain_terms(tmp_path, monkeypatch):
+    vault = _vault(tmp_path, monkeypatch)
+    capture.save_lease_teaching(
+        "車の希望ナンバー登録をするユーザーは見積書が変わるので要注意",
+        vault=vault,
+        surface="t",
+        candidate_saver=lambda claim: {"captured": True, "candidate": {"id": "c"}},
+        date_str="2026-10-02",
+    )
+    items = capture.recall_taught_knowledge(
+        vault, "中古車のリースで見積書をチェックするとき、気をつけることは？", candidates=[]
+    )
+    assert items and "希望ナンバー" in items[0]["snippet"]
+    assert capture.recall_taught_knowledge(vault, "リース審査で大事なことは？", candidates=[]) == []
+
+
+def test_recall_includes_chat_taught_candidates(tmp_path, monkeypatch):
+    vault = _vault(tmp_path, monkeypatch)
+    items = capture.recall_taught_knowledge(
+        vault,
+        "中古トラックのリースは走行距離どこまで見ればいい？",
+        candidates=[
+            {
+                "id": "c1",
+                "research_date": "2026-08-04",
+                "claim": "新車登録が5年以内で走行距離が200,000キロ位だったらばリースでもやっちゃう。なぜならトラックは1,000,000キロ位までは平気で走るからだ。",
+            }
+        ],
+    )
+    assert items and items[0]["path"] == "judgment_candidate:c1"
+    assert "要確認" in items[0]["topic"]

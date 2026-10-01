@@ -22,6 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from memory_promotion_policy import TEACHING_DOMAIN_TERMS
 from runtime_paths import get_data_dir
 
 FUNNEL_LOG_NAME = "shion_teaching_funnel.jsonl"
@@ -267,36 +268,97 @@ def _note_body(text: str) -> str:
     return " ".join(lines)
 
 
-def recall_taught_knowledge(vault: Path | None, query: str, *, limit: int = 3) -> list[dict[str, Any]]:
-    """Knowledge ノートから問いに近いものを返す（回答前の想起用）。"""
-    if vault is None:
-        return []
-    directory = _knowledge_dir(vault)
+# どの審査の文にも出るため、想起の決め手にしない語。
+_GENERIC_DOMAIN_TERMS = frozenset({"リース", "審査", "契約", "取引", "承認", "設備", "業界", "業種"})
+
+
+def _score_against(query: str, query_grams: set[str], body: str) -> float | None:
+    """共有するリース審査語（汎用語を除く）を主、bigram 一致率を従にした一致度。"""
+    grams = _ngrams(body)
+    if not grams:
+        return None
+    # 文字 bigram だけだと「する」「車の」のような汎用断片で決まり、短いノートが拾えなかった。
+    shared_terms = {
+        term
+        for term in TEACHING_DOMAIN_TERMS
+        if term not in _GENERIC_DOMAIN_TERMS and term in query and term in body
+    }
+    overlap = len(query_grams & grams) / len(query_grams)
+    if not shared_terms or (len(shared_terms) < 2 and overlap < 0.2):
+        return None
+    return len(shared_terms) + overlap
+
+
+def _chat_taught_candidates() -> list[dict[str, Any]]:
+    """チャットで教わった判断資産候補（要確認のまま）を読む。過去ログから救済した分を含む。"""
+    path = get_data_dir() / "autoresearch_judgment_asset_candidates.jsonl"
+    rows: list[dict[str, Any]] = []
+    if not path.exists():
+        return rows
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict) and row.get("research_topic") == "chat_judgment_teaching":
+            rows.append(row)
+    return rows
+
+
+def recall_taught_knowledge(
+    vault: Path | None,
+    query: str,
+    *,
+    limit: int = 3,
+    candidates: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Knowledge ノートと、チャットで教わった判断資産候補から問いに近いものを返す（回答前の想起用）。"""
     query_grams = _ngrams(query)
-    if not directory.exists() or len(query_grams) < 3:
+    if len(query_grams) < 3:
         return []
     scored: list[tuple[float, dict[str, Any]]] = []
-    for path in directory.glob("*.md"):
-        try:
-            raw = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
+    seen: set[str] = set()
+    directory = _knowledge_dir(vault) if vault is not None else None
+    if directory is not None and directory.exists():
+        for path in directory.glob("*.md"):
+            try:
+                raw = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            body = _note_body(raw)
+            score = _score_against(query, query_grams, body)
+            if score is None:
+                continue
+            seen.add(_normalized(body)[:80])
+            scored.append(
+                (
+                    score,
+                    {
+                        "path": _vault_relative(vault, str(path)),
+                        "topic": path.stem,
+                        "snippet": body[:220],
+                        "score": round(score, 3),
+                        "user_taught": KNOWLEDGE_SOURCE_TYPE in raw or "user_teaching" in raw,
+                    },
+                )
+            )
+    for row in _chat_taught_candidates() if candidates is None else candidates:
+        claim = str(row.get("edited_claim") or row.get("claim") or "")
+        if not claim or _normalized(claim)[:80] in seen:
             continue
-        body = _note_body(raw)
-        grams = _ngrams(body)
-        if not grams:
+        score = _score_against(query, query_grams, claim)
+        if score is None:
             continue
-        overlap = len(query_grams & grams) / len(query_grams)
-        if overlap < 0.25:
-            continue
+        seen.add(_normalized(claim)[:80])
         scored.append(
             (
-                overlap,
+                score,
                 {
-                    "path": _vault_relative(vault, str(path)),
-                    "topic": path.stem,
-                    "snippet": body[:220],
-                    "score": round(overlap, 3),
-                    "user_taught": KNOWLEDGE_SOURCE_TYPE in raw or "user_teaching" in raw,
+                    "path": f"judgment_candidate:{row.get('id')}",
+                    "topic": f"{row.get('research_date') or ''}に教わった判断（要確認）",
+                    "snippet": claim[:220],
+                    "score": round(score, 3),
+                    "user_taught": True,
                 },
             )
         )
