@@ -35,6 +35,45 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _H2_RE = re.compile(r"^##\s+(.+)$", re.MULTILINE)
 # wikiリンク [[ノート名]] または [[ノート名|表示名]]
 _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
+# 文として読める記号（句読点・括弧・表/見出し記号）。1つも無い1行の語の羅列は本文を持たない。
+_SENTENCE_MARK_RE = re.compile(r"[。、，,．.:：;；!?！？「」『』()（）\[\]【】|*#`]")
+_SPACE_RE = re.compile(r"\s+")
+
+
+_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+# Vertex検索ワークフローのノート（api/vertex_distillation.py）で本文を持たない節。
+_VERTEX_NOTE_SOURCE = "vertex_ai_search_workflow"
+_VERTEX_METADATA_SECTIONS = frozenset({"Topic", "Query", "Mode"})
+
+
+def normalize_chunk_text(text: str) -> str:
+    """重複判定用の正規化。空白・箇条書き記号の揺れと数値だけの差
+    （日次レポートの「win_pct(58.5%)」と「(58.7%)」など）を吸収する。"""
+    text = re.sub(r"(?m)^\s*[-*+]\s+", "", text or "")
+    return _SPACE_RE.sub(" ", _NUMBER_RE.sub("0", text)).strip()
+
+
+def is_vertex_metadata_section(section: str, meta: dict) -> bool:
+    """Vertex検索ノートの Topic/Query/Mode 節（検索語やモード名だけで本文が無い）。"""
+    return (
+        str((meta or {}).get("source") or "") == _VERTEX_NOTE_SOURCE
+        and str(section or "").strip() in _VERTEX_METADATA_SECTIONS
+    )
+
+
+def is_keyword_stub(text: str) -> bool:
+    """検索クエリ文字列のような「語を空白で並べただけ」の1行チャンクか。
+
+    例: 「物件別の中古流動性と残価リスク 審査 根拠 確認論点 条件 リスク 出典 稟議 コメント」
+    （Vertex Distilled ノートの ## Query 節）。語の一致だけで上位に来て本文を押し出す。
+    """
+    stripped = (text or "").strip()
+    # 全角スペース区切りは人が書いた口語文（例:「違う　中古車だから　車検は2年」）なので対象外。
+    if not stripped or "\n" in stripped or "　" in stripped or len(stripped) > 200:
+        return False
+    if _SENTENCE_MARK_RE.search(stripped):
+        return False
+    return len(stripped.split()) >= 4
 
 
 def extract_wikilinks(text: str) -> list[str]:
@@ -100,7 +139,7 @@ def _chunk_by_h2(body: str, file_path: str, file_name: str, meta: dict, mtime: f
 
     if not positions:
         text = body.strip()
-        if not text:
+        if not text or is_keyword_stub(text):
             return []
         return [Chunk(
             file_path=file_path,
@@ -117,7 +156,11 @@ def _chunk_by_h2(body: str, file_path: str, file_name: str, meta: dict, mtime: f
         text = body[pos:end].strip()
         # 見出し行自体は除いてテキストを取る
         text_without_heading = re.sub(r"^##\s+.+\n?", "", text, count=1).strip()
-        if not text_without_heading:
+        if (
+            not text_without_heading
+            or is_keyword_stub(text_without_heading)
+            or is_vertex_metadata_section(heading, meta)
+        ):
             continue
         chunks.append(Chunk(
             file_path=file_path,

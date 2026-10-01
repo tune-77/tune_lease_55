@@ -163,14 +163,9 @@ tags: ["リース審査", "vertex-search", "vertex-workflow"]
 > Vertexは補助索引であり、Local RAG・Obsidian原本・人間レビューを主判断にする。
 > 自動承認・自動否決・スコアリングには直結しない。
 
-## Topic
-{topic}
-
-## Query
-{query}
-
-## Mode
-{label} (`{mode}`)
+- Topic: {topic}
+- Query: `{query}`
+- Mode: {label} (`{mode}`)
 
 ## Answer Summary
 {answer_text or summary or "(要約なし)"}

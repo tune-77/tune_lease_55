@@ -679,8 +679,19 @@ class KnowledgeVectorStore:
         return min(penalty, 1.0)
 
     def _rerank_hits(self, query: str, hits: list[dict], top_k: int) -> list[dict]:
+        from api.knowledge.obsidian_loader import (
+            is_keyword_stub,
+            is_vertex_metadata_section,
+            normalize_chunk_text,
+        )
+
         ranked: list[tuple[float, int, dict]] = []
         for idx, hit in enumerate(hits):
+            # 既存索引に残る本文なしチャンク（取り込み時は除外済み）を検索側でも落とす。
+            if is_keyword_stub(str(hit.get("text") or "")) or is_vertex_metadata_section(
+                str(hit.get("section") or ""), hit.get("metadata") or {}
+            ):
+                continue
             priority = self._business_priority(query, hit)
             if priority <= -9.0:
                 continue
@@ -726,11 +737,16 @@ class KnowledgeVectorStore:
         noisy_ranked = [entry for entry in ranked if entry[2]["score_breakdown"]["noise_penalty"] >= 0.18]
         selected: list[dict] = []
         seen_paths: set[str] = set()
+        # 定型文が日付別ノートに繰り返し出る（例: ニュース振り返りの「明日見ること」）ため、
+        # 別ファイルでも同一テキストは最上位の1件だけ残す。
+        seen_texts: set[str] = set()
         for _score, _idx, item in [*clean_ranked, *noisy_ranked]:
             path = self._display_path(item)
-            if path in seen_paths:
+            text_key = normalize_chunk_text(str(item.get("text") or ""))
+            if path in seen_paths or (text_key and text_key in seen_texts):
                 continue
             seen_paths.add(path)
+            seen_texts.add(text_key)
             selected.append(item)
             if len(selected) >= top_k:
                 break
