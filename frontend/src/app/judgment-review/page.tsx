@@ -124,6 +124,7 @@ type PromotionCandidate = {
 
 type PromotionResponse = {
   count: number;
+  total_count?: number;
   active_count: number;
   promotion_policy: string;
   candidates: PromotionCandidate[];
@@ -265,10 +266,6 @@ export default function JudgmentReviewPage() {
     [predictionFilter, predictionItems],
   );
 
-  const promotionReadyCount = promotionItems.filter(
-    (item) => item.promotion_status !== "held",
-  ).length;
-
   const handleReview = useCallback(
     async (item: JudgmentCandidate, reviewStatus: "approved" | "rejected") => {
       setActionLoading((current) => ({ ...current, [item.id]: true }));
@@ -343,6 +340,7 @@ export default function JudgmentReviewPage() {
     });
     setPromotionItems(response.data.candidates ?? []);
     setPromotionSummary(response.data ?? null);
+    return response.data;
   }, []);
 
   const handlePromotionAction = useCallback(
@@ -369,7 +367,13 @@ export default function JudgmentReviewPage() {
             },
           );
         }
-        await refreshPromotionCandidates();
+        const refreshed = await refreshPromotionCandidates();
+        // 消えたカードの位置に次の候補が繰り上がるため、押した結果を必ず文字で返す。
+        const label = { promote: "正規判断資産へ昇格", hold: "保留", reject: "却下" }[action];
+        const remaining = refreshed.total_count ?? refreshed.count;
+        setPromotionNotice((current) =>
+          `JA-${item.id.slice(0, 8)} を${label}しました（一覧から外しました。残り ${remaining} 件）。${current}`,
+        );
       } catch (err) {
         const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
         setError(detail || "判断資産候補のレビュー結果を保存できませんでした。もう一度お試しください。");
@@ -512,13 +516,13 @@ export default function JudgmentReviewPage() {
               color="emerald"
             />
             <SummaryCard
-              label="昇格候補"
-              value={promotionSummary?.count ?? promotionItems.length}
+              label="昇格候補（残り）"
+              value={promotionSummary?.total_count ?? promotionSummary?.count ?? promotionItems.length}
               color="amber"
             />
             <SummaryCard
-              label="今すぐ確認"
-              value={promotionReadyCount}
+              label="表示中"
+              value={promotionItems.length}
               color="rose"
             />
           </div>

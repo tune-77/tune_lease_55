@@ -1521,7 +1521,8 @@ _RULE_REVIEW_TYPE_PRIORITY = {
 }
 
 
-def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str, Any]]:
+def _rank_judgment_asset_promotion_candidates() -> list[dict[str, Any]]:
+    """レビュー待ちの昇格候補を全件、表示順に返す（件数上限なし）。"""
     state = _read_judgment_asset_candidate_state()
     rows = _load_autoresearch_judgment_asset_candidates(limit=1000)
     active_statements = {
@@ -1606,7 +1607,11 @@ def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str,
         ),
         reverse=True,
     )
-    return candidates[:max(1, min(int(limit or 30), 100))]
+    return candidates
+
+
+def _load_judgment_asset_promotion_candidates(limit: int = 30) -> list[dict[str, Any]]:
+    return _rank_judgment_asset_promotion_candidates()[:max(1, min(int(limit or 30), 100))]
 
 
 @contextlib.contextmanager
@@ -1637,7 +1642,7 @@ def _promote_judgment_asset_candidate_to_canonical(
     import hashlib as _hashlib
 
     with _judgment_asset_promotion_lock():
-        candidates = _load_judgment_asset_promotion_candidates(limit=1000)
+        candidates = _rank_judgment_asset_promotion_candidates()
         candidate = next((item for item in candidates if str(item.get("id") or "") == candidate_id), None)
         if not candidate:
             raise HTTPException(status_code=404, detail="promotion candidate not found")
@@ -3248,10 +3253,13 @@ def get_language_judgment_materials(limit: int = 100) -> dict:
 
 @router.get("/api/judgment-assets/promotion-candidates")
 def get_judgment_asset_promotion_candidates(limit: int = 30) -> dict:
-    candidates = _load_judgment_asset_promotion_candidates(limit=limit)
+    ranked = _rank_judgment_asset_promotion_candidates()
+    candidates = ranked[:max(1, min(int(limit or 30), 100))]
     active_count = len(_load_canonical_judgment_asset_candidates(limit=1000))
     return {
         "count": len(candidates),
+        # count は表示上限で切った件数。残りのレビュー待ち総数は total_count（画面の件数表示用）。
+        "total_count": len(ranked),
         "active_count": active_count,
         "promotion_policy": "human_review_required",
         "candidates": candidates,
