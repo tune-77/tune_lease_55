@@ -1117,3 +1117,50 @@ def test_main_exits_zero_when_days_have_no_events(monkeypatch) -> None:
     )
 
     syncer.main()
+
+
+def test_materialize_events_judgment_asset_promotion_keeps_local_merge_result(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(syncer, "CLOUDRUN_EVENT_ARCHIVE_LOG", tmp_path / "archive.jsonl")
+    monkeypatch.setattr(syncer, "WIZARD_INPUT_LOG", tmp_path / "wizard.jsonl")
+    monkeypatch.setattr(syncer, "RAG_FEEDBACK_LOG", tmp_path / "rag_feedback.jsonl")
+    monkeypatch.setattr(syncer, "RAG_HIT_LOG", tmp_path / "rag_hit.jsonl")
+    monkeypatch.setattr(syncer, "SCREENING_LOOP_FEEDBACK_LOG", tmp_path / "screening_loop.jsonl")
+    local_db = tmp_path / "lease_data.db"
+    monkeypatch.setattr(syncer, "LOCAL_LEASE_DB", local_db)
+    canonical_path = tmp_path / "canonical_judgment_rules.json"
+    state_path = tmp_path / "candidate_state.json"
+    monkeypatch.setattr(syncer, "CANONICAL_JUDGMENT_RULES_JSON", canonical_path)
+    monkeypatch.setattr(syncer, "JUDGMENT_ASSET_CANDIDATE_STATE_JSON", state_path)
+
+    canonical_path.write_text(
+        json.dumps(
+            {
+                "rules": [
+                    {"id": "rep", "status": "active", "canonical_statement": "統合後の代表文。", "merged_from": [{"id": "src"}]},
+                    {"id": "src", "status": "merged", "merged_into": "rep", "canonical_statement": "統合元の本文。"},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    stale_rep = {"id": "rep", "status": "active", "canonical_statement": "統合前の本文。", "evidence_count": 4}
+    stale_src = {"id": "src", "status": "active", "canonical_statement": "統合元の本文。"}
+    events = [
+        {
+            "event_id": f"promote-merge-{rule['id']}",
+            "ts": "2026-10-02T00:00:00Z",
+            "event_type": "judgment_asset_candidate_promoted",
+            "payload": {"status": "updated", "candidate_id": f"cand-{rule['id']}", "rule": rule},
+        }
+        for rule in (stale_rep, stale_src)
+    ]
+
+    syncer.materialize_events(events)
+
+    by_id = {r["id"]: r for r in json.loads(canonical_path.read_text(encoding="utf-8"))["rules"]}
+    assert by_id["rep"]["canonical_statement"] == "統合後の代表文。"
+    assert by_id["rep"]["merged_from"] == [{"id": "src"}]
+    assert by_id["rep"]["evidence_count"] == 4
+    assert by_id["src"]["status"] == "merged"
+    assert by_id["src"]["merged_into"] == "rep"

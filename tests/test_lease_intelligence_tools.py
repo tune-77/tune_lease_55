@@ -842,3 +842,24 @@ def test_score_full_case_reads_keys_that_the_engine_actually_returns():
         f"scoring_core が返さないキーを読もうとしています: {missing}。"
         f"実際の返却キー: {sorted(returned)}"
     )
+
+
+def test_lookup_judgment_rules_skips_merged_and_demoted_rules(tmp_path, monkeypatch):
+    import json
+
+    import lease_intelligence_tools as tools
+
+    (tmp_path / "canonical_judgment_rules.json").write_text(
+        json.dumps({
+            "rules": [
+                {"id": "rep", "concept": "c", "canonical_statement": "返済原資を確認する（代表）", "status": "active"},
+                {"id": "old", "concept": "c", "canonical_statement": "返済原資を確認する", "status": "merged", "merged_into": "rep"},
+                {"id": "dem", "concept": "c", "canonical_statement": "返済原資を見る", "status": "demoted"},
+            ],
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tools, "get_data_path", lambda name: str(tmp_path / name))
+
+    result = tools.lookup_judgment_rules(query="返済原資")
+    assert [rule["id"] for rule in result["canonical_rules"]["rules"]] == ["rep"]

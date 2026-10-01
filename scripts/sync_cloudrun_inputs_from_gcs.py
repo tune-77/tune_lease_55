@@ -559,6 +559,17 @@ def _apply_shion_review_feedback_from_event(conn: sqlite3.Connection, event: dic
     return 1
 
 
+_MERGE_PRESERVED_KEYS = (
+    "status",
+    "canonical_statement",
+    "merged_into",
+    "merged_at",
+    "merge_reason",
+    "merged_from",
+    "pre_merge_statement",
+)
+
+
 def _apply_judgment_asset_promotion_from_event(conn: sqlite3.Connection, event: dict) -> int:
     """Cloud Run上での判断資産昇格をローカルの正本ファイルへ反映する。
 
@@ -591,6 +602,10 @@ def _apply_judgment_asset_promotion_from_event(conn: sqlite3.Connection, event: 
     rules = [r for r in rules if isinstance(r, dict)]
     existing_index = next((i for i, r in enumerate(rules) if str(r.get("id") or "") == rule_id), None)
     if existing_index is not None:
+        local = rules[existing_index]
+        # Cloud Run側は統合前の古いバンドルを持ち得る。ローカルの重複統合結果は巻き戻さない。
+        if local.get("merged_into") or local.get("merged_from"):
+            rule = {**rule, **{key: local[key] for key in _MERGE_PRESERVED_KEYS if key in local}}
         rules[existing_index] = rule
     else:
         rules.append(rule)
