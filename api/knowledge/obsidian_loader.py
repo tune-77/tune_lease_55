@@ -40,9 +40,25 @@ _SENTENCE_MARK_RE = re.compile(r"[。、，,．.:：;；!?！？「」『』()�
 _SPACE_RE = re.compile(r"\s+")
 
 
+_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+# Vertex検索ワークフローのノート（api/vertex_distillation.py）で本文を持たない節。
+_VERTEX_NOTE_SOURCE = "vertex_ai_search_workflow"
+_VERTEX_METADATA_SECTIONS = frozenset({"Topic", "Query", "Mode"})
+
+
 def normalize_chunk_text(text: str) -> str:
-    """重複判定用の正規化（空白・箇条書き記号の揺れを吸収）。"""
-    return _SPACE_RE.sub(" ", re.sub(r"(?m)^\s*[-*+]\s+", "", text or "")).strip()
+    """重複判定用の正規化。空白・箇条書き記号の揺れと数値だけの差
+    （日次レポートの「win_pct(58.5%)」と「(58.7%)」など）を吸収する。"""
+    text = re.sub(r"(?m)^\s*[-*+]\s+", "", text or "")
+    return _SPACE_RE.sub(" ", _NUMBER_RE.sub("0", text)).strip()
+
+
+def is_vertex_metadata_section(section: str, meta: dict) -> bool:
+    """Vertex検索ノートの Topic/Query/Mode 節（検索語やモード名だけで本文が無い）。"""
+    return (
+        str((meta or {}).get("source") or "") == _VERTEX_NOTE_SOURCE
+        and str(section or "").strip() in _VERTEX_METADATA_SECTIONS
+    )
 
 
 def is_keyword_stub(text: str) -> bool:
@@ -140,7 +156,11 @@ def _chunk_by_h2(body: str, file_path: str, file_name: str, meta: dict, mtime: f
         text = body[pos:end].strip()
         # 見出し行自体は除いてテキストを取る
         text_without_heading = re.sub(r"^##\s+.+\n?", "", text, count=1).strip()
-        if not text_without_heading or is_keyword_stub(text_without_heading):
+        if (
+            not text_without_heading
+            or is_keyword_stub(text_without_heading)
+            or is_vertex_metadata_section(heading, meta)
+        ):
             continue
         chunks.append(Chunk(
             file_path=file_path,

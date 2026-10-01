@@ -679,12 +679,18 @@ class KnowledgeVectorStore:
         return min(penalty, 1.0)
 
     def _rerank_hits(self, query: str, hits: list[dict], top_k: int) -> list[dict]:
-        from api.knowledge.obsidian_loader import is_keyword_stub, normalize_chunk_text
+        from api.knowledge.obsidian_loader import (
+            is_keyword_stub,
+            is_vertex_metadata_section,
+            normalize_chunk_text,
+        )
 
         ranked: list[tuple[float, int, dict]] = []
         for idx, hit in enumerate(hits):
-            # 既存索引に残る語の羅列チャンク（取り込み時は除外済み）を検索側でも落とす。
-            if is_keyword_stub(str(hit.get("text") or "")):
+            # 既存索引に残る本文なしチャンク（取り込み時は除外済み）を検索側でも落とす。
+            if is_keyword_stub(str(hit.get("text") or "")) or is_vertex_metadata_section(
+                str(hit.get("section") or ""), hit.get("metadata") or {}
+            ):
                 continue
             priority = self._business_priority(query, hit)
             if priority <= -9.0:

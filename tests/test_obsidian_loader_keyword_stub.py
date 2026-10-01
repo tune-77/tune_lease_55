@@ -25,3 +25,17 @@ def test_chunk_by_h2_skips_query_section():
 
 def test_normalize_chunk_text_ignores_bullet_and_space_variation():
     assert normalize_chunk_text("- 直近の  ニュース\n") == normalize_chunk_text("直近の ニュース")
+
+
+def test_chunk_by_h2_skips_vertex_note_metadata_sections():
+    body = "## Topic\n残価リスク\n\n## Mode\n知識棚卸し (`knowledge_audit`)\n\n## Answer Summary\n中古市場の厚みで残価を見る。\n"
+    vertex = _chunk_by_h2(body, "/v/a.md", "a.md", {"source": "vertex_ai_search_workflow"}, 0.0)
+    other = _chunk_by_h2(body, "/v/b.md", "b.md", {}, 0.0)
+    assert [chunk.section for chunk in vertex] == ["Answer Summary"]
+    assert [chunk.section for chunk in other] == ["Topic", "Mode", "Answer Summary"]
+
+
+def test_normalize_chunk_text_treats_number_only_differences_as_same():
+    assert normalize_chunk_text("60-80帯 win_pct(58.5%) < 40-60帯(62.4%)") == normalize_chunk_text(
+        "60-80帯 win_pct(58.7%) < 40-60帯(62.7%)"
+    )
