@@ -379,6 +379,7 @@ type JudgmentAssetPromotionCandidate = {
 
 type JudgmentAssetPromotionSummary = {
   count: number;
+  total_count?: number;
   active_count: number;
   promotion_policy: string;
   candidates: JudgmentAssetPromotionCandidate[];
@@ -1448,7 +1449,7 @@ export default function ImprovementLogPage() {
                 正規判断資産 {judgmentAssetPromotion?.active_count ?? 0}件
               </span>
               <span className="rounded-full bg-white px-3 py-1 text-amber-800">
-                昇格候補 {judgmentAssetPromotion?.count ?? 0}件
+                昇格候補 残り{judgmentAssetPromotion?.total_count ?? judgmentAssetPromotion?.count ?? 0}件
               </span>
             </div>
           </div>
