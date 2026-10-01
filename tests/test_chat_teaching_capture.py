@@ -233,3 +233,73 @@ def test_recall_includes_chat_taught_candidates(tmp_path, monkeypatch):
     )
     assert items and items[0]["path"] == "judgment_candidate:c1"
     assert "要確認" in items[0]["topic"]
+
+
+def test_teaching_turn_saves_then_next_question_recalls_and_counts_use(tmp_path, monkeypatch):
+    """通常チャットと対話室で共通の1ターン処理: 教える→保存→次の問いで想起→回答で使用。"""
+    vault = _vault(tmp_path, monkeypatch)
+    saver_calls: list[str] = []
+
+    def saver(claim):
+        saver_calls.append(claim)
+        return {"captured": True, "candidate": {"id": "cand-x"}}
+
+    taught = capture.prepare_teaching_turn(
+        "車の希望ナンバー登録をするユーザーは見積書が変わるので要注意",
+        vault=vault,
+        surface="next_chat_rag",
+        candidate_saver=saver,
+        rag_search=lambda q: pytest.fail("教示の発言では想起しない"),
+    )
+    assert taught.save["saved"] is True and saver_calls
+    assert "保存済み" in taught.save_context and taught.recall_context == ""
+    assert "保存先:" in taught.finalize("承知しました。")
+
+    monkeypatch.setattr(capture, "_chat_taught_candidates", lambda: [])
+    asked = capture.prepare_teaching_turn(
+        "中古車のリースで見積書をチェックするとき、気をつけることは？",
+        vault=vault,
+        surface="next_chat_general",
+        candidate_saver=lambda claim: pytest.fail("問いは保存しない"),
+        rag_search=lambda q: [{"text": "見積書の確認手順", "source": "rag.md"}],
+    )
+    assert asked.recall_items and "希望ナンバー" in asked.recall_context
+    assert "参照ナレッジ（rag.md）" in asked.recall_context
+    reply = asked.finalize("以前教わった通り、希望ナンバー登録をするユーザーは見積書が変わるので要注意です。")
+    assert "保存先" not in reply
+    assert asked.response_extra()["pre_recall"][0]["user_taught"] is True
+
+    summary = capture.funnel_summary(capture._today(), path=tmp_path / "funnel.jsonl")
+    assert summary["day"] == {"taught": 1, "saved": 1, "recalled": 1, "used": 1}
+    assert summary["day_by_surface"]["通常チャット"]["used"] == 1
+
+
+def test_teaching_turn_survives_saver_and_search_failures(tmp_path, monkeypatch):
+    vault = _vault(tmp_path, monkeypatch)
+
+    def broken(_):
+        raise RuntimeError("down")
+
+    turn = capture.prepare_teaching_turn(
+        "リース審査で銀行借入の多い会社を見るときの注意点は？",
+        vault=vault,
+        surface="next_chat_general",
+        candidate_saver=broken,
+        rag_search=broken,
+    )
+    assert turn.rag_hits == []
+    fixed = turn.finalize("覚えておきます。借入の返済原資を確認しましょう。")
+    assert "覚えておきます" not in fixed and "まだ保存していません" in fixed
+
+
+def test_funnel_summary_splits_dialogue_and_normal_chat(tmp_path):
+    path = tmp_path / "f.jsonl"
+    rows = [
+        {"date": "2026-10-02", "event": "taught", "surface": "lease_intelligence_dialogue"},
+        {"date": "2026-10-02", "event": "taught", "surface": "next_chat_rag"},
+        {"date": "2026-10-02", "event": "saved", "surface": "next_chat_general"},
+    ]
+    path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    by = capture.funnel_summary("2026-10-02", path=path)["day_by_surface"]
+    assert by["対話室"]["taught"] == 1
+    assert by["通常チャット"] == {"taught": 1, "saved": 1, "recalled": 0, "used": 0}

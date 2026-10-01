@@ -9,6 +9,8 @@
 * 想起: Knowledge ノートからの文字 n-gram 一致（回答前にプロンプトへ入れる）
 * 正直さ: 保存の成否に合わない「判断資産にします」等を回答から外し、保存先を添える
 * 指標: 教えた→保存した→想起した→回答で使った を ``data/shion_teaching_funnel.jsonl`` に残す
+
+対話室と通常チャット（/api/chat）は ``prepare_teaching_turn`` → ``TeachingTurn.finalize`` で共通に使う。
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import os
 import re
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -392,11 +395,134 @@ def used_in_reply(item: dict[str, Any], reply: str) -> bool:
     return len(grams & _ngrams(reply, 3)) / len(grams) >= 0.15
 
 
+def previous_user_message(history: list[dict[str, Any]]) -> str:
+    """会話履歴（今回の発言は未保存）から直前のユーザー発言を返す。指示語だけの教示の本文に使う。"""
+    return next(
+        (str(m.get("content") or "") for m in reversed(history or []) if str(m.get("role") or "") == "user"),
+        "",
+    )
+
+
+@dataclass
+class TeachingTurn:
+    """1回の発言についての 保存→想起 の結果。回答前に作り、回答後に ``finalize`` する。
+
+    対話室（/api/lease-intelligence/dialogue）と通常チャット（/api/chat）で共通に使う。
+    """
+
+    surface: str
+    save: dict[str, Any] = field(default_factory=lambda: {"is_teaching": False, "saved": False, "reason": "not_run"})
+    recall_items: list[dict[str, Any]] = field(default_factory=list)
+    rag_hits: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def save_context(self) -> str:
+        return build_save_result_prompt_block(self.save)
+
+    @property
+    def recall_context(self) -> str:
+        return build_recall_prompt_block(self.recall_items, self.rag_hits[:3])
+
+    def finalize(self, reply: str) -> str:
+        """保存の成否に合わせて回答を正し、想起した知識が使われたかを指標に残す。"""
+        fixed = enforce_save_honesty(reply, self.save)
+        for item in self.recall_items:
+            if used_in_reply(item, fixed):
+                record_funnel_event(
+                    "used",
+                    surface=self.surface,
+                    path=item.get("path"),
+                    user_taught=bool(item.get("user_taught")),
+                )
+        return fixed
+
+    def response_extra(self) -> dict[str, Any]:
+        return {
+            "teaching_save": self.save,
+            "pre_recall": [
+                {"path": item.get("path"), "score": item.get("score"), "user_taught": item.get("user_taught")}
+                for item in self.recall_items
+            ],
+        }
+
+
+def vector_store_rag_search(surface: str) -> Callable[[str], list[dict[str, Any]]]:
+    """``prepare_teaching_turn`` の ``rag_search`` に渡すローカル RAG 検索。"""
+
+    def _search(query: str) -> list[dict[str, Any]]:
+        from api.knowledge.vector_store import get_store
+
+        return get_store().search(query, top_k=5, surface=surface)
+
+    return _search
+
+
+def prepare_teaching_turn(
+    message: str,
+    *,
+    vault: Path | None,
+    surface: str,
+    candidate_saver: Callable[[str], dict[str, Any]],
+    previous_user_message: str = "",
+    rag_search: Callable[[str], list[dict[str, Any]]] | None = None,
+) -> TeachingTurn:
+    """回答前に、教示なら保存し、審査の問いなら Knowledge・教わった候補・RAG を想起する。
+
+    ``rag_search`` は RAG を別途引かない経路だけ渡す（通常チャットの RAG 分岐は自前で引く）。
+    失敗しても対話は止めない（保存できなかった扱いにして、約束文は外れる）。
+    """
+    from memory_promotion_policy import has_domain_keyword
+
+    turn = TeachingTurn(surface=surface)
+    try:
+        turn.save = save_lease_teaching(
+            message,
+            vault=vault,
+            surface=surface,
+            candidate_saver=candidate_saver,
+            previous_user_message=previous_user_message,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[TeachingCapture] 保存判定に失敗: {type(exc).__name__}: {exc}")
+        return turn
+    if not has_domain_keyword(message) or turn.save.get("is_teaching"):
+        return turn
+    try:
+        turn.recall_items = recall_taught_knowledge(vault, message, limit=3)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[TeachingCapture] 想起に失敗: {type(exc).__name__}: {exc}")
+    if rag_search is not None:
+        try:
+            turn.rag_hits = list(rag_search(message) or [])
+        except Exception as exc:  # noqa: BLE001
+            print(f"[TeachingCapture] RAG検索に失敗: {exc}")
+    for item in turn.recall_items:
+        record_funnel_event(
+            "recalled",
+            surface=surface,
+            path=item.get("path"),
+            user_taught=bool(item.get("user_taught")),
+        )
+    return turn
+
+
+# 朝報の経路別内訳。surface の接頭辞で束ねる（通常チャットは general/rag 分岐ごとに surface が違う）。
+FUNNEL_SURFACE_LABELS = (
+    ("lease_intelligence_dialogue", "対話室"),
+    ("next_chat", "通常チャット"),
+)
+
+
+def _surface_label(surface: str) -> str:
+    return next((label for prefix, label in FUNNEL_SURFACE_LABELS if surface.startswith(prefix)), "その他")
+
+
 def funnel_summary(date_str: str | None = None, *, path: Path | None = None) -> dict[str, Any]:
     """指定日の 教えた→保存→想起→使用 の件数と累計を返す（朝報用）。"""
     target = path or _funnel_path()
     day: Counter[str] = Counter()
     total: Counter[str] = Counter()
+    day_by_surface: dict[str, Counter[str]] = {}
     if target.exists():
         for line in target.read_text(encoding="utf-8", errors="ignore").splitlines():
             try:
@@ -409,9 +535,15 @@ def funnel_summary(date_str: str | None = None, *, path: Path | None = None) -> 
             total[event] += 1
             if date_str and str(row.get("date") or "") == date_str:
                 day[event] += 1
+                label = _surface_label(str(row.get("surface") or ""))
+                day_by_surface.setdefault(label, Counter())[event] += 1
     return {
         "date": date_str or "",
         "day": {event: day.get(event, 0) for event in FUNNEL_EVENTS},
         "total": {event: total.get(event, 0) for event in FUNNEL_EVENTS},
+        "day_by_surface": {
+            label: {event: counts.get(event, 0) for event in FUNNEL_EVENTS}
+            for label, counts in day_by_surface.items()
+        },
         "path": str(target),
     }
