@@ -328,6 +328,8 @@ TRANSIENT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("icloud_file", re.compile(r"Resource deadlock avoided|\.icloud\b|FileNotFoundError|No such file or directory", re.I)),
     ("lock", re.compile(r"database is locked|could not acquire lock|Resource temporarily unavailable|BlockingIOError", re.I)),
 ]
+# 自分の結果を朝報に専用の行で出す手順（汎用の失敗一覧には載せない）
+_SELF_REPORTED_STEPS = {"pipeline_auto_recovery", "sync_main_checkout"}
 _STEP_MARKER_RE = re.compile(r"^\[step\] (\S+) exit=(-?\d+)\s*$")
 _ERROR_LINE_RE = re.compile(r"error|exception|失敗|警告|traceback|fatal", re.I)
 
@@ -459,7 +461,7 @@ def triage_and_retry(
     outcome: dict[str, list[dict[str, Any]]] = {"recovered": [], "unrecovered": [], "quality_failures": []}
     retried = 0
     for step, failure in sorted(failed_steps_for_run(log_path, run_date).items()):
-        if step == "pipeline_auto_recovery":
+        if step in _SELF_REPORTED_STEPS:
             continue
         excerpt = step_log_excerpt(log_text, step)
         summary = summarize_error(excerpt)
@@ -544,10 +546,27 @@ def consecutive_failure_days(log_path: Path) -> tuple[str, dict[str, int]]:
     return latest_run, streaks
 
 
+def main_checkout_warning(repo: Path | None = None, status_path: Path | None = None) -> str | None:
+    """朝報時点のブランチを直接読む（fetch しない）。master で遅れている時は、日次パイプラインが
+    ff を見送った理由（未コミット変更の重なり・ローカルコミット・fetch 失敗）を状態ファイルから添える。"""
+    from scripts.sync_main_checkout import OK_STATUSES, inspect, warning_line
+
+    repo = repo or ROOT
+    live = inspect(repo, fetch=False)
+    if live.get("status") in OK_STATUSES or live.get("status") == "not_main_branch":
+        return warning_line(live)
+    stored = _load_json(status_path or repo / "data" / "main_checkout_status.json", {})
+    if isinstance(stored, dict) and stored.get("status") not in OK_STATUSES | {None}:
+        return warning_line({**stored, **{k: live[k] for k in ("branch", "behind", "uncommitted") if k in live}})
+    return warning_line(live)
+
+
 def morning_report_lines(
     log_path: Path | None = None,
     state_path: Path | None = None,
     log_dir: Path = PIPELINE_LOG_DIR,
+    *,
+    check_main_checkout: bool = True,
 ) -> list[str]:
     """朝報の上部に置く警告ブロック（警告が無ければ修復件数の1行だけ）。"""
     log_path = log_path or DEFAULT_LOG
@@ -563,6 +582,8 @@ def morning_report_lines(
     for step in streaks:
         if step not in quality and step not in unrecovered and is_quality_check(step):
             quality[step] = {"step": step}
+    for step in _SELF_REPORTED_STEPS:
+        streaks.pop(step, None)
     long_streaks = {step for step, days in streaks.items() if days >= 2}
     log_file = pipeline_log_path(run_date, log_dir) if run_date else None
     log_text = _read_text(log_file) if log_file else ""
@@ -580,6 +601,9 @@ def morning_report_lines(
         "（" + ", ".join(f"{r['step']}←{r.get('cause', '')}" for r in recovered) + "）" if recovered else ""
     )
     warn: list[str] = []
+    checkout_line = main_checkout_warning() if check_main_checkout else None
+    if checkout_line:
+        warn.append(f"> - {checkout_line}")
     for step in sorted(quality):
         warn.append(f"> - 🧪 品質チェック失敗（劣化の疑い・再実行せず）: {detail(step, quality[step])}")
     for step in sorted(unrecovered):
@@ -592,7 +616,7 @@ def morning_report_lines(
     return [
         f"> [!warning] 日次パイプライン要確認（{run_date}）",
         *warn,
-        f"> - ログ: `{log_file}`",
+        *([f"> - ログ: `{log_file}`"] if log_file else []),
         "",
         rec_line,
     ]

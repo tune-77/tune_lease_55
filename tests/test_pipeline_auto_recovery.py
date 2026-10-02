@@ -422,7 +422,7 @@ def test_morning_report_warns_on_quality_unrecovered_and_streaks(tmp_path) -> No
         encoding="utf-8",
     )
 
-    lines = recovery.morning_report_lines(step_log, state, log_dir)
+    lines = recovery.morning_report_lines(step_log, state, log_dir, check_main_checkout=False)
     text = "\n".join(lines)
 
     assert lines[0] == "> [!warning] 日次パイプライン要確認（20261004）"
@@ -436,4 +436,4 @@ def test_morning_report_warns_on_quality_unrecovered_and_streaks(tmp_path) -> No
 def test_morning_report_is_one_line_when_clean(tmp_path) -> None:
     step_log = tmp_path / "steps.jsonl"
     _write_step_log(step_log, [("20261004", "a", 0)])
-    assert recovery.morning_report_lines(step_log, tmp_path / "none.json", tmp_path) == ["- 🔧 パイプライン自動修復: 0件"]
+    assert recovery.morning_report_lines(step_log, tmp_path / "none.json", tmp_path, check_main_checkout=False) == ["- 🔧 パイプライン自動修復: 0件"]
