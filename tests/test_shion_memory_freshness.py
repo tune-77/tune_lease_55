@@ -113,3 +113,29 @@ def test_apply_freshness_demotes_old_unused_and_updates_last_used():
     assert summary["demoted_to_stale"] == 1
     assert summary["revived_to_active"] == 1
     assert summary["last_used_updated"] == 2
+
+
+def test_knowledge_base_is_not_aged_out_and_aged_stale_is_revived_but_feedback_still_demotes():
+    # 版管理された審査概念の正本は、想起されない→使われない→stale の一方通行に落とさない
+    kb = "knowledge_base/okf_lease_concepts/rules/conditional_approval_playbook.md"
+    bad = "knowledge_base/okf_lease_concepts/rules/bad_rule.md"
+    index = {
+        "records": [
+            {**_record("kb_active"), "source": "knowledge_base", "source_path": kb},
+            {**_record("kb_stale", status="stale"), "source": "knowledge_base", "source_path": kb},
+            {**_record("kb_negative"), "source": "knowledge_base", "source_path": bad},
+            {**_record("kb_negative_stale", status="stale"), "source": "knowledge_base", "source_path": bad},
+            {**_record("daily_old"), "source": "daily_memory", "source_path": "memory/2026-05-01.md"},
+        ]
+    }
+
+    apply_freshness(index, {}, stale_days=45, today=date(2026, 7, 3), negative_files={"bad_rule.md"})
+
+    by_id = {r["id"]: r["status"] for r in index["records"]}
+    assert by_id == {
+        "kb_active": "active",
+        "kb_stale": "active",
+        "kb_negative": "stale",
+        "kb_negative_stale": "stale",
+        "daily_old": "stale",
+    }

@@ -516,3 +516,34 @@ def test_scoring_coeff_health_flags_all_zero_required_coefficients(tmp_path):
     codes = {issue["code"] for issue in health["issues"]}
     assert "coeff_required_all_zero" in codes
     assert "model_load_failed" in codes
+
+
+def test_check_model_load_retries_only_on_timeout(tmp_path, monkeypatch):
+    import subprocess
+
+    from scripts import loop_metrics
+
+    model = tmp_path / "m.pkl"
+    model.write_bytes(b"x")
+    calls: list[int] = []
+
+    def slow_then_ok(cmd, **kwargs):
+        calls.append(kwargs["timeout"])
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(loop_metrics.subprocess, "run", slow_then_ok)
+    assert loop_metrics._check_model_load(model) == (True, "")
+    assert calls == [30, 120]
+
+    calls.clear()
+
+    def broken(cmd, **kwargs):
+        calls.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(cmd, 1, "", "UnpicklingError: bad")
+
+    monkeypatch.setattr(loop_metrics.subprocess, "run", broken)
+    ok, error = loop_metrics._check_model_load(model)
+    assert not ok and "joblib: UnpicklingError: bad" in error
+    assert calls == [30, 30]  # 壊れたモデルは joblib・pickle 各1回だけ（リトライしない）
