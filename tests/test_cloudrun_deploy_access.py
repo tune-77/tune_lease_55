@@ -231,9 +231,18 @@ def test_public_tunnel_requires_web_auth_and_same_origin_api_proxy():
     judgment_drill = (root / "frontend/src/app/api/judgment-drill/route.ts").read_text()
 
     assert "PUBLIC_TUNNEL_AUTH_FILE" in launcher
+    assert "API_ACCESS_KEY_FILE" in launcher
     assert 'chmod 600 "$AUTH_FILE"' in installer
+    assert 'chmod 600 "$API_KEY_FILE"' in installer
     assert "EnvironmentVariables.PUBLIC_TUNNEL_AUTH_FILE" in installer
+    assert "EnvironmentVariables.API_ACCESS_KEY_FILE" in installer
     assert "process.env.PUBLIC_TUNNEL_AUTH" in proxy
+    assert 'TUNNEL_SESSION_COOKIE = "tune_lease_session"' in proxy
+    assert 'httpOnly: true' in proxy
+    assert 'secure: true' in proxy
+    # 外部リンク経由の再認証を避けるため Lax（#1132）。
+    assert 'sameSite: "lax"' in proxy
+    assert "TUNNEL_SESSION_MAX_AGE_SECONDS" in proxy
     assert 'matcher: "/:path*"' in proxy
     assert '=== "/api/system/knowledge-sync-health"' in proxy
     # 2026-09-10: この探査パスは以前 Basic 認証ゲートを完全にスキップして匿名公開
