@@ -51,6 +51,10 @@ if [ "$PUBLIC_TUNNEL" = "1" ]; then
     echo "WARNING: PUBLIC_TUNNEL_DISABLE_AUTH=1 — 公開トンネルを認証なしで公開中（URLを知る誰でも審査データ・チャット・API・音声通話を利用可能）" >&2
   fi
   export REQUIRE_API_ACCESS_KEY=1
+  if [ -n "$API_ACCESS_KEY_FILE" ] && [ -L "$API_ACCESS_KEY_FILE" ]; then
+    echo "Refusing to use a symlinked API access key: $API_ACCESS_KEY_FILE" >&2
+    exit 1
+  fi
   if [ -z "${API_ACCESS_KEY:-}" ] && [ -n "$API_ACCESS_KEY_FILE" ] && [ -r "$API_ACCESS_KEY_FILE" ]; then
     IFS= read -r API_ACCESS_KEY < "$API_ACCESS_KEY_FILE" || true
   fi
