@@ -705,7 +705,7 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
     # 判断資産の出典ではないため使わない（REV-JUDGMENT-ASSET-FEEDBACK-DROP-VISIBILITY）。
     try:
         from judgment_asset_citation import resolve_rule_ids_from_citations
-        from scripts.record_judgment_asset_feedback import load_active_rules
+        from scripts.record_judgment_asset_feedback import append_feedback, load_active_rules
 
         active_rules = load_active_rules(path=_CANONICAL_JUDGMENT_RULES_JSON)
         refs = resolve_rule_ids_from_citations(review_text, active_rules.keys())
@@ -721,21 +721,19 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
         return
 
     now = _dt.now().isoformat(timespec="seconds")
-    _FEEDBACK_JSONL.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with _FEEDBACK_JSONL.open("a", encoding="utf-8") as _f:
-            for rule_id in refs[:12]:
-                entry = {
-                    "schema_version": "1",
-                    "rule_id": rule_id.strip(),
-                    "outcome": outcome,
-                    "case_id": case_id,
-                    "review_id": review_id,
-                    "note": "",
-                    "source": "shion_screening_review",
-                    "used_at": now,
-                }
-                _f.write(_json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+        for rule_id in refs[:12]:
+            entry = {
+                "schema_version": "1",
+                "rule_id": rule_id.strip(),
+                "outcome": outcome,
+                "case_id": case_id,
+                "review_id": review_id,
+                "note": "",
+                "source": "shion_screening_review",
+                "used_at": now,
+            }
+            append_feedback(_FEEDBACK_JSONL, entry)
     except Exception:
         _log_judgment_asset_feedback_drop(
             review_id=review_id, user_feedback=user_feedback, reason="usage_log_write_error", case_id=case_id,
