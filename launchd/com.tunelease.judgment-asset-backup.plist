@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tunelease.judgment-asset-backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/backup_case_data.py</string>
+    <string>--profile</string>
+    <string>judgment_daily</string>
+    <string>--keep</string>
+    <string>30</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
+    <key>CASE_DATA_BACKUP_ROOT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/com~apple~CloudDocs/tune_lease_55_backups/case_data</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>PATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
+  </dict>
+
+  <!-- 毎日 23:30：判断資産の正本と Jev ラベルだけ（その日の昇格・統合を当日中に退避。22:00 の dispatch-log と 00:30 の週次重複整理の間） -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>23</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_judgment_asset_backup.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_judgment_asset_backup.err.log</string>
+</dict>
+</plist>
