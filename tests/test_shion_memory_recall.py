@@ -439,3 +439,26 @@ def test_case_recall_caps_value_memories(tmp_path):
     selected_types = [m["memory_type"] for m in recalled["memories"]]
     assert selected_types.count("value_memory") == 1
     assert "judgment_a" in recalled["refs"]
+
+
+def test_concept_term_beats_records_that_only_mention_the_asset(tmp_path):
+    """「トラックの法定耐用年数」でトラックに触れただけの判断資産が耐用年数の知識を押し出さない。"""
+    records = [
+        {"id": f"truck_{n}", "content": f"トラックの価格が高騰している その{n}", "memory_type": "judgment_memory", "status": "active"}
+        for n in range(6)
+    ]
+    records.append(
+        {
+            "id": "statutory_life",
+            "content": "法定耐用年数データはリース期間判断の重要な参照情報。",
+            "memory_type": "judgment_memory",
+            "status": "active",
+            "source_path": "knowledge_base/okf_lease_concepts/rules/statutory_useful_life.md",
+        }
+    )
+    path = tmp_path / "index.json"
+    path.write_text(json.dumps({"records": records}, ensure_ascii=False), encoding="utf-8")
+
+    recalled = recall_memories("トラックの法定耐用年数は何年？", limit=3, index_path=path, outcome_signals={})
+
+    assert recalled["memories"][0]["id"] == "statutory_life"

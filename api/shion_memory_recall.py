@@ -72,6 +72,9 @@ _BOUNDARY_SCORE_RE = re.compile(r"(?<![\d.])(?:40|50|60)(?![\d.])")
 # 数値・記号のみのクエリ語（60、40-60、3.5 等）の判定
 _NUMERIC_TERM_RE = re.compile(r"^[\d.,%/-]+$")
 
+# 質問の主題を表す漢字4字以上の概念語（法定耐用年数・期待使用期間 等）
+_CONCEPT_TERM_RE = re.compile(r"[一-龥]{4,}")
+
 _INDUSTRY_TERMS = (
     "製造業", "建設業", "医療", "介護", "運送", "運輸", "物流", "小売", "卸売",
     "飲食", "宿泊", "サービス", "不動産", "農業", "食品", "工作機械",
@@ -672,6 +675,19 @@ def _score_record(
         signal_hay = f"{content_lower} {str((record or {}).get('source_path') or '').lower()}"
         signal_hits = sum(1 for t in signal_terms if t.lower() in signal_hay)
         score += min(signal_hits, 2) * 3.0
+    # 「法定耐用年数」のような漢字4字以上の概念語は質問が何を聞いているかを表す。物件・業種の
+    # 一致ボーナスだけで上位が埋まると、トラックに触れただけで耐用年数に答えない判断資産が並ぶ
+    # （判断資産が64件に増えた 2026-10-02 に recall_truck_life が落ちた）。
+    concept_terms = [
+        t for t in query_terms if _CONCEPT_TERM_RE.fullmatch(t) and t not in _ASSET_TERMS and t not in _INDUSTRY_TERMS
+    ]
+    if concept_terms:
+        profile_terms = set((case_profile or {}).get("assets") or []) | set((case_profile or {}).get("industries") or [])
+        matched = [t for t in query_terms if t in content]
+        if any(t in content for t in concept_terms):
+            score += 3.5
+        elif matched and all(t in profile_terms for t in matched):
+            score -= 2.0  # 物件・業種名に触れただけで、聞かれた概念には答えていない
     if case_profile:
         score += _case_profile_bonus(content, case_profile, record or {})
     if "Mana" in content or "良心" in content:
