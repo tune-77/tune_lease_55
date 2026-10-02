@@ -225,3 +225,58 @@ def test_promote_statement_of_merged_rule_adds_evidence_to_representative(tmp_pa
     assert by_id["rep"]["evidence_paths"]
     assert by_id["src"]["status"] == "merged"
     assert result["active_rules"] == 1
+
+
+def test_merge_candidate_endpoints_merge_and_reject(tmp_path, monkeypatch):
+    _candidates_jsonl, _state_json, canonical_json = _patch_paths(monkeypatch, tmp_path)
+    queue = tmp_path / "judgment_asset_merge_candidates.json"
+    monkeypatch.setattr(feedback_loop, "_JUDGMENT_ASSET_MERGE_CANDIDATES_JSON", queue)
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    canonical_json.write_text(
+        json.dumps(
+            {
+                "rules": [
+                    {"id": "rep", "status": "active", "domain": "lease_screening", "canonical_statement": "代表の判断資産の本文です。"},
+                    {"id": "src", "status": "active", "domain": "lease_screening", "canonical_statement": "統合元の判断資産の本文です。"},
+                    {"id": "other", "status": "active", "domain": "lease_screening", "canonical_statement": "別の判断資産の本文です。"},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    queue.write_text(
+        json.dumps(
+            {
+                "candidates": {
+                    "m1": {"id": "m1", "representative_id": "rep", "source_id": "src", "status": "pending", "jaccard": 0.4, "jev_same_asset": 0.8},
+                    "m2": {"id": "m2", "representative_id": "rep", "source_id": "other", "status": "pending", "jaccard": 0.3},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    listed = feedback_loop.get_judgment_asset_merge_candidates()
+    assert [c["id"] for c in listed["candidates"]] == ["m1", "m2"]
+
+    merged = feedback_loop.post_judgment_asset_merge_candidate("m1")
+    assert merged["merge"]["active_rules"] == 2
+    rejected = feedback_loop.post_judgment_asset_merge_candidate_reject(
+        "m2", feedback_loop.JudgmentAssetPromotionReviewRequest(action="reject")
+    )
+    assert rejected["candidate"]["status"] == "rejected"
+    assert feedback_loop.get_judgment_asset_merge_candidates()["total_count"] == 0
+    # 統合元は審査画面の候補から外れる
+    assert {item["id"] for item in feedback_loop._load_canonical_judgment_asset_candidates(limit=100)} == {"cr-rep", "cr-other"}
+
+
+def test_merge_candidate_endpoint_refuses_on_cloud_run(tmp_path, monkeypatch):
+    _patch_paths(monkeypatch, tmp_path)
+    monkeypatch.setenv("K_SERVICE", "lease-api")
+    import pytest
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        feedback_loop.post_judgment_asset_merge_candidate("m1")
+    assert exc.value.status_code == 409

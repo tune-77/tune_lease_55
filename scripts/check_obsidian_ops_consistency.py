@@ -101,6 +101,7 @@ VAULT_JOB_LABELS = frozenset(
         "com.tunelease.daily-knowledge-feed",
         "com.tunelease.prompt-feedback-monthly",
         "com.tunelease.weekly-health-check",
+        "com.tunelease.judgment-asset-dedup-weekly",
         "com.tunelease.dispatch-log",
         "com.tunelease.improvement-pipeline",
         "com.tunelease.morning-rag-review",
