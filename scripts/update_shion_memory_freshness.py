@@ -15,6 +15,9 @@
 - active かつ作成から --stale-days 超、かつ直近 --stale-days 以内の利用が無い → stale。
 - stale でも直近利用があれば active に戻す（鮮度確認済みとみなす）。
 - value_memory（Mana・良心などの上位規範）は経年で stale に落とさない。
+- knowledge_base（版管理された審査概念の正本）も経年で落とさず、経年 stale なら active に戻す。
+  stale は想起されない→使われない→stale のままの一方通行になり、想起評価の正解文書が消えた（2026-10-03）。
+  低評価フィードバックによる降格は従来どおり効く。
 - 削除はしない（アーキテクチャ方針: 古い記憶は revised / deprecated / stale へ）。
 
 使い方:
@@ -45,6 +48,7 @@ DEFAULT_RAG_FEEDBACK = REPO_ROOT / "data" / "rag_feedback_log.jsonl"
 
 # 上位規範は経年で鮮度切れ扱いにしない
 _NEVER_STALE_TYPES = {"value_memory"}
+_NEVER_STALE_SOURCES = {"knowledge_base"}
 
 # フィードバック評価の分類（api/main.py の human_response 系と同じ語彙）
 _NEGATIVE_RATINGS = {"bad", "wrong", "needs_fix", "thin", "not_shion"}
@@ -219,6 +223,8 @@ def apply_freshness(
         created = _parse_date(str(record.get("created_at") or ""))
         recently_used = (last_used is not None and last_used >= cutoff) or (
             bool(source_name) and source_name in positive_files
+        ) or (
+            str(record.get("source") or "") in _NEVER_STALE_SOURCES and source_name not in negative_files
         )
 
         if status == "stale" and recently_used:

@@ -134,20 +134,30 @@ def _check_model_load(path: Path) -> tuple[bool, str]:
         "import joblib, sys; joblib.load(sys.argv[1])",
         str(path),
     ]
-    try:
-        result = subprocess.run(
-            joblib_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=30,
-            check=False,
-        )
+    # 30秒で切れたら120秒でもう一度だけ試す。日次の重い手順（auto_fix_obsidian_rag 771秒）直後に
+    # 平常2〜3秒のロードが30秒を超え、壊れていないモデルを attention 扱いした（2026-10-02）。
+    # 実際にロードできない（例外で終わる）モデルはリトライせず従来どおり失敗にする。
+    joblib_error = ["not attempted"]
+    for timeout in (30, 120):
+        try:
+            result = subprocess.run(
+                joblib_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            joblib_error = [str(exc)]
+            continue
+        except Exception as exc:
+            joblib_error = [str(exc)]
+            break
         if result.returncode == 0:
             return True, ""
         joblib_error = (result.stderr or "").strip().splitlines()[-1:] or [f"exit={result.returncode}"]
-    except Exception as exc:
-        joblib_error = [str(exc)]
+        break
 
     pickle_cmd = [
         sys.executable,
