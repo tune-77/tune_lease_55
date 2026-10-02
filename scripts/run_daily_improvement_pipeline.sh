@@ -102,6 +102,14 @@ if [ ! -x "${PYTHON}" ]; then
     exit 1
 fi
 
+# メインチェックアウトが最新の master かを確認し、安全なら fast-forward（作業ブランチは切り替えない）。
+# 古いコードで core/post が動くのを防ぐ。判定できなくても止めず警告のみ（朝報の警告ブロックに出る）。
+# git は置き換えでファイルを更新するので、実行中のこのスクリプト自体は影響を受けない。
+echo ""
+echo "[前提] メインチェックアウトの鮮度を確認中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_main_checkout.py" --repo "${PROJECT_ROOT}"
+log_step "sync_main_checkout" $?
+
 # launchd/cron は .zshrc を読まないため、gcloud が見つからない場合は標準的な
 # インストール先を PATH に補完する（GCS取り込み・Secret Manager・GCSアップロードで使用）
 if ! command -v gcloud >/dev/null 2>&1; then
