@@ -1122,6 +1122,97 @@ def merge_same_event_articles(articles: list[Article]) -> list[Article]:
     return representatives
 
 
+# 2026-10-02 実測（experiments/same_event_dedup_jev/）: 見出しペア106組で AUC 0.999（ルール0.64・埋め込み0.74）。
+# 0.6 以上なら誤統合0で、ルールが取りこぼした同一出来事38組を全て拾えた。
+# 同じ統計で%が1ポイントだけ違う組（52%と53%）は Jev が0.7前後で「同じ」と答える。正解は確認待ち。
+SAME_EVENT_JEV_QUESTION = {
+    "instructions": "{a} と {b} は、同じ出来事を報じた別記事として1本にまとめてよいか？",
+    "true": "同じ発表・同じ企業の同じ事象・同じ統計の同じ回を、媒体や言い回しを変えて報じている。片方を読めばもう片方の事実は分かる。",
+    "false": "企業・地域・対象期間・数値・回（連載の別回、別の月の統計、別会社の倒産など）が違い、別の出来事として両方残す必要がある。",
+}
+SAME_EVENT_JEV_MIN = 0.6
+_SAME_EVENT_PREFILTER_DICE = 0.2  # 実測の正例は全てこれ以上。無関係な組合せまで外部へ聞かない
+_SAME_EVENT_MAX_PAIRS = 45
+
+
+def shadow_same_event_jev(representatives: list[Article], *, request_fn: Any = None) -> dict[str, Any]:
+    """ルールが別記事として残したペアを Jev にも聞き、「まとめるべきだったか」を記録だけする。
+
+    shadow なので記事の統合は変えない。ニュースガード（TYPESAFE_NEWS_MODE）が off の時と
+    TYPESAFE_NEWS_SAME_EVENT=off の時は呼ばない。Jev が使えなければ既存ルールの結果のまま。
+    """
+    import typesafe_news_guard
+
+    if request_fn is None and (
+        typesafe_news_guard.news_guard_mode() == "off" or os.environ.get("TYPESAFE_NEWS_SAME_EVENT", "").strip().lower() in {"0", "off"}
+    ):
+        return {"status": "disabled"}
+    keys = [_normalized_title(_event_title(article)) for article in representatives]
+    candidates = sorted(
+        (
+            (dice, i, j)
+            for i in range(len(representatives))
+            for j in range(i + 1, len(representatives))
+            if keys[i] and keys[j] and (dice := _bigram_dice(keys[i], keys[j])) >= _SAME_EVENT_PREFILTER_DICE
+        ),
+        reverse=True,
+    )[:_SAME_EVENT_MAX_PAIRS]
+    if not candidates:
+        return {"status": "skipped", "reason": "no_pairs"}
+    try:
+        import typesafe_dedup_guard as transport
+
+        scores, model = transport.judge_binary_pairs(
+            [(representatives[i].title, representatives[j].title) for _, i, j in candidates],
+            SAME_EVENT_JEV_QUESTION,
+            request_fn=request_fn,
+        )
+    except Exception as exc:  # noqa: BLE001 - 不通時は既存ルールのみ
+        return {"status": "fallback", "error_type": type(exc).__name__}
+    judged = [
+        {"a": representatives[i].title, "b": representatives[j].title, "dice": round(dice, 3), "jev": score}
+        for (dice, i, j), score in zip(candidates, scores)
+    ]
+    for item in judged:
+        if item["jev"] >= SAME_EVENT_JEV_MIN:
+            print(
+                "[news-same-event-item] "
+                + json.dumps({**item, "a": item["a"][:80], "b": item["b"][:80]}, ensure_ascii=False, separators=(",", ":")),
+                file=sys.stderr,
+            )
+    try:
+        import jev_judgment_log
+
+        jev_judgment_log.append_records(
+            jev_judgment_log.build_records(
+                guard="news_same_event",
+                run_id=jev_judgment_log.new_run_id(),
+                mode="shadow",
+                model=model,
+                items=[
+                    {
+                        "subject": f"{item['a']}\n{item['b']}",
+                        "question": "same_event",
+                        "probability": item["jev"],
+                        "choice": item["jev"] >= SAME_EVENT_JEV_MIN,
+                        "route": "would_merge" if item["jev"] >= SAME_EVENT_JEV_MIN else "keep_separate",
+                        "auto_passed": True,
+                        "thresholds": {"merge_min": SAME_EVENT_JEV_MIN},
+                    }
+                    for item in judged
+                ],
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - ログ失敗で収集を止めない
+        print(f"[news-same-event] judgment log skipped: {type(exc).__name__}", file=sys.stderr)
+    return {
+        "status": "applied",
+        "model": model,
+        "pair_count": len(judged),
+        "would_merge": sum(item["jev"] >= SAME_EVENT_JEV_MIN for item in judged),
+    }
+
+
 def _append_related_reports(raw: str, related: Iterable[Article]) -> str:
     lines = [
         f"- {art.published_iso or dt.date.today().isoformat()} | {art.source or '不明'} | [{art.title}]({art.link})"
@@ -1400,7 +1491,13 @@ def main(argv: list[str] | None = None) -> int:
         per_feed=max(1, int(args.per_feed)),
     )
     # 判定・分類の前に同一出来事をまとめる。重複が limit 枠と判定コストを食うのを防ぐ
-    articles = merge_same_event_articles(articles)[: max(1, int(args.limit))]
+    articles = merge_same_event_articles(articles)
+    try:
+        same_event = shadow_same_event_jev(articles)
+    except Exception as exc:  # noqa: BLE001 - shadow 判定で収集を止めない
+        same_event = {"status": "fallback", "error_type": type(exc).__name__}
+    print("[news-same-event] " + json.dumps(same_event, ensure_ascii=False, separators=(",", ":")), file=sys.stderr)
+    articles = articles[: max(1, int(args.limit))]
     classify_articles(
         articles,
         use_ai=not args.no_ai_classify and os.environ.get("LEASE_NEWS_AI_CLASSIFY", "1") != "0",

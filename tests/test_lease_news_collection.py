@@ -549,3 +549,38 @@ def test_merge_keeps_first_as_representative_and_other_urls_as_related(tmp_path)
     text = note.read_text(encoding="utf-8")
     assert "## 関連報道" in text
     assert "https://www.isenp.co.jp/b/2" in text
+
+
+def _fake_jev(probabilities):
+    def request(payload):
+        count = len(payload["state"]["pairs"])
+        return {"model": "jev-test", "answers": {f"pair{n}_same": {"type": "noul", "noul": probabilities(payload["state"]["pairs"][n])} for n in range(count)}}
+
+    return request
+
+
+def test_same_event_shadow_records_without_changing_merge(monkeypatch, tmp_path):
+    monkeypatch.setenv("JEV_JUDGMENT_LOG_PATH", str(tmp_path / "jev.jsonl"))
+    a = _article(title="建設業の倒産/廃業、リーマン超えで過去最多 2026年上半期:調査レポート - ITmedia", source="")
+    b = _article(title="建設業の倒産・廃業が最多の5937件 1〜6月、帝国データ調べ - 日本経済新聞", source="")
+    reps = news.merge_same_event_articles([a, b])
+    assert reps == [a, b]  # 既存ルールは別記事のまま
+
+    result = news.shadow_same_event_jev(reps, request_fn=_fake_jev(lambda pair: 0.9))
+
+    assert result["status"] == "applied" and result["would_merge"] == 1
+    assert reps == [a, b] and a.related == ()  # shadow なので統合はしない
+    record = __import__("json").loads((tmp_path / "jev.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert record["guard"] == "news_same_event" and record["mode"] == "shadow" and record["route"] == "would_merge"
+    assert "建設業" not in (tmp_path / "jev.jsonl").read_text(encoding="utf-8")  # 見出しはハッシュのみ
+
+
+def test_same_event_shadow_is_off_with_news_guard_and_fails_open(monkeypatch):
+    reps = [_article(title=_SAME_EVENT_PAIRS[0][0], source=""), _article(title=_DIFFERENT_EVENT_PAIRS[0][0], source="")]
+    monkeypatch.delenv("TYPESAFE_NEWS_MODE", raising=False)
+    assert news.shadow_same_event_jev(reps)["status"] == "disabled"
+
+    def broken(payload):
+        raise TimeoutError
+
+    assert news.shadow_same_event_jev(reps, request_fn=broken)["status"] in {"fallback", "skipped"}

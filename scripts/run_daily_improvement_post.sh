@@ -413,6 +413,11 @@ TYPESAFE_API_KEYCHAIN_SERVICE="${TYPESAFE_API_KEYCHAIN_SERVICE:-typesafe-api-key
   "${PYTHON}" "${PROJECT_ROOT}/scripts/shion_llm_triage_proposal.py" --apply; log_step "shion_llm_triage_proposal" $?
 
 echo ""
+echo "[提案] 改善ログ新着の重複候補をJevで記録（shadow・ログは書き換えない・不通時は既存ルールのみ）..."
+TYPESAFE_API_KEYCHAIN_SERVICE="${TYPESAFE_API_KEYCHAIN_SERVICE:-typesafe-api-key}" \
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/improvement_request_dedup_shadow.py"; log_step "improvement_request_dedup_shadow" $?
+
+echo ""
 echo "[監査] 二重台帳（リポジトリ/ランタイム）の整合性チェック（repo applied を runtime へ補完）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/check_ledger_consistency.py" --days 14 --sync-repo-applied-to-runtime; log_step "check_ledger_consistency" $?
 
