@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tunelease.judgment-asset-dedup-weekly</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/judgment_asset_dedup.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
+    <key>OBSIDIAN_VAULT_PATH</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>OBSIDIAN_VAULT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>
+    <string>typesafe-api-key</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>PATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
+  </dict>
+
+  <!-- 毎週日曜 00:30 に実行（01:00 の Obsidian/案件バックアップ前。日次ジョブと重ならない） -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>0</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_judgment_asset_dedup.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_judgment_asset_dedup.err.log</string>
+</dict>
+</plist>

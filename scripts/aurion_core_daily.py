@@ -1206,6 +1206,16 @@ def teaching_funnel_lines(target_date: str | None = None) -> list[str]:
     ]
 
 
+def judgment_asset_dedup_line() -> str:
+    """週次の判断資産重複整理（scripts/judgment_asset_dedup.py）の結果を朝報に1行で出す。"""
+    try:
+        from scripts.judgment_asset_dedup import morning_report_line
+
+        return morning_report_line()
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return f"- 判断資産の重複整理（週次）: 読み込み失敗 `{type(exc).__name__}`"
+
+
 def write_morning_report(
     state: dict[str, Any],
     db: dict[str, Any],
@@ -1373,6 +1383,7 @@ def write_morning_report(
         lines.append("- No suspected registration gaps in recent commits.")
 
     lines.extend(teaching_funnel_lines())
+    lines.append(judgment_asset_dedup_line())
     lines.extend(
         [
             "",

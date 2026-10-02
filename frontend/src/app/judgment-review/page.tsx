@@ -130,6 +130,23 @@ type PromotionResponse = {
   candidates: PromotionCandidate[];
 };
 
+type MergeCandidate = {
+  id: string;
+  representative_id: string;
+  source_id: string;
+  representative_statement: string;
+  source_statement: string;
+  jaccard: number;
+  embedding?: number | null;
+  jev_same_asset?: number | null;
+  created_at?: string;
+};
+
+type MergeCandidateResponse = {
+  total_count: number;
+  candidates: MergeCandidate[];
+};
+
 const STATUS_STYLE: Record<ReviewStatus, string> = {
   candidate: "border-amber-200 bg-amber-50 text-amber-700",
   approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -653,6 +670,8 @@ export default function JudgmentReviewPage() {
           )}
         </section>
 
+        <MergeCandidatesSection onMerged={refreshPromotionCandidates} />
+
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-start">
             <div className="flex items-start gap-3">
@@ -968,6 +987,142 @@ export default function JudgmentReviewPage() {
         )}
       </div>
     </main>
+  );
+}
+
+function MergeCandidatesSection({ onMerged }: { onMerged: () => Promise<unknown> }) {
+  const [items, setItems] = useState<MergeCandidate[]>([]);
+  const [total, setTotal] = useState(0);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    const response = await apiClient.get<MergeCandidateResponse>("/api/judgment-assets/merge-candidates", {
+      params: { limit: 30 },
+    });
+    setItems(response.data.candidates ?? []);
+    setTotal(response.data.total_count ?? 0);
+    return response.data;
+  }, []);
+
+  useEffect(() => {
+    // 統合候補は補助的な一覧なので、取得失敗でレビュー画面全体は止めない
+    load().catch(() => setError("統合候補を読み込めませんでした。"));
+  }, [load]);
+
+  const act = useCallback(
+    async (item: MergeCandidate, action: "merge" | "reject") => {
+      setBusy((current) => ({ ...current, [item.id]: true }));
+      setError("");
+      try {
+        await apiClient.post(`/api/judgment-assets/merge-candidates/${encodeURIComponent(item.id)}/${action}`, {
+          action: "reject",
+          comment: "",
+        });
+        const refreshed = await load();
+        if (action === "merge") await onMerged();
+        const label = action === "merge" ? "統合しました（統合元は merged として残り、元に戻せます）" : "別の資産として残しました";
+        setNotice(`MC-${item.id.slice(0, 8)} を${label}。残り ${refreshed.total_count} 件。`);
+      } catch (err) {
+        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setError(detail || "統合候補の操作を保存できませんでした。もう一度お試しください。");
+      } finally {
+        setBusy((current) => ({ ...current, [item.id]: false }));
+      }
+    },
+    [load, onMerged],
+  );
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white">
+          <ClipboardCheck className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-black text-slate-900">判断資産の統合候補（週次の重複チェック）</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            似ている正規判断資産のペアです。同じ判断なら統合、条件・数値・対象が違えば「別の資産」を選んでください。
+            ほぼ同文のものは週次で自動統合済みで、ここには出ません。
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-xs font-black uppercase tracking-wide text-slate-500">安全線</p>
+        <p className="mt-1 text-sm leading-6 text-slate-700">
+          統合すると左の代表に右の原文を「（同旨: …）」で追記し、右は削除せず merged として残します。
+          Jev確信度は並び順の目安で、自動統合には使いません。
+        </p>
+      </div>
+
+      {notice && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-700">
+          <AlertCircle className="h-5 w-5" />
+          {notice}
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
+          <AlertCircle className="h-5 w-5" />
+          {error}
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+          <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+          <p className="mt-3 font-black text-slate-800">統合候補はありません</p>
+        </div>
+      ) : (
+        <div className="mt-5 space-y-4">
+          <p className="text-sm font-bold text-slate-500">承認待ち {total} 件</p>
+          {items.map((item) => (
+            <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-black text-slate-700">
+                  MC-{item.id.slice(0, 8)}
+                </span>
+                {item.jev_same_asset != null && (
+                  <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-black text-violet-700">
+                    Jev 同一らしさ {Math.round(item.jev_same_asset * 100)}%
+                  </span>
+                )}
+                <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
+                  文字一致 {item.jaccard}
+                  {item.embedding != null ? ` / 意味類似 ${item.embedding}` : ""}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <InfoBlock label={`代表に残す（${item.representative_id.slice(0, 8)}）`} value={item.representative_statement} />
+                <InfoBlock label={`統合元（${item.source_id.slice(0, 8)}）`} value={item.source_statement} />
+              </div>
+              <div className="mt-5 flex flex-col gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => act(item, "reject")}
+                  disabled={!!busy[item.id]}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 py-2.5 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                >
+                  <XCircle className="h-4 w-4" />
+                  別の資産として残す
+                </button>
+                <button
+                  type="button"
+                  onClick={() => act(item, "merge")}
+                  disabled={!!busy[item.id]}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  既存資産へ統合
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

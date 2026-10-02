@@ -41,6 +41,7 @@ _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL = Path(_REPO_ROOT) / "data" / "aut
 _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON = Path(_REPO_ROOT) / "data" / "autoresearch_judgment_asset_candidate_state.json"
 _NEWS_JUDGMENT_SIGNALS_JSONL = Path(_REPO_ROOT) / "data" / "news_judgment_signals.jsonl"
 _CANONICAL_JUDGMENT_RULES_JSON = Path(_REPO_ROOT) / "data" / "canonical_judgment_rules.json"
+_JUDGMENT_ASSET_MERGE_CANDIDATES_JSON = Path(_REPO_ROOT) / "data" / "judgment_asset_merge_candidates.json"
 _JUDGMENT_ASSET_USAGE_FEEDBACK_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_usage_feedback.jsonl"
 _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG = Path(_REPO_ROOT) / "data" / "judgment_asset_feedback_drops.jsonl"
 _JUDGMENT_ASSET_CANDIDATE_FEEDBACK_LOCK = Path(_REPO_ROOT) / "data" / ".judgment_asset_candidate_feedback.lock"
@@ -3290,6 +3291,60 @@ def post_judgment_asset_promotion_candidate(candidate_id: str, background_tasks:
         payload={**result, "schema_version": 1},
     )
     return {"status": "ok", "promotion": result}
+
+
+def _judgment_asset_dedup():
+    from scripts import judgment_asset_dedup
+
+    return judgment_asset_dedup
+
+
+@router.get("/api/judgment-assets/merge-candidates")
+def get_judgment_asset_merge_candidates(limit: int = 30) -> dict:
+    """週次の重複整理が積んだ「統合候補」。Jev確信度は並び順と表示だけに使う。"""
+    try:
+        dedup = _judgment_asset_dedup()
+    except ImportError:  # scripts/ を同梱しない環境（Cloud Run 等）では候補なし扱い
+        return {"total_count": 0, "candidates": []}
+    pending = dedup.pending_candidates(
+        canonical_path=_CANONICAL_JUDGMENT_RULES_JSON, candidates_path=_JUDGMENT_ASSET_MERGE_CANDIDATES_JSON
+    )
+    return {"total_count": len(pending), "candidates": pending[: max(1, min(int(limit or 30), 100))]}
+
+
+@router.post("/api/judgment-assets/merge-candidates/{candidate_id}/merge")
+def post_judgment_asset_merge_candidate(candidate_id: str) -> dict:
+    if os.environ.get("K_SERVICE"):
+        # Cloud Run のディスクは再起動で消えるため、統合はローカル正本でだけ行う。
+        raise HTTPException(status_code=409, detail="判断資産の統合はローカル環境の画面から行ってください")
+    dedup = _judgment_asset_dedup()
+    with _judgment_asset_promotion_lock():
+        try:
+            result = dedup.merge_candidate(
+                candidate_id,
+                canonical_path=_CANONICAL_JUDGMENT_RULES_JSON,
+                candidates_path=_JUDGMENT_ASSET_MERGE_CANDIDATES_JSON,
+                provenance=dedup.Provenance(
+                    _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON, _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATES_JSONL
+                ),
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="merge candidate not found")
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+    return {"status": "ok", "merge": result}
+
+
+@router.post("/api/judgment-assets/merge-candidates/{candidate_id}/reject")
+def post_judgment_asset_merge_candidate_reject(candidate_id: str, req: JudgmentAssetPromotionReviewRequest) -> dict:
+    with _judgment_asset_promotion_lock():
+        try:
+            candidate = _judgment_asset_dedup().reject_candidate(
+                candidate_id, candidates_path=_JUDGMENT_ASSET_MERGE_CANDIDATES_JSON, comment=req.comment
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="merge candidate not found")
+    return {"status": "ok", "candidate": candidate}
 
 
 @router.post("/api/judgment-assets/promotion-candidates/{candidate_id}/review")
