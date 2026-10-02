@@ -25,6 +25,7 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # ────────────────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent
@@ -153,10 +154,11 @@ def _ensure_table(pg_cur, table: str, schema: list[dict]) -> None:
 
     _validate_existing_table_schema(pg_cur, table, schema)
 
+    pk_cols = [c["name"] for c in sorted(schema, key=lambda c: c["pk"]) if c["pk"] > 0]
     col_defs = []
     for col in schema:
         pg_type = _sqlite_type_to_pg(col["type"])
-        pk = " PRIMARY KEY" if col["pk"] == 1 else ""
+        pk = " PRIMARY KEY" if len(pk_cols) == 1 and col["name"] == pk_cols[0] else ""
         not_null = " NOT NULL" if col["notnull"] else ""
         col_defs.append(
             sql.SQL("{}{}{}{}").format(
@@ -166,11 +168,28 @@ def _ensure_table(pg_cur, table: str, schema: list[dict]) -> None:
                 sql.SQL(not_null),
             )
         )
+    if len(pk_cols) > 1:
+        col_defs.append(
+            sql.SQL("PRIMARY KEY ({})").format(
+                sql.SQL(", ").join(sql.Identifier(c) for c in pk_cols)
+            )
+        )
     ddl = sql.SQL("CREATE TABLE IF NOT EXISTS {} ({})").format(
         sql.Identifier(table),
         sql.SQL(", ").join(col_defs),
     )
     pg_cur.execute(ddl)
+
+
+def _redact_database_url(url: str) -> str:
+    parts = urlsplit(url)
+    if not parts.scheme:
+        return "***"
+    host = parts.hostname or ""
+    port = f":{parts.port}" if parts.port else ""
+    user = parts.username or ""
+    auth = f"{user}:***@" if user else ""
+    return f"{parts.scheme}://{auth}{host}{port}{parts.path or ''}"
 
 
 def _migrate_table(pg_conn, pg_cur, sqlite_conn: sqlite3.Connection, table: str) -> int:
@@ -231,7 +250,7 @@ def main() -> None:
     print("  SQLite → Cloud SQL マイグレーション (REV-161)")
     print("=" * 60)
     print(f"  Source : {SQLITE_DB_PATH}")
-    print(f"  Target : {DATABASE_URL.split('@')[0]}@***")
+    print(f"  Target : {_redact_database_url(DATABASE_URL)}")
     print(f"  開始   : {started_at.strftime('%Y-%m-%d %H:%M:%S')}")
     print()
 
