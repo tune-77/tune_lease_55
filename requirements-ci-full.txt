@@ -12,6 +12,7 @@ uvicorn
 pydantic
 slowapi
 httpx
+cryptography
 python-multipart
 requests
 numpy

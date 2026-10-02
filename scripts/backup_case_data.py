@@ -5,19 +5,29 @@ profile:
   case_data       週次（日曜 01:30）。案件DB・係数・紫苑記憶・判断資産・Jev判定ログ・改善ログ・相談・対話ログ
   judgment_daily  日次（23:30）。判断資産の正本と Jev ラベルだけ（その日の昇格・統合を翌週まで裸にしない）
 
-暗号化はしない（既存の case_data と同じ平文コピー。保存先は本人の iCloud Drive）。
+1バックアップ＝1つの暗号化アーカイブ（<prefix>_<ts>.tar.gz.enc、AES-256-GCM）。
+平文はローカルの一時ディレクトリでだけ組み立て、iCloud には暗号文しか置かない。
+鍵は macOS キーチェーン（service=tune-lease-backup-key）。取れなければ平文に落とさず失敗にする。
+初回だけ `--init-key` で鍵を作る。復号は scripts/restore_case_data_backup.py。
 成否は data/backup_status.json に profile ごとに残し、AURION CORE 朝報が読む。
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import datetime as dt
+import hashlib
+import io
 import json
 import os
+import secrets
 import shutil
 import sqlite3
+import subprocess
 import sys
+import tarfile
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -97,6 +107,91 @@ PROFILES = {
 }
 STATUS_PATH = REPO_ROOT / "data" / "backup_status.json"
 
+KEYCHAIN_SERVICE = "tune-lease-backup-key"
+KEYCHAIN_ACCOUNT = "tune-lease-backup"
+ARCHIVE_SUFFIX = ".tar.gz.enc"
+# 形式: MAGIC + nonce(12) + AES-256-GCM(tar.gz)。MAGIC は AAD にも入れて改ざん・形式違いを弾く
+MAGIC = b"TLBK1\n"
+NONCE_LEN = 12
+MANIFEST_NAME = "backup_manifest.json"
+
+
+class BackupKeyError(RuntimeError):
+    pass
+
+
+def load_key() -> bytes:
+    """キーチェーンから鍵（base64 の32バイト）を読む。値はログに出さない。"""
+    try:
+        proc = subprocess.run(
+            ["/usr/bin/security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-w"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise BackupKeyError(f"キーチェーンを呼べない（平文バックアップは作っていない）: {type(exc).__name__}") from exc
+    if proc.returncode != 0:
+        raise BackupKeyError(
+            f"キーチェーンから鍵を取得できない（平文バックアップは作っていない）: security exit {proc.returncode}"
+        )
+    return decode_key(proc.stdout.strip())
+
+
+def decode_key(text: str) -> bytes:
+    try:
+        key = base64.b64decode(text.strip(), validate=True)
+    except ValueError as exc:
+        raise BackupKeyError("鍵の形式が不正（base64 ではない）") from exc
+    if len(key) != 32:
+        raise BackupKeyError(f"鍵の長さが不正（{len(key)}バイト、32バイトが必要）")
+    return key
+
+
+def init_key() -> None:
+    """鍵をランダム生成してキーチェーンに入れる。値は stdin で渡し、argv・画面・ファイルに残さない。"""
+    exists = subprocess.run(
+        ["/usr/bin/security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT],
+        capture_output=True,
+    )
+    if exists.returncode == 0:
+        raise BackupKeyError("鍵は既にある（上書きすると過去のバックアップを復号できなくなるので中止）")
+    value = base64.b64encode(secrets.token_bytes(32)).decode()
+    proc = subprocess.run(
+        ["/usr/bin/security", "add-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT,
+         "-l", "tune_lease_55 backup encryption key", "-w"],
+        input=f"{value}\n{value}\n", capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        raise BackupKeyError(f"キーチェーンへの保存に失敗: security exit {proc.returncode}")
+    load_key()  # 読み戻せることを確かめる
+
+
+def encrypt_bytes(key: bytes, plaintext: bytes) -> bytes:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    nonce = secrets.token_bytes(NONCE_LEN)
+    return MAGIC + nonce + AESGCM(key).encrypt(nonce, plaintext, MAGIC)
+
+
+def decrypt_bytes(key: bytes, blob: bytes) -> bytes:
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    if not blob.startswith(MAGIC):
+        raise ValueError("暗号化バックアップの形式ではない")
+    nonce = blob[len(MAGIC): len(MAGIC) + NONCE_LEN]
+    try:
+        return AESGCM(key).decrypt(nonce, blob[len(MAGIC) + NONCE_LEN:], MAGIC)
+    except InvalidTag as exc:
+        raise ValueError("復号失敗（鍵が違うか、ファイルが壊れている）") from exc
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
 
 @dataclass
 class BackupEntry:
@@ -104,6 +199,7 @@ class BackupEntry:
     destination: str
     size_bytes: int
     method: str
+    sha256: str = ""
 
 
 @dataclass
@@ -119,13 +215,13 @@ def _timestamp() -> str:
     return dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def _snapshot_dir(backup_root: Path, ts: str, prefix: str = "case_data") -> Path:
-    base = backup_root / f"{prefix}_{ts}"
+def _archive_path(backup_root: Path, ts: str, prefix: str = "case_data") -> Path:
+    base = backup_root / f"{prefix}_{ts}{ARCHIVE_SUFFIX}"
     if not base.exists():
         return base
     counter = 1
     while True:
-        candidate = backup_root / f"{prefix}_{ts}_{counter}"
+        candidate = backup_root / f"{prefix}_{ts}_{counter}{ARCHIVE_SUFFIX}"
         if not candidate.exists():
             return candidate
         counter += 1
@@ -160,14 +256,15 @@ def _backup_file(src: Path, dst: Path) -> str:
 
 
 def _cleanup_old_snapshots(backup_root: Path, keep: int, prefix: str = "case_data") -> list[str]:
+    """世代管理は暗号化アーカイブだけ。暗号化前の平文フォルダには触らない（消すかは人が決める）。"""
     snapshots = sorted(
-        [path for path in backup_root.glob(f"{prefix}_*") if path.is_dir()],
+        [path for path in backup_root.glob(f"{prefix}_*{ARCHIVE_SUFFIX}") if path.is_file()],
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
     removed: list[str] = []
     for old in snapshots[keep:]:
-        shutil.rmtree(old)
+        old.unlink()
         removed.append(str(old))
     return removed
 
@@ -189,46 +286,87 @@ def _expand_targets(targets: list[str]) -> tuple[list[str], list[str]]:
     return list(found), missing
 
 
-def backup_case_data(backup_root: Path, targets: list[str], keep: int, prefix: str = "case_data") -> BackupSummary:
+def backup_case_data(
+    backup_root: Path, targets: list[str], keep: int, prefix: str = "case_data", key: bytes | None = None
+) -> BackupSummary:
+    key = key if key is not None else load_key()  # 鍵が無ければ何も書かずにここで失敗
     ts = _timestamp()
     backup_root.mkdir(parents=True, exist_ok=True)
-    dest_root = _snapshot_dir(backup_root, ts, prefix)
-    dest_root.mkdir(parents=True, exist_ok=False)
+    archive = _archive_path(backup_root, ts, prefix)
 
     backed_up: list[BackupEntry] = []
     existing, missing = _expand_targets(targets)
 
-    for rel_target in existing:
-        src = (REPO_ROOT / rel_target).resolve()
-        dst = dest_root / rel_target
-        method = _backup_file(src, dst)
-        backed_up.append(
-            BackupEntry(
-                source=str(src),
-                destination=str(dst),
-                size_bytes=dst.stat().st_size,
-                method=method,
+    # 平文の組み立てはローカル一時領域だけ（iCloud 配下に平文を作らない）
+    with tempfile.TemporaryDirectory(prefix="tlbk_") as tmp:
+        stage = Path(tmp) / archive.name.removesuffix(ARCHIVE_SUFFIX)
+        for rel_target in existing:
+            src = (REPO_ROOT / rel_target).resolve()
+            dst = stage / rel_target
+            method = _backup_file(src, dst)
+            backed_up.append(
+                BackupEntry(
+                    source=str(src),
+                    destination=rel_target,
+                    size_bytes=dst.stat().st_size,
+                    method=method,
+                    sha256=_sha256(dst),
+                )
             )
+        manifest = BackupSummary(
+            created_at=dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+            destination=str(archive),
+            backed_up=backed_up,
+            missing=missing,
+            removed_old=[],
         )
+        (stage / MANIFEST_NAME).write_text(
+            json.dumps(asdict(manifest), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            tar.add(stage, arcname=stage.name)
 
-    manifest = BackupSummary(
-        created_at=dt.datetime.now().astimezone().isoformat(timespec="seconds"),
-        destination=str(dest_root),
-        backed_up=backed_up,
-        missing=missing,
-        removed_old=[],
-    )
-    (dest_root / "backup_manifest.json").write_text(
-        json.dumps(asdict(manifest), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    removed = _cleanup_old_snapshots(backup_root, keep, prefix)
-    manifest.removed_old.extend(removed)
-    (dest_root / "backup_manifest.json").write_text(
-        json.dumps(asdict(manifest), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    blob = encrypt_bytes(key, buf.getvalue())
+    part = archive.with_name(archive.name + ".part")
+    part.write_bytes(blob)
+    part.replace(archive)
+    manifest.removed_old.extend(_cleanup_old_snapshots(backup_root, keep, prefix))
     return manifest
+
+
+def restore_archive(archive: Path, out_dir: Path, key: bytes) -> dict:
+    """復号→展開→マニフェストのサイズ・sha256 照合→SQLite integrity_check。結果を dict で返す。"""
+    data = decrypt_bytes(key, archive.read_bytes())
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            target = (out_dir / member.name).resolve()
+            if not (member.isfile() or member.isdir()) or not target.is_relative_to(out_dir.resolve()):
+                raise ValueError(f"不正なアーカイブ要素: {member.name}")
+        tar.extractall(out_dir)
+    roots = [p for p in out_dir.iterdir() if (p / MANIFEST_NAME).exists()]
+    if len(roots) != 1:
+        raise ValueError("マニフェストが見つからない")
+    root = roots[0]
+    manifest = json.loads((root / MANIFEST_NAME).read_text(encoding="utf-8"))
+    mismatched: list[str] = []
+    sqlite_failed: list[str] = []
+    for entry in manifest["backed_up"]:
+        path = root / entry["destination"]
+        if not path.exists() or path.stat().st_size != entry["size_bytes"] or _sha256(path) != entry["sha256"]:
+            mismatched.append(entry["destination"])
+        elif entry["method"] == "sqlite_backup_api" and not _sqlite_integrity_ok(path):
+            sqlite_failed.append(entry["destination"])
+    return {
+        "restored_to": str(root),
+        "files": len(manifest["backed_up"]),
+        "sqlite_checked": sum(1 for e in manifest["backed_up"] if e["method"] == "sqlite_backup_api"),
+        "mismatched": mismatched,
+        "sqlite_failed": sqlite_failed,
+        "ok": not mismatched and not sqlite_failed,
+    }
 
 
 def record_status(profile: str, *, ok: bool, summary: BackupSummary | None = None, error: str = "", path: Path | None = None) -> None:
@@ -310,6 +448,7 @@ def morning_report_line(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Backup case and learning data.")
     parser.add_argument("--profile", choices=sorted(PROFILES), default="case_data")
+    parser.add_argument("--init-key", action="store_true", help="初回のみ: 鍵を生成してキーチェーンに保存する。")
     parser.add_argument("--backup-root", default=None, help="Snapshot root directory.")
     parser.add_argument("--keep", type=int, default=None, help="Number of snapshots to keep.")
     parser.add_argument(
@@ -319,6 +458,14 @@ def main() -> int:
         help="Relative path under repo to back up. Can be repeated. Defaults to core case data.",
     )
     args = parser.parse_args()
+    if args.init_key:
+        try:
+            init_key()
+        except BackupKeyError as exc:
+            print(f"INIT KEY FAILED: {exc}", file=sys.stderr)
+            return 1
+        print(f"鍵を生成してキーチェーンに保存した（service={KEYCHAIN_SERVICE}）。値は表示しない。")
+        return 0
     profile = PROFILES[args.profile]
     # case_data の保存先（CASE_DATA_BACKUP_ROOT）と同じ階層に profile 名のフォルダを並べる
     default_root = DEFAULT_BACKUP_ROOT if args.profile == "case_data" else DEFAULT_BACKUP_ROOT.parent / args.profile
@@ -337,7 +484,7 @@ def main() -> int:
     record_status(args.profile, ok=True, summary=summary)
     total_size = sum(entry.size_bytes for entry in summary.backed_up)
     print(
-        f"CASE DATA BACKED UP: {len(summary.backed_up)} files, "
+        f"CASE DATA BACKED UP (encrypted): {len(summary.backed_up)} files, "
         f"{total_size / 1024 / 1024:.1f} MB"
     )
     if summary.missing:
