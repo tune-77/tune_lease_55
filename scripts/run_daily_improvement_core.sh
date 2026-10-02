@@ -238,17 +238,7 @@ if [ ${STEP0_EXIT} -ne 0 ]; then
     echo "警告: 改善インデックス抽出が終了コード ${STEP0_EXIT} で終了しました（パイプラインを継続します）"
 fi
 
-echo ""
-echo "[復旧] 過去の解決済み障害から許可済みレシピを選び、直近失敗を自動再検証中..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/run_pipeline_auto_recovery.py" \
-    --apply \
-    --run-date "${LOG_DATE}" \
-    --limit 1
-PIPELINE_AUTO_RECOVERY_EXIT=$?
-log_step "pipeline_auto_recovery" ${PIPELINE_AUTO_RECOVERY_EXIT}
-if [ ${PIPELINE_AUTO_RECOVERY_EXIT} -ne 0 ]; then
-    echo "警告: パイプライン自動復旧の実行に失敗しました（終了コード ${PIPELINE_AUTO_RECOVERY_EXIT}）。通常の障害検出は継続します。"
-fi
+# 自動復旧は post まで全手順が終わった後に run_daily_improvement_pipeline.sh から1回だけ走る
 
 # エクスポートファイルが空 / 存在しない場合は中断
 if [ ! -s "${EXPORT_FILE}" ]; then
