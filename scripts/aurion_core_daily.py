@@ -1216,6 +1216,16 @@ def judgment_asset_dedup_line() -> str:
         return f"- 判断資産の重複整理（週次）: 読み込み失敗 `{type(exc).__name__}`"
 
 
+def backup_status_line() -> str:
+    """案件データ（週次）・判断資産（日次）・Obsidian のバックアップ最終成功を朝報に1行で出す。"""
+    try:
+        from scripts.backup_case_data import morning_report_line
+
+        return morning_report_line()
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return f"- バックアップ状況: 読み込み失敗 `{type(exc).__name__}`"
+
+
 def write_morning_report(
     state: dict[str, Any],
     db: dict[str, Any],
@@ -1384,6 +1394,7 @@ def write_morning_report(
 
     lines.extend(teaching_funnel_lines())
     lines.append(judgment_asset_dedup_line())
+    lines.append(backup_status_line())
     lines.extend(
         [
             "",
