@@ -20,8 +20,10 @@
 name: Cloud Run Cost Guard
 
 on:
-  schedule:
-    - cron: "0 */6 * * *"   # 6時間おき。demo_warm.sh on のつけっぱなしを半日以内に検知する
+  # 2026-10-02 Cloud Run サービスと Artifact Registry を削除済みのため schedule を停止
+  # （存在しないサービスを describe して6時間おきに失敗→Slack通知になるため）。再開時に戻す。
+  # schedule:
+  #   - cron: "0 */6 * * *"   # 6時間おき。demo_warm.sh on のつけっぱなしを半日以内に検知する
   workflow_dispatch: {}
 
 permissions:
