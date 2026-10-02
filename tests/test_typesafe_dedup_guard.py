@@ -340,3 +340,17 @@ def test_request_process_is_terminated_at_hard_deadline() -> None:
             process_context=context,
         )
     assert context.process.terminated is True
+
+
+def test_binary_pair_request_round_trip():
+    question = {"instructions": "{a} と {b} は同じか？", "true": "同じ", "false": "違う"}
+    payload = guard.build_binary_pair_request([("x" * 500, "y")], question)
+    assert payload["state"]["pairs"] == [{"a": "x" * 400, "b": "y"}]
+    assert payload["questions"]["pair0_same"]["instructions"] == "`pairs[0].a` と `pairs[0].b` は同じか？"
+
+    scores, model = guard.judge_binary_pairs(
+        [("a", "b")] * 17,
+        question,
+        request_fn=lambda p: {"model": "m", "answers": {f"pair{n}_same": {"type": "noul", "noul": 0.25} for n in range(len(p["state"]["pairs"]))}},
+    )
+    assert scores == [0.25] * 17 and model == "m"

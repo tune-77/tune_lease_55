@@ -411,6 +411,55 @@ def judge_pairs_if_enabled(
         }
 
 
+def build_binary_pair_request(
+    pairs: Sequence[tuple[str, str]],
+    question: Mapping[str, str],
+    *,
+    model: str = DEFAULT_MODEL,
+    max_chars: int = 400,
+) -> dict[str, Any]:
+    """Ask one yes/no question ("same event?", "same request?") per text pair.
+
+    ``question`` holds ``instructions`` with ``{a}``/``{b}`` placeholders plus
+    ``true``/``false`` criteria. Callers must privacy-screen the texts first.
+    """
+    questions = {
+        f"pair{n}_same": {
+            "type": "noul",
+            "instructions": question["instructions"].format(a=f"`pairs[{n}].a`", b=f"`pairs[{n}].b`"),
+            "criteria": {"true": question["true"], "false": question["false"]},
+        }
+        for n in range(len(pairs))
+    }
+    state = {"pairs": [{"a": a[:max_chars], "b": b[:max_chars]} for a, b in pairs]}
+    return {"state": state, "model": model, "questions": questions}
+
+
+def parse_binary_pair_answers(body: Mapping[str, Any], count: int) -> list[float]:
+    answers = body.get("answers")
+    if not isinstance(answers, Mapping):
+        raise TypeSafeDedupError("TypeSafe response is missing answers")
+    return [_noul(answers, f"pair{n}_same") for n in range(count)]
+
+
+def judge_binary_pairs(
+    pairs: Sequence[tuple[str, str]],
+    question: Mapping[str, str],
+    *,
+    request_fn: RequestFn | None = None,
+    batch: int = 15,
+) -> tuple[list[float], str]:
+    """Return one probability per pair and the model name. Raises on any failure."""
+    scores: list[float] = []
+    model = ""
+    for start in range(0, len(pairs), batch):
+        chunk = list(pairs[start : start + batch])
+        body = (request_fn or _default_request)(build_binary_pair_request(chunk, question))
+        model = str(body.get("model") or model)
+        scores += parse_binary_pair_answers(body, len(chunk))
+    return scores, model
+
+
 def _all_distinct(pairs: Sequence[tuple[int, int]]) -> list[dict[str, Any]]:
     return [
         {"a": i, "b": j, "same_issue": None, "route": "distinct"} for i, j in pairs
@@ -423,7 +472,10 @@ __all__ = [
     "GRAY_LOW",
     "SAME_ISSUE_MIN",
     "TypeSafeDedupError",
+    "build_binary_pair_request",
     "build_pair_request",
+    "judge_binary_pairs",
+    "parse_binary_pair_answers",
     "filter_safe_pairs",
     "is_safe_public_candidate",
     "judge_pairs",
