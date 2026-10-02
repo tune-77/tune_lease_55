@@ -123,6 +123,18 @@ echo "[post] 補助処理を実行中..."
 bash "${PROJECT_ROOT}/scripts/run_daily_improvement_post.sh"
 POST_EXIT=$?
 
+# post は Mana 判定で途中 exit 0 することがあるので、全手順の後＝ここで自動復旧する。
+# その日に失敗した手順を、個別レシピ／一時的失敗の1回再実行／品質チェック（再実行しない）に振り分け、
+# 結果は data/pipeline_auto_recovery_state.json と朝報（AURION CORE）に出る。
+echo ""
+echo "[復旧] その日に失敗した手順を判定し、許可済みレシピで自動復旧中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/run_pipeline_auto_recovery.py" \
+    --apply \
+    --run-date "${LOG_DATE}" \
+    --pipeline-log "${LOG_FILE}" \
+    --limit 1
+log_step "pipeline_auto_recovery" $?
+
 FINAL_EXIT=${CORE_EXIT}
 if [ ${FINAL_EXIT} -eq 0 ] && [ ${POST_EXIT} -ne 0 ]; then
     FINAL_EXIT=${POST_EXIT}

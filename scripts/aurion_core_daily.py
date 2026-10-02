@@ -1226,6 +1226,16 @@ def backup_status_line() -> str:
         return f"- バックアップ状況: 読み込み失敗 `{type(exc).__name__}`"
 
 
+def pipeline_recovery_lines() -> list[str]:
+    """日次パイプラインの直せなかった失敗・品質チェック失敗・連続失敗の警告と、自動修復件数（朝報の上部）。"""
+    try:
+        from scripts.run_pipeline_auto_recovery import morning_report_lines
+
+        return morning_report_lines()
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return [f"- パイプライン自動修復: 読み込み失敗 `{type(exc).__name__}`"]
+
+
 def write_morning_report(
     state: dict[str, Any],
     db: dict[str, Any],
@@ -1259,6 +1269,8 @@ def write_morning_report(
         "---",
         "",
         f"# AURION CORE Daily Report {date_str()} 06:00",
+        "",
+        *pipeline_recovery_lines(),
         "",
         f"[[@AI_Insight_Evolved_{date_str()}]]",
         "[[Q-Risk]] [[LightGBM スコアリング]] [[業種別傾向]] [[審査方針]]",
