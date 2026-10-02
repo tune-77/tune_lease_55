@@ -94,6 +94,17 @@ def test_printable_ascii_password_is_saved_exactly(installer, password):
     assert password not in result.stdout + result.stderr
 
 
+def test_installer_persists_owner_only_api_key(installer):
+    run, credential, _ = installer
+    result = run("abcdefghijkl")
+    api_key = credential.parent / "api_access_key"
+
+    assert result.returncode == 0, result.stderr
+    assert len(api_key.read_text()) >= 32
+    assert api_key.stat().st_mode & 0o777 == 0o600
+    assert api_key.read_text() not in result.stdout + result.stderr
+
+
 @pytest.mark.parametrize("password,accepted", [("あいうえおかきくけこさし", False), ("abcdefghijkl", True)])
 def test_interactive_installer_validates_before_provisioning(installer, password, accepted):
     run, credential, log = installer
