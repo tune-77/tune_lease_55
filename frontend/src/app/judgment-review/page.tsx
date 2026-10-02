@@ -997,19 +997,35 @@ function MergeCandidatesSection({ onMerged }: { onMerged: () => Promise<unknown>
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    const response = await apiClient.get<MergeCandidateResponse>("/api/judgment-assets/merge-candidates", {
-      params: { limit: 30 },
-    });
-    setItems(response.data.candidates ?? []);
-    setTotal(response.data.total_count ?? 0);
-    return response.data;
+  const apply = useCallback((data: MergeCandidateResponse) => {
+    setItems(data.candidates ?? []);
+    setTotal(data.total_count ?? 0);
+    return data;
   }, []);
+
+  const load = useCallback(
+    () =>
+      apiClient
+        .get<MergeCandidateResponse>("/api/judgment-assets/merge-candidates", { params: { limit: 30 } })
+        .then((response) => apply(response.data)),
+    [apply],
+  );
 
   useEffect(() => {
     // 統合候補は補助的な一覧なので、取得失敗でレビュー画面全体は止めない
-    load().catch(() => setError("統合候補を読み込めませんでした。"));
-  }, [load]);
+    let cancelled = false;
+    apiClient
+      .get<MergeCandidateResponse>("/api/judgment-assets/merge-candidates", { params: { limit: 30 } })
+      .then((response) => {
+        if (!cancelled) apply(response.data);
+      })
+      .catch(() => {
+        if (!cancelled) setError("統合候補を読み込めませんでした。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apply]);
 
   const act = useCallback(
     async (item: MergeCandidate, action: "merge" | "reject") => {
