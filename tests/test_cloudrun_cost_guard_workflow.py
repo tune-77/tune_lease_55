@@ -32,10 +32,11 @@ def _run_script(job: dict, step_name: str) -> str:
     raise AssertionError(f"step not found: {step_name}")
 
 
-def test_workflow_runs_on_a_schedule() -> None:
+def test_workflow_schedule_paused_while_cloud_run_deleted() -> None:
+    # 2026-10-02 Cloud Run 削除に伴い schedule を停止中。再開時は "schedule" in triggers に戻す。
     triggers = _triggers(_load())
 
-    assert "schedule" in triggers
+    assert "schedule" not in triggers
     assert "workflow_dispatch" in triggers
 
 
