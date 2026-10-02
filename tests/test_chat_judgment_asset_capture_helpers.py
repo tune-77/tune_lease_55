@@ -73,3 +73,58 @@ def test_extract_chat_judgment_asset_claim_and_candidate_type():
     assert chat_judgment_asset_candidate_type(claim) == "confirmation_question"
     assert chat_judgment_asset_candidate_type("条件付き承認なら保証人追加を見る") == "condition_signal"
     assert chat_judgment_asset_candidate_type("粉飾兆候に注意する") == "caution"
+
+
+def _capture_kwargs(created):
+    return dict(
+        user_id="u1",
+        surface="test",
+        candidates_loader=lambda limit=1000: [],
+        candidate_creator=lambda req: created.append(req) or {"id": "n1", "claim": req.claim},
+        request_factory=lambda **kwargs: SimpleNamespace(**kwargs),
+        cloudrun_event_recorder=lambda **_kwargs: {"status": "skipped"},
+    )
+
+
+def test_capture_saves_by_rule_even_if_jev_shadow_fails():
+    from api.chat_judgment_asset_capture import capture_chat_judgment_asset_if_needed
+
+    created = []
+
+    def broken_shadow(_claim):
+        raise RuntimeError("jev down")
+
+    result = capture_chat_judgment_asset_if_needed(
+        "歯科医院の開業前リースは、銀行の融資実行日と見積書の日付が一致しているか必ず確認する。",
+        jev_shadow=broken_shadow,
+        **_capture_kwargs(created),
+    )
+
+    assert result["captured"] is True
+    assert len(created) == 1
+
+
+def test_record_chat_teaching_jev_shadow_logs_probability_without_text(tmp_path, monkeypatch):
+    from api.chat_judgment_asset_capture import record_chat_teaching_jev_shadow
+
+    log = tmp_path / "jev.jsonl"
+    monkeypatch.setenv("JEV_JUDGMENT_LOG_PATH", str(log))
+    claim = "運送業は燃料費の変動で返済原資が揺れるので資金繰り表を確認する。"
+
+    record_chat_teaching_jev_shadow(claim, judge=lambda _c: 0.123456)
+    record_chat_teaching_jev_shadow(claim, judge=lambda _c: None)
+
+    rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["guard"] == "chat_teaching_capture"
+    assert rows[0]["mode"] == "shadow"
+    assert rows[0]["probability"] == 0.123
+    assert claim not in log.read_text(encoding="utf-8")
+
+
+def test_mask_for_jev_hides_company_and_person_and_blocks_pii():
+    from api.chat_judgment_asset_capture import mask_for_jev
+
+    masked = mask_for_jev("株式会社ヤマダ運輸の山田社長は資金繰りに詳しい")
+    assert "ヤマダ" not in masked and "山田" not in masked
+    assert mask_for_jev("連絡先は 03-1234-5678 です") == ""
