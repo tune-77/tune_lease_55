@@ -611,10 +611,5 @@ echo ""
 echo "[配布] 公開ノート（Memory Pack等）を GCS Vault へアップロード..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/icloud_to_gcs_sync.py"; log_step "icloud_to_gcs_sync" $?
 
-echo ""
-echo "[配布] Obsidianリース知識の差分を Vertex AI Search へ同期..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_obsidian_to_vertex_agent_search.py" \
-  --upload \
-  --import-documents \
-  --wait
-log_step "sync_obsidian_to_vertex_agent_search" $?
+# Obsidian → Vertex AI Search の同期は scripts/run_vertex_credit_daily.sh（launchd 05:30）へ移した。
+# クレジットモード（api/vertex_credit_mode.py）が on の間だけ毎日動き、off なら手動同期に戻る。

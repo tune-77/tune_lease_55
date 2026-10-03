@@ -92,6 +92,12 @@ PREFERRED_PARTS = {
     "Judgment Assets",
 }
 
+# Lease Intelligence 配下は丸ごと除外だが、審査知識の Knowledge だけは根拠検索の対象にする
+# （Memory・Private Reflection・Dialogue 等の除外は維持。秘密・private マーカー・品質ゲートも通常どおり）
+INCLUDED_SUBTREES = (Path("Lease Intelligence") / "Knowledge",)
+CANONICAL_RULES_PATH = _REPO_ROOT / "data" / "canonical_judgment_rules.json"
+CANONICAL_SOURCE_PREFIX = "judgment_assets/canonical"
+
 ROOT_NOTE_KEYWORDS = (
     "リース審査AI_知識分解",
     "リースvs銀行借入",
@@ -145,8 +151,15 @@ class RejectedNote:
     title: str = ""
 
 
+def _in_included_subtree(rel: Path) -> bool:
+    return any(rel.parts[: len(sub.parts)] == sub.parts for sub in INCLUDED_SUBTREES)
+
+
 def should_exclude(path: Path, project_root: Path) -> bool:
     rel = path.relative_to(project_root)
+    if _in_included_subtree(rel):
+        # 許可したサブツリーでも、ファイル名の除外キーワードと隠しファイルは従来どおり
+        return any(keyword in path.name for keyword in EXCLUDED_FILENAME_KEYWORDS) or path.name.startswith(".")
     rel_text = str(rel)
     parts = set(rel.parts)
     if any(part in parts for part in EXCLUDED_PARTS):
@@ -163,7 +176,7 @@ def should_exclude(path: Path, project_root: Path) -> bool:
 def is_preferred_location(path: Path, project_root: Path) -> bool:
     rel = path.relative_to(project_root)
     parts = set(rel.parts)
-    if parts & PREFERRED_PARTS:
+    if parts & PREFERRED_PARTS or _in_included_subtree(rel):
         return True
     return any(keyword in path.name for keyword in ROOT_NOTE_KEYWORDS)
 
@@ -308,7 +321,67 @@ def output_name(rel: Path) -> str:
     return f"{slug[:80]}__{digest}.txt"
 
 
-def export_notes(vault: Path, output: Path, max_docs: int, gcs_prefix: str) -> list[ExportedNote]:
+def canonical_rule_candidates(rejected: list[RejectedNote], path: Path | None = None) -> list[CandidateNote]:
+    """判断資産の正本のうち active（ユーザーが教えたものを含む）を1件1文書にする。
+
+    一般化された canonical_statement と概念・リスク軸だけを出す。個別案件の文が混ざりうる
+    sample_claims は出さず、本文は mask_for_vertex で伏せ、秘密らしい文字列があれば外す。
+    """
+    from api.vertex_query_mask import mask_for_vertex
+
+    try:
+        data = json.loads((path or CANONICAL_RULES_PATH).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rules = data.get("rules") if isinstance(data, dict) else data
+    candidates: list[CandidateNote] = []
+    for rule in rules or []:
+        if not isinstance(rule, dict) or rule.get("status") != "active":
+            continue
+        statement = mask_for_vertex(str(rule.get("canonical_statement") or "").strip())
+        rule_id = str(rule.get("id") or "")
+        concept = str(rule.get("concept") or "judgment_asset")
+        source_rel = f"{CANONICAL_SOURCE_PREFIX}/{rule_id}.md"
+        if len(statement) < 20 or not rule_id:
+            rejected.append(RejectedNote(source_rel, "too_short"))
+            continue
+        if has_secret_like_text(statement):
+            rejected.append(RejectedNote(source_rel, "secret_like_text", concept))
+            continue
+        axes = "、".join(str(a) for a in rule.get("risk_axis") or [])
+        cleaned = "\n".join(
+            [
+                f"# 判断資産: {concept}",
+                "",
+                statement,
+                "",
+                f"- 種別: {rule.get('material_type') or ''}",
+                f"- 領域: {rule.get('domain') or ''}",
+                f"- リスク軸: {axes}",
+                f"- 根拠件数: {rule.get('evidence_count') or 0}（うちユーザー由来 {rule.get('user_evidence_count') or 0}）",
+                f"- 確信度: {rule.get('confidence') or ''}",
+            ]
+        )
+        candidates.append(
+            CandidateNote(
+                path=Path(source_rel),
+                source_path=source_rel,
+                title=f"判断資産: {concept}",
+                canonical_topic=f"judgment_asset:{rule_id}",
+                source_bucket="judgment_asset_canonical",
+                quality_score=int(round(float(rule.get("confidence") or 0) * 10)),
+                cleaned=cleaned,
+                digest=hashlib.sha1(cleaned.encode("utf-8")).hexdigest(),
+                size_chars=len(cleaned),
+            )
+        )
+    return candidates
+
+
+def export_notes(
+    vault: Path, output: Path, max_docs: int, gcs_prefix: str, *, canonical_rules: Path | None = None
+) -> list[ExportedNote]:
+    """canonical_rules を渡すと判断資産の正本（active）も同じコーパスに入れる（日次同期は渡す）。"""
     project_root = vault / DEFAULT_PROJECT_REL
     if not project_root.exists():
         raise SystemExit(f"Project notes not found: {project_root}")
@@ -382,6 +455,8 @@ def export_notes(vault: Path, output: Path, max_docs: int, gcs_prefix: str) -> l
 
     exported: list[ExportedNote] = []
     selected = sorted(best_by_topic.values(), key=lambda item: item.source_path)[:max_docs]
+    if canonical_rules is not None:
+        selected += canonical_rule_candidates(rejected, canonical_rules)
 
     for candidate in selected:
         rel = Path(candidate.source_path)
@@ -480,7 +555,7 @@ def main() -> None:
     parser.add_argument("--gcs-prefix", default=DEFAULT_GCS_PREFIX)
     args = parser.parse_args()
 
-    exported = export_notes(args.vault, args.output, args.max_docs, args.gcs_prefix)
+    exported = export_notes(args.vault, args.output, args.max_docs, args.gcs_prefix, canonical_rules=CANONICAL_RULES_PATH)
     print(f"exported={len(exported)}")
     print(f"output={args.output}")
     for note in exported[:20]:
