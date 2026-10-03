@@ -43,6 +43,7 @@ from lease_news_digest import (
     record_lease_news_usage_feedback,
 )
 from runtime_paths import resolve_obsidian_vault
+from silent_failure_log import record_silent_failure
 
 router = APIRouter(prefix="/api/lease-news", tags=["lease-news"])
 
@@ -263,15 +264,15 @@ def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
             source_summary=source[:100],
             tag_summary=", ".join(summary.get("tags", [])),
         )
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("memory.lease_news.record_note_index", "save_failed", sf_exc)
 
     try:
         from api.knowledge.news_classifier import write_classified_news_summary
 
         background_executor.submit(lambda: write_classified_news_summary(vault, limit=30, days=14))
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("memory.lease_news.classified_summary", "save_failed", sf_exc)
     try:
         from api.knowledge.obsidian_loader import _chunk_by_h2, _parse_frontmatter
         from api.knowledge.vector_store import get_store
@@ -281,8 +282,8 @@ def _save_news_to_obsidian(summary: dict, source: str) -> str | None:
         chunks = _chunk_by_h2(body, str(file_path), file_path.name, meta, file_path.stat().st_mtime)
         if chunks:
             background_executor.submit(lambda: get_store().upsert_chunks(chunks))
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("memory.lease_news.rag_upsert", "save_failed", exc)
     try:
         scripts_dir = str(Path(__file__).resolve().parents[2] / "scripts")
 

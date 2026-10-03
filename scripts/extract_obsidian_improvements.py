@@ -18,6 +18,7 @@ _PIPELINE_SCRIPTS_DIR = (
 )
 if _PIPELINE_SCRIPTS_DIR.exists():
     sys.path.insert(0, str(_PIPELINE_SCRIPTS_DIR))
+from silent_failure_log import record_silent_failure
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -811,8 +812,8 @@ def main() -> int:
                 title = _normalize_title(stripped.replace("✅ 実装済", "").lstrip())
                 if title:
                     implemented_titles.add(title)
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("pipeline.extract_obsidian_improvements.implemented", "swallowed", sf_exc, detail="実装済み一覧を空として扱った")
 
     if implemented_titles:
         before_impl = len(deduped)

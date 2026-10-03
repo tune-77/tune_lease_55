@@ -805,6 +805,14 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
     except Exception as e:
         import logging
         logging.debug(f"Vector store search failed: {e}, falling back to keyword search")
+        # API から `mobile_app.obsidian_bridge` として読むと `obsidian_bridge_enhancements` が import できず
+        # （mobile_app/ が sys.path に無い）、2026-05-30 以降ベクトル検索が毎回ここでキーワード検索に落ちていた。
+        try:
+            from silent_failure_log import record_silent_failure
+
+            record_silent_failure("answer.obsidian_bridge.vector_search", "fallback", e, detail="キーワード検索のみで続行")
+        except ImportError:
+            pass
 
     if not vault:
         return _rerank_obsidian_candidates(

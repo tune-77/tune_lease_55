@@ -11,6 +11,7 @@ import glob
 
 from api.crystallizer.anomaly_extractor import AnomalyCase
 from runtime_paths import get_obsidian_vault_path
+from silent_failure_log import record_silent_failure
 
 _VAULT_ROOT = get_obsidian_vault_path()
 _GENERATED_DIR = "Generated"
@@ -125,5 +126,6 @@ industry: {industry_str}
         with open(fpath, "w", encoding="utf-8") as f:
             f.write(content)
         return fpath
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.crystallizer.write_pattern", "save_failed", exc, detail="結晶化パターンをObsidianへ書けなかった")
         return None
