@@ -10,6 +10,15 @@ TARGET_PLIST="${TARGET_DIR}/com.tunelease.vertex-credit-daily.plist"
 DOMAIN="gui/$(id -u)"
 SERVICE="${DOMAIN}/com.tunelease.vertex-credit-daily"
 PYTHON="${PYTHON:-${PROJECT_ROOT}/.venv/bin/python}"
+BASE_PATH="${PROJECT_ROOT}/.venv/bin:${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+if command -v gcloud >/dev/null 2>&1; then
+  GCLOUD_BIN_DIR="$(dirname "$(command -v gcloud)")"
+elif [ -x "${HOME}/google-cloud-sdk/bin/gcloud" ]; then
+  GCLOUD_BIN_DIR="${HOME}/google-cloud-sdk/bin"
+else
+  GCLOUD_BIN_DIR=""
+fi
+LAUNCH_PATH="${GCLOUD_BIN_DIR:+${GCLOUD_BIN_DIR}:}${BASE_PATH}"
 
 source "${PROJECT_ROOT}/scripts/resolve_obsidian_vault.sh"
 VAULT="$(resolve_obsidian_vault)"
@@ -29,6 +38,7 @@ plutil -replace EnvironmentVariables.PYTHONPATH -string "${PROJECT_ROOT}" "${TAR
 plutil -replace EnvironmentVariables.PYTHON -string "${PYTHON}" "${TARGET_PLIST}"
 plutil -replace EnvironmentVariables.OBSIDIAN_VAULT_PATH -string "${VAULT}" "${TARGET_PLIST}"
 plutil -replace EnvironmentVariables.OBSIDIAN_VAULT -string "${VAULT}" "${TARGET_PLIST}"
+plutil -replace EnvironmentVariables.PATH -string "${LAUNCH_PATH}" "${TARGET_PLIST}"
 plutil -replace StandardOutPath -string "${HOME}/Library/Logs/tune_lease_55_vertex_credit_daily.out.log" "${TARGET_PLIST}"
 plutil -replace StandardErrorPath -string "${HOME}/Library/Logs/tune_lease_55_vertex_credit_daily.err.log" "${TARGET_PLIST}"
 plutil -lint "${TARGET_PLIST}" >/dev/null

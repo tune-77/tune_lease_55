@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from pathlib import Path
 
 from api import chat_prompt_budget as budget
 
@@ -125,3 +126,9 @@ def test_log_has_only_names_and_sizes_and_morning_line(tmp_path, monkeypatch) ->
     line = budget.morning_report_line(log, now=now, threshold=1000)
     assert line and line.startswith("- ✂️ チャットのプロンプト削減（直近24h・1回）") and "rag_context" in line
     assert budget.morning_report_line(log, now=now + dt.timedelta(days=2)) is None
+
+
+def test_morning_report_keeps_prompt_budget_warning_wired() -> None:
+    source = (Path(__file__).parents[1] / "scripts" / "aurion_core_daily.py").read_text(encoding="utf-8")
+    assert "def chat_prompt_budget_lines()" in source
+    assert "*chat_prompt_budget_lines()," in source

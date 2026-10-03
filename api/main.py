@@ -6670,7 +6670,7 @@ def post_chat(req: ChatRequest):
             else _capture_user_personal_memory_if_needed(req.message, source="next_chat")
         )
 
-        if (req.intent or "").strip().lower() == "improvement":
+        if not is_screening_review and (req.intent or "").strip().lower() == "improvement":
             _log_shion_query_class(req.message, "improvement")
             save_current_chat_message("user", req.message)
             original_text = req.message.strip()

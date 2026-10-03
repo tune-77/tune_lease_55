@@ -103,3 +103,11 @@ def test_screening_review_skips_generic_chat_persistence_paths():
     assert section.count("save_message(req.user_id") == 1
     assert "lambda **_kwargs: None) if is_screening_review else _record_prompt_feedback_if_available" in section
     assert "[] if is_screening_review else get_recent_messages" in section
+    assert 'if not is_screening_review and (req.intent or "").strip().lower() == "improvement":' in section
+
+
+def test_vertex_credit_installer_replaces_machine_local_path():
+    source = (Path(__file__).parents[1] / "scripts" / "install_vertex_credit_launchagent.sh").read_text(encoding="utf-8")
+    assert "command -v gcloud" in source
+    assert "${HOME}/google-cloud-sdk/bin/gcloud" in source
+    assert "plutil -replace EnvironmentVariables.PATH" in source
