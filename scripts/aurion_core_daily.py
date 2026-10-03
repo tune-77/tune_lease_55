@@ -1246,6 +1246,17 @@ def vertex_credit_lines() -> list[str]:
         return [f"- Vertex クレジット状況: 読み込み失敗 `{type(exc).__name__}`"]
 
 
+def chat_prompt_budget_lines() -> list[str]:
+    """チャットのプロンプトで落とした量が大きい日だけ1行（api/chat_prompt_budget.py の記録）。"""
+    try:
+        from api.chat_prompt_budget import morning_report_line
+
+        line = morning_report_line()
+        return [line] if line else []
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return [f"- チャットのプロンプト削減: 読み込み失敗 `{type(exc).__name__}`"]
+
+
 def write_morning_report(
     state: dict[str, Any],
     db: dict[str, Any],
@@ -1282,6 +1293,7 @@ def write_morning_report(
         "",
         *pipeline_recovery_lines(),
         *vertex_credit_lines(),
+        *chat_prompt_budget_lines(),
         "",
         f"[[@AI_Insight_Evolved_{date_str()}]]",
         "[[Q-Risk]] [[LightGBM スコアリング]] [[業種別傾向]] [[審査方針]]",

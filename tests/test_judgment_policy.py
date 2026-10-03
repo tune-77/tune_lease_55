@@ -119,14 +119,12 @@ def test_split_and_merge_move_policies_into_one_block() -> None:
 
 
 def test_policy_tail_survives_prompt_cap(monkeypatch) -> None:
-    from api.main import _cap_system_prompt
+    from api.chat_prompt_budget import assemble_prompt
 
-    monkeypatch.setenv("CHAT_SYSTEM_PROMPT_MAX_CHARS", "300")
-    body = "\n\n".join(f"ブロック{i}" + "あ" * 60 for i in range(10))
+    blocks = [("base_prompt_root", "人格" * 20)] + [(f"aux_{i}", "\n\nブロック" + "あ" * 60) for i in range(10)]
     tail = POLICY_HEADER + "\n- 方針: 銀行と取引のない企業とは付き合わない（出典: 判断資産 93d1b22c）"
-    capped = _cap_system_prompt(body, surface="test", reserved_tail=tail)
-    assert capped.endswith(tail) and len(capped) <= 300 and capped.startswith("ブロック0")
-    assert _cap_system_prompt(body, surface="test").startswith("ブロック0")  # 方針なしは従来どおり
+    capped, _ = assemble_prompt(blocks, question="銀行", surface="test", max_chars=300, reserved_tail=tail, log=False)
+    assert capped.endswith(tail) and len(capped) <= 300 and capped.startswith("人格")
 
 
 def test_enforce_policy_first_only_when_reply_cites_the_policy() -> None:
