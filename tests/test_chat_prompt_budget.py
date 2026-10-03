@@ -59,6 +59,44 @@ def test_duplicate_items_are_kept_only_in_the_higher_priority_block() -> None:
     assert report["blocks"]["teaching_prompt_context"]["dedup"] == 0
 
 
+def test_budgeting_happens_before_cross_block_deduplication() -> None:
+    duplicate = "- 銀行と取引のない企業とは付き合わない 資料がすぐ出てこない企業とも付き合わない"
+    teaching = "\n".join([f"- 教示{i}" + "あ" * 90 for i in range(30)] + [duplicate])
+    memory = "【紫苑の想起メモ】\n" + duplicate
+    prompt, _ = budget.assemble_prompt(
+        [("teaching_prompt_context", teaching), ("memory_recall_context", memory)],
+        question="銀行取引",
+        surface="test",
+        max_chars=2700,
+        log=False,
+    )
+    assert "付き合わない 資料" in prompt
+
+
+def test_dialogue_prompt_dynamic_sections_are_budgetable() -> None:
+    raw = (
+        "固定の人格。\n\n" + "想起" * 3000 + "【自己状態】" + "状態" * 3000
+        + "【実行環境】固定規則" + "【関連するObsidian知識】" + "知識" * 5000
+        + "【今回の応答モード】固定の回答規則"
+    )
+    blocks = budget.split_dialogue_prompt(raw)
+    prompt, _ = budget.assemble_prompt(blocks, question="知識", surface="dialogue", max_chars=30000, log=False)
+    assert len(prompt) <= 30000
+    assert "固定の人格" in prompt and "固定の回答規則" in prompt
+
+
+def test_reserved_tail_cannot_break_a_smaller_configured_cap() -> None:
+    prompt, report = budget.assemble_prompt(
+        [("base_prompt_root", "人格" * 100)],
+        question="x",
+        surface="test",
+        max_chars=40,
+        reserved_tail="【社内方針】\n説明" + "長" * 100 + "\n- 方針: 取引しない",
+        log=False,
+    )
+    assert len(prompt) <= 40 and report["policy_tail_cut"] > 0
+
+
 def test_log_has_only_names_and_sizes_and_morning_line(tmp_path, monkeypatch) -> None:
     log = tmp_path / "budget.jsonl"
     monkeypatch.setattr(budget, "_LOG_PATH", log)

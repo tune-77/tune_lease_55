@@ -51,8 +51,8 @@ SAVE_CLAIM_RE = re.compile(r"(保存しました|保存します|記録しまし
 CITE_RE = re.compile(r"\[\[[^\]]+\]\]|出典|参照ナレッジ|根拠[:：]")
 
 
-def ask(base: str, question: str, timeout: float = 180.0) -> dict[str, Any]:
-    body = json.dumps({"message": question, "user_id": "before_after_compare", "response_mode": "shion"}, ensure_ascii=False).encode("utf-8")
+def ask(base: str, question: str, user_id: str, timeout: float = 180.0) -> dict[str, Any]:
+    body = json.dumps({"message": question, "user_id": user_id, "response_mode": "shion"}, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(f"{base}/api/chat", data=body, headers={"Content-Type": "application/json"}, method="POST")
     started = time.monotonic()
     with urllib.request.urlopen(req, timeout=timeout) as res:
@@ -134,11 +134,12 @@ def main() -> int:
         return 0
 
     rows = []
+    run_id = str(time.time_ns())
     for question in QUESTIONS:
         row: dict[str, Any] = {"id": question["id"], "kind": question["kind"], "q": question["q"]}
         for side, base in (("before", args.before), ("after", args.after)):
             try:
-                data = ask(base, question["q"])
+                data = ask(base, question["q"], f"before_after_compare_{run_id}_{side}_{question['id']}")
                 row[side] = {"reply": reply_text(data), "refs": refs_of(data)[:6], "check": check(question, data), "elapsed_s": data["_elapsed_s"]}
             except Exception as exc:  # noqa: BLE001
                 row[side] = {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}

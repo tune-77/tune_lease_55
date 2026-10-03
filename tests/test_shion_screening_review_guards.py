@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from api.knowledge import vector_store
 from api.routers import feedback_loop
@@ -93,3 +94,12 @@ def test_policies_come_first_and_do_not_use_up_the_insight_limit(monkeypatch):
     )
     assert selected[0]["id"] == policy["id"] and selected[0]["knowledge_kind"] == "policy"
     assert [item["knowledge_kind"] for item in selected[1:]] == ["insight"] * 3
+
+
+def test_screening_review_skips_generic_chat_persistence_paths():
+    source = (Path(__file__).parents[1] / "api" / "main.py").read_text(encoding="utf-8")
+    section = source.split('is_screening_review = req.caller == "screening_review"', 1)[1]
+    # 汎用履歴への直書きは専用helper内の1箇所だけ。評価・記憶ログもscreening時はno-op aliasになる。
+    assert section.count("save_message(req.user_id") == 1
+    assert "lambda **_kwargs: None) if is_screening_review else _record_prompt_feedback_if_available" in section
+    assert "[] if is_screening_review else get_recent_messages" in section

@@ -45,8 +45,8 @@ COMPANY_TOKEN = "〈企業〉"
 BACKUP_DIR = DEFAULT_BACKUP_ROOT.parent / "redaction"
 ARCHIVE_PREFIX = "shion_review_redaction"
 DATA_GLOBS = ("data/**/*.jsonl", "data/**/*.json", "data/agent_search/lease_knowledge_export/*.txt")
-# 依頼文の「・企業名: X」。JSON 文字列の生の形（\n がエスケープされたまま）でも値だけを取る
-_COMPANY_LINE_RE = re.compile(r"企業名\s*[:：]\s*([^\s\\・「」\"]{2,40})")
+# 依頼文の「・企業名: X」。空白を含む社名も、実改行または JSON 内の ``\n`` まで値として取る。
+_COMPANY_LINE_RE = re.compile(r"企業名\s*[:：]\s*([^\\\r\n「」\"]{2,120})")
 # 依頼文の金額欄。プレビューで途中が切れた値（「55百…」）は mask_for_vertex の金額規則に掛からないのでラベルで伏せる
 _AMOUNT_LABEL_RE = re.compile(r"(取得価額|銀行与信残高|リース与信残高(?:（他社含む）)?)\s*[:：]\s*[^\s\\、。,，\"]+")
 _HIRAGANA_RE = re.compile(r"^[ぁ-ゖー]+$")
@@ -59,7 +59,7 @@ def has_marker(text: str) -> bool:
 
 
 def company_names(text: str) -> set[str]:
-    names = {m.group(1).strip() for m in _COMPANY_LINE_RE.finditer(text)}
+    names = {m.group(1).strip(" \t　") for m in _COMPANY_LINE_RE.finditer(text)}
     return {name for name in names if len(name) >= 2 and name not in {"未入力", "〈伏字〉", "<伏>"} and "〈" not in name and "[" not in name}
 
 
@@ -190,26 +190,35 @@ def find_file_changes(vault: Path | None, repo_root: Path = REPO_ROOT) -> tuple[
     return changes, marker_only
 
 
+def _sqlite_review_rows(conn: sqlite3.Connection) -> list[dict]:
+    conn.row_factory = sqlite3.Row
+    rows = [dict(r) for r in conn.execute(
+            "select id, user_id, content from chat_messages where " + " or ".join("content like ?" for _ in MARKERS),
+            [f"%{m}%" for m in MARKERS],
+    )]
+    # 同じ紫苑レビュー会話（user_id）の返答にも社名が出るので、その会話の全行を対象にする
+    user_ids = sorted({r["user_id"] for r in rows})
+    if user_ids:
+        rows = [dict(r) for r in conn.execute(
+            f"select id, user_id, content from chat_messages where user_id in ({','.join('?' * len(user_ids))})", user_ids
+        )]
+    return rows
+
+
+def _redacted_sqlite_rows(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return []
+    names = set().union(*(company_names(r["content"] or "") for r in rows))
+    redacted_rows = [{**r, "user_id": mask_text(r["user_id"], names), "content": mask_text(r["content"] or "", names)} for r in rows]
+    return [new for old, new in zip(rows, redacted_rows) if old != new]
+
+
 def find_sqlite_change(db: Path) -> Change | None:
     if not db.exists():
         return None
     with sqlite3.connect(db) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = [dict(r) for r in conn.execute(
-            "select id, user_id, content from chat_messages where " + " or ".join("content like ?" for _ in MARKERS),
-            [f"%{m}%" for m in MARKERS],
-        )]
-        # 同じ紫苑レビュー会話（user_id）の返答にも社名が出るので、その会話の全行を対象にする
-        user_ids = sorted({r["user_id"] for r in rows})
-        if user_ids:
-            rows = [dict(r) for r in conn.execute(
-                f"select id, user_id, content from chat_messages where user_id in ({','.join('?' * len(user_ids))})", user_ids
-            )]
-    if not rows:
-        return None
-    names = set().union(*(company_names(r["content"] or "") for r in rows))
-    redacted_rows = [{**r, "user_id": mask_text(r["user_id"], names), "content": mask_text(r["content"] or "", names)} for r in rows]
-    changed = [new for old, new in zip(rows, redacted_rows) if old != new]
+        rows = _sqlite_review_rows(conn)
+    changed = _redacted_sqlite_rows(rows)
     if not changed:
         return None
     original = json.dumps(rows, ensure_ascii=False, indent=1).encode("utf-8")
@@ -250,11 +259,15 @@ def verify_archive(blob: bytes, key: bytes, changes: list[Change]) -> None:
                 raise RuntimeError(f"退避アーカイブの照合に失敗: {name}")
 
 
-def write_redacted(change: Change) -> None:
+def write_redacted(change: Change) -> int | None:
     if change.kind == "sqlite":
         with sqlite3.connect(change.path) as conn:
-            conn.executemany("update chat_messages set user_id = ?, content = ? where id = ?", [(r["user_id"], r["content"], r["id"]) for r in change.rows])
-        return
+            # 初回走査後にも API が行を追加し得る。書込ロック取得後に再走査してから更新し、
+            # cleanup 成功を返す時点で marker を含む会話を取りこぼさない。
+            conn.execute("BEGIN IMMEDIATE")
+            rows = _redacted_sqlite_rows(_sqlite_review_rows(conn))
+            conn.executemany("update chat_messages set user_id = ?, content = ? where id = ?", [(r["user_id"], r["content"], r["id"]) for r in rows])
+        return len(rows)
     # 稼働中の API が追記するログがあるので、原本を読んだ後に増えた分は伏字にして後ろへ足す
     current = change.path.read_bytes()
     tail = current[len(change.original):] if current.startswith(change.original) else b""
@@ -265,6 +278,7 @@ def write_redacted(change: Change) -> None:
     tmp = change.path.with_name(change.path.name + ".redact.tmp")
     tmp.write_bytes(change.redacted + tail)
     tmp.replace(change.path)
+    return None
 
 
 def run(apply: bool, vault: Path | None, repo_root: Path = REPO_ROOT) -> dict:
@@ -296,7 +310,9 @@ def run(apply: bool, vault: Path | None, repo_root: Path = REPO_ROOT) -> dict:
     part.write_bytes(blob)
     part.replace(archive)
     for change in changes:
-        write_redacted(change)
+        written = write_redacted(change)
+        if change.kind == "sqlite" and written is not None:
+            summary["sqlite_rows"] = written
     summary.update({"applied": True, "archive": str(archive), "archived_files": len(manifest["files"])})
     return summary
 

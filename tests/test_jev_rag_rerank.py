@@ -122,6 +122,25 @@ def test_eval_scores_jev_mechanically_with_fallback_and_covered_subset() -> None
     assert result["vertex_covered"]["total"] == 1 and result["vertex_covered"]["vertex_search"]["hit_at_k_rate"] == 1.0
 
 
+def test_jev_promotion_metrics_use_only_production_eligible_queries() -> None:
+    cases = [
+        {"id": "safe", "query": "残価", "expected_path_any": ["good.md"], "forbidden_path_any": []},
+        {"id": "screening", "query": "社名と生財務数値", "expected_path_any": ["secret.md"], "forbidden_path_any": []},
+    ]
+    hits = {"残価": [{"file_path": "good.md"}], "社名と生財務数値": [{"file_path": "secret.md"}]}
+    result = vx_eval.run_eval(
+        cases,
+        chroma_search=lambda q, k: hits[q],
+        rerank=lambda q, rows: rows,
+        vertex_search=lambda q, k: [],
+        vertex_answer=lambda q: {"refs": []},
+        jev_rerank=lambda q, rows: (rows, {"calls": 1}),
+        jev_eligible=lambda q: q == "残価",
+    )
+    assert result["jev_rerank"]["total"] == 1
+    assert result["jev_chroma"]["total"] == 1
+
+
 def test_jev_promotion_is_tracked_separately(tmp_path) -> None:
     path = tmp_path / "jev.json"
     night = {"chroma": {"hit_at_k_rate": 0.55, "mrr": 0.40}, "jev_rerank": {"hit_at_k_rate": 0.60, "mrr": 0.50, "calls": 42}}
@@ -145,6 +164,15 @@ def test_night_where_jev_failed_everywhere_is_not_counted(tmp_path) -> None:
     promoted, reason = vx_eval.update_jev_state(failed, "2026-10-03T12:00", path)
     state = json.loads(path.read_text())
     assert promoted is False and "不通" in reason and not state.get("history") and state["last_failures"] == 42
+
+
+def test_total_jev_outage_disables_an_existing_promotion(tmp_path) -> None:
+    path = tmp_path / "jev.json"
+    path.write_text(json.dumps({"promoted": True, "history": []}), encoding="utf-8")
+    failed = {"chroma": {"hit_at_k_rate": 0.55, "mrr": 0.40}, "jev_rerank": {"hit_at_k_rate": 0.55, "mrr": 0.40, "calls": 0, "failures": 42}}
+    promoted, reason = vx_eval.update_jev_state(failed, "2026-10-03T12:00", path)
+    state = json.loads(path.read_text())
+    assert promoted is False and state["promoted"] is False and "解除" in reason
 
 
 def test_daily_script_points_jev_at_keychain() -> None:

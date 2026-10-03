@@ -331,7 +331,8 @@ const leaseVsBankCreditText = (data: ScreeningFormRecord) => {
   const lease = Number(data.lease_credit);
   const cost = Number(data.acquisition_cost);
   if (data.bank_credit === "" || data.bank_credit == null || !Number.isFinite(bank)) return "";
-  const leaseAfter = (Number.isFinite(lease) ? lease : 0) + (Number.isFinite(cost) ? cost : 0);
+  if (data.lease_credit === "" || data.lease_credit == null || !Number.isFinite(lease)) return "";
+  const leaseAfter = lease + (Number.isFinite(cost) ? cost : 0);
   if (bank <= 0) return "銀行与信なし";
   return leaseAfter > bank ? "今回を含むリース与信が銀行与信を上回る" : "今回を含むリース与信は銀行与信以下";
 };

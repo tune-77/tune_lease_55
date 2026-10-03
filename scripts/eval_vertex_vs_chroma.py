@@ -42,6 +42,19 @@ MRR_MARGIN = 0.02
 SearchFn = Callable[[str, int], list[dict[str, Any]]]
 
 
+def one_entry_per_date(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep only the latest retry for each calendar date, preserving date order."""
+    by_date: dict[str, dict[str, Any]] = {}
+    undated = 0
+    for entry in history:
+        date_key = str(entry.get("at") or "")[:10]
+        if not date_key:
+            date_key = f"undated-{undated}"
+            undated += 1
+        by_date[date_key] = entry
+    return list(by_date.values())
+
+
 def load_cases(paths: list[Path] = EVAL_SETS) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     for path in paths:
@@ -65,6 +78,7 @@ def run_eval(
     vertex_search: SearchFn,
     vertex_answer: Callable[[str], dict[str, Any]],
     jev_rerank: Callable[[str, list[dict[str, Any]]], tuple[list[dict[str, Any]], dict[str, Any]]] | None = None,
+    jev_eligible: Callable[[str], bool] | None = None,
     covered_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     chroma_cache: dict[str, list[dict[str, Any]]] = {}
@@ -120,13 +134,16 @@ def run_eval(
         "vertex_search": _summary(evaluate_cases(covered, vertex_search, TOP_K)),
         "vertex_answer_ref_hit_rate": (sum(1 for c in covered if c["id"] in answer_hit_ids) / len(covered)) if covered else 0.0,
     }
-    jev_block = _summary(evaluate_cases(cases, jev_reranked, TOP_K)) if jev_rerank is not None else None
+    jev_cases = [case for case in cases if jev_eligible is None or jev_eligible(case["query"])]
+    jev_chroma = _summary(evaluate_cases(jev_cases, lambda q, k: chroma10(q)[:k], TOP_K)) if jev_rerank is not None else None
+    jev_block = _summary(evaluate_cases(jev_cases, jev_reranked, TOP_K)) if jev_rerank is not None else None
     if jev_block is not None:
         jev_block.update({**jev_stats, "estimated_jpy": jev_estimate_jpy(jev_stats["input_tokens"])})
     return {
         "chroma": _summary(evaluate_cases(cases, lambda q, k: chroma10(q)[:k], TOP_K)),
         "rerank_shadow": _summary(evaluate_cases(cases, reranked, TOP_K)),
         "jev_rerank": jev_block,
+        "jev_chroma": jev_chroma,
         "vertex_search": _summary(evaluate_cases(cases, vertex_search, TOP_K)),
         "vertex_covered": covered_block,
         "vertex_answer": {
@@ -140,7 +157,7 @@ def run_eval(
 
 def decide_rerank(history: list[dict[str, Any]], currently_promoted: bool, key: str = "rerank_shadow") -> tuple[bool, str]:
     """history は古い順の各晩 {"chroma": {...}, key: {...}}。key は rerank_shadow（Vertex）か jev_rerank。"""
-    history = [n for n in history if n.get(key)]
+    history = one_entry_per_date([n for n in history if n.get(key)])
     if not history:
         return currently_promoted, "評価なし"
     latest = history[-1]
@@ -179,6 +196,7 @@ def vertex_covered_ids(cases: list[dict[str, Any]], manifest: Path = EXPORT_MANI
 
 
 def _default_fns() -> dict[str, Any]:
+    from api.chat_retrieval import _jev_rerank_enabled
     from api.jev_rag_rerank import jev_rerank
     from api.knowledge.vector_store import get_store
     from api.vertex_agent_search import answer_vertex_agent, rerank_hits, search_vertex_agent
@@ -194,6 +212,7 @@ def _default_fns() -> dict[str, Any]:
         "vertex_search": vertex_search,
         "vertex_answer": lambda q: answer_vertex_agent(q, page_size=5, include_grounding_supports=True),
         "jev_rerank": jev_rerank,
+        "jev_eligible": _jev_rerank_enabled,
     }
 
 
@@ -210,6 +229,7 @@ def main() -> int:
     rerank_state = dict(state.get("rerank") or {})
     history = list(rerank_state.get("history") or [])
     history.append({"at": now, "chroma": result["chroma"], "rerank_shadow": result["rerank_shadow"]})
+    history = one_entry_per_date(history)
     promoted, reason = decide_rerank(history, bool(rerank_state.get("promoted")))
     if promoted != bool(rerank_state.get("promoted")):
         rerank_state["changed_at"] = now
@@ -238,12 +258,17 @@ def update_jev_state(result: dict[str, Any], now: str, path: Path | None = None)
     if not jev:
         return bool(jev_state.get("promoted")), "Jev 評価なし"
     if not jev.get("calls"):
-        # 全問不通の晩は「ChromaDB の順位そのまま」になるだけで Jev の測定ではない。晩数に数えない
-        jev_state.update({"last_failed_at": now, "last_failures": jev.get("failures", 0)})
+        # 全問不通を「Chromaと同等」とみなさない。本番適用中なら待ち時間を増やし続けないよう即時解除する。
+        was_promoted = bool(jev_state.get("promoted"))
+        reason = f"Jev 全問不通のため本番適用を解除（{jev.get('failures', 0)}問）" if was_promoted else f"Jev 全問不通のため今晩は判定に数えない（{jev.get('failures', 0)}問）"
+        jev_state.update({"promoted": False, "reason": reason, "last_failed_at": now, "last_failures": jev.get("failures", 0)})
+        if was_promoted:
+            jev_state["changed_at"] = now
         write_state(jev_state, path)
-        return bool(jev_state.get("promoted")), f"Jev 全問不通のため今晩は判定に数えない（{jev.get('failures', 0)}問）"
+        return False, reason
     history = list(jev_state.get("history") or [])
-    history.append({"at": now, "chroma": result["chroma"], "jev_rerank": result["jev_rerank"]})
+    history.append({"at": now, "chroma": result.get("jev_chroma") or result["chroma"], "jev_rerank": result["jev_rerank"]})
+    history = one_entry_per_date(history)
     promoted, reason = decide_rerank(history, bool(jev_state.get("promoted")), key="jev_rerank")
     if promoted != bool(jev_state.get("promoted")):
         jev_state["changed_at"] = now

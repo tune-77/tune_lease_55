@@ -28,19 +28,29 @@ _POLICY_PATTERNS = (
     re.compile(r"必ず(?!しも)[^。]{0,24}(する|確認|取る|求める|徴求|もらう)"),  # 「必ずしも〜ない」は方針ではない
     re.compile(r"(当社|弊社|うち)の?(方針|ルール|決まり)"),
 )
+_HEDGED_POLICY_RE = re.compile(r"必ずしも|わけではない|というわけではない|とは限らない|とはいえない")
 
 
 def classify_knowledge_kind(text: str) -> str:
     body = str(text or "")
-    return POLICY if any(p.search(body) for p in _POLICY_PATTERNS) else INSIGHT
+    # 一文単位で見る。「契約しないわけではない」のような否定・留保を、
+    # 内側の「契約しない」だけ拾って方針へ反転させない。
+    for sentence in re.split(r"[。！？\n]", body):
+        if sentence and not _HEDGED_POLICY_RE.search(sentence) and any(p.search(sentence) for p in _POLICY_PATTERNS):
+            return POLICY
+    return INSIGHT
 
 
 def knowledge_kind_of(item: dict[str, Any], text: str = "") -> str:
     """保存済みの knowledge_kind を優先し、無ければ本文から分類する。"""
+    edited = str(item.get("edited_claim") or "").strip()
+    effective = str(text or edited or item.get("canonical_statement") or item.get("claim") or item.get("content") or "")
+    if edited and effective.strip() == edited:
+        return classify_knowledge_kind(edited)
     stored = str(item.get("knowledge_kind") or "").strip()
     if stored in {POLICY, INSIGHT}:
         return stored
-    return classify_knowledge_kind(text or item.get("canonical_statement") or item.get("claim") or item.get("content") or "")
+    return classify_knowledge_kind(effective)
 
 
 POLICY_HEADER = "【社内方針（ユーザーが定めたルール）】"

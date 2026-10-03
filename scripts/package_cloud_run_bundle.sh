@@ -46,7 +46,13 @@ else
 fi
 copy_if_exists "$ROOT_DIR/data/screening_db.sqlite" "$DATA_OUT/"
 copy_if_exists "$ROOT_DIR/data/user_personal_memory.md" "$DATA_OUT/"
-copy_if_exists "$ROOT_DIR/data/user_personal_memory_archive.json" "$DATA_OUT/"
+# アーカイブは実行時データのためgitには置かない。fresh checkoutでも個人記憶の整理結果を
+# silently落とさないよう、bundle内で決定的ルールを再実行して必ず生成する。
+if [[ -f "$ROOT_DIR/data/user_personal_memory_archive.json" ]]; then
+  cp "$ROOT_DIR/data/user_personal_memory_archive.json" "$DATA_OUT/"
+else
+  PYTHONPATH="$ROOT_DIR" python3 -m api.user_personal_memory_archive --archive-path "$DATA_OUT/user_personal_memory_archive.json" >/dev/null
+fi
 copy_if_exists "$ROOT_DIR/reports/obsidian_daily_intelligence_latest.json" "$BUNDLE_DIR/"
 
 REPORTS_OUT="$BUNDLE_DIR/reports"

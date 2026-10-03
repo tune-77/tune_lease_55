@@ -103,6 +103,20 @@ def extract_vertex_search_hint(message: str) -> str:
     return hint or text
 
 
+def build_vertex_search_query(message: str) -> str:
+    """Turn a chat-style question into compact terms before external search."""
+    source = extract_vertex_search_hint(message)
+    try:
+        from obsidian_query import split_query_terms
+
+        terms = split_query_terms(source)
+    except Exception:
+        terms = []
+    # Preserve order while removing repeated conversational fragments.
+    unique_terms = list(dict.fromkeys(term for term in terms if len(term) >= 2))
+    return " ".join(unique_terms)[:500] or source[:500]
+
+
 def chat_memory_roots(obsidian_vault_path: str = "") -> list[Path]:
     roots: list[Path] = []
     candidates = [
@@ -321,7 +335,8 @@ def build_chat_retrieval_context(
     )
     candidate_top_k = min(20, max(rag_top_k, rag_top_k * 2)) if typesafe_filter else rag_top_k
     # クレジット期間中、毎晩の shadow 評価で効果が確認できた時だけ Ranking API で並べ替える
-    rerank = _vertex_rerank_enabled()
+    vertex_rerank_allowed = not is_general_response_mode and question_category != "general"
+    rerank = vertex_rerank_allowed and _vertex_rerank_enabled()
     jev_rerank_on = not rerank and _jev_rerank_enabled(message)
     if rerank or jev_rerank_on:
         candidate_top_k = min(20, max(candidate_top_k, rag_top_k * 2))
@@ -381,7 +396,7 @@ def build_chat_retrieval_context(
         from api.vertex_query_mask import mask_for_vertex
 
         # 外部の検索APIへ出る前に、会社名・個人名・電話・住所・金額などを伏せる
-        vertex_search_query = mask_for_vertex(extract_vertex_search_hint(message))
+        vertex_search_query = mask_for_vertex(build_vertex_search_query(message))
         credit_mode = credit_mode_status()
         result.vertex_agent_search = search_vertex_agent(vertex_search_query)
         result.vertex_agent_search["credit_mode"] = credit_mode

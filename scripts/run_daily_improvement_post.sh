@@ -613,3 +613,5 @@ echo "[配布] 公開ノート（Memory Pack等）を GCS Vault へアップロ�
 
 # Obsidian → Vertex AI Search の同期は scripts/run_vertex_credit_daily.sh（launchd 05:30）へ移した。
 # クレジットモード（api/vertex_credit_mode.py）が on の間だけ毎日動き、off なら手動同期に戻る。
+# 新規Mac・plist更新時は bash scripts/install_vertex_credit_launchagent.sh で登録する。
+# 手順: docs/vertex-credit-daily-launchagent.md

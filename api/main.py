@@ -6281,13 +6281,13 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         # 対話室も優先度と予算で組み立てる（従来は上限なしで平均3.4万字）。並び順は従来どおり。
         # 教わった知識の想起に含まれる社内方針の節は、通常チャットと同じく末尾に置く（PR #1225）
         from api.chat_prompt_blocks import block_with_spacing
-        from api.chat_prompt_budget import assemble_prompt
+        from api.chat_prompt_budget import assemble_prompt, split_dialogue_prompt
         from api.judgment_policy import merge_policy_blocks, split_policy_block
 
         _dialogue_policy, pre_recall_context = split_policy_block(pre_recall_context)
         system_prompt, dialogue_prompt_budget = assemble_prompt(
             [
-                ("dialogue_base", system_prompt),
+                *split_dialogue_prompt(system_prompt),
                 ("user_personal_memory_context", user_personal_memory_context),
                 ("shared_shion_memory_context", block_with_spacing(shared_shion_memory_context)),
                 ("improvement_report_context", block_with_spacing(improvement_report_context)),
@@ -6646,6 +6646,24 @@ def post_chat(req: ChatRequest):
         is_screening_review = req.caller == "screening_review"
         search_text = (req.retrieval_query or "").strip()[:600] or req.message
         logged_user_message = "[審査分析の紫苑レビュー依頼（依頼文は記録しない）]" if is_screening_review else req.message
+
+        def save_current_chat_message(role: str, content: str) -> None:
+            """審査レビュー依頼は専用テーブルだけに残し、汎用会話履歴へ保存しない。"""
+            if not is_screening_review:
+                save_message(req.user_id, role, content)
+
+        record_generic_prompt_feedback = (
+            (lambda **_kwargs: None) if is_screening_review else _record_prompt_feedback_if_available
+        )
+        record_generic_memory_usage = (
+            (lambda **_kwargs: None) if is_screening_review else _record_memory_usage_if_available
+        )
+        record_generic_response_impact = (
+            (lambda **_kwargs: {"recorded": False, "reason": "screening_review"})
+            if is_screening_review
+            else _record_response_impact_prediction
+        )
+
         personal_memory_capture = (
             {"captured": False, "reason": "screening_review"}
             if is_screening_review
@@ -6654,7 +6672,7 @@ def post_chat(req: ChatRequest):
 
         if (req.intent or "").strip().lower() == "improvement":
             _log_shion_query_class(req.message, "improvement")
-            save_message(req.user_id, "user", req.message)
+            save_current_chat_message("user", req.message)
             original_text = req.message.strip()
             organized_text = ""
             yanami_comment = ""
@@ -6723,11 +6741,11 @@ def post_chat(req: ChatRequest):
                     f"改善メモとして受け取りましたが、Obsidian保存は未完了です: {reason}\n\n"
                     f"つん子さん: {yanami_comment or '保存先が詰まると、改善以前に私の胃が詰まります。'}"
                 )
-            save_message(req.user_id, "assistant", reply)
+            save_current_chat_message("assistant", reply)
             _record_cloudrun_chat_exchange(
                 surface="next_chat_improvement",
                 user_id=req.user_id,
-                user_message=req.message,
+                user_message=logged_user_message,
                 assistant_reply=reply,
                 category="improvement",
                 response_mode=req.response_mode,
@@ -6845,7 +6863,7 @@ def post_chat(req: ChatRequest):
         )
 
         if question_category == "news_summarize":
-            save_message(req.user_id, "user", req.message)
+            save_current_chat_message("user", req.message)
             try:
                 import re as _nre
                 url_match = _nre.search(r'https?://[^\s\)）」』\]]+', req.message)
@@ -6868,11 +6886,11 @@ def post_chat(req: ChatRequest):
                 )
             except Exception as _news_e:
                 reply = f"ニュースの要約に失敗しました: {_news_e}"
-            save_message(req.user_id, "assistant", reply)
+            save_current_chat_message("assistant", reply)
             _record_cloudrun_chat_exchange(
                 surface="next_chat_news",
                 user_id=req.user_id,
-                user_message=req.message,
+                user_message=logged_user_message,
                 assistant_reply=reply,
                 category="news_summarize",
                 response_mode=req.response_mode,
@@ -6905,7 +6923,7 @@ def post_chat(req: ChatRequest):
             vault=_find_teaching_vault(),
             surface=teaching_surface,
             candidate_saver=_save_teaching_candidate,
-            previous_user_message=previous_user_message(get_recent_messages(req.user_id, limit=6)),
+            previous_user_message=previous_user_message([] if is_screening_review else get_recent_messages(req.user_id, limit=6)),
             # RAG 分岐は build_chat_retrieval_context で引くので、RAG を飛ばす general だけ渡す。
             rag_search=vector_store_rag_search("next_chat_general") if question_category == "general" else None,
             allow_save=not is_screening_review,
@@ -6921,7 +6939,7 @@ def post_chat(req: ChatRequest):
 
         # general なら RAG をスキップして直接回答
         if question_category == "general":
-            history = get_recent_messages(req.user_id, limit=int(context_budget["history_limit"]))
+            history = [] if is_screening_review else get_recent_messages(req.user_id, limit=int(context_budget["history_limit"]))
             if chat_long_input or context_mode in ("casual", "long"):
                 history = _compact_dialogue_history(
                     history,
@@ -7014,8 +7032,8 @@ def post_chat(req: ChatRequest):
             )
             if research_suggestion.get("needed") and not req.allow_external_research and not is_screening_review:
                 reply = teaching_turn.finalize(external_research_permission_reply(research_suggestion))
-                save_message(req.user_id, "user", req.message)
-                save_message(req.user_id, "assistant", reply)
+                save_current_chat_message("user", req.message)
+                save_current_chat_message("assistant", reply)
                 _record_cloudrun_chat_exchange(
                     surface="next_chat_research_permission",
                     user_id=req.user_id,
@@ -7136,7 +7154,7 @@ def post_chat(req: ChatRequest):
                 base_prompt=base_general_with_pdca,
             )
             obsidian_daily_injected = {}
-            if obsidian_daily_context:
+            if obsidian_daily_context and not is_screening_review:
                 obsidian_daily_injected = record_obsidian_daily_intelligence_event(
                     surface="next_chat_general",
                     route="chat",
@@ -7146,7 +7164,7 @@ def post_chat(req: ChatRequest):
             reply = teaching_turn.finalize(call_gemini_chat(effective_system_prompt, history_for_gemini, req.message))
             reply = enforce_policy_first(reply, policy_prompt_context)
             obsidian_daily_effect = {}
-            if obsidian_daily_context:
+            if obsidian_daily_context and not is_screening_review:
                 obsidian_daily_effect = record_obsidian_daily_intelligence_event(
                     surface="next_chat_general",
                     route="chat",
@@ -7154,8 +7172,8 @@ def post_chat(req: ChatRequest):
                     question=req.message,
                     response_text=reply,
                 )
-            save_message(req.user_id, "user", req.message)
-            save_message(req.user_id, "assistant", reply)
+            save_current_chat_message("user", req.message)
+            save_current_chat_message("assistant", reply)
             _record_cloudrun_chat_exchange(
                 surface="next_chat_general",
                 user_id=req.user_id,
@@ -7172,7 +7190,7 @@ def post_chat(req: ChatRequest):
                 response_mode=req.response_mode,
                 category="general",
             )
-            response_impact_prediction = _record_response_impact_prediction(
+            response_impact_prediction = record_generic_response_impact(
                 user_message=req.message,
                 assistant_reply=reply,
                 user_id=req.user_id,
@@ -7181,7 +7199,7 @@ def post_chat(req: ChatRequest):
                 category="general",
             )
             judgment_asset_capture = teaching_judgment_asset_capture
-            if not is_general_response_mode:
+            if not is_general_response_mode and not is_screening_review:
                 try:
                     from api.shion_experience_loop import record_experience_event
 
@@ -7198,7 +7216,7 @@ def post_chat(req: ChatRequest):
                     experience_loop_payload = experience_record.get("state") or experience_loop_payload
                 except Exception as _experience_record_error:
                     print(f"[ShionExperienceLoop] 記録エラー: {_experience_record_error}")
-            _record_prompt_feedback_if_available(
+            record_generic_prompt_feedback(
                 surface="next_chat_general",
                 question=req.message,
                 base_prompt=build_prompt_feedback_snapshot(base_system_prompt, history_for_gemini, req.message),
@@ -7211,7 +7229,7 @@ def post_chat(req: ChatRequest):
                     world_proxy=world_proxy_payload,
                 ),
             )
-            _record_memory_usage_if_available(
+            record_generic_memory_usage(
                 surface="next_chat_general",
                 question=req.message,
                 response=reply,
@@ -7311,8 +7329,8 @@ def post_chat(req: ChatRequest):
         )
         if research_suggestion.get("needed") and not req.allow_external_research and not is_screening_review:
             reply = teaching_turn.finalize(external_research_permission_reply(research_suggestion))
-            save_message(req.user_id, "user", req.message)
-            save_message(req.user_id, "assistant", reply)
+            save_current_chat_message("user", req.message)
+            save_current_chat_message("assistant", reply)
             _record_cloudrun_chat_exchange(
                 surface="next_chat_research_permission",
                 user_id=req.user_id,
@@ -7386,7 +7404,7 @@ def post_chat(req: ChatRequest):
                     )
             except Exception as _ie:
                 print(f"[改善照合] エラー: {_ie}")
-        history = get_recent_messages(req.user_id, limit=int(context_budget["history_limit"]))
+        history = [] if is_screening_review else get_recent_messages(req.user_id, limit=int(context_budget["history_limit"]))
         if chat_long_input or context_mode in ("casual", "long"):
             history = _compact_dialogue_history(
                 history,
@@ -7607,7 +7625,7 @@ def post_chat(req: ChatRequest):
             base_prompt=base_with_pdca,
         )
         obsidian_daily_injected = {}
-        if obsidian_daily_context:
+        if obsidian_daily_context and not is_screening_review:
             obsidian_daily_injected = record_obsidian_daily_intelligence_event(
                 surface="next_chat_rag",
                 route="chat",
@@ -7619,7 +7637,7 @@ def post_chat(req: ChatRequest):
         reply = teaching_turn.finalize(reply)
         reply = enforce_policy_first(reply, policy_prompt_context)  # 方針を使ったのに冒頭で述べていなければ1行目へ
         obsidian_daily_effect = {}
-        if obsidian_daily_context:
+        if obsidian_daily_context and not is_screening_review:
             obsidian_daily_effect = record_obsidian_daily_intelligence_event(
                 surface="next_chat_rag",
                 route="chat",
@@ -7627,8 +7645,8 @@ def post_chat(req: ChatRequest):
                 question=req.message,
                 response_text=reply,
             )
-        save_message(req.user_id, "user", req.message)
-        save_message(req.user_id, "assistant", reply)
+        save_current_chat_message("user", req.message)
+        save_current_chat_message("assistant", reply)
         _record_cloudrun_chat_exchange(
             surface="next_chat_rag",
             user_id=req.user_id,
@@ -7657,7 +7675,7 @@ def post_chat(req: ChatRequest):
                 category=question_category,
             )
             vertex_distillation_capture = _capture_vertex_distillation(req.message, vertex_answer_api)
-        response_impact_prediction = _record_response_impact_prediction(
+        response_impact_prediction = record_generic_response_impact(
             user_message=req.message,
             assistant_reply=reply,
             user_id=req.user_id,
@@ -7666,7 +7684,7 @@ def post_chat(req: ChatRequest):
             category=question_category,
         )
         judgment_asset_capture = teaching_judgment_asset_capture
-        if not is_general_response_mode:
+        if not is_general_response_mode and not is_screening_review:
             try:
                 from api.shion_experience_loop import record_experience_event
 
@@ -7683,7 +7701,7 @@ def post_chat(req: ChatRequest):
                 experience_loop_payload = experience_record.get("state") or experience_loop_payload
             except Exception as _experience_record_error:
                 print(f"[ShionExperienceLoop] 記録エラー: {_experience_record_error}")
-        _record_prompt_feedback_if_available(
+        record_generic_prompt_feedback(
             surface="next_chat_rag",
             question=req.message,
             base_prompt=build_prompt_feedback_snapshot(base_effective_prompt, history_for_gemini, req.message),
@@ -7704,7 +7722,7 @@ def post_chat(req: ChatRequest):
                 world_proxy=world_proxy_payload,
             ),
         )
-        _record_memory_usage_if_available(
+        record_generic_memory_usage(
             surface="next_chat_rag",
             question=req.message,
             response=reply,

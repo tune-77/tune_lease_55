@@ -86,6 +86,8 @@ def add_question(entry: dict[str, Any], path: Path = QUESTIONS_JSON) -> dict[str
         raise SystemExit("kind=taught には --taught-any が必要です")
     if entry["kind"] == "basic" and not entry.get("correct_any"):
         raise SystemExit("kind=basic には --correct-any が必要です")
+    if not entry.get("wrong_any"):
+        raise SystemExit("--wrong-any が必要です")
     store["questions"].append({k: v for k, v in entry.items() if v})
     path.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return entry
@@ -344,7 +346,11 @@ def _count(path: Path) -> int:
 def run_questions(questions: list[dict[str, Any]], base: Path, today: dt.date) -> tuple[list[dict[str, Any]], int]:
     repo, vault = prepare_sandbox(base)
     counter = base / "gemini_calls.txt"
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("SLACK", "K_SERVICE", "CLOUDRUN"))}
+    blocked_env = {"DATABASE_URL", "DATABASE_URL_SECRET_NAME", "DB_PATH", "SQLITE_DB_PATH", "LEASE_DB_PATH"}
+    env = {
+        k: v for k, v in os.environ.items()
+        if k not in blocked_env and not k.startswith(("SLACK", "K_SERVICE", "CLOUDRUN"))
+    }
     env.update({
         "OBSIDIAN_VAULT_PATH": str(vault), "OBSIDIAN_VAULT": str(vault), "GCS_VAULT_LOCAL_DIR": str(base / "no_gcs_vault"),
         "PYTHONPATH": str(repo), "PYTHONUNBUFFERED": "1", "JEV_JUDGMENT_LOG_PATH": "off", "DATA_DIR": str(repo / "data"),

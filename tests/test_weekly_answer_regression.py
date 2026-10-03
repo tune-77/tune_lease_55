@@ -71,6 +71,8 @@ def test_add_question(tmp_path):
         war.add_question({"id": "x", "kind": "taught", "q": "Q?", "taught_any": ["k"]}, path)
     with pytest.raises(SystemExit):
         war.add_question({"id": "y", "kind": "basic", "q": "Q?"}, path)
+    with pytest.raises(SystemExit, match="wrong-any"):
+        war.add_question({"id": "z", "kind": "taught", "q": "Q?", "taught_any": ["k"]}, path)
 
 
 # --- ⑤ 紫苑レビュー ------------------------------------------------------------------------
