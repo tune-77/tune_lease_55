@@ -14,6 +14,12 @@ import os
 import sys
 from pathlib import Path
 
+# `python scripts/<name>.py` で起動されるとリポジトリ直下が import 経路に入らないため足す。
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import record_silent_failure
+
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_LEDGER_MIRROR_PATH = os.environ.get("GCS_LEDGER_MIRROR_PATH", "ledger/ledger.jsonl").strip("/")
 LEDGER_PATH = Path(os.environ.get("LEDGER_PATH") or (Path.home() / "Library" / "Logs" / "tunelease" / "ledger.jsonl"))
@@ -43,6 +49,7 @@ def sync() -> bool:
         print(f"[sync_ledger_to_gcs] uploaded {LEDGER_PATH} -> gs://{bucket_name}/{GCS_LEDGER_MIRROR_PATH}")
         return True
     except Exception as exc:
+        record_silent_failure("backup.sync_ledger_to_gcs.upload", "save_failed", exc, detail="認証切れなら gcloud auth application-default login")
         print(f"[sync_ledger_to_gcs] 失敗（次回リトライ想定・パイプラインは継続）: {exc}")
         return False
 

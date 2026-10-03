@@ -15,6 +15,10 @@ log "ブランチクリーンアップ開始"
 
 cd "$REPO_DIR"
 
+# set -euo pipefail の下では、該当0件の grep が終了コード1でスクリプトを黙って止める
+# （2026-08-31〜09-28 は fetch 直後に毎週終了し、launchd の終了コード1だけが残っていた）。
+# 0件は正常なので grep には `|| true` を付ける。
+
 # リモートの最新状態を取得（削除済みリモートブランチも刈り取る）
 git fetch --prune origin 2>&1 | tee -a "$LOG_FILE" || {
     log "警告: git fetch 失敗。ローカルのマージ済みブランチのみ削除します"
@@ -22,7 +26,7 @@ git fetch --prune origin 2>&1 | tee -a "$LOG_FILE" || {
 
 # マージ済みリモートブランチを削除
 REMOTE_BRANCHES=$(git branch -r --merged origin/master \
-    | grep 'origin/auto-improve/' \
+    | { grep 'origin/auto-improve/' || true; } \
     | sed 's|origin/||' \
     | tr -d ' ')
 
@@ -38,7 +42,7 @@ fi
 
 # ローカルのマージ済みブランチを削除
 LOCAL_BRANCHES=$(git branch --merged master \
-    | grep 'auto-improve/' \
+    | { grep 'auto-improve/' || true; } \
     | tr -d ' ')
 
 if [ -n "$LOCAL_BRANCHES" ]; then

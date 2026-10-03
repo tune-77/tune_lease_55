@@ -13,12 +13,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
+
+# `python scripts/<name>.py` で起動されるとリポジトリ直下が import 経路に入らず、
+# api/ やルート直下のモジュールの import が失敗して黙って処理を飛ばしていた。
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import record_silent_failure
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MEMORY_DIR = REPO_ROOT / "memory"
@@ -360,7 +368,8 @@ def _hypothesis_collision_items(path: Path, target_date: date) -> list[str]:
             from api.shion_hypothesis_collision import reflection_items_from_collision
 
             items.extend(reflection_items_from_collision(row))
-        except Exception:
+        except Exception as exc:
+            record_silent_failure("memory.reflection_delta.hypothesis_collision", "swallowed", exc)
             hypothesis = row.get("initial_hypothesis") if isinstance(row.get("initial_hypothesis"), dict) else {}
             items.extend(
                 [
