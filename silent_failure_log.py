@@ -31,7 +31,7 @@ from typing import Any
 _logger = logging.getLogger("silent_failure")
 
 DEFAULT_LOG_PATH = Path(__file__).resolve().parent / "data" / "silent_failures.jsonl"
-KINDS = ("swallowed", "save_failed", "fallback", "truncated", "timeout", "subprocess_failed")
+KINDS = ("swallowed", "save_failed", "fallback", "truncated", "timeout", "subprocess_failed", "paused_skip")
 CRITICAL_DOMAINS = ("answer", "scoring", "judgment", "memory", "backup", "privacy")
 _MAX_BYTES = 5 * 1024 * 1024
 _REPEAT_WINDOW_S = 60.0
@@ -145,14 +145,19 @@ def morning_report_lines(path: Path | None = None, *, now: dt.datetime | None = 
         return [f"- ⚠️ 黙った失敗の記録を読めない `{type(exc).__name__}`"]
     since = now - dt.timedelta(hours=24)
     recent, older = [], set()
+    paused = 0  # Cloud Run 停止中のスキップ（cloudrun_pause.py）は失敗に数えず1行にまとめる
     for row in rows:
         key = (row.get("component", ""), row.get("kind", ""))
-        if dt.datetime.fromisoformat(row["ts"]) >= since:
+        is_recent = dt.datetime.fromisoformat(row["ts"]) >= since
+        if row.get("kind") == "paused_skip":
+            paused += (1 + int(row.get("repeat") or 0)) if is_recent else 0
+        elif is_recent:
             recent.append(row)
         else:
             older.add(key)
+    paused_lines = [f"- Cloud Run 停止中：同期{paused}件スキップ（config/cloudrun_pause.json）"] if paused else []
     if not recent:
-        return []
+        return paused_lines
     counts: Counter[tuple[str, str]] = Counter()
     for row in recent:
         counts[(row.get("component", ""), row.get("kind", ""))] += 1 + int(row.get("repeat") or 0)
@@ -160,7 +165,7 @@ def morning_report_lines(path: Path | None = None, *, now: dt.datetime | None = 
     critical = {k: v for k, v in counts.items() if is_critical(k[0])}
     new = {k: v for k, v in counts.items() if k not in older}
     if total < threshold and not critical and not new:
-        return []
+        return paused_lines
 
     def fmt(items: dict[tuple[str, str], int]) -> str:
         top = sorted(items.items(), key=lambda kv: -kv[1])[:4]
@@ -174,7 +179,7 @@ def morning_report_lines(path: Path | None = None, *, now: dt.datetime | None = 
         lines.append(f"  - 新しい種類: {fmt(new)}")
     if not critical and not new:
         lines.append(f"  - 多い順: {fmt(dict(counts))}")
-    return lines
+    return lines + paused_lines
 
 
 LAUNCHD_PREFIXES = ("com.tunelease.", "com.lease.")

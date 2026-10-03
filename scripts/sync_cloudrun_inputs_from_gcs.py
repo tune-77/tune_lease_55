@@ -18,6 +18,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from silent_failure_log import clip, record_silent_failure
+from cloudrun_pause import skip_if_paused
 
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
@@ -1395,6 +1396,8 @@ def _upload_prompt_feedback_snapshot(bucket: Any | None) -> None:
 
 
 def main() -> None:
+    if skip_if_paused("backup.sync_cloudrun_inputs.from_gcs"):
+        return
     days = int(os.environ.get("CLOUDRUN_INPUT_SYNC_DAYS", "3"))
     bucket_name = _bucket_name()
     bucket = None

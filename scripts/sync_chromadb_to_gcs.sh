@@ -20,6 +20,11 @@ log() {
 
 log "=== ChromaDB GCS sync 開始 ==="
 
+# Cloud Run 一時停止中は GCS 同期も新リビジョン起動もしない（config/cloudrun_pause.json）。
+if "${PYTHON_BIN:-$PROJECT_ROOT/.venv/bin/python}" "$PROJECT_ROOT/cloudrun_pause.py" backup.sync_chromadb_to_gcs.rsync 2>&1 | tee -a "$LOG_FILE"; then
+    exit 0
+fi
+
 # --- GCS sync ---
 if ! command -v gsutil &>/dev/null; then
     log "ERROR: gsutil が見つかりません。Google Cloud SDK をインストールしてください"
