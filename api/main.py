@@ -62,6 +62,7 @@ while _REPO_ROOT in sys.path:
 sys.path.insert(0, _REPO_ROOT)
 
 from api.background_executor import background_executor as _background_executor
+from api.background_executor import install_thread_failure_hook as _install_thread_failure_hook
 from api.db_connection import current_backend, get_connection, placeholder
 from api.cloudrun_writeback import record_cloudrun_input_event
 from api.data_git_sync import (
@@ -150,6 +151,9 @@ def _gemini_generate_url() -> str:
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from scoring_anomaly_monitor import record_scoring_anomalies
 from silent_failure_log import record_silent_failure
+
+# threading.Thread 直の背景処理の未処理例外も silent_failures に残す。
+_install_thread_failure_hook()
 from api.scoring_full import run_full_scoring_api
 from lease_news_digest import (
     build_lease_news_brief,
@@ -292,8 +296,8 @@ async def lifespan(app: FastAPI):
             )
             refresh_dashboard_stats_cache_if_missing()
             refresh_department_stats_cache_if_missing()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - 温めに失敗しても初回アクセス時に作られる
+            record_silent_failure("background.main.dashboard_cache_warmup", "swallowed", exc)
     threading.Thread(
         target=_warm_dashboard_stats_caches,
         daemon=True,

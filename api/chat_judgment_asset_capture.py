@@ -7,7 +7,6 @@ import hashlib as _hashlib
 import json
 import os
 import re
-import threading
 from pathlib import Path
 from typing import Any, Callable
 
@@ -233,10 +232,12 @@ def record_chat_teaching_jev_shadow(claim: str, *, judge: Callable[[str], float 
 
 
 def _start_jev_shadow(claim: str) -> None:
-    """回答を待たせないよう別スレッドで記録する。"""
+    """回答を待たせないよう別スレッドで記録する。例外は共有 executor が silent_failures に残す。"""
     if os.environ.get("CHAT_TEACHING_JEV_SHADOW", "1").strip() == "0":
         return
-    threading.Thread(target=record_chat_teaching_jev_shadow, args=(claim,), daemon=True).start()
+    from api.background_executor import background_executor
+
+    background_executor.submit(record_chat_teaching_jev_shadow, claim)
 
 
 def capture_chat_judgment_asset_if_needed(

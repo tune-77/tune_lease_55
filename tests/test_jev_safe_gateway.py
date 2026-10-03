@@ -387,7 +387,7 @@ def test_cli_imports_root_module_when_project_root_is_already_on_pythonpath(tmp_
     result = subprocess.run(
         [
             sys.executable,
-            str(project_root / "scripts" / "jev_safe_gateway.py"),
+            str(project_root / "scripts" / "jev_safe_gateway_cli.py"),
             "--input",
             "-",
             "--audit",

@@ -28,7 +28,7 @@ Retirement: Jev MCPがローカル判定になり、またはハーネスが安�
 - 安全な投影では根拠が失われて判定不能になる場合、そのステップだけローカル推論へ戻す。Jevを通すために情報量を増やさない。
 - 原則として top probability または confidence が0.7未満なら自動採用せず、Codex/Claudeが判断する。
 - どのステップでJevを使ったか、使えなかった場合はその理由を最終報告へ明記する。
-- 定型の投影には `scripts/jev_safe_gateway.py` を使える。入力は `abstract`（内部成果物の一般化）、`aggregate`（案件・業務データのカテゴリ化）、`public_excerpt`（公開URLで検証できる短い公開コード）の3モードとする。
+- 定型の投影には `scripts/jev_safe_gateway_cli.py` を使える。入力は `abstract`（内部成果物の一般化）、`aggregate`（案件・業務データのカテゴリ化）、`public_excerpt`（公開URLで検証できる短い公開コード）の3モードとする。
 - Gatewayの `status` が `allowed` の時だけ `outbound` をJevへ渡す。`local_mapping` と監査記録はローカル専用で、Jevへ送らない。
 - `public_excerpt` は公開物だけの例外である。私有コード・diff・ログを公開扱いに偽装して送らない。
 

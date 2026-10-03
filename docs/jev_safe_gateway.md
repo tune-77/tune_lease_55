@@ -15,7 +15,7 @@ Jevへコード・diff・社内データをそのまま送らず、限定判断�
 ## 実行例
 
 ```bash
-python scripts/jev_safe_gateway.py --input request.json
+python scripts/jev_safe_gateway_cli.py --input request.json
 ```
 
 `request.json` の例:

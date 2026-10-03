@@ -1075,7 +1075,7 @@ Cloud Run の API は現在 `CLOUDRUN_DATA_MODE=production`（既定）で動き
 | 追加 | 内容 | 主な実装 |
 |---|---|---|
 | 紫苑リアルタイム音声通話（REV-421） | ブラウザが Gemini Live API へ直接接続し、Cloud Run は音声を中継しない。APIは人格を固定した使い切りトークンの発行、記憶の想起、文字起こし保存だけを担う。`SHION_VOICE_ENABLED=1` の時だけ有効 | `api/routers/shion_voice.py`（`/api/shion/voice/session` `/recall` `/transcript`）, `frontend/src/components/chat/ShionVoiceCall.tsx` |
-| Jev Safe Gateway | TypeSafe/Jev に私有コード・diff・案件データを渡さず、閉じた語彙へ抽象化・集約した最小情報だけを送るローカルゲート。監査ログには判定とハッシュだけを残す | `jev_safe_gateway.py`, `scripts/jev_safe_gateway.py`, `docs/jev_safe_gateway.md` |
+| Jev Safe Gateway | TypeSafe/Jev に私有コード・diff・案件データを渡さず、閉じた語彙へ抽象化・集約した最小情報だけを送るローカルゲート。監査ログには判定とハッシュだけを残す | `jev_safe_gateway.py`, `scripts/jev_safe_gateway_cli.py`, `docs/jev_safe_gateway.md` |
 | ニュース・調査ノートの Jev ガード（REV-410〜412, shadow運用中） | ニュース収集と外部調査ノートの採否を Jev で判定し、shadow モードでは本番の採否を変えずにログだけ残す | `typesafe_news_guard.py`, `typesafe_research_verify_guard.py` |
 | ニュース → 審査アクション接続 | Obsidian のニュースを分類し、審査上の判断変更候補として `/news` から記録する | `api/routers/lease_news.py`（`/judgment-change`）, `frontend/src/app/news/page.tsx` |
 | Decision State Ledger（REV-407） | 審査ワークフローの判断状態を追記専用で記録する観測専用サイドカー。スコア・プロンプト・昇格には影響しない | `decision_state_ledger.py`, `docs/shion_decision_state_ledger_design.md` |
