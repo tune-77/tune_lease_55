@@ -3,7 +3,10 @@
 
 入力（コミットしない）:
   data/policy_kind_items_20261004.json   collect.py の出力（文単位）
-  data/policy_kind_labels_20261004.json  正解（Claude が基準に沿って付けたもの。ユーザー確認前なので甘く出る）
+  data/policy_kind_labels_20261004.json  正解 v1（Claude の基準。ユーザーの基準とずれていたので無効扱い）
+  data/policy_kind_labels_20261004_v2.json  正解 v2（ユーザーの説明に合わせた基準で Claude が付け直した119件）
+  data/policy_kind_human_labels_20261004.json  ユーザーが付けた borderline 16件（評価専用）
+--human を渡すと16件は Claude ラベルから外し、埋め込みの参照にも使わず、別に集計する。
 Jev に送る文は api.chat_judgment_asset_capture.mask_for_jev（企業名・人名の伏せ字、PII様なら送らない）を通す。
 Jev の判定は REV-424 判定ログへ guard=knowledge_kind_policy, mode=offline_label_eval で残し、ラベルも append_label する。
 
@@ -38,13 +41,19 @@ from scripts.judgment_asset_dedup import embedding_similarity  # noqa: E402
 DATA = get_data_dir()
 ITEMS = DATA / "policy_kind_items_20261004.json"
 LABELS = DATA / "policy_kind_labels_20261004.json"
-OUT = DATA / "policy_kind_jev_eval_20261004.json"
 GUARD = "knowledge_kind_policy"
-QUESTION = {
+QUESTION_V1 = {
     "instructions": "{x} は、リース会社の担当者が教えた一文です。これは社内の取扱い方針（どの先・物件を取り扱う/取り扱わない、慎重にする、優先する、必ず行う等の、当社の行動基準）を述べていますか。",
     "true": "当社としてどう扱うか（取り扱う・取り扱わない・慎重にする・前向きに見る・優先する・禁止・義務）を定めている。肯定形や程度の表現でもよい。",
     "false": "市場や業界の傾向、相場、事実、制度の説明、確認すべき項目や手順、感想・雑談で、当社の取扱い基準を定めていない。",
 }
+# v2: ユーザーの「方針」は審査の心構えではなく、具体的な対象の取扱い基準（やれる/やれない/こうする）
+QUESTION_V2 = {
+    "instructions": "{x} は、リース会社の担当者が教えた一文です。これは、特定の物件・業種・取引先（の状態）・取引形態や契約条件について、当社としての取扱い基準（取り扱える/取り扱えない/不向き、取り扱う条件や前提、審査で重点的に見ること）を決めていますか。",
+    "true": "対象が具体的（ある物件や設備、業種、借手の状態、契約条件など）で、その対象をどう扱うか（可否・条件・前提・重点）を決めている。",
+    "false": "対象を特定しない一般論、審査の心構え、汎用の確認手順や確認項目の列挙、市場や業界の傾向・相場・事実・制度の説明、理由づけ、感想・雑談。",
+}
+QUESTIONS = {"v1": QUESTION_V1, "v2": QUESTION_V2}
 _SAME_PREFIX_RE = re.compile(r"^[\s）)（(]*(?:同旨[:：])?\s*")
 
 
@@ -52,7 +61,7 @@ def clean(text: str) -> str:
     return _SAME_PREFIX_RE.sub("", text).replace("**", "").strip()
 
 
-def judge(items: list[dict], batch: int) -> str:
+def judge(items: list[dict], batch: int, question: dict) -> str:
     os.environ.setdefault("TYPESAFE_DEDUP_TIMEOUT_SECONDS", "90")
     model = ""
     for start in range(0, len(items), batch):
@@ -60,8 +69,8 @@ def judge(items: list[dict], batch: int) -> str:
         questions = {
             f"item{n}_policy": {
                 "type": "noul",
-                "instructions": QUESTION["instructions"].format(x=f"`items[{n}]`"),
-                "criteria": {"true": QUESTION["true"], "false": QUESTION["false"]},
+                "instructions": question["instructions"].format(x=f"`items[{n}]`"),
+                "criteria": {"true": question["true"], "false": question["false"]},
             }
             for n in range(len(chunk))
         }
@@ -73,14 +82,16 @@ def judge(items: list[dict], batch: int) -> str:
 
 
 def embedding_scores(items: list[dict]) -> None:
-    """ラベル済みの他の文との類似度で「方針らしさ」を出す（leave-one-out、近い3件ずつの平均の差）。"""
+    """ラベル済みの他の文との類似度で「方針らしさ」を出す（leave-one-out、近い3件ずつの平均の差）。
+    参照は Claude ラベルの文だけ。ユーザーの16件は参照に入れない（評価専用）。"""
     sim = embedding_similarity([i["clean"] for i in items])
+    ref = [b for b, o in enumerate(items) if o["split"] == "claude"]
     for a, item in enumerate(items):
         if sim is None:
             item["embedding"] = 0.0
             continue
-        pos = sorted((sim[a][b] for b, o in enumerate(items) if b != a and o["label"] == 1), reverse=True)[:3]
-        neg = sorted((sim[a][b] for b, o in enumerate(items) if b != a and o["label"] == 0), reverse=True)[:3]
+        pos = sorted((sim[a][b] for b in ref if b != a and items[b]["label"] == 1), reverse=True)[:3]
+        neg = sorted((sim[a][b] for b in ref if b != a and items[b]["label"] == 0), reverse=True)[:3]
         item["embedding"] = float(np.mean(pos) - np.mean(neg))
 
 
@@ -106,7 +117,7 @@ def summarize(items: list[dict]) -> dict:
     return row
 
 
-def log_offline(items: list[dict], model: str, label_source: str) -> int:
+def log_offline(items: list[dict], model: str) -> int:
     records = jev_judgment_log.build_records(
         guard=GUARD,
         run_id=jev_judgment_log.new_run_id(),
@@ -120,8 +131,25 @@ def log_offline(items: list[dict], model: str, label_source: str) -> int:
     )
     jev_judgment_log.append_records(records)
     for record, item in zip(records, items):
-        jev_judgment_log.append_label(record["judgment_id"], bool(item["label"]), label_source=label_source)
+        jev_judgment_log.append_label(record["judgment_id"], bool(item["label"]), label_source=item["label_source"])
     return len(records)
+
+
+def label_previous_run(items: list[dict], run_id: str) -> int:
+    """前回の判定ログ（run_id）のうちユーザーが正解を付けた文へ human ラベルを追記する。"""
+    path = jev_judgment_log.log_path()
+    if path is None or not path.exists():
+        return 0
+    human = {jev_judgment_log.subject_hash(i["masked"]): i for i in items if i["split"] == "human"}
+    count = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        row = json.loads(line)
+        if row.get("record_type") != "judgment" or row.get("run_id") != run_id or row.get("guard") != GUARD:
+            continue
+        item = human.get(row.get("subject_hash"))
+        if item is not None:
+            count += jev_judgment_log.append_label(row["judgment_id"], bool(item["label"]), label_source=item["label_source"])
+    return count
 
 
 def main() -> None:
@@ -129,33 +157,48 @@ def main() -> None:
     parser.add_argument("--batch", type=int, default=15)
     parser.add_argument("--no-log", action="store_true")
     parser.add_argument("--cached", action="store_true")
+    parser.add_argument("--labels", type=Path, default=LABELS)
+    parser.add_argument("--human", type=Path, default=None, help="ユーザーの正解（評価専用。Claude ラベルより優先）")
+    parser.add_argument("--question", choices=sorted(QUESTIONS), default="v1")
+    parser.add_argument("--label-previous-run", default="", help="この run_id の判定ログへ human ラベルを追記")
     args = parser.parse_args()
+    out = DATA / ("policy_kind_jev_eval_20261004.json" if args.question == "v1" else f"policy_kind_jev_eval_20261004_{args.question}.json")
 
-    labels = json.loads(LABELS.read_text(encoding="utf-8"))
+    labels = json.loads(args.labels.read_text(encoding="utf-8"))
+    human = json.loads(args.human.read_text(encoding="utf-8")) if args.human else {"labels": {}}
     items = []
     for item in json.loads(ITEMS.read_text(encoding="utf-8")):
-        label = labels["labels"].get(str(item["n"]))
-        if label is None:
+        key = str(item["n"])
+        if key in human["labels"]:
+            label, split, source = human["labels"][key], "human", human["label_source"]
+        elif key in labels["labels"]:
+            label, split, source = labels["labels"][key], "claude", labels["label_source"]
+        else:
             continue
         text = clean(item["text"])
         masked = mask_for_jev(text)
         if not masked:
             continue  # PII様の内容が残る文は送らず、比較からも外す（同じ母集団で比べる）
-        items.append({**item, "clean": text, "masked": masked, "label": label, "rule": float(classify_knowledge_kind(text) == POLICY)})
+        items.append({**item, "clean": text, "masked": masked, "label": label, "split": split, "label_source": source,
+                      "rule": float(classify_knowledge_kind(text) == POLICY)})
     embedding_scores(items)
     model = ""
     if args.cached:
-        cached = {i["n"]: i["jev"] for i in json.loads(OUT.read_text(encoding="utf-8"))["items"]}
-        for item in items:
-            item["jev"] = cached[item["n"]]
+        cached = {i["n"]: i["jev"] for i in json.loads(out.read_text(encoding="utf-8"))["items"]}
+        # 伏せ字の判定が変わって前回送らなかった文が増えることがある。前回と同じ母集団で比べる
+        items = [{**item, "jev": cached[item["n"]]} for item in items if item["n"] in cached]
     else:
-        model = judge(items, args.batch)
-    summary = summarize(items)
-    summary["model"] = model
-    summary["label_source"] = labels["label_source"]
+        model = judge(items, args.batch, QUESTIONS[args.question])
+    summary = {"question": args.question, "model": model, "all": summarize(items)}
+    for split in ("claude", "human"):
+        part = [i for i in items if i["split"] == split]
+        if part:
+            summary[split] = {"label_source": part[0]["label_source"], **summarize(part)}
     if not args.cached and not args.no_log:
-        summary["logged_records"] = log_offline(items, model, labels["label_source"])
-    OUT.write_text(json.dumps({"summary": summary, "items": items}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        summary["logged_records"] = log_offline(items, model)
+    if args.label_previous_run and not args.no_log:
+        summary["previous_run_human_labels"] = label_previous_run(items, args.label_previous_run)
+    out.write_text(json.dumps({"summary": summary, "items": items}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
