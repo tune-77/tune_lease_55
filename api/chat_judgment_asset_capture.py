@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from api.judgment_policy import classify_knowledge_kind
+from silent_failure_log import record_silent_failure
 
 
 # チャット由来の候補は、人が /judgment-review で確かめるまで要確認にしておく（自動昇格しない）。
@@ -129,8 +130,8 @@ def create_manual_judgment_asset_candidate(
             "last_edited_at": now_iso,
         }
         write_state(candidate_state_json, [{"id": candidate_id, **state[candidate_id]}], state)
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("judgment.chat_judgment_asset_capture.candidate_state", "save_failed", exc)
     return row
 
 

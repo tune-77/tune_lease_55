@@ -105,7 +105,7 @@ def test_historical_outputs_and_daily_post_wiring(tmp_path):
 
     script = Path("scripts/run_daily_improvement_post.sh").read_text(encoding="utf-8")
     assert "scripts/evaluate_experience_replay_historical.py" in script
-    assert 'log_step "evaluate_experience_replay_historical" 0' in script
+    assert 'log_step "evaluate_experience_replay_historical" $?' in script
     replay_pos = script.index("scripts/build_experience_replay_eval_set.py")
     historical_pos = script.index("scripts/evaluate_experience_replay_historical.py")
     ab_report_pos = script.index("scripts/build_judgment_asset_ab_report.py")

@@ -34,6 +34,7 @@ from typing import Any, Callable
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+from silent_failure_log import record_silent_failure  # noqa: E402
 
 DATA_DIR = PROJECT_ROOT / "data"
 CANONICAL_JSON = DATA_DIR / "canonical_judgment_rules.json"
@@ -640,7 +641,9 @@ def run(
         (vault / f"判断資産 重複整理 週次 {today.isoformat()}.md").write_text(_obsidian_note(report), encoding="utf-8")
     if rebuild_index and auto_merges:
         # 想起で統合元を引かないよう、記憶索引を作り直す（日次パイプラインと同じスクリプト）。
-        subprocess.run([sys.executable, str(PROJECT_ROOT / "scripts" / "build_shion_memory_index.py")], check=False)
+        rebuilt = subprocess.run([sys.executable, str(PROJECT_ROOT / "scripts" / "build_shion_memory_index.py")], check=False)
+        if rebuilt.returncode != 0:  # 作り直せないと統合元の記憶を想起し続ける
+            record_silent_failure("memory.judgment_asset_dedup.rebuild_index", "subprocess_failed", detail=f"exit {rebuilt.returncode}")
     return report
 
 

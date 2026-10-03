@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from runtime_paths import get_data_dir
+from silent_failure_log import clip
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = get_data_dir()
@@ -467,8 +468,8 @@ def review_candidate(
         reviews = state.setdefault("reviews", {})
         current = {
             "status": decision,
-            "note": note.strip()[:1000],
-            "edited_claim": edited_claim.strip()[:4000],
+            "note": clip(note.strip(), 1000, "memory.memory_review_inbox.note"),
+            "edited_claim": clip(edited_claim.strip(), 4000, "memory.memory_review_inbox.edited_claim"),
             "reviewed_at": now,
             "source": candidates[inbox_id]["source"],
             "source_item_id": candidates[inbox_id]["source_item_id"],

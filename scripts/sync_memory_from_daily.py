@@ -17,6 +17,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+# `python scripts/<name>.py` で起動されるとリポジトリ直下が import 経路に入らず、
+# api/ やルート直下のモジュールの import が失敗して黙って処理を飛ばしていた。
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import record_silent_failure
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MEMORY_DIR = PROJECT_ROOT / "memory"
@@ -64,7 +71,8 @@ def _load_state() -> set[str]:
         data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         keys = data.get("promoted_keys", [])
         return {str(key) for key in keys}
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.sync_memory_from_daily.load_state", "swallowed", exc, detail="状態を空として再処理")
         return set()
 
 
@@ -210,7 +218,8 @@ def sync_memory(dry_run: bool = False) -> dict[str, int]:
             from memory_promotion_policy import classify_memory_promotion
 
             decision = classify_memory_promotion(promo.text)
-        except Exception:
+        except Exception as exc:
+            record_silent_failure("memory.sync_memory_from_daily.classify", "swallowed", exc)
             decision = None
         if decision and decision.affects_judgment_assets:
             judgment_asset_candidates += 1

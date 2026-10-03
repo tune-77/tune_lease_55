@@ -31,6 +31,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import record_silent_failure
 
 from config import get_gemini_model  # noqa: E402
 
@@ -1405,8 +1406,8 @@ def _trigger_rag_index(file_paths: list[Path]) -> None:
                 meta, body = _parse_frontmatter(raw)
                 chunks = _chunk_by_h2(body, str(fpath), fpath.name, meta, fpath.stat().st_mtime)
                 all_chunks.extend(chunks)
-            except Exception:
-                pass
+            except Exception as sf_exc:
+                record_silent_failure("memory.collect_lease_news.rag_chunk", "swallowed", sf_exc, detail="RAG索引に入らないニュースが出た")
         if all_chunks:
             store.upsert_chunks(all_chunks)
             print(f"[rag] indexed {len(all_chunks)} chunks from {len(file_paths)} files")

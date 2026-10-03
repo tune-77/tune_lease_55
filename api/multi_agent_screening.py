@@ -45,6 +45,7 @@ from api.shion_conscience import build_conscience_prompt_block, evaluate_conscie
 from api.shion_mana import build_mana_prompt_block, evaluate_mana_consultation
 from lease_news_digest import find_vault, lease_news_actions_as_text, lease_news_focus_as_text
 from scoring_core import APPROVAL_LINE
+from silent_failure_log import record_silent_failure
 
 
 # ── モデル・エンドポイント ───────────────────────────────────────────────────
@@ -178,11 +179,13 @@ def _load_shion_self_profile(role: str = "arbiter") -> dict | None:
     try:
         with open(_cache, encoding="utf-8") as f:
             cache = json.load(f)
-    except Exception:
+    except Exception as sf_exc:
+        record_silent_failure("answer.multi_agent.self_profile", "swallowed", sf_exc)
         try:
             from api.shion_self_analysis import get_shion_self_analysis
             cache = get_shion_self_analysis()
-        except Exception:
+        except Exception as exc:
+            record_silent_failure("answer.multi_agent.self_profile_analysis", "swallowed", exc)
             return None
 
     if role == "skeptic":
@@ -234,7 +237,8 @@ def _build_case_ctxs(params: dict) -> tuple[str, str]:
     if not news_lines:
         try:
             news_focus_text = lease_news_focus_as_text()
-        except Exception:
+        except Exception as sf_exc:
+            record_silent_failure("answer.multi_agent.news_focus", "swallowed", sf_exc)
             news_focus_text = ""
         if news_focus_text:
             news_lines = [line.strip("- ").strip() for line in news_focus_text.splitlines() if line.strip()]
@@ -253,8 +257,8 @@ def _build_case_ctxs(params: dict) -> tuple[str, str]:
     digest_block = ""
     try:
         digest_block = _get_recent_news_digest_block(limit=3)
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("answer.multi_agent.base_context", "swallowed", sf_exc)
 
     suffix = ""
     if focus_block:
@@ -267,7 +271,8 @@ def _build_case_ctxs(params: dict) -> tuple[str, str]:
             asset_name=params.get("asset_name", ""),
             surface="multi_agent_screening",
         )
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.multi_agent.news_actions", "swallowed", exc)
         news_actions_text = ""
     if news_actions_text:
         suffix += "\n\n" + news_actions_text
@@ -298,7 +303,8 @@ def _get_recent_news_digest_block(limit: int = 3) -> str:
     for fpath in md_files[:limit]:
         try:
             raw = fpath.read_text(encoding="utf-8")
-        except Exception:
+        except Exception as exc:
+            record_silent_failure("answer.multi_agent.news_digest_note", "swallowed", exc)
             continue
         title_m = _re.search(r"^# (.+)$", raw, _re.MULTILINE)
         title = title_m.group(1).strip() if title_m else fpath.stem
@@ -587,8 +593,8 @@ def _prepare_shared_knowledge(params: dict) -> dict:
                     case_tag = f"({h['case_id']}) " if h.get("case_id") else ""
                     fb_lines.append(f"  - {agent_tag}{case_tag}{h['correction'] or h['text'][:100]}")
                 kb["feedback_block"] = "【過去の訂正事例】\n" + "\n".join(fb_lines)
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("answer.multi_agent.shared_knowledge", "swallowed", sf_exc)
 
     try:
         store = _get_knowledge_store()
@@ -608,8 +614,8 @@ def _prepare_shared_knowledge(params: dict) -> dict:
             seen.add(ref)
             both_hits.append(h)
         kb["both"] = _kb_entry(both_hits[:4])
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("answer.multi_agent.shared_knowledge_extra", "swallowed", exc)
     return kb
 
 
@@ -936,7 +942,8 @@ def _build_history_block(company_name: str) -> str:
             date_str = (s.get("created_at") or "")[:10]
             lines.append(f"  {i}. [{date_str}] 軍師判断: {s['content'][:200]}")
         return "\n".join(lines)
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.multi_agent.history_block", "swallowed", exc)
         return ""
 
 
@@ -966,7 +973,8 @@ def _build_past_scores_block(company_name: str) -> str:
             return ""
         parts = [f"{r['timestamp'][:10]}:{r['score']}点" for r in rows]
         return f"【過去スコア推移】{', '.join(parts)}"
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.multi_agent.past_scores_block", "swallowed", exc)
         return ""
 
 
@@ -1037,8 +1045,8 @@ def iter_debate_screening(params: dict) -> Iterator[tuple[str, dict]]:
                         _theme = _t.get("theme") if isinstance(_t, dict) else str(_t)
                         _lines.append(f"- {_theme}")
                 central_block = "\n".join(_lines)
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("answer.multi_agent.debate_setup", "swallowed", sf_exc)
 
     # ── デモユーザーペルソナの解決 ──────────────────────────────────────────────
     participants: dict = params.get("participants") or {}
@@ -1061,8 +1069,8 @@ def iter_debate_screening(params: dict) -> Iterator[tuple[str, dict]]:
     policy_text = ""
     try:
         policy_text = load_policy()
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("answer.multi_agent.policy", "swallowed", sf_exc)
     policy_block = f"【今月の審査方針】\n{policy_text}" if policy_text else ""
 
     # ── コンテキスト注入: 地域/季節/業況を全エージェントへ配布 ─────────────────
@@ -1075,7 +1083,8 @@ def iter_debate_screening(params: dict) -> Iterator[tuple[str, dict]]:
             ),
         )
         ctx_block = bundle.to_system_prompt_block()
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.multi_agent.case_context", "swallowed", exc)
         ctx_block = ""
         bundle = None
 
@@ -1520,7 +1529,8 @@ def _extract_core_candidates(
             if not text:
                 return None
             return {"role": role, "label": _ROLE_LABELS.get(role, role), "text": text}
-        except Exception:
+        except Exception as exc:
+            record_silent_failure("answer.multi_agent.core_candidate", "swallowed", exc, detail="ペルソナのコア候補を欠落させた")
             return None
 
     with ThreadPoolExecutor(max_workers=len(personas_data)) as pool:

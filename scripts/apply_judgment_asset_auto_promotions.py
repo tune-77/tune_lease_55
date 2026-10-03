@@ -29,6 +29,12 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
 
+# `python scripts/<name>.py` で起動されるとリポジトリ直下が import 経路に入らず、
+# api/ やルート直下のモジュールの import が失敗して黙って処理を飛ばしていた。
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from scripts import build_judgment_asset_promotion_readiness_report as readiness
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

@@ -1277,6 +1277,16 @@ def chat_prompt_budget_lines() -> list[str]:
         return [f"- チャットのプロンプト削減: 読み込み失敗 `{type(exc).__name__}`"]
 
 
+def silent_failure_lines() -> list[str]:
+    """黙った失敗（silent_failure_log.py の記録）の件数・新種・重要部品の警告（朝報の上部）。"""
+    try:
+        from silent_failure_log import launchd_failure_lines, morning_report_lines
+
+        return [*launchd_failure_lines(), *morning_report_lines()]
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return [f"- 黙った失敗の記録: 読み込み失敗 `{type(exc).__name__}`"]
+
+
 def write_morning_report(
     state: dict[str, Any],
     db: dict[str, Any],
@@ -1312,6 +1322,7 @@ def write_morning_report(
         f"# AURION CORE Daily Report {date_str()} 06:00",
         "",
         *pipeline_recovery_lines(),
+        *silent_failure_lines(),
         *answer_regression_lines(),
         *vertex_credit_lines(),
         *chat_prompt_budget_lines(),

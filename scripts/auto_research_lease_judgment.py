@@ -17,6 +17,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import clip
 
 from config import get_gemini_model  # noqa: E402
 
@@ -557,7 +558,7 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
 {json.dumps(source_catalog, ensure_ascii=False)}
 
 調査原文:
-{raw_research[:18000]}
+{clip(raw_research, 18000, "judgment.auto_research.raw_research")}
 
 以下のMarkdown見出しを、この順序で全て出してください。
 ## 結論
@@ -592,7 +593,7 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
 {chr(10).join(f"## {title}" for title in _REQUIRED_SECTION_TITLES)}
 
 文章:
-{body[:14000] or raw_research[:14000]}
+{clip(body, 14000, "judgment.auto_research.body") or clip(raw_research, 14000, "judgment.auto_research.raw_research_fallback")}
 """
         repair_response = client.models.generate_content(
             model=model,

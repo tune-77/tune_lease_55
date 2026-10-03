@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from api.gunshi_gemini import stream_gunshi_gemini
+from silent_failure_log import record_silent_failure
 
 router = APIRouter(tags=["gunshi"])
 
@@ -336,8 +337,8 @@ def generate_gunshi_chat(req: GunshiChatRequest, background_tasks: BackgroundTas
                 )
                 payload.setdefault("chat_text", payload.get("reply", ""))
                 return payload
-            except Exception:
-                pass
+            except Exception as sf_exc:
+                record_silent_failure("answer.gunshi.yukikaze_datalink", "fallback", sf_exc, detail="通常経路へ")
         if _mode == "chat" and (req.message or "").strip() and is_yukikaze:
             try:
                 _here = os.path.dirname(os.path.abspath(__file__))
@@ -364,7 +365,8 @@ def generate_gunshi_chat(req: GunshiChatRequest, background_tasks: BackgroundTas
                     timeout_seconds=45,
                 )
                 source_reply = str(payload.get("reply") or payload.get("chat_text") or "")
-            except Exception:
+            except Exception as sf_exc:
+                record_silent_failure("answer.gunshi.yukikaze_source", "fallback", sf_exc, detail="元回答なしで続行")
                 source_reply = ""
 
             final_reply = _normalize_yukikaze_datalink_reply(source_reply, req.message)
@@ -498,16 +500,16 @@ def generate_gunshi_chat(req: GunshiChatRequest, background_tasks: BackgroundTas
                     "次のObsidian知識ノートを優先的に踏まえて、回答の具体性を上げてください。\n"
                     f"{obsidian_block}"
                 )
-        except Exception:
-            pass
+        except Exception as sf_exc:
+            record_silent_failure("answer.gunshi.obsidian_block", "swallowed", sf_exc)
 
         try:
             from prompt_feedback import build_pdca_prompt_block as _build_pdca
             _pdca_block = _build_pdca()
             if _pdca_block:
                 prompt += f"\n\n{_pdca_block}"
-        except Exception:
-            pass
+        except Exception as exc:
+            record_silent_failure("answer.gunshi.pdca_block", "swallowed", exc)
 
         history_text = _format_gunshi_history(req.history)
         if history_text:

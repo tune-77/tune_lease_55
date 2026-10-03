@@ -12,6 +12,13 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Any
 
+# `python scripts/<name>.py` で起動されるとリポジトリ直下が import 経路に入らず、
+# api/ やルート直下のモジュールの import が失敗して黙って処理を飛ばしていた。
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import clip, record_silent_failure
+
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_INPUT_PREFIX = os.environ.get("GCS_INPUT_PREFIX", "cloudrun-inputs/")
@@ -420,8 +427,8 @@ def _insert_shion_review_from_event(conn: sqlite3.Connection, event: dict) -> in
             int(payload.get("memory_refs") or 0),
             int(payload.get("knowledge_refs") or 0),
             1 if payload.get("identity_used") else 0,
-            review_text[:8000],
-            str(payload.get("prompt_text") or "")[:8000],
+            clip(review_text, 8000, "judgment.sync_cloudrun_inputs.review_text"),
+            clip(str(payload.get("prompt_text") or ""), 8000, "judgment.sync_cloudrun_inputs.prompt_text"),
             _json_dumps(payload.get("form_snapshot")),
             _json_dumps(payload.get("result_snapshot")),
             str(payload.get("user_feedback") or ""),
@@ -783,7 +790,8 @@ def _materialize_judgment_state_events(events: list[dict]) -> int:
     """Restore normalized state events written by Cloud Run into the local ledger."""
     try:
         from decision_state_ledger import append_event, validate_event
-    except Exception:
+    except Exception as sf_exc:
+        record_silent_failure("judgment.sync_cloudrun_inputs.state_import", "swallowed", sf_exc)
         return 0
 
     recorded = 0
@@ -794,7 +802,8 @@ def _materialize_judgment_state_events(events: list[dict]) -> int:
         try:
             validate_event(payload)
             result = append_event(JUDGMENT_STATE_LEDGER, payload)
-        except Exception:
+        except Exception as exc:
+            record_silent_failure("judgment.sync_cloudrun_inputs.state_event", "swallowed", exc)
             continue
         if result.get("recorded"):
             recorded += 1
@@ -930,7 +939,7 @@ def _improvement_entry_from_event(event: dict) -> dict | None:
         "event_id": event.get("event_id"),
         "ts": event.get("ts"),
         "title": title[:120],
-        "body": body[:12000],
+        "body": clip(body, 12000, "memory.sync_cloudrun_inputs.improvement_body"),
         "surface": event.get("surface") or "chat_improvement",
         "source": "cloudrun_input_writeback",
     }
@@ -1129,6 +1138,7 @@ def _build_hypothesis_collision_rows(chat_rows: list[dict]) -> list[dict]:
 
         return collision_entries_from_chat_rows(chat_rows)
     except Exception as exc:
+        record_silent_failure("memory.sync_cloudrun_inputs.hypothesis_collision", "swallowed", exc)
         print(f"[ShionHypothesisCollision] materialize skipped: {exc}")
         return []
 
@@ -1158,7 +1168,8 @@ def _personal_memory_lines_from_event(event: dict) -> tuple[list[str], str]:
             source=f"cloudrun:{event.get('surface') or 'unknown'}",
             timestamp=str(event.get("ts") or ""),
         )
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.sync_cloudrun_inputs.personal_memory_derive", "swallowed", exc)
         derived = {"captured": False, "lines": [], "dog_name": ""}
 
     if not dog_name:
@@ -1177,7 +1188,8 @@ def _sync_personal_memory_from_events(events: list[dict], path: Path | None = No
 
     try:
         from api import user_personal_memory as upm
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.sync_cloudrun_inputs.personal_memory_import", "swallowed", exc)
         return 0
 
     extracted: list[tuple[list[str], str]] = []
@@ -1378,6 +1390,7 @@ def _upload_prompt_feedback_snapshot(bucket: Any | None) -> None:
         blob.upload_from_string(text, content_type="application/jsonl; charset=utf-8")
         print(f"[SNAPSHOT] prompt_feedback_log.jsonl → gs://{bucket.name}/{PROMPT_FEEDBACK_SNAPSHOT_BLOB}")
     except Exception as exc:
+        record_silent_failure("backup.sync_cloudrun_inputs.prompt_feedback_snapshot", "save_failed", exc, detail="認証切れなら gcloud auth application-default login")
         print(f"[SNAPSHOT] prompt_feedback_log.jsonl アップロード失敗（無視）: {exc}", file=sys.stderr)
 
 

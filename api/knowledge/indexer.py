@@ -12,6 +12,7 @@ from typing import Callable
 
 from api.knowledge.obsidian_loader import scan_vault, _VAULT_PATH
 from api.knowledge.vector_store import get_store
+from silent_failure_log import record_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ def _get_indexed_mtimes() -> dict[str, float]:
             doc_id: float(meta.get("mtime", 0))
             for doc_id, meta in zip(result["ids"], result["metadatas"])
         }
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.indexer.indexed_mtimes", "swallowed", exc, detail="既存索引の更新時刻を読めず全件を差分扱い")
         return {}
 
 

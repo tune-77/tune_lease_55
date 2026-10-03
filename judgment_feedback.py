@@ -8,6 +8,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from silent_failure_log import record_silent_failure
 
 DEFAULT_DB_PATH = "data/lease_data.db"
 VALID_DECISIONS = {"承認", "条件付", "否決"}
@@ -221,7 +222,8 @@ def get_judgment_feedback_summary(db_path: str = DEFAULT_DB_PATH) -> dict[str, i
             "candidates": int(candidates or 0),
             "approved": int(approved or 0),
         }
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.judgment_feedback.counts", "swallowed", exc, detail="件数を0として返した")
         return {"total": 0, "candidates": 0, "approved": 0}
 
 
@@ -234,7 +236,8 @@ def count_unprocessed_feedback(db_path: str = DEFAULT_DB_PATH) -> int:
                 "SELECT COUNT(*) FROM judgment_feedback WHERE review_status='candidate'"
             ).fetchone()
         return int(n or 0)
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.judgment_feedback.candidate_count", "swallowed", exc, detail="件数を0として返した")
         return 0
 
 
@@ -300,7 +303,8 @@ def load_judgment_training_candidates(
                 "review_status": row[10],
             })
         return result
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.judgment_feedback.training_candidates", "swallowed", exc)
         return []
 
 

@@ -21,6 +21,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from silent_failure_log import record_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,8 @@ def _load_recent_used_ids(within_days: int = _RECENT_USAGE_DAYS) -> set[str]:
             used_at = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).replace(tzinfo=None)
             if used_at >= cutoff:
                 used_ids.update(str(ref) for ref in entry.get("refs") or [] if ref)
-        except Exception:
-            pass
+        except Exception as exc:
+            record_silent_failure("memory.decay.recent_used", "swallowed", exc)
     return used_ids
 
 
@@ -193,7 +194,8 @@ def get_latest_freshness_snapshot() -> dict[str, Any] | None:
         return None
     try:
         return json.loads(last_line)
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.decay.freshness_snapshot", "swallowed", exc)
         return None
 
 

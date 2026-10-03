@@ -26,6 +26,7 @@ from typing import Any
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import record_silent_failure
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
@@ -286,7 +287,8 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         return row
     try:
         return dict(row)
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.cloud_chat_memory_pack.row", "swallowed", exc)
         return {}
 
 
@@ -297,7 +299,8 @@ def _parse_json_blob(value: Any) -> dict[str, Any]:
         return {}
     try:
         parsed = json.loads(str(value))
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.cloud_chat_memory_pack.json_blob", "swallowed", exc)
         return {}
     return parsed if isinstance(parsed, dict) else {}
 

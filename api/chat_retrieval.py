@@ -10,6 +10,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+from silent_failure_log import record_silent_failure
 
 
 FallbackSearch = Callable[[str, int], list[dict[str, Any]]]
@@ -53,7 +54,8 @@ def _typesafe_rag_filter(message: str = ""):
         if is_potentially_sensitive_screening_message(message) and not _typesafe_screening_allowed():
             return None
         return filter_hits_if_enabled if typesafe_rag_enabled() else None
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.chat_retrieval.typesafe_rag_filter", "swallowed", exc, detail="RAG安全フィルタなしで続行")
         return None
 
 

@@ -149,6 +149,7 @@ def _gemini_generate_url() -> str:
 
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from scoring_anomaly_monitor import record_scoring_anomalies
+from silent_failure_log import record_silent_failure
 from api.scoring_full import run_full_scoring_api
 from lease_news_digest import (
     build_lease_news_brief,
@@ -217,6 +218,19 @@ def _get_obsidian_collection():
         print(f"[RAG] ChromaDB init failed: {e}")
         _chroma_collection = None
     return _chroma_collection
+
+
+def _snapshot_once(component: str, snapshot) -> None:
+    # snapshot_and_upload は失敗しても例外を投げず uploaded=False を返すだけなので、結果を見て記録する。
+    # 例外でスレッドが終わると以後のスナップショットが黙って止まるため、ここで受け止めて次の周期に回す。
+    try:
+        result = snapshot()
+    except Exception as exc:  # noqa: BLE001 - 定期スナップショットを止めない
+        record_silent_failure(component, "save_failed", exc)
+        return
+    if isinstance(result, dict) and result.get("enabled") and not result.get("uploaded"):
+        reason = str(result.get("reason") or "unknown").split(":", 1)[0][:60]
+        record_silent_failure(component, "save_failed", detail=reason)
 
 
 @asynccontextmanager
@@ -381,7 +395,7 @@ async def lifespan(app: FastAPI):
         import time as _t
         while True:
             _t.sleep(interval)
-            snapshot_and_upload()
+            _snapshot_once("backup.cloudrun_db_snapshot.periodic", snapshot_and_upload)
     _th.Thread(target=_periodic_db_snapshot, daemon=True, name="db-snapshot").start()
     # startup: ChromaDBのGCS定期スナップショット（非demoモードのみ）。
     # 起動のたびに埋め込みモデルでVault全量を再構築するのを避けるため、
@@ -399,7 +413,7 @@ async def lifespan(app: FastAPI):
         import time as _t
         while True:
             _t.sleep(interval)
-            snapshot_and_upload()
+            _snapshot_once("backup.chroma_snapshot.periodic", snapshot_and_upload)
     _th.Thread(target=_periodic_chroma_snapshot, daemon=True, name="chroma-snapshot").start()
     yield
     # shutdown: 結晶化スケジューラー停止
@@ -1797,7 +1811,8 @@ def _get_case_payload(case_id: str) -> dict:
     try:
         payload = _json.loads(row["data"] or "{}")
         return payload if isinstance(payload, dict) else {}
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("scoring.main.case_payload_parse", "swallowed", exc, detail="保存済み案件JSONを読めず空として扱った")
         return {}
 
 
@@ -2400,7 +2415,8 @@ def _build_agent_worklog_digest_context(limit: int = 4) -> str:
             days=14,
             max_chars=1800,
         )
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.main.worklog_digest", "swallowed", exc)
         return ""
 
 
@@ -2641,7 +2657,8 @@ def _detect_pending_task_backlog() -> str:
         open_count = sum(1 for t in data if is_pending_open(t))
         if open_count >= _PENDING_BACKLOG_THRESHOLD:
             return f"未完了調査タスクが{open_count}件滞留しています"
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.main.pending_backlog", "swallowed", exc)
         return ""
     return ""
 
@@ -3050,7 +3067,8 @@ def _build_dialogue_triage_context(limit: int = 4) -> str:
         return ""
     try:
         ledger_statuses = _latest_improvement_statuses()
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.main.dialogue_triage_statuses", "swallowed", exc)
         ledger_statuses = {}
     active: list[dict] = []
     resolved_count = 0
@@ -3419,8 +3437,8 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
     try:
         from shinsa_gunshi import refresh_evidence_weights
         refresh_evidence_weights()
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("judgment.main.refresh_evidence_weights", "swallowed", exc, detail="案件結果登録後の根拠重み更新")
 
     # 紫苑フィードバックループ（REV-080）
     if req.status in ("成約", "失注"):
@@ -6143,13 +6161,15 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             from api.shion_agent_consultation_queue import build_agent_consultation_prompt_block
 
             agent_consultation_context = build_agent_consultation_prompt_block(limit=3)
-        except Exception:
+        except Exception as sf_exc:
+            record_silent_failure("answer.main.agent_consultation_context", "swallowed", sf_exc)
             agent_consultation_context = ""
         try:
             from api.shion_reasoner_consultation_queue import build_reasoner_consultation_prompt_block
 
             reasoner_consultation_context = build_reasoner_consultation_prompt_block(limit=3)
-        except Exception:
+        except Exception as sf_exc:
+            record_silent_failure("answer.main.reasoner_consultation_context", "swallowed", sf_exc)
             reasoner_consultation_context = ""
         # 通常会話での自発報告（常時レイヤ）は同一内容を毎ターン繰り返さないよう抑制する。
         # 改善相談（オンデマンド詳細）はユーザーが明示的に尋ねているので抑制しない。

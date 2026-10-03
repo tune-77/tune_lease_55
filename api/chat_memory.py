@@ -15,6 +15,7 @@ import re
 
 from api.context.time_context import with_current_datetime_context
 from api.db_connection import current_backend, get_connection, placeholder, ensure_schema
+from silent_failure_log import record_silent_failure
 
 _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -141,7 +142,8 @@ def _candidate_finish_reason(data: dict) -> str:
 def _candidate_text(data: dict) -> str:
     try:
         return str(data["candidates"][0]["content"]["parts"][0]["text"])
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.chat_memory.candidate_text", "swallowed", exc, detail="応答本文を空として扱った")
         return ""
 
 
@@ -290,7 +292,8 @@ def get_summary(user_id: str = "default") -> str:
             tokens=(body.get("usageMetadata") or {}).get("totalTokenCount"),
         )
         return body["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.chat_memory.summarize", "swallowed", exc, detail="会話要約を空として扱った")
         return ""
 
 
@@ -346,7 +349,8 @@ def get_cached_summary(user_id: str = "default") -> str:
             )
             row = cur.fetchone()
         return str(row["summary"]) if row and row["summary"] else ""
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.chat_memory.cached_summary", "swallowed", exc)
         return ""
 
 
@@ -363,7 +367,8 @@ def build_chat_history_summary_context(user_id: str, history_for_gemini: list[di
         if not summary:
             return ""
         return f"\n\n【過去の会話要約（直近ウィンドウ外）】\n{summary}"
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.chat_memory.history_summary_context", "swallowed", exc)
         return ""
 
 
@@ -536,7 +541,8 @@ def call_gemini_chat(
                 initial_text=text,
                 timeout=60,
             )
-        except Exception:
+        except Exception as exc:
+            record_silent_failure("answer.chat_memory.continue_truncated", "fallback", exc, detail="続き取得失敗を利用者に表示")
             text = (
                 f"{text.rstrip()}\n\n"
                 "（回答が長く、続きの取得に失敗しました。必要なら「続き」と送ってください。）"

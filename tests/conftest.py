@@ -34,6 +34,12 @@ def _isolate_jev_judgment_log(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_silent_failure_log(tmp_path, monkeypatch):
+    """黙った失敗の記録をテストがリポジトリの data/ へ書かないようにする。"""
+    monkeypatch.setenv("SILENT_FAILURE_LOG_PATH", str(tmp_path / "silent_failures.jsonl"))
+
+
+@pytest.fixture(autouse=True)
 def _isolate_shion_vault_memory_sources(tmp_path, monkeypatch):
     """記憶索引が実 Vault を読まず、教示ファネルも data/ へ書かないようにする。"""
     monkeypatch.setenv("SHION_MEMORY_INDEX_VAULT", "off")

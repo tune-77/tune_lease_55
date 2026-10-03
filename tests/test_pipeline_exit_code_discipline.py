@@ -304,3 +304,17 @@ def test_allowlist_has_no_stale_entry():
         "_ALLOWED_ALWAYS_ZEROからエントリを消してください:\n  "
         + "\n  ".join(stale)
     )
+
+
+def test_log_step_is_not_preceded_by_or_true() -> None:
+    """`cmd || true` の直後の log_step は常に成功を記録し、失敗が朝報に出ない（post.sh で17ステップが該当した）。
+
+    set -e を使っていないので `|| true` は不要。`cmd` → `log_step "name" $?` と書く。
+    """
+    offenders = []
+    for rel in _PIPELINE_SCRIPT_SOURCES:
+        lines = (_REPO_ROOT / rel).read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(lines[:-1]):
+            if line.rstrip().endswith("|| true") and lines[i + 1].strip().startswith("log_step "):
+                offenders.append(f"{rel}:{i + 1}")
+    assert not offenders, "|| true の直後で log_step している: " + ", ".join(offenders)

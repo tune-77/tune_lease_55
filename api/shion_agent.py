@@ -30,13 +30,15 @@ from api.shion_execution_workflow import build_shion_execution_workflow_block
 from api.shion_prompt_priority import build_shion_prompt_priority_block
 from api.shion_tone import build_shion_feminine_tone_block
 from scoring_core import APPROVAL_LINE, CONDITIONAL_LINE
+from silent_failure_log import record_silent_failure
 
 # ── ベンチマークデータ（起動時に一度だけ読む） ─────────────────────────────
 _BENCHMARKS_PATH = Path(__file__).parent.parent / "static_data" / "industry_benchmarks.json"
 try:
     with open(_BENCHMARKS_PATH, encoding="utf-8") as _f:
         _BENCHMARKS: dict = json.load(_f)
-except Exception:
+except Exception as sf_exc:
+    record_silent_failure("answer.shion_agent.benchmarks", "swallowed", sf_exc, detail="業種ベンチマークなしで起動")
     _BENCHMARKS = {}
 
 
@@ -270,8 +272,8 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
                             session_id=session_id,
                             case_context=case_context,
                         )
-                    except Exception:
-                        pass
+                    except Exception as sf_exc:
+                        record_silent_failure("judgment.shion_agent.skill_usage", "save_failed", sf_exc)
                     yield {"type": "tool_call", "tool": fc.name}
 
             # ツール結果
@@ -294,8 +296,8 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
                         notice = public_usage_notice(fr.name, usage_event)
                         if notice:
                             yield notice
-                    except Exception:
-                        pass
+                    except Exception as sf_exc:
+                        record_silent_failure("judgment.shion_agent.skill_result_usage", "save_failed", sf_exc)
                     yield {"type": "tool_result", "tool": fr.name}
 
             # テキストストリーム
@@ -323,8 +325,8 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
                 user_id="demo",
                 session_id=session_id,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            record_silent_failure("misc.shion_agent.session_delete", "swallowed", exc)
 
 
 def _build_user_text(params: dict) -> str:

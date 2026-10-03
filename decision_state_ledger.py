@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from uuid import uuid4
+from silent_failure_log import record_silent_failure
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -297,8 +298,8 @@ def _queue_cloudrun_writeback(event: dict[str, Any]) -> bool:
                 surface=str(event.get("surface") or "decision_state_ledger"),
                 payload=event,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            record_silent_failure("judgment.decision_state_ledger.cloudrun_mirror", "save_failed", exc)
 
     _WRITEBACK_EXECUTOR.submit(deliver)
     return True
@@ -316,8 +317,8 @@ def _record_append_failure(path: Path, event: dict[str, Any], exc: Exception) ->
         }
         with failure_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("judgment.decision_state_ledger.failure_log", "save_failed", sf_exc)
 
 
 def build_decision_changed_event(
