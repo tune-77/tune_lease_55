@@ -7,6 +7,8 @@ import sqlite3
 import tarfile
 import io
 
+import pytest
+
 from scripts import redact_shion_review_prompts as red
 from scripts.backup_case_data import decrypt_bytes
 
@@ -113,7 +115,7 @@ def test_company_name_with_spaces_is_captured_to_end_of_field():
     assert "山田製作所" not in masked
 
 
-def test_sqlite_write_rescans_rows_added_after_initial_scan(tmp_path):
+def test_sqlite_write_aborts_when_rows_were_added_after_verified_archive(tmp_path):
     db = tmp_path / "lease_data.db"
     with sqlite3.connect(db) as conn:
         conn.execute("create table chat_messages (id integer primary key, user_id text, role text, content text)")
@@ -122,7 +124,8 @@ def test_sqlite_write_rescans_rows_added_after_initial_scan(tmp_path):
     assert change is not None
     with sqlite3.connect(db) as conn:
         conn.execute("insert into chat_messages (user_id, role, content) values (?, ?, ?)", ("screening:株式会社 山田製作所", "user", PROMPT.replace("サセ", "株式会社 山田製作所")))
-    assert red.write_redacted(change) == 2
+    with pytest.raises(RuntimeError, match="changed after archive"):
+        red.write_redacted(change)
     with sqlite3.connect(db) as conn:
         text = " ".join(" ".join(row) for row in conn.execute("select user_id, content from chat_messages"))
-    assert "サセ" not in text and "山田製作所" not in text
+    assert "サセ" in text and "山田製作所" in text

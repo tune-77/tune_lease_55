@@ -262,10 +262,14 @@ def verify_archive(blob: bytes, key: bytes, changes: list[Change]) -> None:
 def write_redacted(change: Change) -> int | None:
     if change.kind == "sqlite":
         with sqlite3.connect(change.path) as conn:
-            # 初回走査後にも API が行を追加し得る。書込ロック取得後に再走査してから更新し、
-            # cleanup 成功を返す時点で marker を含む会話を取りこぼさない。
+            # 初回走査後にも API が行を追加し得る。書込ロック取得後の原本が、暗号化・照合済み
+            # アーカイブの原本と違えば何も更新せず中断する。次回実行で増分も含めて退避する。
             conn.execute("BEGIN IMMEDIATE")
-            rows = _redacted_sqlite_rows(_sqlite_review_rows(conn))
+            current_rows = _sqlite_review_rows(conn)
+            current_original = json.dumps(current_rows, ensure_ascii=False, indent=1).encode("utf-8")
+            if current_original != change.original:
+                raise RuntimeError("SQLite changed after archive creation; rerun redaction to archive new rows")
+            rows = _redacted_sqlite_rows(current_rows)
             conn.executemany("update chat_messages set user_id = ?, content = ? where id = ?", [(r["user_id"], r["content"], r["id"]) for r in rows])
         return len(rows)
     # 稼働中の API が追記するログがあるので、原本を読んだ後に増えた分は伏字にして後ろへ足す

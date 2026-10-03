@@ -42,6 +42,11 @@ def test_tendencies_numbers_procedures_and_hedges_are_insight(text) -> None:
     assert classify_knowledge_kind(text) == "insight"
 
 
+def test_hedged_observation_does_not_hide_later_explicit_policy() -> None:
+    text = "業績が良いから安全とは限らないので、当社は必ず保証を取る"
+    assert classify_knowledge_kind(text) == "policy"
+
+
 def test_stored_kind_wins_over_reclassification() -> None:
     assert knowledge_kind_of({"knowledge_kind": "insight", "claim": "取り扱わない"}) == "insight"
     assert knowledge_kind_of({"claim": "取り扱わない"}) == "policy"

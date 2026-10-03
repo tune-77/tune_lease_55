@@ -305,16 +305,19 @@ def assemble_prompt(
                 total += len(addition)
                 live_keys.add(key)
 
-    # 2. 記憶の想起〜補助は常に予算内へ（太りやすい層）。3. 超過分はまず低い層から削る
+    # 2. 記憶〜補助は個別予算、重複除去、overflow の順。重複で空きを作ってから、
+    #    高優先度の根拠より先に低優先度層を落とす。
     apply_budgets(range(MEMORY, AUX + 1))
+    deduplicate()
     overflow(range(MEMORY, AUX + 1))
-    # 3. それでも超える時だけ、方針〜根拠の層にも予算を当てる。
+    # 3. まだ超える時だけ方針〜根拠へ個別予算を適用する。高優先度側の予算で
+    #    唯一のコピーが消えた場合は、元の低優先度コピーを戻してから再度重複除去する。
     if sum(len(t) for t in texts.values()) > limit:
         apply_budgets(range(TAUGHT, EVIDENCE + 1))
+        restore_trimmed_duplicate_fallbacks()
+        deduplicate()
+        # 4. 重複を除いても超える分だけ、高優先度層を項目単位で落とす。
         overflow(range(TAUGHT, EVIDENCE + 1))
-    # 4. 高優先度側で予算落ちした重複項目は、低優先度側に収まる時だけ救済してから重複除去する。
-    restore_trimmed_duplicate_fallbacks()
-    deduplicate()
     # 設定上限が固定指示やtailより小さい場合だけの最後の安全弁。
     if sum(len(t) for t in texts.values()) > limit:
         overflow(range(CORE, CORE + 1))

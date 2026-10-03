@@ -149,6 +149,21 @@ def test_vertex_query_uses_obsidian_term_decomposition(state_path, monkeypatch) 
     assert calls["search"] == ["工作機械 残価"]
 
 
+def test_vertex_query_masks_labeled_company_before_term_decomposition(state_path, monkeypatch) -> None:
+    calls: dict = {}
+    _install_fakes(monkeypatch, calls)
+
+    build_chat_retrieval_context(
+        "企業名: 山田製作所 工作機械の残価について教えて",
+        rag_top_k=3,
+        question_category="lease_screening",
+        is_general_response_mode=False,
+    )
+
+    assert "山田製作所" not in calls["search"][0]
+    assert "工作機械" in calls["search"][0] and "残価" in calls["search"][0]
+
+
 def test_off_restores_previous_behaviour(state_path, monkeypatch) -> None:
     calls: dict = {}
     _install_fakes(monkeypatch, calls)

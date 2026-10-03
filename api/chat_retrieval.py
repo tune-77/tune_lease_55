@@ -105,7 +105,12 @@ def extract_vertex_search_hint(message: str) -> str:
 
 def build_vertex_search_query(message: str) -> str:
     """Turn a chat-style question into compact terms before external search."""
-    source = extract_vertex_search_hint(message)
+    from api.vertex_query_mask import mask_for_vertex
+
+    # Keep label punctuation intact until after masking. Decomposition turns
+    # ``企業名: 山田製作所`` into separate terms and would otherwise destroy
+    # the context required by the label-based privacy rule.
+    source = mask_for_vertex(extract_vertex_search_hint(message))
     try:
         from obsidian_query import split_query_terms
 

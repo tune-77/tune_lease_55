@@ -73,6 +73,23 @@ def test_budgeting_happens_before_cross_block_deduplication() -> None:
     assert "付き合わない 資料" in prompt
 
 
+def test_deduplication_frees_space_before_overflow_drops_unique_evidence() -> None:
+    duplicate = "- 重複する残価判断 " + "重" * 780
+    unique = "- 一意の資金繰り根拠 " + "一" * 780
+    prompt, _ = budget.assemble_prompt(
+        [
+            ("rag_context", duplicate + "\n" + unique),
+            ("external_research_context", duplicate),
+        ],
+        question="残価と資金繰り",
+        surface="test",
+        max_chars=2200,
+        log=False,
+    )
+    assert prompt.count("重複する残価判断") == 1
+    assert "一意の資金繰り根拠" in prompt
+
+
 def test_dialogue_prompt_dynamic_sections_are_budgetable() -> None:
     raw = (
         "固定の人格。\n\n" + "想起" * 3000 + "【自己状態】" + "状態" * 3000

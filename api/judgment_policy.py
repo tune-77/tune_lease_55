@@ -28,16 +28,24 @@ _POLICY_PATTERNS = (
     re.compile(r"必ず(?!しも)[^。]{0,24}(する|確認|取る|求める|徴求|もらう)"),  # 「必ずしも〜ない」は方針ではない
     re.compile(r"(当社|弊社|うち)の?(方針|ルール|決まり)"),
 )
-_HEDGED_POLICY_RE = re.compile(r"必ずしも|わけではない|というわけではない|とは限らない|とはいえない")
+_HEDGE_PREFIX_RE = re.compile(r"必ずしも[^、,，。！？\n]{0,30}$")
+_HEDGE_SUFFIX_RE = re.compile(r"^\s*(?:という)?(?:わけではない|とは限らない|とはいえない)")
 
 
 def classify_knowledge_kind(text: str) -> str:
     body = str(text or "")
-    # 一文単位で見る。「契約しないわけではない」のような否定・留保を、
-    # 内側の「契約しない」だけ拾って方針へ反転させない。
+    # 「契約しないわけではない」の内側だけを方針へ反転させない。
+    # 留保が同じ文にあるだけで、後続の明示方針まで抑止しない。
     for sentence in re.split(r"[。！？\n]", body):
-        if sentence and not _HEDGED_POLICY_RE.search(sentence) and any(p.search(sentence) for p in _POLICY_PATTERNS):
-            return POLICY
+        if not sentence:
+            continue
+        for pattern in _POLICY_PATTERNS:
+            for match in pattern.finditer(sentence):
+                before = sentence[: match.start()]
+                after = sentence[match.end() :]
+                if _HEDGE_PREFIX_RE.search(before) or _HEDGE_SUFFIX_RE.match(after):
+                    continue
+                return POLICY
     return INSIGHT
 
 
