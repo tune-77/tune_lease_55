@@ -41,4 +41,7 @@ log_step() {
     local ts
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "{\"ts\":\"${ts}\",\"run_date\":\"${LOG_DATE}\",\"step\":\"${step_name}\",\"exit_code\":${exit_code},\"duration_s\":${duration_s}}" >> "${log_file}"
+    # 日次ログ（improvement_YYYYMMDD.log）上の手順の区切り。自動修復がこの印で
+    # 手順ごとの出力を切り出して失敗原因（タイムアウト等）を判定する
+    echo "[step] ${step_name} exit=${exit_code}"
 }

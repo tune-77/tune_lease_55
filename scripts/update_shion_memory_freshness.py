@@ -1,10 +1,10 @@
 """紫苑記憶索引の鮮度更新（docs/shion_memory_architecture.md Next Step 2 の実装）。
 
-⚠️ 非推奨（deprecated）: 鮮度管理の正式経路は api/shion_memory_decay.py の
-自動デイリーバッチ（data/shion_memory_freshness.jsonl へ連続スコアを出力）に
-一本化された。本スクリプトは離散 status（active/stale）を索引へ直接書き戻す
-旧方式で、スケジューラには接続されていない。参照テスト保持のため削除はしないが、
-新規の鮮度判定ロジックは api/shion_memory_decay.py 側に実装すること。
+離散 status（active/stale）を索引へ直接書き戻す。日次パイプラインで毎日実行される
+（run_daily_improvement_core.sh の update_shion_memory_freshness、post.sh の
+update_shion_memory_freshness_post_promotion）ほか、package_cloud_run_bundle.sh でも呼ばれる。
+連続スコア（data/shion_memory_freshness.jsonl）は api/shion_memory_decay.py の担当で、
+本スクリプトは想起で使う離散 status の正本。
 
 使用ログ（data/shion_memory_usage_log.jsonl、`build_recall_prompt_block` が追記）
 から各記憶の last_used_at を求め、長期間使われていない記憶を `stale` に落とす。
@@ -253,17 +253,11 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    logger.warning(
-        "update_shion_memory_freshness.py は非推奨です。"
-        "鮮度管理は api/shion_memory_decay.py の自動デイリーバッチに一本化されています。"
-    )
-
     try:
         index = json.loads(args.index.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         # 索引ビルド（build_shion_memory_index.py）が同じ夜間パイプライン内で
-        # このステップの直前に走る前提だが、本スクリプトは非推奨の補助経路であり
-        # 索引が一時的に無い/壊れているだけで夜間パイプライン全体を失敗扱いにしない。
+        # このステップの直前に走る前提。索引が一時的に無い/壊れているだけで夜間パイプライン全体を失敗扱いにしない。
         print(f"警告: 索引を読めないためスキップします: {args.index} ({exc})")
         return 0
 

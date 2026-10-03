@@ -102,6 +102,14 @@ if [ ! -x "${PYTHON}" ]; then
     exit 1
 fi
 
+# メインチェックアウトが最新の master かを確認し、安全なら fast-forward（作業ブランチは切り替えない）。
+# 古いコードで core/post が動くのを防ぐ。判定できなくても止めず警告のみ（朝報の警告ブロックに出る）。
+# git は置き換えでファイルを更新するので、実行中のこのスクリプト自体は影響を受けない。
+echo ""
+echo "[前提] メインチェックアウトの鮮度を確認中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_main_checkout.py" --repo "${PROJECT_ROOT}"
+log_step "sync_main_checkout" $?
+
 # launchd/cron は .zshrc を読まないため、gcloud が見つからない場合は標準的な
 # インストール先を PATH に補完する（GCS取り込み・Secret Manager・GCSアップロードで使用）
 if ! command -v gcloud >/dev/null 2>&1; then
@@ -122,6 +130,18 @@ echo ""
 echo "[post] 補助処理を実行中..."
 bash "${PROJECT_ROOT}/scripts/run_daily_improvement_post.sh"
 POST_EXIT=$?
+
+# post は Mana 判定で途中 exit 0 することがあるので、全手順の後＝ここで自動復旧する。
+# その日に失敗した手順を、個別レシピ／一時的失敗の1回再実行／品質チェック（再実行しない）に振り分け、
+# 結果は data/pipeline_auto_recovery_state.json と朝報（AURION CORE）に出る。
+echo ""
+echo "[復旧] その日に失敗した手順を判定し、許可済みレシピで自動復旧中..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/run_pipeline_auto_recovery.py" \
+    --apply \
+    --run-date "${LOG_DATE}" \
+    --pipeline-log "${LOG_FILE}" \
+    --limit 1
+log_step "pipeline_auto_recovery" $?
 
 FINAL_EXIT=${CORE_EXIT}
 if [ ${FINAL_EXIT} -eq 0 ] && [ ${POST_EXIT} -ne 0 ]; then

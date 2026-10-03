@@ -37,6 +37,8 @@ class ChatRetrievalResult:
     vertex_answer_api: dict[str, Any] = field(
         default_factory=lambda: {"used": False, "status": "not_attempted", "refs": []}
     )
+    vertex_rerank: dict[str, Any] = field(default_factory=lambda: {"used": False, "status": "not_attempted"})
+    jev_rerank: dict[str, Any] = field(default_factory=lambda: {"used": False, "status": "not_attempted"})
     typesafe_rag: dict[str, Any] = field(
         default_factory=lambda: {"status": "not_attempted"}
     )
@@ -248,6 +250,55 @@ def _append_rag_hits(
     return "\n\n【参照ナレッジ】\n" + "\n---\n".join(all_docs)
 
 
+def _vertex_rerank_enabled() -> bool:
+    try:
+        from api.vertex_credit_mode import is_active, rerank_promoted
+
+        return is_active() and rerank_promoted()
+    except Exception:  # noqa: BLE001 - 判定できなければ従来どおり
+        return False
+
+
+def _rerank_local_hits(message: str, hits: list[dict[str, Any]], result: "ChatRetrievalResult") -> list[dict[str, Any]]:
+    """Ranking API で並べ替える。失敗したら元の順位のまま（ローカルRAGが主）。"""
+    try:
+        from api.vertex_agent_search import rerank_hits
+        from api.vertex_query_mask import mask_for_vertex
+
+        reranked = rerank_hits(mask_for_vertex(message), hits)
+        result.vertex_rerank = {"used": True, "status": "ok", "candidates": len(hits)}
+        return reranked
+    except Exception as exc:  # noqa: BLE001
+        result.vertex_rerank = {"used": False, "status": "error", "error": str(exc)[:160]}
+        return hits
+
+
+def _jev_rerank_enabled(message: str) -> bool:
+    """毎晩の評価で効果確認済み（独立スイッチ JEV_RAG_RERANK）で、送ってよい質問の時だけ。"""
+    try:
+        from api.chat_routing import is_potentially_sensitive_screening_message
+        from api.jev_rag_rerank import production_enabled
+
+        if is_potentially_sensitive_screening_message(message) and not _typesafe_screening_allowed():
+            return False  # 既存の TypeSafe 方針どおり、審査の機微な質問は外部判定へ送らない
+        return production_enabled()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _jev_rerank_local_hits(message: str, hits: list[dict[str, Any]], result: "ChatRetrievalResult") -> list[dict[str, Any]]:
+    """Jev の確率で並べ替える（送信内容は jev_rag_rerank 側で伏字化）。不通なら元の順位。"""
+    try:
+        from api.jev_rag_rerank import jev_rerank
+
+        ordered, meta = jev_rerank(message, hits)
+        result.jev_rerank = {"used": True, "status": "ok", "candidates": len(hits), "input_tokens": meta.get("input_tokens", 0)}
+        return ordered
+    except Exception as exc:  # noqa: BLE001
+        result.jev_rerank = {"used": False, "status": "error", "error_type": type(exc).__name__}
+        return hits
+
+
 def build_chat_retrieval_context(
     message: str,
     *,
@@ -268,11 +319,20 @@ def build_chat_retrieval_context(
         else None
     )
     candidate_top_k = min(20, max(rag_top_k, rag_top_k * 2)) if typesafe_filter else rag_top_k
+    # クレジット期間中、毎晩の shadow 評価で効果が確認できた時だけ Ranking API で並べ替える
+    rerank = _vertex_rerank_enabled()
+    jev_rerank_on = not rerank and _jev_rerank_enabled(message)
+    if rerank or jev_rerank_on:
+        candidate_top_k = min(20, max(candidate_top_k, rag_top_k * 2))
 
     try:
         from api.knowledge.vector_store import get_store
 
         hits = get_store().search(message, top_k=candidate_top_k)
+        if rerank and hits:
+            hits = _rerank_local_hits(message, hits, result)
+        elif jev_rerank_on and hits:
+            hits = _jev_rerank_local_hits(message, hits, result)
         hits, result.typesafe_rag = _filter_local_rag_hits(
             message,
             hits,
@@ -316,8 +376,14 @@ def build_chat_retrieval_context(
     try:
         from api.vertex_agent_search import answer_prompt_context, answer_vertex_agent, search_vertex_agent
 
-        vertex_search_query = extract_vertex_search_hint(message)
+        from api.vertex_credit_mode import SCREENING_CATEGORIES, credit_mode_status
+        from api.vertex_query_mask import mask_for_vertex
+
+        # 外部の検索APIへ出る前に、会社名・個人名・電話・住所・金額などを伏せる
+        vertex_search_query = mask_for_vertex(extract_vertex_search_hint(message))
+        credit_mode = credit_mode_status()
         result.vertex_agent_search = search_vertex_agent(vertex_search_query)
+        result.vertex_agent_search["credit_mode"] = credit_mode
         result.vertex_agent_search["query"] = vertex_search_query[:500]
         vertex_context = str(result.vertex_agent_search.get("prompt_context") or "").strip()
         if vertex_context:
@@ -342,7 +408,10 @@ def build_chat_retrieval_context(
                 }
             )
 
-        if "【Vertex補助検索ヒント】" in message:
+        # 従来はヒント付きの時だけ。クレジット期間中は審査系の質問でも回答前に根拠付き回答を取る
+        if "【Vertex補助検索ヒント】" in message or (
+            credit_mode["active"] and question_category in SCREENING_CATEGORIES
+        ):
             result.vertex_answer_api = answer_vertex_agent(
                 vertex_search_query,
                 page_size=5,
@@ -354,6 +423,22 @@ def build_chat_retrieval_context(
                 result.rag_context = (
                     result.rag_context + "\n\n" + answer_context
                 ).strip() if result.rag_context else answer_context
+                for ref in list(result.vertex_answer_api.get("refs") or [])[:5]:
+                    ref_text = str(ref or "").strip()
+                    if not ref_text or ref_text in result.rag_refs:
+                        continue
+                    result.rag_refs.append(ref_text)
+                    result.rag_knowledge_refs.append(
+                        {
+                            "doc_id": "",
+                            "obsidian_ref": ref_text,
+                            "file_name": Path(ref_text).name,
+                            "rank_score": None,
+                            "confidence": result.vertex_answer_api.get("grounding_score") or 0.72,
+                            "confidence_level": "medium",
+                            "source": "vertex_answer_api",
+                        }
+                    )
     except Exception as exc:
         error = str(exc)[:240]
         result.vertex_agent_search = {"used": False, "status": "error", "error": error, "refs": []}

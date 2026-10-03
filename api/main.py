@@ -6502,7 +6502,7 @@ def delete_lease_intelligence_dialogue_history():
     }
 
 
-def _cap_system_prompt(prompt: str, *, surface: str) -> str:
+def _cap_system_prompt(prompt: str, *, surface: str, reserved_tail: str = "") -> str:
     """/api/chat のシステムプロンプト合計量に上限を設ける。
 
     チャット経路は10数個の文脈ブロック（想起・経験ループ・ニュース・RAG等）を連結して
@@ -6510,8 +6510,17 @@ def _cap_system_prompt(prompt: str, *, surface: str) -> str:
     （個別ブロックは context_budget で制御されるが合計は無検査だった）。
     上限超過時は、後から連結された低優先ブロック側（末尾）から段落単位で削り、
     どれだけ削ったかを warning ログに残す。ベース人格・モード指示は先頭にあるため残る。
+    reserved_tail（社内方針の節など）は削らずに末尾へ付ける。その分だけ本体の上限を狭める。
     """
+    tail = str(reserved_tail or "").strip()
     max_chars = int(os.environ.get("CHAT_SYSTEM_PROMPT_MAX_CHARS", "24000"))
+    if tail:
+        body_cap = _cap_system_prompt_body(prompt, surface=surface, max_chars=max_chars - len(tail) - 2 if max_chars > 0 else 0)
+        return f"{body_cap}\n\n{tail}" if body_cap else tail
+    return _cap_system_prompt_body(prompt, surface=surface, max_chars=max_chars)
+
+
+def _cap_system_prompt_body(prompt: str, *, surface: str, max_chars: int) -> str:
     if max_chars <= 0 or len(prompt) <= max_chars:
         return prompt
     parts = prompt.split("\n\n")
@@ -7066,6 +7075,11 @@ def post_chat(req: ChatRequest):
             )
             from api.chat_side_effects import chat_exchange_metadata, memory_usage_extra, prompt_feedback_extra
 
+            from api.judgment_policy import enforce_policy_first, merge_policy_blocks, split_policy_block
+
+            _memory_policy, memory_recall_context = split_policy_block(memory_recall_context)
+            _teaching_policy, teaching_prompt_context = split_policy_block(teaching_prompt_context)
+            policy_prompt_context = merge_policy_blocks(_memory_policy, _teaching_policy)
             base_system_prompt = join_prompt_blocks([
                 base_system_root,
                 mode_instruction,
@@ -7112,7 +7126,7 @@ def post_chat(req: ChatRequest):
             )
             base_general_with_pdca = append_optional_block(base_system_prompt, pdca_block)
             effective_system_prompt = _cap_system_prompt(
-                base_general_with_pdca, surface="next_chat_general"
+                base_general_with_pdca, surface="next_chat_general", reserved_tail=policy_prompt_context
             )
             log_prompt_composition(
                 surface="next_chat_general",
@@ -7139,6 +7153,7 @@ def post_chat(req: ChatRequest):
                     question=req.message,
                 )
             reply = teaching_turn.finalize(call_gemini_chat(effective_system_prompt, history_for_gemini, req.message))
+            reply = enforce_policy_first(reply, policy_prompt_context)
             obsidian_daily_effect = {}
             if obsidian_daily_context:
                 obsidian_daily_effect = record_obsidian_daily_intelligence_event(
@@ -7509,6 +7524,12 @@ def post_chat(req: ChatRequest):
             should_auto_save_chat,
         )
 
+        # 社内方針（ユーザーが定めたルール）は回答の型・判断分岐の指示に負けないよう、最後に1つの節として置く
+        from api.judgment_policy import enforce_policy_first, merge_policy_blocks, split_policy_block
+
+        _memory_policy, memory_recall_context = split_policy_block(memory_recall_context)
+        _teaching_policy, teaching_prompt_context = split_policy_block(teaching_prompt_context)
+        policy_prompt_context = merge_policy_blocks(_memory_policy, _teaching_policy)
         base_effective_prompt = join_prompt_blocks([
             base_prompt_root,
             mode_instruction,
@@ -7559,7 +7580,8 @@ def post_chat(req: ChatRequest):
             else ""
         )
         base_with_pdca = append_optional_block(base_effective_prompt, pdca_block)
-        effective_prompt = _cap_system_prompt(base_with_pdca, surface="next_chat_rag")
+        # 社内方針は上限で末尾から削られないよう、cap の外で最後に付ける
+        effective_prompt = _cap_system_prompt(base_with_pdca, surface="next_chat_rag", reserved_tail=policy_prompt_context)
         # 計測のみ。太りやすいブロックだけ名前を付け、残りは unaccounted_chars に出す。
         log_prompt_composition(
             surface="next_chat_rag",
@@ -7590,6 +7612,7 @@ def post_chat(req: ChatRequest):
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
         estimated_user_emotion, reply = extract_estimated_user_emotion(reply)
         reply = teaching_turn.finalize(reply)
+        reply = enforce_policy_first(reply, policy_prompt_context)  # 方針を使ったのに冒頭で述べていなければ1行目へ
         obsidian_daily_effect = {}
         if obsidian_daily_context:
             obsidian_daily_effect = record_obsidian_daily_intelligence_event(

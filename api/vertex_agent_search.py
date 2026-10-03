@@ -18,7 +18,10 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from api.vertex_query_mask import mask_for_vertex
 
 
 DEFAULT_PROJECT_ID = "gen-lang-client-0420497423"
@@ -252,6 +255,7 @@ def search_vertex_agent(
     boost_spec: dict[str, Any] | None = None,
     apply_controls: bool = True,
 ) -> dict[str, Any]:
+    query = mask_for_vertex(query)  # 外部APIへ出る唯一の出口で審査データの個人情報を伏せる
     config = get_config()
     if not config.enabled:
         return {"used": False, "status": "disabled", "refs": [], "prompt_context": ""}
@@ -510,6 +514,37 @@ def answer_prompt_context(answer_result: dict[str, Any], *, limit: int = 1600) -
     return "\n".join(lines).strip()
 
 
+_EXPORT_MANIFEST = Path(__file__).resolve().parents[1] / "data" / "agent_search" / "lease_knowledge_export" / "manifest.json"
+_URI_MAP: dict[str, Any] = {"mtime": None, "map": {}}
+
+
+def _uri_to_source_path(uri: str) -> str:
+    """Answer API の参照（gs://.../<slug>.txt）を、同期時のマニフェストで Vault 相対パスへ戻す。無ければ空。"""
+    name = str(uri or "").rsplit("/", 1)[-1]
+    if not name:
+        return ""
+    try:
+        mtime = _EXPORT_MANIFEST.stat().st_mtime
+    except OSError:
+        return ""
+    if _URI_MAP["mtime"] != mtime:
+        try:
+            docs = json.loads(_EXPORT_MANIFEST.read_text(encoding="utf-8")).get("documents") or []
+        except (OSError, json.JSONDecodeError):
+            docs = []
+        _URI_MAP.update({"mtime": mtime, "map": {str(d.get("output_path")): str(d.get("source_path")) for d in docs}})
+    return str(_URI_MAP["map"].get(name) or "")
+
+
+def _readable_ref(uri: str) -> str:
+    """マニフェストに無い（旧同期の残り等）参照も、gs:// のままにせず読めるラベルにする。"""
+    mapped = _uri_to_source_path(uri)
+    if mapped or not str(uri).startswith("gs://"):
+        return mapped or str(uri)
+    stem = str(uri).rsplit("/", 1)[-1].removesuffix(".txt").rsplit("__", 1)[0]
+    return stem.removeprefix("Projects_tune_lease_55_").replace("_", " ").strip() or str(uri)
+
+
 def answer_vertex_agent(
     query: str,
     *,
@@ -522,6 +557,7 @@ def answer_vertex_agent(
     boost_spec: dict[str, Any] | None = None,
     max_rephrase_steps: int = 3,
 ) -> dict[str, Any]:
+    query = mask_for_vertex(query)  # 外部APIへ出る唯一の出口で審査データの個人情報を伏せる
     config = get_config()
     if not config.enabled:
         return {"used": False, "status": "disabled", "answer_text": "", "refs": []}
@@ -589,7 +625,7 @@ def answer_vertex_agent(
     if not grounding.get("support_count") and citations:
         grounding["support_count"] = len(citations)
     refs = [
-        item.get("uri") or item.get("title") or item.get("snippet")
+        (_readable_ref(item["uri"]) if item.get("uri") else "") or item.get("title") or item.get("snippet")
         for item in search_results
         if item.get("uri") or item.get("title") or item.get("snippet")
     ]
@@ -718,3 +754,45 @@ def external_grounding_results(query: str, *, page_size: int | None = None) -> l
         if snippet and uri:
             rows.append({"snippet": str(snippet), "uri": str(uri)})
     return rows
+
+
+RANKING_MODEL_DEFAULT = "semantic-ranker-default@latest"
+
+
+def rank_records(query: str, records: list[dict[str, str]], *, top_n: int | None = None) -> list[dict[str, Any]]:
+    """Ranking API でローカル検索の候補を並べ替える。records は {"id","title","content"}。
+
+    戻り値は [{"id", "score"}, ...]（スコア降順）。失敗時は例外（呼び出し側が元の順位に戻す）。
+    クエリはここで mask_for_vertex を通す（候補本文はローカル知識なので伏せない）。
+    """
+    config = get_config()
+    if not config.enabled or not config.project_id:
+        raise RuntimeError("vertex_disabled")
+    url = (
+        f"https://discoveryengine.googleapis.com/v1/projects/{config.project_id}/locations/global/"
+        "rankingConfigs/default_ranking_config:rank"
+    )
+    body: dict[str, Any] = {
+        "model": os.environ.get("VERTEX_RANKING_MODEL") or RANKING_MODEL_DEFAULT,
+        "query": mask_for_vertex(query)[:500],
+        "records": [
+            {"id": str(r["id"]), "title": str(r.get("title") or "")[:200], "content": str(r.get("content") or "")[:2000]}
+            for r in records
+        ],
+        "ignoreRecordDetailsInResponse": True,
+    }
+    if top_n:
+        body["topN"] = int(top_n)
+    response = _post_json(url, body, config)
+    return [{"id": str(item.get("id")), "score": float(item.get("score") or 0.0)} for item in response.get("records") or []]
+
+
+def rerank_hits(query: str, hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """ローカル RAG のヒット（text/ref/file_name）を Ranking API の順に並べ替える。返らなかったヒットは後ろに残す。"""
+    records = [
+        {"id": str(i), "title": str(h.get("file_name") or h.get("ref") or ""), "content": str(h.get("text") or "")}
+        for i, h in enumerate(hits)
+    ]
+    order = [int(item["id"]) for item in rank_records(query, records) if item["id"].isdigit()]
+    seen = set(order)
+    return [hits[i] for i in order if i < len(hits)] + [h for i, h in enumerate(hits) if i not in seen]
