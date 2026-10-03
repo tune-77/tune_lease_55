@@ -1256,6 +1256,16 @@ def vertex_credit_lines() -> list[str]:
         return [f"- Vertex クレジット状況: 読み込み失敗 `{type(exc).__name__}`"]
 
 
+def answer_regression_lines() -> list[str]:
+    """週次の答えの品質回帰テスト（scripts/weekly_answer_regression.py）の警告と点数（朝報の上部）。"""
+    try:
+        from scripts.weekly_answer_regression import morning_report_lines
+
+        return morning_report_lines()
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return [f"- 答えの品質回帰テスト: 読み込み失敗 `{type(exc).__name__}`"]
+
+
 def chat_prompt_budget_lines() -> list[str]:
     """チャットのプロンプトで落とした量が大きい日だけ1行（api/chat_prompt_budget.py の記録）。"""
     try:
@@ -1302,6 +1312,7 @@ def write_morning_report(
         f"# AURION CORE Daily Report {date_str()} 06:00",
         "",
         *pipeline_recovery_lines(),
+        *answer_regression_lines(),
         *vertex_credit_lines(),
         *chat_prompt_budget_lines(),
         "",

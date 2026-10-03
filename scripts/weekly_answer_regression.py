@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+"""週1回、紫苑の通常チャットの答えの品質を同じ質問セットで回帰テストする。
+
+- 質問: scripts/answer_regression_questions.json（初版は experiments/chat_before_after/ の10問、PR #1224）
+- 採点は機械的なキーワード判定だけ（Jev・LLM の自己採点は使わない）
+  ① 教えたノウハウを使ったか ② 基本知識が正確か（誤りの典型が1つでも入れば×）
+  ③ 根拠の引用があるか ④ 保存していないのに「保存しました」と言っていないか
+- 本番のデータ・記録を汚さない: 今のコードの git worktree を一時ディレクトリに作り、data/ を
+  APFS クローン（cp -c）でコピーして、別ポート（8104）で API を立てる。公開中の API（8000）・トンネルには触れない
+- 結果は data/answer_regression/<日付>.json と Obsidian に残し、AURION CORE 朝報に毎回1行、
+  前週より下がった項目・基準（①80%・②100%・③90%・④0件）を下回った項目は上部に警告を出す
+- Gemini 呼び出しは MAX_GEMINI_CALLS 回で打ち切る
+
+使い方:
+  .venv/bin/python scripts/weekly_answer_regression.py            # 実行
+  .venv/bin/python scripts/weekly_answer_regression.py --add --id <id> --kind taught --q "<質問>" \
+      --taught-any "キーワード1|キーワード2" --wrong-any "誤り1|誤り2" --source "<教えた方針>"
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import math
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# data/・索引・モデルの取り元（既定はこのチェックアウト。worktree から手動実行する時はメインを指す）
+DATA_SOURCE_ROOT = Path(os.environ.get("ANSWER_REGRESSION_DATA_ROOT") or PROJECT_ROOT)
+QUESTIONS_JSON = PROJECT_ROOT / "scripts" / "answer_regression_questions.json"
+RESULT_DIR = DATA_SOURCE_ROOT / "data" / "answer_regression"
+VAULT_SUBDIR = Path("Projects") / "tune_lease_55" / "Answer Regression"
+SERVER_PY = Path("experiments") / "chat_before_after" / "server.py"
+PORT = 8104
+MAX_GEMINI_CALLS = 24
+VAULT_COPY_TIMEOUT_S = 180
+STALE_DAYS = 8
+# 基準（質問が増えても使えるよう割合で持つ）: ①4/5 ②5/5 ③9/10 ④0件
+THRESHOLDS = {"taught": 0.8, "basic": 1.0, "cites": 0.9}
+
+SAVE_CLAIM_RE = re.compile(r"(保存しました|保存します|記録しました|記録しておきます|覚えておきます|判断資産に(登録|追加|保存))")
+CITE_RE = re.compile(r"\[\[[^\]]+\]\]|出典|参照ナレッジ|根拠[:：]")
+METRICS = (("taught", "① 教えたノウハウ"), ("basic", "② 基本知識の正確さ"), ("cites", "③ 引用"), ("false_save", "④ 誤った「保存」"))
+
+
+# --- 質問セット ------------------------------------------------------------------------
+
+
+def load_questions(path: Path = QUESTIONS_JSON) -> list[dict[str, Any]]:
+    return json.loads(path.read_text(encoding="utf-8"))["questions"]
+
+
+def add_question(entry: dict[str, Any], path: Path = QUESTIONS_JSON) -> dict[str, Any]:
+    """ユーザーが新しく教えた方針・ノウハウから1問追加する。"""
+    store = json.loads(path.read_text(encoding="utf-8"))
+    if any(q["id"] == entry["id"] for q in store["questions"]):
+        raise SystemExit(f"id が重複しています: {entry['id']}")
+    if entry["kind"] == "taught" and not entry.get("taught_any"):
+        raise SystemExit("kind=taught には --taught-any が必要です")
+    if entry["kind"] == "basic" and not entry.get("correct_any"):
+        raise SystemExit("kind=basic には --correct-any が必要です")
+    store["questions"].append({k: v for k, v in entry.items() if v})
+    path.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return entry
+
+
+# --- 採点 ------------------------------------------------------------------------------
+
+
+def reply_text(data: dict[str, Any]) -> str:
+    for key in ("reply", "response", "answer", "message", "text"):
+        if isinstance(data.get(key), str) and data[key].strip():
+            return data[key]
+    return ""
+
+
+def refs_of(data: dict[str, Any]) -> list[str]:
+    refs: list[str] = []
+    for key in ("rag_refs", "refs", "sources", "rag_knowledge_refs", "knowledge_refs"):
+        for item in data.get(key) or []:
+            refs.append(str(item.get("obsidian_ref") or item.get("ref") or item) if isinstance(item, dict) else str(item))
+    return refs
+
+
+def saved_something(data: dict[str, Any]) -> bool:
+    blob = json.dumps({k: v for k, v in data.items() if k not in ("reply", "response", "answer")}, ensure_ascii=False)
+    return bool(re.search(r'"(saved|teaching_saved|judgment_asset_saved|chat_teaching)[^"]*"\s*:\s*(true|\{)', blob))
+
+
+def score(question: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    text = reply_text(data)
+    refs = refs_of(data)
+    wrong = [w for w in question.get("wrong_any", []) if w in text]
+    result: dict[str, Any] = {
+        "cites": bool(refs) or bool(CITE_RE.search(text)),
+        "false_save": bool(SAVE_CLAIM_RE.search(text)) and not saved_something(data),
+        "wrong_hits": wrong,
+        "chars": len(text),
+    }
+    if question["kind"] == "taught":
+        result["taught"] = any(k in text for k in question["taught_any"]) and not wrong
+    else:
+        ok = any(k in text for k in question["correct_any"]) and all(any(k in text for k in group) for group in question.get("correct_all_any", []))
+        result["basic"] = ok and not wrong
+    return result
+
+
+def summarize(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    scored = [r for r in rows if "check" in r]
+    out = {}
+    for key, kind in (("taught", "taught"), ("basic", "basic"), ("cites", None), ("false_save", None)):
+        items = [r["check"] for r in scored if kind is None or r["kind"] == kind]
+        out[key] = {"ok": sum(1 for c in items if c.get(key)), "n": len(items)}
+    out["errors"] = {"ok": sum(1 for r in rows if "check" not in r), "n": len(rows)}
+    return out
+
+
+def evaluate(summary: dict[str, dict[str, int]], previous: dict[str, dict[str, int]] | None) -> list[str]:
+    """基準未満・前週より低下した項目の警告文（無ければ空）。"""
+    problems = []
+    for key, label in METRICS:
+        cur = summary.get(key) or {"ok": 0, "n": 0}
+        if not cur["n"]:
+            continue
+        shown = f"{cur['ok']}件" if key == "false_save" else f"{cur['ok']}/{cur['n']}"
+        reasons = []
+        if key == "false_save":
+            if cur["ok"] > 0:
+                reasons.append("基準0件")
+        elif cur["ok"] < math.ceil(THRESHOLDS[key] * cur["n"] - 1e-9):
+            reasons.append(f"基準{math.ceil(THRESHOLDS[key] * cur['n'] - 1e-9)}/{cur['n']}")
+        prev = (previous or {}).get(key)
+        if prev and prev.get("n"):
+            worse = cur["ok"] > prev["ok"] if key == "false_save" else cur["ok"] / cur["n"] < prev["ok"] / prev["n"]
+            if worse:
+                reasons.append(f"前週{prev['ok']}" + ("件" if key == "false_save" else f"/{prev['n']}"))
+        if reasons:
+            problems.append(f"{label} {shown}（{'・'.join(reasons)}）")
+    errors = summary.get("errors") or {}
+    if errors.get("ok"):
+        problems.append(f"未回答 {errors['ok']}問（エラー・呼び出し上限）")
+    return problems
+
+
+# --- 実行環境（本番を汚さない） ----------------------------------------------------------
+
+
+def _clone(src: Path, dst: Path) -> None:
+    if src.exists():
+        subprocess.run(["cp", "-cR", str(src), str(dst)], check=True)
+
+
+def prepare_sandbox(base: Path) -> tuple[Path, Path]:
+    """今のコードの worktree（data/ はクローン）と Vault のコピーを作る。"""
+    repo, vault = base / "repo", base / "vault"
+    subprocess.run(["git", "-C", str(PROJECT_ROOT), "worktree", "add", "--detach", "--no-checkout", str(repo), "HEAD"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "checkout", "HEAD", "--", ".", ":(exclude)data"], check=True, capture_output=True)
+    _clone(DATA_SOURCE_ROOT / "data", repo / "data")
+    for rel in ("api/chroma_db", "models/sentence-transformers"):
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        _clone(DATA_SOURCE_ROOT / rel, repo / rel)
+    for secret_file in (DATA_SOURCE_ROOT / ".streamlit").glob("secrets*.toml"):
+        _clone(secret_file, repo / ".streamlit" / secret_file.name)  # 鍵は読まずにクローンするだけ（api.main が本番と同じ方法で読む）
+    from runtime_paths import resolve_obsidian_vault
+
+    try:
+        # iCloud の未ダウンロードファイルで止まることがあるので時間で打ち切り、取れた分を使う（毎週同じ条件）
+        subprocess.run(["cp", "-cR", str(resolve_obsidian_vault()), str(vault)], timeout=VAULT_COPY_TIMEOUT_S, capture_output=True)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    vault.mkdir(exist_ok=True)
+    return repo, vault
+
+
+def cleanup_sandbox(base: Path) -> None:
+    subprocess.run(["git", "-C", str(PROJECT_ROOT), "worktree", "remove", "--force", str(base / "repo")], capture_output=True)
+    shutil.rmtree(base, ignore_errors=True)
+
+
+def _wait(port: int, timeout: float = 480.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/docs", timeout=5) as res:
+                if res.status == 200:
+                    return
+        except Exception:  # noqa: BLE001
+            time.sleep(5)
+    raise RuntimeError(f"port {port} が起動しない")
+
+
+def ask(question: str, user_id: str, timeout: float = 240.0) -> dict[str, Any]:
+    body = json.dumps({"message": question, "user_id": user_id, "response_mode": "shion"}, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(f"http://127.0.0.1:{PORT}/api/chat", data=body, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as res:
+        return json.loads(res.read().decode("utf-8"))
+
+
+def _count(path: Path) -> int:
+    try:
+        return len(path.read_text(encoding="utf-8").splitlines())
+    except OSError:
+        return 0
+
+
+def run_questions(questions: list[dict[str, Any]], base: Path, today: dt.date) -> tuple[list[dict[str, Any]], int]:
+    repo, vault = prepare_sandbox(base)
+    counter = base / "gemini_calls.txt"
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("SLACK", "K_SERVICE", "CLOUDRUN"))}
+    env.update({
+        "OBSIDIAN_VAULT_PATH": str(vault), "OBSIDIAN_VAULT": str(vault), "GCS_VAULT_LOCAL_DIR": str(base / "no_gcs_vault"),
+        "PYTHONPATH": str(repo), "PYTHONUNBUFFERED": "1", "JEV_JUDGMENT_LOG_PATH": "off", "DATA_DIR": str(repo / "data"),
+    })
+    log = (base / "server.log").open("w", encoding="utf-8")
+    proc = subprocess.Popen([sys.executable, str(repo / SERVER_PY), "--port", str(PORT), "--counter", str(counter)], cwd=repo, env=env, stdout=log, stderr=subprocess.STDOUT)
+    rows: list[dict[str, Any]] = []
+    try:
+        _wait(PORT)
+        for question in questions:
+            row: dict[str, Any] = {"id": question["id"], "kind": question["kind"], "q": question["q"]}
+            if _count(counter) >= MAX_GEMINI_CALLS:
+                row["error"] = "gemini_call_limit"
+            else:
+                try:
+                    data = ask(question["q"], f"weekly_regression_{today.isoformat()}")
+                    row.update({"reply": reply_text(data), "refs": refs_of(data)[:6], "check": score(question, data)})
+                except Exception as exc:  # noqa: BLE001
+                    row["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+            print(f"{row['id']}: {row.get('check') or row.get('error')}", flush=True)
+            rows.append(row)
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    return rows, _count(counter)
+
+
+# --- 記録・朝報 ------------------------------------------------------------------------
+
+
+def previous_result(today: dt.date, result_dir: Path = RESULT_DIR) -> dict[str, Any] | None:
+    files = sorted(p for p in result_dir.glob("20*.json") if p.stem < today.isoformat())
+    return json.loads(files[-1].read_text(encoding="utf-8")) if files else None
+
+
+def _mark(v: Any) -> str:
+    return "○" if v else "×"
+
+
+def obsidian_note(report: dict[str, Any]) -> str:
+    s = report["summary"]
+    lines = [
+        "---", f"date: {report['date']}", "tags: [回帰テスト, 紫苑, 週次]", "source: scripts/weekly_answer_regression.py", "---", "",
+        f"# 答えの品質回帰テスト {report['date']}", "",
+        f"- ①教えたノウハウ {s['taught']['ok']}/{s['taught']['n']}・②基本知識 {s['basic']['ok']}/{s['basic']['n']}・"
+        f"③引用 {s['cites']['ok']}/{s['cites']['n']}・④誤った保存 {s['false_save']['ok']}件（Gemini {report['gemini_calls']}回）",
+        f"- 警告: {' / '.join(report['problems']) if report['problems'] else 'なし'}", "",
+        "| 質問 | 判定 | 誤りの典型 | 答えの冒頭 |", "|---|---|---|---|",
+    ]
+    for r in report["rows"]:
+        if "check" not in r:
+            lines.append(f"| {r['q']} | エラー | | {r.get('error', '')} |")
+            continue
+        c = r["check"]
+        main = f"①{_mark(c.get('taught'))}" if r["kind"] == "taught" else f"②{_mark(c.get('basic'))}"
+        head = re.sub(r"[\s|#*>`]+", " ", r.get("reply", ""))[:80]
+        lines.append(f"| {r['q']} | {main} ③{_mark(c['cites'])} ④{'×' if c['false_save'] else '○'} | {', '.join(c['wrong_hits'])} | {head} |")
+    return "\n".join(lines) + "\n"
+
+
+def write_result(report: dict[str, Any], result_dir: Path = RESULT_DIR, vault_dir: Path | None = None) -> Path:
+    result_dir.mkdir(parents=True, exist_ok=True)
+    path = result_dir / f"{report['date']}.json"
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if vault_dir is not None:
+        vault_dir.mkdir(parents=True, exist_ok=True)
+        (vault_dir / f"答えの品質回帰テスト {report['date']}.md").write_text(obsidian_note(report), encoding="utf-8")
+    return path
+
+
+def _vault_dir() -> Path | None:
+    try:
+        from runtime_paths import resolve_obsidian_vault
+
+        vault = resolve_obsidian_vault()
+    except Exception:  # noqa: BLE001 - Vault が無い環境では data/ だけに残す
+        return None
+    return vault / VAULT_SUBDIR if vault.exists() else None
+
+
+def morning_report_lines(result_dir: Path = RESULT_DIR, now: dt.date | None = None) -> list[str]:
+    """AURION CORE 朝報の上部に出す行: 警告（あれば）＋毎回の点数1行。"""
+    files = sorted(result_dir.glob("20*.json"))
+    if not files:
+        return ["- 🧪 答えの品質回帰テスト（週次）: まだ実行されていません"]
+    report = json.loads(files[-1].read_text(encoding="utf-8"))
+    s = report["summary"]
+    lines = []
+    if report.get("problems"):
+        lines.append(f"- ⚠️ 答えの品質が下がった/基準未満（{report['date']}）: " + " / ".join(report["problems"]))
+    age = ((now or dt.date.today()) - dt.date.fromisoformat(report["date"])).days
+    if age > STALE_DAYS:
+        lines.append(f"- ⚠️ 答えの品質回帰テストが {age}日 実行されていません（com.tunelease.answer-regression-weekly）")
+    lines.append(
+        f"- 🧪 答えの品質回帰テスト（週次 {report['date']}）: ①{s['taught']['ok']}/{s['taught']['n']} ②{s['basic']['ok']}/{s['basic']['n']} "
+        f"③{s['cites']['ok']}/{s['cites']['n']} ④{s['false_save']['ok']}件（Gemini {report['gemini_calls']}回）"
+    )
+    return lines
+
+
+def run(today: dt.date | None = None) -> dict[str, Any]:
+    today = today or dt.date.today()
+    questions = load_questions()
+    base = Path(tempfile.mkdtemp(prefix="answer_regression_"))
+    try:
+        rows, calls = run_questions(questions, base, today)
+    finally:
+        cleanup_sandbox(base)
+    summary = summarize(rows)
+    previous = previous_result(today)
+    report = {
+        "date": today.isoformat(),
+        "commit": subprocess.run(["git", "-C", str(PROJECT_ROOT), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip(),
+        "gemini_calls": calls,
+        "summary": summary,
+        "previous_date": (previous or {}).get("date"),
+        "problems": evaluate(summary, (previous or {}).get("summary")),
+        "rows": rows,
+    }
+    write_result(report, vault_dir=_vault_dir())
+    return report
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="紫苑の答えの品質を週次で回帰テストする")
+    parser.add_argument("--add", action="store_true", help="質問を1問追加する")
+    parser.add_argument("--id")
+    parser.add_argument("--kind", choices=("taught", "basic"))
+    parser.add_argument("--q")
+    parser.add_argument("--taught-any", default="")
+    parser.add_argument("--correct-any", default="")
+    parser.add_argument("--wrong-any", default="")
+    parser.add_argument("--source", default="")
+    args = parser.parse_args()
+    if args.add:
+        if not (args.id and args.kind and args.q):
+            raise SystemExit("--add には --id --kind --q が必要です")
+        split = lambda s: [x.strip() for x in s.split("|") if x.strip()]  # noqa: E731
+        entry = add_question({
+            "id": args.id, "kind": args.kind, "q": args.q, "taught_any": split(args.taught_any), "correct_any": split(args.correct_any),
+            "wrong_any": split(args.wrong_any), "added": dt.date.today().isoformat(), "source": args.source,
+        })
+        print(json.dumps(entry, ensure_ascii=False))
+        return 0
+    report = run()
+    print(json.dumps({k: report[k] for k in ("date", "commit", "gemini_calls", "summary", "problems")}, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
