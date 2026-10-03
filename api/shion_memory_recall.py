@@ -483,6 +483,25 @@ def matching_policy_records(
     return [record for _score, record in scored[:limit]]
 
 
+def active_policy_block(*, index_path: Path | None = None, limit: int = 3) -> str:
+    """有効な方針型判断資産をすべて、チャットと同じ【社内方針】節の書式で返す（紫苑レビュー用）。
+
+    レビューは案件全体を見るので、問いとの語の一致に頼らず方針を全件渡し、当てはまるかは
+    POLICY_INSTRUCTIONS（関係のない方針には触れない）に任せる。方針は数件しかない。
+    """
+    from api.judgment_policy import POLICY, asset_citation, format_policy_block, knowledge_kind_of
+
+    policies: list[dict[str, str]] = []
+    for record in load_memory_index(index_path or resolve_index_path()).get("records") or []:
+        if not isinstance(record, dict) or record.get("source") != "canonical_judgment_rules":
+            continue
+        content = str(record.get("content") or "").strip()
+        if str(record.get("status") or "active") != "active" or not content or knowledge_kind_of(record, content) != POLICY:
+            continue
+        policies.append({"text": content[:260], "source": asset_citation(str(record.get("judgment_asset_id") or ""), str(record.get("created_at") or ""))})
+    return format_policy_block(policies[:limit])
+
+
 def build_recall_prompt_block(
     question: str,
     *,

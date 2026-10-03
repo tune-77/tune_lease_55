@@ -5,6 +5,7 @@ paraphrase-multilingual-MiniLM-L12-v2 モデルで日本語テキストをベク
 from __future__ import annotations
 
 import datetime
+import functools
 import os
 import hashlib
 import json
@@ -450,6 +451,12 @@ class KnowledgeVectorStore:
 
     @staticmethod
     def _query_terms(query: str) -> list[str]:
+        # 再ランクは候補文書ごとに呼ぶため、同じクエリの分かち書きは1回だけにする。
+        # 2026-10-03: 紫苑レビュー（約3,000字の依頼文）で 23.8万回呼ばれ、1件 8分かかっていた。
+        return list(_cached_query_terms(query))
+
+    @staticmethod
+    def _split_query_terms(query: str) -> tuple[str, ...]:
         try:
             from obsidian_query import split_query_terms
 
@@ -469,7 +476,7 @@ class KnowledgeVectorStore:
             if t in low_query and t not in seen:
                 result.append(t)
                 seen.add(t)
-        return result
+        return tuple(result)
 
     def _keyword_search(self, query: str, top_k: int) -> list[dict]:
         """encoder が使えない環境向けの Chroma document キーワード検索。"""
@@ -886,6 +893,11 @@ class KnowledgeVectorStore:
             return self._collection.count()
         except Exception:
             return 0
+
+
+@functools.lru_cache(maxsize=256)
+def _cached_query_terms(query: str) -> tuple[str, ...]:
+    return KnowledgeVectorStore._split_query_terms(query)
 
 
 # モジュールレベルシングルトン（APIサーバーで共有）

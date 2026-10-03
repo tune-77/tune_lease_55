@@ -28,6 +28,9 @@ export type ScreeningFormRecord = {
   contract_type?: unknown;
   customer_type?: unknown;
   main_bank?: unknown;
+  qual_corr_main_bank?: unknown;
+  bank_credit?: unknown;
+  lease_credit?: unknown;
   deal_source?: unknown;
   passion_text?: unknown;
   intuition?: unknown;
@@ -65,6 +68,8 @@ export type ShionScreeningReview = {
   supportCount?: number;
   savedId?: number;
   userFeedback?: ShionReviewFeedback;
+  // 打ち切り時間を過ぎて簡易生成を先に見せている間 true。紫苑の本文が届いたら差し替える。
+  lateReplyPending?: boolean;
 };
 
 export type JudgmentAssetCandidate = {
@@ -82,6 +87,8 @@ export type JudgmentAssetCandidate = {
   useful_count: number;
   rejected_count: number;
   verified_status: string;
+  // "policy" は社内方針（PR #1225 の方針/知見の分類）。方針は変形させず、知見とは別に渡す。
+  knowledge_kind?: string;
   userFeedback?: JudgmentAssetCandidateFeedback;
   lastFeedbackEventId?: string;
   user_feedback?: JudgmentAssetCandidateFeedback;
@@ -165,32 +172,58 @@ export const isCanonicalJudgmentAsset = (candidate: JudgmentAssetCandidate) => (
 export const getScreeningScore = (result?: LooseRecord | null) =>
   Number(result?.score ?? result?.score_base ?? 0);
 
-// プロンプトが LLM に渡す判断資産の件数。出典の補完もこの件数に揃える。
+// プロンプトが LLM に渡す判断資産（知見）の件数。社内方針はこれとは別枠で全件渡す。
 export const PROMPTED_JUDGMENT_ASSET_LIMIT = 3;
 
+export const isPolicyJudgmentAsset = (candidate: JudgmentAssetCandidate) => candidate.knowledge_kind === "policy";
+
+// プロンプトへ実際に渡す判断資産。方針（全件）と知見（先頭 PROMPTED_JUDGMENT_ASSET_LIMIT 件）。
+export const promptedJudgmentAssets = (candidates: JudgmentAssetCandidate[] = []) => ({
+  policies: candidates.filter(isPolicyJudgmentAsset),
+  insights: candidates.filter((item) => !isPolicyJudgmentAsset(item)).slice(0, PROMPTED_JUDGMENT_ASSET_LIMIT),
+});
+
 export const formatJudgmentAssetCitation = (item: JudgmentAssetCandidate) => {
-  const label = isCanonicalJudgmentAsset(item) ? "正規" : "候補";
+  const label = isPolicyJudgmentAsset(item) ? "方針" : isCanonicalJudgmentAsset(item) ? "正規" : "候補";
   return `判断資産出典: ${label} JA-${item.id.slice(0, 8)} / ${item.research_topic || item.candidate_type || "screening"}`;
 };
 
-// LLM が出典を書かなかった判断資産を、本文末尾に補う。
+const reviewBigrams = (text: string) => {
+  const compact = String(text || "").replace(/[\s、。,.()（）「」『』:：/・*#>\-【】[\]0-9A-Za-z%]/g, "");
+  const grams = new Set<string>();
+  for (let i = 0; i < compact.length - 1; i += 1) grams.add(compact.slice(i, i + 2));
+  return grams;
+};
+
+// 判断資産の文面の文字bigramのうち、本文に現れた割合。言い換えて使われても拾えるよう語ではなく bigram で見る。
+// 2026-10-03 の実レビュー3件で、使った資産は 0.26〜0.41、使っていない資産は 0.16 だった。
+export const JUDGMENT_ASSET_USE_THRESHOLD = 0.25;
+
+export const judgmentAssetUsedInReview = (reviewText: string, item: JudgmentAssetCandidate) => {
+  const claim = reviewBigrams(item.edited_claim || item.effective_claim || item.claim || "");
+  if (!claim.size) return false;
+  const body = reviewBigrams(String(reviewText || "").replace(/判断資産出典[^\n]*/g, ""));
+  let shared = 0;
+  claim.forEach((gram) => { if (body.has(gram)) shared += 1; });
+  return shared / claim.size >= JUDGMENT_ASSET_USE_THRESHOLD;
+};
+
+// LLM が出典を書き忘れた判断資産のうち、本文で実際に使っているものだけ末尾に出典を補う。
 //
 // api/routers/feedback_loop.py の _record_judgment_asset_feedback_from_review は
 // 本文中の「JA-cr-<rule_id先頭>」だけを手がかりに、レビュー評価を判断資産へ紐付ける。
-// 出典が本文に無いと no_matching_refs で全て捨てられ、field_validation が
-// 永久に 0 のままになる。出典を確実に出すのはフォールバック定型文だけで、
-// LLM 経路はプロンプト指示（buildShionReviewPrompt）頼みだった。
-//
-// 補うのはプロンプトへ実際に渡した資産（先頭 PROMPTED_JUDGMENT_ASSET_LIMIT 件）だけで、
-// 渡していない資産の出典は作らない。
+// 出典が本文に無いと no_matching_refs で捨てられ field_validation が 0 のままになるため補う。
+// ただし使っていない資産に出典を付けると、評価が使っていない資産に紐付いてしまうので補わない
+// （2026-10-03 までは渡した3件すべてに無条件で付けていた）。渡していない資産の出典も作らない。
 export const ensureJudgmentAssetCitations = (
   reviewText: string,
   judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
 ) => {
   const text = reviewText || "";
-  const missing = judgmentAssetCandidates
-    .slice(0, PROMPTED_JUDGMENT_ASSET_LIMIT)
-    .filter((item) => item.id && !text.includes(`JA-${item.id.slice(0, 8)}`));
+  const { policies, insights } = promptedJudgmentAssets(judgmentAssetCandidates);
+  const missing = [...policies, ...insights]
+    .filter((item) => item.id && !text.includes(`JA-${item.id.slice(0, 8)}`) && !text.includes(item.id.replace(/^cr-/, "").slice(0, 8)))
+    .filter((item) => judgmentAssetUsedInReview(text, item));
   if (!missing.length) return text;
   return [text.trimEnd(), "", ...missing.map(formatJudgmentAssetCitation)].join("\n");
 };
@@ -277,6 +310,58 @@ export const buildVertexSearchHint = (result: ScreeningResultRecord, data: Scree
   return Array.from(new Set(terms)).slice(0, 14).join(" ");
 };
 
+const formatMillionYen = (value: unknown) => {
+  const amount = Number(value);
+  return value === "" || value == null || !Number.isFinite(amount) ? "" : `${amount}百万円`;
+};
+
+// 金額は検索に要らないので帯だけにする（個人を特定しうる正確な値を検索・ログへ出さない）
+const acquisitionCostBand = (value: unknown) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  if (amount < 10) return "取得価額1千万円未満";
+  if (amount < 50) return "取得価額1千万〜5千万円";
+  if (amount < 100) return "取得価額5千万〜1億円";
+  return "取得価額1億円以上";
+};
+
+// 銀行与信とリース与信（今回分を含む）の大小。社内方針「メイン銀行の借入よりリースの借入を増やさない」の判定材料。
+const leaseVsBankCreditText = (data: ScreeningFormRecord) => {
+  const bank = Number(data.bank_credit);
+  const lease = Number(data.lease_credit);
+  const cost = Number(data.acquisition_cost);
+  if (data.bank_credit === "" || data.bank_credit == null || !Number.isFinite(bank)) return "";
+  const leaseAfter = (Number.isFinite(lease) ? lease : 0) + (Number.isFinite(cost) ? cost : 0);
+  if (bank <= 0) return "銀行与信なし";
+  return leaseAfter > bank ? "今回を含むリース与信が銀行与信を上回る" : "今回を含むリース与信は銀行与信以下";
+};
+
+// 紫苑レビューの検索・想起・方針照合に使う短い案件要約（/api/chat の retrieval_query）。
+// 依頼文（約3,000字）をそのまま検索に使うと、埋め込みモデルが先頭の定型文しか読まず、
+// どの案件でも同じ過去レビューが当たり、キーワード再ランクも1件数分かかっていた（2026-10-03）。
+// 社名・営業メモ・正確な金額は入れない（検索ログ・Vertex へ出るため）。
+export const buildShionReviewRetrievalQuery = (result: ScreeningResultRecord, data: ScreeningFormRecord) => {
+  const qRiskLabels = (result.q_risk_breakdown as QRiskBreakdown | undefined)?.items?.slice(0, 3).map((item) => item.label) ?? [];
+  const flags = Array.isArray(result.aurion_core?.discipline_flags)
+    ? result.aurion_core.discipline_flags
+        .slice(0, 3)
+        .map((flag) => (typeof flag === "string" ? flag : (flag as { title?: string })?.title ?? ""))
+    : [];
+  const parts = [
+    "リース審査",
+    buildVertexSearchHint(result, data),
+    String(data.qual_corr_main_bank || "").replace(/^未選択$/, ""),
+    leaseVsBankCreditText(data),
+    acquisitionCostBand(data.acquisition_cost),
+    data.lease_term ? `リース期間${data.lease_term}ヶ月` : "",
+    String(result.hantei || ""),
+    Number(result.quantum_risk) >= 35 ? "Q_risk要注意" : "",
+    ...qRiskLabels,
+    ...flags,
+  ];
+  return Array.from(new Set(parts.map((part) => String(part || "").trim()).filter(Boolean))).join(" ").slice(0, 400);
+};
+
 // Q_risk の内訳を「営業赤字 29.5 / 売上規模対比の利益率異常 40.0」の形の1行へ整形する。
 // 紫苑が「Q_risk のどの成分に反応したか」を根拠として書けるよう、プロンプトと思考プロセスの
 // 両方から同じ文字列を使う。寄与の大きい順に最大3件まで。
@@ -298,14 +383,12 @@ export const buildShionReviewPrompt = (
 ) => {
   const score = getScreeningScore(result);
   const baseScore = Number(result.score_base);
-  const vertexSearchHint = buildVertexSearchHint(result, data);
   const qRiskBreakdownText = formatQRiskBreakdown(result.q_risk_breakdown as QRiskBreakdown | undefined);
+  const leaseVsBank = leaseVsBankCreditText(data);
+  // 検索ヒントは依頼文に入れず、buildShionReviewRetrievalQuery で retrieval_query として別に渡す
   const lines = [
     "【審査分析画面からの紫苑レビュー依頼】",
     "この案件を、審査担当者の横にいる紫苑としてレビューしてください。",
-    "",
-    "【Vertex補助検索ヒント】",
-    vertexSearchHint || "リース審査 判断資産 物件リスク 返済余力 承認条件",
     "",
     "出力は短くしてください。必ず書くのは次の2項目だけです。",
     "・違和感: 数字だけでは見落としそうな点。何を根拠にそう感じたかまで書く。",
@@ -351,6 +434,12 @@ export const buildShionReviewPrompt = (
     `・取得価額: ${data.acquisition_cost || 0}百万円`,
     `・リース期間: ${data.lease_term || 0}`,
     `・導入目的: ${data.asset_purpose || "未入力"}`,
+    `・当行区分: ${data.main_bank || "未入力"}`,
+    `・メイン銀行関係: ${data.qual_corr_main_bank && data.qual_corr_main_bank !== "未選択" ? data.qual_corr_main_bank : "未入力"}`,
+    `・案件発生経路: ${data.deal_source || "未入力"}`,
+    `・銀行与信残高: ${formatMillionYen(data.bank_credit) || "未入力"}`,
+    `・リース与信残高（他社含む）: ${formatMillionYen(data.lease_credit) || "未入力"}`,
+    ...(leaseVsBank ? [`・与信の大小: ${leaseVsBank}`] : []),
     `・営業メモ: ${data.passion_text || "未入力"}`,
     `・直感スコア: ${data.intuition || "未入力"}`,
   ];
@@ -376,8 +465,21 @@ export const buildShionReviewPrompt = (
       lines.push(`  - ${label}: ${status}${reason ? `（理由: ${reason}）` : ""}`);
     }
   }
-  if (judgmentAssetCandidates.length) {
-    const hasCanonicalAssets = judgmentAssetCandidates.some((item) => (
+  const { policies, insights } = promptedJudgmentAssets(judgmentAssetCandidates);
+  if (policies.length) {
+    // 方針は知見と違い、変形・弱めずに使う（PR #1225 の【社内方針】と同じ扱い。サーバー側でも同じ節を末尾に置く）
+    lines.push(
+      "",
+      "【社内方針（ユーザーが定めたルール）として登録された判断資産】",
+      "次は社内方針です。丸写しせず変形・応用する判断資産とは違い、方針は文面を変えず、弱めずに当てはめてください。",
+      "この案件に当てはまる方針があれば、レビューの冒頭で結論として述べてください（例:「社内方針では、〜とは取引しません」）。確認事項や例外は方針を示した後に補足として書きます。",
+      "当てはまるか前提の情報だけでは決められない時は、何を確認すれば決まるかを書いてください。当てはまらない方針には触れないでください。",
+      "使った方針は回答末尾に「判断資産出典: 方針 JA-<ID短縮> / <research_topic>」として明記してください。",
+      ...policies.map((item) => `社内方針: JA-${item.id.slice(0, 8)} / ${item.research_topic}\n方針: ${item.claim}`),
+    );
+  }
+  if (insights.length) {
+    const hasCanonicalAssets = insights.some((item) => (
       item.source === "canonical_judgment_rules" || item.promotion_status === "active" || item.verified_status === "canonical"
     ));
     const adaptationPolicies: Record<JudgmentAssetAdaptationMode, string> = {
@@ -395,7 +497,7 @@ export const buildShionReviewPrompt = (
       adaptationPolicies[judgmentAssetAdaptationMode],
       "使った判断資産は、回答末尾に「判断資産出典: 正規 JA-<ID短縮> / <research_topic>」または「判断資産出典: 候補 JA-<ID短縮> / <research_topic>」として明記してください。",
       "元判断と応用後の判断を混同しないでください。応用後の確認観点・承認条件・反証を本文に出し、出典は根拠トレースとして残してください。",
-      ...judgmentAssetCandidates.slice(0, 3).map((item, index) => (
+      ...insights.map((item, index) => (
         [
           `${isCanonicalJudgmentAsset(item) ? "正規判断資産" : "昇格候補"}${index + 1}: JA-${item.id.slice(0, 8)} / ${item.candidate_type} / ${item.research_topic}`,
           `元判断: ${item.claim}`,
@@ -431,11 +533,15 @@ export const buildShionReviewFallback = (
   const qRiskText = qRisk != null && Number.isFinite(qRisk)
     ? `Q_risk ${qRisk.toFixed(1)}`
     : "Q_risk 未算出";
-  const candidateAsset = judgmentAssetCandidates.find((item) => !isCanonicalJudgmentAsset(item));
-  const canonicalAsset = judgmentAssetCandidates.find((item) => isCanonicalJudgmentAsset(item));
-  const primaryAsset = candidateAsset || canonicalAsset || judgmentAssetCandidates[0];
-  const secondaryAsset = judgmentAssetCandidates.find((item) => item.id !== primaryAsset?.id);
-  const assetSources = judgmentAssetCandidates.slice(0, PROMPTED_JUDGMENT_ASSET_LIMIT).map(formatJudgmentAssetCitation);
+  // 定型文は方針を判定できないので知見だけを使い、出典も本文で使った資産（primary/secondary）だけに付ける
+  const { insights } = promptedJudgmentAssets(judgmentAssetCandidates);
+  const candidateAsset = insights.find((item) => !isCanonicalJudgmentAsset(item));
+  const canonicalAsset = insights.find((item) => isCanonicalJudgmentAsset(item));
+  const primaryAsset = candidateAsset || canonicalAsset || insights[0];
+  const secondaryAsset = insights.find((item) => item.id !== primaryAsset?.id);
+  const assetSources = [primaryAsset, secondaryAsset]
+    .filter((item): item is JudgmentAssetCandidate => Boolean(item))
+    .map(formatJudgmentAssetCitation);
   const primaryClaim = primaryAsset?.edited_claim || primaryAsset?.effective_claim || primaryAsset?.claim || "";
   const secondaryClaim = secondaryAsset?.edited_claim || secondaryAsset?.effective_claim || secondaryAsset?.claim || "";
   return [
@@ -609,3 +715,84 @@ export const buildShionReviewUserId = (targetResult: LooseRecord | null, targetF
   const safeId = rawId.replace(/[^\w\-ぁ-んァ-ヶ一-龠ー]/g, "_").slice(0, 64);
   return `screening-shion-review:${safeId || "draft"}`;
 };
+
+// 画面の打ち切り。これを過ぎたら簡易生成を先に見せ、紫苑の本文が届いたら差し替える。
+// 本文は SHION_REVIEW_HARD_TIMEOUT_MS まで待つ（以前は120秒で通信を切り、サーバーで完成した本文が画面に出なかった）。
+export const SHION_REVIEW_SOFT_TIMEOUT_MS = 120000;
+export const SHION_REVIEW_HARD_TIMEOUT_MS = 600000;
+
+// /api/chat への紫苑レビュー依頼。caller でサーバーがレビューと判別し、依頼文を Vault・記録へ残さず、
+// 検索・想起・方針照合には retrieval_query（社名・営業メモを含まない案件要約）を使う。
+export const buildShionReviewChatBody = (
+  targetResult: ScreeningResultRecord,
+  targetFormData: ScreeningFormRecord,
+  promptText: string,
+) => ({
+  message: promptText,
+  user_id: buildShionReviewUserId(targetResult, targetFormData),
+  response_mode: "shion" as const,
+  debug_memory: true,
+  caller: "screening_review",
+  retrieval_query: buildShionReviewRetrievalQuery(targetResult, targetFormData),
+});
+
+// request が ms 以内に終われば {done: true, value}、間に合わなければ {done: false}。
+// 間に合わなかった後の失敗は呼び出し側が request を await して受ける（ここでは握り潰さず、未処理にもしない）。
+export const waitForSoftTimeout = <T>(request: Promise<T>, ms: number) =>
+  new Promise<{ done: true; value: T } | { done: false }>((resolve, reject) => {
+    const timer = setTimeout(() => resolve({ done: false }), ms);
+    request.then(
+      (value) => { clearTimeout(timer); resolve({ done: true, value }); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+
+export const shionReviewFromChatResponse = (
+  data: LooseRecord | undefined,
+  judgmentAssetCandidates: JudgmentAssetCandidate[],
+): ShionScreeningReview => {
+  const payload = data || {};
+  const memoryDebug = (payload.memory_debug || {}) as LooseRecord;
+  const memoryRecall = (memoryDebug.memory_recall || {}) as LooseRecord;
+  const identityMemory = (memoryDebug.identity_memory || {}) as LooseRecord;
+  const vertexSearch = (memoryDebug.vertex_ai_search || payload.vertex_ai_search || {}) as LooseRecord;
+  const vertexAnswer = (memoryDebug.vertex_answer_api || payload.vertex_answer_api || {}) as LooseRecord;
+  const parsedGroundingScore = vertexAnswer.grounding_score != null ? Number(vertexAnswer.grounding_score) : null;
+  return {
+    reply: ensureJudgmentAssetCitations(String(payload.reply || "紫苑レビューが空でした。"), judgmentAssetCandidates),
+    memoryRefs: Array.isArray(memoryRecall.refs) ? memoryRecall.refs.length : 0,
+    knowledgeRefs: Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0,
+    identityUsed: Boolean(identityMemory.used),
+    vertexUsed: Boolean(vertexSearch.used),
+    vertexStatus: String(vertexSearch.status || ""),
+    vertexRefs: Array.isArray(vertexSearch.refs) ? vertexSearch.refs.map(String) : [],
+    vertexAnswerUsed: Boolean(vertexAnswer.used),
+    vertexAnswerStatus: String(vertexAnswer.status || ""),
+    groundingScore: parsedGroundingScore != null && Number.isFinite(parsedGroundingScore) ? parsedGroundingScore : null,
+    groundingScoreSource: String(vertexAnswer.grounding_score_source || ""),
+    lowSupportClaimCount: Number(vertexAnswer.low_support_claim_count || 0),
+    supportCount: Number(vertexAnswer.support_count || 0),
+  };
+};
+
+export const buildShionReviewFallbackRecord = (
+  targetResult: ScreeningResultRecord,
+  targetFormData: ScreeningFormRecord,
+  judgmentAssetCandidates: JudgmentAssetCandidate[],
+  lateReplyPending = false,
+): ShionScreeningReview => ({
+  reply: buildShionReviewFallback(targetResult, targetFormData, judgmentAssetCandidates),
+  memoryRefs: 0,
+  knowledgeRefs: judgmentAssetCandidates.length,
+  identityUsed: false,
+  vertexUsed: false,
+  vertexStatus: "fallback",
+  vertexRefs: [],
+  vertexAnswerUsed: false,
+  vertexAnswerStatus: "fallback",
+  groundingScore: null,
+  groundingScoreSource: "",
+  lowSupportClaimCount: 0,
+  supportCount: 0,
+  lateReplyPending,
+});

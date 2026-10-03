@@ -17,9 +17,11 @@ _COMPANY_RE = re.compile(
 )
 _PERSON_RE = re.compile(rf"(?:{_NAME_TOKEN})(?:様|さん|氏|社長|専務|常務|部長|課長|代表)")
 _LABELED_RE = re.compile(
-    r"(氏名|名前|住所|所在地|電話番号|電話|TEL|携帯|メール|顧客名|会社名|社名|商号|申込者|代表者|担当者)\s*[:：]\s*[^\s、。,，\n]+",
+    r"(氏名|名前|住所|所在地|電話番号|電話|TEL|携帯|メール|顧客名|企業名|法人名|取引先名|会社名|社名|商号|申込者|代表者名|代表者|担当者)\s*[:：]\s*[^\s、。,，\n]+",
     re.I,
 )
+# 自由記述欄（紫苑レビュー依頼の「営業メモ:」等）は人名・社名・経緯が混ざるので行末まで伏せる
+_FREE_TEXT_LABELED_RE = re.compile(r"(営業メモ|現場メモ|担当者メモ|備考|特記事項)\s*[:：][^\n]*")
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 _PHONE_RE = re.compile(r"(?<!\d)(?:0\d{1,4}[-ー‐(（]?\d{1,4}[-ー‐)）]?\d{3,4})(?!\d)")
 _POSTAL_RE = re.compile(r"〒\s?\d{3}[-ー‐]\d{4}|(?<![\d\-ー‐])\d{3}[-ー‐]\d{4}(?![\d\-ー‐])")
@@ -37,6 +39,7 @@ _MONEY_RE = re.compile(
 
 def mask_for_vertex(text: str) -> str:
     masked = str(text or "")
+    masked = _FREE_TEXT_LABELED_RE.sub(lambda m: f"{m.group(1)}:〈伏字〉", masked)
     masked = _LABELED_RE.sub(lambda m: f"{m.group(1)}:〈伏字〉", masked)
     masked = _EMAIL_RE.sub("〈メール〉", masked)
     masked = _PHONE_RE.sub("〈電話〉", masked)  # 郵便番号より先（電話の後半7桁を郵便番号と誤認しない）

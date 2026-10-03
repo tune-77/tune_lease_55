@@ -307,6 +307,7 @@ def build_chat_retrieval_context(
     is_general_response_mode: bool,
     fallback_search: FallbackSearch | None = None,
     obsidian_vault_path: str = "",
+    force_vertex_answer: bool = False,
 ) -> ChatRetrievalResult:
     """Build local RAG plus optional Vertex supplemental context for chat."""
     result = ChatRetrievalResult()
@@ -409,7 +410,7 @@ def build_chat_retrieval_context(
             )
 
         # 従来はヒント付きの時だけ。クレジット期間中は審査系の質問でも回答前に根拠付き回答を取る
-        if "【Vertex補助検索ヒント】" in message or (
+        if force_vertex_answer or "【Vertex補助検索ヒント】" in message or (
             credit_mode["active"] and question_category in SCREENING_CATEGORIES
         ):
             result.vertex_answer_api = answer_vertex_agent(

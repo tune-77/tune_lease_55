@@ -213,13 +213,17 @@ def test_frontend_still_emits_and_guarantees_citations():
     assert f"slice(0, {CITATION_ID_SLICE})" in shion_review, "出典IDの切り出し幅が変わっている"
     assert "ensureJudgmentAssetCitations" in shion_review
 
+    # LLM応答は共通の shionReviewFromChatResponse で review にし、その中で出典を補う。
+    response_fn = shion_review.split("export const shionReviewFromChatResponse", 1)[-1].split("export const ", 1)[0]
+    assert "ensureJudgmentAssetCitations(" in response_fn, "LLM応答の変換で出典の保証が外れている"
+
     # LLM経路は2つある。どちらか片方だけ外れても気づけるように両方を検査する。
     llm_paths = [
         FRONTEND_LIB / "useShionScreeningReview.ts",
         REPO_ROOT / "frontend" / "src" / "app" / "screening" / "page.tsx",
     ]
     for path in llm_paths:
-        assert "ensureJudgmentAssetCitations" in path.read_text(encoding="utf-8"), (
+        assert "shionReviewFromChatResponse(" in path.read_text(encoding="utf-8"), (
             f"{path.name} のLLM経路で出典の保証が外れている"
         )
 
