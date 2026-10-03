@@ -20,6 +20,10 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from api.judgment_policy import classify_knowledge_kind  # noqa: E402
 DATA_DIR = PROJECT_ROOT / "data"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 DEFAULT_INPUT_JSONL = DATA_DIR / "judgment_materials_preview.jsonl"
@@ -179,6 +183,7 @@ def build_canonical_rules(materials: list[dict[str, Any]]) -> list[dict[str, Any
                 "concept": group["concept"],
                 "status": status,
                 "canonical_statement": group["canonical_statement"],
+                "knowledge_kind": classify_knowledge_kind(group["canonical_statement"]),
                 "evidence_count": evidence_count,
                 "user_evidence_count": user_evidence_count,
                 "confidence": round(confidence, 2),
