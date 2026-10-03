@@ -222,11 +222,13 @@ class RagReviewPhase:
                     hits = search_notes_with_industry_filter(query, industry)
                 else:
                     hits = search_notes(query, limit=3)
+                vector_hits = sum(1 for h in hits if h.get("vector_rank"))
                 results[query] = {
                     "hits": len(hits),
+                    "vector_hits": vector_hits,
                     "quality": "good" if len(hits) >= 2 else "poor",
                 }
-                logger.info(f"  - '{query}': {len(hits)} hits")
+                logger.info(f"  - '{query}': {len(hits)} hits（うちベクトル検索由来 {vector_hits}）")
 
             return results
         except Exception as e:
@@ -440,6 +442,20 @@ def run_morning_rag_review():
     for v in results["verification"]["verified"]:
         logger.info(f"  ✅ {v['id']}: {v['metric']}")
 
+    # 検索精度を評価できなかった（空）・ベクトル検索が一度も使われなかったら「完了」にしない。
+    # 2026-05-31〜10-03 は import 失敗で空のまま「完了」と出ていた。answer.* は朝報の上部に出る。
+    quality = results["phases"]["search_quality"]
+    if not quality:
+        results["status"] = "failed"
+        results["failure"] = "検索精度を評価できなかった（結果が空）"
+        record_silent_failure("answer.morning_rag_review.search_quality", "swallowed", detail=results["failure"])
+    elif not any(q.get("vector_hits") for q in quality.values()):
+        results["status"] = "failed"
+        results["failure"] = "ベクトル検索が使われずキーワード検索だけだった"
+        record_silent_failure("answer.morning_rag_review.search_quality", "fallback", detail=results["failure"])
+    else:
+        results["status"] = "ok"
+
     # 結果をファイルに保存
     report_file = REPORTS_DIR / f"rag_review_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -447,11 +463,14 @@ def run_morning_rag_review():
     logger.info(f"\n✅ レポート保存: {report_file}")
 
     logger.info("=" * 60)
-    logger.info("完了")
+    if results["status"] == "ok":
+        logger.info("完了")
+    else:
+        logger.error(f"失敗: {results['failure']}")
     logger.info("=" * 60)
 
     return results
 
 
 if __name__ == "__main__":
-    run_morning_rag_review()
+    sys.exit(0 if run_morning_rag_review()["status"] == "ok" else 1)

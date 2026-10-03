@@ -27,6 +27,15 @@ from runtime_paths import ICLOUD_OBSIDIAN_DOCS, resolve_obsidian_vault  # noqa: 
 _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
 
 
+def _enhancements():
+    """API からは `mobile_app.obsidian_bridge` として読まれ `mobile_app/` が sys.path に無いので、パッケージ相対でも読む。"""
+    if __package__:
+        from . import obsidian_bridge_enhancements
+    else:
+        import obsidian_bridge_enhancements
+    return obsidian_bridge_enhancements
+
+
 def _obsidian_app_vaults() -> list[Path]:
     """Obsidianアプリの設定ファイルから登録済みVaultパスを返す。
     open=True のVaultを優先し、同条件ならts（最終アクセス時刻）が新しい順。
@@ -741,7 +750,7 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
 
     # Vector search supplies semantic candidates; lexical/path scoring decides final order.
     try:
-        from obsidian_bridge_enhancements import get_vector_store_with_retry
+        get_vector_store_with_retry = _enhancements().get_vector_store_with_retry
         store = get_vector_store_with_retry()
         vector_limit = max(limit * 6, 20)
         for rank, item in enumerate(store.search(" ".join(terms), top_k=vector_limit)):
@@ -805,8 +814,7 @@ def search_notes(query: str, limit: int = 4, max_chars: int = 700) -> list[dict[
     except Exception as e:
         import logging
         logging.debug(f"Vector store search failed: {e}, falling back to keyword search")
-        # API から `mobile_app.obsidian_bridge` として読むと `obsidian_bridge_enhancements` が import できず
-        # （mobile_app/ が sys.path に無い）、2026-05-30 以降ベクトル検索が毎回ここでキーワード検索に落ちていた。
+        # 2026-05-30〜10-04 は import 失敗で毎回ここに落ちていた（`_enhancements()` で解消）。代替したら必ず記録する。
         try:
             from silent_failure_log import record_silent_failure
 
@@ -1020,7 +1028,7 @@ def search_notes_with_industry_filter(
     if not industry_code:
         return hits[:limit]
     
-    from obsidian_bridge_enhancements import filter_by_industry
+    filter_by_industry = _enhancements().filter_by_industry
     filtered = filter_by_industry(
         [{"path": h["path"], "metadata": {"industry": industry_code}} for h in hits],
         industry_code,
@@ -1067,7 +1075,7 @@ def search_cases_by_score_range(
     except OSError:
         pass
 
-    from obsidian_bridge_enhancements import filter_by_score_range
+    filter_by_score_range = _enhancements().filter_by_score_range
     filtered = filter_by_score_range(case_notes, min_score, max_score)
     return filtered[:limit]
 
@@ -1094,7 +1102,7 @@ def search_with_wikilink_context(query: str, limit: int = 4) -> list[dict[str, A
     if not vault:
         return hits
 
-    from obsidian_bridge_enhancements import prefetch_wikilinks
+    prefetch_wikilinks = _enhancements().prefetch_wikilinks
 
     result = []
     for hit in hits:
