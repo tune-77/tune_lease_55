@@ -12,11 +12,16 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import sys
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import record_silent_failure  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CANONICAL_JSON = PROJECT_ROOT / "data" / "canonical_judgment_rules.json"
@@ -27,14 +32,19 @@ DEFAULT_OUTPUT_JSON = PROJECT_ROOT / "reports" / "judgment_asset_graph_latest.js
 
 NODE_COLORS = {
     "rule": "#2563eb",
+    "merged_rule": "#94a3b8",
     "risk_axis": "#f59e0b",
     "domain": "#10b981",
     "evidence": "#8b5cf6",
     "case": "#ef4444",
 }
 
+# 方針（取扱いの可否・条件を決める判断）は知見と色を分ける（PR #1225 の knowledge_kind）
+POLICY_COLOR = "#db2777"
+
 EDGE_COLORS = {
     "lineage": "#0f766e",
+    "merged": "#94a3b8",
     "risk_axis": "#d97706",
     "domain": "#059669",
     "evidence": "#7c3aed",
@@ -309,6 +319,35 @@ def _infer_lineage(rules: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return raw_lineage
 
 
+def _resolve_merge_target(rule_id: str, by_id: dict[str, dict[str, Any]]) -> str:
+    """merged_into を辿って最終的な active の統合先IDを返す。辿れなければ空文字。"""
+    seen: set[str] = set()
+    current = rule_id
+    while current and current not in seen:
+        seen.add(current)
+        rule = by_id.get(current)
+        if rule is None:
+            return ""
+        status = str(rule.get("status") or "active")
+        if status == "active":
+            return current
+        if status != "merged":
+            return ""
+        current = str(rule.get("merged_into") or "").strip()
+    return ""
+
+
+def _growth_timeline(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """active 判断資産の作成日ごとの追加数と累計。"""
+    added = Counter(str(rule.get("created_at") or "")[:10] for rule in rules if str(rule.get("created_at") or "")[:10])
+    timeline = []
+    total = 0
+    for day in sorted(added):
+        total += added[day]
+        timeline.append({"date": day, "added": added[day], "cumulative": total})
+    return timeline
+
+
 def build_graph_data(
     *,
     canonical: dict[str, Any],
@@ -364,7 +403,9 @@ def build_graph_data(
         if target in nodes:
             nodes[target]["degree"] = int(nodes[target].get("degree") or 0) + 1
 
-    rules = [rule for rule in _canonical_rules(canonical) if str(rule.get("status") or "active") == "active"]
+    all_rules = _canonical_rules(canonical)
+    rules = [rule for rule in all_rules if str(rule.get("status") or "active") == "active"]
+    status_counts = Counter(str(rule.get("status") or "active") for rule in all_rules)
     lineage = _infer_lineage(rules)
     for rule in rules:
         rule_id = str(rule.get("id") or "").strip()
@@ -386,10 +427,14 @@ def build_graph_data(
         confidence = float(rule.get("confidence") or 0)
         evidence_count = int(rule.get("evidence_count") or 0)
         user_evidence_count = int(rule.get("user_evidence_count") or 0)
+        knowledge_kind = str(rule.get("knowledge_kind") or "insight")
         add_node(
             {
                 "id": f"rule:{rule_id}",
                 "type": "rule",
+                "knowledge_kind": knowledge_kind,
+                "created_at": str(rule.get("created_at") or "")[:10],
+                "color": POLICY_COLOR if knowledge_kind == "policy" else NODE_COLORS["rule"],
                 "label": _rule_label(rule),
                 "title": str(rule.get("canonical_statement") or _rule_label(rule)),
                 "concept": str(rule.get("concept") or ""),
@@ -463,6 +508,34 @@ def build_graph_data(
                     2.4,
                 )
 
+    # 統合済み（merged）は統合先の active 判断資産へ小さな灰色ノードとして繋ぐ。
+    # demoted は表示しない（件数だけ summary に残す）。
+    by_id = {str(rule.get("id") or "").strip(): rule for rule in all_rules if str(rule.get("id") or "").strip()}
+    merged_unresolved = 0
+    for rule in all_rules:
+        if str(rule.get("status") or "") != "merged":
+            continue
+        rule_id = str(rule.get("id") or "").strip()
+        target_id = _resolve_merge_target(rule_id, by_id)
+        target_node_id = f"rule:{target_id}"
+        if not target_id or target_node_id not in nodes:
+            merged_unresolved += 1
+            continue
+        add_node(
+            {
+                "id": f"merged:{rule_id}",
+                "type": "merged_rule",
+                "label": _rule_label(rule),
+                "title": str(rule.get("pre_merge_statement") or rule.get("canonical_statement") or _rule_label(rule)),
+                "statement": _shorten(str(rule.get("pre_merge_statement") or rule.get("canonical_statement") or ""), 160),
+                "merged_into": target_id,
+                "merged_at": str(rule.get("merged_at") or "")[:10],
+                "weight": 3,
+            }
+        )
+        nodes[target_node_id]["merged_count"] = int(nodes[target_node_id].get("merged_count") or 0) + 1
+        add_edge(f"merged:{rule_id}", target_node_id, "merged", "統合", 3.0)
+
     for index, row in enumerate(feedback_rows):
         if _is_simulation_feedback(row):
             continue
@@ -495,6 +568,9 @@ def build_graph_data(
     lineage_edges = sum(1 for edge in edges if edge.get("type") == "lineage")
     lineage_derived = sum(1 for item in lineage.values() if item.get("parent_ids"))
     lineage_roots = max(0, type_counts.get("rule", 0) - lineage_derived)
+    timeline = _growth_timeline(rules)
+    week_ago = (datetime.now() - timedelta(days=7)).date().isoformat()
+    kind_counts = Counter(str(rule.get("knowledge_kind") or "insight") for rule in rules)
     engineering = _build_graph_engineering_summary(
         rules=rules,
         nodes=nodes,
@@ -517,6 +593,13 @@ def build_graph_data(
             "lineage_edges": lineage_edges,
             "lineage_roots": lineage_roots,
             "lineage_derived": lineage_derived,
+            "policy_rules": kind_counts.get("policy", 0),
+            "insight_rules": kind_counts.get("insight", 0),
+            "merged_rules": type_counts.get("merged_rule", 0),
+            "merged_unresolved": merged_unresolved,
+            "demoted_rules": status_counts.get("demoted", 0),
+            "added_last_7_days": sum(item["added"] for item in timeline if item["date"] > week_ago),
+            "growth_timeline": timeline,
             "feedback": dict(sorted(outcome_counts.items())),
             "growth_label": latest_judgment.get("label", ""),
             "growth_score": latest_judgment.get("score", ""),
@@ -561,6 +644,15 @@ def build_html(graph: dict[str, Any]) -> str:
                 '</li>'
             )
         return "".join(rendered) or f'<li class="muted-item">{html.escape(empty_label)}</li>'
+
+    def render_timeline(items: Any) -> str:
+        if not isinstance(items, list) or not items:
+            return '<li class="muted-item">作成日の記録がありません。</li>'
+        return "".join(
+            f'<li><span>{html.escape(str(item.get("date")))}: +{int(item.get("added") or 0)}件 → 累計 {int(item.get("cumulative") or 0)}件</span></li>'
+            for item in items[-6:]
+            if isinstance(item, dict)
+        )
 
     def render_bottlenecks(items: Any) -> str:
         if not isinstance(items, list) or not items:
@@ -722,11 +814,19 @@ button:hover {{ background: #f1f5f9; }}
     <div class="stats">
       <div class="stat"><b id="stat-nodes">{summary.get("nodes", 0)}</b><span>表示項目</span></div>
       <div class="stat"><b id="stat-edges">{summary.get("edges", 0)}</b><span>つながり</span></div>
-      <div class="stat"><b>{summary.get("rules", 0)}</b><span>判断資産</span></div>
+      <div class="stat"><b>{summary.get("rules", 0)}</b><span>判断資産（active）</span></div>
+      <div class="stat"><b>+{summary.get("added_last_7_days", 0)}</b><span>直近7日の追加</span></div>
+      <div class="stat"><b>{summary.get("policy_rules", 0)} / {summary.get("insight_rules", 0)}</b><span>方針 / 知見</span></div>
+      <div class="stat"><b>{summary.get("merged_rules", 0)}</b><span>統合済み（灰）</span></div>
       <div class="stat"><b>{summary.get("cases", 0)}</b><span>実案件</span></div>
+      <div class="stat"><b>{summary.get("demoted_rules", 0)}</b><span>降格（非表示）</span></div>
       <div class="stat"><b>{summary.get("lineage_roots", 0)}</b><span>起点の判断</span></div>
       <div class="stat"><b>{summary.get("lineage_derived", 0)}</b><span>派生した判断</span></div>
     </div>
+    <h2>判断資産の増え方</h2>
+    <ul class="insight-list">
+      {render_timeline(summary.get("growth_timeline"))}
+    </ul>
     <h2>Graph Engineering</h2>
     <div class="insight-grid">
       <div class="mini-stat"><b>{engineering.get("tested_rules", 0)}</b><span>検証済み判断</span></div>
@@ -747,6 +847,7 @@ button:hover {{ background: #f1f5f9; }}
     <h2>表示</h2>
     <div class="filters">
       <label><input type="checkbox" data-type="rule" checked> 判断資産</label>
+      <label><input type="checkbox" data-type="merged_rule" checked> 統合済み判断</label>
       <label><input type="checkbox" data-type="risk_axis" checked> リスク軸</label>
       <label><input type="checkbox" data-type="domain" checked> ドメイン</label>
       <label><input type="checkbox" data-type="evidence" checked> 根拠ログ</label>
@@ -754,7 +855,9 @@ button:hover {{ background: #f1f5f9; }}
     </div>
     <h2>凡例</h2>
     <div class="legend">
-      <div class="legend-row"><span class="dot" style="background:#2563eb"></span>判断資産</div>
+      <div class="legend-row"><span class="dot" style="background:#db2777"></span>判断資産（方針: 取扱いの可否・条件）</div>
+      <div class="legend-row"><span class="dot" style="background:#2563eb"></span>判断資産（知見）</div>
+      <div class="legend-row"><span class="dot" style="background:#94a3b8"></span>統合済み → 統合先</div>
       <div class="legend-row"><span class="dot" style="background:#f59e0b"></span>リスク軸</div>
       <div class="legend-row"><span class="dot" style="background:#10b981"></span>ドメイン</div>
       <div class="legend-row"><span class="dot" style="background:#8b5cf6"></span>根拠ログ</div>
@@ -815,6 +918,7 @@ function initPositions() {{
 
 function radius(node) {{
   const weight = Number(node.weight || 1);
+  if (node.type === "merged_rule") return 4;
   const base = node.type === "rule" ? 9 : 6;
   return Math.max(5, Math.min(22, base + Math.sqrt(weight) * 1.5));
 }}
@@ -825,18 +929,27 @@ function graphPadding() {{
 
 function simulate() {{
   const byId = new Map(nodes.map(node => [node.id, node]));
+  const degree = new Map();
+  edges.forEach(edge => {{
+    degree.set(edge.source, (degree.get(edge.source) || 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) || 0) + 1);
+  }});
   const centerX = width / 2;
   const centerY = height / 2;
+  // ノードが増えると反発の合計が膨らみ全体が枠に張り付くため、件数に応じて弱める
+  const crowd = Math.min(1, 40 / Math.max(1, nodes.length));
+  const repel = 150 * crowd * crowd;
+  const gravity = 0.0008 + 0.003 * (1 - crowd);
   for (let i = 0; i < nodes.length; i++) {{
     const a = nodes[i];
-    a.vx += (centerX - a.x) * 0.0008;
-    a.vy += (centerY - a.y) * 0.0008;
+    a.vx += (centerX - a.x) * gravity;
+    a.vy += (centerY - a.y) * gravity;
     for (let j = i + 1; j < nodes.length; j++) {{
       const b = nodes[j];
       const dx = a.x - b.x;
       const dy = a.y - b.y;
       const dist2 = Math.max(80, dx * dx + dy * dy);
-      const force = 150 / dist2;
+      const force = repel / dist2;
       a.vx += dx * force;
       a.vy += dy * force;
       b.vx -= dx * force;
@@ -850,8 +963,10 @@ function simulate() {{
     const dx = target.x - source.x;
     const dy = target.y - source.y;
     const dist = Math.max(1, Math.hypot(dx, dy));
-    const targetDist = edge.type === "evidence" ? 155 : edge.type === "domain" ? 125 : edge.type === "lineage" ? 92 : 105;
-    const force = (dist - targetDist) * 0.0025 * Number(edge.weight || 1);
+    const targetDist = edge.type === "merged" ? 26 : edge.type === "evidence" ? 155 : edge.type === "domain" ? 125 : edge.type === "lineage" ? 92 : 105;
+    // 69本が集まるドメインのような中心ノードが振動しないよう、細い側の次数で割る
+    const hub = Math.min(degree.get(edge.source) || 1, degree.get(edge.target) || 1);
+    const force = (dist - targetDist) * 0.0075 * Number(edge.weight || 1) / hub;
     const fx = dx / dist * force;
     const fy = dy / dist * force;
     source.vx += fx;
@@ -860,8 +975,8 @@ function simulate() {{
     target.vy -= fy;
   }});
   nodes.forEach(node => {{
-    node.vx *= 0.86;
-    node.vy *= 0.86;
+    node.vx = Math.max(-8, Math.min(8, node.vx * 0.86));
+    node.vy = Math.max(-8, Math.min(8, node.vy * 0.86));
     const pad = graphPadding();
     node.x = Math.max(pad, Math.min(width - pad, node.x + node.vx));
     node.y = Math.max(pad, Math.min(height - pad, node.y + node.vy));
@@ -884,7 +999,7 @@ function render() {{
     const escaped = label.replace(/[&<>"']/g, char => ({{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}}[char]));
     const fontSize = node.type === "rule" ? 11 : 10;
     const labelY = r + 13;
-    const showLabel = node.type !== "evidence";
+    const showLabel = node.type !== "evidence" && node.type !== "merged_rule";
     const labelMarkup = showLabel
       ? `<text y="${{labelY}}" text-anchor="middle" font-size="${{fontSize}}" fill="#0f172a">${{escaped.slice(0, 20)}}</text>`
       : "";
@@ -905,8 +1020,11 @@ function showTooltip(event, node) {{
   if (!node) return;
   const parts = [
     `<strong>${{node.label || node.id}}</strong>`,
-    `種類: ${{typeLabel(node.type)}}`,
+    `種類: ${{typeLabel(node.type)}}${{node.knowledge_kind ? (node.knowledge_kind === "policy" ? "（方針）" : "（知見）") : ""}}`,
   ];
+  if (node.created_at) parts.push(`作成日: ${{node.created_at}}`);
+  if (node.merged_count) parts.push(`統合された判断: ${{node.merged_count}}件`);
+  if (node.merged_into) parts.push(`統合先: ${{node.merged_into}}（${{node.merged_at || "日付不明"}}）`);
   if (node.statement) parts.push(node.statement);
   if (node.parent_ids && node.parent_ids.length) parts.push(`親判断: ${{node.parent_ids.join(", ")}}`);
   if (node.derivation_reason) parts.push(`派生理由: ${{node.derivation_reason}}`);
@@ -933,6 +1051,7 @@ function validationLabel(status) {{
 function typeLabel(type) {{
   return {{
     rule: "判断資産",
+    merged_rule: "統合済み判断",
     risk_axis: "リスク軸",
     domain: "ドメイン",
     evidence: "根拠ログ",
@@ -997,8 +1116,18 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    canonical = _read_json(args.canonical_json)
+    if not _canonical_rules(canonical):
+        # 入力が読めない/空のまま 0 件のグラフを書くと「成長していない」ように見えて気づけない。
+        record_silent_failure(
+            "judgment.build_judgment_asset_graph.read_canonical",
+            "fallback",
+            detail="canonical_judgment_rules が読めないか0件。latest を上書きせず終了",
+        )
+        print(f"エラー: 判断資産を読めませんでした: {args.canonical_json}", file=sys.stderr)
+        return 1
     graph = build_graph_data(
-        canonical=_read_json(args.canonical_json),
+        canonical=canonical,
         feedback_rows=_read_jsonl(args.feedback_jsonl),
         growth_evaluation=_read_json(args.growth_evaluation_json),
     )

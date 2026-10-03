@@ -88,7 +88,7 @@ def test_daily_post_pipeline_refreshes_reports_after_ledger_sync_before_slack():
     assert "loop_metrics_post" in script
 
 
-def test_daily_post_pipeline_runs_judgment_asset_graph_weekly_by_default():
+def test_daily_post_pipeline_runs_judgment_asset_graph_daily_by_default():
     script = Path("scripts/run_daily_improvement_post.sh").read_text(encoding="utf-8")
 
     freq_pos = script.index("JUDGMENT_ASSET_GRAPH_FREQUENCY")
@@ -97,10 +97,16 @@ def test_daily_post_pipeline_runs_judgment_asset_graph_weekly_by_default():
     sync_pos = script.index("sync_graph_to_public")
 
     assert freq_pos < graph_gate_pos < graph_script_pos < sync_pos
-    assert 'JUDGMENT_ASSET_GRAPH_FREQUENCY:-weekly' in script
+    assert 'JUDGMENT_ASSET_GRAPH_FREQUENCY:-daily' in script
     assert 'JUDGMENT_ASSET_GRAPH_FREQUENCY}" = "daily"' in script
     assert 'date +%u' in script
-    assert "判断資産グラフlatestが無いため public 同期をスキップ" in script
+    # スキップを本来のステップ名で exit 0 と記録しない（成功に見えて気づけなかった）
+    assert 'log_step "build_judgment_asset_graph" 0' not in script
+    assert 'log_step "build_judgment_asset_graph_skipped" 0' in script
+    assert "judgment.build_judgment_asset_graph.frequency_gate" in script
+    # latest が無いのに同期成功と記録しない。standalone 配信先にも置く
+    assert 'log_step "sync_graph_to_public" 1' in script
+    assert "frontend/.next/standalone/public/generated/judgment-asset-graph" in script
 
 
 def test_daily_post_pipeline_builds_field_review_after_growth_score():

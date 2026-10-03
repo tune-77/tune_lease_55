@@ -32,9 +32,9 @@ def _entry(step, days_ago, exit_code):
 
 
 def test_weekly_steps_are_disjoint_from_the_daily_graph_step():
-    """build_judgment_asset_graph は週次ゲート内だが else 側が同名で exit 0 を記録する
-    （run_daily_improvement_post.sh:375,378）ため毎日ログが出る。週次扱いにしない。"""
+    """判断資産グラフと期間成長判定は既定で毎日走る。週次扱いにしない。"""
     assert "build_judgment_asset_graph" not in health_mod.WEEKLY_STEPS
+    assert "evaluate_shion_growth" not in health_mod.WEEKLY_STEPS
     assert WEEKLY_STEP in health_mod.WEEKLY_STEPS
     assert health_mod.MAX_LOOKBACK_DAYS == health_mod.WEEKLY_LOOKBACK_DAYS
 
