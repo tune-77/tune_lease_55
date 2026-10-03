@@ -491,17 +491,19 @@ def prepare_teaching_turn(
     candidate_saver: Callable[[str], dict[str, Any]],
     previous_user_message: str = "",
     rag_search: Callable[[str], list[dict[str, Any]]] | None = None,
+    allow_save: bool = True,
 ) -> TeachingTurn:
     """回答前に、教示なら保存し、審査の問いなら Knowledge・教わった候補・RAG を想起する。
 
     ``rag_search`` は RAG を別途引かない経路だけ渡す（通常チャットの RAG 分岐は自前で引く）。
+    ``allow_save=False`` は想起だけ行う（紫苑レビューの依頼文は教示ではないので保存しない）。
     失敗しても対話は止めない（保存できなかった扱いにして、約束文は外れる）。
     """
     from memory_promotion_policy import has_domain_keyword
 
     turn = TeachingTurn(surface=surface)
     try:
-        turn.save = save_lease_teaching(
+        turn.save = {"is_teaching": False, "saved": False, "reason": "save_disabled"} if not allow_save else save_lease_teaching(
             message,
             vault=vault,
             surface=surface,

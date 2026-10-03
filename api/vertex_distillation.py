@@ -205,6 +205,13 @@ def capture_vertex_distillation(
     if not vault or not vault.is_dir():
         return {"captured": False, "reason": "vault_not_found"}
 
+    # このノートは Vault から Vertex へ同期されるので、質問と要約の社名・人名・営業メモ・金額を伏せてから書く
+    # （2026-10-03: 紫苑レビューの依頼文が伏字なしで残り、同期データと他社のレビューの RAG に混ざっていた）
+    from api.vertex_query_mask import mask_for_vertex
+
+    query = mask_for_vertex(query)
+    vertex_answer_api = {**vertex_answer_api, "answer_text": mask_for_vertex(str(vertex_answer_api.get("answer_text") or ""))}
+
     key = _canonical_query_key(query)
 
     state: dict[str, Any] = {}

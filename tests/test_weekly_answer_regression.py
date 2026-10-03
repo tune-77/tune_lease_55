@@ -71,3 +71,61 @@ def test_add_question(tmp_path):
         war.add_question({"id": "x", "kind": "taught", "q": "Q?", "taught_any": ["k"]}, path)
     with pytest.raises(SystemExit):
         war.add_question({"id": "y", "kind": "basic", "q": "Q?"}, path)
+
+
+# --- ⑤ 紫苑レビュー ------------------------------------------------------------------------
+
+REVIEW_SAMPLES = war.load_review_samples()
+
+
+def test_review_samples_are_anonymous_and_checkable():
+    assert len(REVIEW_SAMPLES) >= 2
+    for sample in REVIEW_SAMPLES:
+        assert sample["secret_markers"] and sample["form"]["company_name"] in sample["secret_markers"]
+        assert any(marker in sample["form"]["passion_text"] for marker in sample["secret_markers"])
+    assert any(sample["policy_any"] for sample in REVIEW_SAMPLES)
+
+
+def test_review_is_scored_on_speed_template_citation_policy_and_leaks():
+    sample = next(s for s in REVIEW_SAMPLES if s["id"] == "review_no_bank_relationship")
+    good_reply = "**社内方針**: 銀行と取引のない企業とは付き合わない。以下は補足です。\n" + "確認事項を書く。" * 20 + "\n判断資産出典: 方針 JA-cr-93d1b / chat_judgment_teaching"
+    good = war.score_review(sample, {"reply": good_reply}, 45.0, [])
+    assert good["review"] is True and good["policy_first"] is True
+    assert war.score_review(sample, {"reply": good_reply}, 130.0, [])["review"] is False  # 120秒の打ち切りを超えた
+    assert war.score_review(sample, {"reply": good_reply}, 45.0, ["data/cloudrun_chat_log.jsonl"])["review"] is False
+    weak = "確認事項を書く。" * 20 + "銀行と取引がない点は資金繰りで確認する。判断資産出典: 正規 JA-cr-b2594 / x"
+    assert war.score_review(sample, {"reply": weak}, 45.0, [])["policy_first"] is False  # 方針が冒頭に無い
+    template = "違和感\nこの案件は…私なら、Q_risk 10.5と現場メモの具体性の差に注目します。" + "。" * 80 + "出典"
+    assert war.score_review(sample, {"reply": template}, 5.0, [])["not_template"] is False
+    no_policy = next(s for s in REVIEW_SAMPLES if not s["policy_any"])
+    assert war.score_review(no_policy, {"reply": "確認事項を書く。" * 20 + "出典: x"}, 45.0, [])["review"] is True
+
+
+def test_review_leaks_only_counts_new_files_with_secrets(tmp_path):
+    repo, vault = tmp_path / "repo", tmp_path / "vault"
+    (repo / "data").mkdir(parents=True)
+    distilled = vault / war.REVIEW_LEAK_VAULT_DIRS[0]
+    distilled.mkdir(parents=True)
+    (repo / "data" / "cloudrun_chat_log.jsonl").write_text('{"user_message": "[審査分析の紫苑レビュー依頼（依頼文は記録しない）]"}\n', encoding="utf-8")
+    assert war.review_leaks(repo, vault, ["ミナトサンプル精機"], since=0) == []
+    (distilled / "2026-10-03_x.md").write_text("質問: 企業名: ミナトサンプル精機", encoding="utf-8")
+    assert war.review_leaks(repo, vault, ["ミナトサンプル精機"], since=0) == [str(war.REVIEW_LEAK_VAULT_DIRS[0] / "2026-10-03_x.md")]
+
+
+def test_review_request_body_comes_from_the_production_prompt_builder():
+    import subprocess
+
+    try:
+        version = subprocess.run([war._node_bin(), "--version"], capture_output=True, text=True, check=True).stdout.strip()
+    except (RuntimeError, OSError, subprocess.CalledProcessError):
+        pytest.skip("node が無い環境")
+    major, minor = (int(x) for x in version.lstrip("v").split(".")[:2])
+    if (major, minor) < (22, 6):
+        pytest.skip(f"node {version} は --experimental-strip-types 非対応（22.6以上が必要）")
+    sample = next(s for s in REVIEW_SAMPLES if s["id"] == "review_lease_over_bank")
+    body = war.review_request_body(war.PROJECT_ROOT, sample, [])
+    assert body["caller"] == "screening_review" and body["response_mode"] == "shion"
+    assert "【審査分析画面からの紫苑レビュー依頼】" in body["message"] and "銀行与信残高: 30百万円" in body["message"]
+    # 検索用の要約に社名・人名・営業メモは入らない
+    assert not any(marker in body["retrieval_query"] for marker in sample["secret_markers"])
+    assert "今回を含むリース与信が銀行与信を上回る" in body["retrieval_query"]

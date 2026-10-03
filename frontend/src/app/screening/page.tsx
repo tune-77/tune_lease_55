@@ -29,12 +29,15 @@ import { triggerMebuki } from "../../components/layout/FloatingMebuki";
 import {
   isCanonicalJudgmentAsset,
   buildShionReviewPrompt,
-  buildShionReviewFallback,
-  ensureJudgmentAssetCitations,
+  buildShionReviewChatBody,
+  buildShionReviewFallbackRecord,
+  shionReviewFromChatResponse,
+  waitForSoftTimeout,
+  SHION_REVIEW_HARD_TIMEOUT_MS,
+  SHION_REVIEW_SOFT_TIMEOUT_MS,
   normalizeExperienceCase,
   buildExperienceCaseQuery,
   hasExperienceSearchContext,
-  buildShionReviewUserId,
   type ShionScreeningReview,
   type ShionReviewFeedback,
   type JudgmentAssetCandidateFeedback,
@@ -2216,43 +2219,19 @@ export default function Dashboard() {
         judgmentAssetAdaptationMode,
         recentFeedbacks,
       );
-      const res = await apiClient.post("/api/chat", {
-        message: promptText,
-        user_id: buildShionReviewUserId(targetResult, targetFormData),
-        response_mode: "shion",
-        debug_memory: true,
-      }, {
-        timeout: 120000,
+      const chatRequest = apiClient.post("/api/chat", buildShionReviewChatBody(targetResult, targetFormData, promptText), {
+        timeout: SHION_REVIEW_HARD_TIMEOUT_MS,
       });
+      const early = await waitForSoftTimeout(chatRequest, SHION_REVIEW_SOFT_TIMEOUT_MS);
       if (seq !== shionReviewRequestSeq.current) return;
-      const memoryDebug = res.data?.memory_debug || {};
-      const memoryRecall = memoryDebug.memory_recall || {};
-      const identityMemory = memoryDebug.identity_memory || {};
-      const vertexSearch = memoryDebug.vertex_ai_search || res.data?.vertex_ai_search || {};
-      const vertexAnswer = memoryDebug.vertex_answer_api || res.data?.vertex_answer_api || {};
-      const parsedGroundingScore =
-        typeof vertexAnswer.grounding_score === "number"
-          ? vertexAnswer.grounding_score
-          : vertexAnswer.grounding_score != null
-            ? Number(vertexAnswer.grounding_score)
-            : null;
-      const knowledgeRefs = Array.isArray(memoryDebug.knowledge_refs) ? memoryDebug.knowledge_refs.length : 0;
-      const memoryRefs = Array.isArray(memoryRecall.refs) ? memoryRecall.refs.length : 0;
-      const nextReview: ShionScreeningReview = {
-        reply: ensureJudgmentAssetCitations(String(res.data?.reply || "紫苑レビューが空でした。"), candidates),
-        memoryRefs,
-        knowledgeRefs,
-        identityUsed: Boolean(identityMemory.used),
-        vertexUsed: Boolean(vertexSearch.used),
-        vertexStatus: String(vertexSearch.status || ""),
-        vertexRefs: Array.isArray(vertexSearch.refs) ? vertexSearch.refs.map(String) : [],
-        vertexAnswerUsed: Boolean(vertexAnswer.used),
-        vertexAnswerStatus: String(vertexAnswer.status || ""),
-        groundingScore: Number.isFinite(parsedGroundingScore) ? parsedGroundingScore : null,
-        groundingScoreSource: String(vertexAnswer.grounding_score_source || ""),
-        lowSupportClaimCount: Number(vertexAnswer.low_support_claim_count || 0),
-        supportCount: Number(vertexAnswer.support_count || 0),
-      };
+      if (!early.done) {
+        // 打ち切り時間を過ぎたら簡易生成を先に見せ、紫苑の本文が届いたら差し替える（簡易生成はまだ保存しない）
+        setShionReview(buildShionReviewFallbackRecord(targetResult, targetFormData, candidates, true));
+        setShionReviewLoading(false);
+      }
+      const res = early.done ? early.value : await chatRequest;
+      if (seq !== shionReviewRequestSeq.current) return;
+      const nextReview = shionReviewFromChatResponse(res.data, candidates);
       setShionReview(nextReview);
       saveShionScreeningReview(targetResult, targetFormData, promptText, nextReview)
         .then((savedId) => {
@@ -2265,21 +2244,7 @@ export default function Dashboard() {
     } catch (error) {
       if (seq !== shionReviewRequestSeq.current) return;
       console.error("Shion review error", error);
-      const fallbackReview: ShionScreeningReview = {
-        reply: buildShionReviewFallback(targetResult, targetFormData, fallbackCandidates),
-        memoryRefs: 0,
-        knowledgeRefs: fallbackCandidates.length,
-        identityUsed: false,
-        vertexUsed: false,
-        vertexStatus: "fallback",
-        vertexRefs: [],
-        vertexAnswerUsed: false,
-        vertexAnswerStatus: "fallback",
-        groundingScore: null,
-        groundingScoreSource: "",
-        lowSupportClaimCount: 0,
-        supportCount: 0,
-      };
+      const fallbackReview = buildShionReviewFallbackRecord(targetResult, targetFormData, fallbackCandidates);
       setShionReview(fallbackReview);
       setShionReviewError("");
       saveShionScreeningReview(

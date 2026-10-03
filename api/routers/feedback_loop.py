@@ -838,6 +838,8 @@ def _load_canonical_judgment_asset_candidates(limit: int = 100) -> list[dict[str
 
     if not _CANONICAL_JUDGMENT_RULES_JSON.exists():
         return []
+    from api.judgment_policy import knowledge_kind_of
+
     state: dict[str, Any] = {}
     if _AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON.exists():
         try:
@@ -897,6 +899,7 @@ def _load_canonical_judgment_asset_candidates(limit: int = 100) -> list[dict[str
             "risk_axis": list(rule.get("risk_axis") or []),
             "sample_claims": list(rule.get("sample_claims") or [])[:6],
             "domains": sorted(domains),
+            "knowledge_kind": knowledge_kind_of(rule, statement),
         }
         if isinstance(candidate_state, dict):
             item = {**item, **candidate_state}
@@ -1005,7 +1008,13 @@ def _select_screening_judgment_asset_candidates(
         + _load_autoresearch_judgment_asset_candidates()
         + _load_news_judgment_signals()
     )
-    if not rows:
+    # 社内方針（PR #1225）は案件の業種・物件と語が重ならなくても当てはまるので、順位付けに掛けず全件を先頭に置く。
+    # 件数上限（limit）は知見だけに掛ける。方針は数件しかない。
+    from api.judgment_policy import POLICY
+
+    policy_rows = [item for item in rows if item.get("knowledge_kind") == POLICY]
+    rows = [item for item in rows if item.get("knowledge_kind") != POLICY]
+    if not rows and not policy_rows:
         return []
     bandit_signals = build_bandit_signals(read_feedback_rows())
     ranked: list[tuple[tuple[float, int, int, str], dict[str, Any]]] = []
@@ -1060,6 +1069,7 @@ def _select_screening_judgment_asset_candidates(
             "useful_count": int(item.get("useful_count") or 0),
             "rejected_count": int(item.get("rejected_count") or 0),
             "verified_status": str(item.get("verified_status") or "unverified"),
+            "knowledge_kind": str(item.get("knowledge_kind") or "insight"),
             "learning": signal_for_candidate(item, bandit_signals).as_dict(),
         }
 
@@ -1115,7 +1125,7 @@ def _select_screening_judgment_asset_candidates(
             else:
                 selected.append(replacement)
             break
-    return selected
+    return [*(_to_screening_judgment_asset_response(item) for item in policy_rows[:3]), *selected]
 
 
 def _candidate_feedback_lock():

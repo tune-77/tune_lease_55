@@ -1,0 +1,47 @@
+{
+  "_doc": "週次の答えの品質回帰テスト（scripts/weekly_answer_regression.py）の紫苑レビュー版サンプル。架空の匿名案件。依頼文は本番と同じ frontend/src/lib/shionReview.ts で組み立て、caller=screening_review で /api/chat に送る。合格条件: 120秒以内に返る・定型文（簡易生成）でない・出典がある・policy_any があれば冒頭200字に方針が出る・依頼文（secret_markers）が Vault・記録に残らない。",
+  "samples": [
+    {
+      "id": "review_no_bank_relationship",
+      "policy_any": ["付き合わない", "取引しません", "取り扱わない", "取扱いしない", "お断り", "見送", "謝絶"],
+      "secret_markers": ["ミナトサンプル精機", "港サンプル社長", "回帰テスト用メモ甲"],
+      "form": {
+        "company_name": "ミナトサンプル精機", "industry_major": "E 製造業", "industry_sub": "24 金属製品製造業",
+        "customer_type": "新規先", "main_bank": "非メイン先", "qual_corr_main_bank": "取引なし・不安", "deal_source": "飛び込み",
+        "bank_credit": 0, "lease_credit": 0, "contract_type": "一般", "asset_name": "製造設備・工作機械",
+        "asset_purpose": "増産対応", "acquisition_cost": 18, "lease_term": 60,
+        "passion_text": "港サンプル社長は決算書の提出に時間がかかると話していた。回帰テスト用メモ甲", "intuition": 2
+      },
+      "result": {"score": 52.4, "score_base": 52.4, "hantei": "要審議", "score_borrower": 50.1, "quantum_risk": 22.0,
+                 "industry_major": "E 製造業", "industry_sub": "24 金属製品製造業"}
+    },
+    {
+      "id": "review_lease_over_bank",
+      "policy_any": ["増えないようにする", "増やさない", "上回", "超える", "リースの借り入れ", "リース与信"],
+      "secret_markers": ["ヤマトサンプル運輸", "大和サンプル専務", "回帰テスト用メモ乙"],
+      "form": {
+        "company_name": "ヤマトサンプル運輸", "industry_major": "H 運輸業，郵便業", "industry_sub": "44 道路貨物運送業",
+        "customer_type": "既存先", "main_bank": "メイン先", "qual_corr_main_bank": "メイン先", "deal_source": "銀行紹介",
+        "bank_credit": 30, "lease_credit": 42, "contract_type": "自動車", "asset_name": "車両・運搬車",
+        "asset_purpose": "増車", "acquisition_cost": 15, "lease_term": 60,
+        "passion_text": "大和サンプル専務によると荷主が増えたので増車したい。回帰テスト用メモ乙", "intuition": 3
+      },
+      "result": {"score": 63.0, "score_base": 63.0, "hantei": "要審議", "score_borrower": 61.5, "quantum_risk": 12.0,
+                 "industry_major": "H 運輸業，郵便業", "industry_sub": "44 道路貨物運送業"}
+    },
+    {
+      "id": "review_no_policy",
+      "policy_any": [],
+      "secret_markers": ["ハルサンプル工務店", "春サンプル部長", "回帰テスト用メモ丙"],
+      "form": {
+        "company_name": "ハルサンプル工務店", "industry_major": "D 建設業", "industry_sub": "06 総合工事業",
+        "customer_type": "既存先", "main_bank": "メイン先", "qual_corr_main_bank": "メイン先で取引良好・支援表明", "deal_source": "既存取引",
+        "bank_credit": 200, "lease_credit": 10, "contract_type": "一般", "asset_name": "建設機械",
+        "asset_purpose": "更新", "acquisition_cost": 12, "lease_term": 60,
+        "passion_text": "春サンプル部長から老朽化した油圧ショベルの入替相談。回帰テスト用メモ丙", "intuition": 4
+      },
+      "result": {"score": 74.2, "score_base": 74.2, "hantei": "承認圏内", "score_borrower": 72.0, "quantum_risk": 8.0,
+                 "industry_major": "D 建設業", "industry_sub": "06 総合工事業"}
+    }
+  ]
+}

@@ -10,6 +10,9 @@
 - 結果は data/answer_regression/<日付>.json と Obsidian に残し、AURION CORE 朝報に毎回1行、
   前週より下がった項目・基準（①80%・②100%・③90%・④0件）を下回った項目は上部に警告を出す
 - Gemini 呼び出しは MAX_GEMINI_CALLS 回で打ち切る
+- ⑤ 紫苑レビュー（審査分析画面）: scripts/answer_regression_review_samples.json の匿名案件を、本番と同じ
+  frontend/src/lib/shionReview.ts で依頼文にして caller=screening_review で送る。120秒以内に返る・定型文でない・
+  出典がある・該当する方針が冒頭に出る・依頼文が Vault・記録に残らない、をすべて満たせば○（2026-10-03 追加）
 
 使い方:
   .venv/bin/python scripts/weekly_answer_regression.py            # 実行
@@ -30,6 +33,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -41,19 +45,29 @@ if str(PROJECT_ROOT) not in sys.path:
 # data/・索引・モデルの取り元（既定はこのチェックアウト。worktree から手動実行する時はメインを指す）
 DATA_SOURCE_ROOT = Path(os.environ.get("ANSWER_REGRESSION_DATA_ROOT") or PROJECT_ROOT)
 QUESTIONS_JSON = PROJECT_ROOT / "scripts" / "answer_regression_questions.json"
+REVIEW_SAMPLES_JSON = PROJECT_ROOT / "scripts" / "answer_regression_review_samples.json"
+REVIEW_TIMEOUT_S = 120  # 画面の打ち切り（frontend/src/lib/shionReview.ts の SHION_REVIEW_SOFT_TIMEOUT_MS）
 RESULT_DIR = DATA_SOURCE_ROOT / "data" / "answer_regression"
 VAULT_SUBDIR = Path("Projects") / "tune_lease_55" / "Answer Regression"
 SERVER_PY = Path("experiments") / "chat_before_after" / "server.py"
 PORT = 8104
-MAX_GEMINI_CALLS = 24
+MAX_GEMINI_CALLS = 30
 VAULT_COPY_TIMEOUT_S = 180
 STALE_DAYS = 8
 # 基準（質問が増えても使えるよう割合で持つ）: ①4/5 ②5/5 ③9/10 ④0件
-THRESHOLDS = {"taught": 0.8, "basic": 1.0, "cites": 0.9}
+THRESHOLDS = {"taught": 0.8, "basic": 1.0, "cites": 0.9, "review": 1.0}
 
 SAVE_CLAIM_RE = re.compile(r"(保存しました|保存します|記録しました|記録しておきます|覚えておきます|判断資産に(登録|追加|保存))")
 CITE_RE = re.compile(r"\[\[[^\]]+\]\]|出典|参照ナレッジ|根拠[:：]")
-METRICS = (("taught", "① 教えたノウハウ"), ("basic", "② 基本知識の正確さ"), ("cites", "③ 引用"), ("false_save", "④ 誤った「保存」"))
+METRICS = (("taught", "① 教えたノウハウ"), ("basic", "② 基本知識の正確さ"), ("cites", "③ 引用"), ("false_save", "④ 誤った「保存」"), ("review", "⑤ 紫苑レビュー"))
+# 画面の簡易生成（buildShionReviewFallback）の定型句。サーバーの返答にこれがあれば紫苑が書いていない
+REVIEW_TEMPLATE_RE = re.compile(r"と現場メモの具体性の差に注目します|紫苑レビューが空でした")
+# 依頼文が残ってはいけない場所（Vault → Vertex 同期・記憶の昇格・教示の救済に流れる）
+REVIEW_LEAK_TARGETS = (
+    "data/cloudrun_chat_log.jsonl", "data/language_judgment_materials.jsonl", "data/rag_search_log.jsonl",
+    "data/chat_logs.jsonl", "data/vertex_distillation_state.json",
+)
+REVIEW_LEAK_VAULT_DIRS = (Path("Projects") / "tune_lease_55" / "Research" / "Vertex Distilled", Path("Projects") / "tune_lease_55" / "AI Chat")
 
 
 # --- 質問セット ------------------------------------------------------------------------
@@ -75,6 +89,10 @@ def add_question(entry: dict[str, Any], path: Path = QUESTIONS_JSON) -> dict[str
     store["questions"].append({k: v for k, v in entry.items() if v})
     path.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return entry
+
+
+def load_review_samples(path: Path = REVIEW_SAMPLES_JSON) -> list[dict[str, Any]]:
+    return json.loads(path.read_text(encoding="utf-8"))["samples"] if path.exists() else []
 
 
 # --- 採点 ------------------------------------------------------------------------------
@@ -118,10 +136,49 @@ def score(question: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def score_review(sample: dict[str, Any], data: dict[str, Any], elapsed_s: float, leaks: list[str]) -> dict[str, Any]:
+    text = reply_text(data)
+    head = text[:200]
+    policy_first = None
+    if sample.get("policy_any"):
+        policy_first = any(k in head for k in sample["policy_any"]) and ("方針" in head)
+    result: dict[str, Any] = {
+        "fast": elapsed_s <= REVIEW_TIMEOUT_S,
+        "not_template": len(text) >= 80 and not REVIEW_TEMPLATE_RE.search(text),
+        "cites": bool(CITE_RE.search(text)),
+        "policy_first": policy_first,
+        "no_leak": not leaks,
+        "leaks": leaks,
+        "false_save": bool(SAVE_CLAIM_RE.search(text)) and not saved_something(data),
+        "elapsed_s": round(elapsed_s, 1),
+        "chars": len(text),
+    }
+    result["review"] = all(result[k] for k in ("fast", "not_template", "cites", "no_leak")) and policy_first is not False and not result["false_save"]
+    return result
+
+
+def review_leaks(repo: Path, vault: Path, markers: list[str], since: float) -> list[str]:
+    """since 以降に書かれた記録・Vault ノートに、依頼文だけにある文字列（社名・人名・メモ）が残っていれば場所を返す。"""
+    found: list[str] = []
+    paths = [repo / rel for rel in REVIEW_LEAK_TARGETS]
+    for rel in REVIEW_LEAK_VAULT_DIRS:
+        paths.extend(p for p in (vault / rel).rglob("*.md") if (vault / rel).exists())
+    for path in paths:
+        try:
+            if not path.exists() or path.stat().st_mtime < since:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if any(marker in text for marker in markers):
+            found.append(str(path.relative_to(vault if path.is_relative_to(vault) else repo)))
+    return found
+
+
 def summarize(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
     scored = [r for r in rows if "check" in r]
     out = {}
-    for key, kind in (("taught", "taught"), ("basic", "basic"), ("cites", None), ("false_save", None)):
+    for key, kind in (("taught", "taught"), ("basic", "basic"), ("cites", None), ("false_save", None), ("review", "review")):
         items = [r["check"] for r in scored if kind is None or r["kind"] == kind]
         out[key] = {"ok": sum(1 for c in items if c.get(key)), "n": len(items)}
     out["errors"] = {"ok": sum(1 for r in rows if "check" not in r), "n": len(rows)}
@@ -203,10 +260,78 @@ def _wait(port: int, timeout: float = 480.0) -> None:
 
 
 def ask(question: str, user_id: str, timeout: float = 240.0) -> dict[str, Any]:
-    body = json.dumps({"message": question, "user_id": user_id, "response_mode": "shion"}, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(f"http://127.0.0.1:{PORT}/api/chat", data=body, headers={"Content-Type": "application/json"}, method="POST")
+    return _post("/api/chat", {"message": question, "user_id": user_id, "response_mode": "shion"}, timeout)
+
+
+def _post(path: str, payload: dict[str, Any], timeout: float = 240.0) -> dict[str, Any]:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", data=body, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=timeout) as res:
         return json.loads(res.read().decode("utf-8"))
+
+
+def _node_bin() -> str:
+    """launchd の PATH には nvm の node が無いので、無ければ nvm の最新を使う。"""
+    found = shutil.which("node")
+    if found:
+        return found
+    candidates = sorted(Path.home().glob(".nvm/versions/node/*/bin/node"))
+    if not candidates:
+        raise RuntimeError("node が見つからない（紫苑レビューの依頼文を作れない）")
+    return str(candidates[-1])
+
+
+_REVIEW_BODY_JS = """
+const input = JSON.parse(require("fs").readFileSync(0, "utf8"));
+import(input.module).then((m) => {
+  const prompt = m.buildShionReviewPrompt(input.result, input.form, input.candidates, "standard", []);
+  process.stdout.write(JSON.stringify(m.buildShionReviewChatBody(input.result, input.form, prompt)));
+});
+"""
+
+
+def review_request_body(repo: Path, sample: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """本番と同じ TS（frontend/src/lib/shionReview.ts）で紫苑レビューの /api/chat 本文を作る。"""
+    payload = {"module": str(repo / "frontend" / "src" / "lib" / "shionReview.ts"), "result": sample["result"], "form": sample["form"], "candidates": candidates}
+    out = subprocess.run(
+        [_node_bin(), "--experimental-strip-types", "--no-warnings", "-e", _REVIEW_BODY_JS],
+        input=json.dumps(payload, ensure_ascii=False), capture_output=True, text=True, check=True, timeout=60,
+    )
+    return json.loads(out.stdout)
+
+
+def _screening_candidates(sample: dict[str, Any]) -> list[dict[str, Any]]:
+    form, result = sample["form"], sample["result"]
+    params = urllib.parse.urlencode({
+        "industry_major": result.get("industry_major", ""), "industry_sub": result.get("industry_sub", ""),
+        "asset_name": form.get("asset_name", ""), "asset_purpose": form.get("asset_purpose", ""),
+        "hantei": result.get("hantei", ""), "score": result.get("score", 0), "limit": 3,
+    })
+    with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/api/judgment-asset-candidates/screening?{params}", timeout=60) as res:
+        return json.loads(res.read().decode("utf-8")).get("candidates", [])
+
+
+def run_review_samples(samples: list[dict[str, Any]], repo: Path, vault: Path, counter: Path, today: dt.date) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for sample in samples:
+        row: dict[str, Any] = {"id": sample["id"], "kind": "review", "q": f"紫苑レビュー: {sample['id']}"}
+        if _count(counter) >= MAX_GEMINI_CALLS:
+            row["error"] = "gemini_call_limit"
+        else:
+            try:
+                body = review_request_body(repo, sample, _screening_candidates(sample))
+                body["user_id"] = f"weekly_regression_review_{today.isoformat()}_{sample['id']}"
+                started_wall, started = time.time(), time.monotonic()
+                data = _post("/api/chat", body, timeout=600.0)
+                elapsed = time.monotonic() - started
+                time.sleep(2)  # バックグラウンドの書き込みを待ってから漏れを見る
+                leaks = review_leaks(repo, vault, sample["secret_markers"], started_wall - 1)
+                row.update({"reply": reply_text(data), "refs": refs_of(data)[:6], "check": score_review(sample, data, elapsed, leaks)})
+            except Exception as exc:  # noqa: BLE001
+                row["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+        print(f"{row['id']}: {row.get('check') or row.get('error')}", flush=True)
+        rows.append(row)
+    return rows
 
 
 def _count(path: Path) -> int:
@@ -241,6 +366,7 @@ def run_questions(questions: list[dict[str, Any]], base: Path, today: dt.date) -
                     row["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
             print(f"{row['id']}: {row.get('check') or row.get('error')}", flush=True)
             rows.append(row)
+        rows.extend(run_review_samples(load_review_samples(), repo, vault, counter, today))
     finally:
         proc.terminate()
         try:
@@ -268,7 +394,7 @@ def obsidian_note(report: dict[str, Any]) -> str:
         "---", f"date: {report['date']}", "tags: [回帰テスト, 紫苑, 週次]", "source: scripts/weekly_answer_regression.py", "---", "",
         f"# 答えの品質回帰テスト {report['date']}", "",
         f"- ①教えたノウハウ {s['taught']['ok']}/{s['taught']['n']}・②基本知識 {s['basic']['ok']}/{s['basic']['n']}・"
-        f"③引用 {s['cites']['ok']}/{s['cites']['n']}・④誤った保存 {s['false_save']['ok']}件（Gemini {report['gemini_calls']}回）",
+        f"③引用 {s['cites']['ok']}/{s['cites']['n']}・④誤った保存 {s['false_save']['ok']}件{_review_score_text(s)}（Gemini {report['gemini_calls']}回）",
         f"- 警告: {' / '.join(report['problems']) if report['problems'] else 'なし'}", "",
         "| 質問 | 判定 | 誤りの典型 | 答えの冒頭 |", "|---|---|---|---|",
     ]
@@ -277,8 +403,14 @@ def obsidian_note(report: dict[str, Any]) -> str:
             lines.append(f"| {r['q']} | エラー | | {r.get('error', '')} |")
             continue
         c = r["check"]
-        main = f"①{_mark(c.get('taught'))}" if r["kind"] == "taught" else f"②{_mark(c.get('basic'))}"
         head = re.sub(r"[\s|#*>`]+", " ", r.get("reply", ""))[:80]
+        if r["kind"] == "review":
+            policy = "—" if c.get("policy_first") is None else _mark(c.get("policy_first"))
+            leaks = ", ".join(c.get("leaks") or []) or "なし"
+            detail = f"⑤{_mark(c.get('review'))} {c.get('elapsed_s')}秒 定型{'なし' if c.get('not_template') else 'あり'} 方針{policy} 漏れ{leaks}"
+            lines.append(f"| {r['q']} | {detail} ③{_mark(c['cites'])} ④{'×' if c['false_save'] else '○'} | | {head} |")
+            continue
+        main = f"①{_mark(c.get('taught'))}" if r["kind"] == "taught" else f"②{_mark(c.get('basic'))}"
         lines.append(f"| {r['q']} | {main} ③{_mark(c['cites'])} ④{'×' if c['false_save'] else '○'} | {', '.join(c['wrong_hits'])} | {head} |")
     return "\n".join(lines) + "\n"
 
@@ -318,9 +450,14 @@ def morning_report_lines(result_dir: Path = RESULT_DIR, now: dt.date | None = No
         lines.append(f"- ⚠️ 答えの品質回帰テストが {age}日 実行されていません（com.tunelease.answer-regression-weekly）")
     lines.append(
         f"- 🧪 答えの品質回帰テスト（週次 {report['date']}）: ①{s['taught']['ok']}/{s['taught']['n']} ②{s['basic']['ok']}/{s['basic']['n']} "
-        f"③{s['cites']['ok']}/{s['cites']['n']} ④{s['false_save']['ok']}件（Gemini {report['gemini_calls']}回）"
+        f"③{s['cites']['ok']}/{s['cites']['n']} ④{s['false_save']['ok']}件{_review_score_text(s)}（Gemini {report['gemini_calls']}回）"
     )
     return lines
+
+
+def _review_score_text(summary: dict[str, Any]) -> str:
+    review = summary.get("review") or {}
+    return f" ⑤紫苑レビュー {review['ok']}/{review['n']}" if review.get("n") else ""
 
 
 def run(today: dt.date | None = None) -> dict[str, Any]:

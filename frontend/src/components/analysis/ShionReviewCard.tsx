@@ -178,7 +178,9 @@ export function ShionScreeningReviewCard({
               <>
                 {isFallback && (
                   <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-bold leading-5 text-amber-900">
-                    簡易生成: 紫苑からの応答が取得できなかったため、案件情報と判断資産から組み立てた定型の下書きを表示しています。「再レビュー」で生成し直せます。
+                    {review.lateReplyPending
+                      ? "簡易生成: 紫苑の本文がまだ届いていないため、先に定型の下書きを表示しています。届いたらこの下書きと自動で差し替えます。"
+                      : "簡易生成: 紫苑からの応答が取得できなかったため、案件情報と判断資産から組み立てた定型の下書きを表示しています。「再レビュー」で生成し直せます。"}
                   </div>
                 )}
                 <div className="space-y-2 text-sm font-medium leading-7 text-slate-800">
