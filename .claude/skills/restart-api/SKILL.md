@@ -62,7 +62,9 @@ RESTART_SCOPE=status bash run_next_stable.sh
 ```
 
 API / Next / Tunnel URL をまとめて表示する。`/docs` は公開運用では無効（404）なので
-起動判定には `/healthz` を使う。外からの疎通は次で確認する（200 なら OK）:
+起動判定には `/healthz` を使う。外からの疎通は次で確認する（Cloudflare Access 導入前は 200、
+導入後は未ログインなのでログイン画面への 302 が正常。Mac 側まで届いているかは
+`bash scripts/cloudflare_edge_setup.sh --verify` が service token で確認する）:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://shion.tune77.com/chat
@@ -70,5 +72,5 @@ curl -s -o /dev/null -w '%{http_code}\n' https://shion.tune77.com/chat
 
 ### 4. 結果報告
 
-- API: OK / Next: OK / https://shion.tune77.com/chat が 200 なら成功。URL は固定なので伝え直す必要はない。
+- API: OK / Next: OK / https://shion.tune77.com/chat が 200（Access 導入後は 302）なら成功。URL は固定なので伝え直す必要はない。
 - ビルドログは `logs/next/build_*.log`、再起動ログは `logs/next/restart_*.log` に残る。

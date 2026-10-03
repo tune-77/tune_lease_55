@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import urllib.request
 from datetime import date, datetime
@@ -369,15 +370,37 @@ def _public_url_line() -> str:
         return ""
     url = _PUBLIC_APP_URL.rstrip("/") + "/chat"
     # Cloudflare は既定の Python-urllib UA を 403 で弾くため、監視用UAを明示する。
-    request = urllib.request.Request(url, headers={"User-Agent": "tunelease-morning-monitor/1.0"})
+    headers = {"User-Agent": "tunelease-morning-monitor/1.0"}
+    # Cloudflare Access 保護下では service token で通過する（scripts/cloudflare_edge_setup.py が保存）。
+    client_id = _keychain_secret("cloudflare-access-monitor-id")
+    client_secret = _keychain_secret("cloudflare-access-monitor-secret") if client_id else ""
+    if client_id and client_secret:
+        headers["CF-Access-Client-Id"] = client_id
+        headers["CF-Access-Client-Secret"] = client_secret
+    request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=DEFAULT_TIMEOUT) as response:
             status = response.getcode()
+            # 認証に失敗すると Access のログイン画面へ転送され、そこが200を返すので成功と誤認しない。
+            if "cloudflareaccess.com" in (response.geturl() or ""):
+                return "• ⚠️ 公開URLの死活を確認できません（Access のログイン画面に転送。service token の失効・未保存の可能性）"
     except Exception as exc:  # noqa: BLE001 — HTTPError(530等)も接続失敗も同じ扱い
         status = getattr(exc, "code", None) or type(exc).__name__
     if status == 200:
         return ""
     return f"• ⚠️ 公開URLが応答しません（{url} → `{status}`。cloudflared／Next.js 停止の可能性）"
+
+
+def _keychain_secret(service: str) -> str:
+    """macOS キーチェーンから値を読む（無い・macOS以外なら空文字）。値はログに出さない。"""
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", service, "-a", "tune-lease-55", "-w"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def _codex_queue_abort_line() -> str:
