@@ -23,6 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 from obsidian_query import list_vault_md_files  # noqa: E402
+from cloudrun_pause import skip_if_paused  # noqa: E402
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_VAULT_PREFIX = os.environ.get("GCS_VAULT_PREFIX", "vault/")
@@ -224,6 +225,8 @@ def collect_md_files(vault_dir: Path) -> list[Path]:
 
 
 def main() -> None:
+    if skip_if_paused("backup.icloud_to_gcs_sync.upload"):
+        return
     vault_dir = Path(LOCAL_VAULT_DIR)
     print(f"iCloud → GCS 同期開始: {vault_dir} → gs://{GCS_BUCKET}/{GCS_VAULT_PREFIX}")
 

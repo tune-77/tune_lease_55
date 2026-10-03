@@ -19,6 +19,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from silent_failure_log import record_silent_failure
+from cloudrun_pause import skip_if_paused
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 GCS_LEDGER_MIRROR_PATH = os.environ.get("GCS_LEDGER_MIRROR_PATH", "ledger/ledger.jsonl").strip("/")
@@ -33,6 +34,8 @@ def _bucket_name() -> str:
 
 
 def sync() -> bool:
+    if skip_if_paused("backup.sync_ledger_to_gcs.upload"):
+        return True
     if not LEDGER_PATH.exists():
         print(f"[sync_ledger_to_gcs] ledger not found, skip: {LEDGER_PATH}")
         return True

@@ -40,6 +40,12 @@ def _isolate_silent_failure_log(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _cloudrun_not_paused(monkeypatch):
+    """config/cloudrun_pause.json が停止中でも、同期処理のテストは稼働中として動かす。"""
+    monkeypatch.setenv("CLOUDRUN_PAUSED", "0")
+
+
+@pytest.fixture(autouse=True)
 def _isolate_shion_vault_memory_sources(tmp_path, monkeypatch):
     """記憶索引が実 Vault を読まず、教示ファネルも data/ へ書かないようにする。"""
     monkeypatch.setenv("SHION_MEMORY_INDEX_VAULT", "off")

@@ -11,13 +11,22 @@
 # の schedule も同じPRで止めている（cloudrun-cost-guard.yml は describe と古い
 # リビジョン削除だけで、起動も再公開もしないため残す）。
 #
-# 再開手順:
-#   for s in tune-lease-55-api tune-lease-55-web; do
-#     gcloud run services add-iam-policy-binding "$s" \
-#       --project gen-lang-client-0420497423 --region asia-northeast1 \
-#       --member=allUsers --role=roles/run.invoker
-#   done
-#   その後、上記2ワークフローの schedule を戻す（このファイルは削除してよい）。
+# 再開手順（この順で行う）:
+#   1. ローカルの GCS 認証を入れ直す（停止中に期限切れ。invalid_grant が出ていたら必須）:
+#        gcloud auth application-default login
+#   2. 先にデプロイしてから公開する。停止中に入ったマスキング等の修正を反映させるため、
+#      古いリビジョンのまま IAM だけ戻さない。deploy.yml を workflow_dispatch（force_deploy）で
+#      実行する（--allow-unauthenticated で公開も戻る）。デプロイが使えない時だけ手で戻す:
+#        for s in tune-lease-55-api tune-lease-55-web; do
+#          gcloud run services add-iam-policy-binding "$s" \
+#            --project gen-lang-client-0420497423 --region asia-northeast1 \
+#            --member=allUsers --role=roles/run.invoker
+#        done
+#   3. CLOUDRUN_PAUSED を外す: config/cloudrun_pause.json の "paused" を false にする
+#      （環境変数 CLOUDRUN_PAUSED を設定していればそれも外す）。Cloud Run とのデータ受け渡し
+#      （sync_cloudrun_inputs_from_gcs・sync_ledger_to_gcs・icloud_to_gcs_sync・
+#      sync_chromadb_to_gcs.sh）が再開し、朝報の「Cloud Run 停止中：同期N件スキップ」が消える。
+#   4. 上記2ワークフローの schedule を戻す（このファイルは削除してよい）。
 
 name: Cloud Run Pause
 
