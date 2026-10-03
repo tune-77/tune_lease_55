@@ -20,6 +20,7 @@ from config import (
     DEBATE_FILE,
 )
 from app_logger import log_warning, log_error
+from api.context.time_context import ensure_current_datetime_message
 from secret_manager import get_gemini_api_key
 from indicators import format_indicator_comparison
 from prompt_feedback import build_pdca_prompt_block
@@ -246,6 +247,7 @@ def _chat_for_thread(engine: str, model: str, messages: list, timeout_seconds: i
     engine が "gemini" のときは api_key と gemini_model を使用。
     max_output_tokens: Gemini の最大出力トークン数（デフォルト2048）
     """
+    messages = ensure_current_datetime_message(messages)
     if engine == "anythingllm":
         try:
             from anything_api import chat_anything_llm
