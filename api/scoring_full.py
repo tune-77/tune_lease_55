@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import threading
 from unittest.mock import MagicMock
+from silent_failure_log import record_silent_failure
 
 # FastAPI はシンク関数をスレッドプールで実行するため、
 # 複数リクエストが同時に scoring_output_bridge.json を上書きする競合を防ぐ
@@ -86,7 +87,9 @@ def _load_json(filename):
             data = json.load(f)
             _CACHE[filename] = data
             return data
-    except: return {}
+    except Exception as exc:
+        record_silent_failure("scoring.scoring_full.load_json", "swallowed", exc, detail="設定JSONを空として扱った")
+        return {}
 
 
 def run_full_scoring_api(inputs: dict) -> dict:
@@ -158,8 +161,10 @@ def _run_full_scoring_api_locked(inputs: dict) -> dict:
     # 物理ファイルを事前に削除 (古い結果を拾わないため)
     RESULT_FILE = os.path.join(SCRIPT_DIR, "scoring_output_bridge.json")
     if os.path.exists(RESULT_FILE):
-        try: os.remove(RESULT_FILE)
-        except: pass
+        try:
+            os.remove(RESULT_FILE)
+        except Exception as exc:  # 消せないと古い結果を今回の結果として拾いうる
+            record_silent_failure("scoring.scoring_full.remove_stale_result", "swallowed", exc)
 
     # セッション完全クリア
     # _SHARED_SESSION_STATE と mock_st.session_state は別オブジェクトなので両方クリア

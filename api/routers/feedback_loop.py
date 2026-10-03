@@ -24,6 +24,7 @@ from judgment_asset_bandit import (
     read_feedback_rows,
     signal_for_candidate,
 )
+from silent_failure_log import record_silent_failure
 
 try:
     from filelock import FileLock, Timeout as _FileLockTimeout
@@ -637,8 +638,8 @@ def _log_judgment_asset_feedback_drop(
         _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG.parent.mkdir(parents=True, exist_ok=True)
         with _JUDGMENT_ASSET_FEEDBACK_DROPS_LOG.open("a", encoding="utf-8") as _f:
             _f.write(_json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("judgment.feedback_loop.drop_log", "save_failed", sf_exc, detail="判断資産フィードバック破棄の記録")
 
     try:
         record_cloudrun_input_event(
@@ -646,8 +647,8 @@ def _log_judgment_asset_feedback_drop(
             surface="screening",
             payload=entry,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("judgment.feedback_loop.drop_cloudrun", "save_failed", exc)
 
 
 def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: str) -> None:
@@ -709,7 +710,8 @@ def _record_judgment_asset_feedback_from_review(review_id: int, user_feedback: s
 
         active_rules = load_active_rules(path=_CANONICAL_JUDGMENT_RULES_JSON)
         refs = resolve_rule_ids_from_citations(review_text, active_rules.keys())
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.feedback_loop.resolve_citations", "swallowed", exc, detail="引用ルールを0件として扱った")
         refs = []
 
     # 実ルール参照が無いフィードバックは判断資産に紐付けようがないため、
@@ -1180,7 +1182,8 @@ def _read_candidate_feedback_rows(case_id: str = "", review_id: Optional[int] = 
         return rows
     try:
         events = read_judgment_asset_feedback_events(case_id, review_id)
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.feedback_loop.read_candidate_feedback", "swallowed", exc)
         return rows
     for event in events:
         if event.get("event_type") != "judgment_asset_candidate_feedback":
@@ -1496,8 +1499,8 @@ def _create_manual_judgment_asset_candidate(req: JudgmentAssetCandidateManualReq
             "last_edited_at": now_iso,
         }
         write_state(_AUTORESEARCH_JUDGMENT_ASSET_CANDIDATE_STATE_JSON, [{"id": candidate_id, **state[candidate_id]}], state)
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("judgment.feedback_loop.manual_candidate_state", "save_failed", exc)
     return row
 
 
@@ -2760,7 +2763,8 @@ def _load_gunshi_judgment_memory(limit: int = 5) -> list[dict]:
         from judgment_feedback import load_judgment_training_candidates
 
         rows = load_judgment_training_candidates(approved_only=False)
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.feedback_loop.training_candidates", "swallowed", exc)
         return []
 
     preferred_sources = {"gunshi_chat", "debate", "lease_news_debate", "register_trigger"}

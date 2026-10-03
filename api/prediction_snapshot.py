@@ -21,6 +21,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from api.loop_engineering_common import DATA_DIR, append_jsonl, load_jsonl
+from silent_failure_log import record_silent_failure
 
 SNAPSHOTS_PATH = DATA_DIR / "prediction_snapshots.jsonl"
 # 数値予測は判断予測と混ぜない（load_prediction_snapshot が誤って拾わないようにするため）
@@ -374,7 +375,8 @@ def load_prediction_snapshot(
         for entry in load_jsonl(snapshots_path or SNAPSHOTS_PATH):
             if isinstance(entry, dict) and _text(entry.get("case_id")) == target:
                 return entry
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.prediction_snapshot.load", "swallowed", exc)
         return None
     return None
 
