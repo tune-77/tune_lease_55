@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from runtime_paths import get_data_path
+from silent_failure_log import record_silent_failure
 
 
 SCHEMA_VERSION = 1
@@ -282,8 +283,8 @@ def _log_action_ledger(item: dict[str, Any], *, path: Path | None = None) -> Non
             target=str(item.get("report_target") or ""),
             result="queued",
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("judgment.consultation_queue.action_ledger", "save_failed", exc)
 
 
 def _record_cloudrun_consultation_event(item: dict[str, Any]) -> None:
@@ -295,5 +296,5 @@ def _record_cloudrun_consultation_event(item: dict[str, Any]) -> None:
             surface="shion_agent_consultation",
             payload={**item, "schema_version": SCHEMA_VERSION},
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("judgment.consultation_queue.cloudrun_event", "save_failed", exc)

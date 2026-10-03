@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Callable
+from silent_failure_log import record_silent_failure
 
 
 USER_PERSONAL_MEMORY_CACHE: dict[str, Any] = {"loaded_at": 0.0, "payload": None}
@@ -77,7 +78,8 @@ def read_cloudrun_personal_memory_lines(
         from api.user_personal_memory import derive_personal_memory_entries
 
         events = recent_events_reader(days=int(os.environ.get("CLOUDRUN_PERSONAL_MEMORY_GCS_DAYS", "45") or 45))
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.chat_user_personal_memory.cloudrun_events", "swallowed", exc)
         return [], ""
 
     lines: list[str] = []
