@@ -6801,7 +6801,7 @@ def post_chat(req: ChatRequest):
             ),
         )
         question_category = context_state.question_category
-        _log_shion_query_class(req.message, question_category)
+        _log_shion_query_class(logged_user_message, question_category)
         basic_lease_question_context = context_state.basic_lease_question_context
         context_mode = context_state.context_mode
         context_budget = context_state.context_budget
