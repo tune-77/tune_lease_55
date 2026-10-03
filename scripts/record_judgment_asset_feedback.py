@@ -15,6 +15,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# `python scripts/<name>.py` で起動されるとリポジトリ直下が import 経路に入らず、
+# api/ やルート直下のモジュールの import が失敗して黙って処理を飛ばしていた。
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import record_silent_failure
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CANONICAL_JSON = PROJECT_ROOT / "data" / "canonical_judgment_rules.json"
@@ -66,6 +73,7 @@ def append_feedback(
             target = DEFAULT_STATE_LEDGER if path == DEFAULT_FEEDBACK_JSONL else path.parent / "judgment_state_events.jsonl"
         return safe_append_event(target, build_judgment_asset_evaluated_event(entry))
     except Exception as exc:
+        record_silent_failure("judgment.record_asset_feedback.state_event", "save_failed", exc)
         return {"ok": False, "recorded": False, "event_id": "", "error": str(exc)}
 
 

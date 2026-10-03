@@ -149,6 +149,7 @@ def _gemini_generate_url() -> str:
 
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from scoring_anomaly_monitor import record_scoring_anomalies
+from silent_failure_log import record_silent_failure
 from api.scoring_full import run_full_scoring_api
 from lease_news_digest import (
     build_lease_news_brief,
@@ -217,6 +218,19 @@ def _get_obsidian_collection():
         print(f"[RAG] ChromaDB init failed: {e}")
         _chroma_collection = None
     return _chroma_collection
+
+
+def _snapshot_once(component: str, snapshot) -> None:
+    # snapshot_and_upload は失敗しても例外を投げず uploaded=False を返すだけなので、結果を見て記録する。
+    # 例外でスレッドが終わると以後のスナップショットが黙って止まるため、ここで受け止めて次の周期に回す。
+    try:
+        result = snapshot()
+    except Exception as exc:  # noqa: BLE001 - 定期スナップショットを止めない
+        record_silent_failure(component, "save_failed", exc)
+        return
+    if isinstance(result, dict) and result.get("enabled") and not result.get("uploaded"):
+        reason = str(result.get("reason") or "unknown").split(":", 1)[0][:60]
+        record_silent_failure(component, "save_failed", detail=reason)
 
 
 @asynccontextmanager
@@ -381,7 +395,7 @@ async def lifespan(app: FastAPI):
         import time as _t
         while True:
             _t.sleep(interval)
-            snapshot_and_upload()
+            _snapshot_once("backup.cloudrun_db_snapshot.periodic", snapshot_and_upload)
     _th.Thread(target=_periodic_db_snapshot, daemon=True, name="db-snapshot").start()
     # startup: ChromaDBのGCS定期スナップショット（非demoモードのみ）。
     # 起動のたびに埋め込みモデルでVault全量を再構築するのを避けるため、
@@ -399,7 +413,7 @@ async def lifespan(app: FastAPI):
         import time as _t
         while True:
             _t.sleep(interval)
-            snapshot_and_upload()
+            _snapshot_once("backup.chroma_snapshot.periodic", snapshot_and_upload)
     _th.Thread(target=_periodic_chroma_snapshot, daemon=True, name="chroma-snapshot").start()
     yield
     # shutdown: 結晶化スケジューラー停止

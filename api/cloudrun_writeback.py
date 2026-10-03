@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from silent_failure_log import record_silent_failure
 
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
@@ -86,7 +87,8 @@ def read_lease_news_usage_feedback_events(limit: int = 2000) -> list[dict[str, A
         rows = [json.loads(line) for line in text.splitlines() if line.strip()]
         payloads = [row.get("payload") for row in rows if isinstance(row, dict)]
         return [row for row in payloads[-max(1, limit):] if isinstance(row, dict)]
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.cloudrun_writeback.read_news_feedback", "swallowed", exc, detail="GCS読込失敗を0件として返した")
         return []
 
 
@@ -133,6 +135,7 @@ def record_lease_news_usage_feedback_event(payload: dict[str, Any]) -> dict[str,
                 )
         return {"ok": True, "skipped": False, "event_id": entry["event_id"]}
     except Exception as exc:
+        record_silent_failure("judgment.cloudrun_writeback.news_feedback", "save_failed", exc, detail="ローカル退避へ")
         _fallback(entry, str(exc))
         return {"ok": False, "skipped": False, "reason": str(exc), "event_id": entry["event_id"]}
 
@@ -149,7 +152,8 @@ def read_judgment_asset_feedback_events(case_id: str, review_id: Any) -> list[di
         except NotFound:
             return []
         return [row for line in text.splitlines() if line.strip() for row in [json.loads(line)] if isinstance(row, dict)]
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.cloudrun_writeback.read_asset_feedback", "swallowed", exc, detail="GCS読込失敗を0件として返した")
         return []
 
 
@@ -190,6 +194,7 @@ def record_judgment_asset_feedback_event(payload: dict[str, Any]) -> dict[str, A
             blob.upload_from_string(current + json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n", content_type="application/jsonl; charset=utf-8", if_generation_match=generation)
         return {"ok": True, "duplicate": False}
     except Exception as exc:
+        record_silent_failure("judgment.cloudrun_writeback.asset_feedback", "save_failed", exc)
         return {"ok": False, "skipped": False, "reason": str(exc)}
 
 
@@ -199,8 +204,8 @@ def _fallback(entry: dict[str, Any], reason: str) -> None:
         fallback_entry = {**entry, "writeback_error": reason}
         with LOCAL_FALLBACK_PATH.open("a", encoding="utf-8") as f:
             f.write(json.dumps(fallback_entry, ensure_ascii=False, sort_keys=True) + "\n")
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("backup.cloudrun_writeback.local_fallback", "save_failed", exc, detail="GCSもローカル退避も失敗")
 
 
 def build_cloudrun_input_event(
@@ -278,5 +283,6 @@ def record_cloudrun_input_event(
             )
         return {"ok": True, "skipped": False, "gcs_path": gcs_path, "event_id": entry["event_id"]}
     except Exception as exc:
+        record_silent_failure("backup.cloudrun_writeback.input_event", "save_failed", exc, detail="ローカル退避へ")
         _fallback(entry, str(exc))
         return {"ok": False, "skipped": False, "reason": str(exc), "event_id": entry["event_id"]}

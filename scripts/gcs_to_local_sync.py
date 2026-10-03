@@ -15,6 +15,12 @@ from typing import Optional
 
 from google.cloud import storage
 
+# `python scripts/<name>.py` で起動されるとリポジトリ直下が import 経路に入らないため足す。
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from silent_failure_log import record_silent_failure
+
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
 LOCAL_SHION_DIR = os.environ.get("LOCAL_SHION_DIR", "./data/shion/")
 
@@ -60,7 +66,8 @@ def sync_file(
 
     try:
         blob.reload()
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("backup.gcs_to_local_sync.reload", "swallowed", exc, detail="取得失敗を未存在として扱った")
         if required:
             return f"[SKIP]  {gcs_path} — GCS に存在しない（必須ファイル）"
         return f"[SKIP]  {gcs_path} — GCS に存在しない"

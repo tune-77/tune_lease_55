@@ -93,8 +93,8 @@ echo ""
 echo "[監査] 決定論的な自己監査で .claude/reports/ を更新（LLM不使用）..."
 # 失敗してもパイプラインを止めない。Brief 生成より前に置くこと（同じ実行で蒸留される）。
 # テストは所要時間が読めないため日次からは外す。/run-tests で個別に実行する。
-"${PYTHON}" "${PROJECT_ROOT}/scripts/build_agent_self_reports.py" --skip test-results || true
-log_step "build_agent_self_reports" 0
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_agent_self_reports.py" --skip test-results
+log_step "build_agent_self_reports" $?
 
 echo ""
 echo "[補助] Sidecar Agent Brief を生成（読み取り専用）..."
@@ -174,7 +174,7 @@ echo "[補助] 週次セルフマネジメントサマリ（月曜のみ）..."
 
 echo ""
 echo "[内省] 内省不足/退屈化検知レポートを再生成（観測のみ・lease_intelligence_reflectionが参照）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/introspection.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/introspection.py"
 log_step "introspection" $?
 
 echo ""
@@ -308,8 +308,8 @@ log_step "build_judgment_asset_field_review" $?
 echo ""
 echo "[育成] 判断資産の高スコア・低リスク候補のみ試験的に自動適用（既定オフ・JUDGMENT_ASSET_AUTO_APPLY_ENABLED=1でopt-in）..."
 "${PYTHON}" "${PROJECT_ROOT}/scripts/apply_judgment_asset_auto_promotions.py" \
-  --date "${PIPELINE_DATE}" || true
-log_step "apply_judgment_asset_auto_promotions" 0
+  --date "${PIPELINE_DATE}"
+log_step "apply_judgment_asset_auto_promotions" $?
 
 echo ""
 echo "[育成] 経験フライホイール候補を生成（context/decision/feedbackを品質ゲート。自動昇格なし）..."
@@ -318,8 +318,8 @@ log_step "build_experience_flywheel_report" $?
 
 echo ""
 echo "[予測] 予測的フレームワークの観測レポートを生成（予測カバー率・キャリブレーション。自動反映なし）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/build_predictive_framework_report.py" || true
-log_step "build_predictive_framework_report" 0
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_predictive_framework_report.py"
+log_step "build_predictive_framework_report" $?
 
 echo ""
 echo "[評価] 経験フライホイールからリプレイ評価セットを生成（既存評価セットは上書きしない）..."
@@ -328,8 +328,8 @@ log_step "build_experience_replay_eval_set" $?
 
 echo ""
 echo "[評価] 経験リプレイ評価セットで過去回答を採点（ローカル履歴のみ・外部送信なし）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_experience_replay_historical.py" || true
-log_step "evaluate_experience_replay_historical" 0
+"${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_experience_replay_historical.py"
+log_step "evaluate_experience_replay_historical" $?
 
 echo ""
 echo "[評価] 経験リプレイ弱点を回答チェックリスト候補へ変換（レビュー前提・自動反映なし）..."
@@ -434,8 +434,8 @@ echo "[検証] 台帳のapplied主張をgit履歴で検証（Default-FAIL: 証�
 
 echo ""
 echo "[配布] 台帳(ledger.jsonl)をGCSへミラー（Cloud Runの「今日やる候補」重複判定用）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_ledger_to_gcs.py" || true
-log_step "sync_ledger_to_gcs" 0
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_ledger_to_gcs.py"
+log_step "sync_ledger_to_gcs" $?
 
 if [ -f "${LATEST_FILE}" ]; then
   echo ""
@@ -478,18 +478,18 @@ if [ -f "${LATEST_FILE}" ]; then
 
   echo ""
   echo "[品質] post同期後の改善レポート品質スコアを再計算中..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_improvement_quality.py" || true
-  log_step "analyze_improvement_quality_post" 0
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/analyze_improvement_quality.py"
+  log_step "analyze_improvement_quality_post" $?
 
   echo ""
   echo "[品質] post同期後のループ/係数/モデルのヘルスチェックを再生成中..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/loop_metrics.py" || true
-  log_step "loop_metrics_post" 0
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/loop_metrics.py"
+  log_step "loop_metrics_post" $?
 
   echo ""
   echo "[可視化] post同期後のループ証拠を再生成中..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_loop_proof.py" || true
-  log_step "build_loop_proof_post" 0
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_loop_proof.py"
+  log_step "build_loop_proof_post" $?
 else
   echo "警告: ${LATEST_FILE} が存在しないため、post台帳補完後のレポート再同期をスキップします。"
   log_step "sync_improvement_reports_post" 0
@@ -498,7 +498,7 @@ fi
 if [ "${RUN_DETAILED_SIDECAR_REPORTS}" = "1" ]; then
   echo ""
   echo "[週次監査] Shion アーキテクチャ層監査を生成中（read-only）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_architecture_layer_audit.py" || true
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_architecture_layer_audit.py"
   log_step "build_shion_architecture_layer_audit" $?
 else
   log_step "shion_architecture_layer_audit_skipped" 0
@@ -524,36 +524,36 @@ log_step "analyze_shion_pm_quality" $?
 
 echo ""
 echo "[監査] 紫苑 Agent Action Ledger の日次サマリを生成（backlog §9.2）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/build_agent_action_ledger_report.py" || true
+"${PYTHON}" "${PROJECT_ROOT}/scripts/build_agent_action_ledger_report.py"
 log_step "build_agent_action_ledger_report" $?
 
 # 読み取り専用の2つ（Vaultへ書き込まない）はMana判定に関わらず毎日実行する。
 # Vault書き込みを伴う2つ（note_curator --apply / reflection_journal）だけをMana allowでゲートする。
 echo ""
 echo "[内省拡張] Vaultのタグ・フォルダ重複を監査（読み取り専用・Mana判定に関わらず実行）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_taxonomy_audit.py" || true
-log_step "obsidian_taxonomy_audit" 0
+"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_taxonomy_audit.py"
+log_step "obsidian_taxonomy_audit" $?
 
 echo ""
 echo "[内省拡張] Vaultの繰り返しテーマとバズ状況を確認（読み取り専用・Mana判定に関わらず実行・Vertex AI Google検索グラウンディング）..."
-"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_theme_radar.py" || true
-log_step "obsidian_theme_radar" 0
+"${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_theme_radar.py"
+log_step "obsidian_theme_radar" $?
 
 if [ "${MANA_STATUS}" = "allow" ]; then
   echo ""
   echo "[内省拡張] 新規追加ノートにタグ付け・移動先フォルダを提案・適用..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_note_curator.py" --apply || true
-  log_step "obsidian_note_curator" 0
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_note_curator.py" --apply
+  log_step "obsidian_note_curator" $?
 
   echo ""
   echo "[内省拡張] 一番強いテーマの改善の切り口をProblem/気づき/解決アウトラインにしてSystem Improvement Reflectionへ記録（Slack朝報告に載せるため送信前に実行）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py" || true
-  log_step "obsidian_reflection_journal" 0
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py"
+  log_step "obsidian_reflection_journal" $?
 elif [ "${MANA_STATUS}" = "watch" ]; then
   echo ""
   echo "[内省拡張] Mana が watch のため note_curator --apply は止め、System Improvement Reflection の説明用ノートだけ生成します。"
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py" || true
-  log_step "obsidian_reflection_journal" 0
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_reflection_journal.py"
+  log_step "obsidian_reflection_journal" $?
 else
   echo ""
   echo "[内省拡張] Mana が allow ではないため、Vault書き込み系（note_curator/reflection_journal）をスキップします。"
@@ -594,8 +594,8 @@ log_step "send_daily_improvement_slack" $?
 
 echo ""
 echo "[通知] 紫苑からの能動アラートをSlackへ送信（エラー急増・業界動向。アラート無しなら何もしない）..."
-"${PYTHON}" "${PROJECT_ROOT}/slack_bot.py" --shion-proactive || true
-log_step "send_shion_proactive_slack" 0
+"${PYTHON}" "${PROJECT_ROOT}/slack_bot.py" --shion-proactive
+log_step "send_shion_proactive_slack" $?
 
 if [ "${MANA_STATUS}" != "allow" ]; then
   echo "[番人] Mana が allow ではないため、評価候補生成と GCS Vault 配布を停止します。"
