@@ -749,7 +749,12 @@ export default function ChatPage() {
         user_id: userId,
       });
     } catch {
-      // フィードバック送信の失敗はチャット体験をブロックしない
+      // チャット体験はブロックしないが、送れていないのに「送信済み」の表示が残ると評価が黙って失われるので戻して押し直せるようにする
+      setFeedbackGiven((prev) => {
+        const next = { ...prev };
+        delete next[assistantMessage.id];
+        return next;
+      });
     }
   };
 
