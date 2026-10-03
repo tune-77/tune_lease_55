@@ -215,6 +215,82 @@ def classify(
     return auto, review
 
 
+# --- Jev（重複・上書きの「要確認」候補の絞り込みだけに使う。Jev 単独では自動アーカイブしない） ---
+# 2026-10-03 の計測（experiments/personal_memory_dedup_jev/）: 外してよいペアの AUC Jev 0.92・埋め込み 0.71・文字一致 0.38
+JEV_REVIEW_MIN = 0.4
+JEV_MAX_PAIRS = 20
+_NEVER_SEND_RE = re.compile(r"妹|亡くな|\[sensitive")
+JEV_QUESTIONS = {
+    "dup": {
+        "instructions": "{a} と {b} は、ユーザーについての同じ趣旨の記憶で、片方を残せばもう片方は不要か？",
+        "true": "同じ事実・好み・方針・出来事を述べている。言い回し、言語（日本語/英語）、補足の量の違いだけ。",
+        "false": "対象、主張、時期、推奨する行動のどれかが違い、両方残す意味がある。似た話題でも別の論点なら false。",
+    },
+    "sup": {
+        "instructions": "{b} は {a} より新しい情報で、{a} の内容を上書き・訂正・再定義しており、{a} はもう古くなったか？",
+        "true": "{b} が {a} と同じ対象について、方針の変更・定義のやり直し・状況の変化（終了・撤回など）を述べ、{a} をそのまま使うと誤る。",
+        "false": "{b} は {a} と別の話題、または {a} を補足するだけで、{a} は今も有効。",
+    },
+}
+
+
+def jev_text(row: dict[str, Any], secrets: list[str]) -> str | None:
+    """Jev へ送る本文（個人事実の値を伏せ字にする）。送ってはいけない行は None。"""
+    text = re.sub(r"\s*\(`memory/[^)]*`\)\s*$", "", re.sub(r"^\[\d{4}-\d{2}-\d{2}\]\s*", "", row["body"]))
+    if _NEVER_SEND_RE.search(row["text"]):
+        return None
+    for value in secrets:
+        text = text.replace(value, "[個人名]")
+    try:
+        import typesafe_dedup_guard as transport
+
+        return text if transport.is_safe_public_candidate({"title": text}) else None
+    except Exception:  # noqa: BLE001 - 判定器が無ければ送らない
+        return None
+
+
+_SECRET_FACT_RE = re.compile(r"(?:Dog name|Preferred name|What to call them:\*\*)\s*:?\s*([^\s:*]+)")
+
+
+def personal_fact_values(texts: list[str]) -> list[str]:
+    """伏せ字にする個人事実の値（犬の名前・呼び方など）。アーカイブ済みの行や本体ファイルも含めて拾う。"""
+    values = {m.group(1) for t in texts for m in _SECRET_FACT_RE.finditer(t)}
+    return sorted((v for v in values if v not in {"User", "未記録（ユーザーから次に教えてもらったらここへ保存する）"}), key=len, reverse=True)
+
+
+def jev_review_candidates(rows: list[dict[str, Any]], *, pinned: set[str], similarity_fn, pair_scorer, secrets: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """似ているペアを Jev に「重複か」「上書きか」聞き、高いものを要確認にする。(要確認, 判定ログ用) を返す。"""
+    sendable = [(r, t) for r in rows for t in [jev_text(r, secrets)] if t]
+    if len(sendable) < 2:
+        return [], []
+    sim = similarity_fn([t for _, t in sendable])
+    scored = []
+    for i in range(len(sendable)):
+        for j in range(i + 1, len(sendable)):
+            a, b = sendable[i][0], sendable[j][0]
+            if a["key"] in pinned and b["key"] in pinned:
+                continue
+            value = float(sim[i][j]) if sim is not None else _jaccard(sendable[i][1], sendable[j][1])
+            older, newer = (i, j) if (a["date"] or "") <= (b["date"] or "") else (j, i)
+            scored.append((value, older, newer))
+    top = sorted(scored, reverse=True)[:JEV_MAX_PAIRS]
+    if not top:
+        return [], []
+    texts = [(sendable[o][1], sendable[n][1]) for _, o, n in top]
+    scores = {name: pair_scorer(texts, question) for name, question in JEV_QUESTIONS.items()}
+    review, log_items = [], []
+    for k, (_, o, n) in enumerate(top):
+        older, newer = sendable[o][0], sendable[n][0]
+        dup, sup = scores["dup"][k], scores["sup"][k]
+        for name, prob in (("dup", dup), ("sup", sup)):
+            log_items.append({"subject": f"{texts[k][0]}\n{texts[k][1]}", "question": f"personal_memory_{name}", "probability": prob,
+                              "choice": prob >= JEV_REVIEW_MIN, "route": "review" if prob >= JEV_REVIEW_MIN else "keep", "auto_passed": False,
+                              "thresholds": {"review_min": JEV_REVIEW_MIN}})
+        if max(dup, sup) >= JEV_REVIEW_MIN and older["key"] not in pinned:
+            review.append({**older, "reason": "jev_duplicate" if dup >= sup else "jev_superseded", "merged_into": newer["id"], "jev": round(max(dup, sup), 2)})
+    return review, log_items
+
+
 def _block_stats(repo_root: Path, data_path_resolver) -> dict[str, int]:
     from api.chat_user_personal_memory import invalidate_user_personal_memory_cache, load_user_personal_memory_payload
 
@@ -232,26 +308,56 @@ def run(
     data_path_resolver=get_data_path,
     canonical_path: Path | None = None,
     today: dt.date | None = None,
+    similarity_fn=None,
+    pair_scorer=None,
 ) -> dict[str, Any]:
+    """週次の整理。pair_scorer（Jev）を渡すと、重複・上書きの要確認候補を Jev で絞り込む（失敗しても整理は続ける）。"""
     archive_path = archive_path or Path(data_path_resolver("user_personal_memory_archive.json"))
     today = today or dt.date.today()
     data = load_archive(archive_path)
     before = _block_stats(repo_root, data_path_resolver)
     done = {str(i.get("key")) for i in data["items"]}
     pinned = {str(p.get("key")) for p in data["pinned"]}
-    rows = [r for r in collect_candidates(repo_root, data_path_resolver) if r["key"] not in done]
+    all_rows = collect_candidates(repo_root, data_path_resolver)
+    rows = [r for r in all_rows if r["key"] not in done]
     auto, review = classify(
         rows,
         today=today,
         pinned=pinned,
         statements=_active_statements(canonical_path or Path(data_path_resolver("canonical_judgment_rules.json"))),
     )
+    jev_status = "off"
+    if pair_scorer is not None:
+        archived_now = {r["id"] for r in auto}
+        raw_texts = [r["text"] for r in all_rows] + [str(i.get("text") or "") for i in data["items"]]
+        from api.chat_user_personal_memory import personal_memory_sources
+
+        for path, _all, _limit in personal_memory_sources(repo_root, data_path_resolver)[:2]:  # 個人記憶ファイル本体
+            try:
+                raw_texts.append(path.read_text(encoding="utf-8", errors="ignore"))
+            except OSError:
+                pass
+        try:
+            jev_review, log_items = jev_review_candidates(
+                [r for r in rows if r["id"] not in archived_now], pinned=pinned, similarity_fn=similarity_fn or (lambda _t: None), pair_scorer=pair_scorer,
+                secrets=personal_fact_values(raw_texts),
+            )
+            listed = {r["id"] for r in review}
+            review += [r for r in jev_review if r["id"] not in listed]
+            jev_status = f"ok ({len(log_items) // 2}ペア)"
+            if log_items and not dry_run:
+                import jev_judgment_log
+
+                jev_judgment_log.append_records(jev_judgment_log.build_records(
+                    guard="user_personal_memory_dedup", run_id=jev_judgment_log.new_run_id(), mode="weekly", model="jev-latest", items=log_items))
+        except Exception as exc:  # noqa: BLE001 - Jev が使えなくても決定的ルールの整理は続ける
+            jev_status = f"skipped ({type(exc).__name__})"
     now = dt.datetime.now().astimezone().isoformat(timespec="seconds")
-    report: dict[str, Any] = {"date": today.isoformat(), "dry_run": dry_run, "before": before, "auto_archived": len(auto), "review_candidates": len(review)}
+    report: dict[str, Any] = {"jev": jev_status, "date": today.isoformat(), "dry_run": dry_run, "before": before, "auto_archived": len(auto), "review_candidates": len(review)}
     if not dry_run:
         for row in auto:
             data["items"].append({k: row[k] for k in ("id", "key", "source", "text", "date", "reason") if k in row} | ({"merged_into": row["merged_into"]} if row.get("merged_into") else {}) | {"archived_at": now, "by": "weekly_auto"})
-        data["review_candidates"] = [{k: r[k] for k in ("id", "source", "text", "date", "reason")} for r in review]
+        data["review_candidates"] = [{k: r[k] for k in ("id", "source", "text", "date", "reason", "merged_into", "jev") if k in r} for r in review]
         report["backup"] = str(save_archive(data, archive_path) or "")
         report["after"] = _block_stats(repo_root, data_path_resolver)
         data["last_run"] = report

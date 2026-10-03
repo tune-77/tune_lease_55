@@ -81,3 +81,39 @@ def test_dry_run_writes_nothing(tmp_path, monkeypatch):
     report = upa.run(dry_run=True, repo_root=tmp_path, data_path_resolver=resolver, today=TODAY)
     assert report["auto_archived"] == 1
     assert not (tmp_path / "data" / "user_personal_memory_archive.json").exists()
+
+
+def test_jev_only_lists_review_candidates_and_never_sends_sensitive_lines(tmp_path, monkeypatch):
+    memory_md = "\n".join([
+        "## Preferences",
+        "- 紫苑の方針A: 結論を先に返す。",
+        "- 紫苑の方針B: 結論から先に返す。",
+        "- Mana は亡くなった妹さんの名を託した紫苑の方針。",
+        "- 紫苑の方針: タムの話は短く。",
+    ])
+    resolver = _setup(tmp_path, monkeypatch, memory_md, "## Personal Facts\n- [confirmed] Dog name: タム")
+    upa.save_archive({"items": [{"id": "d", "key": upa.line_key("- [confirmed] Dog name: タム"), "text": "- [confirmed] Dog name: タム"}], "pinned": []}, tmp_path / "data" / "user_personal_memory_archive.json")
+    monkeypatch.setattr("typesafe_dedup_guard.is_safe_public_candidate", lambda c: True)
+    sent: list[str] = []
+
+    def scorer(pairs, question):
+        sent.extend(a + b for a, b in pairs)
+        return [0.9 if "方針A" in a + b and "方針B" in a + b else 0.1 for a, b in pairs]
+
+    report = upa.run(dry_run=False, repo_root=tmp_path, data_path_resolver=resolver, today=TODAY, pair_scorer=scorer)
+
+    assert report["auto_archived"] == 0  # Jev 単独では自動アーカイブしない
+    review = upa.load_archive(tmp_path / "data" / "user_personal_memory_archive.json")["review_candidates"]
+    assert [r["reason"] for r in review] == ["jev_duplicate"]
+    assert sent and not any("妹" in s or "タム" in s for s in sent)
+
+
+def test_jev_failure_keeps_rule_based_cleanup(tmp_path, monkeypatch):
+    resolver = _setup(tmp_path, monkeypatch, "## Auto Promotions 2026-05-01 04:00\n- [2026-05-01] 紫苑メモ\n## Preferences\n- 紫苑の方針: 結論を先に\n- 紫苑の好きな季節は秋")
+    monkeypatch.setattr("typesafe_dedup_guard.is_safe_public_candidate", lambda c: True)
+
+    def boom(pairs, question):
+        raise RuntimeError("down")
+
+    report = upa.run(dry_run=False, repo_root=tmp_path, data_path_resolver=resolver, today=TODAY, pair_scorer=boom)
+    assert report["auto_archived"] == 1 and report["jev"].startswith("skipped")

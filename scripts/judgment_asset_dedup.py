@@ -675,7 +675,11 @@ def main() -> None:
     try:
         from api.user_personal_memory_archive import run as run_personal_memory_hygiene
 
-        personal = run_personal_memory_hygiene(dry_run=args.dry_run)
+        personal = run_personal_memory_hygiene(
+            dry_run=args.dry_run,
+            similarity_fn=embedding_similarity,
+            pair_scorer=(lambda texts, question: transport.judge_binary_pairs(texts, question)[0]) if use_jev else None,
+        )
         print(json.dumps({"user_personal_memory": {k: v for k, v in personal.items() if k != "auto"}}, ensure_ascii=False, indent=2))
     except Exception as exc:  # noqa: BLE001 - 個人記憶の整理の失敗で判断資産の整理結果を落とさない
         print(f"[user_personal_memory] 整理失敗: {type(exc).__name__}: {exc}", file=sys.stderr)
