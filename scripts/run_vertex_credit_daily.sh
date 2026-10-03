@@ -1,8 +1,9 @@
 #!/bin/bash
 # GenAI App Builder クレジット期間の Vertex AI Search 日次処理（launchd: com.tunelease.vertex-credit-daily、05:30）
 # 1. 利用額の見張り（モードに関係なく毎日。90%で朝報警告・100%で自動 off）
-# 2. モードが on の時だけ: Obsidian/判断資産→データストア同期、ChromaDB と Vertex の品質比較＋並べ替え shadow 評価
-# off（VERTEX_CREDIT_MODE=off・期限 2027-02-01 以降・自動 off）なら 2 は動かず、同期は手動に戻る。
+# 2. Jev の並べ替え shadow 評価（Vertexクレジットとは独立して毎日）
+# 3. モードが on の時だけ: Obsidian/判断資産→データストア同期、ChromaDB と Vertex の品質比較
+# off（VERTEX_CREDIT_MODE=off・期限 2027-02-01 以降・自動 off）なら Vertex処理だけ止まり、Jev評価は継続する。
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${PYTHON:-${PROJECT_ROOT}/.venv/bin/python}"
@@ -18,7 +19,9 @@ echo "==== Vertex クレジット日次処理: $(date '+%Y-%m-%d %H:%M:%S') ====
 log_step "vertex_credit_monitor" $?
 
 if ! "${PYTHON}" -c "import sys; from api.vertex_credit_mode import credit_mode_status as s; r = s(); print('VERTEX_CREDIT_MODE:', r['reason']); sys.exit(0 if r['active'] else 1)"; then
-    echo "クレジットモード off のため同期と品質比較はスキップ（同期は手動）"
+    echo "クレジットモード off: Jev単独評価を実行し、Vertex同期と品質比較はスキップ"
+    "${PYTHON}" "${PROJECT_ROOT}/scripts/eval_vertex_vs_chroma.py" --jev-only
+    log_step "eval_jev_vs_chroma" $?
     exit 0
 fi
 

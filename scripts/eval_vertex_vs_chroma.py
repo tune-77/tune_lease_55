@@ -36,6 +36,7 @@ from scripts.vertex_credit_monitor import write_state  # noqa: E402
 
 EVAL_SETS = [ROOT / "api" / "knowledge" / "rag_eval_set.json", ROOT / "api" / "knowledge" / "okf_rag_eval_set.json"]
 DEFAULT_REPORT = ROOT / "reports" / "vertex_rag_eval_latest.json"
+DEFAULT_JEV_REPORT = ROOT / "reports" / "jev_rag_eval_latest.json"
 TOP_K = 5
 PROMOTE_NIGHTS = 3
 MRR_MARGIN = 0.02
@@ -196,7 +197,7 @@ def vertex_covered_ids(cases: list[dict[str, Any]], manifest: Path = EXPORT_MANI
 
 
 def _default_fns() -> dict[str, Any]:
-    from api.chat_retrieval import _jev_rerank_enabled
+    from api.chat_retrieval import _jev_evaluation_eligible
     from api.jev_rag_rerank import jev_rerank
     from api.knowledge.vector_store import get_store
     from api.vertex_agent_search import answer_vertex_agent, rerank_hits, search_vertex_agent
@@ -212,19 +213,67 @@ def _default_fns() -> dict[str, Any]:
         "vertex_search": vertex_search,
         "vertex_answer": lambda q: answer_vertex_agent(q, page_size=5, include_grounding_supports=True),
         "jev_rerank": jev_rerank,
-        "jev_eligible": _jev_rerank_enabled,
+        "jev_eligible": _jev_evaluation_eligible,
+    }
+
+
+def _default_jev_only_fns() -> dict[str, Any]:
+    """Dependencies for Jev shadow evaluation without importing/calling Vertex."""
+    from api.chat_retrieval import _jev_evaluation_eligible
+    from api.jev_rag_rerank import jev_rerank
+    from api.knowledge.vector_store import get_store
+
+    store = get_store()
+    return {
+        "chroma_search": lambda q, k: store.search(q, top_k=k),
+        "rerank": lambda _q, hits: hits,
+        "vertex_search": lambda _q, _k: [],
+        "vertex_answer": lambda _q: {"status": "skipped", "refs": []},
+        "jev_rerank": jev_rerank,
+        "jev_eligible": _jev_evaluation_eligible,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument("--jev-report", type=Path, default=DEFAULT_JEV_REPORT)
+    parser.add_argument(
+        "--jev-only",
+        action="store_true",
+        help="Evaluate Chroma vs Jev only; do not import or call Vertex clients.",
+    )
     parser.add_argument("--state", type=Path, default=None)
     args = parser.parse_args()
 
     cases = load_cases()
-    result = run_eval(cases, covered_ids=vertex_covered_ids(cases), **_default_fns())
     now = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    if args.jev_only:
+        result = run_eval(cases, covered_ids=set(), **_default_jev_only_fns())
+        promoted, reason = update_jev_state(result, now)
+        args.jev_report.parent.mkdir(parents=True, exist_ok=True)
+        args.jev_report.write_text(
+            json.dumps(
+                {
+                    "generated_at": now,
+                    "mode": "jev_only",
+                    "chroma": result.get("jev_chroma") or result["chroma"],
+                    "jev_rerank": result["jev_rerank"],
+                    "jev_rerank_decision": {"promoted": promoted, "reason": reason},
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        print(
+            f"Jev shadow: {'promoted' if promoted else 'not promoted'} / {reason} / "
+            f"calls={(result.get('jev_rerank') or {}).get('calls', 0)}"
+        )
+        return 0
+
+    result = run_eval(cases, covered_ids=vertex_covered_ids(cases), **_default_fns())
     state = load_state(args.state)
     rerank_state = dict(state.get("rerank") or {})
     history = list(rerank_state.get("history") or [])

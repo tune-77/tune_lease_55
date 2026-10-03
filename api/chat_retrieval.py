@@ -287,15 +287,29 @@ def _rerank_local_hits(message: str, hits: list[dict[str, Any]], result: "ChatRe
         return hits
 
 
-def _jev_rerank_enabled(message: str) -> bool:
-    """毎晩の評価で効果確認済み（独立スイッチ JEV_RAG_RERANK）で、送ってよい質問の時だけ。"""
+def _jev_evaluation_eligible(message: str) -> bool:
+    """Whether a query may be sent to Jev during shadow evaluation."""
     try:
         from api.chat_routing import is_potentially_sensitive_screening_message
-        from api.jev_rag_rerank import production_enabled
 
         if is_potentially_sensitive_screening_message(message) and not _typesafe_screening_allowed():
             return False  # 既存の TypeSafe 方針どおり、審査の機微な質問は外部判定へ送らない
-        return production_enabled()
+        return str(os.environ.get("JEV_RAG_RERANK") or "").strip().lower() not in {
+            "off",
+            "0",
+            "false",
+            "no",
+        }
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _jev_rerank_enabled(message: str) -> bool:
+    """Use Jev in production only after shadow evaluation promoted it."""
+    try:
+        from api.jev_rag_rerank import production_enabled
+
+        return _jev_evaluation_eligible(message) and production_enabled()
     except Exception:  # noqa: BLE001
         return False
 

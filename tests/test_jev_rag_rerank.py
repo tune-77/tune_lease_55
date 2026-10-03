@@ -178,3 +178,57 @@ def test_total_jev_outage_disables_an_existing_promotion(tmp_path) -> None:
 def test_daily_script_points_jev_at_keychain() -> None:
     script = (Path(__file__).resolve().parents[1] / "scripts" / "run_vertex_credit_daily.sh").read_text(encoding="utf-8")
     assert 'TYPESAFE_API_KEYCHAIN_SERVICE="${TYPESAFE_API_KEYCHAIN_SERVICE:-typesafe-api-key}"' in script
+
+
+def test_daily_script_runs_jev_only_before_exiting_when_vertex_is_off() -> None:
+    script = (Path(__file__).resolve().parents[1] / "scripts" / "run_vertex_credit_daily.sh").read_text(encoding="utf-8")
+    off_branch = script.index('if ! "${PYTHON}" -c')
+    jev_only = script.index("--jev-only", off_branch)
+    branch_exit = script.index("exit 0", off_branch)
+    full_eval = script.index('scripts/eval_vertex_vs_chroma.py"', branch_exit)
+    assert off_branch < jev_only < branch_exit < full_eval
+
+
+def test_shadow_eligibility_does_not_require_existing_promotion(monkeypatch, tmp_path) -> None:
+    from api import chat_retrieval
+    from api import jev_rag_rerank as jr
+
+    monkeypatch.setattr(jr, "STATE_PATH", tmp_path / "missing-state.json")
+    monkeypatch.delenv("JEV_RAG_RERANK", raising=False)
+    assert chat_retrieval._jev_evaluation_eligible("工作機械の残価は？") is True
+    assert chat_retrieval._jev_rerank_enabled("工作機械の残価は？") is False
+
+    monkeypatch.setenv("JEV_RAG_RERANK", "off")
+    assert chat_retrieval._jev_evaluation_eligible("工作機械の残価は？") is False
+
+
+def test_jev_only_mode_does_not_initialize_vertex_dependencies(monkeypatch, tmp_path) -> None:
+    report = tmp_path / "jev.json"
+    block = {
+        "total": 1,
+        "hit_at_1_rate": 1.0,
+        "hit_at_k_rate": 1.0,
+        "mrr": 1.0,
+        "forbidden_cases": [],
+        "calls": 1,
+        "input_tokens": 10,
+        "failures": 0,
+    }
+    monkeypatch.setattr(vx_eval, "load_cases", lambda: [{"id": "a", "query": "残価"}])
+    monkeypatch.setattr(vx_eval, "_default_jev_only_fns", lambda: {"jev_rerank": object()})
+    monkeypatch.setattr(
+        vx_eval,
+        "_default_fns",
+        lambda: (_ for _ in ()).throw(AssertionError("Vertex dependencies initialized")),
+    )
+    monkeypatch.setattr(
+        vx_eval,
+        "run_eval",
+        lambda *_args, **_kwargs: {"chroma": block, "jev_chroma": block, "jev_rerank": block},
+    )
+    monkeypatch.setattr(vx_eval, "update_jev_state", lambda *_args, **_kwargs: (False, "評価1/3晩"))
+    monkeypatch.setattr(sys, "argv", ["eval_vertex_vs_chroma.py", "--jev-only", "--jev-report", str(report)])
+
+    assert vx_eval.main() == 0
+    saved = json.loads(report.read_text(encoding="utf-8"))
+    assert saved["mode"] == "jev_only" and saved["jev_rerank"]["calls"] == 1
