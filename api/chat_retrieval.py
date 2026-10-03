@@ -38,6 +38,7 @@ class ChatRetrievalResult:
         default_factory=lambda: {"used": False, "status": "not_attempted", "refs": []}
     )
     vertex_rerank: dict[str, Any] = field(default_factory=lambda: {"used": False, "status": "not_attempted"})
+    jev_rerank: dict[str, Any] = field(default_factory=lambda: {"used": False, "status": "not_attempted"})
     typesafe_rag: dict[str, Any] = field(
         default_factory=lambda: {"status": "not_attempted"}
     )
@@ -272,6 +273,32 @@ def _rerank_local_hits(message: str, hits: list[dict[str, Any]], result: "ChatRe
         return hits
 
 
+def _jev_rerank_enabled(message: str) -> bool:
+    """毎晩の評価で効果確認済み（独立スイッチ JEV_RAG_RERANK）で、送ってよい質問の時だけ。"""
+    try:
+        from api.chat_routing import is_potentially_sensitive_screening_message
+        from api.jev_rag_rerank import production_enabled
+
+        if is_potentially_sensitive_screening_message(message) and not _typesafe_screening_allowed():
+            return False  # 既存の TypeSafe 方針どおり、審査の機微な質問は外部判定へ送らない
+        return production_enabled()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _jev_rerank_local_hits(message: str, hits: list[dict[str, Any]], result: "ChatRetrievalResult") -> list[dict[str, Any]]:
+    """Jev の確率で並べ替える（送信内容は jev_rag_rerank 側で伏字化）。不通なら元の順位。"""
+    try:
+        from api.jev_rag_rerank import jev_rerank
+
+        ordered, meta = jev_rerank(message, hits)
+        result.jev_rerank = {"used": True, "status": "ok", "candidates": len(hits), "input_tokens": meta.get("input_tokens", 0)}
+        return ordered
+    except Exception as exc:  # noqa: BLE001
+        result.jev_rerank = {"used": False, "status": "error", "error_type": type(exc).__name__}
+        return hits
+
+
 def build_chat_retrieval_context(
     message: str,
     *,
@@ -294,7 +321,8 @@ def build_chat_retrieval_context(
     candidate_top_k = min(20, max(rag_top_k, rag_top_k * 2)) if typesafe_filter else rag_top_k
     # クレジット期間中、毎晩の shadow 評価で効果が確認できた時だけ Ranking API で並べ替える
     rerank = _vertex_rerank_enabled()
-    if rerank:
+    jev_rerank_on = not rerank and _jev_rerank_enabled(message)
+    if rerank or jev_rerank_on:
         candidate_top_k = min(20, max(candidate_top_k, rag_top_k * 2))
 
     try:
@@ -303,6 +331,8 @@ def build_chat_retrieval_context(
         hits = get_store().search(message, top_k=candidate_top_k)
         if rerank and hits:
             hits = _rerank_local_hits(message, hits, result)
+        elif jev_rerank_on and hits:
+            hits = _jev_rerank_local_hits(message, hits, result)
         hits, result.typesafe_rag = _filter_local_rag_hits(
             message,
             hits,
