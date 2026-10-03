@@ -3362,6 +3362,31 @@ def post_judgment_asset_merge_candidate_reject(candidate_id: str, req: JudgmentA
     return {"status": "ok", "candidate": candidate}
 
 
+class PolicyLikenessDecisionRequest(BaseModel):
+    is_policy: bool
+
+
+@router.get("/api/judgment-assets/policy-likeness/review")
+def get_policy_likeness_review(limit: int = 30) -> dict:
+    """方針らしさが中間（社内の目安）でユーザー未判定の判断資産。shadow なので回答には影響しない。"""
+    from api import policy_likeness
+
+    return policy_likeness.review_candidates(limit=limit)
+
+
+@router.post("/api/judgment-assets/policy-likeness/{rule_id}/decision")
+def post_policy_likeness_decision(rule_id: str, req: PolicyLikenessDecisionRequest) -> dict:
+    if os.environ.get("K_SERVICE"):
+        raise HTTPException(status_code=409, detail="方針らしさの判定はローカル環境の画面から行ってください")
+    from api import policy_likeness
+
+    try:
+        row = policy_likeness.record_decision(rule_id, req.is_policy)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="policy likeness item not found")
+    return {"status": "ok", "item": row}
+
+
 @router.post("/api/judgment-assets/promotion-candidates/{candidate_id}/review")
 def post_judgment_asset_promotion_candidate_review(
     candidate_id: str,

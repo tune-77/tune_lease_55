@@ -6,8 +6,8 @@ from api.main import app
 
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
-EXPECTED_ROUTE_COUNT = 285
-EXPECTED_ROUTE_SHA256 = "3cec8ec60e0c7ef6bbd11b1632be508b9812b78f81ecccf1eafdb039e8f34e37"
+EXPECTED_ROUTE_COUNT = 287
+EXPECTED_ROUTE_SHA256 = "357398786e74f8f7f5667cf0a4f583b3faeb7c6bfb3cf5945086df45a0a51ee1"
 
 
 def _route_signatures() -> list[str]:

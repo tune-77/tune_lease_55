@@ -142,6 +142,18 @@ type MergeCandidate = {
   created_at?: string;
 };
 
+type PolicyLikenessItem = {
+  id: string;
+  statement: string;
+  probability: number;
+  tier: string;
+};
+
+type PolicyLikenessResponse = {
+  total_count: number;
+  candidates: PolicyLikenessItem[];
+};
+
 type MergeCandidateResponse = {
   total_count: number;
   candidates: MergeCandidate[];
@@ -672,6 +684,8 @@ export default function JudgmentReviewPage() {
 
         <MergeCandidatesSection onMerged={refreshPromotionCandidates} />
 
+        <PolicyLikenessSection />
+
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-start">
             <div className="flex items-start gap-3">
@@ -1132,6 +1146,129 @@ function MergeCandidatesSection({ onMerged }: { onMerged: () => Promise<unknown>
                 >
                   <CheckCircle2 className="h-4 w-4" />
                   既存資産へ統合
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PolicyLikenessSection() {
+  const [items, setItems] = useState<PolicyLikenessItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(
+    () =>
+      apiClient
+        .get<PolicyLikenessResponse>("/api/judgment-assets/policy-likeness/review", { params: { limit: 30 } })
+        .then((response) => {
+          setItems(response.data.candidates ?? []);
+          setTotal(response.data.total_count ?? 0);
+          return response.data;
+        }),
+    [],
+  );
+
+  useEffect(() => {
+    // 補助的な一覧なので、取得失敗でレビュー画面全体は止めない
+    load().catch(() => setError("方針らしさの判定待ちを読み込めませんでした。"));
+  }, [load]);
+
+  const decide = useCallback(
+    async (item: PolicyLikenessItem, isPolicy: boolean) => {
+      setBusy((current) => ({ ...current, [item.id]: true }));
+      setError("");
+      try {
+        await apiClient.post(`/api/judgment-assets/policy-likeness/${encodeURIComponent(item.id)}/decision`, {
+          is_policy: isPolicy,
+        });
+        const refreshed = await load();
+        setNotice(`「${isPolicy ? "方針" : "知見"}」として記録しました。残り ${refreshed.total_count} 件。`);
+      } catch (err) {
+        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setError(detail || "判定を保存できませんでした。もう一度お試しください。");
+      } finally {
+        setBusy((current) => ({ ...current, [item.id]: false }));
+      }
+    },
+    [load],
+  );
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-pink-600 text-white">
+          <ClipboardCheck className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-black text-slate-900">方針として扱うか（社内の目安）</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            方針か知見か迷う中間の判断資産です。「この物件・この先はやれる／やれない・こうする」という社内の取扱い基準なら方針、
+            一般論・心構え・確認手順なら知見を選んでください。
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-xs font-black uppercase tracking-wide text-slate-500">安全線</p>
+        <p className="mt-1 text-sm leading-6 text-slate-700">
+          試行中（shadow）のため、ここでの選択はまだ回答に反映しません。次の基準づくりと精度の評価に使う正解として貯めます。
+        </p>
+      </div>
+
+      {notice && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-700">
+          <AlertCircle className="h-5 w-5" />
+          {notice}
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
+          <AlertCircle className="h-5 w-5" />
+          {error}
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+          <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+          <p className="mt-3 font-black text-slate-800">判定待ちはありません</p>
+        </div>
+      ) : (
+        <div className="mt-5 space-y-4">
+          <p className="text-sm font-bold text-slate-500">判定待ち {total} 件</p>
+          {items.map((item) => (
+            <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <span className="rounded-full border border-pink-200 bg-pink-50 px-2.5 py-1 text-xs font-black text-pink-700">
+                方針らしさ {Math.round(item.probability * 100)}%
+              </span>
+              <div className="mt-3">
+                <InfoBlock label={`判断資産（${item.id.slice(0, 8)}）`} value={item.statement} />
+              </div>
+              <div className="mt-4 flex flex-col gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => decide(item, false)}
+                  disabled={!!busy[item.id]}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <XCircle className="h-4 w-4" />
+                  知見のまま
+                </button>
+                <button
+                  type="button"
+                  onClick={() => decide(item, true)}
+                  disabled={!!busy[item.id]}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 py-2.5 text-sm font-black text-white hover:bg-pink-700 disabled:opacity-50"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  方針として扱う
                 </button>
               </div>
             </article>
