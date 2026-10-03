@@ -359,6 +359,11 @@ else
   log_step "detailed_growth_sidecars_skipped" 0
 fi
 
+echo ""
+echo "[shadow] 判断資産の方針らしさを Jev で採点（回答には使わない。中間は /judgment-review で1タップ判定）..."
+"${PYTHON}" "${PROJECT_ROOT}/scripts/score_policy_likeness_shadow.py"
+log_step "score_policy_likeness_shadow" $?
+
 RUN_JUDGMENT_ASSET_GRAPH=0
 if [ "${JUDGMENT_ASSET_GRAPH_FREQUENCY}" = "daily" ]; then
   RUN_JUDGMENT_ASSET_GRAPH=1
