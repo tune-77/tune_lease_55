@@ -454,6 +454,35 @@ def _resolve_vector_scores(
     return {}
 
 
+def matching_policy_records(
+    question: str, *, index_path: Path | None = None, exclude_texts: set[str] | None = None, limit: int = 2
+) -> list[dict[str, Any]]:
+    """記憶索引の方針型判断資産のうち、問いと審査語・文字bigramで一致するものを一致度順に返す。"""
+    from api.chat_teaching_capture import _GENERIC_DOMAIN_TERMS, _ngrams
+    from api.judgment_policy import POLICY, knowledge_kind_of
+    from memory_promotion_policy import TEACHING_DOMAIN_TERMS
+
+    grams = _ngrams(question)
+    if len(grams) < 3:
+        return []
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for record in load_memory_index(index_path or resolve_index_path()).get("records") or []:
+        if not isinstance(record, dict) or record.get("source") != "canonical_judgment_rules":
+            continue
+        if str(record.get("status") or "active") != "active":
+            continue
+        content = str(record.get("content") or "").strip()
+        if not content or content[:260] in (exclude_texts or set()) or knowledge_kind_of(record, content) != POLICY:
+            continue
+        # 汎用語（リース・取引等）を除く審査語の共有が2語以上、または1語＋文字bigram一致率0.15以上
+        shared = {t for t in TEACHING_DOMAIN_TERMS if t not in _GENERIC_DOMAIN_TERMS and t in question and t in content}
+        overlap = len(grams & _ngrams(content)) / len(grams)
+        if len(shared) >= 2 or (shared and overlap >= 0.15):
+            scored.append((len(shared) + overlap, record))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [record for _score, record in scored[:limit]]
+
+
 def build_recall_prompt_block(
     question: str,
     *,
@@ -467,8 +496,6 @@ def build_recall_prompt_block(
         _append_usage_log(recalled, usage_log_path, question=question)
     memories = recalled.get("memories") or []
     practical_scene = recalled.get("practical_scene") or {}
-    if not memories and not practical_scene:
-        return "", recalled
     from api.judgment_policy import INSIGHT_CITATION_INSTRUCTION, POLICY, asset_citation, format_policy_block, knowledge_kind_of
 
     # 判断資産のうち方針型（社内ルール）は、一般の想起メモに混ぜず、結論として述べる指示つきで先頭に出す
@@ -481,9 +508,15 @@ def build_recall_prompt_block(
         else:
             other_memories.append(record)
     memories = other_memories
-    policy_block = format_policy_block(policies)
+    # 方針は数件しかないので、上位N件の想起から漏れても全件を問いと突き合わせて拾う
+    # （「銀行取引のない会社」と「銀行と取引のない企業」のような言い回し違いで落ちた実例: 2026-10-03）
+    for extra in matching_policy_records(question, index_path=index_path, exclude_texts={p["text"] for p in policies}):
+        policies.append(
+            {"text": str(extra.get("content") or "")[:260], "source": asset_citation(str(extra.get("judgment_asset_id") or ""), str(extra.get("created_at") or ""))}
+        )
+    policy_block = format_policy_block(policies[:3])
     if not memories and not practical_scene:
-        return policy_block, recalled
+        return policy_block, recalled  # 想起が空でも、問いに合う方針があれば出す
     lines = [
         *([policy_block, ""] if policy_block else []),
         "【紫苑の想起メモ】",

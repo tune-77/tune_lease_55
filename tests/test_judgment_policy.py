@@ -86,3 +86,21 @@ def test_backfill_adds_kind_once(tmp_path) -> None:
     assert backfill.backfill_candidates(cands, dry_run=False) == {"added": 1, "policy": 1}
     assert backfill.backfill_rules(rules, dry_run=False) == {"added": 0, "policy": 0}
     assert json.loads(rules.read_text())["rules"][0]["knowledge_kind"] == "policy"
+
+
+def test_policy_missed_by_top_k_recall_is_still_lifted_by_wording_variant(monkeypatch, tmp_path) -> None:
+    from api import shion_memory_recall as recall
+
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps({"records": [
+        {"source": "canonical_judgment_rules", "status": "active", "knowledge_kind": "policy", "judgment_asset_id": "93d1b22c", "created_at": "2026-10-02",
+         "content": "銀行と取引のない企業とは付き合わない 資料がすぐ出てこない企業とも付き合わない"},
+        {"source": "canonical_judgment_rules", "status": "active", "knowledge_kind": "insight", "judgment_asset_id": "x", "content": "銀行取引の薄い先は資金繰り表を確認する"},
+    ]}, ensure_ascii=False))
+    monkeypatch.setattr(recall, "recall_memories", lambda q, limit, index_path=None: {"memories": [], "route": "case_screening", "refs": []})
+
+    block, _ = recall.build_recall_prompt_block("銀行取引のない会社からリースの申込があった。どう判断する？", index_path=index, log_usage=False)
+    assert block.startswith(POLICY_HEADER) and "付き合わない（出典: 判断資産 93d1b22c・2026-10-02 教示）" in block
+
+    block, _ = recall.build_recall_prompt_block("法定耐用年数はリース審査でどう使う？", index_path=index, log_usage=False)
+    assert block == ""  # 関係のない問いには方針を出さない
