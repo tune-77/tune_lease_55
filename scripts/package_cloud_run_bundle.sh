@@ -46,6 +46,7 @@ else
 fi
 copy_if_exists "$ROOT_DIR/data/screening_db.sqlite" "$DATA_OUT/"
 copy_if_exists "$ROOT_DIR/data/user_personal_memory.md" "$DATA_OUT/"
+copy_if_exists "$ROOT_DIR/data/user_personal_memory_archive.json" "$DATA_OUT/"
 copy_if_exists "$ROOT_DIR/reports/obsidian_daily_intelligence_latest.json" "$BUNDLE_DIR/"
 
 REPORTS_OUT="$BUNDLE_DIR/reports"

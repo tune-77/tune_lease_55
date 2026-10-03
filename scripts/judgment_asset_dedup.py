@@ -671,6 +671,18 @@ def main() -> None:
     )
     summary = {k: report[k] for k in ("date", "dry_run", "before_active", "after_active", "auto_merged_sources", "new_candidates", "pending_candidates", "backup")}
     print(json.dumps({**summary, "jev": report["jev"], "auto_merges": report["auto_merges"]}, ensure_ascii=False, indent=2))
+    # 同じ週次ジョブで、紫苑のユーザー個人記憶も同じ考え方（削除せずアーカイブ・迷うものは候補）で整理する
+    try:
+        from api.user_personal_memory_archive import run as run_personal_memory_hygiene
+
+        personal = run_personal_memory_hygiene(
+            dry_run=args.dry_run,
+            similarity_fn=embedding_similarity,
+            pair_scorer=(lambda texts, question: transport.judge_binary_pairs(texts, question)[0]) if use_jev else None,
+        )
+        print(json.dumps({"user_personal_memory": {k: v for k, v in personal.items() if k != "auto"}}, ensure_ascii=False, indent=2))
+    except Exception as exc:  # noqa: BLE001 - 個人記憶の整理の失敗で判断資産の整理結果を落とさない
+        print(f"[user_personal_memory] 整理失敗: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
 # 実データ評価（experiments/judgment_asset_dedup_jev/README.md）: 0.2 未満で落としても
