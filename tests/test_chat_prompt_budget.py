@@ -32,11 +32,14 @@ def test_core_and_policy_are_never_cut_and_low_tiers_go_first() -> None:
 def test_ordered_blocks_drop_from_the_end_and_history_from_the_start() -> None:
     rag = _bullets("根拠", 200)
     hist = "\n\n【会話履歴の要約】\n" + "\n".join(f"- 発言{i}" + "い" * 30 for i in range(100))
-    _, report = budget.assemble_prompt([("rag_context", rag), ("chat_history_summary_context", hist)], question="x", surface="test", max_chars=100000, log=False)
-    prompt, _ = budget.assemble_prompt([("rag_context", rag), ("chat_history_summary_context", hist)], question="x", surface="test", max_chars=100000, log=False)
-    assert "根拠0" in prompt and "根拠199" not in prompt  # 関連度順なので末尾（低い方）から
-    assert "発言99" in prompt and "発言0あ" not in prompt and "発言0い" not in prompt  # 古いものから
+    prompt, report = budget.assemble_prompt([("rag_context", rag), ("chat_history_summary_context", hist)], question="x", surface="test", max_chars=9000, log=False)
+    assert "根拠0" in prompt and "根拠199" not in prompt  # 上限を超えたので根拠も予算へ。関連度順なので末尾から
     assert report["blocks"]["rag_context"]["budget_cut"] > 0
+    assert report["blocks"]["chat_history_summary_context"]["kept"] == 0  # 根拠より低い層の履歴が先に削られる
+    hist_only, _ = budget.assemble_prompt([("chat_history_summary_context", hist)], question="x", surface="test", max_chars=100000, log=False)
+    assert "発言99" in hist_only and "発言0い" not in hist_only  # 会話履歴は予算内へ、古いものから
+    roomy, report = budget.assemble_prompt([("rag_context", rag)], question="x", surface="test", max_chars=100000, log=False)
+    assert roomy == rag and report["blocks"]["rag_context"]["budget_cut"] == 0  # 余裕があれば根拠は削らない
 
 
 def test_relevance_mode_keeps_items_related_to_the_question() -> None:

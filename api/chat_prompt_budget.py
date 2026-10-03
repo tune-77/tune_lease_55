@@ -7,11 +7,12 @@ RAG/Knowledge の95%・回答の形の指示の93%・記憶の想起の62%が消
 
 方式:
 1. 重複の除去: 同じ項目（判断資産など）が複数のブロックにあれば、優先度の高いブロックの1つだけ残す
-2. ブロックごとの予算: 予算を超えたブロックは、項目（段落・箇条書き）単位で関連度の低いものから落とす
+2. ブロックごとの予算: 記憶の想起〜補助の層は常に、方針〜根拠の層は合計が上限を超えた時だけ、
+   予算を超えたブロックを項目（段落・箇条書き）単位で関連度の低いものから落とす
    - ordered: 既に関連度順に並んでいる（RAG・想起）→ 末尾から落とす
    - relevance: 質問との文字bigram一致率が低い項目から落とす（残す項目の元の順番は保つ）
    - oldest_first: 会話履歴 → 古い（先頭の）項目から落とす
-3. 合計が上限を超えたら、優先度の低い層から順に削る（core は削らない）
+3. それでも合計が上限を超えたら、優先度の低い層から順に削る（core は削らない）
 並び順は変えない（人格・口調への影響を避けるため。削られなくなったので順番は重み付けだけに効く）。
 社内方針の節は reserved_tail として必ず末尾に付ける（PR #1225）。
 落とした量はブロック名と文字数だけを data/chat_prompt_budget_log.jsonl に記録する（本文は残さない）。
@@ -206,25 +207,37 @@ def assemble_prompt(
             kept_items.append(item)
         deduped = text if len(kept_items) == len(items) else _join(lead, kept_items)
         report[name]["dedup"] = len(text) - len(deduped)
-        # 2. ブロックごとの予算
-        fitted = _fit(deduped, spec.budget, spec.mode, grams) if spec.budget else deduped
-        report[name]["budget_cut"] = len(deduped) - len(fitted)
-        texts[i] = fitted
+        texts[i] = deduped
 
-    # 3. 合計が上限を超えたら低い層から削る（core は削らない）
     limit = max(0, max_chars - (len(tail) + 2 if tail else 0))
-    total = sum(len(t) for t in texts.values())
-    for tier in range(AUX, CORE, -1):
-        if total <= limit:
-            break
-        for i in sorted((i for i in texts if SPECS.get(blocks[i][0], DEFAULT_SPEC).tier == tier), reverse=True):
-            if total <= limit:
-                break
-            before = len(texts[i])
-            target = max(0, before - (total - limit))
-            texts[i] = _fit(texts[i], target, SPECS.get(blocks[i][0], DEFAULT_SPEC).mode, grams) if target else ""
-            report[blocks[i][0]]["overflow_cut"] += before - len(texts[i])
-            total -= before - len(texts[i])
+
+    def apply_budgets(tiers: range) -> None:
+        for i, (name, _text) in enumerate(blocks):
+            spec = SPECS.get(name, DEFAULT_SPEC)
+            if spec.tier in tiers and spec.budget and len(texts[i]) > spec.budget:
+                before = len(texts[i])
+                texts[i] = _fit(texts[i], spec.budget, spec.mode, grams)
+                report[name]["budget_cut"] += before - len(texts[i])
+
+    def overflow(tiers: range) -> None:
+        total = sum(len(t) for t in texts.values())
+        for tier in sorted(tiers, reverse=True):
+            for i in sorted((i for i in texts if SPECS.get(blocks[i][0], DEFAULT_SPEC).tier == tier), reverse=True):
+                if total <= limit:
+                    return
+                before = len(texts[i])
+                target = max(0, before - (total - limit))
+                texts[i] = _fit(texts[i], target, SPECS.get(blocks[i][0], DEFAULT_SPEC).mode, grams) if target else ""
+                report[blocks[i][0]]["overflow_cut"] += before - len(texts[i])
+                total -= before - len(texts[i])
+
+    # 2. 記憶の想起〜補助は常に予算内へ（太りやすい層）。3. 超過分はまず低い層から削る
+    apply_budgets(range(MEMORY, AUX + 1))
+    overflow(range(MEMORY, AUX + 1))
+    # 4. それでも超える時だけ、方針〜根拠の層にも予算を当て、さらに低い層から削る（core は削らない）
+    if sum(len(t) for t in texts.values()) > limit:
+        apply_budgets(range(TAUGHT, EVIDENCE + 1))
+        overflow(range(TAUGHT, EVIDENCE + 1))
 
     prompt = "".join(texts[i] for i in range(len(blocks)))
     if tail:
