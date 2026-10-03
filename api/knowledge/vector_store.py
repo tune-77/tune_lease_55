@@ -117,6 +117,9 @@ _DEFAULT_RANKING_CONFIG = {
 }
 
 _SEARCH_LOG_PATH = os.path.join(_REPO_ROOT, "data", "rag_search_log.jsonl")
+# キーワード検索は全文書を Chroma から取り出す（約2万件で1回約4.5秒）。1回の search で拡張クエリ込み
+# 最大5回呼ばれ、1リクエスト20秒超になっていたため、文書数が同じ間は短時間だけ使い回す。
+_KEYWORD_DOCS_TTL_S = 30.0
 _search_log_lock = threading.Lock()
 
 # RAG 信頼度スコア（REV-179）。閾値を参照する側は必ずここから import する
@@ -478,6 +481,15 @@ class KnowledgeVectorStore:
                 seen.add(t)
         return tuple(result)
 
+    def _keyword_documents(self) -> dict:
+        count = self._collection.count()
+        cached = getattr(self, "_keyword_docs_cache", None)
+        if cached and cached[0] == count and time.monotonic() - cached[1] < _KEYWORD_DOCS_TTL_S:
+            return cached[2]
+        result = self._collection.get(include=["documents", "metadatas"])
+        self._keyword_docs_cache = (count, time.monotonic(), result)
+        return result
+
     def _keyword_search(self, query: str, top_k: int) -> list[dict]:
         """encoder が使えない環境向けの Chroma document キーワード検索。"""
         self._ensure_collection()
@@ -485,7 +497,7 @@ class KnowledgeVectorStore:
         if not terms or self._collection.count() == 0:
             return []
         try:
-            result = self._collection.get(include=["documents", "metadatas"])
+            result = self._keyword_documents()
         except Exception as exc:
             logger.warning("[KnowledgeVectorStore] keyword fallback failed: %s", exc)
             return []

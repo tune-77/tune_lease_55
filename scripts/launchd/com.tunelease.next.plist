@@ -51,8 +51,10 @@
   <key>KeepAlive</key>
   <true/>
 
+  <!-- 画面からの要求に答える常駐なので Interactive。Background だと CPU・I/O が絞られ、
+       チャット1件が10分近くかかって Cloudflare のタイムアウト（約100秒）でエラーになった（2026-10-04）。 -->
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Interactive</string>
 
   <key>ThrottleInterval</key>
   <integer>10</integer>
