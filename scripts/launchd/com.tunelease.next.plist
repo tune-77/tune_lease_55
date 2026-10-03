@@ -21,6 +21,10 @@
     <string>1</string>
     <key>PUBLIC_TUNNEL</key>
     <string>1</string>
+    <!-- 固定URL https://shion.tune77.com。CLOUDFLARE_TUNNEL_CONFIG（ホーム配下の設定ファイル）は
+         scripts/install_next_launchagent.sh が存在確認して注入する。無ければ quick tunnel にフォールバック。 -->
+    <key>CLOUDFLARE_TUNNEL_HOSTNAME</key>
+    <string>shion.tune77.com</string>
     <key>API_HOST</key>
     <string>127.0.0.1</string>
     <key>NEXT_HOST</key>

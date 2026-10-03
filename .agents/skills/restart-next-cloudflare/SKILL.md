@@ -69,7 +69,7 @@ FORCE_RESTART=1 PATH=/usr/local/bin:/opt/homebrew/bin:/Applications/Codex.app/Co
 ## Workflow
 
 Reason: the app stack has separate API, Next, and tunnel processes, and a full foreground restart is more disruptive than targeted service recovery.
-Scope: use when restoring local Next/FastAPI availability or refreshing the public Cloudflare quick tunnel.
+Scope: use when restoring local Next/FastAPI availability or reconnecting the public Cloudflare named tunnel.
 Retirement: remove this workflow if the LaunchAgent exposes a reliable health-and-restart command that handles API, Next, and tunnel checks end to end.
 
 1. Run `python scripts/ops_friction_doctor.py` to catch repeated operational traps from recent logs.
@@ -82,11 +82,14 @@ Retirement: remove this workflow if the LaunchAgent exposes a reliable health-an
 8. Verify health:
 
 ```bash
-curl --max-time 10 -sS http://127.0.0.1:8000/docs >/dev/null
+curl --max-time 10 -sS http://127.0.0.1:8000/healthz >/dev/null
 curl --max-time 10 -sS http://127.0.0.1:3000/ >/dev/null
+curl --max-time 15 -s -o /dev/null -w '%{http_code}\n' https://shion.tune77.com/chat  # expect 200
 ```
 
-9. Report the local Next URL and the newest Cloudflare URL.
+`/docs` is disabled (404) in public-tunnel mode, so never wait on it.
+
+9. Report the local Next URL and the fixed public URL https://shion.tune77.com.
 
 ## Notes
 
@@ -99,4 +102,5 @@ Retirement: remove these notes when `run_next_stable.sh` enforces tunnel mode, b
 - Local sandbox `curl` can occasionally fail even while `next-server` is listening. Check `lsof -nP -iTCP:3000 -sTCP:LISTEN` or use an approved external `curl --max-time` before forcing a full restart.
 - If `cloudflared` is missing, say so and install only after user approval.
 - Do not kill unrelated processes. Only rely on `run_next_stable.sh` cleanup or ask before destructive cleanup.
-- Default mode is Cloudflare's "quick tunnel" (`cloudflared tunnel --url ...`): no auth, ephemeral URL, not officially supported for production, and prone to dropping. If `CLOUDFLARE_TUNNEL_CONFIG` (path to a named-tunnel config.yml) and `CLOUDFLARE_TUNNEL_HOSTNAME` are set, the launcher switches to a Named Tunnel with a stable, authenticated hostname instead — see `CLOUD_RUN.md` / the top of `run_next_stable.sh` for setup.
+- Production uses the Cloudflare named tunnel `tune-lease-55` with the fixed URL https://shion.tune77.com (config `~/.cloudflared/tune-lease-55.yml`). `run_next_stable.sh` picks it up by default when that file exists; restarts keep the same URL. Without the file it falls back to a quick tunnel (`cloudflared tunnel --url ...`, ephemeral URL, prone to dropping).
+- The launcher's tunnel loop restarts `cloudflared` if it exits, and the daily Slack report warns under "システム監視" when the public URL does not return 200.

@@ -95,7 +95,7 @@
 - **Core Principle**: リース知性体として重要なのは、仕組みを増やすことではなく、止めずに回し続けること。影響: 判断基準は追加より継続、複雑化より持続性に置く。次の行動: 迷ったら「回っているか」を先に確認する。
 - **Aspiration**: 世界初のリース知性体を目指す。影響: 単なる審査支援ではなく、知識・判断・改善が連続的に進化する存在を目標に置く。次の行動: 目標に沿って、継続運用と再利用性を優先する。
 - **Obsidian Default**: 既定の保存先は iCloud 上の `Obsidian Vault`。影響: `~/Documents/Obsidian Vault` を既定として案内すると誤誘導になる。次の行動: 保存先案内・スクリプト・説明文は iCloud Vault を先に示す。
-- **Operational Restart**: Next/FastAPI/Cloudflare は LaunchAgent 前提で維持し、quick tunnel URL は使い捨てとして扱う。影響: 再起動時は stale lock を消し、最新ログの URL と local/tunnel の両方を確認する。次の行動: `curl 200` だけで完了扱いにしない。
+- **Operational Restart**: Next/FastAPI/Cloudflare は LaunchAgent 前提で維持し、公開URLは固定の https://shion.tune77.com（named tunnel、2026-10-04〜。それ以前の quick tunnel URL は使い捨てだった）。影響: 再起動時は stale lock を消し、local と https://shion.tune77.com/chat の両方を確認する。次の行動: `curl 200` だけで完了扱いにしない。
 - **UI Triage**: `curl 200` は十分条件ではない。影響: `/home` が loading-only shell を返していないか、API の主要 endpoint が返っているか、実際の画面状態まで確認する。次の行動: 画面が開かない時は local + Cloudflare + API ログをセットで見る。
 - **Memory Hygiene**: `memory/YYYY-MM-DD.md` は raw log、`MEMORY.md` は昇格した長期記憶。影響: 日次メモは Snapshot と Promotable Items を付けて残し、重複・再発防止・方針変更だけを長期記憶に上げる。次の行動: 会話全文ではなく要約と決定を保存する。
 - **Dependency Triage**: 外部依存は `必須 / 任意 / 削れる` で扱う。影響: iCloud Obsidian やローカル正本は必須、Gist や補助分析は任意、生成物系は削れる候補として日次本体から外しやすくなる。次の行動: 壊れるものを止めるのではなく、止まっても本体を巻き込まない配置にする。

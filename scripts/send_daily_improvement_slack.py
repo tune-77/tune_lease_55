@@ -313,6 +313,8 @@ def _action_ledger_lines(action_ledger_report: dict[str, Any] | None) -> list[st
 # 閾値はチャットの自発報告（api/main.py）と揃える。
 _STALE_REPORT_DAYS = 3
 _PENDING_BACKLOG_THRESHOLD = 25
+# 公開URL（Cloudflare named tunnel）。空文字で監視を無効化（テスト・公開しない環境）。
+_PUBLIC_APP_URL = os.environ.get("TUNELEASE_PUBLIC_URL", "https://shion.tune77.com")
 
 
 def _system_monitor_lines(now: datetime | None = None) -> list[str]:
@@ -350,7 +352,32 @@ def _system_monitor_lines(now: datetime | None = None) -> list[str]:
     if aborted_line:
         problems.append(aborted_line)
 
+    public_url_line = _public_url_line()
+    if public_url_line:
+        problems.append(public_url_line)
+
     return problems if problems else ["• 異常なし"]
+
+
+def _public_url_line() -> str:
+    """公開URLが200を返さなければ警告行を返す。
+
+    2026-10-04 に quick tunnel が深夜に切れたまま朝まで誰も気づかなかったため、
+    トンネル（cloudflared）が落ちたままなら朝のレポートで知らせる。
+    """
+    if not _PUBLIC_APP_URL:
+        return ""
+    url = _PUBLIC_APP_URL.rstrip("/") + "/chat"
+    # Cloudflare は既定の Python-urllib UA を 403 で弾くため、監視用UAを明示する。
+    request = urllib.request.Request(url, headers={"User-Agent": "tunelease-morning-monitor/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=DEFAULT_TIMEOUT) as response:
+            status = response.getcode()
+    except Exception as exc:  # noqa: BLE001 — HTTPError(530等)も接続失敗も同じ扱い
+        status = getattr(exc, "code", None) or type(exc).__name__
+    if status == 200:
+        return ""
+    return f"• ⚠️ 公開URLが応答しません（{url} → `{status}`。cloudflared／Next.js 停止の可能性）"
 
 
 def _codex_queue_abort_line() -> str:

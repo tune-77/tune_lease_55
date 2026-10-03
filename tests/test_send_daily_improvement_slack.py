@@ -1,13 +1,42 @@
 from datetime import datetime
 import json
+import os
 import subprocess
 import sys
+
+import pytest
 
 from scripts.send_daily_improvement_slack import (
     build_message,
     _is_plausible_slack_webhook,
     should_skip,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_public_url_probe(monkeypatch):
+    # 公開URLの死活確認は外部通信になるため、明示的に検証するテスト以外では無効化する。
+    import scripts.send_daily_improvement_slack as mod
+
+    monkeypatch.setattr(mod, "_PUBLIC_APP_URL", "")
+
+
+def test_system_monitor_flags_unreachable_public_url(tmp_path, monkeypatch):
+    import urllib.error
+
+    import scripts.send_daily_improvement_slack as mod
+
+    def fake_urlopen(url, timeout):
+        raise urllib.error.HTTPError(url, 530, "origin unreachable", {}, None)
+
+    monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(mod, "_PUBLIC_APP_URL", "https://example.test")
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
+
+    text = "\n".join(mod._system_monitor_lines(now=datetime(2026, 10, 4, 6, 0, 0)))
+    assert "公開URLが応答しません" in text
+    assert "https://example.test/chat" in text
+    assert "`530`" in text
 
 
 def test_system_monitor_section_present_in_message():
@@ -106,6 +135,7 @@ def test_script_dry_run_works_when_executed_by_path(tmp_path):
         text=True,
         capture_output=True,
         check=False,
+        env={**os.environ, "TUNELEASE_PUBLIC_URL": ""},
     )
 
     assert result.returncode == 0, result.stderr
