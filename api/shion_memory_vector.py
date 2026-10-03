@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 from silent_failure_log import record_silent_failure
+from api.knowledge.chroma_write_lock import chroma_write_lock
 
 logger = logging.getLogger(__name__)
 
@@ -178,9 +179,8 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
          Cloud Run はデプロイの度にベクトルコレクションが空になるため、
          起動時に一度だけ index から再構築する必要がある。
     """
-    collection = _get_collection()
     encoder = _get_encoder()
-    if collection is None or encoder is None:
+    if encoder is None:
         return {"synced": 0, "skipped": 0, "available": 0}
 
     try:
@@ -205,47 +205,55 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
             continue
         targets.append(record)
 
-    # 全量再構築: コレクションごと作り直す。get(include=[]) は chromadb の
-    # バージョンによって挙動が違うため、delete_collection の方が版差に強い。
-    client = _get_client()
-    try:
-        if client is not None:
-            client.delete_collection(_COLLECTION_NAME)
-    except Exception:
-        pass  # 初回は存在しないだけなので無視してよい
-    collection = _get_collection()
-    if collection is None:
-        return {"synced": 0, "skipped": skipped, "available": len(targets)}
+    # 全量再構築中は同じ永続ストアを使う Obsidian RAG writer と排他する。
+    # embedding生成もロック内に置き、delete後の半端なコレクションへ別writerが
+    # 書き込む隙を作らない。タイムアウトは呼び出し元が延期として扱う。
+    with chroma_write_lock("shion_memory_sync"):
+        collection = _get_collection()
+        if collection is None:
+            return {"synced": 0, "skipped": skipped, "available": len(targets)}
 
-    synced = 0
-    started = time.monotonic()
-    for start in range(0, len(targets), batch_size):
-        batch = targets[start : start + batch_size]
-        # topic（ノートタイトル）があれば前置して埋め込む。分割スニペットは
-        # 主題語（例: 法定耐用年数）を失いやすく、topic 併用で想起精度が上がる。
-        contents = [
-            (f"{topic}: {r['content']}" if (topic := str(r.get("topic") or "").strip()) else str(r["content"]))[:512]
-            for r in batch
-        ]
+        # 全量再構築: コレクションごと作り直す。get(include=[]) は chromadb の
+        # バージョンによって挙動が違うため、delete_collection の方が版差に強い。
+        client = _get_client()
         try:
-            embeddings = encoder.encode(contents, show_progress_bar=False).tolist()
-            collection.add(
-                ids=[str(r["id"]) for r in batch],
-                embeddings=embeddings,
-                documents=contents,
-                metadatas=[
-                    {
-                        "memory_type": str(r.get("memory_type") or ""),
-                        "status": str(r.get("status") or "active"),
-                        "source_path": str(r.get("source_path") or ""),
-                        "domain": str(r.get("domain") or ""),
-                    }
-                    for r in batch
-                ],
-            )
-            synced += len(batch)
-        except Exception as exc:
-            logger.warning("[ShionMemoryVector] batch add failed: %s", exc)
+            if client is not None:
+                client.delete_collection(_COLLECTION_NAME)
+        except Exception:
+            pass  # 初回は存在しないだけなので無視してよい
+        collection = _get_collection()
+        if collection is None:
+            return {"synced": 0, "skipped": skipped, "available": len(targets)}
+
+        synced = 0
+        started = time.monotonic()
+        for start in range(0, len(targets), batch_size):
+            batch = targets[start : start + batch_size]
+            # topic（ノートタイトル）があれば前置して埋め込む。分割スニペットは
+            # 主題語（例: 法定耐用年数）を失いやすく、topic 併用で想起精度が上がる。
+            contents = [
+                (f"{topic}: {r['content']}" if (topic := str(r.get("topic") or "").strip()) else str(r["content"]))[:512]
+                for r in batch
+            ]
+            try:
+                embeddings = encoder.encode(contents, show_progress_bar=False).tolist()
+                collection.add(
+                    ids=[str(r["id"]) for r in batch],
+                    embeddings=embeddings,
+                    documents=contents,
+                    metadatas=[
+                        {
+                            "memory_type": str(r.get("memory_type") or ""),
+                            "status": str(r.get("status") or "active"),
+                            "source_path": str(r.get("source_path") or ""),
+                            "domain": str(r.get("domain") or ""),
+                        }
+                        for r in batch
+                    ],
+                )
+                synced += len(batch)
+            except Exception as exc:
+                logger.warning("[ShionMemoryVector] batch add failed: %s", exc)
 
     from api.memory_cost_log import log_memory_cost
 

@@ -15,12 +15,16 @@ cd "$PROJECT_DIR"
 "$PYTHON" -m mobile_app.rag_daily_maintenance
 REINDEX_EXIT=$?
 
-if [ $REINDEX_EXIT -ne 0 ]; then
+if [ $REINDEX_EXIT -eq 75 ]; then
+    echo "[run_obsidian_reindex] ChromaDB writer が使用中のため reindex を延期しました。GCS sync もスキップします"
+elif [ $REINDEX_EXIT -ne 0 ]; then
     echo "[run_obsidian_reindex] reindex が失敗しました (exit=$REINDEX_EXIT)。GCS sync は実行します"
 fi
 
 # --- ChromaDB GCS sync (失敗してもreindexの結果を変えない) ---
-bash "$SYNC_SCRIPT" || true
+if [ $REINDEX_EXIT -ne 75 ]; then
+    bash "$SYNC_SCRIPT" || true
+fi
 
 # --- Retrieval graph index (router/index/edges) 再構築 ---
 # Cloud Runデプロイ時(package_cloud_run_bundle.sh)のスナップショットのままだと
