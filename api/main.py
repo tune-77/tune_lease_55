@@ -6502,7 +6502,7 @@ def delete_lease_intelligence_dialogue_history():
     }
 
 
-def _cap_system_prompt(prompt: str, *, surface: str) -> str:
+def _cap_system_prompt(prompt: str, *, surface: str, reserved_tail: str = "") -> str:
     """/api/chat のシステムプロンプト合計量に上限を設ける。
 
     チャット経路は10数個の文脈ブロック（想起・経験ループ・ニュース・RAG等）を連結して
@@ -6510,8 +6510,17 @@ def _cap_system_prompt(prompt: str, *, surface: str) -> str:
     （個別ブロックは context_budget で制御されるが合計は無検査だった）。
     上限超過時は、後から連結された低優先ブロック側（末尾）から段落単位で削り、
     どれだけ削ったかを warning ログに残す。ベース人格・モード指示は先頭にあるため残る。
+    reserved_tail（社内方針の節など）は削らずに末尾へ付ける。その分だけ本体の上限を狭める。
     """
+    tail = str(reserved_tail or "").strip()
     max_chars = int(os.environ.get("CHAT_SYSTEM_PROMPT_MAX_CHARS", "24000"))
+    if tail:
+        body_cap = _cap_system_prompt_body(prompt, surface=surface, max_chars=max_chars - len(tail) - 2 if max_chars > 0 else 0)
+        return f"{body_cap}\n\n{tail}" if body_cap else tail
+    return _cap_system_prompt_body(prompt, surface=surface, max_chars=max_chars)
+
+
+def _cap_system_prompt_body(prompt: str, *, surface: str, max_chars: int) -> str:
     if max_chars <= 0 or len(prompt) <= max_chars:
         return prompt
     parts = prompt.split("\n\n")
@@ -7105,7 +7114,6 @@ def post_chat(req: ChatRequest):
                 case_screening_mentor_dialogue_context,
                 f"\n\n{memory_recall_context}" if memory_recall_context else "",
                 chat_history_summary_context,
-                f"\n\n{policy_prompt_context}" if policy_prompt_context else "",
             ])
             pdca_block = (
                 build_pdca_prompt_block()
@@ -7118,7 +7126,7 @@ def post_chat(req: ChatRequest):
             )
             base_general_with_pdca = append_optional_block(base_system_prompt, pdca_block)
             effective_system_prompt = _cap_system_prompt(
-                base_general_with_pdca, surface="next_chat_general"
+                base_general_with_pdca, surface="next_chat_general", reserved_tail=policy_prompt_context
             )
             log_prompt_composition(
                 surface="next_chat_general",
@@ -7560,7 +7568,6 @@ def post_chat(req: ChatRequest):
             case_screening_mentor_dialogue_context,
             guidance.prompt_suffix,
             chat_history_summary_context,
-            f"\n\n{policy_prompt_context}" if policy_prompt_context else "",
         ])
         pdca_block = (
             build_pdca_prompt_block()
@@ -7572,7 +7579,8 @@ def post_chat(req: ChatRequest):
             else ""
         )
         base_with_pdca = append_optional_block(base_effective_prompt, pdca_block)
-        effective_prompt = _cap_system_prompt(base_with_pdca, surface="next_chat_rag")
+        # 社内方針は上限で末尾から削られないよう、cap の外で最後に付ける
+        effective_prompt = _cap_system_prompt(base_with_pdca, surface="next_chat_rag", reserved_tail=policy_prompt_context)
         # 計測のみ。太りやすいブロックだけ名前を付け、残りは unaccounted_chars に出す。
         log_prompt_composition(
             surface="next_chat_rag",

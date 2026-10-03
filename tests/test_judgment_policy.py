@@ -116,3 +116,14 @@ def test_split_and_merge_move_policies_into_one_block() -> None:
     merged = merge_policy_blocks(policy, split_policy_block(b)[0])
     assert merged.count("- 方針: ") == 2 and "より前にある回答の型" in merged
     assert split_policy_block("方針なし") == ("", "方針なし") and merge_policy_blocks("", "") == ""
+
+
+def test_policy_tail_survives_prompt_cap(monkeypatch) -> None:
+    from api.main import _cap_system_prompt
+
+    monkeypatch.setenv("CHAT_SYSTEM_PROMPT_MAX_CHARS", "300")
+    body = "\n\n".join(f"ブロック{i}" + "あ" * 60 for i in range(10))
+    tail = POLICY_HEADER + "\n- 方針: 銀行と取引のない企業とは付き合わない（出典: 判断資産 93d1b22c）"
+    capped = _cap_system_prompt(body, surface="test", reserved_tail=tail)
+    assert capped.endswith(tail) and len(capped) <= 300 and capped.startswith("ブロック0")
+    assert _cap_system_prompt(body, surface="test").startswith("ブロック0")  # 方針なしは従来どおり
