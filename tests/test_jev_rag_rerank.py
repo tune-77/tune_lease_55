@@ -124,11 +124,11 @@ def test_eval_scores_jev_mechanically_with_fallback_and_covered_subset() -> None
 
 def test_jev_promotion_is_tracked_separately(tmp_path) -> None:
     path = tmp_path / "jev.json"
-    night = {"chroma": {"hit_at_k_rate": 0.55, "mrr": 0.40}, "jev_rerank": {"hit_at_k_rate": 0.60, "mrr": 0.50}}
+    night = {"chroma": {"hit_at_k_rate": 0.55, "mrr": 0.40}, "jev_rerank": {"hit_at_k_rate": 0.60, "mrr": 0.50, "calls": 42}}
     for i in range(3):
         promoted, reason = vx_eval.update_jev_state(night, f"2026-10-0{i + 3}T05:40", path)
     assert promoted is True and json.loads(path.read_text())["promoted"] is True
-    worse = {"chroma": {"hit_at_k_rate": 0.55, "mrr": 0.40}, "jev_rerank": {"hit_at_k_rate": 0.50, "mrr": 0.42}}
+    worse = {"chroma": {"hit_at_k_rate": 0.55, "mrr": 0.40}, "jev_rerank": {"hit_at_k_rate": 0.50, "mrr": 0.42, "calls": 42}}
     assert vx_eval.update_jev_state(worse, "2026-10-06T05:40", path)[0] is False
 
 
@@ -137,3 +137,16 @@ def test_vertex_covered_ids_reads_export_manifest(tmp_path) -> None:
     manifest.write_text(json.dumps({"documents": [{"source_path": "Projects/tune_lease_55/Research/残価.md"}]}, ensure_ascii=False))
     cases = [{"id": "a", "expected_path_any": ["Research/残価.md"]}, {"id": "b", "expected_path_any": ["リース知識/x.md"]}]
     assert vx_eval.vertex_covered_ids(cases, manifest) == {"a"}
+
+
+def test_night_where_jev_failed_everywhere_is_not_counted(tmp_path) -> None:
+    path = tmp_path / "jev.json"
+    failed = {"chroma": {"hit_at_k_rate": 0.55, "mrr": 0.40}, "jev_rerank": {"hit_at_k_rate": 0.55, "mrr": 0.40, "calls": 0, "failures": 42}}
+    promoted, reason = vx_eval.update_jev_state(failed, "2026-10-03T12:00", path)
+    state = json.loads(path.read_text())
+    assert promoted is False and "不通" in reason and not state.get("history") and state["last_failures"] == 42
+
+
+def test_daily_script_points_jev_at_keychain() -> None:
+    script = (Path(__file__).resolve().parents[1] / "scripts" / "run_vertex_credit_daily.sh").read_text(encoding="utf-8")
+    assert 'TYPESAFE_API_KEYCHAIN_SERVICE="${TYPESAFE_API_KEYCHAIN_SERVICE:-typesafe-api-key}"' in script

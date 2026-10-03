@@ -7,7 +7,9 @@
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${PYTHON:-${PROJECT_ROOT}/.venv/bin/python}"
 LOG_DATE="$(date +%Y%m%d)"
-export PROJECT_ROOT PYTHON LOG_DATE
+# Jev（TypeSafe）の鍵はキーチェーンから読む（core.sh と同じサービス名）。未設定だと Jev 並べ替えの評価が全問不通になる
+TYPESAFE_API_KEYCHAIN_SERVICE="${TYPESAFE_API_KEYCHAIN_SERVICE:-typesafe-api-key}"
+export PROJECT_ROOT PYTHON LOG_DATE TYPESAFE_API_KEYCHAIN_SERVICE
 cd "${PROJECT_ROOT}" || exit 1
 source "${PROJECT_ROOT}/scripts/pipeline_log_step.sh"
 
