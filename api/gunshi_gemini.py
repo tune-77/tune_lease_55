@@ -14,6 +14,7 @@ from shinsa_gunshi_logic import (
     select_top_phrases,
     PHRASES_100,
 )
+from silent_failure_log import record_silent_failure
 
 
 def _gemini_stream_url() -> str:
@@ -154,7 +155,8 @@ def _fetch_rag_context(asset_name: str, industry_cat: str) -> str:
                 label = f"{ref}: " if ref else ""
                 lines.append(f"- {label}{text[:350]}")
         return "\n".join(lines)
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.gunshi_gemini.rag_context", "swallowed", exc)
         return ""
 
 
@@ -633,6 +635,8 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
     final_prompt = f"{final_system_instruction}\n\n{question_text}".strip()
 
     def _record_feedback(response_text: str, *, reason: str = "") -> None:
+        if reason:  # Gemini が使えず決定的な代替応答を返した（画面にも「代替応答です」と出る）
+            record_silent_failure("answer.gunshi_gemini.strategy", "fallback", detail=reason[:40])
         try:
             record_prompt_feedback(
                 surface="next_gunshi_stream",
@@ -649,8 +653,8 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
                     "fallback_reason": reason,
                 },
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            record_silent_failure("judgment.gunshi_gemini.feedback", "save_failed", exc)
 
     if not api_key:
         fallback_text = build_fallback_strategy_text(params, phrases, "GEMINI_API_KEY未設定", dissonance_block=dissonance_block)
@@ -699,8 +703,8 @@ async def stream_gunshi_gemini(params: dict, api_key: str):
                             if delta:
                                 emitted_text += delta
                                 yield {"type": "stream", "delta": delta}
-                        except Exception:
-                            pass
+                        except Exception as sf_exc:
+                            record_silent_failure("answer.gunshi_gemini.stream_chunk", "swallowed", sf_exc, detail="壊れたストリーム断片を捨てた")
                     response_text = emitted_text
                     if len(emitted_text.strip()) < 120:
                         prefix = "\n\n" if emitted_text.strip() else ""

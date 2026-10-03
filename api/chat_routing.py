@@ -8,6 +8,7 @@ import os
 import re
 from collections.abc import Callable, Mapping
 from typing import Any
+from silent_failure_log import record_silent_failure
 
 
 QUESTION_CATEGORIES = ("lease_screening", "lease_knowledge", "general", "news_summarize")
@@ -92,6 +93,7 @@ def _legacy_classify_question(message: str) -> str:
             if cat in QUESTION_CATEGORIES:
                 return cat
     except Exception as exc:
+        record_silent_failure("answer.chat_routing.legacy_classify", "fallback", exc)
         print(f"[classify_question] エラー: {exc}")
     return "lease_knowledge"
 
@@ -230,6 +232,7 @@ def classify_question(message: str) -> str:
     try:
         judgment = judge_question_category(message)
     except Exception as exc:
+        record_silent_failure("answer.chat_routing.typesafe", "fallback", exc, detail="従来の分類へ")
         print(f"[TypeSafeRouting] fallback error_type={type(exc).__name__}")
         return baseline or _legacy_classify_question(message)
 
