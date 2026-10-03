@@ -13,6 +13,7 @@ from typing import Any
 
 from api.db_connection import get_connection, placeholder
 from constants import APPROVAL_LINE, CONDITIONAL_LINE, REVIEW_LINE
+from silent_failure_log import clip
 
 
 ANSWER_LABELS = {
@@ -215,7 +216,7 @@ def build_updated_view(
             "question_id": question["id"],
             "status": status,
             "label": ANSWER_LABELS[status],
-            "note": _text(answer.get("note"))[:2000],
+            "note": clip(_text(answer.get("note")), 2000, "judgment.screening_followup.answer_note"),
         })
 
     concerns = [item for item in normalized if item["status"] == "concern"]
@@ -503,7 +504,7 @@ def save_followup_impact_feedback(
             normalized_entries.append({
                 "question_id": question_id,
                 "impact_label": impact_label,
-                "note": _text(entry.get("note"))[:2000],
+                "note": clip(_text(entry.get("note")), 2000, "judgment.screening_followup.entry_note"),
             })
 
         for entry in normalized_entries:
@@ -667,7 +668,7 @@ def record_followup_outcome(case_id: str, outcome_status: str, outcome_note: str
             """,
             (
                 _text(outcome_status)[:80],
-                _text(outcome_note)[:2000],
+                clip(_text(outcome_note), 2000, "judgment.screening_followup.outcome_note"),
                 "outcome_linked_unanswered",
                 _text(case_id),
             ),
@@ -682,7 +683,7 @@ def record_followup_outcome(case_id: str, outcome_status: str, outcome_note: str
             """,
             (
                 _text(outcome_status)[:80],
-                _text(outcome_note)[:2000],
+                clip(_text(outcome_note), 2000, "judgment.screening_followup.outcome_note"),
                 "outcome_linked",
                 _text(case_id),
             ),

@@ -84,3 +84,15 @@ def test_launchd_failure_lines_only_nonzero_project_jobs():
     assert "`com.lease.slackbot`=2（常駐" in line
     assert "com.apple" not in line and "`ok`" not in line
     assert sfl.launchd_failure_lines("PID\tStatus\tLabel\n-\t0\tcom.tunelease.ok\n") == []
+
+
+def test_clip_returns_same_value_and_records_only_when_cut(tmp_path, monkeypatch):
+    _reset()
+    path = tmp_path / "sf.jsonl"
+    monkeypatch.setenv("SILENT_FAILURE_LOG_PATH", str(path))
+    assert sfl.clip("abc", 5, "judgment.x") == "abc"
+    assert not path.exists()
+    assert sfl.clip("abcdefgh", 5, "judgment.x") == "abcde"
+    (row,) = _rows(path)
+    assert row["kind"] == "truncated" and row["detail"] == "8→5字"
+    assert row["where"].startswith("tests/test_silent_failure_log.py:")

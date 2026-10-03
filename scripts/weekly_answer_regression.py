@@ -41,6 +41,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+from silent_failure_log import record_silent_failure  # noqa: E402
 
 # data/・索引・モデルの取り元（既定はこのチェックアウト。worktree から手動実行する時はメインを指す）
 DATA_SOURCE_ROOT = Path(os.environ.get("ANSWER_REGRESSION_DATA_ROOT") or PROJECT_ROOT)
@@ -235,9 +236,11 @@ def prepare_sandbox(base: Path) -> tuple[Path, Path]:
 
     try:
         # iCloud の未ダウンロードファイルで止まることがあるので時間で打ち切り、取れた分を使う（毎週同じ条件）
-        subprocess.run(["cp", "-cR", str(resolve_obsidian_vault()), str(vault)], timeout=VAULT_COPY_TIMEOUT_S, capture_output=True)
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+        copied = subprocess.run(["cp", "-cR", str(resolve_obsidian_vault()), str(vault)], timeout=VAULT_COPY_TIMEOUT_S, capture_output=True)
+        if copied.returncode != 0:  # 一部のファイルを写せないまま採点すると点数が下がって見える
+            record_silent_failure("answer.weekly_answer_regression.vault_copy", "subprocess_failed", detail=f"cp exit {copied.returncode}")
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        record_silent_failure("answer.weekly_answer_regression.vault_copy", "timeout", exc, detail="取れた分のVaultで採点")
     vault.mkdir(exist_ok=True)
     return repo, vault
 
