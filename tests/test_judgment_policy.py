@@ -104,3 +104,15 @@ def test_policy_missed_by_top_k_recall_is_still_lifted_by_wording_variant(monkey
 
     block, _ = recall.build_recall_prompt_block("法定耐用年数はリース審査でどう使う？", index_path=index, log_usage=False)
     assert block == ""  # 関係のない問いには方針を出さない
+
+
+def test_split_and_merge_move_policies_into_one_block() -> None:
+    from api.judgment_policy import format_policy_block, merge_policy_blocks, split_policy_block
+
+    a = format_policy_block([{"text": "銀行と取引のない企業とは付き合わない", "source": "判断資産 93d1b22c"}])
+    b = format_policy_block([{"text": "銀行と取引のない企業とは付き合わない", "source": "判断資産 93d1b22c"}, {"text": "増えないようにする", "source": "判断資産 8932df45"}])
+    policy, rest = split_policy_block(a + "\n\n【紫苑の想起メモ】\n1. 何か")
+    assert policy == a and rest == "【紫苑の想起メモ】\n1. 何か"
+    merged = merge_policy_blocks(policy, split_policy_block(b)[0])
+    assert merged.count("- 方針: ") == 2 and "より前にある回答の型" in merged
+    assert split_policy_block("方針なし") == ("", "方針なし") and merge_policy_blocks("", "") == ""

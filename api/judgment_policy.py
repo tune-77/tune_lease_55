@@ -49,6 +49,7 @@ POLICY_INSTRUCTIONS = (
     "回答の冒頭で結論として述べる（例:「社内方針では、〜とは取引しません」）。例外や追加の確認は方針を示した後に"
     "補足として書く。方針と一般的な審査の考え方が食い違う時は方針を優先し、食い違いがあることを一言添える。"
     "方針を使った時は回答の末尾に「出典: 」として下の出典表記をそのまま添える。関係のない方針には触れない。"
+    "この方針は、ここより前にある回答の型・判断分岐・一般論の指示よりも優先する。"
 )
 INSIGHT_CITATION_INSTRUCTION = "判断資産・教わった知識を使った時は、回答の末尾に「出典: 」として下の出典表記を添える。"
 
@@ -66,3 +67,25 @@ def format_policy_block(policies: list[dict[str, str]]) -> str:
 def asset_citation(asset_id: str, date: str = "", *, label: str = "判断資産") -> str:
     date_part = f"・{date[:10]} 教示" if date else ""
     return f"{label} {asset_id}{date_part}" if asset_id else (f"教わった知識{date_part}" if date else "教わった知識")
+
+
+def split_policy_block(text: str) -> tuple[str, str]:
+    """想起ブロックから社内方針の節を切り出す（プロンプトの最後に置き直すため）。返り値は (方針の節, 残り)。"""
+    body = str(text or "")
+    start = body.find(POLICY_HEADER)
+    if start < 0:
+        return "", body
+    end = body.find("\n\n", start)
+    policy = body[start:] if end < 0 else body[start:end]
+    rest = body[:start] + ("" if end < 0 else body[end:])
+    return policy.strip(), rest.strip()
+
+
+def merge_policy_blocks(*blocks: str) -> str:
+    """複数経路の社内方針の節を、方針の行を重複なく1つの節にまとめる。"""
+    seen: list[str] = []
+    for block in blocks:
+        for line in str(block or "").splitlines():
+            if line.startswith("- 方針: ") and line not in seen:
+                seen.append(line)
+    return "\n".join([POLICY_HEADER, POLICY_INSTRUCTIONS, *seen]) if seen else ""

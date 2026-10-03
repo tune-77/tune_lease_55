@@ -7066,6 +7066,11 @@ def post_chat(req: ChatRequest):
             )
             from api.chat_side_effects import chat_exchange_metadata, memory_usage_extra, prompt_feedback_extra
 
+            from api.judgment_policy import merge_policy_blocks, split_policy_block
+
+            _memory_policy, memory_recall_context = split_policy_block(memory_recall_context)
+            _teaching_policy, teaching_prompt_context = split_policy_block(teaching_prompt_context)
+            policy_prompt_context = merge_policy_blocks(_memory_policy, _teaching_policy)
             base_system_prompt = join_prompt_blocks([
                 base_system_root,
                 mode_instruction,
@@ -7100,6 +7105,7 @@ def post_chat(req: ChatRequest):
                 case_screening_mentor_dialogue_context,
                 f"\n\n{memory_recall_context}" if memory_recall_context else "",
                 chat_history_summary_context,
+                f"\n\n{policy_prompt_context}" if policy_prompt_context else "",
             ])
             pdca_block = (
                 build_pdca_prompt_block()
@@ -7509,6 +7515,12 @@ def post_chat(req: ChatRequest):
             should_auto_save_chat,
         )
 
+        # 社内方針（ユーザーが定めたルール）は回答の型・判断分岐の指示に負けないよう、最後に1つの節として置く
+        from api.judgment_policy import merge_policy_blocks, split_policy_block
+
+        _memory_policy, memory_recall_context = split_policy_block(memory_recall_context)
+        _teaching_policy, teaching_prompt_context = split_policy_block(teaching_prompt_context)
+        policy_prompt_context = merge_policy_blocks(_memory_policy, _teaching_policy)
         base_effective_prompt = join_prompt_blocks([
             base_prompt_root,
             mode_instruction,
@@ -7548,6 +7560,7 @@ def post_chat(req: ChatRequest):
             case_screening_mentor_dialogue_context,
             guidance.prompt_suffix,
             chat_history_summary_context,
+            f"\n\n{policy_prompt_context}" if policy_prompt_context else "",
         ])
         pdca_block = (
             build_pdca_prompt_block()
