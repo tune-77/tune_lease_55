@@ -1390,7 +1390,10 @@ def _update_autoresearch_judgment_asset_candidate_feedback(
                 edited_claim = str(req.edited_claim or "").strip()
                 if edited_claim:
                     if edited_claim != str(current.get("edited_claim") or ""):
+                        from api.judgment_policy import classify_knowledge_kind
+
                         current["edited_claim"] = edited_claim[:500]
+                        current["knowledge_kind"] = classify_knowledge_kind(current["edited_claim"])
                         current["edit_count"] = int(current.get("edit_count") or 0) + 1
                         current["last_edited_at"] = now
                         note_bits.append("edited_claim=updated")

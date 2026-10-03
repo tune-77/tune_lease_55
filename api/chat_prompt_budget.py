@@ -44,7 +44,12 @@ SPECS: dict[str, BlockSpec] = {
     # core: 人格・システム指示・モード・紫苑の同一性
     "base_prompt_root": BlockSpec(CORE),
     "base_system_root": BlockSpec(CORE),
-    "dialogue_base": BlockSpec(CORE),
+    "dialogue_base": BlockSpec(CORE),  # 旧呼び出し互換
+    "dialogue_identity_core": BlockSpec(CORE),
+    "dialogue_self_context": BlockSpec(MEMORY, 3500),
+    "dialogue_execution_core": BlockSpec(CORE),
+    "dialogue_knowledge_context": BlockSpec(EVIDENCE, 7000, "ordered"),
+    "dialogue_response_core": BlockSpec(CORE),
     "mode_instruction": BlockSpec(CORE),
     "response_mode_context": BlockSpec(CORE),
     "identity_memory_context": BlockSpec(CORE),
@@ -168,6 +173,40 @@ def _fit(text: str, budget: int, mode: str, question_grams: set[str]) -> str:
     return result if len(result) <= budget or not items else result[:budget]
 
 
+def split_dialogue_prompt(prompt: str) -> list[tuple[str, str]]:
+    """対話室の一体化したpromptを固定指示と動的な自己状態・知識へ分ける。"""
+    body = str(prompt or "")
+    markers = ("【自己状態】", "【実行環境】", "【関連するObsidian知識】", "【今回の応答モード】")
+    positions = [body.find(marker) for marker in markers]
+    if any(pos < 0 for pos in positions) or positions != sorted(positions):
+        return [("dialogue_base", body)]
+    self_pos, env_pos, knowledge_pos, response_pos = positions
+    intro_end = body.find("\n\n")
+    if intro_end < 0 or intro_end > self_pos:
+        intro_end = self_pos
+    else:
+        intro_end += 2
+    return [
+        ("dialogue_identity_core", body[:intro_end]),
+        ("dialogue_self_context", body[intro_end:env_pos]),
+        ("dialogue_execution_core", body[env_pos:knowledge_pos]),
+        ("dialogue_knowledge_context", body[knowledge_pos:response_pos]),
+        ("dialogue_response_core", body[response_pos:]),
+    ]
+
+
+def _fit_reserved_tail(text: str, limit: int) -> str:
+    """極端に小さい設定でも全体上限を守り、方針行を説明文より優先する。"""
+    if limit <= 0:
+        return ""
+    if len(text) <= limit:
+        return text
+    lines = text.splitlines()
+    essential = [line for line in lines if line.startswith(("【", "- 方針: "))]
+    compact = "\n".join(essential) or text
+    return compact[:limit]
+
+
 def assemble_prompt(
     blocks: list[tuple[str, str]],
     *,
@@ -181,33 +220,28 @@ def assemble_prompt(
     if max_chars is None:
         env_name = "DIALOGUE_SYSTEM_PROMPT_MAX_CHARS" if surface.startswith("dialogue") else "CHAT_SYSTEM_PROMPT_MAX_CHARS"
         max_chars = int(os.environ.get(env_name, "30000" if surface.startswith("dialogue") else "24000"))
-    tail = str(reserved_tail or "").strip()
+    original_tail = str(reserved_tail or "").strip()
+    tail = _fit_reserved_tail(original_tail, max_chars)
     grams = _bigrams(question)
     report: dict[str, dict[str, int]] = {}
     texts: dict[int, str] = {}
 
-    # 1. 重複の除去（優先度の高いブロックから順に項目を登録）
-    order = sorted(range(len(blocks)), key=lambda i: (SPECS.get(blocks[i][0], DEFAULT_SPEC).tier, i))
-    seen: set[str] = set()
-    for i in order:
-        name, text = blocks[i]
+    # 1. 初期化。個別予算を適用してから重複除去することで、高優先度側で予算落ちした項目を
+    # 低優先度側のコピーからも先に消してしまうことを防ぐ。
+    for i, (name, text) in enumerate(blocks):
         text = str(text or "")
         spec = SPECS.get(name, DEFAULT_SPEC)
         report[name] = {"tier": spec.tier, "orig": len(text), "dedup": 0, "budget_cut": 0, "overflow_cut": 0, "kept": 0}
-        if not text or spec.tier == CORE:
-            texts[i] = text
+        texts[i] = text
+    original_occurrences: dict[str, list[tuple[int, str]]] = {}
+    for i, (name, _text) in enumerate(blocks):
+        if SPECS.get(name, DEFAULT_SPEC).tier == CORE:
             continue
-        lead, items = _split_items(text)
-        kept_items = []
+        _lead, items = _split_items(texts[i])
         for item in items:
             key = _item_key(item)
-            if len(key) >= 20 and key in seen:
-                continue
-            seen.add(key)
-            kept_items.append(item)
-        deduped = text if len(kept_items) == len(items) else _join(lead, kept_items)
-        report[name]["dedup"] = len(text) - len(deduped)
-        texts[i] = deduped
+            if len(key) >= 20:
+                original_occurrences.setdefault(key, []).append((i, item))
 
     limit = max(0, max_chars - (len(tail) + 2 if tail else 0))
 
@@ -231,13 +265,62 @@ def assemble_prompt(
                 report[blocks[i][0]]["overflow_cut"] += before - len(texts[i])
                 total -= before - len(texts[i])
 
-    # 2. 記憶の想起〜補助は常に予算内へ（太りやすい層）。3. 超過分はまず低い層から削る
+    def deduplicate() -> None:
+        order = sorted(range(len(blocks)), key=lambda i: (SPECS.get(blocks[i][0], DEFAULT_SPEC).tier, i))
+        seen: set[str] = set()
+        for i in order:
+            name, _text = blocks[i]
+            spec = SPECS.get(name, DEFAULT_SPEC)
+            text = texts[i]
+            if not text or spec.tier == CORE:
+                continue
+            lead, items = _split_items(text)
+            kept_items = []
+            for item in items:
+                key = _item_key(item)
+                if len(key) >= 20 and key in seen:
+                    continue
+                seen.add(key)
+                kept_items.append(item)
+            deduped = text if len(kept_items) == len(items) else _join(lead, kept_items)
+            report[name]["dedup"] += len(text) - len(deduped)
+            texts[i] = deduped
+
+    def restore_trimmed_duplicate_fallbacks() -> None:
+        """上位コピーが予算落ちした重複項目を、空きがあれば下位コピーから戻す。"""
+        live_keys = {
+            _item_key(item)
+            for i, (name, _text) in enumerate(blocks)
+            if SPECS.get(name, DEFAULT_SPEC).tier != CORE
+            for item in _split_items(texts[i])[1]
+        }
+        total = sum(len(t) for t in texts.values())
+        for key, occurrences in original_occurrences.items():
+            if len(occurrences) < 2 or key in live_keys:
+                continue
+            i, item = max(occurrences, key=lambda pair: (SPECS.get(blocks[pair[0]][0], DEFAULT_SPEC).tier, pair[0]))
+            addition = ("\n" if texts[i] else "") + item
+            if total + len(addition) <= limit:
+                texts[i] += addition
+                total += len(addition)
+                live_keys.add(key)
+
+    # 2. 記憶〜補助は個別予算、重複除去、overflow の順。重複で空きを作ってから、
+    #    高優先度の根拠より先に低優先度層を落とす。
     apply_budgets(range(MEMORY, AUX + 1))
+    deduplicate()
     overflow(range(MEMORY, AUX + 1))
-    # 4. それでも超える時だけ、方針〜根拠の層にも予算を当て、さらに低い層から削る（core は削らない）
+    # 3. まだ超える時だけ方針〜根拠へ個別予算を適用する。高優先度側の予算で
+    #    唯一のコピーが消えた場合は、元の低優先度コピーを戻してから再度重複除去する。
     if sum(len(t) for t in texts.values()) > limit:
         apply_budgets(range(TAUGHT, EVIDENCE + 1))
+        restore_trimmed_duplicate_fallbacks()
+        deduplicate()
+        # 4. 重複を除いても超える分だけ、高優先度層を項目単位で落とす。
         overflow(range(TAUGHT, EVIDENCE + 1))
+    # 設定上限が固定指示やtailより小さい場合だけの最後の安全弁。
+    if sum(len(t) for t in texts.values()) > limit:
+        overflow(range(CORE, CORE + 1))
 
     prompt = "".join(texts[i] for i in range(len(blocks)))
     if tail:
@@ -248,10 +331,11 @@ def assemble_prompt(
         "surface": surface,
         "max_chars": max_chars,
         "final_chars": len(prompt),
-        "orig_chars": sum(r["orig"] for r in report.values()) + (len(tail) + 2 if tail else 0),
+        "orig_chars": sum(r["orig"] for r in report.values()) + (len(original_tail) + 2 if original_tail else 0),
         "dropped_chars": sum(r["orig"] - r["kept"] for r in report.values()),
         "dropped_high_priority_chars": sum(r["orig"] - r["kept"] - r["dedup"] for r in report.values() if r["tier"] <= EVIDENCE),
         "policy_tail_chars": len(tail),
+        "policy_tail_cut": len(original_tail) - len(tail),
         "blocks": {k: v for k, v in report.items() if v["orig"]},
     }
     if log:

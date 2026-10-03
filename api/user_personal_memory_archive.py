@@ -178,7 +178,7 @@ def classify(
         archived_ids.add(row["id"])
 
     for row in rows:
-        if row["key"] in pinned:
+        if protected(row):
             continue
         body = _REMEMBER_RE.sub("", row["body"]).strip(" 　。、")
         if _TEMPLATE_RE.match(row["text"]):
@@ -197,7 +197,7 @@ def classify(
             if newer["id"] in archived_ids or _jaccard(older["key"], newer["key"]) < NEAR_DUPLICATE:
                 continue
             keep, drop = (older, newer) if (older["date"] or "") > (newer["date"] or "") else (newer, older)
-            if drop["key"] not in pinned:
+            if not protected(drop):
                 add(drop, "duplicate", keep["id"])
                 break
 
@@ -397,6 +397,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="判定だけして書き換えない")
     parser.add_argument("--restore", metavar="ID", help="アーカイブから戻す")
     parser.add_argument("--list", action="store_true", help="アーカイブ済みと要確認の一覧")
+    parser.add_argument("--archive-path", type=Path, help="アーカイブJSONの保存先（Cloud Run bundle生成用）")
     args = parser.parse_args()
     if args.restore:
         print(json.dumps(restore(args.restore), ensure_ascii=False, indent=2))
@@ -407,7 +408,7 @@ def main() -> None:
         for item in data["review_candidates"]:
             print(f"(要確認 {item.get('id')}) {item.get('reason')}  {item.get('source')}  {str(item.get('text'))[:70]}")
     else:
-        print(json.dumps(run(dry_run=args.dry_run), ensure_ascii=False, indent=2))
+        print(json.dumps(run(dry_run=args.dry_run, archive_path=args.archive_path), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

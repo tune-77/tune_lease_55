@@ -1267,7 +1267,7 @@ def answer_regression_lines() -> list[str]:
 
 
 def chat_prompt_budget_lines() -> list[str]:
-    """チャットのプロンプトで落とした量が大きい日だけ1行（api/chat_prompt_budget.py の記録）。"""
+    """チャットのプロンプトで落とした量が大きい日だけ1行（本文は記録しない）。"""
     try:
         from api.chat_prompt_budget import morning_report_line
 

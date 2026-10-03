@@ -763,7 +763,7 @@ def rank_records(query: str, records: list[dict[str, str]], *, top_n: int | None
     """Ranking API でローカル検索の候補を並べ替える。records は {"id","title","content"}。
 
     戻り値は [{"id", "score"}, ...]（スコア降順）。失敗時は例外（呼び出し側が元の順位に戻す）。
-    クエリはここで mask_for_vertex を通す（候補本文はローカル知識なので伏せない）。
+    クエリと候補本文はここで mask_for_vertex を通す。
     """
     config = get_config()
     if not config.enabled or not config.project_id:
@@ -776,7 +776,11 @@ def rank_records(query: str, records: list[dict[str, str]], *, top_n: int | None
         "model": os.environ.get("VERTEX_RANKING_MODEL") or RANKING_MODEL_DEFAULT,
         "query": mask_for_vertex(query)[:500],
         "records": [
-            {"id": str(r["id"]), "title": str(r.get("title") or "")[:200], "content": str(r.get("content") or "")[:2000]}
+            {
+                "id": str(r["id"]),
+                "title": mask_for_vertex(str(r.get("title") or ""))[:200],
+                "content": mask_for_vertex(str(r.get("content") or ""))[:2000],
+            }
             for r in records
         ],
         "ignoreRecordDetailsInResponse": True,

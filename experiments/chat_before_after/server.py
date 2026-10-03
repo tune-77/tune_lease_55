@@ -26,6 +26,11 @@ def main() -> None:
 
     root = Path.cwd()
     sys.path.insert(0, str(root))
+    # 親shellやコピーした secrets の本番DB設定より、worktree内SQLiteを必ず優先する。
+    for name in ("DATABASE_URL", "DATABASE_URL_SECRET_NAME", "SQLITE_DB_PATH", "LEASE_DB_PATH", "K_SERVICE"):
+        os.environ.pop(name, None)
+    os.environ["DATA_DIR"] = str(root / "data")
+    os.environ["DB_PATH"] = str(root / "data" / "lease_data.db")
     for name in ("USE_GCS_VAULT", "ENABLE_OBSIDIAN_INDEXING", "ENABLE_FEEDBACK_LOADING"):
         os.environ[name] = "false"
     for name in ("K_SERVICE", "CLOUDRUN_PENDING_GCS_ENABLED", "SLACK_WEBHOOK_URL", "SLACK_BOT_TOKEN"):

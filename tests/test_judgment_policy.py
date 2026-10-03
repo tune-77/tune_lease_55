@@ -34,15 +34,24 @@ def test_explicit_company_rules_are_policy(text) -> None:
         "金融機関の大断る必要がある場合がある",
         "汎用性の高い物件は陳腐化しないので残価が安定する",
         "この物件は中古市場で取り扱われることが多い",
+        "銀行取引がなくても、必ずしも契約しないわけではない",
+        "この条件でも承認しないとは限らない",
     ],
 )
 def test_tendencies_numbers_procedures_and_hedges_are_insight(text) -> None:
     assert classify_knowledge_kind(text) == "insight"
 
 
+def test_hedged_observation_does_not_hide_later_explicit_policy() -> None:
+    text = "業績が良いから安全とは限らないので、当社は必ず保証を取る"
+    assert classify_knowledge_kind(text) == "policy"
+
+
 def test_stored_kind_wins_over_reclassification() -> None:
     assert knowledge_kind_of({"knowledge_kind": "insight", "claim": "取り扱わない"}) == "insight"
     assert knowledge_kind_of({"claim": "取り扱わない"}) == "policy"
+    assert knowledge_kind_of({"knowledge_kind": "policy", "edited_claim": "資金繰りを確認する"}, "資金繰りを確認する") == "insight"
+    assert knowledge_kind_of({"knowledge_kind": "insight", "edited_claim": "この先とは契約しない"}, "この先とは契約しない") == "policy"
 
 
 def test_teaching_recall_block_puts_policy_first_with_citation() -> None:

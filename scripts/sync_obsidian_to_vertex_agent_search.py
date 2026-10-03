@@ -157,6 +157,47 @@ def write_state(path: Path, state: dict[str, Any]) -> None:
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def validate_destructive_export(
+    *,
+    exported_count: int,
+    candidate_count: int,
+    previous_exported_count: int,
+    previous_candidate_count: int,
+    allow_large_delete: bool,
+) -> None:
+    """Refuse a destructive mirror when the local scan looks empty or partial."""
+    if exported_count <= 0 or candidate_count <= 0:
+        raise ValueError("destructive sync refused: Vault export is empty")
+    if allow_large_delete:
+        return
+    comparisons = (
+        ("exported", exported_count, previous_exported_count),
+        ("candidate", candidate_count, previous_candidate_count),
+    )
+    for label, current, previous in comparisons:
+        if previous > 0 and current < previous * 0.7:
+            raise ValueError(
+                f"destructive sync refused: {label} count fell from {previous} to {current}; "
+                "rerun with --allow-large-delete only after verifying the Vault export"
+            )
+
+
+def sync_changed(
+    *,
+    force: bool,
+    signature: str,
+    previous_signature: str,
+    import_documents_enabled: bool,
+    reconciliation_mode: str,
+    previous_reconciliation_mode: str,
+) -> bool:
+    """A first switch to FULL must reconcile even if file content is unchanged."""
+    reconciliation_changed = bool(
+        import_documents_enabled and reconciliation_mode != previous_reconciliation_mode
+    )
+    return bool(force or signature != previous_signature or reconciliation_changed)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vault", type=Path, default=DEFAULT_VAULT)
@@ -175,6 +216,11 @@ def main() -> None:
     parser.add_argument("--import-documents", action="store_true", help="Trigger Discovery Engine import from documents.jsonl.")
     parser.add_argument("--wait", action="store_true", help="Wait for the import operation to finish.")
     parser.add_argument("--delete-stale-gcs", action="store_true", help="Delete GCS objects that no longer exist in the export output.")
+    parser.add_argument(
+        "--allow-large-delete",
+        action="store_true",
+        help="Allow a destructive sync even when the local corpus dropped by more than 30%.",
+    )
     parser.add_argument("--force", action="store_true", help="Upload/import even when the exported corpus signature did not change.")
     parser.add_argument("--reconciliation-mode", choices=["INCREMENTAL", "FULL"], default="INCREMENTAL")
     parser.add_argument("--no-force-refresh-content", action="store_true")
@@ -183,10 +229,20 @@ def main() -> None:
     args = parser.parse_args()
 
     exported = export_notes(args.vault, args.output, args.max_docs, args.gcs_prefix, canonical_rules=CANONICAL_RULES_PATH)
+    manifest = read_state(args.output / "manifest.json")
+    candidate_count = int(manifest.get("candidate_count") or 0)
     signature = export_signature(exported)
     previous_state = read_state(args.state)
     previous_signature = str(previous_state.get("export_signature") or "")
-    changed = bool(args.force or signature != previous_signature)
+    previous_mode = str(previous_state.get("reconciliation_mode") or "")
+    changed = sync_changed(
+        force=bool(args.force),
+        signature=signature,
+        previous_signature=previous_signature,
+        import_documents_enabled=bool(args.import_documents),
+        reconciliation_mode=args.reconciliation_mode,
+        previous_reconciliation_mode=previous_mode,
+    )
     manifest_uri = f"{args.gcs_prefix.rstrip('/')}/documents.jsonl"
     report: dict[str, Any] = {
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
@@ -195,14 +251,36 @@ def main() -> None:
         "gcs_prefix": args.gcs_prefix,
         "manifest_uri": manifest_uri,
         "exported_count": len(exported),
+        "candidate_count": candidate_count,
         "export_signature": signature,
         "previous_export_signature": previous_signature,
         "changed": changed,
+        "reconciliation_mode": args.reconciliation_mode,
+        "previous_reconciliation_mode": previous_mode,
         "uploaded": False,
         "import_requested": False,
         "delete_stale_gcs": bool(args.delete_stale_gcs),
         "dry_run": bool(args.dry_run),
     }
+
+    destructive_remote = bool(
+        (args.upload and args.delete_stale_gcs)
+        or (args.import_documents and args.reconciliation_mode == "FULL")
+    )
+    if changed and destructive_remote:
+        try:
+            validate_destructive_export(
+                exported_count=len(exported),
+                candidate_count=candidate_count,
+                previous_exported_count=int(previous_state.get("exported_count") or 0),
+                previous_candidate_count=int(previous_state.get("candidate_count") or 0),
+                allow_large_delete=bool(args.allow_large_delete),
+            )
+        except ValueError as exc:
+            report["safety_error"] = str(exc)
+            write_report(args.report, report)
+            report_pipeline_failure(str(exc))
+            raise SystemExit(1) from exc
 
     if not changed and (args.upload or args.import_documents):
         report["skipped_reason"] = "export_signature_unchanged"
@@ -276,8 +354,10 @@ def main() -> None:
                 "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
                 "export_signature": signature,
                 "exported_count": len(exported),
+                "candidate_count": candidate_count,
                 "manifest_uri": manifest_uri,
                 "gcs_prefix": args.gcs_prefix,
+                "reconciliation_mode": args.reconciliation_mode,
                 "operation_name": (report.get("operation") or {}).get("name"),
                 "dry_run": bool(args.dry_run),
             },

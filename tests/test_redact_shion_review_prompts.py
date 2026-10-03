@@ -7,6 +7,8 @@ import sqlite3
 import tarfile
 import io
 
+import pytest
+
 from scripts import redact_shion_review_prompts as red
 from scripts.backup_case_data import decrypt_bytes
 
@@ -103,3 +105,27 @@ def test_short_kana_names_do_not_break_ordinary_words():
 
 def test_truncated_amount_preview_is_masked():
     assert red.mask_text("・取得価額: 55百…", set()) == "・取得価額: 〈金額〉"
+
+
+def test_company_name_with_spaces_is_captured_to_end_of_field():
+    prompt = PROMPT.replace("サセ", "株式会社 山田製作所")
+    names = red.company_names(prompt)
+    assert names == {"株式会社 山田製作所"}
+    masked = red.mask_text(prompt + "回答: 株式会社 山田製作所を確認。", names)
+    assert "山田製作所" not in masked
+
+
+def test_sqlite_write_aborts_when_rows_were_added_after_verified_archive(tmp_path):
+    db = tmp_path / "lease_data.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("create table chat_messages (id integer primary key, user_id text, role text, content text)")
+        conn.execute("insert into chat_messages (user_id, role, content) values (?, ?, ?)", ("screening:サセ", "user", PROMPT))
+    change = red.find_sqlite_change(db)
+    assert change is not None
+    with sqlite3.connect(db) as conn:
+        conn.execute("insert into chat_messages (user_id, role, content) values (?, ?, ?)", ("screening:株式会社 山田製作所", "user", PROMPT.replace("サセ", "株式会社 山田製作所")))
+    with pytest.raises(RuntimeError, match="changed after archive"):
+        red.write_redacted(change)
+    with sqlite3.connect(db) as conn:
+        text = " ".join(" ".join(row) for row in conn.execute("select user_id, content from chat_messages"))
+    assert "サセ" in text and "山田製作所" in text

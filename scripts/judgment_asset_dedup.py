@@ -666,6 +666,8 @@ def main() -> None:
     import typesafe_dedup_guard as transport
 
     use_jev = not args.no_jev and bool(transport._resolve_api_key())
+    # 個人記憶は判断資産より強いプライバシー境界を持つ。資格情報があるだけでは外部へ送らない。
+    allow_personal_memory_jev = os.environ.get("TYPESAFE_ALLOW_PERSONAL_MEMORY", "").strip().lower() in {"1", "true", "yes", "on"}
     report = run(
         dry_run=args.dry_run,
         jev_fn=_default_jev if use_jev else None,
@@ -681,7 +683,9 @@ def main() -> None:
         personal = run_personal_memory_hygiene(
             dry_run=args.dry_run,
             similarity_fn=embedding_similarity,
-            pair_scorer=(lambda texts, question: transport.judge_binary_pairs(texts, question)[0]) if use_jev else None,
+            pair_scorer=(lambda texts, question: transport.judge_binary_pairs(texts, question)[0])
+            if use_jev and allow_personal_memory_jev
+            else None,
         )
         print(json.dumps({"user_personal_memory": {k: v for k, v in personal.items() if k != "auto"}}, ensure_ascii=False, indent=2))
     except Exception as exc:  # noqa: BLE001 - 個人記憶の整理の失敗で判断資産の整理結果を落とさない

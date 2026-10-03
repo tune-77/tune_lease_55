@@ -392,7 +392,12 @@ def export_notes(
 
     rejected: list[RejectedNote] = []
     best_by_topic: dict[str, CandidateNote] = {}
-    candidates = sorted(list_vault_md_files(project_root), key=lambda p: str(p.relative_to(project_root)))
+    # FULL reconciliation can delete remote documents, so this export must not
+    # treat an interrupted/partial Vault walk as a valid empty corpus.
+    candidates = sorted(
+        list_vault_md_files(project_root, suppress_errors=False),
+        key=lambda p: str(p.relative_to(project_root)),
+    )
 
     for path in candidates:
         source_rel = path.relative_to(vault).as_posix()

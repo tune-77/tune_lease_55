@@ -1,3 +1,5 @@
+import json
+
 from api import vertex_agent_search as vertex
 
 
@@ -9,6 +11,25 @@ def test_vertex_agent_search_disabled_skips_without_auth(monkeypatch):
     assert result["used"] is False
     assert result["status"] == "disabled"
     assert result["refs"] == []
+
+
+def test_ranking_masks_candidate_titles_and_content(monkeypatch):
+    sent: dict = {}
+    monkeypatch.setattr(
+        vertex,
+        "get_config",
+        lambda: vertex.VertexSearchConfig(True, "p", "e", "global", "c", 5, 8.0, 0.0),
+    )
+    monkeypatch.setattr(vertex, "_post_json", lambda _url, body, _config: sent.update(body) or {"records": []})
+
+    vertex.rank_records(
+        "運送業の審査",
+        [{"id": "0", "title": "株式会社田中運輸", "content": "田中様 090-1111-2222 売上8億円"}],
+    )
+
+    payload = json.dumps(sent, ensure_ascii=False)
+    for leaked in ("田中運輸", "田中様", "090-1", "1111", "2222", "8億円"):
+        assert leaked not in payload
 
 
 def test_parse_results_deduplicates_same_autoresearch_topic():

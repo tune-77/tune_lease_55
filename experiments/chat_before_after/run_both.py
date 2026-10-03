@@ -18,6 +18,32 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+PRODUCTION_ENV_KEYS = {
+    "DATABASE_URL", "DATABASE_URL_SECRET_NAME", "DB_PATH", "SQLITE_DB_PATH", "LEASE_DB_PATH",
+    "CLOUDRUN_DATA_MODE", "CLOUDRUN_PENDING_GCS_ENABLED", "CLOUDRUN_BUNDLE_DIR", "K_SERVICE",
+}
+
+
+def sandbox_env(root: Path, vault: Path, out: Path, side: str) -> dict[str, str]:
+    env = {
+        k: v for k, v in os.environ.items()
+        if k not in PRODUCTION_ENV_KEYS and not k.startswith(("SLACK", "CLOUDRUN"))
+    }
+    env.update(
+        {
+            "OBSIDIAN_VAULT_PATH": str(vault),
+            "OBSIDIAN_VAULT": str(vault),
+            "GCS_VAULT_LOCAL_DIR": str(out / f"no_gcs_vault_{side}"),
+            "PYTHONPATH": str(root),
+            "PYTHONUNBUFFERED": "1",
+            "DATA_DIR": str(root / "data"),
+            "DB_PATH": str(root / "data" / "lease_data.db"),
+            "USE_GCS_VAULT": "false",
+            "ENABLE_OBSIDIAN_INDEXING": "false",
+            "ENABLE_FEEDBACK_LOADING": "false",
+        }
+    )
+    return env
 
 
 def _wait(port: int, timeout: float = 240.0) -> None:
@@ -43,16 +69,7 @@ def main() -> int:
     procs = []
     try:
         for side, port, root, vault in (("before", 8101, args.before_root, args.before_vault), ("after", 8102, args.after_root, args.after_vault)):
-            env = {k: v for k, v in os.environ.items() if not k.startswith(("SLACK", "K_SERVICE"))}
-            env.update(
-                {
-                    "OBSIDIAN_VAULT_PATH": str(vault),
-                    "OBSIDIAN_VAULT": str(vault),
-                    "GCS_VAULT_LOCAL_DIR": str(args.out / f"no_gcs_vault_{side}"),
-                    "PYTHONPATH": str(root),
-                    "PYTHONUNBUFFERED": "1",
-                }
-            )
+            env = sandbox_env(root, vault, args.out, side)
             log = (args.out / f"server_{side}.log").open("w", encoding="utf-8")
             procs.append(
                 subprocess.Popen(
