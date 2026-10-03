@@ -66,10 +66,6 @@ _ALLOWED_ALWAYS_ZERO: dict[str, str] = {
         "判断資産の概念が多様であれば普通に起こる正常状態で、書式ドリフト"
         "と区別できない。"
     ),
-    "scripts/build_judgment_asset_graph.py": (
-        "canonical rulesのキー抽出ロジックはab_reportと同型。activeルール"
-        "が少ない/0自体が正常な業務状態と区別できない。"
-    ),
     "scripts/build_loop_proof.py": (
         "「数値が取れないソースはスキップして直近値を保つ（起動をブロック"
         "しない）」という明示的な設計意図がdocstringに書かれている。"

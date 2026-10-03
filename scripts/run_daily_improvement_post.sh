@@ -26,7 +26,9 @@ MANA_REPORT_JSON="${PROJECT_ROOT}/reports/mana_obsidian_curator_latest.json"
 SCREENING_TERMS_REPORT_JSON="${PROJECT_ROOT}/reports/screening_terms_audit_latest.json"
 LATEST_FILE="${PROJECT_ROOT}/reports/latest.json"
 PROMPT_FEEDBACK_LOG="${PROJECT_ROOT}/data/prompt_feedback_log.jsonl"
-JUDGMENT_ASSET_GRAPH_FREQUENCY="${JUDGMENT_ASSET_GRAPH_FREQUENCY:-weekly}"
+# 判断資産グラフと期間成長判定は1秒未満で終わり、画面が「毎日更新」をうたうため既定は毎日。
+# 週次にしていた間（2026-09-28〜10-04）は判断資産が59件増えてもグラフが古いままだった。
+JUDGMENT_ASSET_GRAPH_FREQUENCY="${JUDGMENT_ASSET_GRAPH_FREQUENCY:-daily}"
 DETAILED_SIDECAR_REPORT_FREQUENCY="${DETAILED_SIDECAR_REPORT_FREQUENCY:-weekly}"
 
 RUN_DETAILED_SIDECAR_REPORTS=0
@@ -352,12 +354,6 @@ if [ "${RUN_DETAILED_SIDECAR_REPORTS}" = "1" ]; then
   "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_growth_brief.py" \
     --date "${PIPELINE_DATE}"
   log_step "build_shion_growth_brief" $?
-
-  echo ""
-  echo "[週次成長] 紫苑の期間成長判定を生成（判断資産グラフが参照）..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_shion_growth.py" \
-    --end-date "${PIPELINE_DATE}"
-  log_step "evaluate_shion_growth" $?
 else
   echo "[週次育成] A/B・育成ブリーフ・期間成長判定はスキップ（既存latestを使用）..."
   log_step "detailed_growth_sidecars_skipped" 0
@@ -372,11 +368,18 @@ fi
 
 echo ""
 if [ "${RUN_JUDGMENT_ASSET_GRAPH}" = "1" ]; then
-  echo "[可視化] 判断資産グラフを生成（既定は週次。JUDGMENT_ASSET_GRAPH_FREQUENCY=daily で毎日生成）..."
+  echo "[成長] 紫苑の期間成長判定を生成（判断資産グラフが参照）..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/evaluate_shion_growth.py" \
+    --end-date "${PIPELINE_DATE}"
+  log_step "evaluate_shion_growth" $?
+  echo "[可視化] 判断資産グラフを生成（既定は毎日。JUDGMENT_ASSET_GRAPH_FREQUENCY=weekly で月曜のみ）..."
   "${PYTHON}" "${PROJECT_ROOT}/scripts/build_judgment_asset_graph.py"; log_step "build_judgment_asset_graph" $?
 else
-  echo "[可視化] 判断資産グラフ生成はスキップ（frequency=${JUDGMENT_ASSET_GRAPH_FREQUENCY}、既存latestを使用）..."
-  log_step "build_judgment_asset_graph" 0
+  # スキップを実ステップ名で exit 0 と記録すると「成功」に見える。別名で残し、朝報にも出す。
+  echo "[可視化] 判断資産グラフ・期間成長判定はスキップ（frequency=${JUDGMENT_ASSET_GRAPH_FREQUENCY}、既存latestを使用）..."
+  log_step "build_judgment_asset_graph_skipped" 0
+  "${PYTHON}" -c 'import sys; sys.path.insert(0, sys.argv[1]); from silent_failure_log import record_silent_failure; record_silent_failure("judgment.build_judgment_asset_graph.frequency_gate", "fallback", detail="frequency=" + sys.argv[2] + " のため生成せず既存latestを使用")' \
+    "${PROJECT_ROOT}" "${JUDGMENT_ASSET_GRAPH_FREQUENCY}" || true
 fi
 
 echo ""
@@ -385,13 +388,22 @@ echo "[配線] 判断資産グラフを frontend/public へ同期（本番UI配�
 # 生成した最新グラフ(HTML/PNG)を App Router のページ名と衝突しない public/generated 配下へコピーする。
 GRAPH_PUBLIC_DIR="${PROJECT_ROOT}/frontend/public/generated/judgment-asset-graph"
 mkdir -p "${GRAPH_PUBLIC_DIR}"
-if [ -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" ] && [ -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.png" ]; then
-  cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" "${GRAPH_PUBLIC_DIR}/index.html" \
-    && cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.png" "${GRAPH_PUBLIC_DIR}/preview.png"
-  log_step "sync_graph_to_public" $?
+# Next は standalone 起動で frontend/.next/standalone/public から配信するため、そちらにも置く
+# （public へのコピーだけでは再起動か restart_next_ui.sh まで画面が古いままになる）。
+# preview.png は生成スクリプトが作らない古い静的画像なので、HTML を正として同期する。
+GRAPH_STANDALONE_DIR="${PROJECT_ROOT}/frontend/.next/standalone/public/generated/judgment-asset-graph"
+if [ -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" ]; then
+  SYNC_GRAPH_EXIT=0
+  cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" "${GRAPH_PUBLIC_DIR}/index.html" || SYNC_GRAPH_EXIT=1
+  if [ -d "${PROJECT_ROOT}/frontend/.next/standalone/public" ]; then
+    mkdir -p "${GRAPH_STANDALONE_DIR}" \
+      && cp -f "${PROJECT_ROOT}/reports/judgment_asset_graph_latest.html" "${GRAPH_STANDALONE_DIR}/index.html" \
+      || SYNC_GRAPH_EXIT=1
+  fi
+  log_step "sync_graph_to_public" ${SYNC_GRAPH_EXIT}
 else
-  echo "警告: 判断資産グラフlatestが無いため public 同期をスキップします。"
-  log_step "sync_graph_to_public" 0
+  echo "警告: 判断資産グラフlatestが無いため public 同期できません。"
+  log_step "sync_graph_to_public" 1
 fi
 
 echo ""

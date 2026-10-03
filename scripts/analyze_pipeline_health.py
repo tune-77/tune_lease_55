@@ -46,16 +46,14 @@ AUTO_FIX_RULE_TYPES = {"patch_json", "config_value"}  # 対応ルール型
 # MIN_TOTAL_RUNS=3 を永久に満たせず、毎週必ず失敗しても失敗検知に乗らなかった。
 # これらのステップだけ評価窓を4週間に広げ、週次の実行頻度に見合う閾値で判定する。
 #
-# build_judgment_asset_graph は週次ゲートの中にあるが、else 側が同じステップ名で
-# exit 0 を記録する（run_daily_improvement_post.sh:375,378）ため毎日ログが出る。
-# 通常ステップとして扱うのが正しいので、ここには含めない。
+# build_judgment_asset_graph / evaluate_shion_growth は既定で毎日走る（JUDGMENT_ASSET_GRAPH_FREQUENCY=daily）。
+# スキップ時は build_judgment_asset_graph_skipped という別名で記録するので、通常ステップとして扱う。
 WEEKLY_STEPS = frozenset(
     {
         "check_orphaned_scripts",
         "build_instruction_debt_report",
         "build_judgment_asset_ab_report",
         "build_shion_growth_brief",
-        "evaluate_shion_growth",
         "build_shion_architecture_layer_audit",
     }
 )

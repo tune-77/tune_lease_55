@@ -223,3 +223,46 @@ def test_build_html_is_offline_and_embeds_graph_payload():
     assert "const graph =" in html
     assert "https://" not in html
     assert "rule:rule-1" in html
+
+
+def test_merged_rules_attach_to_final_active_target_and_demoted_are_counted_only():
+    canonical = {
+        "rules": [
+            {"id": "a", "status": "active", "concept": "c1", "knowledge_kind": "policy", "created_at": "2026-10-02T01:00:00"},
+            {"id": "b", "status": "active", "concept": "c2", "knowledge_kind": "insight", "created_at": "2026-07-12T01:00:00"},
+            {"id": "m1", "status": "merged", "merged_into": "a", "concept": "c1"},
+            # 統合先がさらに統合されている連鎖でも最終の active に繋ぐ
+            {"id": "m2", "status": "merged", "merged_into": "m1", "concept": "c1"},
+            {"id": "m3", "status": "merged", "merged_into": "d", "concept": "c3"},
+            {"id": "d", "status": "demoted", "concept": "c3"},
+        ]
+    }
+
+    payload = graph.build_graph_data(canonical=canonical)
+    nodes = {node["id"]: node for node in payload["nodes"]}
+    merged_edges = {(e["source"], e["target"]) for e in payload["edges"] if e["type"] == "merged"}
+
+    assert merged_edges == {("merged:m1", "rule:a"), ("merged:m2", "rule:a")}
+    assert "rule:d" not in nodes and "merged:m3" not in nodes
+    assert nodes["rule:a"]["merged_count"] == 2
+    assert nodes["rule:a"]["color"] == graph.POLICY_COLOR
+    assert nodes["rule:b"]["color"] == graph.NODE_COLORS["rule"]
+    summary = payload["summary"]
+    assert summary["rules"] == 2
+    assert (summary["policy_rules"], summary["insight_rules"]) == (1, 1)
+    assert (summary["merged_rules"], summary["merged_unresolved"], summary["demoted_rules"]) == (2, 1, 1)
+    assert [item["cumulative"] for item in summary["growth_timeline"]] == [1, 2]
+
+
+def test_main_fails_loudly_when_canonical_rules_are_unreadable(tmp_path, monkeypatch):
+    recorded = []
+    monkeypatch.setattr(graph, "record_silent_failure", lambda *a, **k: recorded.append(a))
+    out_json = tmp_path / "g.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        ["x", "--canonical-json", str(tmp_path / "missing.json"), "--output-json", str(out_json), "--output-html", str(tmp_path / "g.html")],
+    )
+
+    assert graph.main() == 1
+    assert not out_json.exists()
+    assert recorded and recorded[0][0] == "judgment.build_judgment_asset_graph.read_canonical"
