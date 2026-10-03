@@ -20,6 +20,7 @@ from typing import Any
 
 from app_logger import log_warning
 from constants import Q_RISK_ATTENTION_LINE, Q_RISK_STRONG_WARNING_LINE
+from silent_failure_log import record_silent_failure
 
 # 総合スコアと借手スコアの差がこれ以上なら「数値の乖離」として警戒する。
 # 根拠: scoring_core.py 内で診断推奨(diagnostic_recommendations)がこの差 20 点を
@@ -155,7 +156,7 @@ def record_scoring_anomalies(result: dict[str, Any], case_label: str = "") -> li
             from slack_notify import push_notification
 
             push_notification(f"【審査リアルタイム異常検知】{label}: {finding.message}")
-        except Exception:
-            pass
+        except Exception as exc:
+            record_silent_failure("scoring.anomaly_monitor.slack_notify", "save_failed", exc, detail="異常検知の通知が届いていない")
 
     return findings

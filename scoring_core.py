@@ -6,6 +6,7 @@ import os
 import math
 import json
 import numpy as np
+from silent_failure_log import record_silent_failure
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
@@ -339,7 +340,8 @@ def _load_lgb_qual_bundle():
         import joblib
         _lgb_qual_bundle_cache = joblib.load(_LGB_QUAL_MODEL_PATH)
         return _lgb_qual_bundle_cache
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("scoring.core.lgb_qual_model", "swallowed", exc)
         return None
 
 
@@ -354,7 +356,8 @@ def _load_lgbm_default_model():
         import joblib
         _lgbm_default_model_cache = joblib.load(_LGBM_DEFAULT_MODEL_PATH)
         return _lgbm_default_model_cache
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("scoring.core.lgbm_default_model", "swallowed", exc)
         return None
 
 
@@ -421,7 +424,8 @@ def generate_default_warnings(financial_inputs: dict) -> list[str]:
                 f"財務パターンが高リスク格付先（格付9相当）と類似（類似度{prob:.0%}、実PDではありません）"
             ]
         return []
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("scoring.core.default_pattern", "swallowed", exc, detail="高リスク類似の注記なし")
         return []
 
 
@@ -919,6 +923,8 @@ def run_quick_scoring(inputs: dict) -> dict:
     coeffs = get_effective_coeffs(coeff_key)
     z_main = _calculate_z(data_scoring, coeffs)
     score_prob = _safe_sigmoid(z_main)
+    # 借手スコアの出どころ。RF が使えない時はロジスティック式のまま返るので、返り値で分かるようにする。
+    borrower_model = "logistic"
 
     # 定量主モデル（RF優先）。失敗時のみ従来式を使う。
     try:
@@ -984,8 +990,9 @@ def run_quick_scoring(inputs: dict) -> dict:
         )
         if rf_result and rf_result.get("ai_prob") is not None:
             score_prob = max(0.0, min(1.0, 1.0 - float(rf_result["ai_prob"])))
-    except Exception:
-        pass
+            borrower_model = "rf"
+    except Exception as sf_exc:
+        record_silent_failure("scoring.core.rf_model", "fallback", sf_exc, detail="ロジスティック式の借手スコアへ")
 
     # 定性 LGB は単体の補助確率として参照する。ブレンドはしない。
     try:
@@ -995,8 +1002,8 @@ def run_quick_scoring(inputs: dict) -> dict:
             _qual_ati = _qual_bundle.get("asset_to_idx", {})
             _Xq = _build_lgb_qual_feature_vector(inputs, _qual_feat, _qual_ati)
             _ = float(_qual_bundle["model"].predict_proba([_Xq])[0][1])
-    except Exception:
-        pass
+    except Exception as sf_exc:
+        record_silent_failure("scoring.core.lgb_qual_predict", "swallowed", sf_exc)
 
     score_borrower = score_prob * 100
 
@@ -1092,7 +1099,8 @@ def run_quick_scoring(inputs: dict) -> dict:
         quantum_risk_score = float(_quantum_result.get("quantum_risk", 0.0))
         # ルール別寄与の内訳（表示専用・スコアには影響しない）
         q_risk_breakdown = _quantum_result.get("q_risk_breakdown")
-    except Exception:
+    except Exception as sf_exc:
+        record_silent_failure("scoring.core.q_risk", "swallowed", sf_exc, detail="Q_riskなし")
         quantum_risk_score = None
         q_risk_breakdown = None
 
@@ -1119,8 +1127,8 @@ def run_quick_scoring(inputs: dict) -> dict:
                     {"feat": a["feat"], "direction": a["direction"], "delta": round(float(a["delta"]), 0)}
                     for a in _maha.advise_improvement(_maha_df, top_k=3)
                 ]
-        except Exception:
-            pass
+        except Exception as sf_exc:
+            record_silent_failure("scoring.core.mahalanobis", "swallowed", sf_exc)
 
         try:
             import pandas as _pd
@@ -1148,10 +1156,10 @@ def run_quick_scoring(inputs: dict) -> dict:
                     umap_anomaly_score, umap_x, umap_y, umap_similar = (
                         _umap_executor.submit(_run_umap).result(timeout=5.0)
                     )
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as sf_exc:
+                    record_silent_failure("scoring.core.umap", "timeout", sf_exc, detail="UMAPなしで続行")
+        except Exception as sf_exc:
+            record_silent_failure("scoring.core.umap_outer", "swallowed", sf_exc)
 
     credit_quantum_strong_warning = (
         credit_risk_group.get("score", 0.0) >= 70.0
@@ -1255,6 +1263,7 @@ def run_quick_scoring(inputs: dict) -> dict:
         "risk_review_required": risk_review_required,
         "risk_review_reasons": risk_review_reasons,
         "used_default_asset_score": used_default_asset_score,
+        "borrower_model": borrower_model,
         "asset_score_warnings": asset_score_warnings,
         "credit_risk_group_score": credit_risk_group.get("score", 0.0),
         "credit_risk_group_level": credit_risk_group.get("level", "unavailable"),

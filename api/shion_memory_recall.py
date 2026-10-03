@@ -31,6 +31,7 @@ from api.shion_memory_taxonomy import (
     SHARED_VALUE_TERMS,
 )
 from scoring_core import APPROVAL_LINE, REVIEW_LINE
+from silent_failure_log import record_silent_failure
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
@@ -132,7 +133,8 @@ def _maybe_rerank_scored(
         result = call_gemini_json(
             _build_rerank_prompt(question, pool), temperature=0.0, max_output_tokens=512
         )
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.recall.rerank", "fallback", exc, detail="従来順序で続行")
         return scored, False
     finally:
         from api.memory_cost_log import log_memory_cost
@@ -225,8 +227,8 @@ def resolve_index_path() -> Path:
         candidate = Path(get_data_path("shion_memory_index.json"))
         if candidate.exists():
             return candidate
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("memory.recall.index_path", "fallback", exc, detail="既定の索引パスへ")
     if _INDEX_PATH.exists():
         return _INDEX_PATH
     bundle_root = os.environ.get("CLOUDRUN_BUNDLE_DIR", "").strip()
@@ -251,7 +253,8 @@ def resolve_judgment_feedback_path() -> Path:
         from runtime_paths import get_data_path
 
         return Path(get_data_path("judgment_asset_usage_feedback.jsonl"))
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.recall.judgment_feedback_path", "fallback", exc)
         return _JUDGMENT_FEEDBACK_PATH
 
 
@@ -388,8 +391,8 @@ def recall_memories(
     rerank_used = False
     try:
         scored, rerank_used = _maybe_rerank_scored(question, scored)
-    except Exception:
-        pass  # リランカーは補助段。失敗しても従来順序で続行する
+    except Exception as exc:
+        record_silent_failure("memory.recall.rerank_outer", "fallback", exc, detail="従来順序で続行")  # リランカーは補助段。失敗しても従来順序で続行する
     selected = _select_records(scored, route=route, limit=max(0, limit))
     practical_scene = infer_practical_scene(question)
     impact_hints = _build_memory_impact_hints({"memories": selected})
@@ -449,8 +452,8 @@ def _resolve_vector_scores(
 
         if hybrid_enabled():
             return similarity_scores(question)
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("memory.recall.vector_scores", "fallback", exc, detail="ベクトル類似なしで続行")
     return {}
 
 
@@ -614,8 +617,8 @@ def _mirror_usage_to_cloudrun(entry: dict[str, Any]) -> None:
             surface="api_chat",
             payload=entry,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("memory.recall.usage_cloudrun", "save_failed", exc)
 
 
 def _experience_case_lines(case_profile: dict[str, Any], limit: int = 2) -> list[str]:
@@ -656,7 +659,8 @@ def _experience_case_lines(case_profile: dict[str, Any], limit: int = 2) -> list
                 params,
             )
             rows = cur.fetchall()
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.recall.experience_cases", "swallowed", exc)
         return []
     lines: list[str] = []
     seen: set[str] = set()

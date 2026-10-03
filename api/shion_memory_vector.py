@@ -17,6 +17,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+from silent_failure_log import record_silent_failure
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +77,8 @@ def _get_encoder() -> Any:
             if shared is not None:
                 _encoder = shared
                 return _encoder
-        except Exception:
-            pass
+        except Exception as sf_exc:
+            record_silent_failure("memory.vector.encoder", "swallowed", sf_exc)
         try:
             from sentence_transformers import SentenceTransformer
 
@@ -109,7 +110,8 @@ def is_available() -> bool:
         return False
     try:
         return collection.count() > 0
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.vector.available", "swallowed", exc)
         return False
 
 
@@ -290,7 +292,8 @@ def _resolve_index_path_safe() -> Path:
         from api.shion_memory_recall import resolve_index_path
 
         return resolve_index_path()
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("memory.vector.index_path", "fallback", exc)
         return _INDEX_PATH
 
 
