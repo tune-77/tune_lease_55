@@ -56,9 +56,9 @@ def is_critical(component: str) -> bool:
     return str(component).split(".", 1)[0] in CRITICAL_DOMAINS
 
 
-def _caller() -> str:
+def _caller(depth: int = 2) -> str:
     try:
-        frame = sys._getframe(2)
+        frame = sys._getframe(depth)
         path = Path(frame.f_code.co_filename)
         root = Path(__file__).resolve().parent
         try:
@@ -70,7 +70,7 @@ def _caller() -> str:
         return ""
 
 
-def record_silent_failure(component: str, kind: str, exc: BaseException | None = None, *, detail: str = "") -> None:
+def record_silent_failure(component: str, kind: str, exc: BaseException | None = None, *, detail: str = "", stacklevel: int = 1) -> None:
     """黙った失敗を1行記録する。どんな場合も例外を投げない。
 
     detail は「どの経路で何を代わりにしたか」程度の固定ラベル（最大120字）。本文や利用者の入力は入れない。
@@ -78,7 +78,7 @@ def record_silent_failure(component: str, kind: str, exc: BaseException | None =
     """
     try:
         exc_type = type(exc).__name__ if exc is not None else ""
-        where = _caller()
+        where = _caller(stacklevel + 1)
         key = (component, kind, exc_type)
         now = time.monotonic()
         with _lock:
@@ -112,6 +112,13 @@ def record_silent_failure(component: str, kind: str, exc: BaseException | None =
                 fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:  # noqa: BLE001 - 記録の失敗で本処理を止めない（ここだけは記録先がない）
         pass
+
+
+def clip(text: str, limit: int, component: str) -> str:
+    """`text[:limit]` と同じ値を返す。切った時だけ truncated を記録する（長さだけで本文は残さない）。"""
+    if len(text) > limit:
+        record_silent_failure(component, "truncated", detail=f"{len(text)}→{limit}字", stacklevel=2)
+    return text[:limit]
 
 
 def _read_rows(path: Path, since: dt.datetime) -> list[dict[str, Any]]:

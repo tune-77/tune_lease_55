@@ -17,7 +17,7 @@ from typing import Iterable, Any
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-from silent_failure_log import record_silent_failure
+from silent_failure_log import clip, record_silent_failure
 
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "tune-lease-55-data")
@@ -427,8 +427,8 @@ def _insert_shion_review_from_event(conn: sqlite3.Connection, event: dict) -> in
             int(payload.get("memory_refs") or 0),
             int(payload.get("knowledge_refs") or 0),
             1 if payload.get("identity_used") else 0,
-            review_text[:8000],
-            str(payload.get("prompt_text") or "")[:8000],
+            clip(review_text, 8000, "judgment.sync_cloudrun_inputs.review_text"),
+            clip(str(payload.get("prompt_text") or ""), 8000, "judgment.sync_cloudrun_inputs.prompt_text"),
             _json_dumps(payload.get("form_snapshot")),
             _json_dumps(payload.get("result_snapshot")),
             str(payload.get("user_feedback") or ""),
@@ -939,7 +939,7 @@ def _improvement_entry_from_event(event: dict) -> dict | None:
         "event_id": event.get("event_id"),
         "ts": event.get("ts"),
         "title": title[:120],
-        "body": body[:12000],
+        "body": clip(body, 12000, "memory.sync_cloudrun_inputs.improvement_body"),
         "surface": event.get("surface") or "chat_improvement",
         "source": "cloudrun_input_writeback",
     }

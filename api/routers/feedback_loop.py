@@ -24,7 +24,7 @@ from judgment_asset_bandit import (
     read_feedback_rows,
     signal_for_candidate,
 )
-from silent_failure_log import record_silent_failure
+from silent_failure_log import clip, record_silent_failure
 
 try:
     from filelock import FileLock, Timeout as _FileLockTimeout
@@ -496,10 +496,10 @@ def _save_shion_screening_review(req: ShionScreeningReviewSaveRequest) -> dict:
         int(req.memory_refs or 0),
         int(req.knowledge_refs or 0),
         bool(req.identity_used),
-        review_text[:8000],
-        str(req.prompt_text or "")[:8000],
-        form_snapshot[:20000],
-        result_snapshot[:20000],
+        clip(review_text, 8000, "judgment.feedback_loop.review_text"),
+        clip(str(req.prompt_text or ""), 8000, "judgment.feedback_loop.prompt_text"),
+        clip(form_snapshot, 20000, "judgment.feedback_loop.form_snapshot"),
+        clip(result_snapshot, 20000, "judgment.feedback_loop.result_snapshot"),
         str(req.user_feedback or "")[:80],
     )
     columns = (
