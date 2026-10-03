@@ -20,6 +20,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
+from silent_failure_log import record_silent_failure
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,6 +102,7 @@ def save_improvement_history(history: dict[str, Any]) -> None:
     try:
         history_file.write_text(json.dumps(history, indent=2, ensure_ascii=False))
     except Exception as e:
+        record_silent_failure("pipeline.morning_rag_review.save_history", "save_failed", e)
         logger.error(f"Failed to save improvement history: {e}")
 
 
@@ -228,6 +230,7 @@ class RagReviewPhase:
 
             return results
         except Exception as e:
+            record_silent_failure("answer.morning_rag_review.search_quality", "swallowed", e, detail="検索精度テストを実行できなかった")
             logger.error(f"  ✗ テストエラー: {e}")
             return {}
 
@@ -282,6 +285,7 @@ class RagReviewPhase:
 
             return stats
         except Exception as e:
+            record_silent_failure("answer.morning_rag_review.metadata_coverage", "swallowed", e)
             logger.error(f"  ✗ 分析エラー: {e}")
             return {}
 

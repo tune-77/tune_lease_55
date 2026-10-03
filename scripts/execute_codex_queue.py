@@ -15,6 +15,7 @@ from typing import Any
 _REPO_ROOT_FOR_CONFIG = str(Path(__file__).resolve().parents[1])
 if _REPO_ROOT_FOR_CONFIG not in sys.path:
     sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
+from silent_failure_log import record_silent_failure
 from config import get_gemini_model  # noqa: E402
 
 
@@ -88,7 +89,8 @@ def record_successful_id(root: Path, queue: dict[str, Any], rev_id: str) -> bool
             loaded = load_json(state_path)
             if isinstance(loaded, dict):
                 state = loaded
-        except Exception:
+        except Exception as exc:
+            record_silent_failure("pipeline.execute_codex_queue.state", "swallowed", exc, detail="実行済み状態を空として扱った")
             state = {"queued_ids": []}
 
     queued_ids = {str(value) for value in state.get("queued_ids") or [] if value}
