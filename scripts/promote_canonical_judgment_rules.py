@@ -14,11 +14,16 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from api.judgment_policy import classify_knowledge_kind  # noqa: E402
 DATA_DIR = PROJECT_ROOT / "data"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 DEFAULT_INPUT = DATA_DIR / "canonical_judgment_rules_preview.json"
@@ -83,6 +88,7 @@ def _promoted_rule(rule: dict[str, Any], *, now: str, previous: dict[str, Any] |
         "domains": list(rule.get("domains") or previous.get("domains") or [str(rule.get("domain") or previous.get("domain") or "lease_screening")]),
         "concept": str(rule.get("concept") or previous.get("concept") or ""),
         "canonical_statement": str(rule.get("canonical_statement") or previous.get("canonical_statement") or "").strip(),
+        "knowledge_kind": classify_knowledge_kind(str(rule.get("canonical_statement") or previous.get("canonical_statement") or "")),
         "evidence_count": int(rule.get("evidence_count") or previous.get("evidence_count") or 0),
         "user_evidence_count": int(rule.get("user_evidence_count") or previous.get("user_evidence_count") or 0),
         "confidence": float(rule.get("confidence") or previous.get("confidence") or 0.7),

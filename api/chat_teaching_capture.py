@@ -25,6 +25,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from api.judgment_policy import (
+    INSIGHT_CITATION_INSTRUCTION,
+    POLICY,
+    asset_citation,
+    classify_knowledge_kind,
+    format_policy_block,
+    knowledge_kind_of,
+)
+
 from memory_promotion_policy import TEACHING_DOMAIN_TERMS
 from runtime_paths import get_data_dir
 
@@ -342,6 +351,8 @@ def recall_taught_knowledge(
                         "snippet": body[:220],
                         "score": round(score, 3),
                         "user_taught": KNOWLEDGE_SOURCE_TYPE in raw or "user_teaching" in raw,
+                        "knowledge_kind": classify_knowledge_kind(body),
+                        "citation": f"Knowledge ノート「{path.stem}」",
                     },
                 )
             )
@@ -362,6 +373,8 @@ def recall_taught_knowledge(
                     "snippet": claim[:220],
                     "score": round(score, 3),
                     "user_taught": True,
+                    "knowledge_kind": knowledge_kind_of(row, claim),
+                    "citation": asset_citation(str(row.get("id") or ""), str(row.get("research_date") or ""), label="判断資産候補"),
                 },
             )
         )
@@ -370,21 +383,34 @@ def recall_taught_knowledge(
 
 
 def build_recall_prompt_block(items: list[dict[str, Any]], rag_hits: list[dict[str, Any]] | None = None) -> str:
+    policies = [
+        {"text": item["snippet"], "source": item.get("citation") or item["topic"]}
+        for item in items
+        if item.get("user_taught") and (item.get("knowledge_kind") or classify_knowledge_kind(item["snippet"])) == POLICY
+    ]
+    policy_texts = {p["text"] for p in policies}
     lines: list[str] = []
     for item in items:
-        lines.append(f"- ユーザーが教えた知識（{item['topic']}）: {item['snippet']}")
+        if item["snippet"] in policy_texts:
+            continue
+        cite = f"（出典: {item['citation']}）" if item.get("citation") else ""
+        lines.append(f"- ユーザーが教えた知識（{item['topic']}）: {item['snippet']}{cite}")
     for hit in rag_hits or []:
         snippet = " ".join(str(hit.get("text") or "").split())[:200]
         if snippet:
             lines.append(f"- 参照ナレッジ（{hit.get('source') or hit.get('title') or 'RAG'}）: {snippet}")
+    policy_block = format_policy_block(policies)
     if not lines:
-        return ""
-    return (
+        return policy_block
+    block = (
         "【回答前に想起した知識】\n"
         "以下は回答前に検索した保存済み知識。関係があれば優先して使い、使った時は"
-        "「以前教わった〇〇」のように出所を一言添える。関係がなければ無理に使わない。\n"
+        "「以前教わった〇〇」のように出所を一言添える。関係がなければ無理に使わない。"
+        + INSIGHT_CITATION_INSTRUCTION
+        + "\n"
         + "\n".join(lines)
     )
+    return f"{policy_block}\n\n{block}" if policy_block else block
 
 
 def used_in_reply(item: dict[str, Any], reply: str) -> bool:

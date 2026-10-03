@@ -469,10 +469,27 @@ def build_recall_prompt_block(
     practical_scene = recalled.get("practical_scene") or {}
     if not memories and not practical_scene:
         return "", recalled
+    from api.judgment_policy import INSIGHT_CITATION_INSTRUCTION, POLICY, asset_citation, format_policy_block, knowledge_kind_of
+
+    # 判断資産のうち方針型（社内ルール）は、一般の想起メモに混ぜず、結論として述べる指示つきで先頭に出す
+    policies: list[dict[str, str]] = []
+    other_memories: list[dict[str, Any]] = []
+    for record in memories:
+        content = str(record.get("content") or "").strip()
+        if record.get("source") == "canonical_judgment_rules" and knowledge_kind_of(record, content) == POLICY:
+            policies.append({"text": content[:260], "source": asset_citation(str(record.get("judgment_asset_id") or ""), str(record.get("created_at") or ""))})
+        else:
+            other_memories.append(record)
+    memories = other_memories
+    policy_block = format_policy_block(policies)
+    if not memories and not practical_scene:
+        return policy_block, recalled
     lines = [
+        *([policy_block, ""] if policy_block else []),
         "【紫苑の想起メモ】",
         f"想起ルート: {recalled.get('route')}",
         "以下は今回の質問に関連しそうな記憶です。回答では必要なものだけ自然に使い、無関係なら無理に触れないでください。",
+        INSIGHT_CITATION_INSTRUCTION,
     ]
     if practical_scene:
         lines.extend(_format_practical_scene_block(practical_scene))
@@ -487,7 +504,10 @@ def build_recall_prompt_block(
         status = str(record.get("status") or "active")
         layer = str(record.get("memory_layer") or "retrieval")
         content = str(record.get("content") or "").strip()
-        lines.append(f"{idx}. [{layer}/{mtype}/{status}] {content[:260]}")
+        cite = ""
+        if record.get("source") == "canonical_judgment_rules" and record.get("judgment_asset_id"):
+            cite = f"（出典: {asset_citation(str(record['judgment_asset_id']), str(record.get('created_at') or ''))}）"
+        lines.append(f"{idx}. [{layer}/{mtype}/{status}] {content[:260]}{cite}")
     impact_hints = recalled.get("impact_hints") or []
     if impact_hints:
         lines.append("")

@@ -11,6 +11,8 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
+from api.judgment_policy import classify_knowledge_kind
+
 
 # チャット由来の候補は、人が /judgment-review で確かめるまで要確認にしておく（自動昇格しない）。
 CHAT_TEACHING_TOPIC = "chat_judgment_teaching"
@@ -80,6 +82,7 @@ def create_manual_judgment_asset_candidate(
         "research_title": "Manual Judgment Asset",
         "research_date": str(getattr(req, "research_date", "") or "") or now.date().isoformat(),
         "claim": claim,
+        "knowledge_kind": classify_knowledge_kind(claim),  # 方針（社内ルール）/知見。想起時に方針を結論として効かせる
         "effective_claim": claim,
         "edited_claim": claim,
         "edit_count": 1,

@@ -18,6 +18,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+from api.judgment_policy import knowledge_kind_of  # noqa: E402
 from api.shion_memory_taxonomy import MEMORY_TYPES, RECALL_ROUTES, make_memory_record
 from obsidian_query import list_vault_md_files
 from memory_promotion_policy import TEACHING_DOMAIN_TERMS
@@ -499,6 +500,8 @@ def _canonical_judgment_rule_records(path: Path) -> list[dict[str, Any]]:
         # 記憶IDは本文由来の安定ハッシュだが、現場フィードバックは正規判断資産IDへ
         # 紐づく。両者を橋渡しし、想起時に結果評価を説明可能な形で参照できるようにする。
         record["judgment_asset_id"] = str(rule.get("id") or "").strip()
+        record["knowledge_kind"] = knowledge_kind_of(rule, statement)
+        record["created_at"] = str(rule.get("created_at") or record.get("created_at") or "")[:10] or record.get("created_at")
         record["evidence_count"] = _safe_int(rule.get("evidence_count"), 0)
         record["user_evidence_count"] = _safe_int(rule.get("user_evidence_count"), 0)
         record["evidence_paths"] = list(rule.get("evidence_paths") or [])[:6]
