@@ -84,7 +84,7 @@ Retirement: remove this workflow if the LaunchAgent exposes a reliable health-an
 ```bash
 curl --max-time 10 -sS http://127.0.0.1:8000/healthz >/dev/null
 curl --max-time 10 -sS http://127.0.0.1:3000/ >/dev/null
-curl --max-time 15 -s -o /dev/null -w '%{http_code}\n' https://shion.tune77.com/chat  # expect 200
+curl --max-time 15 -s -o /dev/null -w '%{http_code}\n' https://shion.tune77.com/chat  # 200, or 302 (Access login) once Cloudflare Access is enabled
 ```
 
 `/docs` is disabled (404) in public-tunnel mode, so never wait on it.

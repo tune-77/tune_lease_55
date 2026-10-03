@@ -1047,6 +1047,29 @@ YAML
 
 別のパス・ホスト名を使う場合は `CLOUDFLARE_TUNNEL_CONFIG` / `CLOUDFLARE_TUNNEL_HOSTNAME` で上書きできます。
 
+### 公開URLのエッジ保護（Cloudflare Access・回数制限・休止ページ）
+
+`scripts/cloudflare_edge_setup.sh` が次の3つを冪等に設定します（既定はドライランで差分表示のみ）。
+
+- **Access**: shion.tune77.com 全体をメールのワンタイムPINで保護。許可は所有者メールのみ、セッション730時間。
+  朝報の死活チェック用 service token も許可し、キーチェーン（`cloudflare-access-monitor-id` / `-secret`）に保存
+- **回数制限**: 音声トークン発行・チャット・軍師・マルチエージェント審査へ、同一IPから10秒に5回を超えたら10秒遮断（無料プランの1ルール）
+- **休止ページ Worker**（`cloudflare/shion-sleep-worker/`）: Mac に届かない時（502/530 等）だけ「紫苑は今お休み中です」を返す。正常時は素通し、ログ無効
+
+```bash
+bash scripts/cloudflare_edge_setup.sh            # ドライラン
+bash scripts/cloudflare_edge_setup.sh --apply    # 反映
+bash scripts/cloudflare_edge_setup.sh --verify   # ログイン転送・回数制限・休止ページを確認
+```
+
+API トークンはキーチェーン（サービス `cloudflare-api-token` / アカウント `tune-lease-55`）から読みます。必要な権限:
+Account の「Access: Apps and Policies」「Access: Organizations, Identity Providers, and Groups」「Access: Service Tokens」「Workers Scripts」を Edit、
+Zone（tune77.com）の「Zone」Read・「Zone WAF」「Workers Routes」を Edit。
+Zero Trust のチーム名（Free プラン）だけは初回にダッシュボードで作る必要があり、未作成ならスクリプトが手作業として表示します。
+
+Access 導入後、外から `curl https://shion.tune77.com/chat` するとログイン画面への 302 になるのが正常です。
+
+
 ## 何ができるか
 
 - 企業・物件・条件を入力し、審査スコア、金利余地、Q_risk、類似案件、承認条件を見る

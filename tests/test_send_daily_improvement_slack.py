@@ -31,12 +31,64 @@ def test_system_monitor_flags_unreachable_public_url(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mod, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(mod, "_PUBLIC_APP_URL", "https://example.test")
+    monkeypatch.setattr(mod, "_keychain_secret", lambda service: "")
     monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
 
     text = "\n".join(mod._system_monitor_lines(now=datetime(2026, 10, 4, 6, 0, 0)))
     assert "公開URLが応答しません" in text
     assert "https://example.test/chat" in text
     assert "`530`" in text
+
+
+class _FakeResponse:
+    def __init__(self, final_url, status=200):
+        self._url, self._status = final_url, status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def getcode(self):
+        return self._status
+
+    def geturl(self):
+        return self._url
+
+
+def test_public_url_check_sends_access_service_token(monkeypatch):
+    import scripts.send_daily_improvement_slack as mod
+
+    seen = {}
+
+    def fake_urlopen(request, timeout):
+        seen.update({k.lower(): v for k, v in request.header_items()})
+        return _FakeResponse("https://example.test/chat")
+
+    monkeypatch.setattr(mod, "_PUBLIC_APP_URL", "https://example.test")
+    monkeypatch.setattr(mod, "_keychain_secret", lambda service: f"value-of-{service}")
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
+
+    assert mod._public_url_line() == ""
+    assert seen["cf-access-client-id"] == "value-of-cloudflare-access-monitor-id"
+    assert seen["cf-access-client-secret"] == "value-of-cloudflare-access-monitor-secret"
+
+
+def test_public_url_check_flags_access_login_redirect(monkeypatch):
+    import scripts.send_daily_improvement_slack as mod
+
+    monkeypatch.setattr(mod, "_PUBLIC_APP_URL", "https://example.test")
+    monkeypatch.setattr(mod, "_keychain_secret", lambda service: "")
+    monkeypatch.setattr(
+        mod.urllib.request,
+        "urlopen",
+        lambda request, timeout: _FakeResponse("https://team.cloudflareaccess.com/cdn-cgi/access/login"),
+    )
+
+    line = mod._public_url_line()
+    assert "Access のログイン画面に転送" in line
+    assert "value-of" not in line
 
 
 def test_system_monitor_section_present_in_message():
