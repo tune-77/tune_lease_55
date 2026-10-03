@@ -7075,7 +7075,7 @@ def post_chat(req: ChatRequest):
             )
             from api.chat_side_effects import chat_exchange_metadata, memory_usage_extra, prompt_feedback_extra
 
-            from api.judgment_policy import merge_policy_blocks, split_policy_block
+            from api.judgment_policy import enforce_policy_first, merge_policy_blocks, split_policy_block
 
             _memory_policy, memory_recall_context = split_policy_block(memory_recall_context)
             _teaching_policy, teaching_prompt_context = split_policy_block(teaching_prompt_context)
@@ -7153,6 +7153,7 @@ def post_chat(req: ChatRequest):
                     question=req.message,
                 )
             reply = teaching_turn.finalize(call_gemini_chat(effective_system_prompt, history_for_gemini, req.message))
+            reply = enforce_policy_first(reply, policy_prompt_context)
             obsidian_daily_effect = {}
             if obsidian_daily_context:
                 obsidian_daily_effect = record_obsidian_daily_intelligence_event(
@@ -7524,7 +7525,7 @@ def post_chat(req: ChatRequest):
         )
 
         # 社内方針（ユーザーが定めたルール）は回答の型・判断分岐の指示に負けないよう、最後に1つの節として置く
-        from api.judgment_policy import merge_policy_blocks, split_policy_block
+        from api.judgment_policy import enforce_policy_first, merge_policy_blocks, split_policy_block
 
         _memory_policy, memory_recall_context = split_policy_block(memory_recall_context)
         _teaching_policy, teaching_prompt_context = split_policy_block(teaching_prompt_context)
@@ -7611,6 +7612,7 @@ def post_chat(req: ChatRequest):
         reply = call_gemini_chat(effective_prompt, history_for_gemini, req.message)
         estimated_user_emotion, reply = extract_estimated_user_emotion(reply)
         reply = teaching_turn.finalize(reply)
+        reply = enforce_policy_first(reply, policy_prompt_context)  # 方針を使ったのに冒頭で述べていなければ1行目へ
         obsidian_daily_effect = {}
         if obsidian_daily_context:
             obsidian_daily_effect = record_obsidian_daily_intelligence_event(

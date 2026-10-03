@@ -89,3 +89,31 @@ def merge_policy_blocks(*blocks: str) -> str:
             if line.startswith("- 方針: ") and line not in seen:
                 seen.append(line)
     return "\n".join([POLICY_HEADER, POLICY_INSTRUCTIONS, *seen]) if seen else ""
+
+
+_POLICY_LINE_RE = re.compile(r"^- 方針: (?P<text>.+)（出典: (?P<source>[^（）]+)）$")
+
+
+def _policy_entries(policy_block: str) -> list[dict[str, str]]:
+    return [m.groupdict() for line in str(policy_block or "").splitlines() if (m := _POLICY_LINE_RE.match(line))]
+
+
+def _first_clause(text: str, limit: int = 60) -> str:
+    head = re.split(r"[ 　。（(]", text.strip(), maxsplit=1)[0]
+    return head[:limit]
+
+
+def enforce_policy_first(reply: str, policy_block: str, *, head_chars: int = 200) -> str:
+    """答えが方針を出典として使っている（＝関係ありと判断した）のに冒頭で述べていなければ、方針を1行目に置く。
+
+    出典に方針の判断資産IDが無い答え（関係ないと判断した答え）は変えない。
+    """
+    text = str(reply or "")
+    for entry in _policy_entries(policy_block):
+        asset_id = entry["source"].split()[1] if len(entry["source"].split()) > 1 else entry["source"]
+        clause = _first_clause(entry["text"])
+        cited = asset_id[:8] in text or clause in text[head_chars:]
+        if not cited or clause in text[:head_chars]:
+            continue
+        return f"**社内方針**: {clause}（{entry['source']}）。以下は方針を前提にした補足です。\n\n{text}"
+    return text

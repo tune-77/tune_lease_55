@@ -127,3 +127,18 @@ def test_policy_tail_survives_prompt_cap(monkeypatch) -> None:
     capped = _cap_system_prompt(body, surface="test", reserved_tail=tail)
     assert capped.endswith(tail) and len(capped) <= 300 and capped.startswith("ブロック0")
     assert _cap_system_prompt(body, surface="test").startswith("ブロック0")  # 方針なしは従来どおり
+
+
+def test_enforce_policy_first_only_when_reply_cites_the_policy() -> None:
+    from api.judgment_policy import enforce_policy_first, format_policy_block
+
+    block = format_policy_block([{"text": "銀行と取引のない企業とは付き合わない 資料がすぐ出てこない企業とも", "source": "判断資産 93d1b22ceac4e274・2026-10-02 教示"}])
+    buried = "まず背景を確認します。……\n\n出典: 判断資産 93d1b22ceac4e274・2026-10-02 教示"
+    fixed = enforce_policy_first(buried, block)
+    assert fixed.startswith("**社内方針**: 銀行と取引のない企業とは付き合わない（判断資産 93d1b22ceac4e274・2026-10-02 教示）")
+    assert fixed.endswith(buried)
+    already = "社内方針では銀行と取引のない企業とは付き合わないため、原則お断りです。\n\n出典: 判断資産 93d1b22ceac4e274"
+    assert enforce_policy_first(already, block) == already  # 冒頭で述べていれば変えない
+    unrelated = "法定耐用年数はトラックで5年です。"
+    assert enforce_policy_first(unrelated, block) == unrelated  # 使っていない（関係ない）なら変えない
+    assert enforce_policy_first(buried, "") == buried
