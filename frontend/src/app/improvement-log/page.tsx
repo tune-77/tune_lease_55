@@ -677,6 +677,8 @@ export default function ImprovementLogPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("NEEDS_REVIEW");
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  // 承認・却下・ルール化・削除の失敗は以前は黙って捨てていた。行ごとに失敗を出して再試行できるようにする。
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [pendingRecipes, setPendingRecipes] = useState<PendingRecipe[]>([]);
   const [recipesLoading, setRecipesLoading] = useState(false);
   const [dismissedRecipes, setDismissedRecipes] = useState<Set<string>>(new Set());
@@ -995,6 +997,7 @@ export default function ImprovementLogPage() {
     async (item: ImprovementItem, action: "approved" | "rejected" | "deferred") => {
       const itemKey = item.canonical_key || item.id || item.title;
       setActionLoading((prev) => ({ ...prev, [itemKey]: true }));
+      setActionErrors((prev) => ({ ...prev, [itemKey]: "" }));
       try {
         const rawContext = item.raw_preview || item.detail || "";
         await apiClient.post("/api/improvement-log/review", {
@@ -1010,7 +1013,7 @@ export default function ImprovementLogPage() {
         setHiddenImprovementKeys((prev) => new Set(prev).add(itemKey));
         await fetchLog();
       } catch {
-        // 失敗時は何もしない（再fetchで状態は保持される）
+        setActionErrors((prev) => ({ ...prev, [itemKey]: "操作に失敗しました。もう一度お試しください。" }));
       } finally {
         setActionLoading((prev) => ({ ...prev, [itemKey]: false }));
       }
@@ -1022,6 +1025,7 @@ export default function ImprovementLogPage() {
     async (item: ImprovementItem) => {
       const itemKey = item.canonical_key || item.id || item.title;
       setActionLoading((prev) => ({ ...prev, [itemKey]: true }));
+      setActionErrors((prev) => ({ ...prev, [itemKey]: "" }));
       const reason = item.auto_fix_policy?.reason || item.reason || item.title || "";
       const rule = `${item.title || item.id || "改善項目"}: ${reason}`.trim();
       try {
@@ -1037,7 +1041,7 @@ export default function ImprovementLogPage() {
         setHiddenImprovementKeys((prev) => new Set(prev).add(itemKey));
         await fetchLog();
       } catch {
-        // 失敗時は何もしない（再fetchで状態は保持される）
+        setActionErrors((prev) => ({ ...prev, [itemKey]: "操作に失敗しました。もう一度お試しください。" }));
       } finally {
         setActionLoading((prev) => ({ ...prev, [itemKey]: false }));
       }
@@ -1049,6 +1053,7 @@ export default function ImprovementLogPage() {
     async (item: ImprovementItem) => {
       const itemKey = item.canonical_key || item.id || item.title;
       setActionLoading((prev) => ({ ...prev, [itemKey]: true }));
+      setActionErrors((prev) => ({ ...prev, [itemKey]: "" }));
       try {
         await apiClient.post("/api/improvement-log/delete", {
           key: item.canonical_key || item.id || item.title || "",
@@ -1057,7 +1062,7 @@ export default function ImprovementLogPage() {
         setHiddenImprovementKeys((prev) => new Set(prev).add(itemKey));
         await fetchLog();
       } catch {
-        // 失敗時は一覧に残す
+        setActionErrors((prev) => ({ ...prev, [itemKey]: "操作に失敗しました。もう一度お試しください。" }));
       } finally {
         setActionLoading((prev) => ({ ...prev, [itemKey]: false }));
       }
@@ -2723,6 +2728,9 @@ export default function ImprovementLogPage() {
                               icon={<Trash2 className="h-3.5 w-3.5" />}
                               title="この改善候補を一覧から削除します（監査ログには deleted として残ります）"
                             />
+                          )}
+                          {actionErrors[itemKey] && (
+                            <p className="mt-1 text-xs text-rose-600">{actionErrors[itemKey]}</p>
                           )}
                         </td>
                       </tr>
