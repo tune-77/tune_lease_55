@@ -31,19 +31,33 @@ USER_PERSONAL_MEMORY_KEYWORDS = (
 )
 
 
-def read_personal_memory_lines(path: Path, *, limit: int = 24, all_lines: bool = False) -> tuple[list[str], str]:
+def is_personal_memory_candidate(line: str, *, all_lines: bool = False) -> bool:
+    """プロンプト候補になる行か（見出し・空行・長すぎる行は除く）。週次の整理も同じ基準で数える。"""
+    if not line or len(line) > 900 or line.startswith("#"):
+        return False
+    return all_lines or any(keyword in line for keyword in USER_PERSONAL_MEMORY_KEYWORDS)
+
+
+def read_personal_memory_lines(
+    path: Path,
+    *,
+    limit: int = 24,
+    all_lines: bool = False,
+    archived: set[str] | frozenset[str] = frozenset(),
+) -> tuple[list[str], str]:
     if not path.exists() or not path.is_file():
         return [], ""
     try:
         raw_lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     except OSError:
         return [], ""
+    from api.user_personal_memory_archive import line_key
+
     selected: list[str] = []
     for raw in raw_lines:
         line = raw.strip()
-        if not line or len(line) > 900:
-            continue
-        if all_lines or any(keyword in line for keyword in USER_PERSONAL_MEMORY_KEYWORDS):
+        # アーカイブ済みは上限を数える前に外す（後ろの古い行が繰り上がらないよう、整理側で同じ候補を判定済み）
+        if is_personal_memory_candidate(line, all_lines=all_lines) and line_key(line) not in archived:
             selected.append(line)
         if len(selected) >= limit:
             break
@@ -105,6 +119,20 @@ def _user_personal_memory_line_priority(line: str) -> int:
     return 3
 
 
+def personal_memory_sources(
+    repo_root: str | Path, data_path_resolver: Callable[[str], str]
+) -> list[tuple[Path, bool, int]]:
+    """(ファイル, 全行を候補にするか, 上限行数)。読み込みと週次整理の両方がこの並びを使う。"""
+    root = Path(repo_root)
+    return [
+        (Path(data_path_resolver("user_personal_memory.md")), True, 80),
+        (root / "data" / "user_personal_memory.md", True, 80),
+        (root / "PERSISTENT_MEMORY.md", False, 20),
+        (root / "USER.md", False, 24),
+        (root / "MEMORY.md", False, 32),
+    ]
+
+
 def load_user_personal_memory_payload(
     *,
     repo_root: str | Path,
@@ -121,19 +149,13 @@ def load_user_personal_memory_payload(
     ):
         return cached
 
-    repo_root_path = Path(repo_root)
+    from api.user_personal_memory_archive import archived_keys, line_key
+
+    archived = archived_keys(Path(data_path_resolver("user_personal_memory_archive.json")))
     refs: list[str] = []
     lines: list[str] = []
-    personal_path = Path(data_path_resolver("user_personal_memory.md"))
-    root_personal_path = repo_root_path / "data" / "user_personal_memory.md"
-    for path, all_lines, limit in (
-        (personal_path, True, 80),
-        (root_personal_path, True, 80),
-        (repo_root_path / "PERSISTENT_MEMORY.md", False, 20),
-        (repo_root_path / "USER.md", False, 24),
-        (repo_root_path / "MEMORY.md", False, 32),
-    ):
-        found, ref = read_personal_memory_lines(path, limit=limit, all_lines=all_lines)
+    for path, all_lines, limit in personal_memory_sources(repo_root, data_path_resolver):
+        found, ref = read_personal_memory_lines(path, limit=limit, all_lines=all_lines, archived=archived)
         if found:
             if ref not in refs:
                 refs.append(ref)
@@ -153,7 +175,7 @@ def load_user_personal_memory_payload(
     clean_lines: list[str] = []
     seen: set[str] = set()
     for line in lines:
-        if line in seen:
+        if line in seen or line_key(line) in archived:
             continue
         seen.add(line)
         clean_lines.append(line)
