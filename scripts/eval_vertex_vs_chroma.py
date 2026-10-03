@@ -234,8 +234,14 @@ def update_jev_state(result: dict[str, Any], now: str, path: Path | None = None)
 
     path = path or STATE_PATH
     jev_state = load_jev_state(path)
-    if not result.get("jev_rerank"):
+    jev = result.get("jev_rerank")
+    if not jev:
         return bool(jev_state.get("promoted")), "Jev 評価なし"
+    if not jev.get("calls"):
+        # 全問不通の晩は「ChromaDB の順位そのまま」になるだけで Jev の測定ではない。晩数に数えない
+        jev_state.update({"last_failed_at": now, "last_failures": jev.get("failures", 0)})
+        write_state(jev_state, path)
+        return bool(jev_state.get("promoted")), f"Jev 全問不通のため今晩は判定に数えない（{jev.get('failures', 0)}問）"
     history = list(jev_state.get("history") or [])
     history.append({"at": now, "chroma": result["chroma"], "jev_rerank": result["jev_rerank"]})
     promoted, reason = decide_rerank(history, bool(jev_state.get("promoted")), key="jev_rerank")
