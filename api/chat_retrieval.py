@@ -105,6 +105,25 @@ def extract_vertex_search_hint(message: str) -> str:
     return hint or text
 
 
+def build_vertex_search_query(message: str) -> str:
+    """Turn a chat-style question into compact terms before external search."""
+    from api.vertex_query_mask import mask_for_vertex
+
+    # Keep label punctuation intact until after masking. Decomposition turns
+    # ``企業名: 山田製作所`` into separate terms and would otherwise destroy
+    # the context required by the label-based privacy rule.
+    source = mask_for_vertex(extract_vertex_search_hint(message))
+    try:
+        from obsidian_query import split_query_terms
+
+        terms = split_query_terms(source)
+    except Exception:
+        terms = []
+    # Preserve order while removing repeated conversational fragments.
+    unique_terms = list(dict.fromkeys(term for term in terms if len(term) >= 2))
+    return " ".join(unique_terms)[:500] or source[:500]
+
+
 def chat_memory_roots(obsidian_vault_path: str = "") -> list[Path]:
     roots: list[Path] = []
     candidates = [
@@ -275,15 +294,29 @@ def _rerank_local_hits(message: str, hits: list[dict[str, Any]], result: "ChatRe
         return hits
 
 
-def _jev_rerank_enabled(message: str) -> bool:
-    """毎晩の評価で効果確認済み（独立スイッチ JEV_RAG_RERANK）で、送ってよい質問の時だけ。"""
+def _jev_evaluation_eligible(message: str) -> bool:
+    """Whether a query may be sent to Jev during shadow evaluation."""
     try:
         from api.chat_routing import is_potentially_sensitive_screening_message
-        from api.jev_rag_rerank import production_enabled
 
         if is_potentially_sensitive_screening_message(message) and not _typesafe_screening_allowed():
             return False  # 既存の TypeSafe 方針どおり、審査の機微な質問は外部判定へ送らない
-        return production_enabled()
+        return str(os.environ.get("JEV_RAG_RERANK") or "").strip().lower() not in {
+            "off",
+            "0",
+            "false",
+            "no",
+        }
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _jev_rerank_enabled(message: str) -> bool:
+    """Use Jev in production only after shadow evaluation promoted it."""
+    try:
+        from api.jev_rag_rerank import production_enabled
+
+        return _jev_evaluation_eligible(message) and production_enabled()
     except Exception:  # noqa: BLE001
         return False
 
@@ -323,7 +356,8 @@ def build_chat_retrieval_context(
     )
     candidate_top_k = min(20, max(rag_top_k, rag_top_k * 2)) if typesafe_filter else rag_top_k
     # クレジット期間中、毎晩の shadow 評価で効果が確認できた時だけ Ranking API で並べ替える
-    rerank = _vertex_rerank_enabled()
+    vertex_rerank_allowed = not is_general_response_mode and question_category != "general"
+    rerank = vertex_rerank_allowed and _vertex_rerank_enabled()
     jev_rerank_on = not rerank and _jev_rerank_enabled(message)
     if rerank or jev_rerank_on:
         candidate_top_k = min(20, max(candidate_top_k, rag_top_k * 2))
@@ -383,7 +417,7 @@ def build_chat_retrieval_context(
         from api.vertex_query_mask import mask_for_vertex
 
         # 外部の検索APIへ出る前に、会社名・個人名・電話・住所・金額などを伏せる
-        vertex_search_query = mask_for_vertex(extract_vertex_search_hint(message))
+        vertex_search_query = mask_for_vertex(build_vertex_search_query(message))
         credit_mode = credit_mode_status()
         result.vertex_agent_search = search_vertex_agent(vertex_search_query)
         result.vertex_agent_search["credit_mode"] = credit_mode

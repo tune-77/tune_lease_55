@@ -106,6 +106,7 @@ VAULT_JOB_LABELS = frozenset(
         "com.tunelease.improvement-pipeline",
         "com.tunelease.morning-rag-review",
         "com.tunelease.vertex-credit-daily",
+        "com.tunelease.answer-regression-weekly",
         "com.tunelease.vault-watcher",
     }
 )

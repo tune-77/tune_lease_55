@@ -72,7 +72,12 @@ def iter_vault_md_files(
             yield path
 
 
-def list_vault_md_files(root: Path, *, max_scan: int | None = None) -> list[Path]:
+def list_vault_md_files(
+    root: Path,
+    *,
+    max_scan: int | None = None,
+    suppress_errors: bool = True,
+) -> list[Path]:
     """root配下（サブフォルダ含む）の.mdファイル一覧を返す共通ヘルパー。
 
     Obsidian Vault全体やGCS同期先ディレクトリなど、AI検索用途に限らない
@@ -90,7 +95,8 @@ def list_vault_md_files(root: Path, *, max_scan: int | None = None) -> list[Path
                 if max_scan is not None and len(files) >= max_scan:
                     break
     except Exception:
-        pass
+        if not suppress_errors:
+            raise
     return files
 
 

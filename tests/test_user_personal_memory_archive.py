@@ -117,3 +117,14 @@ def test_jev_failure_keeps_rule_based_cleanup(tmp_path, monkeypatch):
 
     report = upa.run(dry_run=False, repo_root=tmp_path, data_path_resolver=resolver, today=TODAY, pair_scorer=boom)
     assert report["auto_archived"] == 1 and report["jev"].startswith("skipped")
+
+
+def test_recent_rows_are_protected_from_asset_and_duplicate_auto_archive():
+    rows = [
+        {"id": "asset", "key": "recent asset", "source": "x", "text": "- [2026-10-02] recent asset", "body": "recent asset", "captured": True, "date": "2026-10-02"},
+        {"id": "older", "key": "same preference", "source": "x", "text": "- [2026-01-01] same preference", "body": "same preference", "captured": False, "date": "2026-01-01"},
+        {"id": "recent", "key": "same preference!", "source": "x", "text": "- [2026-10-02] same preference!", "body": "same preference!", "captured": False, "date": "2026-10-02"},
+    ]
+    auto, _review = upa.classify(rows, today=TODAY, pinned=set(), statements=["recent asset"])
+    assert "asset" not in {item["id"] for item in auto}
+    assert "recent" not in {item["id"] for item in auto}

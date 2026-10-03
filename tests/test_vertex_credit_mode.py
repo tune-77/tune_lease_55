@@ -13,6 +13,7 @@ from api.chat_retrieval import build_chat_retrieval_context
 from api.vertex_query_mask import mask_for_vertex
 from scripts import eval_vertex_vs_chroma as vx_eval
 from scripts import export_obsidian_for_agent_search as exporter
+from scripts import sync_obsidian_to_vertex_agent_search as vertex_sync
 from scripts import vertex_credit_monitor as monitor
 
 
@@ -134,6 +135,35 @@ def test_screening_question_gets_grounded_answer_as_evidence_with_masked_query(s
     assert "rerank" not in calls  # 並べ替えは効果確認前なので本番に入らない
 
 
+def test_vertex_query_uses_obsidian_term_decomposition(state_path, monkeypatch) -> None:
+    calls: dict = {}
+    _install_fakes(monkeypatch, calls)
+
+    build_chat_retrieval_context(
+        "工作機械の残価について教えてください",
+        rag_top_k=3,
+        question_category="lease_knowledge",
+        is_general_response_mode=False,
+    )
+
+    assert calls["search"] == ["工作機械 残価"]
+
+
+def test_vertex_query_masks_labeled_company_before_term_decomposition(state_path, monkeypatch) -> None:
+    calls: dict = {}
+    _install_fakes(monkeypatch, calls)
+
+    build_chat_retrieval_context(
+        "企業名: 山田製作所 工作機械の残価について教えて",
+        rag_top_k=3,
+        question_category="lease_screening",
+        is_general_response_mode=False,
+    )
+
+    assert "山田製作所" not in calls["search"][0]
+    assert "工作機械" in calls["search"][0] and "残価" in calls["search"][0]
+
+
 def test_off_restores_previous_behaviour(state_path, monkeypatch) -> None:
     calls: dict = {}
     _install_fakes(monkeypatch, calls)
@@ -233,6 +263,18 @@ def test_rerank_is_promoted_only_after_three_better_nights_and_demoted_when_wors
     assert vx_eval.decide_rerank([better] * 3 + [_night((0.8, 0.60), (0.8, 0.55))], True)[0] is False  # 適用中に劣後→外す
 
 
+def test_rerank_retries_on_the_same_date_count_as_one_night() -> None:
+    better = _night((0.8, 0.60), (0.83, 0.66))
+    history = [
+        {"at": "2026-10-01T01:00:00+09:00", **better},
+        {"at": "2026-10-01T02:00:00+09:00", **better},
+        {"at": "2026-10-02T01:00:00+09:00", **better},
+    ]
+    promoted, reason = vx_eval.decide_rerank(history, False)
+    assert promoted is False
+    assert "2/3" in reason
+
+
 def test_run_eval_compares_all_four_paths() -> None:
     cases = [{"id": "a", "query": "残価", "expected_path_any": ["Research/残価.md"], "forbidden_path_any": []}]
     result = vx_eval.run_eval(
@@ -294,3 +336,56 @@ def test_answer_refs_map_to_vault_paths_or_readable_labels(tmp_path, monkeypatch
 def test_daily_sync_mirrors_export_with_full_reconciliation() -> None:
     script = (Path(__file__).resolve().parents[1] / "scripts" / "run_vertex_credit_daily.sh").read_text(encoding="utf-8")
     assert "--reconciliation-mode FULL --delete-stale-gcs" in script
+
+
+def test_first_full_reconciliation_is_not_skipped_for_unchanged_export() -> None:
+    assert vertex_sync.sync_changed(
+        force=False,
+        signature="same",
+        previous_signature="same",
+        import_documents_enabled=True,
+        reconciliation_mode="FULL",
+        previous_reconciliation_mode="",
+    )
+    assert not vertex_sync.sync_changed(
+        force=False,
+        signature="same",
+        previous_signature="same",
+        import_documents_enabled=True,
+        reconciliation_mode="FULL",
+        previous_reconciliation_mode="FULL",
+    )
+
+
+def test_destructive_sync_rejects_empty_or_unexpectedly_shrunken_export() -> None:
+    with pytest.raises(ValueError, match="empty"):
+        vertex_sync.validate_destructive_export(
+            exported_count=0,
+            candidate_count=0,
+            previous_exported_count=100,
+            previous_candidate_count=200,
+            allow_large_delete=False,
+        )
+    with pytest.raises(ValueError, match="fell from 100 to 60"):
+        vertex_sync.validate_destructive_export(
+            exported_count=60,
+            candidate_count=160,
+            previous_exported_count=100,
+            previous_candidate_count=200,
+            allow_large_delete=False,
+        )
+    vertex_sync.validate_destructive_export(
+        exported_count=60,
+        candidate_count=120,
+        previous_exported_count=100,
+        previous_candidate_count=200,
+        allow_large_delete=True,
+    )
+
+
+def test_vertex_credit_launchagent_has_repeatable_installer() -> None:
+    root = Path(__file__).resolve().parents[1]
+    installer = (root / "scripts" / "install_vertex_credit_launchagent.sh").read_text(encoding="utf-8")
+    assert "com.tunelease.vertex-credit-daily" in installer
+    assert "launchctl bootstrap" in installer
+    assert "launchctl enable" in installer

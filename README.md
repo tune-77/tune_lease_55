@@ -998,6 +998,10 @@ bash run_next_stable.sh
 
 `local_deploy_doctor.py` は、LaunchAgent、FastAPI、Next.js、Cloudflare Tunnel の状態を見て、`install_launchagent` / `restart_api` / `restart_next` / `restart_tunnel` / `start_all` のどれで進めるべきかを先に出します。ローカル起動で迷ったら、まずこの診断結果の `command` を使ってください。
 
+Vertexクレジット期間の日次同期を導入・更新する場合は、リポジトリ取得後に
+`bash scripts/install_vertex_credit_launchagent.sh` を実行します。詳細は
+[`docs/vertex-credit-daily-launchagent.md`](docs/vertex-credit-daily-launchagent.md) を参照してください。
+
 起動後:
 
 - Next: `http://127.0.0.1:3000`
