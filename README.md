@@ -1008,17 +1008,21 @@ Vertexクレジット期間の日次同期を導入・更新する場合は、�
 - FastAPI: `http://127.0.0.1:8000`
 - API docs: `http://127.0.0.1:8000/docs`
 
-Cloudflare quick tunnel 付きで外に出す場合:
+Cloudflare Tunnel 付きで外に出す場合:
 
 ```bash
 PUBLIC_TUNNEL=1 bash run_next_stable.sh
 ```
 
-URL は毎回変わります。最新の URL は起動ログか `logs/next/tunnel_*.log` を見てください。
+本番の公開URLは固定の **https://shion.tune77.com** です（named tunnel `tune-lease-55`、
+設定 `~/.cloudflared/tune-lease-55.yml`）。この設定ファイルがあれば `run_next_stable.sh` は既定で
+named tunnel を使い、再起動しても URL は変わりません。常駐は `scripts/install_next_launchagent.sh`
+（launchd `com.tunelease.next`）で、cloudflared が落ちてもランチャーが起こし直し、落ちたままなら
+日次Slackレポートの「システム監視」に警告が出ます。
 
-quick tunnel は認証不要・接続断が起きやすく Cloudflare 公式にも本番非推奨です。固定URL・認証ありの
-Named Tunnel を使いたい場合は、事前に以下を1回だけセットアップしてください（Cloudflareアカウントでの
-作業が必要なため、この場では実行できません）。
+設定ファイルが無い環境では quick tunnel（URLが毎回変わる・認証不要・接続断が起きやすく本番非推奨）に
+フォールバックし、URL は `logs/next/tunnel_*.log` に出ます。新しい環境で named tunnel を
+セットアップする手順は以下です（Cloudflareアカウントでの作業が必要）。
 
 ```bash
 # 1. Cloudflareアカウントにログイン（ブラウザが開く）
@@ -1028,26 +1032,20 @@ cloudflared tunnel login
 cloudflared tunnel create tune-lease-55
 
 # 3. 使いたいホスト名にDNSルートを張る（Cloudflareで管理しているドメインが必要）
-cloudflared tunnel route dns tune-lease-55 lease-ai.example.com
+cloudflared tunnel route dns tune-lease-55 shion.tune77.com
 
-# 4. config.yml を作成（tunnel: の値と credentials-file のパスは手順2の出力を使う）
-cat > ~/.cloudflared/config.yml <<'YAML'
+# 4. 設定ファイルを作成（tunnel: の値と credentials-file のパスは手順2の出力を使う）
+cat > ~/.cloudflared/tune-lease-55.yml <<'YAML'
 tunnel: tune-lease-55
 credentials-file: /Users/<you>/.cloudflared/<tunnel-id>.json
 ingress:
-  - hostname: lease-ai.example.com
+  - hostname: shion.tune77.com
     service: http://127.0.0.1:3000
   - service: http_status:404
 YAML
 ```
 
-セットアップ後、環境変数を指定して起動すると自動的にNamed Tunnelへ切り替わります（未指定なら従来どおり quick tunnel）:
-
-```bash
-CLOUDFLARE_TUNNEL_CONFIG=~/.cloudflared/config.yml \
-CLOUDFLARE_TUNNEL_HOSTNAME=lease-ai.example.com \
-PUBLIC_TUNNEL=1 bash run_next_stable.sh
-```
+別のパス・ホスト名を使う場合は `CLOUDFLARE_TUNNEL_CONFIG` / `CLOUDFLARE_TUNNEL_HOSTNAME` で上書きできます。
 
 ## 何ができるか
 

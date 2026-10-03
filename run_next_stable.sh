@@ -24,10 +24,11 @@ NEXT_HOST="${NEXT_HOST:-127.0.0.1}"
 PUBLIC_TUNNEL="${PUBLIC_TUNNEL:-0}"
 PUBLIC_TUNNEL_AUTH_FILE="${PUBLIC_TUNNEL_AUTH_FILE:-${HOME:-}/Library/Application Support/tune_lease_55/public_tunnel_auth}"
 API_ACCESS_KEY_FILE="${API_ACCESS_KEY_FILE:-${HOME:-}/Library/Application Support/tune_lease_55/api_access_key}"
-# Named Tunnel（固定URL・認証あり）を使う場合はこの2つを設定する。
+# Named Tunnel（固定URL。本番は https://shion.tune77.com）を使う場合はこの2つを設定する。
 # 未設定なら従来どおり quick tunnel（認証不要・URL変動・本番非推奨）にフォールバックする。
-CLOUDFLARE_TUNNEL_CONFIG="${CLOUDFLARE_TUNNEL_CONFIG:-}"
-CLOUDFLARE_TUNNEL_HOSTNAME="${CLOUDFLARE_TUNNEL_HOSTNAME:-}"
+# 手動実行（restart-api スキル等）でも launchd と同じトンネルを使うよう、本番の設定ファイルがあれば既定にする。
+CLOUDFLARE_TUNNEL_CONFIG="${CLOUDFLARE_TUNNEL_CONFIG:-${HOME:-}/.cloudflared/tune-lease-55.yml}"
+CLOUDFLARE_TUNNEL_HOSTNAME="${CLOUDFLARE_TUNNEL_HOSTNAME:-shion.tune77.com}"
 LOG_DIR="logs/next"
 mkdir -p "$LOG_DIR"
 
@@ -193,7 +194,7 @@ fi
 
 if [ "$RESTART_SCOPE" = "tunnel" ]; then
   if named_tunnel_active; then
-    tunnel_pids="$(pgrep -f "cloudflared tunnel --config ${CLOUDFLARE_TUNNEL_CONFIG} run" | tr '\n' ' ')"
+    tunnel_pids="$(pgrep -f "cloudflared tunnel --config ${CLOUDFLARE_TUNNEL_CONFIG} run" | tr '\n' ' ' || true)"
   else
     tunnel_pids="$(ps -eo pid=,command= 2>/dev/null | awk -v url="http://${NEXT_HOST}:${NEXT_PORT}" '$0 ~ /[c]loudflared tunnel --url/ && index($0, url) {print $1}' | tr '\n' ' ')"
   fi
@@ -377,8 +378,8 @@ cleanup() {
     kill "$(cat "$NEXT_PID_FILE")" 2>/dev/null || true
     rm -f "$NEXT_PID_FILE"
   fi
-  # Cloudflare Tunnel はここでは止めない。再起動のたびに quick tunnel の URL が
-  # 変わるのを防ぐため、トンネルの停止・再起動は RESTART_SCOPE=tunnel 限定にする。
+  # Cloudflare Tunnel はここでは止めない。quick tunnel は再起動のたびに URL が変わり、
+  # named tunnel も止めると再接続まで公開URLが落ちるため、停止・再起動は RESTART_SCOPE=tunnel 限定にする。
   stop_port_process "$API_PORT" "FastAPI"
   stop_port_process "$NEXT_PORT" "Next.js"
   rm -f "$LOCK_FILE"
@@ -407,7 +408,7 @@ if [ "$FORCE_RESTART" = "1" ]; then
   if [ "$SKIP_STALE_LAUNCHER_SWEEP" != "1" ]; then
     stop_existing_launchers
   fi
-  # Cloudflare Tunnel は殺さない（URL 維持のため）。起動済みなら後段で再利用される。
+  # Cloudflare Tunnel は殺さない（quick tunnel の URL 維持・named tunnel の無停止のため）。起動済みなら後段で再利用される。
   # lsof ベースの stop_port_process だけでは supervisor 終了後に re-parent された
   # uvicorn が残存するレースがある。名前で直接 kill して確実に排除する。
   pkill -f "uvicorn api.main:app" 2>/dev/null || true
@@ -499,7 +500,9 @@ echo "$NEXT_SUPERVISOR_PID" > "$NEXT_SUPERVISOR_PID_FILE"
 
 running_tunnel_pid() {
   if named_tunnel_active; then
-    pgrep -f "cloudflared tunnel --config ${CLOUDFLARE_TUNNEL_CONFIG} run" | head -1
+    # set -euo pipefail 下では pgrep の「該当なし」(exit 1) がサブシェルごと落とす。
+    # 2026-10-04 にこれでトンネル監視ループが即死し、named tunnel が起動しなかった。
+    pgrep -f "cloudflared tunnel --config ${CLOUDFLARE_TUNNEL_CONFIG} run" | head -1 || true
   else
     ps -eo pid=,command= 2>/dev/null \
       | awk -v url="http://${NEXT_HOST}:${NEXT_PORT}" '$0 ~ /[c]loudflared tunnel --url/ && index($0, url) {print $1; exit}'
@@ -515,7 +518,7 @@ if [ "$PUBLIC_TUNNEL" = "1" ]; then
   while true; do
     existing_tunnel_pid="$(running_tunnel_pid)"
     if [ -n "$existing_tunnel_pid" ]; then
-      # 既存トンネルを再利用する（quick tunnel の URL を維持）。死んだら次周で起動。
+      # 既存トンネルを再利用する（quick tunnel の URL を維持。named tunnel は固定URLなので再接続でよい）。死んだら次周で起動。
       while kill -0 "$existing_tunnel_pid" 2>/dev/null; do
         sleep 5
       done

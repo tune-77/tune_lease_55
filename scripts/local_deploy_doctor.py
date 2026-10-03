@@ -114,7 +114,9 @@ def build_state(
         cloudflared_available=shutil.which("cloudflared") is not None,
         tunnel_url=latest_tunnel_url(
             root / "logs" / "next",
-            os.environ.get("CLOUDFLARE_TUNNEL_HOSTNAME") or None,
+            os.environ.get("CLOUDFLARE_TUNNEL_HOSTNAME")
+            # run_next_stable.sh と同じ既定（本番の named tunnel 設定があれば固定URL）
+            or ("shion.tune77.com" if (Path.home() / ".cloudflared" / "tune-lease-55.yml").is_file() else None),
         ),
         public_tunnel=public_tunnel,
     )

@@ -21,10 +21,10 @@ Cloudflare版とCloud Run版の `/api/chat` に同じ評価質問を投げ、回
 
 ### 1. 現在の比較先URLを確認
 
-Cloudflare版は起動ログから最新の trycloudflare URL を探します。
+Cloudflare版は固定URLです（named tunnel。再起動しても変わらない）。
 
-```bash
-rg "trycloudflare.com" logs
+```text
+https://shion.tune77.com
 ```
 
 Cloud Run版は、ユーザーが別URLを指定していなければ次を既定値にします。

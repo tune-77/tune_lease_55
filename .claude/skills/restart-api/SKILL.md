@@ -13,13 +13,15 @@ FastAPI と Next.js を `run_next_stable.sh` の FORCE_RESTART で再起動す�
 - **ポートを手で kill しない。** 旧ランチャーの supervisor ループが1秒後にプロセスを
   蘇らせ、新旧プロセスがポートを奪い合って起動失敗を繰り返す。停止も含めて
   `FORCE_RESTART=1 bash run_next_stable.sh` 一本に任せること。
-- **Cloudflare トンネルは再起動の対象外。** ランチャーは既存の cloudflared を再利用する
-  ため quick tunnel の URL は変わらない。トンネルだけ再起動したい場合のみ
-  `RESTART_SCOPE=tunnel bash run_next_stable.sh`（この場合は URL が変わる）。
+- **公開URLは固定: https://shion.tune77.com**（Cloudflare named tunnel `tune-lease-55`、
+  設定 `~/.cloudflared/tune-lease-55.yml`）。再起動しても URL は変わらない。
+- **Cloudflare トンネルは再起動の対象外。** ランチャーは既存の cloudflared を再利用する。
+  トンネルだけ再接続したい場合のみ `RESTART_SCOPE=tunnel bash run_next_stable.sh`
+  （named tunnel なので URL は同じ。数秒だけ公開URLが落ちる）。
 - **FastAPI は起動に2〜4分かかる**（AIモデル等のインポート）。さらにフロント変更が
   あればビルドに約3分。短い sleep + 1回の curl で判定せず、必ずポーリングで待つ。
-- launchd ジョブ `com.tunelease.next` は FORCE_RESTART=0 + KeepAlive(SuccessfulExit=false)
-  + AbandonProcessGroup=true 構成で、手動再起動と喧嘩しない。launchctl は触らなくてよい。
+- launchd ジョブ `com.tunelease.next`（KeepAlive）がランチャーを常駐させ、ランチャー内の
+  監視ループが FastAPI / Next.js / cloudflared をそれぞれ落ちたら自動で起こし直す。
 
 ## 手順
 
@@ -36,7 +38,7 @@ echo "launcher PID: $!"
 `run_in_background: true` の until ループで待つ（タイムアウト目安: 8分）:
 
 ```bash
-until [ "$(curl -s --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/docs 2>/dev/null)" = "200" ] \
+until [ "$(curl -s --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/healthz 2>/dev/null)" = "200" ] \
    && [ "$(curl -s --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ 2>/dev/null)" = "200" ]; do
   sleep 10
 done
@@ -59,12 +61,14 @@ tail -20 "$(ls -t logs/next/build_*.log | head -1)"   # フロントエンドの
 RESTART_SCOPE=status bash run_next_stable.sh
 ```
 
-API / Next / Tunnel URL をまとめて表示する。URL は最新の `logs/next/tunnel_*.log` から
-取得される。旧パス `~/Library/Logs/tunelease/cloudflare_3000.log` は**使わない**
-（古い URL を返すため）。
+API / Next / Tunnel URL をまとめて表示する。`/docs` は公開運用では無効（404）なので
+起動判定には `/healthz` を使う。外からの疎通は次で確認する（200 なら OK）:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://shion.tune77.com/chat
+```
 
 ### 4. 結果報告
 
-- API: OK / Next: OK なら成功。トンネル URL は通常**変わらない**。
-- URL が変わった場合（トンネル自体が落ちて再生成された場合）のみ新 URL をユーザーに伝える。
+- API: OK / Next: OK / https://shion.tune77.com/chat が 200 なら成功。URL は固定なので伝え直す必要はない。
 - ビルドログは `logs/next/build_*.log`、再起動ログは `logs/next/restart_*.log` に残る。

@@ -9,6 +9,9 @@ TARGET_PLIST="$HOME/Library/LaunchAgents/com.tunelease.next.plist"
 AUTH_DIR="${TUNELEASE_CONFIG_DIR:-$HOME/Library/Application Support/tune_lease_55}"
 AUTH_FILE="$AUTH_DIR/public_tunnel_auth"
 API_KEY_FILE="$AUTH_DIR/api_access_key"
+# Named Tunnel の設定ファイルは cloudflared の作業ディレクトリ（ホーム配下）にあり環境ごとに変わるため、
+# 認証ファイルと同様にここで注入する。無ければ quick tunnel のまま（run_next_stable.sh が判定）。
+TUNNEL_CONFIG="${CLOUDFLARE_TUNNEL_CONFIG:-$HOME/.cloudflared/tune-lease-55.yml}"
 DOMAIN="gui/$(id -u)"
 SERVICE="$DOMAIN/com.tunelease.next"
 
@@ -103,6 +106,9 @@ fi
 cp "$SOURCE_PLIST" "$TARGET_PLIST"
 plutil -insert EnvironmentVariables.PUBLIC_TUNNEL_AUTH_FILE -string "$AUTH_FILE" "$TARGET_PLIST"
 plutil -insert EnvironmentVariables.API_ACCESS_KEY_FILE -string "$API_KEY_FILE" "$TARGET_PLIST"
+if [ -f "$TUNNEL_CONFIG" ]; then
+  plutil -insert EnvironmentVariables.CLOUDFLARE_TUNNEL_CONFIG -string "$TUNNEL_CONFIG" "$TARGET_PLIST"
+fi
 plutil -lint "$TARGET_PLIST" >/dev/null
 
 launchctl bootout "$SERVICE" 2>/dev/null || true
@@ -114,4 +120,9 @@ echo "Installed and started: $SERVICE"
 echo "Plist: $TARGET_PLIST"
 echo "Tunnel credential: $AUTH_FILE"
 echo "API credential: $API_KEY_FILE"
+if [ -f "$TUNNEL_CONFIG" ]; then
+  echo "Named tunnel config: $TUNNEL_CONFIG"
+else
+  echo "Named tunnel config not found ($TUNNEL_CONFIG); using a quick tunnel (URL changes)."
+fi
 echo "Logs: $ROOT_DIR/logs/next/launchd.out.log"
