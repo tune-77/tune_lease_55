@@ -233,3 +233,32 @@ def test_rerank_drops_keyword_stub_chunks():
     ranked = store._rerank_hits("物件の残価や中古売却価格が弱い場合の見方は？", hits, top_k=5)
 
     assert [hit["text"] for hit in ranked] == ["中古市場の厚み、撤去費、陳腐化速度で残価を保守的に見る。"]
+
+
+def test_keyword_search_reuses_document_snapshot_until_count_changes():
+    class FakeCollection:
+        def __init__(self):
+            self.gets = 0
+            self.n = 1
+
+        def count(self):
+            return self.n
+
+        def get(self, include):
+            self.gets += 1
+            return {
+                "ids": ["rate-note"],
+                "documents": ["金利・料率・競合条件の組み立て"],
+                "metadatas": [{"file_name": "金利・料率.md", "file_path": "x/金利・料率.md", "section": "概要"}],
+            }
+
+    store = KnowledgeVectorStore(chroma_dir="/tmp/unused-rag-test")
+    collection = FakeCollection()
+    store._collection = collection
+
+    for _ in range(3):
+        store._keyword_search("料率の競合条件", top_k=5)
+    assert collection.gets == 1
+    collection.n = 2
+    store._keyword_search("料率の競合条件", top_k=5)
+    assert collection.gets == 2
