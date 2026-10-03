@@ -536,6 +536,15 @@ def _uri_to_source_path(uri: str) -> str:
     return str(_URI_MAP["map"].get(name) or "")
 
 
+def _readable_ref(uri: str) -> str:
+    """マニフェストに無い（旧同期の残り等）参照も、gs:// のままにせず読めるラベルにする。"""
+    mapped = _uri_to_source_path(uri)
+    if mapped or not str(uri).startswith("gs://"):
+        return mapped or str(uri)
+    stem = str(uri).rsplit("/", 1)[-1].removesuffix(".txt").rsplit("__", 1)[0]
+    return stem.removeprefix("Projects_tune_lease_55_").replace("_", " ").strip() or str(uri)
+
+
 def answer_vertex_agent(
     query: str,
     *,
@@ -616,7 +625,7 @@ def answer_vertex_agent(
     if not grounding.get("support_count") and citations:
         grounding["support_count"] = len(citations)
     refs = [
-        _uri_to_source_path(item.get("uri") or "") or item.get("uri") or item.get("title") or item.get("snippet")
+        (_readable_ref(item["uri"]) if item.get("uri") else "") or item.get("title") or item.get("snippet")
         for item in search_results
         if item.get("uri") or item.get("title") or item.get("snippet")
     ]
