@@ -28,6 +28,7 @@ from scripts.export_obsidian_for_agent_search import (  # noqa: E402
     DEFAULT_GCS_PREFIX,
     DEFAULT_OUTPUT,
     DEFAULT_VAULT,
+    CANONICAL_RULES_PATH,
     export_notes,
 )
 from scripts._pipeline_common import report_pipeline_failure  # noqa: E402
@@ -181,7 +182,7 @@ def main() -> None:
     parser.add_argument("--timeout-seconds", type=float, default=60.0)
     args = parser.parse_args()
 
-    exported = export_notes(args.vault, args.output, args.max_docs, args.gcs_prefix)
+    exported = export_notes(args.vault, args.output, args.max_docs, args.gcs_prefix, canonical_rules=CANONICAL_RULES_PATH)
     signature = export_signature(exported)
     previous_state = read_state(args.state)
     previous_signature = str(previous_state.get("export_signature") or "")
