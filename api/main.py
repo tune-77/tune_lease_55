@@ -1811,7 +1811,8 @@ def _get_case_payload(case_id: str) -> dict:
     try:
         payload = _json.loads(row["data"] or "{}")
         return payload if isinstance(payload, dict) else {}
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("scoring.main.case_payload_parse", "swallowed", exc, detail="保存済み案件JSONを読めず空として扱った")
         return {}
 
 
@@ -2414,7 +2415,8 @@ def _build_agent_worklog_digest_context(limit: int = 4) -> str:
             days=14,
             max_chars=1800,
         )
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.main.worklog_digest", "swallowed", exc)
         return ""
 
 
@@ -2655,7 +2657,8 @@ def _detect_pending_task_backlog() -> str:
         open_count = sum(1 for t in data if is_pending_open(t))
         if open_count >= _PENDING_BACKLOG_THRESHOLD:
             return f"未完了調査タスクが{open_count}件滞留しています"
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.main.pending_backlog", "swallowed", exc)
         return ""
     return ""
 
@@ -3064,7 +3067,8 @@ def _build_dialogue_triage_context(limit: int = 4) -> str:
         return ""
     try:
         ledger_statuses = _latest_improvement_statuses()
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("answer.main.dialogue_triage_statuses", "swallowed", exc)
         ledger_statuses = {}
     active: list[dict] = []
     resolved_count = 0
@@ -3433,8 +3437,8 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
     try:
         from shinsa_gunshi import refresh_evidence_weights
         refresh_evidence_weights()
-    except Exception:
-        pass
+    except Exception as exc:
+        record_silent_failure("judgment.main.refresh_evidence_weights", "swallowed", exc, detail="案件結果登録後の根拠重み更新")
 
     # 紫苑フィードバックループ（REV-080）
     if req.status in ("成約", "失注"):
@@ -6157,13 +6161,15 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             from api.shion_agent_consultation_queue import build_agent_consultation_prompt_block
 
             agent_consultation_context = build_agent_consultation_prompt_block(limit=3)
-        except Exception:
+        except Exception as sf_exc:
+            record_silent_failure("answer.main.agent_consultation_context", "swallowed", sf_exc)
             agent_consultation_context = ""
         try:
             from api.shion_reasoner_consultation_queue import build_reasoner_consultation_prompt_block
 
             reasoner_consultation_context = build_reasoner_consultation_prompt_block(limit=3)
-        except Exception:
+        except Exception as sf_exc:
+            record_silent_failure("answer.main.reasoner_consultation_context", "swallowed", sf_exc)
             reasoner_consultation_context = ""
         # 通常会話での自発報告（常時レイヤ）は同一内容を毎ターン繰り返さないよう抑制する。
         # 改善相談（オンデマンド詳細）はユーザーが明示的に尋ねているので抑制しない。

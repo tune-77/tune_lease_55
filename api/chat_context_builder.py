@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable
+from silent_failure_log import record_silent_failure
 
 
 PromptBuilder = Callable[[], tuple[str, dict[str, Any]]]
@@ -174,6 +175,7 @@ def build_chat_context_state(
 
             experience_loop_context, experience_loop_payload = build_experience_prompt_block()
         except Exception as exc:
+            record_silent_failure("answer.chat_context.experience_loop", "swallowed", exc)
             print(f"[ShionExperienceLoop] 読み込みエラー: {exc}")
 
     if not is_general_response_mode:
@@ -185,6 +187,7 @@ def build_chat_context_state(
 
         business_plan_consult_context = build_business_plan_chat_block(message)
     except Exception as exc:
+        record_silent_failure("answer.chat_context.business_plan", "swallowed", exc)
         print(f"[BusinessPlanConsult] ブロック生成エラー: {exc}")
 
     return ChatContextState(

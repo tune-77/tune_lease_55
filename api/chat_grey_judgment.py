@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from api.chat_continuity_prompts import relationship_signal_route
+from silent_failure_log import record_silent_failure
 
 
 GREY_JUDGMENT_QUERY_TERMS = (
@@ -47,7 +48,8 @@ def load_gunshi_judgment_memory(
 ) -> list[dict[str, Any]]:
     try:
         rows = training_candidates_loader(approved_only=False)
-    except Exception:
+    except Exception as exc:
+        record_silent_failure("judgment.chat_grey_judgment.load_memory", "swallowed", exc, detail="軍師判断メモリを空として扱った")
         return []
 
     preferred_sources = {"gunshi_chat", "debate", "lease_news_debate", "register_trigger"}
