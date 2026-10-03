@@ -1,8 +1,8 @@
 """`/api/chat` のシステムプロンプト構成コストを計測する。
 
-`_cap_system_prompt` は合計文字数の上限（既定24000字）を超えた時に末尾ブロックを
-落とすが、落とした「数」しかログに残らず、どのブロックがどれだけ食っていたかは
-記録されていなかった。そのため削減を検討しても対象を数字で選べない。
+上限内への削減は api/chat_prompt_budget.py（ブロックごとの優先度と予算）が行い、
+どのブロックを何字削ったかは data/chat_prompt_budget_log.jsonl に残る。
+このモジュールは削減前後の全体量と、太りやすいブロックの大きさを計測する。
 
 このモジュールは組み立て済みブロックのサイズを `data/chat_prompt_composition.jsonl`
 へ1行1レコードで追記する。`memory_layers/README.md` の Retrieval Boundary が求める
@@ -61,7 +61,7 @@ def build_composition(
         "final_tokens": estimate_tokens(final_prompt),
         "measured_chars": measured_chars,
         "unaccounted_chars": max(0, final_chars - measured_chars),
-        # base_chars > final_chars なら _cap_system_prompt が末尾ブロックを落としている
+        # base_chars > final_chars なら chat_prompt_budget がどこかのブロックを削っている
         "capped": bool(base_chars and final_chars < base_chars),
         "dropped_chars": max(0, base_chars - final_chars),
         "block_count": len(measured),

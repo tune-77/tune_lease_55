@@ -6276,27 +6276,32 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             compact=compact_dialogue,
             mode=dialogue_mode,
         )
-        if user_personal_memory_context:
-            system_prompt += user_personal_memory_context
-        if shared_shion_memory_context:
-            system_prompt += f"\n\n{shared_shion_memory_context}"
-        if improvement_report_context:
-            system_prompt += f"\n\n{improvement_report_context}"
-        if news_digest_context:
-            system_prompt += f"\n\n{news_digest_context}"
-        if improvement_observability_context:
-            system_prompt += f"\n\n{improvement_observability_context}"
-        if agent_consultation_context:
-            system_prompt += f"\n\n{agent_consultation_context}"
-        if reasoner_consultation_context:
-            system_prompt += f"\n\n{reasoner_consultation_context}"
-        if improvement_triage_context:
-            system_prompt += f"\n\n{improvement_triage_context}"
-        if judgment_response_shape_context:
-            system_prompt += f"\n\n{judgment_response_shape_context}"
-        if pre_recall_context:
-            system_prompt += f"\n\n{pre_recall_context}"
-        system_prompt += f"\n\n{teaching_save_context}"
+        # 対話室も優先度と予算で組み立てる（従来は上限なしで平均3.4万字）。並び順は従来どおり。
+        # 教わった知識の想起に含まれる社内方針の節は、通常チャットと同じく末尾に置く（PR #1225）
+        from api.chat_prompt_blocks import block_with_spacing
+        from api.chat_prompt_budget import assemble_prompt
+        from api.judgment_policy import merge_policy_blocks, split_policy_block
+
+        _dialogue_policy, pre_recall_context = split_policy_block(pre_recall_context)
+        system_prompt, dialogue_prompt_budget = assemble_prompt(
+            [
+                ("dialogue_base", system_prompt),
+                ("user_personal_memory_context", user_personal_memory_context),
+                ("shared_shion_memory_context", block_with_spacing(shared_shion_memory_context)),
+                ("improvement_report_context", block_with_spacing(improvement_report_context)),
+                ("news_digest_context", block_with_spacing(news_digest_context)),
+                ("improvement_observability_context", block_with_spacing(improvement_observability_context)),
+                ("agent_consultation_context", block_with_spacing(agent_consultation_context)),
+                ("reasoner_consultation_context", block_with_spacing(reasoner_consultation_context)),
+                ("improvement_triage_context", block_with_spacing(improvement_triage_context)),
+                ("judgment_response_shape_context", block_with_spacing(judgment_response_shape_context)),
+                ("pre_recall_context", block_with_spacing(pre_recall_context)),
+                ("teaching_save_context", block_with_spacing(teaching_save_context)),
+            ],
+            question=full_message,
+            surface="dialogue",
+            reserved_tail=merge_policy_blocks(_dialogue_policy),
+        )
         consultation_ids: list[str] = []
 
         def _tool_executor(name: str, args: dict) -> object:
@@ -6500,43 +6505,6 @@ def delete_lease_intelligence_dialogue_history():
         "deleted": deleted,
         "note": "画面の会話履歴だけを削除しました。Obsidianの対話記録は保持されます。",
     }
-
-
-def _cap_system_prompt(prompt: str, *, surface: str, reserved_tail: str = "") -> str:
-    """/api/chat のシステムプロンプト合計量に上限を設ける。
-
-    チャット経路は10数個の文脈ブロック（想起・経験ループ・ニュース・RAG等）を連結して
-    合成するため、全ブロックが同時に太るとコンテキスト暴発・応答劣化の温床になる
-    （個別ブロックは context_budget で制御されるが合計は無検査だった）。
-    上限超過時は、後から連結された低優先ブロック側（末尾）から段落単位で削り、
-    どれだけ削ったかを warning ログに残す。ベース人格・モード指示は先頭にあるため残る。
-    reserved_tail（社内方針の節など）は削らずに末尾へ付ける。その分だけ本体の上限を狭める。
-    """
-    tail = str(reserved_tail or "").strip()
-    max_chars = int(os.environ.get("CHAT_SYSTEM_PROMPT_MAX_CHARS", "24000"))
-    if tail:
-        body_cap = _cap_system_prompt_body(prompt, surface=surface, max_chars=max_chars - len(tail) - 2 if max_chars > 0 else 0)
-        return f"{body_cap}\n\n{tail}" if body_cap else tail
-    return _cap_system_prompt_body(prompt, surface=surface, max_chars=max_chars)
-
-
-def _cap_system_prompt_body(prompt: str, *, surface: str, max_chars: int) -> str:
-    if max_chars <= 0 or len(prompt) <= max_chars:
-        return prompt
-    parts = prompt.split("\n\n")
-    dropped = 0
-    while len(parts) > 1 and sum(len(p) + 2 for p in parts) - 2 > max_chars:
-        parts.pop()
-        dropped += 1
-    result = "\n\n".join(parts)
-    if len(result) > max_chars:
-        # 単一の巨大段落が残った場合のみ強制切り詰め
-        result = result[:max_chars]
-    logger.warning(
-        "[ChatPromptBudget] system prompt %d chars > %d; dropped %d trailing block(s) (surface=%s, after=%d chars)",
-        len(prompt), max_chars, dropped, surface, len(result),
-    )
-    return result
 
 
 def _log_shion_query_class(message: str, question_category: str) -> None:
@@ -7066,7 +7034,7 @@ def post_chat(req: ChatRequest):
                 base_system_root += wrap_untrusted_context(weather_context_block(req.weather_lat, req.weather_lon), label="今日の天気", logger=logger)
             basic_lease_question_prompt = f"\n\n{basic_lease_question_context}" if basic_lease_question_context else ""
             external_research_context = f"\n\n{external_research.get('prompt_context', '')}" if external_research.get("prompt_context") else ""
-            from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
+            from api.chat_prompt_blocks import append_optional_block, block_with_spacing, join_prompt_blocks
             from api.chat_prompt_cost import log_prompt_composition
             from api.chat_response_pipeline import (
                 build_chat_response_payload,
@@ -7080,41 +7048,42 @@ def post_chat(req: ChatRequest):
             _memory_policy, memory_recall_context = split_policy_block(memory_recall_context)
             _teaching_policy, teaching_prompt_context = split_policy_block(teaching_prompt_context)
             policy_prompt_context = merge_policy_blocks(_memory_policy, _teaching_policy)
-            base_system_prompt = join_prompt_blocks([
-                base_system_root,
-                mode_instruction,
-                response_mode_context,
-                basic_lease_question_prompt,
-                teaching_prompt_context,
-                news_focus_context,
-                news_brief_context,
-                news_actions_context,
-                obsidian_daily_context,
-                identity_memory_context,
-                user_personal_memory_context,
-                mid_term_memory_context,
-                experience_loop_context,
-                grey_judgment_context,
-                business_plan_consult_context,
-                continuity_hook_context,
-                delta_awareness_context,
-                memory_to_judgment_context,
-                memory_expression_context,
-                reflection_gate_context,
-                world_proxy_context,
-                external_research_context,
-                consciousness_ux_context,
-                shion_specificity_context,
-                vague_information_request_context,
-                shion_light_tone_context,
-                shion_non_domain_context,
-                human_device_resonance_context,
-                judgment_response_shape_context,
-                case_screening_pattern_context,
-                case_screening_mentor_dialogue_context,
-                f"\n\n{memory_recall_context}" if memory_recall_context else "",
-                chat_history_summary_context,
-            ])
+            named_system_blocks = [
+                ("base_system_root", base_system_root),
+                ("mode_instruction", mode_instruction),
+                ("response_mode_context", response_mode_context),
+                ("basic_lease_question_prompt", basic_lease_question_prompt),
+                ("teaching_prompt_context", teaching_prompt_context),
+                ("news_focus_context", news_focus_context),
+                ("news_brief_context", news_brief_context),
+                ("news_actions_context", news_actions_context),
+                ("obsidian_daily_context", obsidian_daily_context),
+                ("identity_memory_context", identity_memory_context),
+                ("user_personal_memory_context", user_personal_memory_context),
+                ("mid_term_memory_context", mid_term_memory_context),
+                ("experience_loop_context", experience_loop_context),
+                ("grey_judgment_context", grey_judgment_context),
+                ("business_plan_consult_context", business_plan_consult_context),
+                ("continuity_hook_context", continuity_hook_context),
+                ("delta_awareness_context", delta_awareness_context),
+                ("memory_to_judgment_context", memory_to_judgment_context),
+                ("memory_expression_context", memory_expression_context),
+                ("reflection_gate_context", reflection_gate_context),
+                ("world_proxy_context", world_proxy_context),
+                ("external_research_context", external_research_context),
+                ("consciousness_ux_context", consciousness_ux_context),
+                ("shion_specificity_context", shion_specificity_context),
+                ("vague_information_request_context", vague_information_request_context),
+                ("shion_light_tone_context", shion_light_tone_context),
+                ("shion_non_domain_context", shion_non_domain_context),
+                ("human_device_resonance_context", human_device_resonance_context),
+                ("judgment_response_shape_context", judgment_response_shape_context),
+                ("case_screening_pattern_context", case_screening_pattern_context),
+                ("case_screening_mentor_dialogue_context", case_screening_mentor_dialogue_context),
+                ("memory_recall_context", f"\n\n{memory_recall_context}" if memory_recall_context else ""),
+                ("chat_history_summary_context", chat_history_summary_context),
+            ]
+            base_system_prompt = join_prompt_blocks([text for _name, text in named_system_blocks])
             pdca_block = (
                 build_pdca_prompt_block()
                 if _should_apply_chat_pdca(
@@ -7125,8 +7094,13 @@ def post_chat(req: ChatRequest):
                 else ""
             )
             base_general_with_pdca = append_optional_block(base_system_prompt, pdca_block)
-            effective_system_prompt = _cap_system_prompt(
-                base_general_with_pdca, surface="next_chat_general", reserved_tail=policy_prompt_context
+            from api.chat_prompt_budget import assemble_prompt
+
+            effective_system_prompt, prompt_budget_report = assemble_prompt(
+                named_system_blocks + [("pdca_block", block_with_spacing(pdca_block))],
+                question=req.message,
+                surface="next_chat_general",
+                reserved_tail=policy_prompt_context,
             )
             log_prompt_composition(
                 surface="next_chat_general",
@@ -7509,7 +7483,7 @@ def post_chat(req: ChatRequest):
             append_chat_debug_metadata,
             retrieval_guard_payload,
         )
-        from api.chat_prompt_blocks import append_optional_block, join_prompt_blocks
+        from api.chat_prompt_blocks import append_optional_block, block_with_spacing, join_prompt_blocks
         from api.chat_prompt_cost import log_prompt_composition
         from api.chat_response_pipeline import (
             build_chat_response_payload,
@@ -7530,46 +7504,47 @@ def post_chat(req: ChatRequest):
         _memory_policy, memory_recall_context = split_policy_block(memory_recall_context)
         _teaching_policy, teaching_prompt_context = split_policy_block(teaching_prompt_context)
         policy_prompt_context = merge_policy_blocks(_memory_policy, _teaching_policy)
-        base_effective_prompt = join_prompt_blocks([
-            base_prompt_root,
-            mode_instruction,
-            response_mode_context,
-            basic_lease_question_prompt,
-            teaching_prompt_context,
-            news_focus_context,
-            news_brief_context,
-            news_actions_context,
-            obsidian_daily_context,
-            identity_memory_context,
-            user_personal_memory_context,
-            mid_term_memory_context,
-            experience_loop_context,
-            grey_judgment_context,
-            business_plan_consult_context,
-            continuity_hook_context,
-            delta_awareness_context,
-            memory_to_judgment_context,
-            memory_expression_context,
-            reflection_gate_context,
-            world_proxy_context,
-            rag_context,
-            external_research_context,
-            db_context,
-            improvement_context,
-            judgment_learning_context,
-            f"\n\n{memory_recall_context}" if memory_recall_context else "",
-            consciousness_ux_context,
-            shion_specificity_context,
-            vague_information_request_context,
-            shion_light_tone_context,
-            shion_non_domain_context,
-            human_device_resonance_context,
-            judgment_response_shape_context,
-            case_screening_pattern_context,
-            case_screening_mentor_dialogue_context,
-            guidance.prompt_suffix,
-            chat_history_summary_context,
-        ])
+        named_prompt_blocks = [
+            ("base_prompt_root", base_prompt_root),
+            ("mode_instruction", mode_instruction),
+            ("response_mode_context", response_mode_context),
+            ("basic_lease_question_prompt", basic_lease_question_prompt),
+            ("teaching_prompt_context", teaching_prompt_context),
+            ("news_focus_context", news_focus_context),
+            ("news_brief_context", news_brief_context),
+            ("news_actions_context", news_actions_context),
+            ("obsidian_daily_context", obsidian_daily_context),
+            ("identity_memory_context", identity_memory_context),
+            ("user_personal_memory_context", user_personal_memory_context),
+            ("mid_term_memory_context", mid_term_memory_context),
+            ("experience_loop_context", experience_loop_context),
+            ("grey_judgment_context", grey_judgment_context),
+            ("business_plan_consult_context", business_plan_consult_context),
+            ("continuity_hook_context", continuity_hook_context),
+            ("delta_awareness_context", delta_awareness_context),
+            ("memory_to_judgment_context", memory_to_judgment_context),
+            ("memory_expression_context", memory_expression_context),
+            ("reflection_gate_context", reflection_gate_context),
+            ("world_proxy_context", world_proxy_context),
+            ("rag_context", rag_context),
+            ("external_research_context", external_research_context),
+            ("db_context", db_context),
+            ("improvement_context", improvement_context),
+            ("judgment_learning_context", judgment_learning_context),
+            ("memory_recall_context", f"\n\n{memory_recall_context}" if memory_recall_context else ""),
+            ("consciousness_ux_context", consciousness_ux_context),
+            ("shion_specificity_context", shion_specificity_context),
+            ("vague_information_request_context", vague_information_request_context),
+            ("shion_light_tone_context", shion_light_tone_context),
+            ("shion_non_domain_context", shion_non_domain_context),
+            ("human_device_resonance_context", human_device_resonance_context),
+            ("judgment_response_shape_context", judgment_response_shape_context),
+            ("case_screening_pattern_context", case_screening_pattern_context),
+            ("case_screening_mentor_dialogue_context", case_screening_mentor_dialogue_context),
+            ("prompt_suffix", guidance.prompt_suffix),
+            ("chat_history_summary_context", chat_history_summary_context),
+        ]
+        base_effective_prompt = join_prompt_blocks([text for _name, text in named_prompt_blocks])
         pdca_block = (
             build_pdca_prompt_block()
             if _should_apply_chat_pdca(
@@ -7580,8 +7555,15 @@ def post_chat(req: ChatRequest):
             else ""
         )
         base_with_pdca = append_optional_block(base_effective_prompt, pdca_block)
-        # 社内方針は上限で末尾から削られないよう、cap の外で最後に付ける
-        effective_prompt = _cap_system_prompt(base_with_pdca, surface="next_chat_rag", reserved_tail=policy_prompt_context)
+        # 末尾から一律に削らず、ブロックごとの優先度と予算で組み立てる（社内方針の節は必ず末尾）
+        from api.chat_prompt_budget import assemble_prompt
+
+        effective_prompt, prompt_budget_report = assemble_prompt(
+            named_prompt_blocks + [("pdca_block", block_with_spacing(pdca_block))],
+            question=req.message,
+            surface="next_chat_rag",
+            reserved_tail=policy_prompt_context,
+        )
         # 計測のみ。太りやすいブロックだけ名前を付け、残りは unaccounted_chars に出す。
         log_prompt_composition(
             surface="next_chat_rag",
