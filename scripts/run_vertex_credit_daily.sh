@@ -20,7 +20,10 @@ if ! "${PYTHON}" -c "import sys; from api.vertex_credit_mode import credit_mode_
     exit 0
 fi
 
-"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_obsidian_to_vertex_agent_search.py" --upload --import-documents --wait
+# FULL＋GCS の不要オブジェクト削除で、データストアをエクスポート（除外・private・重複整理済み）と完全一致させる。
+# INCREMENTAL だと、後から private にしたノートや統合で外れたノートが Vertex に残り続ける。
+"${PYTHON}" "${PROJECT_ROOT}/scripts/sync_obsidian_to_vertex_agent_search.py" \
+    --upload --import-documents --wait --reconciliation-mode FULL --delete-stale-gcs
 log_step "vertex_search_sync" $?
 
 "${PYTHON}" "${PROJECT_ROOT}/scripts/eval_vertex_vs_chroma.py"

@@ -279,3 +279,18 @@ def test_lease_intelligence_knowledge_is_included_but_other_li_dirs_stay_exclude
         path.write_text("x", encoding="utf-8")
     assert not exporter.should_exclude(knowledge, root) and exporter.is_preferred_location(knowledge, root)
     assert exporter.should_exclude(memory, root) and exporter.should_exclude(private, root)
+
+
+def test_answer_refs_map_to_vault_paths_or_readable_labels(tmp_path, monkeypatch) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"documents": [{"output_path": "Projects_tune_lease_55_Research_x__abc.txt", "source_path": "Projects/tune_lease_55/Research/残価.md"}]}, ensure_ascii=False))
+    monkeypatch.setattr(vertex_agent_search, "_EXPORT_MANIFEST", manifest)
+    monkeypatch.setitem(vertex_agent_search._URI_MAP, "mtime", None)
+    prefix = "gs://tune-lease-55-data/agent-search/lease-knowledge/"
+    assert vertex_agent_search._readable_ref(prefix + "Projects_tune_lease_55_Research_x__abc.txt") == "Projects/tune_lease_55/Research/残価.md"
+    assert vertex_agent_search._readable_ref(prefix + "Projects_tune_lease_55_Research_Auto_Research_2026-07-01_residual-value__4dad8e010d.txt") == "Research Auto Research 2026-07-01 residual-value"
+
+
+def test_daily_sync_mirrors_export_with_full_reconciliation() -> None:
+    script = (Path(__file__).resolve().parents[1] / "scripts" / "run_vertex_credit_daily.sh").read_text(encoding="utf-8")
+    assert "--reconciliation-mode FULL --delete-stale-gcs" in script
