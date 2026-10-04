@@ -1077,6 +1077,7 @@ Access 導入後、外から `curl https://shion.tune77.com/chat` するとロ�
 |---|---|
 | URL | https://shion.tune77.com（named tunnel `tune-lease-55` → `http://127.0.0.1:3000`） |
 | 常駐 | launchd `com.tunelease.next`（KeepAlive）が `run_next_stable.sh` を常駐させ、FastAPI / Next.js / cloudflared が落ちたら起こし直す |
+| 歌唱エンジン | launchd `com.tunelease.voicevox`（RunAtLoad / KeepAlive）が VOICEVOX ENGINE 0.25.2（`~/voicevox/macos-x64/run`, 127.0.0.1:50021）を常駐させる。ログは `~/Library/Logs/tunelease/voicevox{,-error}.log`。plist は `scripts/launchd/com.tunelease.voicevox.plist` |
 | 再起動 | `FORCE_RESTART=1 bash run_next_stable.sh`（手順は `.claude/skills/restart-api/SKILL.md`）。ポートを手で kill しない |
 | ログイン | Cloudflare Access のメールワンタイムPIN（所有者メールのみ・730時間） |
 | 回数制限 | チャット・軍師・音声トークン等に同一IP 10秒5回まで |
@@ -1495,7 +1496,7 @@ api/                         FastAPI と審査 API
 frontend/                    Next.js フロントエンド
 mobile_app/                  Obsidian bridge など共通部品
 scripts/                     運用・補修・GCS 同期・日次改善パイプライン
-scripts/launchd/             ローカル常駐（FastAPI / Next / Cloudflare Tunnel）の LaunchAgent
+scripts/launchd/             ローカル常駐（FastAPI / Next / Cloudflare Tunnel / VOICEVOX）の LaunchAgent
 tests/                       pytest（API ルート契約テストを含む）
 docs/                        設計書（Decision State Ledger、Jev Safe Gateway など）
 static_data/                 業種・物件などの参照データ
