@@ -10,34 +10,35 @@ import pytest
 from scripts import backup_case_data as backup
 from scripts import r2_offsite as r2
 
-CREDS = r2.R2Credentials("acct", "id", "secret")
+CREDS = r2.R2Credentials("acct", "token")
+
+
+def _resp(result=None, codes=()):
+    return json.dumps({"success": not codes, "errors": [{"code": c} for c in codes], "result": result}).encode()
 
 
 class FakeR2:
-    """S3 互換 API の PUT/GET(list)/DELETE だけを真似る。最初はバケットが無い。"""
+    """R2 REST API の POST(bucket)/PUT/GET(list)/DELETE を真似る。最初はバケットが無い。
+    実物と同じく、存在しないキーの DELETE は HTTP 200 + success:false を返す。"""
 
     def __init__(self):
         self.bucket_exists = False
         self.objects: dict[str, bytes] = {}
 
-    def __call__(self, creds, method, path, query=None, body=b""):
-        parts = path.lstrip("/").split("/", 1)
-        if method == "PUT" and len(parts) == 1:
+    def __call__(self, creds, method, key="", query=None, body=None):
+        if method == "POST":
             self.bucket_exists = True
-            return b""
+            return _resp({})
         if not self.bucket_exists:
-            raise r2.R2Error("R2 PUT HTTP 404 NoSuchBucket")
+            return _resp(codes=[r2.NO_SUCH_BUCKET])
         if method == "PUT":
-            self.objects[parts[1]] = body
+            self.objects[key] = body
         elif method == "DELETE":
-            self.objects.pop(parts[1])
+            if self.objects.pop(key, None) is None:
+                return _resp(codes=[10007])
         elif method == "GET":
-            items = "".join(
-                f"<Contents><Key>{k}</Key><Size>{len(v)}</Size></Contents>"
-                for k, v in sorted(self.objects.items()) if k.startswith(query["prefix"])
-            )
-            return f'<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">{items}</ListBucketResult>'.encode()
-        return b""
+            return _resp([{"key": k, "size": len(v)} for k, v in sorted(self.objects.items()) if k.startswith(query["prefix"])])
+        return _resp({})
 
 
 def _archive(tmp_path: Path, name: str, blob: bytes | None = None) -> Path:
@@ -92,3 +93,9 @@ def test_r2_status_is_separate_and_report_warns(tmp_path):
     data["r2"]["bucket_total_bytes"] = 9 * 10**9
     status.write_text(json.dumps(data))
     assert "無料枠に接近" in backup.r2_report_line(status_path=status)
+
+
+def test_success_false_with_http_200_is_an_error():
+    with pytest.raises(r2.R2Error, match="10007"):
+        r2._json(_resp(codes=[10007]), "delete")
+    assert "token" not in repr(CREDS)
