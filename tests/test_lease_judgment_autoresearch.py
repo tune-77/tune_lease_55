@@ -195,7 +195,7 @@ def test_research_models_default_to_grounding_capable_models(monkeypatch):
     monkeypatch.delenv("GEMINI_RESEARCH_MODEL", raising=False)
     monkeypatch.delenv("GEMINI_RESEARCH_FALLBACK_MODEL", raising=False)
     monkeypatch.setenv("GEMINI_MODEL", "gemini-3.1-flash-lite")  # チャット既定に引きずられない
-    assert research.research_models() == ("gemini-2.5-flash", "gemini-2.5-pro")
+    assert research.research_models() == ("gemini-3.5-flash", "gemini-3.1-pro-preview")
     monkeypatch.setenv("GEMINI_RESEARCH_MODEL", "x-model")
     assert research.research_models()[0] == "x-model"
 
@@ -224,9 +224,9 @@ def test_retry_uses_fallback_model_and_logs_tokens(monkeypatch, capsys):
     topic = research.choose_topic(research.Path("/nonexistent"), "建設業の農業参入")
     with pytest.raises(RuntimeError, match="no verifiable source URLs"):
         research.research_topic(topic)
-    assert called == ["gemini-2.5-flash", "gemini-2.5-pro"]
+    assert called == ["gemini-3.5-flash", "gemini-3.1-pro-preview"]
     line = next(row for row in capsys.readouterr().err.splitlines() if "[autoresearch-grounding]" in row)
-    assert '"model":"gemini-2.5-pro"' in line and '"total":35' in line
+    assert '"model":"gemini-3.1-pro-preview"' in line and '"total":35' in line
 
 
 def test_research_organ_explains_missing_sources(monkeypatch):

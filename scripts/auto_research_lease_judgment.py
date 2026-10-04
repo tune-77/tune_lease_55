@@ -172,12 +172,13 @@ def choose_topic(output_dir: Path, requested: str = "") -> ResearchTopic:
     return min(TOPICS, key=lambda item: (dates.get(item.key, minimum), TOPICS.index(item)))
 
 
-# 接地検索に使うモデル。2026-10-04 の実測で gemini-3.1-flash-lite（チャット既定、PR #1189）と
-# gemini-3-flash-preview は google_search ツールを渡しても検索せず記憶で答え、groundingMetadata が空だった
-# （= "no verifiable source URLs"）。gemini-2.5-flash / 2.5-pro は毎回検索した。2.5 Flash の接地は
-# 1日1,500プロンプトまで無料。再試行は上位モデルに上げる。
-RESEARCH_MODEL_DEFAULT = "gemini-2.5-flash"
-RESEARCH_FALLBACK_MODEL_DEFAULT = "gemini-2.5-pro"
+# 接地検索に使うモデル。gemini-2.5 系は Vertex で 2026-10-20 に提供終了するため 3 系に揃える。
+# 2026-10-04 の実測: Gemini 3 は「思考するかどうか」で検索するかが決まり、思考0の
+# gemini-3.1-flash-lite は temperature に関係なく検索せず groundingMetadata が空だった
+# （thinking_level=HIGH なら検索した）。そのため検索呼び出しでは思考レベルを明示する。
+# gemini-3.5-flash は GA で提供 2027-05 以降まで保証、7/7 回根拠URLを取得（Pro は1回60秒かかった）。再試行は上位の Pro。
+RESEARCH_MODEL_DEFAULT = "gemini-3.5-flash"
+RESEARCH_FALLBACK_MODEL_DEFAULT = "gemini-3.1-pro-preview"
 
 
 def research_models() -> tuple[str, str]:
@@ -534,11 +535,11 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
             model=model,
             contents=attempt_prompt,
             config=types.GenerateContentConfig(
-                temperature=0.1,
-                # 2.5 系は思考トークンもこの上限に含まれる。4500 では思考で使い切って本文が空・途中切れになった。
-                max_output_tokens=8192,
+                # Gemini 3 は temperature 既定(1.0)推奨。思考トークンも上限に含まれ、実測で思考+本文が最大約7.7k。
+                max_output_tokens=16384,
+                thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
                 tools=[types.Tool(google_search=types.GoogleSearch())],
-                http_options=types.HttpOptions(timeout=60000),
+                http_options=types.HttpOptions(timeout=180000),
             ),
         )
         raw_research = str(getattr(search_response, "text", "") or "").strip()
@@ -600,8 +601,9 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
         model=model,
         contents=synthesis_prompt,
         config=types.GenerateContentConfig(
-            temperature=0.1,
-            max_output_tokens=3500,
+            # 整形だけなので思考は抑える（思考トークンも上限に含まれる）。
+            max_output_tokens=8192,
+            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
             http_options=types.HttpOptions(timeout=60000),
         ),
     )
@@ -623,8 +625,9 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
             model=model,
             contents=repair_prompt,
             config=types.GenerateContentConfig(
-                temperature=0.0,
-                max_output_tokens=3500,
+                # 整形だけなので思考は抑える（思考トークンも上限に含まれる）。
+                max_output_tokens=8192,
+                thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
                 http_options=types.HttpOptions(timeout=60000),
             ),
         )
