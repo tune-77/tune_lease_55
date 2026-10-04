@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
+import sys
+import types
 
 import pytest
 from filelock import FileLock
@@ -64,13 +66,15 @@ def test_writer_entry_points_share_the_common_lock() -> None:
     assert 'chroma_write_lock("shion_memory_sync")' in memory_vector
     assert 'chroma_write_lock("obsidian_knowledge_upsert")' in vector_store
     assert 'chroma_write_lock("obsidian_knowledge_delete")' in vector_store
-    assert 'chroma_write_lock("obsidian_knowledge_initialize")' in vector_store
+    assert 'chroma_write_lock("obsidian_knowledge_initialize", timeout=timeout)' in vector_store
     assert 'chroma_write_lock("lease_feedback_upsert")' in feedback_store
     assert 'chroma_write_lock("lease_feedback_initialize")' in feedback_store
     assert 'chroma_write_lock("obsidian_full_reindex")' in direct_reindex
     assert 'report.get("status") == "deferred"' in maintenance
     assert "REINDEX_EXIT -ne 75" in reindex_runner
     assert "GCS sync もスキップ" in reindex_runner
+    assert 'REINDEX_MAX_ATTEMPTS="${REINDEX_MAX_ATTEMPTS:-2}"' in reindex_runner
+    assert 'sleep "$REINDEX_RETRY_DELAY_SECONDS"' in reindex_runner
 
 
 def test_obsidian_reindex_reports_retryable_defer_on_lock_timeout(monkeypatch) -> None:
@@ -88,3 +92,27 @@ def test_obsidian_reindex_reports_retryable_defer_on_lock_timeout(monkeypatch) -
     assert result["status"] == "deferred"
     assert result["reason"] == "chroma_writer_busy"
     assert result["retryable"] is True
+
+
+def test_first_obsidian_search_does_not_wait_for_active_writer(tmp_path, monkeypatch) -> None:
+    from api.knowledge import chroma_write_lock as lock_module
+    from api.knowledge.vector_store import KnowledgeVectorStore
+
+    lock_calls: list[float | None] = []
+
+    @contextmanager
+    def busy_writer(_operation: str, *, timeout=None):
+        lock_calls.append(timeout)
+        raise ChromaWriteLockTimeout("busy")
+        yield
+
+    monkeypatch.setattr(lock_module, "chroma_write_lock", busy_writer)
+    monkeypatch.setitem(
+        sys.modules,
+        "chromadb",
+        types.SimpleNamespace(PersistentClient=lambda **_kwargs: pytest.fail("must not initialize")),
+    )
+    store = KnowledgeVectorStore(chroma_dir=str(tmp_path))
+
+    assert store.search("再リース") == []
+    assert lock_calls == [0]
