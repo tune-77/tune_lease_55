@@ -15,6 +15,7 @@ import os
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TypeVar
@@ -47,6 +48,31 @@ def _max_log_bytes() -> int:
         return max(1, int(configured))
     except ValueError:
         return _DEFAULT_MAX_LOG_BYTES
+
+
+@contextmanager
+def usage_log_lock(path: Path):
+    """Serialize rotation, appends, and multi-generation report snapshots."""
+    with _WRITE_LOCK:
+        lock_key = hashlib.sha256(str(path.absolute()).encode("utf-8")).hexdigest()[:16]
+        lock_path = Path(tempfile.gettempdir()) / f"ai-usage-{lock_key}.lock"
+        with lock_path.open("a", encoding="utf-8") as lock_handle:
+            locked = False
+            try:
+                import fcntl
+
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+                locked = True
+            except (ImportError, OSError):
+                pass
+            try:
+                yield
+            finally:
+                if locked:
+                    try:
+                        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+                    except OSError:
+                        pass
 
 
 def _integer(value: Any) -> int | None:
@@ -113,29 +139,14 @@ def _append_usage(entry: dict[str, Any]) -> None:
         path = usage_log_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(entry, ensure_ascii=False, separators=(",", ":")) + "\n"
-        with _WRITE_LOCK:
-            lock_key = hashlib.sha256(str(path.absolute()).encode("utf-8")).hexdigest()[:16]
-            lock_path = Path(tempfile.gettempdir()) / f"ai-usage-{lock_key}.lock"
-            with lock_path.open("a", encoding="utf-8") as lock_handle:
-                try:
-                    import fcntl
-
-                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
-                except (ImportError, OSError):
-                    pass
-                encoded_size = len(line.encode("utf-8"))
-                if path.exists() and path.stat().st_size + encoded_size > _max_log_bytes():
-                    rotated = path.with_suffix(path.suffix + ".1")
-                    os.replace(path, rotated)
-                with path.open("a", encoding="utf-8") as handle:
-                    handle.write(line)
-                    handle.flush()
-                try:
-                    import fcntl
-
-                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
-                except (ImportError, OSError):
-                    pass
+        with usage_log_lock(path):
+            encoded_size = len(line.encode("utf-8"))
+            if path.exists() and path.stat().st_size + encoded_size > _max_log_bytes():
+                rotated = path.with_suffix(path.suffix + ".1")
+                os.replace(path, rotated)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(line)
+                handle.flush()
     except Exception:
         # Metrics must never make an AI request fail.
         return

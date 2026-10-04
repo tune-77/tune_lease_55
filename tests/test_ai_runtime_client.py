@@ -178,3 +178,25 @@ def test_usage_report_includes_rotated_generation(tmp_path):
     assert row["avg_duration_ms"] == 20.0
     assert row["input_tokens"] == 10
     assert row["output_tokens"] == 3
+
+
+def test_usage_report_reads_both_generations_under_writer_lock(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from scripts import report_ai_usage
+
+    log_path = tmp_path / "usage.jsonl"
+    log_path.write_text(
+        json.dumps({"provider": "google", "feature": "chat", "model": "m", "ok": True}) + "\n",
+        encoding="utf-8",
+    )
+    entered: list[object] = []
+
+    @contextmanager
+    def record_lock(path):
+        entered.append(path)
+        yield
+
+    monkeypatch.setattr(report_ai_usage, "usage_log_lock", record_lock)
+
+    assert report_ai_usage.summarize(log_path)[0]["calls"] == 1
+    assert entered == [log_path]
