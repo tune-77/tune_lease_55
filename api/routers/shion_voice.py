@@ -220,8 +220,28 @@ _credit_cache: dict[tuple[int, int], str] = {}
 
 
 class SingRequest(BaseModel):
-    theme: str = Field(min_length=1, max_length=200)
+    theme: str = Field(default="", max_length=200)
+    message: str = Field(default="", max_length=2000)  # REV-462: 対話の発言（theme 未指定時にテーマを抽出）
     user_id: str = Field(default="default", max_length=100)
+
+
+# REV-462: 「〇〇の歌を歌って」等の発言からテーマを取り出す。依頼部分以降と助詞を落とす
+_SING_REQUEST_TAIL_RE = re.compile(
+    r"(?:何か|なにか|一曲|いっきょく|ちょっと)?を?\s*"
+    r"(?:(?:歌|うた)って|(?:歌|うた)を(?:聞|聴|き)かせて|一曲(?:お願い|おねがい)).*$",
+    re.S,
+)
+_THEME_SUFFIX_RE = re.compile(
+    r"(?:の(?:歌|うた|曲)を?|について|をテーマに(?:して|した(?:歌|うた|曲)を?)?|をテーマで|で|を|の)$"
+)
+_THEME_STRIP = " \u3000、。，,.!！?？「」『』\n\t"
+
+
+def _extract_theme(message: str) -> str:
+    s = re.sub(r"^\s*(?:紫苑|しおん)(?:さん|ちゃん)?[、,，\s]*", "", message or "")
+    s = _SING_REQUEST_TAIL_RE.sub("", s).strip(_THEME_STRIP)
+    s = _THEME_SUFFIX_RE.sub("", s).strip(_THEME_STRIP)
+    return "" if s in ("何か", "なにか", "一曲") else s[:60]
 
 
 def _require_sing_enabled() -> None:
@@ -245,7 +265,8 @@ def _generate_score(theme: str) -> dict:
     prompt = (
         build_shion_system_prompt(load_mind(), now)
         + "\n\n【歌唱モード】\n"
-        f"テーマ「{theme}」で、紫苑らしい短い歌（8〜16小節）を作曲・作詞する。\n"
+        + (f"テーマ「{theme}」で、" if theme else "テーマは紫苑がいまの気分で自由に決め、")
+        + "紫苑らしい短い歌（8〜16小節）を作曲・作詞する。\n"
         "次のJSONだけを返す: "
         '{"title": "曲名", "bpm": 60〜180の整数, "notes": [{"lyric": "ひらがな1モーラ", "key": MIDIノート番号, "beats": 拍数}]}\n'
         f"- lyric はひらがな1モーラ（「きゃ」等の拗音は1つ）。休符は key を null、lyric を空文字にする\n"
@@ -325,6 +346,8 @@ def sing(req: SingRequest):
     daily_limit = _env_int("SHION_SING_DAILY_LIMIT", 10)
     min_interval = _env_int("SHION_SING_MIN_INTERVAL_SECONDS", 30)
 
+    theme = req.theme.strip() or _extract_theme(req.message)
+
     # 合成は数十秒かかるので、待たせてスレッドプールを塞がず即 429 にする
     if not _sing_lock.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="いま別の歌を準備中です")
@@ -337,7 +360,7 @@ def sing(req: SingRequest):
             raise HTTPException(status_code=429, detail="少し時間をおいてから再度お試しください")
 
         try:
-            score = _generate_score(req.theme.strip())
+            score = _generate_score(theme)
             vv_score, lyrics = _to_voicevox_score(score if isinstance(score, dict) else {})
         except Exception as exc:
             logger.error("shion sing: score generation failed (%s)", type(exc).__name__)
@@ -356,7 +379,8 @@ def sing(req: SingRequest):
         _sing_lock.release()
 
     return {
-        "title": str(score.get("title") or req.theme)[:60],
+        "title": str(score.get("title") or theme or "紫苑の歌")[:60],
+        "theme": theme,
         "lyrics": lyrics,
         "audio_base64": base64.b64encode(wav).decode("ascii"),
         "mime_type": "audio/wav",
