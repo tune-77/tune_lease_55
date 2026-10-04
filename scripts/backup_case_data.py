@@ -10,6 +10,7 @@ profile:
 鍵は macOS キーチェーン（service=tune-lease-backup-key）。取れなければ平文に落とさず失敗にする。
 初回だけ `--init-key` で鍵を作る。復号は scripts/restore_case_data_backup.py。
 成否は data/backup_status.json に profile ごとに残し、AURION CORE 朝報が読む。
+iCloud 成功後に同じ暗号化アーカイブを Cloudflare R2 にも送る（scripts/r2_offsite.py、成否は status["r2"]）。
 """
 
 from __future__ import annotations
@@ -369,13 +370,27 @@ def restore_archive(archive: Path, out_dir: Path, key: bytes) -> dict:
     }
 
 
+def _load_status(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_status(path: Path, status: dict) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        print(f"[backup] status write failed: {exc}", file=sys.stderr)
+
+
 def record_status(profile: str, *, ok: bool, summary: BackupSummary | None = None, error: str = "", path: Path | None = None) -> None:
     """profile ごとの最終試行・最終成功を残す（朝報が読む）。書けなくてもバックアップ自体は止めない。"""
     path = path or STATUS_PATH
-    try:
-        status = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    except (OSError, json.JSONDecodeError):
-        status = {}
+    status = _load_status(path)
     now = dt.datetime.now().astimezone().isoformat(timespec="seconds")
     entry = dict(status.get(profile) or {})
     entry.update({"last_attempt": now, "ok": ok, "error": error[:300]})
@@ -390,13 +405,49 @@ def record_status(profile: str, *, ok: bool, summary: BackupSummary | None = Non
             }
         )
     status[profile] = entry
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        tmp.replace(path)
-    except OSError as exc:
-        print(f"[backup] status write failed: {exc}", file=sys.stderr)
+    _save_status(path, status)
+
+
+# R2 無料枠は Standard ストレージ 10 GB-month/月（2026-10 時点の公式 pricing）。8GB で朝報に警告
+R2_FREE_BYTES = 10 * 10**9
+R2_WARN_BYTES = 8 * 10**9
+
+
+def record_r2_status(profile: str, *, ok: bool, result: dict | None = None, error: str = "", path: Path | None = None) -> None:
+    """R2 の成否は iCloud とは別に status["r2"] に残す。R2 の失敗で iCloud 側の ok を落とさない。"""
+    path = path or STATUS_PATH
+    status = _load_status(path)
+    r2 = dict(status.get("r2") or {})
+    now = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    entry = dict(r2.get(profile) or {})
+    entry.update({"last_attempt": now, "ok": ok, "error": error[:300]})
+    if ok and result is not None:
+        entry.update({"last_success": now, "key": result["key"], "bytes": result["bytes"]})
+        r2.update({"bucket": result["bucket"], "bucket_total_bytes": result["bucket_total_bytes"], "measured_at": now})
+    r2[profile] = entry
+    status["r2"] = r2
+    _save_status(path, status)
+
+
+def r2_report_line(status_path: Path | None = None, now: dt.datetime | None = None) -> str:
+    """R2 オフサイトの最終成功・使用量を iCloud とは別の1行で出す。失敗・7日以上成功なし・8GB 超で警告。"""
+    now = now or dt.datetime.now().astimezone()
+    r2 = _load_status(status_path or STATUS_PATH).get("r2") or {}
+    parts, warn = [], []
+    for name in PROFILES:
+        entry = r2.get(name) or {}
+        ts = dt.datetime.fromisoformat(entry["last_success"]) if entry.get("last_success") else None
+        parts.append(f"{name} {ts.strftime('%m/%d %H:%M') if ts else 'なし'}")
+        if entry and not entry.get("ok"):
+            warn.append(f"直近失敗 {name}: {entry.get('error', '')[:60]}")
+        elif ts is None or (now - ts).days >= STALE_DAYS:
+            warn.append(f"{STALE_DAYS}日以上成功なし: {name}")
+    total = r2.get("bucket_total_bytes")
+    usage = f"・使用量 {total / 10**9:.2f}GB/{R2_FREE_BYTES // 10**9}GB" if total is not None else ""
+    if total is not None and total >= R2_WARN_BYTES:
+        warn.append("無料枠に接近")
+    head = "⚠️ " if warn else ""
+    return f"- {head}R2 オフサイト最終成功: " + " / ".join(parts) + usage + (f"（{'；'.join(warn)}）" if warn else "")
 
 
 STALE_DAYS = 7
@@ -422,10 +473,7 @@ def morning_report_line(
     """バックアップの成否と最終成功日時を朝報に1行で出す。7日以上成功していない対象があれば警告。"""
     now = now or dt.datetime.now().astimezone()
     path = status_path or STATUS_PATH
-    try:
-        status = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    except (OSError, json.JSONDecodeError):
-        status = {}
+    status = _load_status(path)
     last: dict[str, dt.datetime | None] = {}
     failed: list[str] = []
     for name in PROFILES:
@@ -470,11 +518,12 @@ def main() -> int:
     # case_data の保存先（CASE_DATA_BACKUP_ROOT）と同じ階層に profile 名のフォルダを並べる
     default_root = DEFAULT_BACKUP_ROOT if args.profile == "case_data" else DEFAULT_BACKUP_ROOT.parent / args.profile
 
+    keep = args.keep or profile["keep"]
     try:
         summary = backup_case_data(
             backup_root=Path(args.backup_root or default_root).expanduser(),
             targets=args.targets or profile["targets"],
-            keep=args.keep or profile["keep"],
+            keep=keep,
             prefix=profile["prefix"],
         )
     except Exception as exc:  # noqa: BLE001 - 失敗を朝報に出すため記録してから非0で終わる
@@ -490,6 +539,16 @@ def main() -> int:
     if summary.missing:
         print(f"MISSING: {', '.join(summary.missing)}")
     print(f"destination: {summary.destination}")
+    # オフサイト（R2）。失敗しても iCloud バックアップは成功のまま、終了コードも 0
+    try:
+        from r2_offsite import sync_archive
+
+        r2 = sync_archive(Path(summary.destination), args.profile, keep)
+        record_r2_status(args.profile, ok=True, result=r2)
+        print(f"R2: {r2['key']} (bucket total {r2['bucket_total_bytes'] / 10**6:.1f} MB)")
+    except Exception as exc:  # noqa: BLE001 - R2 の失敗は記録して朝報に出すだけ
+        record_r2_status(args.profile, ok=False, error=f"{type(exc).__name__}: {exc}")
+        print(f"R2 FAILED (iCloud は成功): {type(exc).__name__}: {exc}", file=sys.stderr)
     return 0
 
 
