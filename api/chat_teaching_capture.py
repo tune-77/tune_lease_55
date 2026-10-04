@@ -389,6 +389,12 @@ def _note_body(text: str) -> str:
 
 # どの審査の文にも出るため、想起の決め手にしない語。
 _GENERIC_DOMAIN_TERMS = frozenset({"リース", "審査", "契約", "取引", "承認", "設備", "業界", "業種"})
+# 言い方の違う同じ概念（想起だけで使う）。2026-10-04 に保存した多角化案件の審査コメントテンプレートが
+# 「新規参入」「審査意見」のような問いで拾えなかった。
+_RECALL_CONCEPTS = (
+    ("多角化", re.compile(r"多角化|異業種|新規事業|新事業|新規参入|参入|進出|本業(以外|外|とは別|と別)")),
+    ("審査コメント", re.compile(r"審査コメント|審査意見|稟議コメント|テンプレート|テンプレ")),
+)
 
 
 def _score_against(query: str, query_grams: set[str], body: str) -> float | None:
@@ -401,7 +407,7 @@ def _score_against(query: str, query_grams: set[str], body: str) -> float | None
         term
         for term in TEACHING_DOMAIN_TERMS
         if term not in _GENERIC_DOMAIN_TERMS and term in query and term in body
-    }
+    } | {name for name, pattern in _RECALL_CONCEPTS if pattern.search(query) and pattern.search(body)}
     overlap = len(query_grams & grams) / len(query_grams)
     if not shared_terms or (len(shared_terms) < 2 and overlap < 0.2):
         return None
