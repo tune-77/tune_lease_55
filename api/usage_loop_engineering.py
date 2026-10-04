@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import time
 
 from config import get_gemini_model
 import re
@@ -22,6 +23,7 @@ _EVENTS_PATH = _DATA_DIR / "usage_loop_events.jsonl"
 _PROPOSALS_PATH = _DATA_DIR / "usage_loop_proposals.jsonl"
 
 _LOOKBACK_DAYS = 30
+_GEMINI_RETRY_DELAYS_S = (5, 15)
 
 # 重複提案チェック用: 既に承認確率・シナリオ分析・将来予測・金利提案を提供している
 # 主要画面。ここにある機能と同じ価値を新規提案しないよう、プロンプトに含める。
@@ -128,9 +130,19 @@ def _call_gemini(prompt: str) -> str:
             "responseMimeType": "application/json",
         },
     }
-    resp = requests.post(url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60)
-    resp.raise_for_status()
-    return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60)
+            resp.raise_for_status()
+            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            if attempt >= 2:
+                raise
+        except requests.exceptions.HTTPError:
+            if attempt >= 2 or (resp.status_code != 429 and resp.status_code < 500):
+                raise
+        time.sleep(_GEMINI_RETRY_DELAYS_S[attempt])
+    raise RuntimeError("Gemini呼出しの再試行に失敗しました")
 
 
 def _build_prompt(usage: dict[str, Any]) -> str:
@@ -208,7 +220,7 @@ def generate_proposals(days: int = _LOOKBACK_DAYS) -> dict[str, Any]:
         if not isinstance(proposals, list):
             raise ValueError("Gemini応答がリストではありません")
     except Exception as exc:
-        return {"generated": False, "reason": f"Gemini生成に失敗: {exc}", "proposals": []}
+        return {"generated": False, "reason": f"Gemini生成に失敗: {type(exc).__name__}: {exc}", "proposals": []}
 
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
     generated_at = dt.datetime.now().isoformat(timespec="seconds")
