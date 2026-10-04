@@ -58,8 +58,9 @@ def build_vector_records(corpus: list[dict], vectors: list[list[float]]) -> list
         if len(vector) != DIMENSIONS:
             raise ValueError(f"ベクトル次元不一致: {len(vector)} != {DIMENSIONS}")
         source_path = str(document["rel_path"])
+        record_key = str(document.get("key") or source_path)
         records.append({
-            "id": stable_vector_id(source_path),
+            "id": stable_vector_id(record_key),
             "values": vector,
             "metadata": {
                 "path": source_path,

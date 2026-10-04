@@ -141,6 +141,15 @@ def test_main_chat_rag_uses_typesafe_candidate_gate(monkeypatch):
             },
         ),
     )
+    monkeypatch.setitem(
+        sys.modules,
+        "api.cloudflare_rag_shadow",
+        types.SimpleNamespace(
+            submit_cloudflare_shadow=lambda _message, hits, **_kwargs: (
+                seen.__setitem__("shadow_hits", list(hits)) or {"queued": True, "status": "shadow"}
+            )
+        ),
+    )
 
     result = build_chat_retrieval_context(
         "query",
@@ -154,6 +163,40 @@ def test_main_chat_rag_uses_typesafe_candidate_gate(monkeypatch):
     assert "weak" not in result.rag_context
     assert result.rag_refs == ["[[strong]]"]
     assert result.typesafe_rag["status"] == "applied"
+    assert [hit["ref"] for hit in seen["shadow_hits"]] == ["[[strong]]"]
+
+
+def test_cloudflare_shadow_uses_final_fallback_hits(monkeypatch):
+    seen = {}
+    monkeypatch.setitem(
+        sys.modules,
+        "api.knowledge.vector_store",
+        types.SimpleNamespace(
+            get_store=lambda: types.SimpleNamespace(search=lambda _message, top_k: []),
+            confidence_for_hit=lambda _hit: (0.9, "high"),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "api.cloudflare_rag_shadow",
+        types.SimpleNamespace(
+            submit_cloudflare_shadow=lambda _message, hits, **_kwargs: (
+                seen.__setitem__("hits", list(hits)) or {"queued": True, "status": "shadow"}
+            )
+        ),
+    )
+    fallback = {"doc_id": "fallback", "text": "fallback text", "ref": "[[fallback]]"}
+
+    result = build_chat_retrieval_context(
+        "query",
+        rag_top_k=2,
+        question_category="general",
+        is_general_response_mode=False,
+        fallback_search=lambda _message, _top_k: [fallback],
+    )
+
+    assert result.rag_refs == ["[[fallback]]"]
+    assert seen["hits"] == [fallback]
 
 
 def test_screening_rag_does_not_leave_process_by_default(monkeypatch):

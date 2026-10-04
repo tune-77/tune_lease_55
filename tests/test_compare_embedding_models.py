@@ -59,6 +59,24 @@ def test_batched_splits_evenly():
     assert batched([], 3) == []
 
 
+def test_exported_corpus_chunks_without_dropping_tail(tmp_path):
+    export_dir = tmp_path / "export"
+    export_dir.mkdir()
+    body = "A" * 1200 + "TAIL-MARKER"
+    (export_dir / "doc.txt").write_text(body, encoding="utf-8")
+    (export_dir / "manifest.json").write_text(
+        '{"documents":[{"output_path":"doc.txt","source_path":"Research/doc.md"}]}',
+        encoding="utf-8",
+    )
+
+    corpus = build_exported_corpus(export_dir)
+
+    assert len(corpus) == 2
+    assert corpus[0]["key"] == "Research/doc.md#chunk-0"
+    assert corpus[1]["key"] == "Research/doc.md#chunk-1"
+    assert "TAIL-MARKER" in corpus[1]["text"]
+
+
 class _FakeResponse:
     def __init__(self, payload, status_code=200):
         self._payload = payload

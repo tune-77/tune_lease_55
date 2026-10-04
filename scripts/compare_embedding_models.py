@@ -84,7 +84,8 @@ MODEL_ALIASES = {
 
 CLOUDFLARE_MODEL_KEYS = frozenset({"plamo", "qwen3", "bge-m3"})
 
-CHUNK_TEXT_LIMIT = 1200  # コスト・実行時間を抑えるためチャンク本文は先頭のみ使う
+CHUNK_TEXT_LIMIT = 1200
+CHUNK_TEXT_OVERLAP = 150
 
 
 # ------------------------------------------------------------------
@@ -353,9 +354,21 @@ def build_exported_corpus(export_dir: Path) -> list[dict]:
             continue
         if not candidate.is_file():
             continue
-        text = candidate.read_text(encoding="utf-8", errors="replace")[:CHUNK_TEXT_LIMIT]
-        if text.strip():
-            corpus.append({"key": source_path, "rel_path": source_path, "text": text})
+        text = candidate.read_text(encoding="utf-8", errors="replace")
+        step = CHUNK_TEXT_LIMIT - CHUNK_TEXT_OVERLAP
+        for chunk_index, start in enumerate(range(0, len(text), step)):
+            chunk = text[start : start + CHUNK_TEXT_LIMIT].strip()
+            if not chunk:
+                continue
+            corpus.append(
+                {
+                    "key": f"{source_path}#chunk-{chunk_index}",
+                    "rel_path": source_path,
+                    "text": chunk,
+                }
+            )
+            if start + CHUNK_TEXT_LIMIT >= len(text):
+                break
     return corpus
 
 

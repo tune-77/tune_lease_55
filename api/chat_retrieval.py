@@ -347,6 +347,7 @@ def build_chat_retrieval_context(
 ) -> ChatRetrievalResult:
     """Build local RAG plus optional Vertex supplemental context for chat."""
     result = ChatRetrievalResult()
+    shadow_hits: list[dict[str, Any]] = []
     if rag_top_k <= 0:
         return result
 
@@ -367,17 +368,6 @@ def build_chat_retrieval_context(
         from api.knowledge.vector_store import get_store
 
         hits = get_store().search(message, top_k=candidate_top_k)
-        try:
-            from api.cloudflare_rag_shadow import submit_cloudflare_shadow
-
-            result.cloudflare_shadow = submit_cloudflare_shadow(
-                message,
-                hits,
-                question_category=question_category,
-                is_general_response_mode=is_general_response_mode,
-            )
-        except Exception as exc:  # shadow比較はローカルRAGを止めない
-            result.cloudflare_shadow = {"queued": False, "status": "error", "error_type": type(exc).__name__}
         if rerank and hits:
             hits = _rerank_local_hits(message, hits, result)
         elif jev_rerank_on and hits:
@@ -393,6 +383,7 @@ def build_chat_retrieval_context(
             rag_refs=result.rag_refs,
             rag_knowledge_refs=result.rag_knowledge_refs,
         )
+        shadow_hits = hits
     except Exception as exc:
         print(f"[RAG] 検索エラー: {exc}")
 
@@ -416,6 +407,20 @@ def build_chat_retrieval_context(
                 rag_refs=result.rag_refs,
                 rag_knowledge_refs=result.rag_knowledge_refs,
             )
+            shadow_hits = fallback_hits
+
+    # 実際にpromptへ採用したローカル候補を基準にVectorizeと比較する。
+    try:
+        from api.cloudflare_rag_shadow import submit_cloudflare_shadow
+
+        result.cloudflare_shadow = submit_cloudflare_shadow(
+            message,
+            shadow_hits,
+            question_category=question_category,
+            is_general_response_mode=is_general_response_mode,
+        )
+    except Exception as exc:  # shadow比較はローカルRAGを止めない
+        result.cloudflare_shadow = {"queued": False, "status": "error", "error_type": type(exc).__name__}
 
     if is_general_response_mode or question_category == "general":
         return result

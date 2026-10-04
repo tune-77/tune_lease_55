@@ -43,6 +43,18 @@ def test_build_vector_records_keeps_only_sanitized_fields():
     assert len(records[0]["values"]) == DIMENSIONS
 
 
+def test_build_vector_records_gives_each_source_chunk_a_unique_id():
+    corpus = [
+        {"key": "Research/a.md#chunk-0", "rel_path": "Research/a.md", "text": "first"},
+        {"key": "Research/a.md#chunk-1", "rel_path": "Research/a.md", "text": "second"},
+    ]
+
+    records = build_vector_records(corpus, [[0.1] * DIMENSIONS, [0.2] * DIMENSIONS])
+
+    assert records[0]["id"] != records[1]["id"]
+    assert {record["metadata"]["path"] for record in records} == {"Research/a.md"}
+
+
 def test_build_vector_records_rejects_wrong_dimension():
     with pytest.raises(ValueError, match="次元不一致"):
         build_vector_records([{"rel_path": "a.md", "text": "a"}], [[0.1, 0.2]])
