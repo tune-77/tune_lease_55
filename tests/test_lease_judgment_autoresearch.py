@@ -240,6 +240,7 @@ def test_research_organ_explains_missing_sources(monkeypatch):
         raise RuntimeError("Gemini research returned no verifiable source URLs; note was not saved")
 
     monkeypatch.setattr(research, "run", fail)
+    monkeypatch.setattr(vault_hub, "_research_organ_vault_path", lambda: Path("/tmp/vault"))  # CI には Vault が無い
     monkeypatch.setitem(sys.modules, "scripts.auto_research_lease_judgment", research)
     with pytest.raises(HTTPException) as caught:
         asyncio.run(vault_hub.run_research_organ(vault_hub.ResearchOrganRunRequest(topic="建設業の農業参入")))
