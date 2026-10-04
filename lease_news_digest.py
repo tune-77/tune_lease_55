@@ -32,6 +32,9 @@ _GCS_VAULT_LOCAL_DIR = Path(os.environ.get("GCS_VAULT_LOCAL_DIR", "/tmp/gcs_vaul
 _GCS_VAULT_RESYNC_INTERVAL = int(os.environ.get("GCS_VAULT_RESYNC_INTERVAL", "3600"))
 _GCS_VAULT_LAST_SYNC = 0.0
 _GCS_VAULT_LOCK = threading.Lock()
+_NEWS_NOTE_CANDIDATES = 40
+_NEWS_NOTE_READ_TIMEOUT_S = 3.0
+_NEWS_NOTE_READ_LOCK = threading.Lock()
 
 _NEWS_SIGNAL_REQUIRED_FIELDS = (
     "claim",
@@ -722,6 +725,13 @@ def _note_effective_date(path: Path) -> str:
     return _note_frontmatter_date(path) or _note_filename_date(path)
 
 
+def _safe_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def _latest_news_note(vault: Path) -> Path | None:
     notes: list[Path] = []
     for rel_dir in DEFAULT_NEWS_REL_DIRS:
@@ -734,9 +744,45 @@ def _latest_news_note(vault: Path) -> Path | None:
         notes.extend(news_dir.glob("*_lease-news.md"))
     if not notes:
         return None
-    # frontmatter の date を主キー、ファイル名日付を副キーにする（同日内の安定化）。
-    notes.sort(key=lambda p: (_note_effective_date(p), _note_filename_date(p), p.name), reverse=True)
-    return notes[0]
+    by_name = sorted(notes, key=lambda p: (_note_filename_date(p), p.name), reverse=True)
+    by_mtime = sorted(notes, key=_safe_mtime, reverse=True)
+    candidates = list(dict.fromkeys(by_name[:_NEWS_NOTE_CANDIDATES] + by_mtime[:_NEWS_NOTE_CANDIDATES]))
+    dates: dict[Path, str] = {}
+
+    # タイムアウト後もファイルI/O中のスレッド自体は停止できないため、同時に1本だけ
+    # frontmatter読込みを許可する。前回分が残っていれば新しいスレッドを作らず退避する。
+    read_lock = _NEWS_NOTE_READ_LOCK
+    if not read_lock.acquire(blocking=False):
+        print("[lease_news_digest] frontmatter読込みが実行中のため、ファイル名日付で選択します")
+        return by_name[0]
+
+    def read_dates() -> None:
+        try:
+            for path in candidates:
+                dates[path] = _note_frontmatter_date(path)
+        finally:
+            read_lock.release()
+
+    # 2026-10-05: iCloud同期中の読込み停止で審査全体をハングさせない。
+    thread = threading.Thread(target=read_dates, daemon=True)
+    try:
+        thread.start()
+    except Exception:
+        read_lock.release()
+        raise
+    thread.join(timeout=_NEWS_NOTE_READ_TIMEOUT_S)
+    if thread.is_alive():
+        print(
+            f"[lease_news_digest] frontmatter読込みが{_NEWS_NOTE_READ_TIMEOUT_S}秒を超過"
+            "（iCloud同期中の可能性）。ファイル名日付で選択します"
+        )
+        return by_name[0]
+
+    candidates.sort(
+        key=lambda p: (dates.get(p) or _note_filename_date(p), _note_filename_date(p), p.name),
+        reverse=True,
+    )
+    return candidates[0]
 
 
 def _latest_reflection_note(vault: Path) -> Path | None:
