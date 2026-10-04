@@ -7,6 +7,8 @@ description: Cloudflare版とCloud Run版のAIチャット回答品質を比較�
 
 Cloudflare版とCloud Run版の `/api/chat` に同じ評価質問を投げ、回答品質と記憶利用の痕跡を比較するスキルです。
 
+> 2026-10 から本番は Cloudflare 版（Mac）で、Cloud Run は停止中の予備です（2026-10-03 にサービス削除済み）。Cloud Run を再開していない間は比較先が無いため、Cloudflare 版単独の品質検査として使う。
+
 ## 目的
 
 理由: 環境比較は単なる応答スコアではなく、記憶/RAG/判断資産として同じ品質で返るかを見る必要がある。

@@ -31,6 +31,31 @@ def test_small_candidate_set_skips_gemini(monkeypatch) -> None:
     assert improvement_consolidator.consolidate_with_ai(items) is items
 
 
+def test_rest_fallback_is_usage_tracked(monkeypatch) -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}'
+
+    tracked: dict = {}
+    monkeypatch.setattr(improvement_consolidator.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    def track(call, **metadata):
+        tracked.update(metadata)
+        return call()
+
+    monkeypatch.setattr(improvement_consolidator, "tracked_ai_call", track)
+
+    assert improvement_consolidator._call_gemini_rest("prompt", "secret") == "ok"
+    assert tracked["feature"] == "improvement_consolidation"
+    assert tracked["operation"] == "generateContent.rest"
+
+
 def test_semantic_dedup_merges_only_high_confidence_pair() -> None:
     module = _load_extract_module()
     items = [

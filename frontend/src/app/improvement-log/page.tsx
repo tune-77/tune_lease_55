@@ -447,6 +447,7 @@ type AgenticSkillNextActions = {
 };
 
 type CloudRunDataSafetyAudit = {
+  paused?: boolean;
   mode: string;
   status: "ok" | "warn" | "critical" | string;
   issue_count: number;
@@ -1544,6 +1545,8 @@ export default function ImprovementLogPage() {
           </div>
         </section>
 
+        {/* Cloud Run 停止中（config/cloudrun_pause.json の paused）は欄ごと隠す。再開すると自動で戻る */}
+        {!cloudRunSafetyAudit?.paused && (
         <section className="overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-rose-100 bg-rose-50 p-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-3">
@@ -1647,6 +1650,7 @@ export default function ImprovementLogPage() {
             )}
           </div>
         </section>
+        )}
 
         <section className="overflow-hidden rounded-2xl border border-cyan-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-cyan-100 bg-cyan-50 p-4 md:flex-row md:items-center md:justify-between">

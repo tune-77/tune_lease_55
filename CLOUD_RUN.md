@@ -1,5 +1,16 @@
 # Cloud Run deployment
 
+> **Paused standby since 2026-10.** Production is the Cloudflare edition running on a Mac
+> (https://shion.tune77.com; see README「本番運用（Cloudflare 版・2026-10〜）」).
+> Cloud Run was paused on 2026-10-01 (PR #1188, `config/cloudrun_pause.json`), and the
+> services and the Artifact Registry repository `cloud-run-source-deploy` were deleted on
+> 2026-10-03. The GCS bucket `tune-lease-55-data` and Secret Manager secrets remain.
+> To resume: recreate the repository
+> (`gcloud artifacts repositories create cloud-run-source-deploy --repository-format=docker --location=asia-northeast1`),
+> then follow the header of `.github/workflows/cloudrun-pause.yml` (deploy with
+> `force_deploy` first, then unset `paused`). The rest of this file is kept as the reference
+> for that case.
+
 ## Recommended initial settings
 
 - Region: `asia-northeast1`

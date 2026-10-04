@@ -4,7 +4,7 @@
 
 [![PR Checks](https://github.com/tune-77/tune_lease_55/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/pr-checks.yml)
 [![Daily Test Suite](https://github.com/tune-77/tune_lease_55/actions/workflows/daily-test.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/daily-test.yml)
-[![Deploy to Cloud Run](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml)
+[![Deploy to Cloud Run (paused)](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml)
 [![Security Scan](https://github.com/tune-77/tune_lease_55/actions/workflows/security-scan.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/security-scan.yml)
 
 [![SHION demo video](https://img.youtube.com/vi/KWLbWEHHn-E/hqdefault.jpg)](https://youtu.be/KWLbWEHHn-E)
@@ -37,10 +37,10 @@ SHION is not a plain RAG bot. Rather than only retrieving documents and answerin
 
 By design, SHION separates its **body** from its **brain**:
 
-- **Body**: the UI / API / scoring / chat / SHION review running on Cloud Run
+- **Body**: the UI / API / scoring / chat / SHION review — in production since October 2026 on the Cloudflare edition running on a Mac (https://shion.tune77.com); Cloud Run, used until then, is paused as a standby
 - **Brain**: judgment assets, past decisions, discomfort notes, and improvement logs stored in an Obsidian / Markdown vault
 
-Cloud Run is the runtime that drives SHION, but it never directly rewrites the brain's source of truth. Improvement candidates first enter a quarantine queue and only get promoted to the brain after human approval. Because of this separation, the "brain" behind lease-financing review could in principle be swapped for a different domain — legal review, sales support, CS quality audits, and so on — while keeping the same body.
+The runtime (the body) drives SHION, but it never directly rewrites the brain's source of truth. Improvement candidates first enter a quarantine queue and only get promoted to the brain after human approval. Because of this separation, the "brain" behind lease-financing review could in principle be swapped for a different domain — legal review, sales support, CS quality audits, and so on — while keeping the same body.
 
 ## What we built, in one table
 
@@ -168,9 +168,27 @@ After it starts:
 - FastAPI: `http://127.0.0.1:8000`
 - API docs: `http://127.0.0.1:8000/docs`
 
-The stack is **Next.js + FastAPI + SQLite/PostgreSQL**, with Gemini + ADK (Agent Development Kit) for the agent layer and Cloud Run for deployment (API and Web deployed separately). See the Japanese README for full deployment, tunneling, and Obsidian/RAG setup instructions.
+The stack is **Next.js + FastAPI + SQLite/PostgreSQL**, with Gemini + ADK (Agent Development Kit) for the agent layer. See the Japanese README for full deployment, tunneling, and Obsidian/RAG setup instructions.
 
-On Cloud Run, the API runs with `CLOUDRUN_DATA_MODE=production` by default and requires `API_ACCESS_KEY` (fail-closed; the key is attached by the Next.js server-side proxy, never sent to the browser). For public demos, set `CLOUDRUN_DATA_MODE=demo` explicitly to run against the demo DB only. Details: `CLOUD_RUN.md`.
+## Production (Cloudflare edition, since October 2026)
+
+Production runs on a Mac behind Cloudflare. Cloud Run was paused on 2026-10-01 (PR #1188) and is kept only as a standby.
+
+| Item | Details |
+|---|---|
+| URL | https://shion.tune77.com (named tunnel `tune-lease-55` → `http://127.0.0.1:3000`) |
+| Process supervision | launchd `com.tunelease.next` (KeepAlive) keeps `run_next_stable.sh` running and restarts FastAPI / Next.js / cloudflared if any of them dies |
+| Restart | `FORCE_RESTART=1 bash run_next_stable.sh` (see `.claude/skills/restart-api/SKILL.md`); never kill the ports by hand |
+| Sign-in | Cloudflare Access, one-time PIN by email (owner only, 730-hour session) |
+| Rate limiting | Chat, strategist, voice-token and multi-agent endpoints: 5 requests per 10 s per IP |
+| When the Mac is unreachable | A sleep-page Worker (`cloudflare/shion-sleep-worker/`) shows a "SHION is resting" page |
+| Backups | Encrypted archives go to both iCloud and Cloudflare R2 (`tune-lease-55-backups`): case data weekly (Sun 01:30), judgment assets daily (23:30). Status is kept in `data/backup_status.json` and reported in the morning report |
+
+**Mind the Mac's sleep**: while the Mac sleeps, reboots, or loses its network connection, production is down. Only the sleep page is shown, and no data is lost. Keep the Mac from sleeping on AC power (`sudo pmset -c sleep 0`) and avoid running it with the lid closed.
+
+**Cloud Run (paused standby)**: the Cloud Run services and the Artifact Registry repository `cloud-run-source-deploy` were deleted on 2026-10-03; the GCS bucket and Secret Manager secrets remain. To resume, follow the header of `.github/workflows/cloudrun-pause.yml`, recreate the Artifact Registry repository first, then run `deploy.yml` with `force_deploy`.
+
+The rest of this section describes the paused Cloud Run setup. On Cloud Run, the API runs with `CLOUDRUN_DATA_MODE=production` by default and requires `API_ACCESS_KEY` (fail-closed; the key is attached by the Next.js server-side proxy, never sent to the browser). For public demos, set `CLOUDRUN_DATA_MODE=demo` explicitly to run against the demo DB only. Details: `CLOUD_RUN.md`.
 
 ## Recent additions (September 2026)
 
@@ -183,7 +201,7 @@ On Cloud Run, the API runs with `CLOUDRUN_DATA_MODE=production` by default and r
 | Decision State Ledger (REV-407) | Append-only, observation-only sidecar of screening decision states; never alters scoring, prompts, or promotion |
 | Case-deletion audit (REV-416/417) | Audit log for case deletion, prevention of orphaned screening records, and a viewer in `/operations` |
 | Guarded pipeline auto-recovery | Runs only allowlisted, verified recovery recipes, at most once per step per day; past incident records are evidence, never commands |
-| Cloud Run cost reduction | ChromaDB is snapshotted to GCS and restored at startup to avoid full re-embedding on every cold start |
+| Cloud Run cost reduction (Cloud Run is now paused) | ChromaDB is snapshotted to GCS and restored at startup to avoid full re-embedding on every cold start |
 
 ## Main screens
 

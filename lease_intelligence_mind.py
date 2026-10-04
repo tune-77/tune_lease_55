@@ -15,6 +15,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from ai_runtime_client import instrument_legacy_gemini_model, tracked_ai_call
+
 
 MIND_RELATIVE_DIR = Path("Projects") / "tune_lease_55" / "Lease Intelligence"
 MIND_FILE_NAME = "mind.json"
@@ -2049,9 +2051,13 @@ def _call_gemini_for_classify(prompt: str) -> str | None:
         import google.generativeai as genai  # type: ignore
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name=gemini_model,
-            generation_config={"max_output_tokens": 256, "temperature": 0.2},
+        model = instrument_legacy_gemini_model(
+            genai.GenerativeModel(
+                model_name=gemini_model,
+                generation_config={"max_output_tokens": 256, "temperature": 0.2},
+            ),
+            feature="mind_classification",
+            model=gemini_model,
         )
         resp = model.generate_content(prompt)
         text = getattr(resp, "text", "") or ""
@@ -2072,8 +2078,16 @@ def _call_gemini_for_classify(prompt: str) -> str | None:
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with _urllib_request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        def _rest_call():
+            with _urllib_request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+
+        data = tracked_ai_call(
+            _rest_call,
+            provider="google",
+            model=gemini_model,
+            feature="mind_classification_rest_fallback",
+        )
         return data["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception:
         pass
@@ -2114,8 +2128,16 @@ def _call_gemini_for_reflection(prompt: str) -> str | None:
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with _urllib_request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        def _rest_call():
+            with _urllib_request.urlopen(req, timeout=60) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+
+        data = tracked_ai_call(
+            _rest_call,
+            provider="google",
+            model=gemini_model,
+            feature="mind_reflection",
+        )
         return data["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception:
         pass
@@ -2124,9 +2146,13 @@ def _call_gemini_for_reflection(prompt: str) -> str | None:
         import google.generativeai as genai  # type: ignore
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name=gemini_model,
-            generation_config={"max_output_tokens": 4096, "temperature": 0.75},
+        model = instrument_legacy_gemini_model(
+            genai.GenerativeModel(
+                model_name=gemini_model,
+                generation_config={"max_output_tokens": 4096, "temperature": 0.75},
+            ),
+            feature="mind_reflection_legacy_fallback",
+            model=gemini_model,
         )
         resp = model.generate_content(prompt)
         text = getattr(resp, "text", "") or ""

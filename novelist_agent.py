@@ -28,6 +28,8 @@ import shutil
 import re
 from pathlib import Path
 
+from ai_runtime_client import google_genai_client
+
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _NOVEL_DB = os.path.join(_BASE_DIR, "data", "novelist_agent.db")
@@ -670,7 +672,9 @@ def generate_daily_grumble_illustration(
             from google import genai
             from google.genai import types
 
-            client = genai.Client(api_key=api_key)
+            client = google_genai_client(
+                feature="novelist_daily_image", client_factory=genai.Client, api_key=api_key
+            )
             with Image.open(character_path) as reference:
                 reference_image = reference.convert("RGB")
                 response = client.models.generate_content(
@@ -695,11 +699,15 @@ def generate_daily_grumble_illustration(
                 from google import genai
                 from google.genai import types
 
-                client = genai.Client(api_key=api_key)
+                client = google_genai_client(
+                    feature="novelist_daily_image_fallback",
+                    client_factory=genai.Client,
+                    api_key=api_key,
+                )
                 with Image.open(character_path) as reference:
                     reference_image = reference.convert("RGB")
                     response = client.models.generate_content(
-                        model="gemini-2.5-flash-image",
+                        model="gemini-3.1-flash-image",
                         contents=[scene_prompt, reference_image],
                         config=types.GenerateContentConfig(
                             response_modalities=["TEXT", "IMAGE"],

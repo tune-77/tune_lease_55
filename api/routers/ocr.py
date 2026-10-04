@@ -2,6 +2,7 @@ import base64
 import json
 import os
 
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import re
 from typing import Optional
@@ -371,11 +372,16 @@ async def ocr_financial(
         result = defaults
         finish_reason = ""
         for current_payload in (payload, with_retry_tokens(payload, 4096)):
-            resp = requests.post(
-                _ocr_url(),
-                json=current_payload,
-                headers={"x-goog-api-key": api_key},
-                timeout=60,
+            resp = tracked_ai_http_call(
+                lambda: requests.post(
+                    _ocr_url(),
+                    json=current_payload,
+                    headers={"x-goog-api-key": api_key},
+                    timeout=60,
+                ),
+                provider="google",
+                model=get_gemini_model(),
+                feature="document_ocr",
             )
             resp.raise_for_status()
             text, finish_reason = extract_candidate_text(resp.json())

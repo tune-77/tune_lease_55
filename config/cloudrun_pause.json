@@ -1,5 +1,5 @@
 {
-  "_doc": "Cloud Run 一時停止スイッチ（cloudrun_pause.py が読む）。paused=true の間は Cloud Run とのデータ受け渡し（sync_cloudrun_inputs_from_gcs〔prompt_feedback スナップショット含む〕・sync_ledger_to_gcs・icloud_to_gcs_sync・sync_chromadb_to_gcs.sh）を「停止中のためスキップ」にする。Vertex 同期・バックアップは対象外。再開手順は .github/workflows/cloudrun-pause.yml 冒頭のコメント。",
+  "_doc": "Cloud Run 一時停止スイッチ（cloudrun_pause.py が読む）。paused=true の間は Cloud Run とのデータ受け渡し（sync_cloudrun_inputs_from_gcs〔prompt_feedback スナップショット含む〕・sync_ledger_to_gcs・icloud_to_gcs_sync・sync_chromadb_to_gcs.sh）を「停止中のためスキップ」にし、改善ログ画面の「Cloud Runデータ安全監査」の欄も隠す（監査も止める）。Vertex 同期・バックアップは対象外。再開手順は .github/workflows/cloudrun-pause.yml 冒頭のコメント。",
   "paused": true,
   "since": "2026-10-01"
 }

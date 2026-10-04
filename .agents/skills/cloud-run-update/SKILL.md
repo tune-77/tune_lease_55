@@ -5,6 +5,10 @@ description: tune_lease_55 の Cloud Run を更新・再デプロイする定型
 
 # Cloud Run Update
 
+> **2026-10 から Cloud Run は停止中の予備です。** 本番は Mac 上の Cloudflare 版（https://shion.tune77.com）で、反映は再起動（`.claude/skills/restart-api/SKILL.md` / `restart-next-cloudflare`）で行う。
+> 2026-10-01 に停止（PR #1188、`config/cloudrun_pause.json`）、2026-10-03 にサービスと Artifact Registry リポジトリ `cloud-run-source-deploy` を削除済み。
+> ユーザーが Cloud Run の再開を明示した時だけ、`.github/workflows/cloudrun-pause.yml` 冒頭の再開手順に従い、先に `gcloud artifacts repositories create cloud-run-source-deploy --repository-format=docker --location=asia-northeast1` でリポジトリを作り直してから下の手順を使う。
+
 `tune_lease_55` を Cloud Run に反映するときは、毎回この順で進める。
 
 ## どっちを更新するか

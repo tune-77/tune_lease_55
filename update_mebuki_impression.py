@@ -20,6 +20,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from ai_runtime_client import anthropic_client
+
 DEFAULT_COUNT = 20
 _LOG_PATH = Path(__file__).parent / "data" / "mebuki_shion_log.jsonl"
 
@@ -69,7 +71,7 @@ def generate_impression(logs: list[dict]) -> str:
 今後期待していること）を自然な言葉で表してください。
 出力は叙述テキストのみ。前置きや説明は不要です。"""
 
-    client = anthropic.Anthropic()
+    client = anthropic_client(feature="mebuki_impression", client_factory=anthropic.Anthropic)
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=256,

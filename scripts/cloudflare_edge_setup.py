@@ -25,6 +25,8 @@ import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass, field
+from email.parser import BytesParser
+from email.policy import default as email_policy
 from pathlib import Path
 from typing import Any, Callable
 
@@ -195,15 +197,26 @@ def find_zone(api: Api) -> dict[str, Any]:
 
 
 def access_ready(api: Api, account_id: str, plan: Plan) -> bool:
+    reason = ""
     try:
         org = api.get(f"/accounts/{account_id}/access/organizations")
     except CloudflareError as exc:
         org = None
         if exc.status not in (400, 403, 404):
             raise
+        reason = str(exc)
     if not org or not org.get("auth_domain"):
-        plan.add(Change("manual", "Zero Trust 組織（チーム名）",
-                        note="未初期化。ダッシュボードの Zero Trust でチーム名と Free プランを選んでから再実行"))
+        # 未有効化と権限不足はどちらも 403 なので、Access 側の別APIの応答で見分ける。
+        if not reason or "not_enabled" not in reason:
+            try:
+                api.get(f"/accounts/{account_id}/access/apps")
+            except CloudflareError as exc:
+                reason = str(exc)
+        if "not_enabled" in reason:
+            note = "Access 未有効化。ダッシュボードの Zero Trust でチーム名と Free プランを選んでから再実行"
+        else:
+            note = f"取得できません（トークンの Access 権限不足の可能性）: {reason[:200]}"
+        plan.add(Change("manual", "Zero Trust 組織（チーム名）", note=note))
         return False
     plan.add(Change("ok", f"Zero Trust 組織 {org.get('auth_domain')}"))
     return True
@@ -383,6 +396,58 @@ def worker_source() -> str:
     return WORKER_FILE.read_text(encoding="utf-8")
 
 
+def worker_module_from_multipart(payload: str | None) -> str | None:
+    """Extract the exact worker.mjs payload from Cloudflare's multipart response."""
+    if not payload:
+        return None
+    first_line = payload.splitlines()[0].strip()
+    if not first_line.startswith("--") or len(first_line) <= 2:
+        return None
+    boundary = first_line[2:]
+    message = BytesParser(policy=email_policy).parsebytes(
+        (
+            f'Content-Type: multipart/form-data; boundary="{boundary}"\r\n'
+            "MIME-Version: 1.0\r\n\r\n"
+        ).encode("ascii")
+        + payload.encode("utf-8")
+    )
+    if not message.is_multipart():
+        return None
+    for part in message.iter_parts():
+        name = part.get_param("name", header="content-disposition")
+        if name != "worker.mjs" and part.get_filename() != "worker.mjs":
+            continue
+        content = part.get_payload(decode=True)
+        if content is None:
+            raw = part.get_payload()
+            return raw if isinstance(raw, str) else None
+        return content.decode(part.get_content_charset() or "utf-8")
+    return None
+
+
+def worker_subdomain(api: Api, account_id: str) -> dict[str, bool]:
+    """Read workers.dev and preview URL exposure for an existing Worker."""
+    path = f"/accounts/{account_id}/workers/scripts/{WORKER_NAME}/subdomain"
+    try:
+        current = api.get(path) or {}
+    except CloudflareError as exc:
+        if exc.status != 404:
+            raise
+        current = {}
+    return {
+        "enabled": bool(current.get("enabled")),
+        "previews_enabled": bool(current.get("previews_enabled")),
+    }
+
+
+def disable_worker_subdomain(api: Api, account_id: str) -> None:
+    api.call(
+        "POST",
+        f"/accounts/{account_id}/workers/scripts/{WORKER_NAME}/subdomain",
+        {"enabled": False, "previews_enabled": False},
+    )
+
+
 def upload_worker(api: Api, account_id: str) -> None:
     boundary = uuid.uuid4().hex
     metadata = {"main_module": "worker.mjs", "compatibility_date": WORKER_COMPAT_DATE,
@@ -399,7 +464,7 @@ def upload_worker(api: Api, account_id: str) -> None:
     api.call("PUT", f"/accounts/{account_id}/workers/scripts/{WORKER_NAME}", data=body,
              content_type=f"multipart/form-data; boundary={boundary}")
     # *.workers.dev からは呼ばせない（ルート経由だけで動かす）。
-    api.call("POST", f"/accounts/{account_id}/workers/scripts/{WORKER_NAME}/subdomain", {"enabled": False})
+    disable_worker_subdomain(api, account_id)
 
 
 def _sha(text: str) -> str:
@@ -409,11 +474,27 @@ def _sha(text: str) -> str:
 def plan_worker(api: Api, account_id: str, plan: Plan) -> None:
     local = worker_source()
     remote = api.get_text(f"/accounts/{account_id}/workers/scripts/{WORKER_NAME}/content/v2")
-    remote_hash = _sha(remote) if remote is not None else None
-    if remote_hash == _sha(local):
+    remote_module = worker_module_from_multipart(remote)
+    subdomain = worker_subdomain(api, account_id) if remote is not None else {
+        "enabled": False,
+        "previews_enabled": False,
+    }
+    source_matches = remote_module == local
+    subdomain_disabled = not subdomain["enabled"] and not subdomain["previews_enabled"]
+    if source_matches and subdomain_disabled:
         plan.add(Change("ok", f"Worker {WORKER_NAME}"))
         return
-    plan.add(Change("update" if remote_hash else "create", f"Worker {WORKER_NAME}",
+    if source_matches:
+        plan.add(Change(
+            "update",
+            f"Worker {WORKER_NAME} workers.dev",
+            before=subdomain,
+            after={"enabled": False, "previews_enabled": False},
+            apply=lambda: disable_worker_subdomain(api, account_id),
+        ))
+        return
+    remote_hash = _sha(remote_module if remote_module is not None else remote) if remote is not None else None
+    plan.add(Change("update" if remote is not None else "create", f"Worker {WORKER_NAME}",
                     before={"sha256": remote_hash} if remote_hash else None,
                     after={"sha256": _sha(local), "source": str(WORKER_FILE.relative_to(REPO_ROOT)),
                            "observability": False, "workers_dev": False},

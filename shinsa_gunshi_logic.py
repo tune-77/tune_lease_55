@@ -14,6 +14,7 @@ import time
 from contextlib import closing
 from datetime import datetime
 from typing import Generator
+from ai_runtime_client import tracked_ai_http_call
 from config import GEMINI_MODEL_DEFAULT
 from runtime_paths import get_data_path
 from prompt_feedback import build_pdca_prompt_block
@@ -743,13 +744,18 @@ def _gemini_generate(prompt: str) -> Generator[str, None, None]:
     model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
-        resp = requests.post(
-            f"{url}?key={api_key}",
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800},
-            },
-            timeout=60,
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                f"{url}?key={api_key}",
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800},
+                },
+                timeout=60,
+            ),
+            provider="google",
+            model=model,
+            feature="shinsa_gunshi",
         )
         resp.raise_for_status()
         text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]

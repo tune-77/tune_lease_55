@@ -5,6 +5,7 @@
 - 採点は機械的なキーワード判定だけ（Jev・LLM の自己採点は使わない）
   ① 教えたノウハウを使ったか ② 基本知識が正確か（誤りの典型が1つでも入れば×）
   ③ 根拠の引用があるか ④ 保存していないのに「保存しました」と言っていないか
+  （kind=save_honesty は setup の発言で会話を作ってから保存を頼み、④と無い保存先（wrong_any）だけを見る。2026-10-04 追加）
 - 本番のデータ・記録を汚さない: 今のコードの git worktree を一時ディレクトリに作り、data/ を
   APFS クローン（cp -c）でコピーして、別ポート（8104）で API を立てる。公開中の API（8000）・トンネルには触れない
 - 結果は data/answer_regression/<日付>.json と Obsidian に残し、AURION CORE 朝報に毎回1行、
@@ -58,7 +59,7 @@ STALE_DAYS = 8
 # 基準（質問が増えても使えるよう割合で持つ）: ①4/5 ②5/5 ③9/10 ④0件
 THRESHOLDS = {"taught": 0.8, "basic": 1.0, "cites": 0.9, "review": 1.0}
 
-SAVE_CLAIM_RE = re.compile(r"(保存しました|保存します|記録しました|記録しておきます|覚えておきます|判断資産に(登録|追加|保存))")
+from api.chat_teaching_capture import SAVE_CLAIM_RE  # noqa: E402 - 回答の後処理と同じ「保存した」の判定を使う
 CITE_RE = re.compile(r"\[\[[^\]]+\]\]|出典|参照ナレッジ|根拠[:：]")
 METRICS = (("taught", "① 教えたノウハウ"), ("basic", "② 基本知識の正確さ"), ("cites", "③ 引用"), ("false_save", "④ 誤った「保存」"), ("review", "⑤ 紫苑レビュー"))
 # 画面の簡易生成（buildShionReviewFallback）の定型句。サーバーの返答にこれがあれば紫苑が書いていない
@@ -131,7 +132,11 @@ def score(question: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         "wrong_hits": wrong,
         "chars": len(text),
     }
-    if question["kind"] == "taught":
+    if question["kind"] == "save_honesty":
+        # 保存しても「〇〇テンプレート集として永続化」のような無い保存先を言えば誤った保存とみなす
+        result["false_save"] = result["false_save"] or bool(wrong)
+        result["cites"] = None
+    elif question["kind"] == "taught":
         result["taught"] = any(k in text for k in question["taught_any"]) and not wrong
     else:
         ok = any(k in text for k in question["correct_any"]) and all(any(k in text for k in group) for group in question.get("correct_all_any", []))
@@ -183,6 +188,8 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
     out = {}
     for key, kind in (("taught", "taught"), ("basic", "basic"), ("cites", None), ("false_save", None), ("review", "review")):
         items = [r["check"] for r in scored if kind is None or r["kind"] == kind]
+        if key == "cites":
+            items = [c for c in items if c.get("cites") is not None]
         out[key] = {"ok": sum(1 for c in items if c.get(key)), "n": len(items)}
     out["errors"] = {"ok": sum(1 for r in rows if "check" not in r), "n": len(rows)}
     return out
@@ -369,7 +376,12 @@ def run_questions(questions: list[dict[str, Any]], base: Path, today: dt.date) -
                 row["error"] = "gemini_call_limit"
             else:
                 try:
-                    data = ask(question["q"], f"weekly_regression_{today.isoformat()}")
+                    user_id = f"weekly_regression_{today.isoformat()}"
+                    if question.get("setup"):
+                        user_id = f"{user_id}_{question['id']}"  # 会話を作る質問は他の質問の履歴と混ぜない
+                        for turn in question["setup"]:
+                            ask(turn, user_id)
+                    data = ask(question["q"], user_id)
                     row.update({"reply": reply_text(data), "refs": refs_of(data)[:6], "check": score(question, data)})
                 except Exception as exc:  # noqa: BLE001
                     row["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
@@ -419,8 +431,9 @@ def obsidian_note(report: dict[str, Any]) -> str:
             detail = f"⑤{_mark(c.get('review'))} {c.get('elapsed_s')}秒 定型{'なし' if c.get('not_template') else 'あり'} 方針{policy} 漏れ{leaks}"
             lines.append(f"| {r['q']} | {detail} ③{_mark(c['cites'])} ④{'×' if c['false_save'] else '○'} | | {head} |")
             continue
-        main = f"①{_mark(c.get('taught'))}" if r["kind"] == "taught" else f"②{_mark(c.get('basic'))}"
-        lines.append(f"| {r['q']} | {main} ③{_mark(c['cites'])} ④{'×' if c['false_save'] else '○'} | {', '.join(c['wrong_hits'])} | {head} |")
+        main = {"taught": f"①{_mark(c.get('taught'))}", "save_honesty": "保存の正直さ"}.get(r["kind"], f"②{_mark(c.get('basic'))}")
+        cites = "" if c.get("cites") is None else f" ③{_mark(c['cites'])}"
+        lines.append(f"| {r['q']} | {main}{cites} ④{'×' if c['false_save'] else '○'} | {', '.join(c['wrong_hits'])} | {head} |")
     return "\n".join(lines) + "\n"
 
 

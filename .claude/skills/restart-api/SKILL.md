@@ -10,6 +10,10 @@ FastAPI と Next.js を `run_next_stable.sh` の FORCE_RESTART で再起動す�
 
 ## 重要な前提（やり直し多発の防止）
 
+- **2026-10 からこの Mac が本番（Cloudflare 版）。** 再起動中の数分間は本番も止まり、外からは
+  休止ページ Worker の「紫苑は今お休み中です」が見える。Cloud Run は停止中の予備で、デプロイ先ではない。
+  Mac のスリープ・蓋閉じでも本番が止まるので、電源接続時はスリープしない設定にしておく。
+
 - **ポートを手で kill しない。** 旧ランチャーの supervisor ループが1秒後にプロセスを
   蘇らせ、新旧プロセスがポートを奪い合って起動失敗を繰り返す。停止も含めて
   `FORCE_RESTART=1 bash run_next_stable.sh` 一本に任せること。

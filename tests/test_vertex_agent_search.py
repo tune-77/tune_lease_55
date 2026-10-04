@@ -13,6 +13,35 @@ def test_vertex_agent_search_disabled_skips_without_auth(monkeypatch):
     assert result["refs"] == []
 
 
+def test_google_grounding_tracks_primary_rest_request(monkeypatch):
+    tracked: dict = {}
+    monkeypatch.setattr(
+        vertex,
+        "get_config",
+        lambda: vertex.VertexSearchConfig(True, "p", "e", "global", "c", 5, 8.0, 0.0),
+    )
+    monkeypatch.setattr(
+        vertex,
+        "_post_json",
+        lambda *_args, **_kwargs: {
+            "candidates": [{"content": {"parts": [{"text": "grounded"}]}}],
+            "usageMetadata": {"totalTokenCount": 12},
+        },
+    )
+
+    def track(call, **metadata):
+        tracked.update(metadata)
+        return call()
+
+    monkeypatch.setattr(vertex, "tracked_ai_call", track)
+
+    result = vertex.google_search_grounding("補助金")
+
+    assert result["text"] == "grounded"
+    assert tracked["feature"] == "vertex_grounded_search"
+    assert tracked["operation"] == "vertex.generateContent.rest"
+
+
 def test_ranking_masks_candidate_titles_and_content(monkeypatch):
     sent: dict = {}
     monkeypatch.setattr(

@@ -6,9 +6,11 @@
 
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import logging
 import os
+import re
 import threading
 import time
 from typing import Literal
@@ -21,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/shion/voice", tags=["shion-voice"])
 
-FALLBACK_MODEL = "gemini-2.5-flash-native-audio-latest"
+FALLBACK_MODEL = "gemini-3.1-flash-live-preview"
 _JST = ZoneInfo("Asia/Tokyo")
 _VOICE_TAIL = (
     "\n\n【音声通話モード】\n"
@@ -201,3 +203,163 @@ def save_voice_transcript(req: TranscriptRequest):
         save_message(req.user_id, "assistant" if turn.role == "model" else "user", text)
         saved += 1
     return {"saved": saved}
+
+
+# ── REV-460: 歌唱（Gemini が楽譜を作り、ローカル VOICEVOX ENGINE が歌う） ──
+
+_FRAME_RATE = 93.75  # VOICEVOX 歌唱APIの既定フレームレート
+_KEY_MIN, _KEY_MAX = 57, 76  # 女性ボーカルの中音域（MIDI）
+_MAX_NOTES = 64
+# 1モーラ（拗音・小書き母音つき可）。小書きかな・長音・促音で始まるものは不可
+_MORA_RE = re.compile(r"^[あ-ゔア-ヴ](?<![ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ])[ぁぃぅぇぉゃゅょァィゥェォャュョ]?$")
+
+_sing_lock = threading.Lock()
+_sung: dict[str, int] = {}  # JST日付 -> 歌唱回数
+_last_sung_at = 0.0
+_credit_cache: dict[tuple[int, int], str] = {}
+
+
+class SingRequest(BaseModel):
+    theme: str = Field(min_length=1, max_length=200)
+    user_id: str = Field(default="default", max_length=100)
+
+
+def _require_sing_enabled() -> None:
+    if os.environ.get("SHION_SING_ENABLED", "0") != "1":
+        raise HTTPException(status_code=404, detail="sing disabled")
+
+
+def _voicevox_url() -> str:
+    return os.environ.get("SHION_VOICEVOX_URL", "http://127.0.0.1:50021").rstrip("/")
+
+
+def _sing_ids() -> tuple[int, int]:
+    return _env_int("SHION_SING_TEACHER_ID", 6000), _env_int("SHION_SING_VOICE_ID", 3014)
+
+
+def _generate_score(theme: str) -> dict:
+    from api.loop_engineering_common import call_gemini_json
+    from api.prompt_generator import build_shion_system_prompt, load_mind
+
+    now = dt.datetime.now(_JST).strftime("%Y-%m-%d %H:%M")
+    prompt = (
+        build_shion_system_prompt(load_mind(), now)
+        + "\n\n【歌唱モード】\n"
+        f"テーマ「{theme}」で、紫苑らしい短い歌（8〜16小節）を作曲・作詞する。\n"
+        "次のJSONだけを返す: "
+        '{"title": "曲名", "bpm": 60〜180の整数, "notes": [{"lyric": "ひらがな1モーラ", "key": MIDIノート番号, "beats": 拍数}]}\n'
+        f"- lyric はひらがな1モーラ（「きゃ」等の拗音は1つ）。休符は key を null、lyric を空文字にする\n"
+        f"- key は {_KEY_MIN}〜{_KEY_MAX}、beats は 0.25〜4、notes は最大{_MAX_NOTES}個\n"
+        "- 歌いやすい旋律にし、跳躍は控えめにする"
+    )
+    return call_gemini_json(prompt, temperature=0.8, max_output_tokens=4096)
+
+
+def _to_voicevox_score(score: dict) -> tuple[dict, str]:
+    """LLM の楽譜を検証・補正し、VOICEVOX の楽譜と歌詞文字列を返す。"""
+    try:
+        bpm = min(180, max(60, int(score.get("bpm") or 96)))
+    except (TypeError, ValueError):
+        bpm = 96
+    raw = score.get("notes") if isinstance(score.get("notes"), list) else []
+    notes = [{"key": None, "frame_length": 15, "lyric": ""}]  # 先頭は休符必須
+    lyrics = []
+    for n in raw[:_MAX_NOTES]:
+        if not isinstance(n, dict):
+            continue
+        try:
+            beats = min(4.0, max(0.25, float(n.get("beats") or 1)))
+        except (TypeError, ValueError):
+            beats = 1.0
+        frame_length = max(1, round(beats * 60 / bpm * _FRAME_RATE))
+        lyric = str(n.get("lyric") or "").strip()
+        key = n.get("key")
+        if isinstance(key, (int, float)) and not isinstance(key, bool) and _MORA_RE.match(lyric):
+            key = int(key)
+            while key < _KEY_MIN:
+                key += 12
+            while key > _KEY_MAX:
+                key -= 12
+            notes.append({"key": key, "frame_length": frame_length, "lyric": lyric})
+            lyrics.append(lyric)
+        else:  # 休符・歌えない音は休符にしてリズムを保つ
+            notes.append({"key": None, "frame_length": frame_length, "lyric": ""})
+    if len(lyrics) < 4:
+        raise ValueError("too few singable notes")
+    notes.append({"key": None, "frame_length": 30, "lyric": ""})
+    return {"notes": notes}, "".join(lyrics)
+
+
+def _synthesize(vv_score: dict, teacher_id: int, voice_id: int) -> bytes:
+    import requests
+
+    base = _voicevox_url()
+    q = requests.post(f"{base}/sing_frame_audio_query", params={"speaker": teacher_id}, json=vv_score, timeout=60)
+    q.raise_for_status()
+    wav = requests.post(f"{base}/frame_synthesis", params={"speaker": voice_id}, json=q.json(), timeout=180)
+    wav.raise_for_status()
+    return wav.content
+
+
+def _credit(teacher_id: int, voice_id: int) -> str:
+    """VOICEVOX 利用規約のクレジット「VOICEVOX:キャラ名」を /singers から作る。"""
+    ids = (teacher_id, voice_id)
+    if ids not in _credit_cache:
+        import requests
+
+        try:
+            singers = requests.get(f"{_voicevox_url()}/singers", timeout=10).json()
+            names = {st["id"]: s["name"] for s in singers for st in s["styles"]}
+            voice, teacher = names[voice_id], names[teacher_id]
+            _credit_cache[ids] = f"VOICEVOX:{voice}" + ("" if voice == teacher else f"（歌唱指導 VOICEVOX:{teacher}）")
+        except Exception:
+            return "VOICEVOX"
+    return _credit_cache[ids]
+
+
+@router.post("/sing")
+def sing(req: SingRequest):
+    """テーマから紫苑の短い歌を作り、VOICEVOX で歌った wav を返す（回数・間隔制限つき）。"""
+    global _last_sung_at
+    _require_sing_enabled()
+    daily_limit = _env_int("SHION_SING_DAILY_LIMIT", 10)
+    min_interval = _env_int("SHION_SING_MIN_INTERVAL_SECONDS", 30)
+
+    # 合成は数十秒かかるので、待たせてスレッドプールを塞がず即 429 にする
+    if not _sing_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="いま別の歌を準備中です")
+    try:
+        today = dt.datetime.now(_JST).date().isoformat()
+        used = _sung.get(today, 0)
+        if used >= daily_limit:
+            raise HTTPException(status_code=429, detail="本日の歌唱の上限回数に達しました")
+        if time.monotonic() - _last_sung_at < min_interval:
+            raise HTTPException(status_code=429, detail="少し時間をおいてから再度お試しください")
+
+        try:
+            score = _generate_score(req.theme.strip())
+            vv_score, lyrics = _to_voicevox_score(score if isinstance(score, dict) else {})
+        except Exception as exc:
+            logger.error("shion sing: score generation failed (%s)", type(exc).__name__)
+            raise HTTPException(status_code=502, detail="歌を作れませんでした") from None
+
+        teacher_id, voice_id = _sing_ids()
+        try:
+            wav = _synthesize(vv_score, teacher_id, voice_id)
+        except Exception as exc:
+            logger.error("shion sing: voicevox failed (%s)", type(exc).__name__)
+            raise HTTPException(status_code=503, detail="歌唱エンジンに接続できませんでした") from None
+
+        _sung[today] = used + 1
+        _last_sung_at = time.monotonic()
+    finally:
+        _sing_lock.release()
+
+    return {
+        "title": str(score.get("title") or req.theme)[:60],
+        "lyrics": lyrics,
+        "audio_base64": base64.b64encode(wav).decode("ascii"),
+        "mime_type": "audio/wav",
+        "credit": _credit(teacher_id, voice_id),
+        "remaining_today": daily_limit - used - 1,
+    }

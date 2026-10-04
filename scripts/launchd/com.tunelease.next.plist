@@ -35,6 +35,8 @@
     <string>1</string>
     <key>SHION_VOICE_ENABLED</key>
     <string>1</string>
+    <key>SHION_SING_ENABLED</key>
+    <string>1</string>
     <key>TYPESAFE_RAG_ENABLED</key>
     <string>1</string>
     <key>TYPESAFE_ROUTING_MODE</key>

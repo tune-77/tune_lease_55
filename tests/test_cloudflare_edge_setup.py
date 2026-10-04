@@ -20,6 +20,7 @@ class FakeApi:
         self.idps, self.tokens, self.policies, self.apps, self.routes = [], [], [], [], []
         self.rules = None  # None = entrypoint 未作成(404)
         self.worker = None
+        self.worker_subdomain = {"enabled": False, "previews_enabled": False}
         self._seq = 0
 
     def _new_id(self, prefix):
@@ -29,9 +30,9 @@ class FakeApi:
     def get(self, path):
         if path.startswith("/zones?"):
             return [{"id": ZONE, "account": {"id": ACC}, "plan": {"name": "Free Website"}}]
+        if self.org is None and "/access/" in path:
+            raise mod.CloudflareError(403, path, [{"message": "access.api.error.not_enabled: Access is not enabled."}])
         if path.endswith("/access/organizations"):
-            if self.org is None:
-                raise mod.CloudflareError(404, path, "")
             return self.org
         table = {
             "/access/identity_providers": self.idps,
@@ -47,10 +48,15 @@ class FakeApi:
             if self.rules is None:
                 raise mod.CloudflareError(404, path, "")
             return {"rules": self.rules}
+        if path.endswith(f"/workers/scripts/{mod.WORKER_NAME}/subdomain"):
+            return dict(self.worker_subdomain)
         raise AssertionError(f"unexpected GET {path}")
 
     def get_text(self, path):
-        return self.worker
+        # 実APIと同じく multipart で包んで返す
+        if self.worker is None:
+            return None
+        return f"--b\r\nContent-Disposition: form-data; name=\"worker.mjs\"\r\n\r\n{self.worker}\r\n--b--\r\n"
 
     def call(self, method, path, body=None, *, data=None, content_type="application/json"):
         self.calls.append((method, path, body))
@@ -77,6 +83,7 @@ class FakeApi:
             self.worker = mod.worker_source()
             return {}
         if method == "POST" and path.endswith("/subdomain"):
+            self.worker_subdomain = dict(body)
             return {}
         if method == "POST" and path.endswith("/workers/routes"):
             self.routes.append({**body, "id": self._new_id("route")})
@@ -134,6 +141,49 @@ def test_apply_then_rerun_is_idempotent(keychain):
     assert {c.kind for c in rerun.changes} == {"ok"}, [c.render() for c in rerun.changes if c.kind != "ok"]
 
 
+def test_worker_module_comparison_rejects_wrapped_source():
+    api = FakeApi()
+    api.worker = "// unexpected prefix\n" + mod.worker_source() + "\n// unexpected suffix"
+    plan = mod.Plan()
+
+    mod.plan_worker(api, ACC, plan)
+
+    [change] = plan.changes
+    assert change.kind == "update"
+    assert change.resource == f"Worker {mod.WORKER_NAME}"
+
+
+def test_worker_subdomain_is_reconciled_when_source_matches():
+    api = FakeApi()
+    api.worker = mod.worker_source()
+    api.worker_subdomain = {"enabled": True, "previews_enabled": True}
+    plan = mod.Plan()
+
+    mod.plan_worker(api, ACC, plan)
+
+    [change] = plan.changes
+    assert change.kind == "update"
+    assert change.resource == f"Worker {mod.WORKER_NAME} workers.dev"
+    change.apply()
+    assert api.worker_subdomain == {"enabled": False, "previews_enabled": False}
+    assert not any(method == "PUT" for method, _path, _body in api.calls)
+
+
+def test_worker_multipart_parser_returns_exact_module():
+    source = "export default { fetch() { return new Response('ok'); } };\n"
+    payload = (
+        "--boundary\r\n"
+        'Content-Disposition: form-data; name="metadata"; filename="metadata.json"\r\n'
+        "Content-Type: application/json\r\n\r\n{}\r\n"
+        "--boundary\r\n"
+        'Content-Disposition: form-data; name="worker.mjs"; filename="worker.mjs"\r\n'
+        "Content-Type: application/javascript+module\r\n\r\n"
+        f"{source}\r\n--boundary--\r\n"
+    )
+
+    assert mod.worker_module_from_multipart(payload) == source
+
+
 def test_missing_service_token_secret_is_rotated(keychain, monkeypatch):
     api = FakeApi()
     _apply(mod.build_plan(api))
@@ -160,7 +210,7 @@ def test_uninitialized_zero_trust_is_reported_as_manual_step(keychain):
     api = FakeApi(org=False)
     plan = mod.build_plan(api)
     manual = [c for c in plan.changes if c.kind == "manual"]
-    assert len(manual) == 1 and "チーム名" in manual[0].note
+    assert len(manual) == 1 and "未有効化" in manual[0].note
     assert not any(c.resource.startswith("Access アプリ") for c in plan.changes)
     assert any(c.resource.startswith("rate limiting") for c in plan.changes)  # 他は進める
 
@@ -196,3 +246,16 @@ def test_sleep_worker_node_tests():
     worker_test = Path(__file__).resolve().parents[1] / "cloudflare" / "shion-sleep-worker" / "worker.test.mjs"
     result = subprocess.run(["node", "--test", str(worker_test)], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_access_permission_error_is_distinguished_from_not_enabled(keychain):
+    api = FakeApi()
+
+    def denied(path):
+        if "/access/" in path:
+            raise mod.CloudflareError(403, path, [{"code": 10000, "message": "Authentication error"}])
+        return FakeApi.get(api, path)
+
+    api.get = denied
+    manual = [c for c in mod.build_plan(api).changes if c.kind == "manual"]
+    assert "権限不足" in manual[0].note

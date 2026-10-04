@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from scripts.obsidian_note_curator import build_report, detect_new_or_changed_files, load_state
+from scripts.obsidian_note_curator import _parse_proposal, build_report, detect_new_or_changed_files, load_state
 
 
 def _write(path: Path, text: str) -> None:
@@ -87,3 +87,57 @@ def test_unparseable_llm_response_is_not_applied(tmp_path):
 
     entry = report["entries"][0]
     assert entry["applied"] is False
+
+
+def test_unreadable_icloud_file_is_left_untouched(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    note = vault / "00-MOC" / "MOC.md"
+    _write(note, "大事な本文")
+    original_read_text = Path.read_text
+
+    def _read_text(self, *args, **kwargs):
+        if self == note:
+            raise OSError(11, "Resource deadlock avoided")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _read_text)
+    calls = []
+
+    def _generate(prompt, **kwargs):
+        calls.append(prompt)
+        return {"used": True, "status": "ok", "text": "TAGS: x\nFOLDER: moved", "error": ""}
+
+    state_path = tmp_path / "state.json"
+    report = build_report(vault, state_path=state_path, backup_dir=tmp_path / "backup", apply=True, max_files=20, generate_fn=_generate)
+    monkeypatch.undo()
+
+    assert report["entries"][0]["proposal_status"] == "unreadable"
+    assert report["entries"][0]["applied"] is False
+    assert note.read_text(encoding="utf-8") == "大事な本文"
+    assert not (vault / "moved").exists()
+    assert calls == []
+    assert "00-MOC/MOC.md" not in load_state(state_path).get("seen_files", {})
+
+
+def test_empty_file_is_skipped(tmp_path):
+    vault = tmp_path / "vault"
+    _write(vault / "note.md", "  \n")
+
+    report = build_report(
+        vault,
+        state_path=tmp_path / "state.json",
+        backup_dir=tmp_path / "backup",
+        apply=True,
+        max_files=20,
+        generate_fn=_fake_generate("TAGS: x\nFOLDER: y"),
+    )
+
+    assert report["entries"][0]["proposal_status"] == "empty"
+    assert (vault / "note.md").exists()
+    assert not (vault / "y").exists()
+
+
+def test_parse_proposal_tags_and_folder_on_one_line():
+    proposal = _parse_proposal("TAGS: a, b FOLDER: x")
+    assert proposal["tags"] == ["a", "b"]
+    assert proposal["folder"] == "x"

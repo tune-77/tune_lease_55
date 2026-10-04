@@ -33,6 +33,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from silent_failure_log import record_silent_failure
 
+from ai_runtime_client import google_genai_client  # noqa: E402
 from config import get_gemini_model  # noqa: E402
 
 from lease_news_digest import (
@@ -655,7 +656,9 @@ def classify_articles(articles: list[Article], use_ai: bool = True) -> None:
             "設備・技術動向は1年を目安にしてください。canonical_topicは同一事象を束ねられる短い名称です。\n"
             + json.dumps(payload, ensure_ascii=False)
         )
-        client = genai.Client(api_key=api_key)
+        client = google_genai_client(
+            feature="lease_news_collection", client_factory=genai.Client, api_key=api_key
+        )
         response = client.models.generate_content(
             model=get_gemini_model(),
             contents=prompt,

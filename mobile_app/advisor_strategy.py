@@ -11,6 +11,8 @@ import os
 import random
 from typing import Any
 
+from ai_runtime_client import google_genai_client
+
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
@@ -392,7 +394,9 @@ def build_gemini_strategy_advice(
             _sys.path.insert(0, _root)
         from config import get_gemini_model
 
-        client = genai.Client(api_key=api_key)
+        client = google_genai_client(
+            feature="advisor_strategy", client_factory=genai.Client, api_key=api_key
+        )
         model = get_gemini_model()
         timeout_ms = max(10000, int(timeout_seconds * 1000))
         response = client.models.generate_content(
