@@ -1223,7 +1223,7 @@ graph LR
 | `/qualitative` | 定性分析。定性 LR / LightGBM の比較 |
 | `/history-dash` | 過去案件、成約ドライバー、タグ傾向 |
 | `/finance` | 物件ファイナンス審査と稟議条件案 |
-| `/chat` | Obsidian 文脈を使う AI チャット。`SHION_VOICE_ENABLED=1` 時は紫苑との音声通話ボタンも表示 |
+| `/chat` | Obsidian 文脈を使う AI チャット。`SHION_VOICE_ENABLED=1` 時は紫苑との音声通話ボタンも表示。`SHION_SING_ENABLED=1` かつローカル VOICEVOX ENGINE（127.0.0.1:50021）稼働時は「歌って」ボタンで紫苑が歌う（声は `SHION_SING_VOICE_ID`） |
 | `/chat-compare` | 紫苑/一般比較。同じ問いを2モードへ投げ、記憶・同一性・経験ループの差を可視化 |
 | `/lease-intelligence` | 紫苑との専用対話 |
 | `/voice-chat` | リアルタイム会話。音声入力、紫苑回答の読み上げ、参照した判断資産の表示 |
