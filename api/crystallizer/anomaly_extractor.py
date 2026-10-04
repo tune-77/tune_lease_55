@@ -60,8 +60,8 @@ def extract_anomalies(db_path: str = _DB_PATH) -> list[AnomalyCase]:
                 """,
                 (_LOOKBACK_COUNT,),
             ).fetchall()
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError(f"外れ値案件を読み込めませんでした: {exc}") from exc
 
     if not rows:
         return []

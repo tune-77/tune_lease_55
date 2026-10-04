@@ -69,10 +69,10 @@ def write_pattern_to_obsidian(
         generated_at:  生成日（None なら今日）
 
     Returns:
-        書き出したファイルパス（失敗時は None）
+        書き出したファイルパス（重複時は None、失敗時は例外）
     """
     if not vault_root or not os.path.isdir(vault_root):
-        return None
+        raise FileNotFoundError(f"Obsidian Vault が見つかりません: {vault_root}")
 
     generated_at = generated_at or datetime.date.today()
     out_dir = os.path.join(vault_root, _GENERATED_DIR)
@@ -128,4 +128,4 @@ industry: {industry_str}
         return fpath
     except Exception as exc:
         record_silent_failure("memory.crystallizer.write_pattern", "save_failed", exc, detail="結晶化パターンをObsidianへ書けなかった")
-        return None
+        raise RuntimeError(f"結晶化パターンを書き込めませんでした: {exc}") from exc
