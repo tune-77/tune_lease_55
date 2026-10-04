@@ -354,7 +354,14 @@ def get_agentic_skill_next_actions(limit: int = 3):
 
 @router.get("/api/judgment-assets/cloudrun-data-safety-audit")
 def get_cloudrun_data_safety_audit():
-    """Cloud Run実データ登録・認証・DB永続化ガードの読み取り専用監査を返す。"""
+    """Cloud Run実データ登録・認証・DB永続化ガードの読み取り専用監査を返す。
+
+    Cloud Run 停止中（config/cloudrun_pause.json）は監査せず paused を返し、画面は欄を隠す。再開すると戻る。
+    """
+    from cloudrun_pause import skip_if_paused
+
+    if skip_if_paused("cloudrun.data_safety_audit"):
+        return {"paused": True, "mode": "paused", "status": "paused", "issue_count": 0}
     return audit_cloudrun_data_safety()
 
 

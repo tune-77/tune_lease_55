@@ -6,6 +6,7 @@ AI要因分析モジュール
 from __future__ import annotations
 import json
 import streamlit as st
+from ai_runtime_client import google_genai_client, instrument_legacy_gemini_model
 from data_cases import load_all_cases
 from secret_manager import get_gemini_api_key
 from config import GEMINI_MODEL_DEFAULT
@@ -132,7 +133,9 @@ def _call_gemini(prompt: str, max_tokens: int = 3000) -> str:
     try:
         import google.genai as _genai
         from google.genai import types as _genai_types
-        client = _genai.Client(api_key=api_key)
+        client = google_genai_client(
+            feature="ai_factor_analysis", client_factory=_genai.Client, api_key=api_key
+        )
         config = _genai_types.GenerateContentConfig(
             max_output_tokens=max_tokens, temperature=0.3,
         )
@@ -156,9 +159,13 @@ def _call_gemini(prompt: str, max_tokens: int = 3000) -> str:
     try:
         import google.generativeai as _old_genai
         _old_genai.configure(api_key=api_key)
-        m = _old_genai.GenerativeModel(
-            model_name=model,
-            generation_config={"max_output_tokens": max_tokens, "temperature": 0.3},
+        m = instrument_legacy_gemini_model(
+            _old_genai.GenerativeModel(
+                model_name=model,
+                generation_config={"max_output_tokens": max_tokens, "temperature": 0.3},
+            ),
+            feature="ai_factor_analysis_legacy",
+            model=model,
         )
         resp = m.generate_content(prompt)
         text = getattr(resp, "text", "") or ""

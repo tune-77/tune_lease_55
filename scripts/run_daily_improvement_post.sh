@@ -558,8 +558,8 @@ log_step "obsidian_theme_radar" $?
 
 if [ "${MANA_STATUS}" = "allow" ]; then
   echo ""
-  echo "[内省拡張] 新規追加ノートにタグ付け・移動先フォルダを提案・適用..."
-  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_note_curator.py" --apply
+  echo "[内省拡張] 新規追加ノートにタグ付け・移動先フォルダを提案（提案のみ。2026-10-05 iCloud退避ファイルを空として上書きした事故のため --apply 停止中）..."
+  "${PYTHON}" "${PROJECT_ROOT}/scripts/obsidian_note_curator.py"
   log_step "obsidian_note_curator" $?
 
   echo ""

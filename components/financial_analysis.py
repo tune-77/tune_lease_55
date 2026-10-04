@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 
+from ai_runtime_client import google_genai_client
 from config import get_gemini_model
 from typing import Optional
 
@@ -321,7 +322,9 @@ def _call_gemini(prompt: str, api_key: str, timeout: int = 90) -> str:
         return "[Gemini] APIキーが設定されていません。"
 
     try:
-        client = genai.Client(api_key=api_key)
+        client = google_genai_client(
+            feature="financial_analysis", client_factory=genai.Client, api_key=api_key
+        )
         model_name = get_gemini_model()
         response = client.models.generate_content(
             model=model_name,

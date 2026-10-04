@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import time
 from typing import Any, Callable
@@ -193,11 +194,16 @@ def _continue_truncated_response(
                 "maxOutputTokens": _chat_max_tokens(),
             },
         }
-        response = requests.post(
-            _gemini_url(),
-            json=payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=timeout,
+        response = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_url(),
+                json=payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=timeout,
+            ),
+            provider="google",
+            model=_gemini_model(),
+            feature="chat_memory_continuation",
         )
         response.raise_for_status()
         data = response.json()
@@ -244,7 +250,7 @@ def _get_gemini_api_key() -> str:
     return get_gemini_api_key()
 
 
-def get_summary(user_id: str = "default") -> str:
+def get_summary(user_id: str = "default", *, raise_on_error: bool = False) -> str:
     """直近50件をGeminiで要約して長期記憶の圧縮テキストを返す。"""
     ph = placeholder()
     with get_connection() as conn:
@@ -266,6 +272,8 @@ def get_summary(user_id: str = "default") -> str:
     )
     api_key = _get_gemini_api_key()
     if not api_key:
+        if raise_on_error:
+            raise RuntimeError("GEMINI_API_KEY が設定されていません")
         return ""
     started = time.monotonic()
     try:
@@ -274,11 +282,16 @@ def get_summary(user_id: str = "default") -> str:
             "contents": [{"role": "user", "parts": [{"text": lines}]}],
             "generationConfig": {"temperature": 0.2, "maxOutputTokens": 256},
         }
-        resp = requests.post(
-            _gemini_url(),
-            json=payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=30,
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_url(),
+                json=payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=30,
+            ),
+            provider="google",
+            model=_gemini_model(),
+            feature="chat_memory_summary",
         )
         resp.raise_for_status()
         body = resp.json()
@@ -294,6 +307,8 @@ def get_summary(user_id: str = "default") -> str:
         return body["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as exc:
         record_silent_failure("answer.chat_memory.summarize", "swallowed", exc, detail="会話要約を空として扱った")
+        if raise_on_error:
+            raise
         return ""
 
 
@@ -312,7 +327,7 @@ def _cached_message_count(user_id: str) -> int:
         return 0
 
 
-def _upsert_summary_cache(user_id: str, summary: str, message_count: int) -> None:
+def _upsert_summary_cache(user_id: str, summary: str, message_count: int) -> bool:
     ph = placeholder()
     try:
         with get_connection() as conn:
@@ -328,8 +343,10 @@ def _upsert_summary_cache(user_id: str, summary: str, message_count: int) -> Non
                 """,
                 (user_id, summary, message_count),
             )
+        return True
     except Exception as exc:
         print(f"[chat_memory] _upsert_summary_cache skipped: {exc}")
+        return False
 
 
 def get_cached_summary(user_id: str = "default") -> str:
@@ -387,10 +404,11 @@ def refresh_stale_chat_summaries(*, stale_after_messages: int = 20, min_messages
             user_ids = [str(r["user_id"]) for r in cur.fetchall()]
     except Exception as exc:
         print(f"[chat_memory] refresh_stale_chat_summaries skipped: {exc}")
-        return {"checked": 0, "refreshed": 0}
+        return {"status": "error", "checked": 0, "refreshed": 0, "failed": 1, "detail": str(exc)}
 
     checked = 0
     refreshed = 0
+    failures: list[str] = []
     for user_id in user_ids:
         checked += 1
         total = get_message_count(user_id)
@@ -398,11 +416,27 @@ def refresh_stale_chat_summaries(*, stale_after_messages: int = 20, min_messages
             continue
         if total - _cached_message_count(user_id) < stale_after_messages:
             continue
-        summary = get_summary(user_id)
-        if summary:
-            _upsert_summary_cache(user_id, summary, total)
-            refreshed += 1
-    return {"checked": checked, "refreshed": refreshed}
+        try:
+            summary = get_summary(user_id, raise_on_error=True)
+            if summary and _upsert_summary_cache(user_id, summary, total):
+                refreshed += 1
+            elif summary:
+                failures.append(user_id)
+        except Exception as exc:
+            record_silent_failure(
+                "memory.chat_memory.refresh_summary",
+                "failed",
+                exc,
+                detail=f"user_id={user_id}",
+            )
+            failures.append(user_id)
+    return {
+        "status": "error" if failures else "ok",
+        "checked": checked,
+        "refreshed": refreshed,
+        "failed": len(failures),
+        "failed_user_ids": failures[:10],
+    }
 
 
 def call_gemini_with_tools(
@@ -445,11 +479,16 @@ def call_gemini_with_tools(
     text = ""
     for _round in range(max_tool_rounds + 1):
         payload = {**base_payload, "contents": contents}
-        resp = requests.post(
-            _gemini_url(),
-            json=payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=90,
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_url(),
+                json=payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=90,
+            ),
+            provider="google",
+            model=_gemini_model(),
+            feature="chat_memory_tools",
         )
         resp.raise_for_status()
         data = resp.json()
@@ -521,11 +560,16 @@ def call_gemini_chat(
             "maxOutputTokens": _chat_max_tokens(),
         },
     }
-    resp = requests.post(
-        _gemini_url(),
-        json=payload,
-        headers={"x-goog-api-key": api_key},
-        timeout=60,
+    resp = tracked_ai_http_call(
+        lambda: requests.post(
+            _gemini_url(),
+            json=payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=60,
+        ),
+        provider="google",
+        model=_gemini_model(),
+        feature="chat_memory",
     )
     resp.raise_for_status()
     data = resp.json()

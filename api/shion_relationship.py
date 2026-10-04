@@ -20,8 +20,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-from datetime import datetime, timedelta
+import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _STATE_PATH = _REPO_ROOT / "data" / "shion_relationship_state.json"
+_STATE_LOCK = threading.Lock()
 
 # スコアの上下限
 _SCORE_MIN = 0.0
@@ -58,7 +59,7 @@ def _default_state() -> dict[str, Any]:
     }
 
 
-def _load_state() -> dict[str, Any]:
+def _load_state(*, strict: bool = False) -> dict[str, Any]:
     if not _STATE_PATH.exists():
         state = _default_state()
         _save_state(state)
@@ -67,6 +68,8 @@ def _load_state() -> dict[str, Any]:
         return json.loads(_STATE_PATH.read_text(encoding="utf-8"))
     except Exception as e:
         logger.warning(f"[Relationship] state 読み込み失敗、デフォルトで継続: {e}")
+        if strict:
+            raise RuntimeError(f"relationship state is unreadable: {e}") from e
         return _default_state()
 
 
@@ -148,37 +151,45 @@ def record_interaction(
     return state
 
 
-def apply_inactivity_decay() -> dict[str, Any]:
+def apply_inactivity_decay(now: datetime | None = None) -> dict[str, Any]:
     """
     無交流ペナルティを適用する（毎日 04:05 のスケジューラから呼ぶ）。
     INACTIVITY_GRACE_DAYS 日以上インタラクションがなければ減点。
     """
-    state = _load_state()
-    last_str = state.get("last_interaction", "")
-    if not last_str:
-        return state
+    current = now or datetime.utcnow()
+    run_date = current.date().isoformat()
+    with _STATE_LOCK:
+        state = _load_state(strict=True)
+        if state.get("last_inactivity_decay_date") == run_date:
+            return state
+        last_str = state.get("last_interaction", "")
+        if not last_str:
+            return state
 
-    try:
-        last = datetime.fromisoformat(last_str)
-    except ValueError:
-        return state
+        try:
+            last = datetime.fromisoformat(last_str)
+        except ValueError:
+            return state
 
-    days_silent = (datetime.utcnow() - last).total_seconds() / 86400
-    if days_silent <= _INACTIVITY_GRACE_DAYS:
-        return state  # ペナルティなし
+        days_silent = (current - last).total_seconds() / 86400
+        if days_silent <= _INACTIVITY_GRACE_DAYS:
+            state["last_inactivity_decay_date"] = run_date
+            _save_state(state)
+            return state  # ペナルティなし
 
-    penalty_days = days_silent - _INACTIVITY_GRACE_DAYS
-    penalty = _INACTIVITY_PENALTY_PER_DAY * penalty_days
+        penalty_days = days_silent - _INACTIVITY_GRACE_DAYS
+        penalty = _INACTIVITY_PENALTY_PER_DAY * penalty_days
 
-    old_score = state.get("score", _SCORE_INITIAL)
-    state["score"] = round(max(_SCORE_MIN, old_score - penalty), 3)
+        old_score = state.get("score", _SCORE_INITIAL)
+        state["score"] = round(max(_SCORE_MIN, old_score - penalty), 3)
 
-    history: list[float] = state.get("delta_history", [])
-    history.append(round(-penalty, 3))
-    state["delta_history"] = history[-10:]
-    state["trend"] = _calc_trend(state["delta_history"])
+        history: list[float] = state.get("delta_history", [])
+        history.append(round(-penalty, 3))
+        state["delta_history"] = history[-10:]
+        state["trend"] = _calc_trend(state["delta_history"])
+        state["last_inactivity_decay_date"] = run_date
 
-    _save_state(state)
+        _save_state(state)
     logger.info(f"[Relationship] 無交流ペナルティ適用: -{penalty:.3f} → score={state['score']}, days_silent={days_silent:.1f}")
     return state
 

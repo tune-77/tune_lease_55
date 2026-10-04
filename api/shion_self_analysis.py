@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import re
 import requests
@@ -220,11 +221,16 @@ def _call_gemini(prompt: str) -> dict:
     raw = ""
     finish_reason = ""
     for current_payload in (payload, with_retry_tokens(payload, 1536)):
-        resp = requests.post(
-            _gemini_url(),
-            json=current_payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=60,
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_url(),
+                json=current_payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=60,
+            ),
+            provider="google",
+            model=get_gemini_model(),
+            feature="shion_self_analysis",
         )
         resp.raise_for_status()
         raw, finish_reason = extract_candidate_text(resp.json())

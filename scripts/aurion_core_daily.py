@@ -1236,6 +1236,16 @@ def backup_status_line() -> str:
         return f"- バックアップ状況: 読み込み失敗 `{type(exc).__name__}`"
 
 
+def r2_backup_status_line() -> str:
+    """暗号化バックアップの R2 オフサイト側（iCloud とは別項目）の最終成功・使用量。"""
+    try:
+        from scripts.backup_case_data import r2_report_line
+
+        return r2_report_line()
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return f"- R2 オフサイト: 読み込み失敗 `{type(exc).__name__}`"
+
+
 def pipeline_recovery_lines() -> list[str]:
     """日次パイプラインの直せなかった失敗・品質チェック失敗・連続失敗の警告と、自動修復件数（朝報の上部）。"""
     try:
@@ -1463,6 +1473,7 @@ def write_morning_report(
     lines.append(judgment_asset_dedup_line())
     lines.append(user_personal_memory_hygiene_line())
     lines.append(backup_status_line())
+    lines.append(r2_backup_status_line())
     lines.extend(
         [
             "",

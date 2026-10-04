@@ -27,11 +27,12 @@ import requests
 import streamlit as st
 
 from category_config import CATEGORY_SCORE_ITEMS, SCORE_GRADES
-from config import GEMINI_MODEL_DEFAULT
 
+# 検索接地が要るので既定の flash-lite ではなく 3.5-flash を使う（2026-10-04 実測:
+# flash-lite は思考レベルに関係なく検索が不安定、3.5-flash は 2/2 で出典を取得）。
 _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{GEMINI_MODEL_DEFAULT}:generateContent"
+    "gemini-3.5-flash:generateContent"
 )
 
 
@@ -94,13 +95,16 @@ def _search_scores(
     )
 
     acost_man_yen = acost_here // 100  # 千円 → 万円
-    prompt = f"""あなたはリース会社の物件評価専門家です。以下の物件について中古市場価格をウェブ検索して調査し、結果をJSONのみで返してください。
+    # 「JSONのみで答えよ」と指示するとモデルが検索を省略する（2026-10-04 実測 0/2）。
+    # 先に検索・メモを書かせ、JSON は末尾から正規表現で取り出す。
+    prompt = f"""あなたはリース会社の物件評価専門家です。以下の物件の中古市場価格を、まず Google 検索で調べてください。
+調べた相場を短くメモしたあと、最後に下記のJSONを1つだけ出力してください。
 
 物件: {asset_name if asset_name.strip() else f"{category}（型番不明）"}
 リース契約期間: {lease_term_here}ヶ月後の推定中古価格を調査
 取得価格: {acost_man_yen}万円
 
-以下のJSONフォーマットのみで回答してください（マークダウンのコードブロックなし）：
+JSONフォーマット（マークダウンのコードブロックなし）：
 {{
   "current_price_man_yen": <現在の中古相場（万円、整数）。不明なら0>,
   "estimated_price_man_yen": <{lease_term_here}ヶ月後の推定中古価格（万円、整数）。不明なら0>,
@@ -118,7 +122,8 @@ def _search_scores(
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "tools": [{"google_search": {}}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 600},
+        # 思考トークンも出力上限に含まれるので、メモ＋JSON分より広めに取る。
+        "generationConfig": {"maxOutputTokens": 8192},
     }
 
     empty_result = {
@@ -134,10 +139,11 @@ def _search_scores(
         resp = requests.post(
             f"{_GEMINI_URL}?key={gemini_key}",
             json=payload,
-            timeout=30,
+            timeout=90,
         )
         resp.raise_for_status()
-        raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        # 検索接地ありだと本文が複数 part に分かれることがあるので連結する
+        raw_text = "".join(p.get("text", "") for p in resp.json()["candidates"][0]["content"]["parts"])
 
         # JSON 抽出（コードブロックに包まれている場合も対応）
         json_match = re.search(r"\{[\s\S]*\}", raw_text)

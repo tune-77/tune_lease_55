@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import random
 import re
@@ -228,8 +229,13 @@ def _call_gemini(system_prompt: str, user_text: str) -> str:
         "contents": [{"role": "user", "parts": [{"text": user_text}]}],
         "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2000},
     }
-    resp = requests.post(
-        url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60
+    resp = tracked_ai_http_call(
+        lambda: requests.post(
+            url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60
+        ),
+        provider="google",
+        model=model,
+        feature="lease_intelligence_reflection",
     )
     resp.raise_for_status()
     return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()

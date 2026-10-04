@@ -3,6 +3,8 @@
 > 作成日: 2026-06-16  
 > 対象ブランチ: `feat/rev-083-dynamic-keyword-extraction`  
 > ステータス: **設計書（未実装）**
+>
+> 追記（2026-10-04）: その後 Cloud Run へ移行して 2026-09 まで本番運用したが、2026-10-01 に停止し、本番は Mac 上の Cloudflare 版（https://shion.tune77.com）へ移った。Cloud Run は停止中の予備（再開手順は `.github/workflows/cloudrun-pause.yml` 冒頭）。本書は当時の設計記録として残す。
 
 ---
 

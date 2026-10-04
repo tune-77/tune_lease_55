@@ -7,7 +7,8 @@
 * 判定: ``memory_promotion_policy.classify_lease_teaching``（1段）
 * 保存: Obsidian ``Lease Intelligence/Knowledge/`` のノートと、判断資産候補（要確認）
 * 想起: Knowledge ノートからの文字 n-gram 一致（回答前にプロンプトへ入れる）
-* 正直さ: 保存の成否に合わない「判断資産にします」等を回答から外し、保存先を添える
+* 正直さ: 保存の成否に合わない「判断資産にします」「永続化します」等を回答から外し、保存先を添える
+* 保存依頼: 「作ったテンプレートを保存して」は直前の紫苑の回答を保存する（何を保存したかを添える）
 * 指標: 教えた→保存した→想起した→回答で使った を ``data/shion_teaching_funnel.jsonl`` に残す
 
 対話室と通常チャット（/api/chat）は ``prepare_teaching_turn`` → ``TeachingTurn.finalize`` で共通に使う。
@@ -47,11 +48,30 @@ _EXPLICIT_PHRASES = re.compile(
     r"(判断資産(に|として|へ)?(して|しておいて|入れて|登録して|残して|覚えて|覚えといて)?|"
     r"覚えておいて|覚えといて|覚えて|記録しておいて|記録して|メモしておいて|メモして|登録して|入れて)"
 )
-_PROMISE_RE = re.compile(
-    r"[^。\n]*(判断資産(に|として)[^。\n]{0,12}(します|しました|登録|追加|記録|残し)|"
-    r"覚えます|覚えました|覚えておきます|記録します|記録しました|記録しておきます|"
-    r"保存します|保存しました|登録します|登録しました|残しておきます)[^。\n]*[。]?"
+# 保存・登録・永続化を「する／した」と言い切る表現。提案・一般論（「保存が必要です」「残すべきです」
+# 「保存しておくと良い」）と問い返し（「保存しますか」）は含めない。2026-10-04 に「〇〇集として
+# 永続化します」「いつでも呼び出せます」「今回の保存で…完了です」が素通りした。
+_DONE = r"(いたします|いたしました|します|しました|しておきます|しておきました)"
+SAVE_CLAIM_RE = re.compile(
+    r"(判断資産(に|として)[^。\n]{0,12}(します|しました|登録|追加|記録|残し)|"
+    r"覚え(ます|ました|ておきます|ておきました)|"
+    rf"(保存|登録|記録|永続化|蓄積){_DONE}|"
+    r"(保存|登録|記録|永続化)(は|が|を)?完了(しました|です|いたしました)|(保存|登録|記録)済みです|今回の(保存|登録|記録)|"
+    r"残(します|しました|しておきます|しておきました)|"
+    rf"(判断資産|集|データベース|ライブラリ|台帳|ナレッジ|Knowledge|テンプレート)(に|へ)[^。\n]{{0,8}}((追加|収録|格納){_DONE}|入れ(ます|ました|ておきます|ておきました))|"
+    r"いつでも[^。\n]{0,20}(呼び出せ|取り出せ|引き出せ|参照でき)(ます|る))(?!か)"
 )
+_PROMISE_RE = re.compile(rf"[^。\n]*(?:{SAVE_CLAIM_RE.pattern})[^。\n]*[。]?")
+# 実在しない保存先の名前（「稟議コメント・テンプレート集」など）。実在する保存先は Knowledge と判断資産候補だけ。
+_INVENTED_PLACE_RE = re.compile(r"[「『][^」』]{1,30}(集|データベース|DB|ライブラリ|台帳|フォルダ)[」』]")
+# 「保存して」「保存する必要があるな」「残しておいて」「判断資産に入れて」のような保存の依頼。
+_SAVE_REQUEST_RE = re.compile(
+    r"(保存|記録|登録|永続化)(して|しと|しよう|したい|する必要|が必要|お願い|頼む)|"
+    r"残して|残しと|残したい|残す必要|(判断資産|ナレッジ|Knowledge)(に|へ)(入れ|し|登録)"
+)
+# 依頼の対象が紫苑の回答だと分かる語。指示語だけなら従来どおり直前のユーザー発言を優先する。
+_ANSWER_REFERENCE_RE = re.compile(r"テンプレ|まとめ|判断軸|チェックリスト|回答|答え|作った|作って|紫苑の|さっきの|今の(案|内容)|この(案|内容)")
+SHION_ANSWER_SOURCE = "shion_answer_saved_on_request"
 
 
 def _funnel_path() -> Path:
@@ -131,29 +151,53 @@ def _vault_relative(vault: Path, path: str) -> str:
         return Path(path).name
 
 
-def save_lease_teaching(
-    message: str,
+def save_request_target(message: str, previous_user_message: str = "", previous_assistant_message: str = "") -> str:
+    """保存の依頼が直前の紫苑の回答（テンプレート・まとめ等）を指していれば、その回答を返す。違えば空。"""
+    from memory_promotion_policy import classify_lease_teaching, has_domain_keyword
+
+    text = " ".join(str(message or "").split())
+    answer = str(previous_assistant_message or "").strip()
+    if not answer or len(text) > 80 or not _SAVE_REQUEST_RE.search(text) or not has_domain_keyword(answer):
+        return ""
+    if _ANSWER_REFERENCE_RE.search(text):
+        return answer
+    # 「判断資産にしておいて」だけなら、直前に教えたユーザー発言の保存（従来の経路）を優先する。
+    if classify_lease_teaching(previous_user_message)[0] or len(resolve_teaching_claim(text)) > _ANAPHORIC_RESIDUAL_CHARS + 20:
+        return ""
+    return answer
+
+
+def _answer_body(answer: str) -> str:
+    """保存する回答本文。正直さの注記・保存先の行・約束文・末尾の問い返しの段落を除く。"""
+    text = re.sub(r"（この発言はまだ保存していません[^）]*）|^保存(先|したもの):.*$", "", answer, flags=re.MULTILINE)
+    text = _PROMISE_RE.sub("", text)
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    while paragraphs and paragraphs[-1].rstrip().endswith(("？", "?", "か。")):
+        paragraphs.pop()
+    return "\n\n".join(paragraphs)[:3000]
+
+
+def answer_topic(answer: str) -> str:
+    """回答の見出し（最初の ### 行か【】）を保存名にする。無ければ最初の文。"""
+    for line in str(answer or "").splitlines():
+        heading = re.match(r"\s*(#{1,4}\s*(.+)|\**【(.+?)】)", line)
+        if heading:
+            name = re.sub(r"^(記録内容|保存内容)[:：]\s*|[*#`]", "", (heading.group(2) or heading.group(3) or "")).strip()
+            if name:
+                return name[:40]
+    return teaching_topic(answer)
+
+
+def _write_knowledge_and_candidate(
+    claim: str,
     *,
+    topic: str,
     vault: Path | None,
-    surface: str,
-    candidate_saver: Callable[[str], dict[str, Any]],
-    previous_user_message: str = "",
-    date_str: str | None = None,
+    candidate_saver: Callable[..., dict[str, Any]],
+    date_str: str,
+    saver_kwargs: dict[str, Any] | None = None,
+    source_type: str = KNOWLEDGE_SOURCE_TYPE,
 ) -> dict[str, Any]:
-    """教示なら Knowledge と判断資産候補へ保存し、その結果を返す（回答前に同期で呼ぶ）。
-
-    ``candidate_saver(claim)`` は ``capture_chat_judgment_asset_if_needed`` 形式の結果を返す。
-    戻り値の ``saved`` が True のときだけ、紫苑は保存したと言ってよい。
-    """
-    from memory_promotion_policy import classify_lease_teaching
-
-    is_teaching, reason = classify_lease_teaching(message)
-    if not is_teaching:
-        return {"is_teaching": False, "saved": False, "reason": reason}
-    claim = resolve_teaching_claim(message, previous_user_message)
-    record_funnel_event("taught", surface=surface, reason=reason)
-    date_str = date_str or _today()
-
     knowledge_path = ""
     knowledge_duplicate = False
     knowledge_error = ""
@@ -167,10 +211,10 @@ def save_lease_teaching(
 
                 written = record_lease_knowledge(
                     vault,
-                    teaching_topic(claim),
+                    topic,
                     claim,
                     date_str,
-                    source_type=KNOWLEDGE_SOURCE_TYPE,
+                    source_type=source_type,
                     confidence=0.6,
                     verification_status="user_taught_unverified",
                 )
@@ -182,7 +226,7 @@ def save_lease_teaching(
     candidate_duplicate = False
     candidate_error = ""
     try:
-        captured = candidate_saver(claim) or {}
+        captured = candidate_saver(claim, **(saver_kwargs or {})) or {}
         if captured.get("captured"):
             candidate_id = str((captured.get("candidate") or {}).get("id") or "")
             candidate_duplicate = bool(captured.get("duplicate"))
@@ -191,11 +235,8 @@ def save_lease_teaching(
     except Exception as exc:  # noqa: BLE001
         candidate_error = f"{type(exc).__name__}: {str(exc)[:120]}"
 
-    saved = bool(knowledge_path or candidate_id)
-    result = {
-        "is_teaching": True,
-        "saved": saved,
-        "reason": reason,
+    return {
+        "saved": bool(knowledge_path or candidate_id),
         "claim": claim,
         "knowledge_path": _vault_relative(vault, knowledge_path) if (vault is not None and knowledge_path) else "",
         "knowledge_duplicate": knowledge_duplicate,
@@ -203,15 +244,67 @@ def save_lease_teaching(
         "candidate_duplicate": candidate_duplicate,
         "errors": [e for e in (knowledge_error, candidate_error) if e],
     }
-    if saved:
+
+
+def _record_saved(result: dict[str, Any], surface: str, **fields: Any) -> None:
+    if result["saved"]:
         record_funnel_event(
             "saved",
             surface=surface,
-            knowledge=bool(knowledge_path),
-            candidate=bool(candidate_id),
-            duplicate=knowledge_duplicate and (candidate_duplicate or not candidate_id),
+            knowledge=bool(result["knowledge_path"]),
+            candidate=bool(result["candidate_id"]),
+            duplicate=result["knowledge_duplicate"] and (result["candidate_duplicate"] or not result["candidate_id"]),
+            **fields,
         )
-    return result
+
+
+def save_lease_teaching(
+    message: str,
+    *,
+    vault: Path | None,
+    surface: str,
+    candidate_saver: Callable[..., dict[str, Any]],
+    previous_user_message: str = "",
+    previous_assistant_message: str = "",
+    date_str: str | None = None,
+) -> dict[str, Any]:
+    """教示なら Knowledge と判断資産候補へ保存し、その結果を返す（回答前に同期で呼ぶ）。
+
+    保存の依頼（「作ったテンプレートを保存して」）が直前の紫苑の回答を指すときは、その回答を保存する。
+    ``candidate_saver(claim, **kw)`` は ``capture_chat_judgment_asset_if_needed`` 形式の結果を返す
+    （回答の保存では ``user_requested=True`` を渡し、教示判定を飛ばして登録させる）。
+    戻り値の ``saved`` が True のときだけ、紫苑は保存したと言ってよい。
+    """
+    from memory_promotion_policy import classify_lease_teaching
+
+    date_str = date_str or _today()
+    answer = save_request_target(message, previous_user_message, previous_assistant_message)
+    if answer:
+        body = _answer_body(answer)
+        topic = answer_topic(answer)
+        record_funnel_event("taught", surface=surface, reason="save_request_shion_answer")
+        result = _write_knowledge_and_candidate(
+            f"{topic}\n\n{body}",
+            topic=topic,
+            vault=vault,
+            candidate_saver=candidate_saver,
+            date_str=date_str,
+            saver_kwargs={"user_requested": True},
+            source_type=SHION_ANSWER_SOURCE,
+        )
+        _record_saved(result, surface, source="shion_answer")
+        return {"is_teaching": True, "reason": "save_request_shion_answer", "source": "shion_answer", "topic": topic, **result}
+
+    is_teaching, reason = classify_lease_teaching(message)
+    if not is_teaching:
+        return {"is_teaching": False, "saved": False, "reason": reason}
+    claim = resolve_teaching_claim(message, previous_user_message)
+    record_funnel_event("taught", surface=surface, reason=reason)
+    result = _write_knowledge_and_candidate(
+        claim, topic=teaching_topic(claim), vault=vault, candidate_saver=candidate_saver, date_str=date_str
+    )
+    _record_saved(result, surface)
+    return {"is_teaching": True, "reason": reason, **result}
 
 
 def build_save_result_prompt_block(result: dict[str, Any]) -> str:
@@ -220,7 +313,9 @@ def build_save_result_prompt_block(result: dict[str, Any]) -> str:
         return (
             "【今回の発言の保存結果】\n"
             "この発言は保存していない（審査ノウハウの教示とは判定しなかった）。"
-            "「判断資産にします」「覚えます」「記録します」とは言わないこと。"
+            "「判断資産にします」「覚えます」「記録します」「永続化します」「いつでも呼び出せます」"
+            "のように保存した・するとは言わないこと。"
+            + _NO_INVENTED_PLACE
         )
     if not result.get("saved"):
         return (
@@ -234,16 +329,25 @@ def build_save_result_prompt_block(result: dict[str, Any]) -> str:
     if result.get("candidate_id"):
         places.append("判断資産候補（/judgment-review の要確認）")
     already = "（同じ内容が既に保存済み）" if result.get("knowledge_duplicate") else ""
+    what = f"保存したもの: 直前の紫苑の回答「{result.get('topic')}」。" if result.get("source") == "shion_answer" else ""
     return (
         "【今回の発言の保存結果】\n"
-        f"保存済み{already}: {'・'.join(places)}。"
-        "保存したことと保存先を一言だけ添えてよい。判断資産として正式採用されたとは言わない"
+        f"{what}保存済み{already}: {'・'.join(places)}。"
+        "保存したもの・保存先を一言だけ添えてよい。判断資産として正式採用されたとは言わない"
         "（人のレビュー待ちの候補である）。"
+        + _NO_INVENTED_PLACE
     )
 
 
+_NO_INVENTED_PLACE = "保存先は Knowledge ノートと判断資産候補だけ。「〇〇集」「〇〇データベース」など無い機能名を作らないこと。"
+
+
+def _drop_invented_place_claims(text: str) -> str:
+    return _PROMISE_RE.sub(lambda m: "" if _INVENTED_PLACE_RE.search(m.group(0)) else m.group(0), text)
+
+
 def enforce_save_honesty(reply: str, result: dict[str, Any]) -> str:
-    """保存の成否と食い違う約束を回答から外し、保存したときは保存先を添える。"""
+    """保存の成否と食い違う約束を回答から外し、保存したときは保存したもの・保存先を添える。"""
     text = str(reply or "")
     if not result.get("saved"):
         stripped = _PROMISE_RE.sub("", text).strip()
@@ -254,14 +358,17 @@ def enforce_save_honesty(reply: str, result: dict[str, Any]) -> str:
             )
             return f"{stripped}\n\n{note}".strip()
         return text
-    if "保存先" in text or (result.get("knowledge_path") and result["knowledge_path"] in text):
+    # 保存はしたが、実在しない保存先（「〇〇テンプレート集として永続化します」）を言う文は外す。
+    text = _drop_invented_place_claims(text).strip()
+    what = f"保存したもの: 直前の紫苑の回答「{result.get('topic')}」\n" if result.get("source") == "shion_answer" else ""
+    if not what and ("保存先" in text or (result.get("knowledge_path") and result["knowledge_path"] in text)):
         return text
     places = []
     if result.get("knowledge_path"):
         places.append(f"`{result['knowledge_path']}`")
     if result.get("candidate_id"):
         places.append("判断資産候補（要確認）")
-    return f"{text.rstrip()}\n\n保存先: {'・'.join(places)}"
+    return f"{text.rstrip()}\n\n{what}保存先: {'・'.join(places)}"
 
 
 def _ngrams(text: str, n: int = 2) -> set[str]:
@@ -282,6 +389,12 @@ def _note_body(text: str) -> str:
 
 # どの審査の文にも出るため、想起の決め手にしない語。
 _GENERIC_DOMAIN_TERMS = frozenset({"リース", "審査", "契約", "取引", "承認", "設備", "業界", "業種"})
+# 言い方の違う同じ概念（想起だけで使う）。2026-10-04 に保存した多角化案件の審査コメントテンプレートが
+# 「新規参入」「審査意見」のような問いで拾えなかった。
+_RECALL_CONCEPTS = (
+    ("多角化", re.compile(r"多角化|異業種|新規事業|新事業|新規参入|参入|進出|本業(以外|外|とは別|と別)")),
+    ("審査コメント", re.compile(r"審査コメント|審査意見|稟議コメント|テンプレート|テンプレ")),
+)
 
 
 def _score_against(query: str, query_grams: set[str], body: str) -> float | None:
@@ -294,7 +407,7 @@ def _score_against(query: str, query_grams: set[str], body: str) -> float | None
         term
         for term in TEACHING_DOMAIN_TERMS
         if term not in _GENERIC_DOMAIN_TERMS and term in query and term in body
-    }
+    } | {name for name, pattern in _RECALL_CONCEPTS if pattern.search(query) and pattern.search(body)}
     overlap = len(query_grams & grams) / len(query_grams)
     if not shared_terms or (len(shared_terms) < 2 and overlap < 0.2):
         return None
@@ -429,6 +542,14 @@ def previous_user_message(history: list[dict[str, Any]]) -> str:
     )
 
 
+def previous_assistant_message(history: list[dict[str, Any]]) -> str:
+    """会話履歴から直前の紫苑の回答を返す。「作ったテンプレートを保存して」の保存対象に使う。"""
+    return next(
+        (str(m.get("content") or "") for m in reversed(history or []) if str(m.get("role") or "") == "assistant"),
+        "",
+    )
+
+
 @dataclass
 class TeachingTurn:
     """1回の発言についての 保存→想起 の結果。回答前に作り、回答後に ``finalize`` する。
@@ -488,8 +609,9 @@ def prepare_teaching_turn(
     *,
     vault: Path | None,
     surface: str,
-    candidate_saver: Callable[[str], dict[str, Any]],
+    candidate_saver: Callable[..., dict[str, Any]],
     previous_user_message: str = "",
+    previous_assistant_message: str = "",
     rag_search: Callable[[str], list[dict[str, Any]]] | None = None,
     allow_save: bool = True,
 ) -> TeachingTurn:
@@ -509,6 +631,7 @@ def prepare_teaching_turn(
             surface=surface,
             candidate_saver=candidate_saver,
             previous_user_message=previous_user_message,
+            previous_assistant_message=previous_assistant_message,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[TeachingCapture] 保存判定に失敗: {type(exc).__name__}: {exc}")

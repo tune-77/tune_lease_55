@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import sys
 from typing import Dict, List, Optional
@@ -543,11 +544,16 @@ def generate_gunshi_chat(req: GunshiChatRequest, background_tasks: BackgroundTas
             if api_key:
                 import requests
                 url = _gemini_generate_url()
-                r = requests.post(
-                    url,
-                    json={"contents": [{"parts": [{"text": prompt}]}]},
-                    headers={"x-goog-api-key": api_key},
-                    timeout=45
+                r = tracked_ai_http_call(
+                    lambda: requests.post(
+                        url,
+                        json={"contents": [{"parts": [{"text": prompt}]}]},
+                        headers={"x-goog-api-key": api_key},
+                        timeout=45,
+                    ),
+                    provider="google",
+                    model=get_gemini_model(),
+                    feature="gunshi_advice",
                 )
                 r.raise_for_status()
                 reply_text = r.json()["candidates"][0]["content"]["parts"][0]["text"]

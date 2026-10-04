@@ -306,24 +306,41 @@ class KnowledgeVectorStore:
         values = self._ranking_config.get("low_priority_path_penalties") or {}
         return tuple((str(prefix), float(value)) for prefix, value in values.items())
 
-    def _ensure_collection(self) -> None:
+    def _ensure_collection(self, *, timeout: float | None = None) -> bool:
         """初回アクセス時に ChromaDB collection だけを初期化する。"""
         if self._collection is not None:
-            return
+            return True
 
-        with self._init_lock:
+        acquired = (
+            self._init_lock.acquire()
+            if timeout is None
+            else self._init_lock.acquire(timeout=max(0.0, timeout))
+        )
+        if not acquired:
+            return False
+        try:
             if self._collection is not None:
-                return
+                return True
 
             import chromadb
+            from api.knowledge.chroma_write_lock import ChromaWriteLockTimeout, chroma_write_lock
 
             os.makedirs(self._chroma_dir, exist_ok=True)
-            self._client = chromadb.PersistentClient(path=self._chroma_dir)
-            self._collection = self._client.get_or_create_collection(
-                name=_COLLECTION_NAME,
-                metadata={"hnsw:space": "cosine"},
-            )
+            try:
+                with chroma_write_lock("obsidian_knowledge_initialize", timeout=timeout):
+                    self._client = chromadb.PersistentClient(path=self._chroma_dir)
+                    self._collection = self._client.get_or_create_collection(
+                        name=_COLLECTION_NAME,
+                        metadata={"hnsw:space": "cosine"},
+                    )
+            except ChromaWriteLockTimeout:
+                if timeout is None:
+                    raise
+                return False
             logger.info("[KnowledgeVectorStore] collection initialized: %s", self._chroma_dir)
+            return True
+        finally:
+            self._init_lock.release()
 
     def _ensure_encoder(self) -> bool:
         """ローカルキャッシュ済み encoder だけを読む。未キャッシュならネットへ出ず false。"""
@@ -390,6 +407,15 @@ class KnowledgeVectorStore:
                 self._encoder_failed = True
                 return False
 
+    def _refresh_collection_unlocked(self) -> None:
+        """Refresh a handle invalidated by another process's full rebuild."""
+        if self._client is None:
+            return
+        self._collection = self._client.get_or_create_collection(
+            name=_COLLECTION_NAME,
+            metadata={"hnsw:space": "cosine"},
+        )
+
     def _ensure_initialized(self) -> None:
         """互換用: collection を初期化し、encoder は使えれば読む。"""
         self._ensure_collection()
@@ -435,12 +461,16 @@ class KnowledgeVectorStore:
         } for c in chunks]
         embeddings = self._embed(texts)
 
-        self._collection.upsert(
-            ids=ids,
-            documents=texts,
-            metadatas=metadatas,
-            embeddings=embeddings,
-        )
+        from api.knowledge.chroma_write_lock import chroma_write_lock
+
+        with chroma_write_lock("obsidian_knowledge_upsert"):
+            self._refresh_collection_unlocked()
+            self._collection.upsert(
+                ids=ids,
+                documents=texts,
+                metadatas=metadatas,
+                embeddings=embeddings,
+            )
 
         from api.memory_cost_log import log_memory_cost
 
@@ -450,6 +480,18 @@ class KnowledgeVectorStore:
             elapsed_ms=(time.monotonic() - started) * 1000,
             item_count=len(ids),
         )
+        return len(ids)
+
+    def delete_chunks(self, ids: list[str]) -> int:
+        """Delete chunks while excluding all other shared-store writers."""
+        if not ids:
+            return 0
+        self._ensure_collection()
+        from api.knowledge.chroma_write_lock import chroma_write_lock
+
+        with chroma_write_lock("obsidian_knowledge_delete"):
+            self._refresh_collection_unlocked()
+            self._collection.delete(ids=ids)
         return len(ids)
 
     @staticmethod
@@ -492,7 +534,8 @@ class KnowledgeVectorStore:
 
     def _keyword_search(self, query: str, top_k: int) -> list[dict]:
         """encoder が使えない環境向けの Chroma document キーワード検索。"""
-        self._ensure_collection()
+        if not self._ensure_collection(timeout=0):
+            return []
         terms = self._query_terms(query)
         if not terms or self._collection.count() == 0:
             return []
@@ -822,7 +865,8 @@ class KnowledgeVectorStore:
             [{"text": str, "ref": str, "distance": float, ...}, ...]
         """
         self._maybe_reload_ranking_config()
-        self._ensure_collection()
+        if not self._ensure_collection(timeout=0):
+            return []
 
         if self._collection.count() == 0:
             return []
@@ -901,7 +945,8 @@ class KnowledgeVectorStore:
     def count(self) -> int:
         """インデックス内のドキュメント数を返す。"""
         try:
-            self._ensure_collection()
+            if not self._ensure_collection(timeout=0):
+                return 0
             return self._collection.count()
         except Exception:
             return 0

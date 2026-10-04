@@ -26,13 +26,18 @@ def main() -> int:
     args = parser.parse_args()
 
     from api.shion_memory_vector import is_available, sync_from_index
+    from api.knowledge.chroma_write_lock import ChromaWriteLockTimeout
 
     if not args.index.exists():
         print(f"記憶索引がありません: {args.index}")
         print("先に scripts/build_shion_memory_index.py を実行してください")
         return 1
 
-    summary = sync_from_index(args.index)
+    try:
+        summary = sync_from_index(args.index)
+    except ChromaWriteLockTimeout as exc:
+        print(f"deferred=chroma_writer_busy: {exc}")
+        return 75
     for key, value in summary.items():
         print(f"{key}={value}")
     if summary.get("synced", 0) == 0 and summary.get("available", 0) > 0:

@@ -257,8 +257,17 @@ def evaluate_proposal_impact() -> dict[str, Any]:
 
     results: list[dict[str, Any]] = []
     evaluated_at = dt.datetime.now().isoformat(timespec="seconds")
+    evaluation_date = dt.datetime.now().date().isoformat()
+    existing_evaluations = load_jsonl(_PDCA_LOG_PATH, newest_first=False)
+    completed_keys = {
+        (str(item.get("title") or ""), str(item.get("proposal_ts") or ""), str(item.get("evaluation_date") or ""))
+        for item in existing_evaluations
+    }
 
     for proposal in adopted:
+        evaluation_key = (proposal["title"], proposal["ts"], evaluation_date)
+        if evaluation_key in completed_keys:
+            continue
         try:
             pivot = _parse_ts(proposal["ts"])
         except (ValueError, TypeError):
@@ -289,9 +298,11 @@ def evaluate_proposal_impact() -> dict[str, Any]:
             "delta": round(delta, 3),
             "verdict": "improved" if delta < -0.05 else ("degraded" if delta > 0.05 else "no_change"),
             "evaluated_at": evaluated_at,
+            "evaluation_date": evaluation_date,
         }
         results.append(result)
         append_jsonl(_PDCA_LOG_PATH, result)
+        completed_keys.add(evaluation_key)
 
     return {"evaluated": len(results), "results": results}
 

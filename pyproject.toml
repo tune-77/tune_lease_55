@@ -90,6 +90,8 @@ filterwarnings = [
     'ignore:BaseAgentConfig is deprecated and will be removed in future versions\.:DeprecationWarning',
     'ignore:ParallelAgent is deprecated.*:DeprecationWarning',
     'ignore:SequentialAgent is deprecated.*:DeprecationWarning',
+    # Python 3.10 の opentelemetry 由来。Python/opentelemetry 更新時に削除する。
+    'ignore:SelectableGroups dict interface is deprecated\. Use select\.:DeprecationWarning',
 ]
 norecursedirs = [
     ".git",
