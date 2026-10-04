@@ -18,6 +18,7 @@ import { getMorningLocation } from "@/lib/morningLocation";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import { buildShionEntryGreeting, type ShionEntryGreeting } from "@/lib/shionEntryGreeting";
 import { isImeComposing } from "@/lib/keyboard";
+import { suggestReply } from "@/lib/replySuggestion";
 import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
 import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 import ShionVoiceCall from "@/components/chat/ShionVoiceCall";
@@ -785,7 +786,23 @@ export default function ChatPage() {
     }
   };
 
+  const lastMessage = messages[messages.length - 1];
+  const replySuggestion =
+    !improvementMode && lastMessage?.role === "assistant" ? suggestReply(lastMessage.content) : null;
+  const canApplySuggestion = Boolean(replySuggestion && replySuggestion !== input && replySuggestion.startsWith(input));
+
+  const applySuggestion = () => {
+    if (!replySuggestion) return;
+    setInput(replySuggestion);
+    textareaRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Tab" && !e.shiftKey && canApplySuggestion && !isImeComposing(e)) {
+      e.preventDefault();
+      applySuggestion();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) {
       e.preventDefault();
       sendMessage();
@@ -1414,13 +1431,26 @@ export default function ChatPage() {
             ))}
           </div>
         </div>
+        {canApplySuggestion && !loading && (
+          <div className="mb-1.5 px-1">
+            <button
+              type="button"
+              onClick={applySuggestion}
+              title="Tabキーでも入力できます"
+              className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+            >
+              ↵ {replySuggestion}
+              <span className="hidden sm:inline text-[10px] font-normal text-indigo-400">Tab</span>
+            </button>
+          </div>
+        )}
         <div className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={improvementMode ? "改善したい点を入力（例: この画面の導線が分かりにくい）" : `${entryGreeting.placeholder}（Enterで送信 / Shift+Enterで改行）`}
+            placeholder={improvementMode ? "改善したい点を入力（例: この画面の導線が分かりにくい）" : replySuggestion ? `${replySuggestion}（Tabで入力）` : `${entryGreeting.placeholder}（Enterで送信 / Shift+Enterで改行）`}
             rows={1}
             disabled={loading}
             className="flex-1 resize-none bg-transparent outline-none text-sm text-slate-800 placeholder:text-slate-400 px-2 py-2 max-h-40 overflow-y-auto leading-relaxed"
