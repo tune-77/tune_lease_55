@@ -1077,6 +1077,7 @@ Access 導入後、外から `curl https://shion.tune77.com/chat` するとロ�
 |---|---|
 | URL | https://shion.tune77.com（named tunnel `tune-lease-55` → `http://127.0.0.1:3000`） |
 | 常駐 | launchd `com.tunelease.next`（KeepAlive）が `run_next_stable.sh` を常駐させ、FastAPI / Next.js / cloudflared が落ちたら起こし直す |
+| 歌唱エンジン | launchd `com.tunelease.voicevox`（RunAtLoad / KeepAlive）が VOICEVOX ENGINE 0.25.2（`~/voicevox/macos-x64/run`, 127.0.0.1:50021）を常駐させる。ログは `~/Library/Logs/tunelease/voicevox{,-error}.log`。plist は `scripts/launchd/com.tunelease.voicevox.plist` |
 | 再起動 | `FORCE_RESTART=1 bash run_next_stable.sh`（手順は `.claude/skills/restart-api/SKILL.md`）。ポートを手で kill しない |
 | ログイン | Cloudflare Access のメールワンタイムPIN（所有者メールのみ・730時間） |
 | 回数制限 | チャット・軍師・音声トークン等に同一IP 10秒5回まで |
@@ -1223,7 +1224,7 @@ graph LR
 | `/qualitative` | 定性分析。定性 LR / LightGBM の比較 |
 | `/history-dash` | 過去案件、成約ドライバー、タグ傾向 |
 | `/finance` | 物件ファイナンス審査と稟議条件案 |
-| `/chat` | Obsidian 文脈を使う AI チャット。`SHION_VOICE_ENABLED=1` 時は紫苑との音声通話ボタンも表示 |
+| `/chat` | Obsidian 文脈を使う AI チャット。`SHION_VOICE_ENABLED=1` 時は紫苑との音声通話ボタンも表示。`SHION_SING_ENABLED=1` かつローカル VOICEVOX ENGINE（127.0.0.1:50021）稼働時は「歌って」ボタンで紫苑が歌う（声は `SHION_SING_VOICE_ID`） |
 | `/chat-compare` | 紫苑/一般比較。同じ問いを2モードへ投げ、記憶・同一性・経験ループの差を可視化 |
 | `/lease-intelligence` | 紫苑との専用対話 |
 | `/voice-chat` | リアルタイム会話。音声入力、紫苑回答の読み上げ、参照した判断資産の表示 |
@@ -1495,7 +1496,7 @@ api/                         FastAPI と審査 API
 frontend/                    Next.js フロントエンド
 mobile_app/                  Obsidian bridge など共通部品
 scripts/                     運用・補修・GCS 同期・日次改善パイプライン
-scripts/launchd/             ローカル常駐（FastAPI / Next / Cloudflare Tunnel）の LaunchAgent
+scripts/launchd/             ローカル常駐（FastAPI / Next / Cloudflare Tunnel / VOICEVOX）の LaunchAgent
 tests/                       pytest（API ルート契約テストを含む）
 docs/                        設計書（Decision State Ledger、Jev Safe Gateway など）
 static_data/                 業種・物件などの参照データ

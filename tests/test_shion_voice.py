@@ -120,3 +120,102 @@ def test_recall_empty_fallback(setup, monkeypatch):
     client, _ = setup
     monkeypatch.setattr("api.shion_memory_recall.build_recall_prompt_block", lambda q, limit: ("", {}))
     assert client.post("/api/shion/voice/recall", json={"query": "前回"}).json() == {"result": "該当する記憶はありません"}
+
+
+# ── REV-460: 歌唱 ──
+
+_SCORE = {"title": "朝の歌", "bpm": 120, "notes": [
+    {"lyric": "あ", "key": 60, "beats": 1},
+    {"lyric": "さ", "key": 62, "beats": 0.5},
+    {"lyric": "", "key": None, "beats": 1},
+    {"lyric": "きょ", "key": 64, "beats": 2},
+    {"lyric": "う", "key": 65, "beats": 1},
+]}
+
+
+@pytest.fixture
+def sing_setup(monkeypatch):
+    monkeypatch.setenv("SHION_SING_ENABLED", "1")
+    monkeypatch.setenv("SHION_SING_MIN_INTERVAL_SECONDS", "0")
+    monkeypatch.setattr(sv, "_sung", {})
+    monkeypatch.setattr(sv, "_last_sung_at", 0.0)
+    monkeypatch.setattr(sv, "_generate_score", lambda theme: _SCORE)
+    calls = []
+
+    def fake_synth(score, teacher_id, voice_id):
+        calls.append((score, teacher_id, voice_id))
+        return b"RIFFwav"
+
+    monkeypatch.setattr(sv, "_synthesize", fake_synth)
+    monkeypatch.setattr(sv, "_credit", lambda t, v: "VOICEVOX:テスト")
+    app = FastAPI()
+    app.include_router(sv.router)
+    return TestClient(app), calls
+
+
+def test_sing_disabled_returns_404(sing_setup, monkeypatch):
+    client, _ = sing_setup
+    monkeypatch.setenv("SHION_SING_ENABLED", "0")
+    assert client.post("/api/shion/voice/sing", json={"theme": "朝"}).status_code == 404
+
+
+def test_sing_returns_wav_and_credit(sing_setup, monkeypatch):
+    client, calls = sing_setup
+    monkeypatch.setenv("SHION_SING_VOICE_ID", "3002")
+    body = client.post("/api/shion/voice/sing", json={"theme": "朝"}).json()
+    assert body["audio_base64"] == "UklGRndhdg=="
+    assert body["credit"] == "VOICEVOX:テスト"
+    assert body["lyrics"] == "あさきょう"
+    score, teacher_id, voice_id = calls[0]
+    assert (teacher_id, voice_id) == (6000, 3002)
+    notes = score["notes"]
+    assert notes[0] == {"key": None, "frame_length": 15, "lyric": ""}
+    assert notes[1] == {"key": 60, "frame_length": round(0.5 * 93.75), "lyric": "あ"}  # 1拍@120bpm
+    assert notes[3]["key"] is None and notes[-1]["key"] is None
+
+
+def test_to_voicevox_score_clamps_bad_llm_output():
+    score = {"bpm": 999, "notes": [{"lyric": "ら", "key": 90, "beats": 10}] * 3
+             + [{"lyric": "ー", "key": 60, "beats": 1}, {"lyric": "っ", "key": 60, "beats": 1}]
+             + [{"lyric": "ら", "key": 30, "beats": 0.01}] * 100}
+    vv, lyrics = sv._to_voicevox_score(score)
+    sung = [n for n in vv["notes"] if n["key"] is not None]
+    assert all(sv._KEY_MIN <= n["key"] <= sv._KEY_MAX for n in sung)
+    assert len(vv["notes"]) == sv._MAX_NOTES + 2  # 先頭・末尾の休符
+    assert vv["notes"][1]["frame_length"] == round(4 * 60 / 180 * 93.75)
+    assert vv["notes"][4]["key"] is None and vv["notes"][5]["key"] is None  # 長音・促音は休符化
+    assert lyrics == "ら" * (sv._MAX_NOTES - 2)
+
+
+def test_to_voicevox_score_rejects_too_few_notes():
+    with pytest.raises(ValueError):
+        sv._to_voicevox_score({"notes": [{"lyric": "ら", "key": 60, "beats": 1}]})
+
+
+def test_sing_daily_limit(sing_setup, monkeypatch):
+    client, _ = sing_setup
+    monkeypatch.setenv("SHION_SING_DAILY_LIMIT", "1")
+    assert client.post("/api/shion/voice/sing", json={"theme": "朝"}).json()["remaining_today"] == 0
+    assert client.post("/api/shion/voice/sing", json={"theme": "朝"}).status_code == 429
+
+
+def test_sing_busy_returns_429(sing_setup):
+    client, _ = sing_setup
+    assert sv._sing_lock.acquire(blocking=False)
+    try:
+        assert client.post("/api/shion/voice/sing", json={"theme": "朝"}).status_code == 429
+    finally:
+        sv._sing_lock.release()
+
+
+def test_sing_voicevox_failure_does_not_count(sing_setup, monkeypatch):
+    client, _ = sing_setup
+
+    def boom(*args):
+        raise ConnectionError("refused")
+
+    monkeypatch.setattr(sv, "_synthesize", boom)
+    res = client.post("/api/shion/voice/sing", json={"theme": "朝"})
+    assert res.status_code == 503
+    assert sv._sung == {}
+    assert not sv._sing_lock.locked()

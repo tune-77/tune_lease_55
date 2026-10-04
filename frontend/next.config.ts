@@ -28,6 +28,7 @@ const securityHeaders = [
       scriptSrc,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
+      "media-src 'self' blob:", // REV-460: 歌唱 wav を Blob URL で再生
       "font-src 'self'",
       `connect-src ${connectSrc}`,
       "frame-ancestors 'self'",

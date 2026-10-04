@@ -52,11 +52,12 @@ DEFAULT_MAX_FILES_PER_RUN = 20
 TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}|[一-龥ぁ-んァ-ン]{2,}")
 
 
-def _read_text(path: Path) -> str:
+def _read_text(path: Path) -> str | None:
+    # iCloud で退避中のファイルは OSError(Errno 11) になる。空文字と区別して返す。
     try:
         return path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
-        return ""
+        return None
 
 
 def load_state(path: Path) -> dict[str, Any]:
@@ -127,7 +128,8 @@ def _parse_proposal(text: str) -> dict[str, Any]:
     folder_match = re.search(r"FOLDER\s*[:：]\s*(.+)", text, re.IGNORECASE)
     tags: list[str] = []
     if tags_match:
-        raw_tags = re.split(r"[,、]", tags_match.group(1).splitlines()[0])
+        tags_line = re.split(r"FOLDER\s*[:：]", tags_match.group(1).splitlines()[0], flags=re.IGNORECASE)[0]
+        raw_tags = re.split(r"[,、]", tags_line)
         tags = [tag.strip() for tag in raw_tags if tag.strip()][:3]
     folder = ""
     if folder_match:
@@ -191,10 +193,14 @@ def apply_tags_and_move(
     run_id: str,
 ) -> dict[str, Any]:
     original_text = _read_text(path)
+    if original_text is None or not original_text.strip():
+        return {"applied": False, "skipped_reason": "unreadable_or_empty"}
     rel = path.relative_to(vault)
     backup_path = backup_dir / run_id / rel
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     backup_path.write_text(original_text, encoding="utf-8")
+    if backup_path.read_text(encoding="utf-8") != original_text:
+        return {"applied": False, "skipped_reason": "backup_verify_failed"}
 
     frontmatter, body = _split_frontmatter_and_body(original_text)
     merged_tags = list(dict.fromkeys([*note_tags(frontmatter), *proposal.get("tags", [])]))
@@ -246,6 +252,14 @@ def build_report(
     entries: list[dict[str, Any]] = []
     for path in candidates:
         text = _read_text(path)
+        if text is None or not text.strip():
+            # 読めない/空のノートは触らず、seen_files にも入れず次回再試行する
+            entries.append({
+                "path": str(path.relative_to(vault)),
+                "proposal_status": "unreadable" if text is None else "empty",
+                "applied": False,
+            })
+            continue
         proposal = propose_tags_and_folder(text, existing_tags=existing_tags, existing_folders=existing_folders, generate_fn=generate_fn)
         related = find_related_notes(path, text, vault)
         entry: dict[str, Any] = {
@@ -259,6 +273,9 @@ def build_report(
         if apply and proposal.get("parsed"):
             applied = apply_tags_and_move(path, vault, proposal, backup_dir=backup_dir, run_id=run_id)
             entry.update(applied)
+            if not applied["applied"]:
+                entries.append(entry)
+                continue
             state["seen_files"][applied["new_path"]] = dt.datetime.fromtimestamp(
                 (vault / applied["new_path"]).stat().st_mtime
             ).isoformat()

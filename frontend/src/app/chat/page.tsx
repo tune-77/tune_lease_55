@@ -22,6 +22,7 @@ import { suggestReply } from "@/lib/replySuggestion";
 import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
 import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 import ShionVoiceCall from "@/components/chat/ShionVoiceCall";
+import ShionSingButton from "@/components/chat/ShionSingButton";
 
 interface ChatMessage {
   id: number;
@@ -1485,6 +1486,7 @@ export default function ChatPage() {
             {speaking ? <VolumeX className="w-4 h-4" /> : speechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
           <ShionVoiceCall userId={userId} disabled={loading} onEnded={() => void loadHistory()} />
+          <ShionSingButton userId={userId} theme={input} disabled={loading} />
           <button
             onClick={sendMessage}
             disabled={loading || !input.trim()}
