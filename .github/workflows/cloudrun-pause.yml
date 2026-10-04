@@ -26,6 +26,7 @@
 #      （環境変数 CLOUDRUN_PAUSED を設定していればそれも外す）。Cloud Run とのデータ受け渡し
 #      （sync_cloudrun_inputs_from_gcs・sync_ledger_to_gcs・icloud_to_gcs_sync・
 #      sync_chromadb_to_gcs.sh）が再開し、朝報の「Cloud Run 停止中：同期N件スキップ」が消える。
+#      改善ログ画面の「Cloud Runデータ安全監査」の欄も戻る（停止中は監査を止めて欄を隠している）。
 #   4. 上記2ワークフローの schedule を戻す（このファイルは削除してよい）。
 
 name: Cloud Run Pause
