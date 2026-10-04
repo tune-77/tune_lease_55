@@ -11,11 +11,13 @@ import argparse
 import json
 import shutil
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 CHROMA_DIR = REPO_ROOT / "api" / "chroma_db"
 REPORTS_DIR = REPO_ROOT / "reports"
 DEFAULT_QUARANTINE_ROOT = Path("/private/tmp/tune_lease_55_chroma_orphans")
