@@ -53,6 +53,7 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 
 - **TS/Next.js**: strict mode厳守・`apiClient`（`src/lib/api.ts`）経由でAPI呼び出し。詳細: @.claude/rules/frontend.md
 - **Graft → Serena**: 先にGraftで変更範囲・caller・依存を絞り、対象確定後はSerenaの `get_symbols_overview` / `find_symbol` / `replace_symbol_body` を広いReadより優先。Graftが利用不能・未索引の場合だけ `rg` / Readへfallback
+- **本番環境**: 2026-10 から本番＝Mac 上の Cloudflare 版（https://shion.tune77.com、launchd `com.tunelease.next`、再起動は `restart-api` スキル）。Cloud Run は停止中の予備（サービス・Artifact Registry は 2026-10-03 削除済み、再開手順は `.github/workflows/cloudrun-pause.yml` 冒頭）。「本番を直す・反映する」は Mac 側の再起動を指し、Cloud Run へデプロイしない。運用詳細は README「本番運用（Cloudflare 版・2026-10〜）」
 - **ブランチ/PR**: `feature/rev-<番号>-<説明>` / `fix/...` / `chore/...`。一括shipは `/git-ship`
 - **出典明記**: 提案前に `static_data/` か `notes/` の具体ファイル名を引用。出典がなければ「これは推測です」と明示
 - **前提の明示**: 指示が確認不要なほど明確でも、実装上の解釈・前提を置いた場合は着手前に一言明示する（例:「〇〇という前提で進めます」）。指示が曖昧で進行不可な場合の確認手順は上記「絶対厳守」参照
