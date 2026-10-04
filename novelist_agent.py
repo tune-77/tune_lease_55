@@ -699,7 +699,7 @@ def generate_daily_grumble_illustration(
                 with Image.open(character_path) as reference:
                     reference_image = reference.convert("RGB")
                     response = client.models.generate_content(
-                        model="gemini-2.5-flash-image",
+                        model="gemini-3.1-flash-image",
                         contents=[scene_prompt, reference_image],
                         config=types.GenerateContentConfig(
                             response_modalities=["TEXT", "IMAGE"],
