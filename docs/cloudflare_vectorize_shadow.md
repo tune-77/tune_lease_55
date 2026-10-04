@@ -25,6 +25,7 @@ Workers AI `@cf/baai/bge-m3`（1,024次元）とVectorizeで検索する検証�
 ```
 
 `sync` は既定でdry-run。Cloudflare側のindex作成・更新には `--apply` が必要。
+適用時はindex内のIDを一覧取得し、現行exportにない古いベクトルを削除してからupsertする。
 `query` は個人情報・案件情報・秘密情報を含まない検索文だけを対象とし、
 送信確認として `--confirm-sanitized-query` が必要。
 候補数は `--candidates`（既定10、最大20）、最終件数は `--top-k`（既定5）で変更できる。

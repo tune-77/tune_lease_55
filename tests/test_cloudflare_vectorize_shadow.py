@@ -7,6 +7,7 @@ from scripts.cloudflare_vectorize_shadow import (
     VectorizeClient,
     build_vector_records,
     stable_vector_id,
+    stale_vector_ids,
 )
 
 
@@ -105,6 +106,47 @@ def test_upsert_uses_vectorize_vectors_multipart_field():
     )
     assert client.upsert(records) == ["mutation-1"]
     assert set(calls[0][2]["files"]) == {"vectors"}
+
+
+def test_list_vector_ids_follows_cursor_pages():
+    calls = []
+
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        if len(calls) == 1:
+            return _FakeResponse(200, {"result": {
+                "vectors": [{"id": "old"}],
+                "isTruncated": True,
+                "nextCursor": "next-page",
+            }})
+        return _FakeResponse(200, {"result": {
+            "vectors": [{"id": "current"}],
+            "isTruncated": False,
+        }})
+
+    client = VectorizeClient("account", "token", request_fn=request)
+    assert client.list_vector_ids() == ["old", "current"]
+    assert calls[0][2]["params"] == {"count": 1000}
+    assert calls[1][2]["params"] == {"count": 1000, "cursor": "next-page"}
+
+
+def test_delete_by_ids_uses_json_endpoint():
+    calls = []
+
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return _FakeResponse(200, {"result": {"mutationId": "delete-1"}})
+
+    client = VectorizeClient("account", "token", request_fn=request)
+    assert client.delete_by_ids(["stale-a", "stale-b"]) == ["delete-1"]
+    assert calls[0][0] == "POST"
+    assert calls[0][1].endswith("/delete_by_ids")
+    assert calls[0][2]["json"] == {"ids": ["stale-a", "stale-b"]}
+
+
+def test_stale_vector_ids_excludes_current_export_records():
+    records = [{"id": "current"}, {"id": "new"}]
+    assert stale_vector_ids(["current", "withdrawn", "withdrawn"], records) == ["withdrawn"]
 
 
 def test_reranker_reorders_vectorize_candidates_and_keeps_original_rank():

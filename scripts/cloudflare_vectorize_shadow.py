@@ -40,6 +40,8 @@ INDEX_NAME = "tune-lease-rag-bge-m3-shadow-v1"
 DIMENSIONS = 1024
 METRIC = "cosine"
 UPSERT_BATCH_SIZE = 500
+DELETE_BATCH_SIZE = 1000
+LIST_PAGE_SIZE = 1000
 RERANKER_MODEL = "@cf/baai/bge-reranker-base"
 
 
@@ -66,6 +68,12 @@ def build_vector_records(corpus: list[dict], vectors: list[list[float]]) -> list
             },
         })
     return records
+
+
+def stale_vector_ids(existing_ids: list[str], records: list[dict]) -> list[str]:
+    """専用indexに残っている、現行の匿名化exportに存在しないIDを返す。"""
+    current_ids = {str(record.get("id") or "") for record in records}
+    return sorted({str(vector_id) for vector_id in existing_ids if str(vector_id)} - current_ids)
 
 
 def _error_message(payload: Any, status_code: int) -> str:
@@ -159,6 +167,45 @@ class VectorizeClient:
                 f"/accounts/{self.account_id}/vectorize/v2/indexes/{index_name}/upsert",
                 # Vectorize REST APIはmultipartのフィールド名を `vectors` として要求する。
                 files={"vectors": ("vectors.ndjson", ndjson.encode("utf-8"), "application/x-ndjson")},
+            )
+            mutation_id = str((payload.get("result") or {}).get("mutationId") or "")
+            if mutation_id:
+                mutation_ids.append(mutation_id)
+        return mutation_ids
+
+    def list_vector_ids(self, index_name: str = INDEX_NAME) -> list[str]:
+        vector_ids: list[str] = []
+        cursor = ""
+        while True:
+            params: dict[str, Any] = {"count": LIST_PAGE_SIZE}
+            if cursor:
+                params["cursor"] = cursor
+            _status, payload = self._request(
+                "GET",
+                f"/accounts/{self.account_id}/vectorize/v2/indexes/{index_name}/list",
+                params=params,
+                timeout=30,
+            )
+            result = payload.get("result") or {}
+            vector_ids.extend(
+                str(item.get("id") or "")
+                for item in result.get("vectors") or []
+                if isinstance(item, dict) and item.get("id")
+            )
+            cursor = str(result.get("nextCursor") or "")
+            if not result.get("isTruncated") or not cursor:
+                return vector_ids
+
+    def delete_by_ids(self, vector_ids: list[str], index_name: str = INDEX_NAME) -> list[str]:
+        mutation_ids: list[str] = []
+        for start in range(0, len(vector_ids), DELETE_BATCH_SIZE):
+            batch = [str(vector_id) for vector_id in vector_ids[start:start + DELETE_BATCH_SIZE] if vector_id]
+            if not batch:
+                continue
+            _status, payload = self._request(
+                "POST",
+                f"/accounts/{self.account_id}/vectorize/v2/indexes/{index_name}/delete_by_ids",
+                json={"ids": batch},
             )
             mutation_id = str((payload.get("result") or {}).get("mutationId") or "")
             if mutation_id:
@@ -294,17 +341,21 @@ def command_sync(client: VectorizeClient, token: str, *, apply: bool) -> int:
     )
     records = build_vector_records(corpus, vectors)
     _index, created = client.ensure_index()
+    existing_ids = [] if created else client.list_vector_ids()
+    removed_ids = stale_vector_ids(existing_ids, records)
+    delete_mutations = client.delete_by_ids(removed_ids)
     mutation_ids = client.upsert(records)
     print(
         f"{'作成' if created else '再利用'} index={INDEX_NAME} / "
-        f"upsert={len(records)} / mutations={len(mutation_ids)}"
+        f"delete={len(removed_ids)} / upsert={len(records)} / "
+        f"mutations={len(delete_mutations) + len(mutation_ids)}"
     )
     # 反映は非同期。短時間だけ確認し、未反映でも失敗とはしない。
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         info = client.info()
         count = int(info.get("vectorCount", info.get("vector_count", 0)) or 0)
-        if count >= len(records):
+        if count == len(records):
             print(f"反映確認: {count} vectors")
             return 0
         time.sleep(2)

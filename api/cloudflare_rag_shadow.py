@@ -10,6 +10,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import threading
 from pathlib import Path
 from typing import Any, Callable
@@ -29,6 +30,9 @@ _SAFE_DOMAIN_TERMS = (
     "メンテナンス", "オペレーティング", "ファイナンス", "リスク", "中途解約",
     "物件", "設備", "動産", "自動車", "機械", "リースバック", "キャッシュフロー",
     "資金繰り", "選択肢", "再販", "中古", "売却", "処分", "償却",
+)
+_SAFE_DOMAIN_PATTERN = re.compile(
+    "|".join(re.escape(term) for term in sorted(_SAFE_DOMAIN_TERMS, key=len, reverse=True))
 )
 
 
@@ -69,14 +73,8 @@ def eligible_shadow_query(
     masked = mask_for_vertex(text)
     if masked != text:
         return False, "redaction_required", ""
-    try:
-        from obsidian_query import split_query_terms
-
-        terms = list(dict.fromkeys(term for term in split_query_terms(text) if len(term) >= 2))
-    except Exception:
-        terms = []
-    # 未知の固有名詞を外へ出さない。検索に必要な許可済みドメイン語だけを採用する。
-    safe_terms = [term for term in terms if any(domain in term for domain in _SAFE_DOMAIN_TERMS)]
+    # 未知の固有名詞を外へ出さない。入力語そのものではなく、許可済み語だけを抽出する。
+    safe_terms = list(dict.fromkeys(match.group(0) for match in _SAFE_DOMAIN_PATTERN.finditer(text)))
     external_query = " ".join(safe_terms)[:300].strip()
     if not external_query:
         return False, "no_search_terms", ""
@@ -97,9 +95,8 @@ def _normalize_ref(ref: str) -> str:
     if value.startswith("[[") and value.endswith("]]" ):
         value = value[2:-2]
     value = value.split("#", 1)[0]
-    if value.endswith(".md"):
-        value = value[:-3]
-    return value.strip("/")
+    value = Path(value.strip("/")).name
+    return value[:-3] if value.endswith(".md") else value
 
 
 def _log_path() -> Path:

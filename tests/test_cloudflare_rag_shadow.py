@@ -18,7 +18,7 @@ def test_eligibility_allows_generic_lease_knowledge(monkeypatch):
         is_general_response_mode=False,
     )
     assert allowed and reason == "eligible"
-    assert query == "再リース 満了 選択肢"
+    assert query == "再リース リスク 満了 選択肢"
 
 
 def test_eligibility_rejects_screening_and_pii(monkeypatch):
@@ -65,6 +65,18 @@ def test_external_query_keeps_only_allowlisted_domain_terms(monkeypatch):
     assert "山田" not in query
 
 
+def test_external_query_extracts_domain_word_from_unknown_proper_noun(monkeypatch):
+    monkeypatch.setattr(shadow, "shadow_enabled", lambda: True)
+    allowed, reason, query = shadow.eligible_shadow_query(
+        "山田リースの満了について",
+        question_category="lease_knowledge",
+        is_general_response_mode=False,
+    )
+    assert allowed and reason == "eligible"
+    assert query == "リース 満了"
+    assert "山田" not in query
+
+
 def test_shadow_is_disabled_implicitly_during_pytest():
     assert not shadow.shadow_enabled({"PYTEST_CURRENT_TEST": "case"})
 
@@ -77,7 +89,7 @@ def test_compare_logs_only_safe_refs_and_rank_differences(monkeypatch, tmp_path)
         def query(self, _vector, top_k):
             assert top_k == 10
             return [
-                {"id": "v1", "metadata": {"path": "safe/a.md", "text": "A"}},
+                {"id": "v1", "metadata": {"path": "Projects/Research/a.md", "text": "A"}},
                 {"id": "v2", "metadata": {"path": "safe/b.md", "text": "B"}},
             ]
 
@@ -99,8 +111,8 @@ def test_compare_logs_only_safe_refs_and_rank_differences(monkeypatch, tmp_path)
     )
 
     assert entry["local_refs"] == ["[[safe/a#section]]"]
-    assert entry["vectorize_refs"] == ["safe/a.md", "safe/b.md"]
-    assert entry["reranker_refs"] == ["safe/b.md", "safe/a.md"]
+    assert entry["vectorize_refs"] == ["Projects/Research/a.md", "safe/b.md"]
+    assert entry["reranker_refs"] == ["safe/b.md", "Projects/Research/a.md"]
     assert entry["local_vectorize_overlap_at_5"] == 1
     body = log_path.read_text(encoding="utf-8")
     assert "/private/path" not in body and "secret" not in body
