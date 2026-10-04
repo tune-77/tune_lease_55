@@ -47,25 +47,41 @@ class FeedbackVectorStore:
         self._encoder = None
         self._init_lock = threading.Lock()
 
-    def _ensure_initialized(self) -> None:
+    def _ensure_initialized(self, timeout: float | None = None) -> bool:
         if self._encoder is not None:
-            return
-        with self._init_lock:
+            return True
+        if timeout is None:
+            acquired = self._init_lock.acquire()
+        elif timeout <= 0:
+            acquired = self._init_lock.acquire(blocking=False)
+        else:
+            acquired = self._init_lock.acquire(timeout=timeout)
+        if not acquired:
+            return False
+        try:
             if self._encoder is not None:
-                return
+                return True
             import chromadb
             from sentence_transformers import SentenceTransformer
-            from api.knowledge.chroma_write_lock import chroma_write_lock
+            from api.knowledge.chroma_write_lock import ChromaWriteLockTimeout, chroma_write_lock
 
             os.makedirs(self._chroma_dir, exist_ok=True)
-            with chroma_write_lock("lease_feedback_initialize"):
-                self._client = chromadb.PersistentClient(path=self._chroma_dir)
-                self._collection = self._client.get_or_create_collection(
-                    name=_FEEDBACK_COLLECTION,
-                    metadata={"hnsw:space": "cosine"},
-                )
+            try:
+                with chroma_write_lock("lease_feedback_initialize", timeout=timeout):
+                    self._client = chromadb.PersistentClient(path=self._chroma_dir)
+                    self._collection = self._client.get_or_create_collection(
+                        name=_FEEDBACK_COLLECTION,
+                        metadata={"hnsw:space": "cosine"},
+                    )
+            except ChromaWriteLockTimeout:
+                if timeout is not None:
+                    return False
+                raise
             self._encoder = SentenceTransformer(self._model_name, device="cpu")
             logger.info(f"[FeedbackStore] initialized: {self._chroma_dir}")
+            return True
+        finally:
+            self._init_lock.release()
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
         self._ensure_initialized()
@@ -85,7 +101,8 @@ class FeedbackVectorStore:
             )
 
     def search(self, query: str, top_k: int = 3) -> list[dict]:
-        self._ensure_initialized()
+        if not self._ensure_initialized(timeout=0):
+            return []
         if self._collection.count() == 0:
             return []
         embedding = self._embed([query])[0]
@@ -112,7 +129,8 @@ class FeedbackVectorStore:
 
     def count(self) -> int:
         try:
-            self._ensure_initialized()
+            if not self._ensure_initialized(timeout=0):
+                return 0
             return self._collection.count()
         except Exception:
             return 0

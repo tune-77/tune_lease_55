@@ -54,6 +54,17 @@ def test_chroma_write_lock_reads_configured_timeout(monkeypatch) -> None:
     assert _timeout_seconds() == 2.5
 
 
+def test_feedback_read_initialization_does_not_wait_for_in_process_writer(tmp_path: Path) -> None:
+    from api.knowledge.feedback_watcher import FeedbackVectorStore
+
+    store = FeedbackVectorStore(str(tmp_path))
+    store._init_lock.acquire()
+    try:
+        assert store._ensure_initialized(timeout=0) is False
+    finally:
+        store._init_lock.release()
+
+
 def test_writer_entry_points_share_the_common_lock() -> None:
     maintenance = Path("mobile_app/rag_daily_maintenance.py").read_text(encoding="utf-8")
     memory_vector = Path("api/shion_memory_vector.py").read_text(encoding="utf-8")
@@ -69,7 +80,7 @@ def test_writer_entry_points_share_the_common_lock() -> None:
     assert 'chroma_write_lock("obsidian_knowledge_delete")' in vector_store
     assert 'chroma_write_lock("obsidian_knowledge_initialize", timeout=timeout)' in vector_store
     assert 'chroma_write_lock("lease_feedback_upsert")' in feedback_store
-    assert 'chroma_write_lock("lease_feedback_initialize")' in feedback_store
+    assert 'chroma_write_lock("lease_feedback_initialize", timeout=timeout)' in feedback_store
     assert 'chroma_write_lock("obsidian_full_reindex")' in direct_reindex
     assert 'chroma_write_lock("chroma_orphan_cleanup")' in orphan_cleanup
     assert 'report.get("status") == "deferred"' in maintenance
