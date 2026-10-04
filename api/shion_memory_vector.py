@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 from silent_failure_log import record_silent_failure
+from api.knowledge.chroma_write_lock import ChromaWriteLockTimeout, chroma_write_lock
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +32,11 @@ _SYNC_STATE_PATH = Path(_CHROMA_DIR) / ".shion_memory_sync_state.json"
 
 _lock = threading.Lock()
 _client: Any = None
+_collection: Any = None
 _encoder: Any = None
 _import_failed = False
 _background_sync_started = False
+_rebuild_in_progress = False
 # 直前に同期を試みた索引指紋。同じ指紋で何度も再同期しないための空回り防止。
 _last_sync_attempt_fingerprint = ""
 
@@ -93,18 +96,37 @@ def _get_encoder() -> Any:
 
 
 def _get_collection() -> Any:
+    global _collection
+    if _collection is not None:
+        return _collection
     client = _get_client()
     if client is None:
         return None
-    try:
-        return client.get_or_create_collection(name=_COLLECTION_NAME)
-    except Exception as exc:
-        logger.warning("[ShionMemoryVector] collection error: %s", exc)
-        return None
+    with _lock:
+        if _collection is not None:
+            return _collection
+        try:
+            # Lookups fall back immediately while a rebuild owns the writer lock.
+            with chroma_write_lock("shion_memory_initialize", timeout=0):
+                _collection = client.get_or_create_collection(name=_COLLECTION_NAME)
+        except ChromaWriteLockTimeout:
+            return None
+        except Exception as exc:
+            logger.warning("[ShionMemoryVector] collection error: %s", exc)
+            return None
+    return _collection
+
+
+def _invalidate_collection() -> None:
+    global _collection
+    with _lock:
+        _collection = None
 
 
 def is_available() -> bool:
     """ベクトル検索が使える状態か（依存あり・コレクションに記憶あり）。"""
+    if _rebuild_in_progress:
+        return False
     collection = _get_collection()
     if collection is None:
         return False
@@ -112,6 +134,7 @@ def is_available() -> bool:
         return collection.count() > 0
     except Exception as exc:
         record_silent_failure("memory.vector.available", "swallowed", exc)
+        _invalidate_collection()
         return False
 
 
@@ -178,9 +201,8 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
          Cloud Run はデプロイの度にベクトルコレクションが空になるため、
          起動時に一度だけ index から再構築する必要がある。
     """
-    collection = _get_collection()
     encoder = _get_encoder()
-    if collection is None or encoder is None:
+    if encoder is None:
         return {"synced": 0, "skipped": 0, "available": 0}
 
     try:
@@ -205,47 +227,68 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
             continue
         targets.append(record)
 
-    # 全量再構築: コレクションごと作り直す。get(include=[]) は chromadb の
-    # バージョンによって挙動が違うため、delete_collection の方が版差に強い。
-    client = _get_client()
-    try:
-        if client is not None:
-            client.delete_collection(_COLLECTION_NAME)
-    except Exception:
-        pass  # 初回は存在しないだけなので無視してよい
-    collection = _get_collection()
-    if collection is None:
-        return {"synced": 0, "skipped": skipped, "available": len(targets)}
-
-    synced = 0
+    # 全量再構築中は同じ永続ストアを使う Obsidian RAG writer と排他する。
+    # embedding生成もロック内に置き、delete後の半端なコレクションへ別writerが
+    # 書き込む隙を作らない。タイムアウトは呼び出し元が延期として扱う。
+    global _collection, _rebuild_in_progress
     started = time.monotonic()
-    for start in range(0, len(targets), batch_size):
-        batch = targets[start : start + batch_size]
-        # topic（ノートタイトル）があれば前置して埋め込む。分割スニペットは
-        # 主題語（例: 法定耐用年数）を失いやすく、topic 併用で想起精度が上がる。
-        contents = [
-            (f"{topic}: {r['content']}" if (topic := str(r.get("topic") or "").strip()) else str(r["content"]))[:512]
-            for r in batch
-        ]
+    with chroma_write_lock("shion_memory_sync"):
+        # 新しいcollectionは全バッチ投入完了まで共有しない。同一プロセスの検索は
+        # rebuild中フラグを見てキーワード想起へ即時フォールバックする。
+        with _lock:
+            _rebuild_in_progress = True
         try:
-            embeddings = encoder.encode(contents, show_progress_bar=False).tolist()
-            collection.add(
-                ids=[str(r["id"]) for r in batch],
-                embeddings=embeddings,
-                documents=contents,
-                metadatas=[
-                    {
-                        "memory_type": str(r.get("memory_type") or ""),
-                        "status": str(r.get("status") or "active"),
-                        "source_path": str(r.get("source_path") or ""),
-                        "domain": str(r.get("domain") or ""),
-                    }
+            client = _get_client()
+            if client is None:
+                return {"synced": 0, "skipped": skipped, "available": len(targets)}
+
+            # 全量再構築: コレクションごと作り直す。get(include=[]) は chromadb の
+            # バージョンによって挙動が違うため、delete_collection の方が版差に強い。
+            try:
+                client.delete_collection(_COLLECTION_NAME)
+            except Exception:
+                pass  # 初回は存在しないだけなので無視してよい
+            with _lock:
+                _collection = None
+            try:
+                replacement = client.get_or_create_collection(name=_COLLECTION_NAME)
+            except Exception as exc:
+                logger.warning("[ShionMemoryVector] replacement collection error: %s", exc)
+                return {"synced": 0, "skipped": skipped, "available": len(targets)}
+
+            synced = 0
+            for start in range(0, len(targets), batch_size):
+                batch = targets[start : start + batch_size]
+                # topic（ノートタイトル）があれば前置して埋め込む。分割スニペットは
+                # 主題語（例: 法定耐用年数）を失いやすく、topic 併用で想起精度が上がる。
+                contents = [
+                    (f"{topic}: {r['content']}" if (topic := str(r.get("topic") or "").strip()) else str(r["content"]))[:512]
                     for r in batch
-                ],
-            )
-            synced += len(batch)
-        except Exception as exc:
-            logger.warning("[ShionMemoryVector] batch add failed: %s", exc)
+                ]
+                try:
+                    embeddings = encoder.encode(contents, show_progress_bar=False).tolist()
+                    replacement.add(
+                        ids=[str(r["id"]) for r in batch],
+                        embeddings=embeddings,
+                        documents=contents,
+                        metadatas=[
+                            {
+                                "memory_type": str(r.get("memory_type") or ""),
+                                "status": str(r.get("status") or "active"),
+                                "source_path": str(r.get("source_path") or ""),
+                                "domain": str(r.get("domain") or ""),
+                            }
+                            for r in batch
+                        ],
+                    )
+                    synced += len(batch)
+                except Exception as exc:
+                    logger.warning("[ShionMemoryVector] batch add failed: %s", exc)
+            with _lock:
+                _collection = replacement
+        finally:
+            with _lock:
+                _rebuild_in_progress = False
 
     from api.memory_cost_log import log_memory_cost
 
@@ -298,10 +341,14 @@ def _resolve_index_path_safe() -> Path:
 
 
 def _background_sync_worker() -> None:
-    global _background_sync_started
+    global _background_sync_started, _last_sync_attempt_fingerprint
     try:
         summary = sync_from_index(_resolve_index_path_safe())
         logger.info("[ShionMemoryVector] background sync done: %s", summary)
+    except ChromaWriteLockTimeout as exc:
+        logger.info("[ShionMemoryVector] background sync deferred: %s", exc)
+        with _lock:
+            _last_sync_attempt_fingerprint = ""
     except Exception as exc:
         logger.warning("[ShionMemoryVector] background sync failed: %s", exc)
     finally:
@@ -315,8 +362,12 @@ def similarity_scores(question: str, *, top_k: int = 24) -> dict[str, float]:
     text = (question or "").strip()
     if not text:
         return {}
+    if _rebuild_in_progress:
+        return {}
     collection = _get_collection()
     if collection is None:
+        return {}
+    if _rebuild_in_progress:
         return {}
     try:
         count = collection.count()
@@ -350,4 +401,5 @@ def similarity_scores(question: str, *, top_k: int = 24) -> dict[str, float]:
         return scores
     except Exception as exc:
         logger.warning("[ShionMemoryVector] query failed: %s", exc)
+        _invalidate_collection()
         return {}

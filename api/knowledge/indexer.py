@@ -119,7 +119,7 @@ def _prune_missing(vault_path: str, current_ids: set[str]) -> int:
 
     if not delete_ids:
         return 0
-    store._collection.delete(ids=delete_ids)
+    store.delete_chunks(delete_ids)
     logger.info("[Indexer] pruned missing chunks: %d", len(delete_ids))
     return len(delete_ids)
 

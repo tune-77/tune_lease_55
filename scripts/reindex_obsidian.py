@@ -47,6 +47,14 @@ for _warning in _VAULT_RESOLUTION.warnings:
 
 def full_reindex(vault_path: str) -> tuple[int, int]:
     """コレクションを削除して全件インデックスし直す。"""
+    from api.knowledge.chroma_write_lock import chroma_write_lock
+
+    with chroma_write_lock("obsidian_full_reindex"):
+        return _full_reindex_unlocked(vault_path)
+
+
+def _full_reindex_unlocked(vault_path: str) -> tuple[int, int]:
+    """Rebuild the collection while the caller holds the shared writer lock."""
     import chromadb
     from api.knowledge.vector_store import KnowledgeVectorStore, _CHROMA_DIR, _COLLECTION_NAME
 
@@ -98,7 +106,7 @@ def diff_reindex(vault_path: str, prune_missing: bool = False) -> tuple[int, int
     return run_indexing(vault_path, prune_missing=prune_missing)
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Obsidian Vault を ChromaDB に再インデックス"
     )
@@ -122,11 +130,16 @@ def main() -> None:
     logger.info("=" * 60)
     logger.info("[reindex] 開始  vault=%s  full=%s", args.vault, args.full)
     start = time.time()
+    from api.knowledge.chroma_write_lock import ChromaWriteLockTimeout
 
-    if args.full:
-        added, skipped = full_reindex(args.vault)
-    else:
-        added, skipped = diff_reindex(args.vault, prune_missing=args.prune_missing)
+    try:
+        if args.full:
+            added, skipped = full_reindex(args.vault)
+        else:
+            added, skipped = diff_reindex(args.vault, prune_missing=args.prune_missing)
+    except ChromaWriteLockTimeout as exc:
+        logger.warning("[reindex] writer競合のため延期します: %s", exc)
+        return 75
 
     elapsed = time.time() - start
 
@@ -145,7 +158,8 @@ def main() -> None:
         )
 
     logger.info("=" * 60)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

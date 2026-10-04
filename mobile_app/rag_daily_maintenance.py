@@ -22,7 +22,6 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
-from mobile_app.integrated_rag_pipeline import IntegratedRAGSystem
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -34,11 +33,30 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from runtime_paths import describe_obsidian_vault_resolution  # noqa: E402
+from api.knowledge.chroma_write_lock import (  # noqa: E402
+    ChromaWriteLockTimeout,
+    chroma_write_lock,
+)
 
 
 # ===== ChromaDB 再インデックス機能
 
 def run_chroma_reindex(vault_path: str, full_mode: bool = False) -> dict:
+    """Run a ChromaDB reindex while excluding other local writer processes."""
+    try:
+        with chroma_write_lock("obsidian_reindex"):
+            return _run_chroma_reindex_unlocked(vault_path, full_mode=full_mode)
+    except ChromaWriteLockTimeout as exc:
+        logger.warning("ChromaDB 再インデックスを延期します: %s", exc)
+        return {
+            "status": "deferred",
+            "reason": "chroma_writer_busy",
+            "retryable": True,
+            "error": str(exc),
+        }
+
+
+def _run_chroma_reindex_unlocked(vault_path: str, full_mode: bool = False) -> dict:
     """
     ChromaDB 再インデックス（既存処理を統合）
 
@@ -216,6 +234,10 @@ def run_daily_maintenance():
             print(f"   ✅ {chroma_result.get('added', 0)} 件追加, {chroma_result.get('skipped', 0)} 件スキップ\n")
         elif chroma_result.get("status") == "skipped":
             print(f"   ⏭️  スキップ（理由: {chroma_result.get('reason', 'unknown')}）\n")
+        elif chroma_result.get("status") == "deferred":
+            print("   ⏳ 他のChromaDB更新が実行中のため、再インデックスを延期します\n")
+            maintenance_report["status"] = "deferred"
+            maintenance_report["alerts"].append("ChromaDB 再インデックス延期: writer lock timeout")
         else:
             print(f"   ❌ エラー: {chroma_result.get('error', 'unknown')}\n")
             maintenance_report["alerts"].append(f"ChromaDB 再インデックス失敗: {chroma_result.get('error')}")
@@ -233,6 +255,10 @@ def run_daily_maintenance():
         
         # ================== タスク1: LocalVectorDB 同期 ==================
         print("📚 【タスク1】LocalVectorDB ドキュメント同期中...")
+        # sentence-transformers 等の重い依存は、保守処理を実行する時だけ読む。
+        # ロック競合による延期判定や軽量テストで不要な初期化を起こさない。
+        from mobile_app.integrated_rag_pipeline import IntegratedRAGSystem
+
         rag_system = IntegratedRAGSystem()
         rag_system._sync_documents()
         rag_doc_count = len(rag_system.retriever.obsidian_documents)
@@ -368,6 +394,9 @@ def send_slack_notification(report: dict, webhook_url: str = None):
 
 if __name__ == "__main__":
     report = run_daily_maintenance()
-    
+
     # 【オプション】Slack 通知
     # send_slack_notification(report, webhook_url="https://hooks.slack.com/...")
+    if report.get("status") == "deferred":
+        # EX_TEMPFAIL: 呼び出し元が破損扱いせず、次回へ延期できる終了コード。
+        raise SystemExit(75)

@@ -33,6 +33,17 @@ class _FakeEncoder:
         return np.zeros((len(texts), 8))
 
 
+class _FakeClient:
+    def __init__(self, collection):
+        self.collection = collection
+
+    def delete_collection(self, _name):
+        return None
+
+    def get_or_create_collection(self, *, name):
+        return self.collection
+
+
 @pytest.fixture
 def vector_env(tmp_path, monkeypatch):
     """ベクトル層を chromadb / sentence-transformers 無しで動かすための足場。"""
@@ -44,6 +55,8 @@ def vector_env(tmp_path, monkeypatch):
     monkeypatch.setattr(vec, "_INDEX_PATH", index_path)
     monkeypatch.setattr(vec, "_background_sync_started", False)
     monkeypatch.setattr(vec, "_last_sync_attempt_fingerprint", "")
+    monkeypatch.setattr(vec, "_collection", None)
+    monkeypatch.setattr(vec, "_rebuild_in_progress", False)
 
     sync_calls: list[int] = []
     monkeypatch.setattr(vec, "_ensure_background_sync", lambda: sync_calls.append(1))
@@ -144,6 +157,61 @@ def test_background_sync_not_started_without_chromadb(monkeypatch):
     assert shion_memory_vector._background_sync_started is False
 
 
+def test_background_sync_retries_same_fingerprint_after_writer_timeout(monkeypatch):
+    from api import shion_memory_vector as vec
+    from api.knowledge.chroma_write_lock import ChromaWriteLockTimeout
+
+    monkeypatch.setattr(vec, "_background_sync_started", True)
+    monkeypatch.setattr(vec, "_last_sync_attempt_fingerprint", "same-index")
+    def timeout(_path):
+        raise ChromaWriteLockTimeout("busy")
+
+    monkeypatch.setattr(vec, "sync_from_index", timeout)
+
+    vec._background_sync_worker()
+
+    assert vec._background_sync_started is False
+    assert vec._last_sync_attempt_fingerprint == ""
+
+
+def test_collection_handle_is_cached_without_reacquiring_writer_lock(monkeypatch):
+    from contextlib import contextmanager
+    from api import shion_memory_vector as vec
+
+    collection = _FakeCollection([])
+    lock_calls: list[tuple[str, float | None]] = []
+
+    class Client:
+        def get_or_create_collection(self, *, name):
+            return collection
+
+    @contextmanager
+    def record_lock(operation, *, timeout=None):
+        lock_calls.append((operation, timeout))
+        yield
+
+    monkeypatch.setattr(vec, "_collection", None)
+    monkeypatch.setattr(vec, "_get_client", lambda: Client())
+    monkeypatch.setattr(vec, "chroma_write_lock", record_lock)
+
+    assert vec._get_collection() is collection
+    assert vec._get_collection() is collection
+    assert lock_calls == [("shion_memory_initialize", 0)]
+
+
+def test_similarity_falls_back_while_rebuild_is_in_progress(monkeypatch):
+    from api import shion_memory_vector as vec
+
+    monkeypatch.setattr(vec, "_rebuild_in_progress", True)
+    monkeypatch.setattr(
+        vec,
+        "_get_collection",
+        lambda: pytest.fail("rebuilding lookup must not expose a partial collection"),
+    )
+
+    assert vec.similarity_scores("満了時の確認") == {}
+
+
 def test_hybrid_disabled_by_default(monkeypatch):
     from api import shion_memory_vector
 
@@ -178,7 +246,7 @@ def test_sync_includes_domain_metadata(vector_env, monkeypatch):
     collection = _FakeCollection([])
     monkeypatch.setattr(vec, "_get_collection", lambda: collection)
     monkeypatch.setattr(vec, "_get_encoder", lambda: _FakeEncoder())
-    monkeypatch.setattr(vec, "_get_client", lambda: None)
+    monkeypatch.setattr(vec, "_get_client", lambda: _FakeClient(collection))
 
     summary = vec.sync_from_index(index_path)
 
@@ -188,7 +256,7 @@ def test_sync_includes_domain_metadata(vector_env, monkeypatch):
     collection = _FakeCollection([])
     monkeypatch.setattr(vec, "_get_collection", lambda: collection)
     monkeypatch.setattr(vec, "_get_encoder", lambda: _FakeEncoder())
-    monkeypatch.setattr(vec, "_get_client", lambda: None)
+    monkeypatch.setattr(vec, "_get_client", lambda: _FakeClient(collection))
 
     summary = vec.sync_from_index(index_path)
 
@@ -234,7 +302,7 @@ def test_revision_successor_is_not_replaced_by_stale_vector_boost(vector_env, mo
     collection = _FakeCollection(["mem_old"])
     monkeypatch.setattr(vec, "_get_collection", lambda: collection)
     monkeypatch.setattr(vec, "_get_encoder", lambda: _FakeEncoder())
-    monkeypatch.setattr(vec, "_get_client", lambda: None)
+    monkeypatch.setattr(vec, "_get_client", lambda: _FakeClient(collection))
     vec.sync_from_index(index_path)
     assert vec.index_sync_is_stale(index_path) is False
 
@@ -273,6 +341,7 @@ def test_revision_successor_is_not_replaced_by_stale_vector_boost(vector_env, mo
     # 再同期後は後継記憶も埋め込み対象になり、旧結論より上に来る
     collection_after = _FakeCollection([])
     monkeypatch.setattr(vec, "_get_collection", lambda: collection_after)
+    monkeypatch.setattr(vec, "_get_client", lambda: _FakeClient(collection_after))
     vec.sync_from_index(index_path)
     assert successor_id in collection_after.added
     assert vec.index_sync_is_stale(index_path) is False
