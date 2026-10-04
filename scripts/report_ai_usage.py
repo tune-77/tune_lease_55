@@ -17,7 +17,14 @@ from ai_runtime_client import usage_log_lock, usage_log_path  # noqa: E402
 
 def summarize(path: Path) -> list[dict]:
     groups: dict[tuple[str, str, str], dict] = defaultdict(
-        lambda: {"calls": 0, "errors": 0, "duration_ms": 0.0, "input_tokens": 0, "output_tokens": 0}
+        lambda: {
+            "calls": 0,
+            "errors": 0,
+            "duration_ms": 0.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        }
     )
     log_paths = (path.with_suffix(f"{path.suffix}.1"), path)
     # Rotationと同じプロセス間ロック内で両世代を読む。途中でactiveが.1へ
@@ -39,8 +46,14 @@ def summarize(path: Path) -> list[dict]:
                     row["calls"] += 1
                     row["errors"] += 0 if item.get("ok") else 1
                     row["duration_ms"] += float(item.get("duration_ms") or 0)
-                    row["input_tokens"] += int(item.get("input_tokens") or 0)
-                    row["output_tokens"] += int(item.get("output_tokens") or 0)
+                    input_tokens = int(item.get("input_tokens") or 0)
+                    output_tokens = int(item.get("output_tokens") or 0)
+                    total_tokens = item.get("total_tokens")
+                    row["input_tokens"] += input_tokens
+                    row["output_tokens"] += output_tokens
+                    row["total_tokens"] += (
+                        int(total_tokens) if total_tokens is not None else input_tokens + output_tokens
+                    )
     result = []
     for (provider, feature, model), row in sorted(groups.items()):
         calls = row["calls"]
@@ -54,6 +67,7 @@ def summarize(path: Path) -> list[dict]:
                 "avg_duration_ms": round(row["duration_ms"] / calls, 2) if calls else 0,
                 "input_tokens": row["input_tokens"],
                 "output_tokens": row["output_tokens"],
+                "total_tokens": row["total_tokens"],
             }
         )
     return result
@@ -67,11 +81,11 @@ def main() -> int:
     if not rows:
         print(f"AI usage log is empty: {args.path}")
         return 0
-    print("provider\tfeature\tmodel\tcalls\terrors\tavg_ms\tinput_tokens\toutput_tokens")
+    print("provider\tfeature\tmodel\tcalls\terrors\tavg_ms\tinput_tokens\toutput_tokens\ttotal_tokens")
     for row in rows:
         print(
             f"{row['provider']}\t{row['feature']}\t{row['model']}\t{row['calls']}\t{row['errors']}\t"
-            f"{row['avg_duration_ms']}\t{row['input_tokens']}\t{row['output_tokens']}"
+            f"{row['avg_duration_ms']}\t{row['input_tokens']}\t{row['output_tokens']}\t{row['total_tokens']}"
         )
     return 0
 

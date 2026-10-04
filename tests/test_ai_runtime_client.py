@@ -178,6 +178,7 @@ def test_usage_report_includes_rotated_generation(tmp_path):
     assert row["avg_duration_ms"] == 20.0
     assert row["input_tokens"] == 10
     assert row["output_tokens"] == 3
+    assert row["total_tokens"] == 13
 
 
 def test_usage_report_reads_both_generations_under_writer_lock(tmp_path, monkeypatch):
@@ -200,3 +201,27 @@ def test_usage_report_reads_both_generations_under_writer_lock(tmp_path, monkeyp
 
     assert report_ai_usage.summarize(log_path)[0]["calls"] == 1
     assert entered == [log_path]
+
+
+def test_usage_report_preserves_provider_total_tokens(tmp_path):
+    log_path = tmp_path / "usage.jsonl"
+    log_path.write_text(
+        json.dumps(
+            {
+                "provider": "google",
+                "feature": "thinking",
+                "model": "gemini-test",
+                "ok": True,
+                "input_tokens": 5,
+                "output_tokens": 3,
+                "total_tokens": 21,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    [row] = summarize(log_path)
+    assert row["input_tokens"] == 5
+    assert row["output_tokens"] == 3
+    assert row["total_tokens"] == 21
