@@ -219,3 +219,41 @@ def test_sing_voicevox_failure_does_not_count(sing_setup, monkeypatch):
     assert res.status_code == 503
     assert sv._sung == {}
     assert not sv._sing_lock.locked()
+
+
+# ── REV-462: 対話の発言から歌う ──
+
+@pytest.mark.parametrize("message,theme", [
+    ("歌って", ""),
+    ("何か歌って！", ""),
+    ("紫苑、秋の朝の歌を歌って", "秋の朝"),
+    ("雨について歌ってほしい", "雨"),
+    ("猫をテーマに一曲歌ってよ", "猫"),
+    ("リース審査の歌を聞かせて", "リース審査"),
+    ("夏の海で一曲お願い", "夏の海"),
+])
+def test_extract_theme(message, theme):
+    assert sv._extract_theme(message) == theme
+
+
+def test_sing_from_dialogue_message(sing_setup, monkeypatch):
+    client, _ = sing_setup
+    themes = []
+    monkeypatch.setattr(sv, "_generate_score", lambda theme: themes.append(theme) or _SCORE)
+    body = client.post("/api/shion/voice/sing", json={"message": "秋の朝の歌を歌って"}).json()
+    assert themes == ["秋の朝"] and body["theme"] == "秋の朝"
+    body = client.post("/api/shion/voice/sing", json={"message": "歌って"}).json()
+    assert themes[-1] == "" and body["title"] == "朝の歌"
+
+
+def test_generate_score_lets_shion_choose_theme(monkeypatch):
+    import api.loop_engineering_common as lec
+    import api.prompt_generator as pg
+
+    prompts = []
+    monkeypatch.setattr(pg, "load_mind", lambda: {})
+    monkeypatch.setattr(pg, "build_shion_system_prompt", lambda mind, now: "紫苑")
+    monkeypatch.setattr(lec, "call_gemini_json", lambda prompt, **kw: prompts.append(prompt) or {})
+    sv._generate_score("")
+    sv._generate_score("雨")
+    assert "自由に決め" in prompts[0] and "テーマ「雨」" in prompts[1]

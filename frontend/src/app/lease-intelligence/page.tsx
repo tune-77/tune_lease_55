@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   ArrowDown, Brain, Check, ClipboardList, Clock, Copy, Database, History, Loader2, Mic, MicOff,
-  HelpCircle, Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
+  HelpCircle, Music, Network, Paperclip, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, TrendingUp, User, Volume2, VolumeX, X,
 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
@@ -13,6 +13,9 @@ import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/R
 import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 import LeasePaymentSimulator from "@/components/analysis/LeasePaymentSimulator";
 import { isImeComposing } from "@/lib/keyboard";
+import { isSingRequest } from "@/lib/shionSing";
+import { useDialogueSinging } from "@/lib/useDialogueSinging";
+import DialogueSongPlayer from "@/components/chat/DialogueSongPlayer";
 
 type KnowledgeRef = {
   doc_id: string;
@@ -1137,6 +1140,7 @@ export default function LeaseIntelligencePage() {
   const [state, setState] = useState<MindState>({});
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const singer = useDialogueSinging(); // REV-462: 「歌って」→ 歌唱API
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState("");
   const [showLatestButton, setShowLatestButton] = useState(false);
@@ -1630,6 +1634,34 @@ export default function LeaseIntelligencePage() {
       saveLocalDialogueMessages(next);
       return next;
     });
+    if (!currentFile && isSingRequest(text)) {
+      // REV-462: 歌の依頼は対話AIではなく歌唱APIへ。sing() は最初の await より前に audio を解錠する
+      const songId = userMessage.id + 1;
+      const song = singer.sing(text, songId);
+      setLoading(true);
+      try {
+        const data = await song;
+        const songMessage: Message = {
+          id: songId,
+          role: "assistant",
+          content: `♪ ${data.title}\n\n${data.lyrics}\n\n${data.credit}`,
+          created_at: new Date().toISOString(),
+          query: text,
+        };
+        setMessages((prev) => {
+          const next = [...prev, songMessage];
+          saveLocalDialogueMessages(next);
+          return next;
+        });
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        const detail = status === 404 ? "歌唱機能は無効です" : getDialogueErrorDetail(err);
+        setError(`歌えませんでした: ${detail || "歌唱エンジンに接続できませんでした"}`);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     setLoading(true);
     try {
       const payload: Record<string, string> = {
@@ -2211,6 +2243,13 @@ export default function LeaseIntelligencePage() {
                       })}
                     </div>
                   )}
+                  {message.role === "assistant" && singer.songs[message.id] && (
+                    <DialogueSongPlayer
+                      playing={singer.playingSongId === message.id}
+                      autoplayBlocked={singer.songs[message.id].autoplayBlocked}
+                      onToggle={() => singer.toggleSong(message.id)}
+                    />
+                  )}
                   {message.role === "assistant" && message.longInputMode && (
                     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800">
                       長文入力として履歴と知識文脈を圧縮して処理しました。
@@ -2286,7 +2325,15 @@ export default function LeaseIntelligencePage() {
             })}
             {loading && (
               <div className="flex items-center gap-3 text-sm text-violet-700">
-                <Loader2 className="h-5 w-5 animate-spin" /> 考えています…
+                {singer.singing ? (
+                  <>
+                    <Music className="h-5 w-5 animate-pulse" /> 紫苑が歌を準備中…（作詞・作曲・歌唱で数十秒かかります）
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" /> 考えています…
+                  </>
+                )}
               </div>
             )}
               <div />
