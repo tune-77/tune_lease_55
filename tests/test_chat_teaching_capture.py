@@ -423,10 +423,12 @@ def test_bare_save_instruction_still_saves_users_own_teaching():
 
 @pytest.mark.parametrize(
     "query",
-    ["建設業の顧客が農業に新規参入する設備リース。審査で何を見る？", "多角化案件の審査コメントのテンプレートある？"],
+    ["本業と異なる新規事業に参入する案件の稟議はどう書く？", "多角化案件の審査コメントのテンプレートある？"],
 )
 def test_diversification_template_is_recalled_by_paraphrase(query):
-    row = {"id": "tpl", "research_date": "2026-10-04", "claim": capture._answer_body(TEMPLATE_ANSWER)}
+    # 実際に保存した形（見出し＋本文）
+    claim = f"異業種多角化案件の審査コメントテンプレート\n\n{capture._answer_body(TEMPLATE_ANSWER)}"
+    row = {"id": "tpl", "research_date": "2026-10-04", "claim": claim}
     items = capture.recall_taught_knowledge(None, query, candidates=[row])
     assert items and items[0]["path"] == "judgment_candidate:tpl"
     assert capture.recall_taught_knowledge(None, "中古トラックの走行距離はどこまで見る？", candidates=[row]) == []
