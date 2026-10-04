@@ -10,6 +10,7 @@ from scripts.cloudflare_vectorize_shadow import (
     stable_vector_id,
     stale_vector_ids,
     _bounded_reranker_inputs,
+    command_status,
 )
 
 
@@ -174,6 +175,30 @@ def test_mutation_is_processed_requires_final_mutation_and_exact_count():
         "upsert-2",
         3,
     )
+
+
+def test_status_reports_processed_and_last_submitted_mutation(monkeypatch, tmp_path, capsys):
+    from scripts import cloudflare_vectorize_shadow as shadow
+
+    state_path = tmp_path / "sync-state.json"
+    state_path.write_text(
+        '{"submitted_mutation": "upsert-2", "expected_vector_count": 3}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(shadow, "SYNC_STATE_PATH", state_path)
+
+    class Client:
+        def get_index(self):
+            return {"config": {"dimensions": DIMENSIONS, "metric": "cosine"}}
+
+        def info(self):
+            return {"processedUpToMutation": "upsert-2", "vectorCount": 3}
+
+    assert command_status(Client()) == 0
+    output = capsys.readouterr().out
+    assert "processed_mutation=upsert-2" in output
+    assert "submitted_mutation=upsert-2" in output
+    assert "mutation_complete=true" in output
     assert not mutation_is_processed(
         {"processedUpToMutation": "upsert-2", "vectorCount": 4},
         "upsert-2",

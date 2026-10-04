@@ -45,6 +45,7 @@ LIST_PAGE_SIZE = 1000
 RERANKER_MODEL = "@cf/baai/bge-reranker-base"
 RERANKER_INPUT_TOKEN_BUDGET = 480
 RERANKER_QUERY_CHAR_LIMIT = 200
+SYNC_STATE_PATH = REPO_ROOT / "reports" / "cloudflare_vectorize_shadow_sync_state.json"
 
 
 def _bounded_reranker_inputs(query_text: str, candidates: list[dict]) -> tuple[str, list[dict[str, str]]]:
@@ -101,6 +102,26 @@ def mutation_is_processed(info: dict, mutation_id: str, expected_count: int) -> 
     )
     count = int(info.get("vectorCount", info.get("vector_count", 0)) or 0)
     return bool(mutation_id) and processed == mutation_id and count == expected_count
+
+
+def _write_sync_state(mutation_id: str, expected_count: int) -> None:
+    SYNC_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SYNC_STATE_PATH.write_text(
+        json.dumps(
+            {"submitted_mutation": mutation_id, "expected_vector_count": expected_count},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _read_sync_state() -> dict:
+    try:
+        payload = json.loads(SYNC_STATE_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _error_message(payload: Any, status_code: int) -> str:
@@ -344,10 +365,25 @@ def command_status(client: VectorizeClient) -> int:
         print(f"未作成: {INDEX_NAME}")
         return 0
     info = client.info()
+    state = _read_sync_state()
     config = index.get("config") or {}
+    processed_mutation = str(
+        info.get("processedUpToMutation")
+        or info.get("processed_up_to_mutation")
+        or "unknown"
+    )
+    submitted_mutation = str(state.get("submitted_mutation") or "unknown")
+    expected_count = int(state.get("expected_vector_count") or 0)
+    mutation_complete = (
+        mutation_is_processed(info, submitted_mutation, expected_count)
+        if submitted_mutation != "unknown" and expected_count
+        else "unknown"
+    )
     print(
         f"index={INDEX_NAME} dimensions={config.get('dimensions')} metric={config.get('metric')} "
-        f"vectors={info.get('vectorCount', info.get('vector_count', 'unknown'))}"
+        f"vectors={info.get('vectorCount', info.get('vector_count', 'unknown'))} "
+        f"processed_mutation={processed_mutation} submitted_mutation={submitted_mutation} "
+        f"mutation_complete={str(mutation_complete).lower()}"
     )
     return 0
 
@@ -377,6 +413,7 @@ def command_sync(client: VectorizeClient, token: str, *, apply: bool) -> int:
     if not submitted_mutations:
         raise RuntimeError("Vectorize APIがmutation IDを返さなかったため、反映確認できません")
     final_mutation_id = submitted_mutations[-1]
+    _write_sync_state(final_mutation_id, len(records))
     print(
         f"{'作成' if created else '再利用'} index={INDEX_NAME} / "
         f"delete={len(removed_ids)} / upsert={len(records)} / "
