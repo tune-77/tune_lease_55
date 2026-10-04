@@ -29,9 +29,9 @@ class FakeApi:
     def get(self, path):
         if path.startswith("/zones?"):
             return [{"id": ZONE, "account": {"id": ACC}, "plan": {"name": "Free Website"}}]
+        if self.org is None and "/access/" in path:
+            raise mod.CloudflareError(403, path, [{"message": "access.api.error.not_enabled: Access is not enabled."}])
         if path.endswith("/access/organizations"):
-            if self.org is None:
-                raise mod.CloudflareError(404, path, "")
             return self.org
         table = {
             "/access/identity_providers": self.idps,
@@ -50,7 +50,10 @@ class FakeApi:
         raise AssertionError(f"unexpected GET {path}")
 
     def get_text(self, path):
-        return self.worker
+        # 実APIと同じく multipart で包んで返す
+        if self.worker is None:
+            return None
+        return f"--b\r\nContent-Disposition: form-data; name=\"worker.mjs\"\r\n\r\n{self.worker}\r\n--b--\r\n"
 
     def call(self, method, path, body=None, *, data=None, content_type="application/json"):
         self.calls.append((method, path, body))
@@ -160,7 +163,7 @@ def test_uninitialized_zero_trust_is_reported_as_manual_step(keychain):
     api = FakeApi(org=False)
     plan = mod.build_plan(api)
     manual = [c for c in plan.changes if c.kind == "manual"]
-    assert len(manual) == 1 and "チーム名" in manual[0].note
+    assert len(manual) == 1 and "未有効化" in manual[0].note
     assert not any(c.resource.startswith("Access アプリ") for c in plan.changes)
     assert any(c.resource.startswith("rate limiting") for c in plan.changes)  # 他は進める
 
@@ -196,3 +199,16 @@ def test_sleep_worker_node_tests():
     worker_test = Path(__file__).resolve().parents[1] / "cloudflare" / "shion-sleep-worker" / "worker.test.mjs"
     result = subprocess.run(["node", "--test", str(worker_test)], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_access_permission_error_is_distinguished_from_not_enabled(keychain):
+    api = FakeApi()
+
+    def denied(path):
+        if "/access/" in path:
+            raise mod.CloudflareError(403, path, [{"code": 10000, "message": "Authentication error"}])
+        return FakeApi.get(api, path)
+
+    api.get = denied
+    manual = [c for c in mod.build_plan(api).changes if c.kind == "manual"]
+    assert "権限不足" in manual[0].note
