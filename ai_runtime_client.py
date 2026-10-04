@@ -9,8 +9,10 @@ sites keep using the native SDK response types and configuration objects.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -20,6 +22,7 @@ from typing import Any, Callable, TypeVar
 _T = TypeVar("_T")
 _WRITE_LOCK = threading.Lock()
 _DEFAULT_LOG_PATH = Path(__file__).resolve().parent / "data" / "ai_usage.jsonl"
+_DEFAULT_MAX_LOG_BYTES = 10 * 1024 * 1024
 
 
 def _enabled() -> bool:
@@ -34,6 +37,16 @@ def _enabled() -> bool:
 def usage_log_path() -> Path:
     configured = os.environ.get("AI_USAGE_LOG_PATH", "").strip()
     return Path(configured).expanduser() if configured else _DEFAULT_LOG_PATH
+
+
+def _max_log_bytes() -> int:
+    configured = os.environ.get("AI_USAGE_LOG_MAX_BYTES", "").strip()
+    if not configured:
+        return _DEFAULT_MAX_LOG_BYTES
+    try:
+        return max(1, int(configured))
+    except ValueError:
+        return _DEFAULT_MAX_LOG_BYTES
 
 
 def _integer(value: Any) -> int | None:
@@ -101,19 +114,26 @@ def _append_usage(entry: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(entry, ensure_ascii=False, separators=(",", ":")) + "\n"
         with _WRITE_LOCK:
-            with path.open("a", encoding="utf-8") as handle:
+            lock_key = hashlib.sha256(str(path.absolute()).encode("utf-8")).hexdigest()[:16]
+            lock_path = Path(tempfile.gettempdir()) / f"ai-usage-{lock_key}.lock"
+            with lock_path.open("a", encoding="utf-8") as lock_handle:
                 try:
                     import fcntl
 
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
                 except (ImportError, OSError):
                     pass
-                handle.write(line)
-                handle.flush()
+                encoded_size = len(line.encode("utf-8"))
+                if path.exists() and path.stat().st_size + encoded_size > _max_log_bytes():
+                    rotated = path.with_suffix(path.suffix + ".1")
+                    os.replace(path, rotated)
+                with path.open("a", encoding="utf-8") as handle:
+                    handle.write(line)
+                    handle.flush()
                 try:
                     import fcntl
 
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
                 except (ImportError, OSError):
                     pass
     except Exception:

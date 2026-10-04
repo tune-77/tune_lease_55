@@ -21,18 +21,19 @@ def summarize(path: Path) -> list[dict]:
     )
     if not path.exists():
         return []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        try:
-            item = json.loads(line)
-        except (json.JSONDecodeError, TypeError):
-            continue
-        key = (str(item.get("provider") or "unknown"), str(item.get("feature") or "unknown"), str(item.get("model") or "unknown"))
-        row = groups[key]
-        row["calls"] += 1
-        row["errors"] += 0 if item.get("ok") else 1
-        row["duration_ms"] += float(item.get("duration_ms") or 0)
-        row["input_tokens"] += int(item.get("input_tokens") or 0)
-        row["output_tokens"] += int(item.get("output_tokens") or 0)
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            try:
+                item = json.loads(line)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            key = (str(item.get("provider") or "unknown"), str(item.get("feature") or "unknown"), str(item.get("model") or "unknown"))
+            row = groups[key]
+            row["calls"] += 1
+            row["errors"] += 0 if item.get("ok") else 1
+            row["duration_ms"] += float(item.get("duration_ms") or 0)
+            row["input_tokens"] += int(item.get("input_tokens") or 0)
+            row["output_tokens"] += int(item.get("output_tokens") or 0)
     result = []
     for (provider, feature, model), row in sorted(groups.items()):
         calls = row["calls"]

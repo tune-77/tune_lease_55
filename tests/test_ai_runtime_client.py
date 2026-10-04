@@ -114,3 +114,23 @@ def test_http_call_records_usage_and_preserves_response(tmp_path, monkeypatch):
     assert actual is response
     [entry] = _read_entries(log_path)
     assert entry["total_tokens"] == 9
+
+
+def test_usage_log_rotates_at_configured_size(tmp_path, monkeypatch):
+    log_path = tmp_path / "usage.jsonl"
+    monkeypatch.setenv("AI_USAGE_LOG_PATH", str(log_path))
+    monkeypatch.setenv("AI_USAGE_LOG_MAX_BYTES", "1")
+
+    for _ in range(2):
+        tracked_ai_call(
+            lambda: {"usageMetadata": {"totalTokenCount": 1}},
+            provider="google",
+            model="gemini-test",
+            feature="rotation_test",
+        )
+
+    rotated = log_path.with_suffix(".jsonl.1")
+    assert log_path.exists()
+    assert rotated.exists()
+    assert len(_read_entries(log_path)) == 1
+    assert len(_read_entries(rotated)) == 1
