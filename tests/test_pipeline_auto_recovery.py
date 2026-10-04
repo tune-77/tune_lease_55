@@ -336,6 +336,13 @@ def test_transient_failure_is_retried_once_verified_and_recorded(tmp_path, monke
     assert again == {"recovered": [], "unrecovered": [], "quality_failures": []}
 
 
+def test_memory_vector_lock_defer_is_allowlisted_for_retry() -> None:
+    definition = recovery.GENERIC_RETRY_STEPS["build_shion_memory_vector_index"]
+
+    assert definition["cmd"] == ["scripts/build_shion_memory_vector_index.py"]
+    assert recovery.classify_transient("ChromaDB writer lock timeout") == "timeout"
+
+
 def test_rerun_that_exits_0_without_updating_output_is_not_recovered(tmp_path, monkeypatch) -> None:
     root = _fake_root(tmp_path, "print('nothing written')\n")
     monkeypatch.setitem(recovery.GENERIC_RETRY_STEPS, "flaky_fetch", {"cmd": ["scripts/flaky.py"], "outputs": ["data/out.json"]})

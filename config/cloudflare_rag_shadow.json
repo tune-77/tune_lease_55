@@ -1,0 +1,6 @@
+{
+  "mode": "shadow",
+  "production_answer_impact": false,
+  "allowed_category": "lease_knowledge",
+  "exclude_sensitive_screening": true
+}

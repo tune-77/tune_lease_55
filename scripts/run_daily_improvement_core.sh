@@ -137,7 +137,9 @@ echo "[記憶] 記憶ベクトル索引（ハイブリッド想起用）を再�
 "${PYTHON}" "${PROJECT_ROOT}/scripts/build_shion_memory_vector_index.py"
 MEMORY_VECTOR_EXIT=$?
 log_step "build_shion_memory_vector_index" ${MEMORY_VECTOR_EXIT}
-if [ ${MEMORY_VECTOR_EXIT} -ne 0 ]; then
+if [ ${MEMORY_VECTOR_EXIT} -eq 75 ]; then
+    echo "延期: ChromaDB writer が使用中です（自動回復で再試行します）"
+elif [ ${MEMORY_VECTOR_EXIT} -ne 0 ]; then
     echo "警告: 記憶ベクトル索引の再構築に失敗しました（終了コード ${MEMORY_VECTOR_EXIT}）"
 fi
 
