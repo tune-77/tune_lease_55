@@ -123,6 +123,17 @@ def test_first_obsidian_search_does_not_wait_for_active_writer(tmp_path, monkeyp
     assert lock_calls == [0, None]
 
 
+def test_lookup_does_not_wait_for_in_process_collection_initializer(tmp_path) -> None:
+    from api.knowledge.vector_store import KnowledgeVectorStore
+
+    store = KnowledgeVectorStore(chroma_dir=str(tmp_path))
+    store._init_lock.acquire()
+    try:
+        assert store._ensure_collection(timeout=0) is False
+    finally:
+        store._init_lock.release()
+
+
 def test_direct_reindex_cli_returns_tempfail_on_writer_contention(monkeypatch) -> None:
     from scripts import reindex_obsidian
 

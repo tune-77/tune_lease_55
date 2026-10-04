@@ -311,7 +311,14 @@ class KnowledgeVectorStore:
         if self._collection is not None:
             return True
 
-        with self._init_lock:
+        acquired = (
+            self._init_lock.acquire()
+            if timeout is None
+            else self._init_lock.acquire(timeout=max(0.0, timeout))
+        )
+        if not acquired:
+            return False
+        try:
             if self._collection is not None:
                 return True
 
@@ -332,6 +339,8 @@ class KnowledgeVectorStore:
                 return False
             logger.info("[KnowledgeVectorStore] collection initialized: %s", self._chroma_dir)
             return True
+        finally:
+            self._init_lock.release()
 
     def _ensure_encoder(self) -> bool:
         """ローカルキャッシュ済み encoder だけを読む。未キャッシュならネットへ出ず false。"""
