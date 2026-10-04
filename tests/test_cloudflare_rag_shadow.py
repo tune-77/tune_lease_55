@@ -10,7 +10,7 @@ def test_eligibility_allows_generic_lease_knowledge(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
         "obsidian_query",
-        types.SimpleNamespace(split_query_terms=lambda _text: ["再リース", "満了", "選択肢"]),
+        types.SimpleNamespace(split_query_terms=lambda _text: ["再リース", "リスク", "満了", "選択肢"]),
     )
     allowed, reason, query = shadow.eligible_shadow_query(
         "再リースするときのリスクと満了後の選択肢を知りたい",
@@ -53,7 +53,7 @@ def test_external_query_keeps_only_allowlisted_domain_terms(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
         "obsidian_query",
-        types.SimpleNamespace(split_query_terms=lambda _text: ["山田", "再リース", "満了"]),
+        types.SimpleNamespace(split_query_terms=lambda _text: ["再リース", "満了"]),
     )
     allowed, _reason, query = shadow.eligible_shadow_query(
         "再リースと満了について知りたい",
@@ -62,19 +62,28 @@ def test_external_query_keeps_only_allowlisted_domain_terms(monkeypatch):
     )
     assert allowed
     assert query == "再リース 満了"
-    assert "山田" not in query
 
 
-def test_external_query_extracts_domain_word_from_unknown_proper_noun(monkeypatch):
+def test_external_query_rejects_unknown_proper_noun(monkeypatch):
     monkeypatch.setattr(shadow, "shadow_enabled", lambda: True)
     allowed, reason, query = shadow.eligible_shadow_query(
         "山田リースの満了について",
         question_category="lease_knowledge",
         is_general_response_mode=False,
     )
-    assert allowed and reason == "eligible"
-    assert query == "リース 満了"
-    assert "山田" not in query
+    assert not allowed and reason == "semantic_loss"
+    assert query == ""
+
+
+def test_external_query_rejects_when_specific_concept_would_be_lost(monkeypatch):
+    monkeypatch.setattr(shadow, "shadow_enabled", lambda: True)
+    allowed, reason, query = shadow.eligible_shadow_query(
+        "ものづくり補助金はリースでも使える？注意点は？",
+        question_category="lease_knowledge",
+        is_general_response_mode=False,
+    )
+    assert not allowed and reason == "semantic_loss"
+    assert query == ""
 
 
 def test_shadow_is_disabled_implicitly_during_pytest():

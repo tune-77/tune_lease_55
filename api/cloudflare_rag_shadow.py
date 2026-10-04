@@ -34,6 +34,32 @@ _SAFE_DOMAIN_TERMS = (
 _SAFE_DOMAIN_PATTERN = re.compile(
     "|".join(re.escape(term) for term in sorted(_SAFE_DOMAIN_TERMS, key=len, reverse=True))
 )
+_GENERIC_QUERY_FRAGMENTS = (
+    "するとき", "する", "とき", "場合", "前", "後", "注意点", "注意",
+    "違い", "意味", "見方", "使い方", "使い分け", "条件", "方法", "理由",
+    "原因", "対策", "手順",
+)
+
+
+def _safe_decomposed_query(text: str) -> str:
+    """Return allowlisted concepts only when decomposition loses no specific concept."""
+    from obsidian_query import split_query_terms
+
+    terms = split_query_terms(text)
+    if not terms:
+        return ""
+    safe_terms: list[str] = []
+    for term in terms:
+        matched = [match.group(0) for match in _SAFE_DOMAIN_PATTERN.finditer(term)]
+        residue = _SAFE_DOMAIN_PATTERN.sub("", term)
+        for fragment in _GENERIC_QUERY_FRAGMENTS:
+            residue = residue.replace(fragment, "")
+        if residue.strip(" -_・"):
+            return ""
+        for matched_term in matched:
+            if matched_term not in safe_terms:
+                safe_terms.append(matched_term)
+    return " ".join(safe_terms)[:300].strip()
 
 
 def _load_config() -> dict[str, Any]:
@@ -73,11 +99,10 @@ def eligible_shadow_query(
     masked = mask_for_vertex(text)
     if masked != text:
         return False, "redaction_required", ""
-    # 未知の固有名詞を外へ出さない。入力語そのものではなく、許可済み語だけを抽出する。
-    safe_terms = list(dict.fromkeys(match.group(0) for match in _SAFE_DOMAIN_PATTERN.finditer(text)))
-    external_query = " ".join(safe_terms)[:300].strip()
+    # 未知の固有名詞は送らず、同時に意味のある語を落とすクエリは比較対象にしない。
+    external_query = _safe_decomposed_query(text)
     if not external_query:
-        return False, "no_search_terms", ""
+        return False, "semantic_loss", ""
     return True, "eligible", external_query
 
 
