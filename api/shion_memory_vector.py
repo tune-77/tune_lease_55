@@ -32,6 +32,7 @@ _SYNC_STATE_PATH = Path(_CHROMA_DIR) / ".shion_memory_sync_state.json"
 
 _lock = threading.Lock()
 _client: Any = None
+_collection: Any = None
 _encoder: Any = None
 _import_failed = False
 _background_sync_started = False
@@ -94,15 +95,31 @@ def _get_encoder() -> Any:
 
 
 def _get_collection() -> Any:
+    global _collection
+    if _collection is not None:
+        return _collection
     client = _get_client()
     if client is None:
         return None
-    try:
-        with chroma_write_lock("shion_memory_initialize"):
-            return client.get_or_create_collection(name=_COLLECTION_NAME)
-    except Exception as exc:
-        logger.warning("[ShionMemoryVector] collection error: %s", exc)
-        return None
+    with _lock:
+        if _collection is not None:
+            return _collection
+        try:
+            # Lookups fall back immediately while a rebuild owns the writer lock.
+            with chroma_write_lock("shion_memory_initialize", timeout=0):
+                _collection = client.get_or_create_collection(name=_COLLECTION_NAME)
+        except ChromaWriteLockTimeout:
+            return None
+        except Exception as exc:
+            logger.warning("[ShionMemoryVector] collection error: %s", exc)
+            return None
+    return _collection
+
+
+def _invalidate_collection() -> None:
+    global _collection
+    with _lock:
+        _collection = None
 
 
 def is_available() -> bool:
@@ -114,6 +131,7 @@ def is_available() -> bool:
         return collection.count() > 0
     except Exception as exc:
         record_silent_failure("memory.vector.available", "swallowed", exc)
+        _invalidate_collection()
         return False
 
 
@@ -222,6 +240,7 @@ def sync_from_index(index_path: Path = _INDEX_PATH, *, batch_size: int = 64) -> 
                 client.delete_collection(_COLLECTION_NAME)
         except Exception:
             pass  # 初回は存在しないだけなので無視してよい
+        _invalidate_collection()
         collection = _get_collection()
         if collection is None:
             return {"synced": 0, "skipped": skipped, "available": len(targets)}
@@ -363,4 +382,5 @@ def similarity_scores(question: str, *, top_k: int = 24) -> dict[str, float]:
         return scores
     except Exception as exc:
         logger.warning("[ShionMemoryVector] query failed: %s", exc)
+        _invalidate_collection()
         return {}

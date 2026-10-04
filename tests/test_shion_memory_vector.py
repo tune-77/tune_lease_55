@@ -161,6 +161,31 @@ def test_background_sync_retries_same_fingerprint_after_writer_timeout(monkeypat
     assert vec._last_sync_attempt_fingerprint == ""
 
 
+def test_collection_handle_is_cached_without_reacquiring_writer_lock(monkeypatch):
+    from contextlib import contextmanager
+    from api import shion_memory_vector as vec
+
+    collection = _FakeCollection([])
+    lock_calls: list[tuple[str, float | None]] = []
+
+    class Client:
+        def get_or_create_collection(self, *, name):
+            return collection
+
+    @contextmanager
+    def record_lock(operation, *, timeout=None):
+        lock_calls.append((operation, timeout))
+        yield
+
+    monkeypatch.setattr(vec, "_collection", None)
+    monkeypatch.setattr(vec, "_get_client", lambda: Client())
+    monkeypatch.setattr(vec, "chroma_write_lock", record_lock)
+
+    assert vec._get_collection() is collection
+    assert vec._get_collection() is collection
+    assert lock_calls == [("shion_memory_initialize", 0)]
+
+
 def test_hybrid_disabled_by_default(monkeypatch):
     from api import shion_memory_vector
 
