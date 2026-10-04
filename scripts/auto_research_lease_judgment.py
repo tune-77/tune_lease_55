@@ -19,7 +19,6 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from silent_failure_log import clip
 
-from config import get_gemini_model  # noqa: E402
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 
@@ -171,6 +170,26 @@ def choose_topic(output_dir: Path, requested: str = "") -> ResearchTopic:
     dates = _existing_topic_dates(output_dir)
     minimum = dt.date.min
     return min(TOPICS, key=lambda item: (dates.get(item.key, minimum), TOPICS.index(item)))
+
+
+# 接地検索に使うモデル。2026-10-04 の実測で gemini-3.1-flash-lite（チャット既定、PR #1189）と
+# gemini-3-flash-preview は google_search ツールを渡しても検索せず記憶で答え、groundingMetadata が空だった
+# （= "no verifiable source URLs"）。gemini-2.5-flash / 2.5-pro は毎回検索した。2.5 Flash の接地は
+# 1日1,500プロンプトまで無料。再試行は上位モデルに上げる。
+RESEARCH_MODEL_DEFAULT = "gemini-2.5-flash"
+RESEARCH_FALLBACK_MODEL_DEFAULT = "gemini-2.5-pro"
+
+
+def research_models() -> tuple[str, str]:
+    primary = os.environ.get("GEMINI_RESEARCH_MODEL", "").strip() or RESEARCH_MODEL_DEFAULT
+    fallback = os.environ.get("GEMINI_RESEARCH_FALLBACK_MODEL", "").strip() or RESEARCH_FALLBACK_MODEL_DEFAULT
+    return primary, fallback
+
+
+def _usage_tokens(response: Any) -> dict[str, int]:
+    usage = getattr(response, "usage_metadata", None)
+    fields = {"in": "prompt_token_count", "out": "candidates_token_count", "thoughts": "thoughts_token_count", "total": "total_token_count"}
+    return {key: int(getattr(usage, attr, 0) or 0) for key, attr in fields.items()}
 
 
 def _extract_sources(response: Any) -> list[dict[str, str]]:
@@ -478,7 +497,7 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
 
 要件:
 - 官公庁、法令・基準設定主体、公的統計、業界団体、メーカー等の一次情報を優先する。
-- 検索語に site:go.jp、site:asb-j.jp、site:boj.or.jp、site:smrj.go.jp 等を活用する。
+- 官公庁（go.jp）、企業会計基準委員会、日本銀行、中小企業基盤整備機構などの情報を優先して検索する。
 - 現在も有効か確認し、日付・適用時期・対象範囲を明示する。
 - 事実、実務上の推論、未確認事項を混同しない。
 - ニュース記事の紹介ではなく「どの案件で、何を確認し、何なら承認条件を変えるか」に落とす。
@@ -493,7 +512,8 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
         credentials=OAuthCredentials(token=sdk_token),
         http_options=types.HttpOptions(api_version="v1"),
     )
-    model = os.environ.get("GEMINI_RESEARCH_MODEL") or get_gemini_model()
+    primary_model, fallback_model = research_models()
+    model = primary_model
     search_response = None
     raw_research = ""
     sources: list[dict[str, str]] = []
@@ -503,6 +523,7 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
     # どちらの失敗で二重課金されたのか後から切り分けられない。
     grounding: dict[str, Any] = {"per_attempt": [], "attempts": 0, "retried": False, "outcome": "unknown"}
     for attempt in range(2):
+        model = fallback_model if attempt else primary_model
         attempt_prompt = search_prompt
         if attempt:
             attempt_prompt += (
@@ -514,7 +535,8 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
             contents=attempt_prompt,
             config=types.GenerateContentConfig(
                 temperature=0.1,
-                max_output_tokens=4500,
+                # 2.5 系は思考トークンもこの上限に含まれる。4500 では思考で使い切って本文が空・途中切れになった。
+                max_output_tokens=8192,
                 tools=[types.Tool(google_search=types.GoogleSearch())],
                 http_options=types.HttpOptions(timeout=60000),
             ),
@@ -524,8 +546,10 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
         grounding["per_attempt"].append(
             {
                 "attempt": attempt + 1,
+                "model": model,
                 "text_chars": len(raw_research),
                 "source_count": len(sources),
+                "tokens": _usage_tokens(search_response),
             }
         )
         grounding["attempts"] = len(grounding["per_attempt"])
