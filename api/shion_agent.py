@@ -20,7 +20,8 @@ from google.adk.agents import LlmAgent
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from google.genai.types import Content, Part
+from google.adk.planners import BuiltInPlanner
+from google.genai.types import Content, Part, ThinkingConfig, ThinkingLevel
 
 from api.shion_agent_tools import READ_ONLY_DB_TOOLS
 from api.shion_conscience import build_conscience_prompt_block
@@ -207,6 +208,10 @@ shion_agent = LlmAgent(
     model=get_gemini_model(),
     instruction=_INSTRUCTION,
     tools=_AGENT_TOOL_FUNCS,
+    # gemini-3.1-flash-lite は思考なしだとツールを1つも呼ばずに答える（2026-10-04 実測 0/2）。
+    # LOW で基本の流れ（業種ベンチマーク→リスク評価）を 2/2 呼んだので、最小の LOW にする。
+    # ADK の版によって generate_content_config 側の thinking_config を拒否するため planner で渡す。
+    planner=BuiltInPlanner(thinking_config=ThinkingConfig(thinking_level=ThinkingLevel.LOW)),
 )
 
 _session_service = InMemorySessionService()

@@ -6,6 +6,8 @@ import types
 import inspect
 import sqlite3
 
+import pytest
+
 from api.cloudrun_data_safety_audit import audit_cloudrun_data_safety
 from api.shion_agent_tools import READ_ONLY_DB_TOOLS
 from scripts.promote_cloudrun_return_data import promote_approved_return_data
@@ -256,3 +258,17 @@ def test_read_only_adk_tools_do_not_contain_dangerous_side_effect_calls():
                 offenders.append(f"{tool.__name__}: {snippet}")
 
     assert offenders == []
+
+
+def test_audit_endpoint_is_hidden_while_cloudrun_paused(monkeypatch):
+    """停止中は監査せず paused を返す（画面は欄を隠す）。再開すれば通常の監査に戻る。"""
+    from api.routers import judgment_assets
+
+    monkeypatch.setenv("CLOUDRUN_PAUSED", "1")
+    monkeypatch.setattr("silent_failure_log.record_silent_failure", lambda *a, **k: None)
+    monkeypatch.setattr(judgment_assets, "audit_cloudrun_data_safety", lambda: pytest.fail("停止中は監査しない"))
+    assert judgment_assets.get_cloudrun_data_safety_audit()["paused"] is True
+
+    monkeypatch.setenv("CLOUDRUN_PAUSED", "0")
+    monkeypatch.setattr(judgment_assets, "audit_cloudrun_data_safety", lambda: {"status": "ok", "issue_count": 0})
+    assert judgment_assets.get_cloudrun_data_safety_audit() == {"status": "ok", "issue_count": 0}
