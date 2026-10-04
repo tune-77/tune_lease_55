@@ -55,13 +55,15 @@ class FeedbackVectorStore:
                 return
             import chromadb
             from sentence_transformers import SentenceTransformer
+            from api.knowledge.chroma_write_lock import chroma_write_lock
 
             os.makedirs(self._chroma_dir, exist_ok=True)
-            self._client = chromadb.PersistentClient(path=self._chroma_dir)
-            self._collection = self._client.get_or_create_collection(
-                name=_FEEDBACK_COLLECTION,
-                metadata={"hnsw:space": "cosine"},
-            )
+            with chroma_write_lock("lease_feedback_initialize"):
+                self._client = chromadb.PersistentClient(path=self._chroma_dir)
+                self._collection = self._client.get_or_create_collection(
+                    name=_FEEDBACK_COLLECTION,
+                    metadata={"hnsw:space": "cosine"},
+                )
             self._encoder = SentenceTransformer(self._model_name, device="cpu")
             logger.info(f"[FeedbackStore] initialized: {self._chroma_dir}")
 
@@ -72,12 +74,15 @@ class FeedbackVectorStore:
     def upsert(self, fb_id: str, text: str, metadata: dict) -> None:
         self._ensure_initialized()
         embedding = self._embed([text])[0]
-        self._collection.upsert(
-            ids=[fb_id],
-            documents=[text],
-            metadatas=[metadata],
-            embeddings=[embedding],
-        )
+        from api.knowledge.chroma_write_lock import chroma_write_lock
+
+        with chroma_write_lock("lease_feedback_upsert"):
+            self._collection.upsert(
+                ids=[fb_id],
+                documents=[text],
+                metadatas=[metadata],
+                embeddings=[embedding],
+            )
 
     def search(self, query: str, top_k: int = 3) -> list[dict]:
         self._ensure_initialized()

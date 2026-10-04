@@ -144,6 +144,23 @@ def test_background_sync_not_started_without_chromadb(monkeypatch):
     assert shion_memory_vector._background_sync_started is False
 
 
+def test_background_sync_retries_same_fingerprint_after_writer_timeout(monkeypatch):
+    from api import shion_memory_vector as vec
+    from api.knowledge.chroma_write_lock import ChromaWriteLockTimeout
+
+    monkeypatch.setattr(vec, "_background_sync_started", True)
+    monkeypatch.setattr(vec, "_last_sync_attempt_fingerprint", "same-index")
+    def timeout(_path):
+        raise ChromaWriteLockTimeout("busy")
+
+    monkeypatch.setattr(vec, "sync_from_index", timeout)
+
+    vec._background_sync_worker()
+
+    assert vec._background_sync_started is False
+    assert vec._last_sync_attempt_fingerprint == ""
+
+
 def test_hybrid_disabled_by_default(monkeypatch):
     from api import shion_memory_vector
 

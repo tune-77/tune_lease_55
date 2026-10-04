@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 from silent_failure_log import record_silent_failure
-from api.knowledge.chroma_write_lock import chroma_write_lock
+from api.knowledge.chroma_write_lock import ChromaWriteLockTimeout, chroma_write_lock
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,8 @@ def _get_collection() -> Any:
     if client is None:
         return None
     try:
-        return client.get_or_create_collection(name=_COLLECTION_NAME)
+        with chroma_write_lock("shion_memory_initialize"):
+            return client.get_or_create_collection(name=_COLLECTION_NAME)
     except Exception as exc:
         logger.warning("[ShionMemoryVector] collection error: %s", exc)
         return None
@@ -306,10 +307,14 @@ def _resolve_index_path_safe() -> Path:
 
 
 def _background_sync_worker() -> None:
-    global _background_sync_started
+    global _background_sync_started, _last_sync_attempt_fingerprint
     try:
         summary = sync_from_index(_resolve_index_path_safe())
         logger.info("[ShionMemoryVector] background sync done: %s", summary)
+    except ChromaWriteLockTimeout as exc:
+        logger.info("[ShionMemoryVector] background sync deferred: %s", exc)
+        with _lock:
+            _last_sync_attempt_fingerprint = ""
     except Exception as exc:
         logger.warning("[ShionMemoryVector] background sync failed: %s", exc)
     finally:

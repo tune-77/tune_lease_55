@@ -47,6 +47,14 @@ for _warning in _VAULT_RESOLUTION.warnings:
 
 def full_reindex(vault_path: str) -> tuple[int, int]:
     """コレクションを削除して全件インデックスし直す。"""
+    from api.knowledge.chroma_write_lock import chroma_write_lock
+
+    with chroma_write_lock("obsidian_full_reindex"):
+        return _full_reindex_unlocked(vault_path)
+
+
+def _full_reindex_unlocked(vault_path: str) -> tuple[int, int]:
+    """Rebuild the collection while the caller holds the shared writer lock."""
     import chromadb
     from api.knowledge.vector_store import KnowledgeVectorStore, _CHROMA_DIR, _COLLECTION_NAME
 

@@ -316,13 +316,15 @@ class KnowledgeVectorStore:
                 return
 
             import chromadb
+            from api.knowledge.chroma_write_lock import chroma_write_lock
 
             os.makedirs(self._chroma_dir, exist_ok=True)
-            self._client = chromadb.PersistentClient(path=self._chroma_dir)
-            self._collection = self._client.get_or_create_collection(
-                name=_COLLECTION_NAME,
-                metadata={"hnsw:space": "cosine"},
-            )
+            with chroma_write_lock("obsidian_knowledge_initialize"):
+                self._client = chromadb.PersistentClient(path=self._chroma_dir)
+                self._collection = self._client.get_or_create_collection(
+                    name=_COLLECTION_NAME,
+                    metadata={"hnsw:space": "cosine"},
+                )
             logger.info("[KnowledgeVectorStore] collection initialized: %s", self._chroma_dir)
 
     def _ensure_encoder(self) -> bool:
@@ -390,6 +392,15 @@ class KnowledgeVectorStore:
                 self._encoder_failed = True
                 return False
 
+    def _refresh_collection_unlocked(self) -> None:
+        """Refresh a handle invalidated by another process's full rebuild."""
+        if self._client is None:
+            return
+        self._collection = self._client.get_or_create_collection(
+            name=_COLLECTION_NAME,
+            metadata={"hnsw:space": "cosine"},
+        )
+
     def _ensure_initialized(self) -> None:
         """互換用: collection を初期化し、encoder は使えれば読む。"""
         self._ensure_collection()
@@ -435,12 +446,16 @@ class KnowledgeVectorStore:
         } for c in chunks]
         embeddings = self._embed(texts)
 
-        self._collection.upsert(
-            ids=ids,
-            documents=texts,
-            metadatas=metadatas,
-            embeddings=embeddings,
-        )
+        from api.knowledge.chroma_write_lock import chroma_write_lock
+
+        with chroma_write_lock("obsidian_knowledge_upsert"):
+            self._refresh_collection_unlocked()
+            self._collection.upsert(
+                ids=ids,
+                documents=texts,
+                metadatas=metadatas,
+                embeddings=embeddings,
+            )
 
         from api.memory_cost_log import log_memory_cost
 
@@ -450,6 +465,18 @@ class KnowledgeVectorStore:
             elapsed_ms=(time.monotonic() - started) * 1000,
             item_count=len(ids),
         )
+        return len(ids)
+
+    def delete_chunks(self, ids: list[str]) -> int:
+        """Delete chunks while excluding all other shared-store writers."""
+        if not ids:
+            return 0
+        self._ensure_collection()
+        from api.knowledge.chroma_write_lock import chroma_write_lock
+
+        with chroma_write_lock("obsidian_knowledge_delete"):
+            self._refresh_collection_unlocked()
+            self._collection.delete(ids=ids)
         return len(ids)
 
     @staticmethod

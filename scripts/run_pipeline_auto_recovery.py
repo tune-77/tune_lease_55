@@ -291,6 +291,7 @@ _GCS_SYNC = {"cmd": ["scripts/sync_cloudrun_inputs_from_gcs.py"], "outputs": []}
 _OBSIDIAN_SUMMARY = {"cmd": ["scripts/sync_cloudrun_inputs_to_obsidian.py"], "outputs": []}  # 日次要約の上書き
 _MEMORY_INDEX = {"cmd": ["scripts/build_shion_memory_index.py"], "outputs": ["data/shion_memory_index.json"]}
 _FRESHNESS = {"cmd": ["scripts/update_shion_memory_freshness.py"], "outputs": ["data/shion_memory_index.json"]}
+_MEMORY_VECTOR = {"cmd": ["scripts/build_shion_memory_vector_index.py"], "outputs": []}
 GENERIC_RETRY_STEPS: dict[str, dict[str, list[str]]] = {
     "sync_cloudrun_inputs_from_gcs": _GCS_SYNC,
     "sync_cloudrun_inputs_from_gcs_post": _GCS_SYNC,
@@ -303,6 +304,7 @@ GENERIC_RETRY_STEPS: dict[str, dict[str, list[str]]] = {
     "build_shion_memory_index_after_auto_promotions": _MEMORY_INDEX,
     "update_shion_memory_freshness": _FRESHNESS,
     "update_shion_memory_freshness_post_promotion": _FRESHNESS,
+    "build_shion_memory_vector_index": _MEMORY_VECTOR,
     "build_shion_practical_knowledge_map": {
         "cmd": ["scripts/build_shion_practical_knowledge_map.py"],
         "outputs": ["data/shion_practical_knowledge_map.json"],
@@ -315,7 +317,7 @@ _QUALITY_PREFIXES = ("eval_", "check_", "audit_", "test_", "validate_")
 _QUALITY_SUFFIXES = ("_tests", "_health", "_eval")
 
 TRANSIENT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("timeout", re.compile(r"TimeoutExpired|timed out|ReadTimeout|ConnectTimeout|DeadlineExceeded|タイムアウト", re.I)),
+    ("timeout", re.compile(r"TimeoutExpired|timed out|lock timeout|ReadTimeout|ConnectTimeout|DeadlineExceeded|タイムアウト", re.I)),
     (
         "network",
         re.compile(

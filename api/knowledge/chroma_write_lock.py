@@ -7,6 +7,7 @@ This lock serializes maintenance jobs that mutate either collection.
 from __future__ import annotations
 
 import os
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -16,6 +17,8 @@ from filelock import FileLock, Timeout
 
 DEFAULT_LOCK_PATH = Path("/tmp/tunelease-chromadb-writer.lock")
 DEFAULT_TIMEOUT_SECONDS = 15 * 60
+_LOCKS: dict[str, FileLock] = {}
+_LOCKS_GUARD = threading.Lock()
 
 
 class ChromaWriteLockTimeout(RuntimeError):
@@ -37,6 +40,18 @@ def _timeout_seconds() -> float:
         return float(DEFAULT_TIMEOUT_SECONDS)
 
 
+def _shared_file_lock(path: Path) -> FileLock:
+    """Return one FileLock instance per path so nested writer calls are reentrant."""
+
+    key = str(path.resolve())
+    with _LOCKS_GUARD:
+        lock = _LOCKS.get(key)
+        if lock is None:
+            lock = FileLock(key)
+            _LOCKS[key] = lock
+        return lock
+
+
 @contextmanager
 def chroma_write_lock(
     operation: str,
@@ -49,7 +64,7 @@ def chroma_write_lock(
     resolved_path = lock_path or _lock_path()
     resolved_path.parent.mkdir(parents=True, exist_ok=True)
     wait_seconds = _timeout_seconds() if timeout is None else max(0.0, timeout)
-    lock = FileLock(str(resolved_path))
+    lock = _shared_file_lock(resolved_path)
     try:
         with lock.acquire(timeout=wait_seconds):
             yield
