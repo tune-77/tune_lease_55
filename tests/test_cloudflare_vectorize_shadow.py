@@ -9,6 +9,7 @@ from scripts.cloudflare_vectorize_shadow import (
     mutation_is_processed,
     stable_vector_id,
     stale_vector_ids,
+    _bounded_reranker_inputs,
 )
 
 
@@ -207,6 +208,16 @@ def test_reranker_reorders_vectorize_candidates_and_keeps_original_rank():
         {"text": "再リースの注意点"},
     ]
     assert "secret" not in str(calls[0][1]["json"])
+
+
+def test_reranker_inputs_fit_model_token_window():
+    query, contexts = _bounded_reranker_inputs(
+        "質" * 300,
+        [{"metadata": {"text": "文" * 1200}}],
+    )
+
+    assert len(query) <= 200
+    assert int((len(query) + len(contexts[0]["text"])) * 1.2) <= 480
 
 
 def test_reranker_rejects_invalid_response():

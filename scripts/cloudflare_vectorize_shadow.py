@@ -43,6 +43,21 @@ UPSERT_BATCH_SIZE = 500
 DELETE_BATCH_SIZE = 1000
 LIST_PAGE_SIZE = 1000
 RERANKER_MODEL = "@cf/baai/bge-reranker-base"
+RERANKER_INPUT_TOKEN_BUDGET = 480
+RERANKER_QUERY_CHAR_LIMIT = 200
+
+
+def _bounded_reranker_inputs(query_text: str, candidates: list[dict]) -> tuple[str, list[dict[str, str]]]:
+    """Keep query+passage below the model's 512-token window with a safety margin."""
+    bounded_query = str(query_text or "")[:RERANKER_QUERY_CHAR_LIMIT]
+    # 日本語主体なので1文字≈1.2 tokenで保守的に見積もる。
+    total_char_budget = int(RERANKER_INPUT_TOKEN_BUDGET / 1.2)
+    context_char_budget = max(1, total_char_budget - len(bounded_query))
+    contexts = [
+        {"text": str((match.get("metadata") or {}).get("text") or "")[:context_char_budget]}
+        for match in candidates
+    ]
+    return bounded_query, contexts
 
 
 def stable_vector_id(source_path: str) -> str:
@@ -273,13 +288,14 @@ class CloudflareReranker:
         ]
         if not candidates:
             return []
+        bounded_query, contexts = _bounded_reranker_inputs(query_text, candidates)
         post = self._post_fn or requests.post
         response = post(
             f"{CLOUDFLARE_API_BASE}/accounts/{self.account_id}/ai/run/{RERANKER_MODEL}",
             headers={"Authorization": f"Bearer {self.api_token}"},
             json={
-                "query": query_text,
-                "contexts": [{"text": (match.get("metadata") or {})["text"]} for match in candidates],
+                "query": bounded_query,
+                "contexts": contexts,
                 "top_k": max(1, min(int(top_k), len(candidates))),
             },
             timeout=120,
