@@ -42,6 +42,7 @@ def test_build_chat_retrieval_context_zero_top_k_returns_stable_shape():
     assert result.rag_knowledge_refs == []
     assert result.vertex_agent_search["status"] == "not_attempted"
     assert result.vertex_answer_api["status"] == "not_attempted"
+    assert result.cloudflare_shadow["status"] == "not_attempted"
 
 
 def test_chat_memory_roots_deduplicates_configured_paths(monkeypatch, tmp_path):

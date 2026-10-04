@@ -40,6 +40,7 @@ class ChatRetrievalResult:
     )
     vertex_rerank: dict[str, Any] = field(default_factory=lambda: {"used": False, "status": "not_attempted"})
     jev_rerank: dict[str, Any] = field(default_factory=lambda: {"used": False, "status": "not_attempted"})
+    cloudflare_shadow: dict[str, Any] = field(default_factory=lambda: {"queued": False, "status": "not_attempted"})
     typesafe_rag: dict[str, Any] = field(
         default_factory=lambda: {"status": "not_attempted"}
     )
@@ -366,6 +367,17 @@ def build_chat_retrieval_context(
         from api.knowledge.vector_store import get_store
 
         hits = get_store().search(message, top_k=candidate_top_k)
+        try:
+            from api.cloudflare_rag_shadow import submit_cloudflare_shadow
+
+            result.cloudflare_shadow = submit_cloudflare_shadow(
+                message,
+                hits,
+                question_category=question_category,
+                is_general_response_mode=is_general_response_mode,
+            )
+        except Exception as exc:  # shadow比較はローカルRAGを止めない
+            result.cloudflare_shadow = {"queued": False, "status": "error", "error_type": type(exc).__name__}
         if rerank and hits:
             hits = _rerank_local_hits(message, hits, result)
         elif jev_rerank_on and hits:
