@@ -159,9 +159,12 @@ def run_shion_feedback_loop() -> dict:
 
         # 1. 提案生成（A: ソース拡充 — feedback + experience signals）
         result = generate_proposals()
+        reason = ""
+        generation_status = "ok"
         if not result.get("generated"):
             reason = str(result.get("reason", ""))
-            log = logger.warning if reason.startswith("Gemini生成に失敗") else logger.info
+            generation_status = "error" if reason.startswith("Gemini生成に失敗") else "no_proposals"
+            log = logger.warning if generation_status == "error" else logger.info
             log(f"[ShionFeedbackLoop] 提案なし: {reason}")
         else:
             proposals = result.get("proposals", [])
@@ -173,7 +176,8 @@ def run_shion_feedback_loop() -> dict:
         logger.info(f"[ShionFeedbackLoop] PDCA評価: {pdca.get('evaluated', 0)}件")
 
         return {
-            "status": "ok",
+            "status": generation_status,
+            "reason": reason,
             "proposals_generated": len(result.get("proposals", [])) if result.get("generated") else 0,
             "pdca_evaluated": pdca.get("evaluated", 0),
         }
@@ -307,7 +311,7 @@ def _schedule_catchup_jobs(scheduler: BackgroundScheduler, now: dt.datetime) -> 
         lines = runs_path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
         logger.warning(f"[Scheduler] 実行記録の読込みに失敗: {exc}")
-        lines = []
+        return []
     for line in lines:
         try:
             record = json.loads(line)

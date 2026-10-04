@@ -55,6 +55,37 @@ def test_schedule_catchup_jobs_skips_first_run(tmp_path, monkeypatch):
     assert scheduler.get_jobs() == []
 
 
+def test_schedule_catchup_jobs_skips_when_ledger_is_unreadable(monkeypatch):
+    class UnreadableLedger:
+        def exists(self) -> bool:
+            return True
+
+        def read_text(self, encoding: str) -> str:
+            raise OSError("permission denied")
+
+    monkeypatch.setattr(scheduler_module, "_job_runs_path", lambda: UnreadableLedger())
+    scheduler = BackgroundScheduler(timezone="Asia/Tokyo")
+
+    assert scheduler_module._schedule_catchup_jobs(scheduler, dt.datetime(2026, 10, 5, 5, 0)) == []
+    assert scheduler.get_jobs() == []
+
+
+def test_feedback_loop_reports_gemini_failure(monkeypatch):
+    import api.feedback_pattern_loop as feedback_loop
+
+    monkeypatch.setattr(
+        feedback_loop,
+        "generate_proposals",
+        lambda: {"generated": False, "reason": "Gemini生成に失敗: Timeout", "proposals": []},
+    )
+    monkeypatch.setattr(feedback_loop, "evaluate_proposal_impact", lambda: {"evaluated": 0})
+
+    result = scheduler_module.run_shion_feedback_loop()
+
+    assert result["status"] == "error"
+    assert result["reason"] == "Gemini生成に失敗: Timeout"
+
+
 def test_scheduler_listener_records_catchup_result(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     event = SimpleNamespace(
