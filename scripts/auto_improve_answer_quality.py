@@ -275,6 +275,7 @@ def research_failed_answer(
     from scripts.auto_research_lease_judgment import (
         _extract_sources,
         _source_quality,
+        research_models,
     )
 
     vertex_config = get_config()
@@ -320,15 +321,17 @@ def research_failed_answer(
         credentials=OAuthCredentials(token=sdk_token),
         http_options=types.HttpOptions(api_version="v1"),
     )
-    model = os.environ.get("GEMINI_RESEARCH_MODEL") or get_gemini_model()
+    # 外部調査と同じモデル・思考設定にそろえる。既定の gemini-3.1-flash-lite（思考なし）だと
+    # 検索せずに答え、2026-10-04 の実測で出典 0/2 だった。思考トークン分だけ出力上限も広げる。
+    model, _ = research_models()
     response = client.models.generate_content(
         model=model,
         contents=prompt,
         config=types.GenerateContentConfig(
-            temperature=0.1,
-            max_output_tokens=1800,
+            max_output_tokens=8192,
+            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
             tools=[types.Tool(google_search=types.GoogleSearch())],
-            http_options=types.HttpOptions(timeout=60000),
+            http_options=types.HttpOptions(timeout=120000),
         ),
     )
     answer = str(getattr(response, "text", "") or "").strip()

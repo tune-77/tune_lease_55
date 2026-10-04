@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -132,6 +131,14 @@ def run_memory_decay_batch() -> dict[str, Any]:
         return {"status": "ok", "total": 0, "at_risk": 0}
 
     now = datetime.utcnow()
+    snapshot_date = datetime.now().date().isoformat()
+    latest_snapshot = get_latest_freshness_snapshot()
+    if latest_snapshot and latest_snapshot.get("snapshot_date") == snapshot_date:
+        return {
+            "status": "skipped_duplicate",
+            "total": int(latest_snapshot.get("total") or 0),
+            "at_risk": int(latest_snapshot.get("at_risk_count") or 0),
+        }
     recent_used_ids = _load_recent_used_ids()
     logger.info(f"[MemoryDecay] 開始: {len(records)}件, 直近使用ID={len(recent_used_ids)}件")
 
@@ -161,6 +168,7 @@ def run_memory_decay_batch() -> dict[str, Any]:
     # ── 追記（1スナップショット = 1行） ─────────────────────
     snapshot = {
         "snapshot_at": now.isoformat(),
+        "snapshot_date": snapshot_date,
         "total": len(results),
         "at_risk_count": len(at_risk_ids),
         "at_risk_ids": at_risk_ids[:20],  # 上位20件のみ保持

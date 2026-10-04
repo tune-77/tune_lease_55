@@ -20,6 +20,7 @@ class FakeApi:
         self.idps, self.tokens, self.policies, self.apps, self.routes = [], [], [], [], []
         self.rules = None  # None = entrypoint 未作成(404)
         self.worker = None
+        self.worker_subdomain = {"enabled": False, "previews_enabled": False}
         self._seq = 0
 
     def _new_id(self, prefix):
@@ -47,6 +48,8 @@ class FakeApi:
             if self.rules is None:
                 raise mod.CloudflareError(404, path, "")
             return {"rules": self.rules}
+        if path.endswith(f"/workers/scripts/{mod.WORKER_NAME}/subdomain"):
+            return dict(self.worker_subdomain)
         raise AssertionError(f"unexpected GET {path}")
 
     def get_text(self, path):
@@ -80,6 +83,7 @@ class FakeApi:
             self.worker = mod.worker_source()
             return {}
         if method == "POST" and path.endswith("/subdomain"):
+            self.worker_subdomain = dict(body)
             return {}
         if method == "POST" and path.endswith("/workers/routes"):
             self.routes.append({**body, "id": self._new_id("route")})
@@ -135,6 +139,49 @@ def test_apply_then_rerun_is_idempotent(keychain):
     # 現行の API は app の policies に precedence を付けて返す
     rerun = mod.build_plan(api)
     assert {c.kind for c in rerun.changes} == {"ok"}, [c.render() for c in rerun.changes if c.kind != "ok"]
+
+
+def test_worker_module_comparison_rejects_wrapped_source():
+    api = FakeApi()
+    api.worker = "// unexpected prefix\n" + mod.worker_source() + "\n// unexpected suffix"
+    plan = mod.Plan()
+
+    mod.plan_worker(api, ACC, plan)
+
+    [change] = plan.changes
+    assert change.kind == "update"
+    assert change.resource == f"Worker {mod.WORKER_NAME}"
+
+
+def test_worker_subdomain_is_reconciled_when_source_matches():
+    api = FakeApi()
+    api.worker = mod.worker_source()
+    api.worker_subdomain = {"enabled": True, "previews_enabled": True}
+    plan = mod.Plan()
+
+    mod.plan_worker(api, ACC, plan)
+
+    [change] = plan.changes
+    assert change.kind == "update"
+    assert change.resource == f"Worker {mod.WORKER_NAME} workers.dev"
+    change.apply()
+    assert api.worker_subdomain == {"enabled": False, "previews_enabled": False}
+    assert not any(method == "PUT" for method, _path, _body in api.calls)
+
+
+def test_worker_multipart_parser_returns_exact_module():
+    source = "export default { fetch() { return new Response('ok'); } };\n"
+    payload = (
+        "--boundary\r\n"
+        'Content-Disposition: form-data; name="metadata"; filename="metadata.json"\r\n'
+        "Content-Type: application/json\r\n\r\n{}\r\n"
+        "--boundary\r\n"
+        'Content-Disposition: form-data; name="worker.mjs"; filename="worker.mjs"\r\n'
+        "Content-Type: application/javascript+module\r\n\r\n"
+        f"{source}\r\n--boundary--\r\n"
+    )
+
+    assert mod.worker_module_from_multipart(payload) == source
 
 
 def test_missing_service_token_secret_is_rotated(keychain, monkeypatch):

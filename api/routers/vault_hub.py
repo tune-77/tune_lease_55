@@ -305,6 +305,16 @@ async def run_research_organ(req: ResearchOrganRunRequest):
         }
     except RuntimeError as exc:
         message = str(exc)
+        if "no verifiable source URLs" in message:
+            # 根拠URLの無い調査は保存しない（安全策）。画面には理由と対処を出す。
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Web検索の根拠（参照URL）が取れなかったため、調査ノートは保存しませんでした。"
+                    "テーマを具体的にして（例: 「建設業の農業参入 リース審査」「医療機器 リース 中古相場」）、"
+                    "もう一度実行してください。時間をおいて再実行すると取れることもあります。"
+                ),
+            )
         status = 503 if "Vertex AI" in message or "GEMINI_API_KEY" in message or "Gemini" in message else 500
         raise HTTPException(status_code=status, detail=message)
     except Exception as exc:

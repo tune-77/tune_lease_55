@@ -4,6 +4,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "auto_research_lease_judgment.py"
 _SPEC = importlib.util.spec_from_file_location("auto_research_lease_judgment", _SCRIPT)
@@ -187,3 +189,60 @@ def test_emit_grounding_telemetry_writes_one_greppable_line(capsys):
     assert err.startswith("[autoresearch-grounding] ")
     assert '"outcome":"no_sources"' in err
     assert len(err.splitlines()) == 1, "1行でないとログ集計時に壊れる"
+
+
+def test_research_models_default_to_grounding_capable_models(monkeypatch):
+    monkeypatch.delenv("GEMINI_RESEARCH_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_RESEARCH_FALLBACK_MODEL", raising=False)
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.1-flash-lite")  # チャット既定に引きずられない
+    assert research.research_models() == ("gemini-3.5-flash", "gemini-3.1-pro-preview")
+    monkeypatch.setenv("GEMINI_RESEARCH_MODEL", "x-model")
+    assert research.research_models()[0] == "x-model"
+
+
+def test_retry_uses_fallback_model_and_logs_tokens(monkeypatch, capsys):
+    """1回目が接地なしなら上位モデルで再試行し、両方だめなら保存しない（モデルとトークン数を記録）。"""
+    import types as pytypes
+
+    import api.vertex_agent_search as vas
+    from google import genai
+
+    monkeypatch.setattr(vas, "get_config", lambda: pytypes.SimpleNamespace(enabled=True, project_id="p"))
+    monkeypatch.setattr(vas, "_access_token", lambda: "t")
+    monkeypatch.delenv("GEMINI_RESEARCH_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_RESEARCH_FALLBACK_MODEL", raising=False)
+    called: list[str] = []
+
+    class FakeModels:
+        def generate_content(self, *, model, contents, config):
+            called.append(model)
+            usage = pytypes.SimpleNamespace(prompt_token_count=10, candidates_token_count=20, thoughts_token_count=5, total_token_count=35)
+            candidate = pytypes.SimpleNamespace(grounding_metadata=None)
+            return pytypes.SimpleNamespace(text="記憶だけの回答", candidates=[candidate], usage_metadata=usage)
+
+    monkeypatch.setattr(genai, "Client", lambda **kw: pytypes.SimpleNamespace(models=FakeModels()))
+    topic = research.choose_topic(research.Path("/nonexistent"), "建設業の農業参入")
+    with pytest.raises(RuntimeError, match="no verifiable source URLs"):
+        research.research_topic(topic)
+    assert called == ["gemini-3.5-flash", "gemini-3.1-pro-preview"]
+    line = next(row for row in capsys.readouterr().err.splitlines() if "[autoresearch-grounding]" in row)
+    assert '"model":"gemini-3.1-pro-preview"' in line and '"total":35' in line
+
+
+def test_research_organ_explains_missing_sources(monkeypatch):
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from api.routers import vault_hub
+
+    def fail(*args):
+        raise RuntimeError("Gemini research returned no verifiable source URLs; note was not saved")
+
+    monkeypatch.setattr(research, "run", fail)
+    monkeypatch.setattr(vault_hub, "_research_organ_vault_path", lambda: Path("/tmp/vault"))  # CI には Vault が無い
+    monkeypatch.setitem(sys.modules, "scripts.auto_research_lease_judgment", research)
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(vault_hub.run_research_organ(vault_hub.ResearchOrganRunRequest(topic="建設業の農業参入")))
+    assert caught.value.status_code == 422
+    assert "テーマを具体的に" in caught.value.detail and "もう一度" in caught.value.detail

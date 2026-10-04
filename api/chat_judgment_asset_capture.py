@@ -251,8 +251,10 @@ def capture_chat_judgment_asset_if_needed(
     request_factory: Callable[..., Any],
     cloudrun_event_recorder: Callable[..., dict[str, Any]],
     jev_shadow: Callable[[str], None] = _start_jev_shadow,
+    user_requested: bool = False,
 ) -> dict[str, Any]:
-    claim = extract_chat_judgment_asset_claim(message)
+    # user_requested: ユーザーが「保存して」と頼んだ紫苑の回答（テンプレート等）。教示判定は通らないので飛ばす。
+    claim = " ".join(str(message or "").split())[:1500] if user_requested else extract_chat_judgment_asset_claim(message)
     if not claim:
         return {"captured": False, "reason": "not_judgment_asset_teaching"}
     try:
