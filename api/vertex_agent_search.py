@@ -11,7 +11,7 @@ import html
 import json
 import os
 
-from ai_runtime_client import google_genai_client
+from ai_runtime_client import google_genai_client, tracked_ai_call
 from config import GEMINI_MODEL_DEFAULT
 import re
 import subprocess
@@ -670,11 +670,19 @@ def google_search_grounding(query: str, *, model: str | None = None) -> dict[str
             else f"https://{location}-aiplatform.googleapis.com/v1/projects/{config.project_id}/locations/{location}/"
             f"publishers/google/models/{model_id}:generateContent"
         )
-        response = _post_json(
-            url,
-            body,
-            config,
-            timeout_seconds=float(os.environ.get("VERTEX_GOOGLE_SEARCH_GROUNDING_TIMEOUT_SECONDS", "30") or 30),
+        response = tracked_ai_call(
+            lambda: _post_json(
+                url,
+                body,
+                config,
+                timeout_seconds=float(
+                    os.environ.get("VERTEX_GOOGLE_SEARCH_GROUNDING_TIMEOUT_SECONDS", "30") or 30
+                ),
+            ),
+            provider="google",
+            model=model_id,
+            feature="vertex_grounded_search",
+            operation="vertex.generateContent.rest",
         )
         text_parts = []
         candidate = (response.get("candidates") or [{}])[0]

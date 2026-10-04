@@ -12,7 +12,7 @@ _REPO_ROOT_FOR_CONFIG = str(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if _REPO_ROOT_FOR_CONFIG not in sys.path:
     sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
 from config import get_gemini_model  # noqa: E402
-from ai_runtime_client import instrument_legacy_gemini_model  # noqa: E402
+from ai_runtime_client import instrument_legacy_gemini_model, tracked_ai_call  # noqa: E402
 
 _GEMINI_MODEL = get_gemini_model()
 _GEMINI_REST_URL = (
@@ -93,8 +93,17 @@ def _call_gemini_rest(prompt: str, api_key: str) -> str | None:
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        def _request():
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+
+        data = tracked_ai_call(
+            _request,
+            provider="google",
+            model=_GEMINI_MODEL,
+            feature="improvement_consolidation",
+            operation="generateContent.rest",
+        )
         text = data["candidates"][0]["content"]["parts"][0]["text"]
         if text.strip():
             return text.strip()
