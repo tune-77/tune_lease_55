@@ -60,9 +60,29 @@ def main() -> int:
     parser.add_argument("--quarantine-root", type=Path, default=DEFAULT_QUARANTINE_ROOT)
     args = parser.parse_args()
 
-    scan = find_orphans()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     quarantine_dir = args.quarantine_root / timestamp
+    moved: list[dict[str, str]] = []
+
+    if args.apply:
+        from api.knowledge.chroma_write_lock import chroma_write_lock
+
+        # Keep the database snapshot and every move in one writer critical section.
+        # Otherwise a rebuild can create a live segment between the scan and move.
+        with chroma_write_lock("chroma_orphan_cleanup"):
+            scan = find_orphans()
+            if scan["orphans"]:
+                quarantine_dir.mkdir(parents=True, exist_ok=True)
+                for item in scan["orphans"]:
+                    src = Path(item["path"])
+                    dst = quarantine_dir / src.name
+                    if dst.exists():
+                        raise FileExistsError(f"quarantine destination exists: {dst}")
+                    shutil.move(str(src), str(dst))
+                    moved.append({"from": str(src), "to": str(dst)})
+    else:
+        scan = find_orphans()
+
     manifest = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "mode": "apply" if args.apply else "dry_run",
@@ -72,19 +92,9 @@ def main() -> int:
         "directory_count": scan["directory_count"],
         "orphan_count": len(scan["orphans"]),
         "orphan_bytes": sum(item["size_bytes"] for item in scan["orphans"]),
-        "moved": [],
+        "moved": moved,
         "orphans": scan["orphans"],
     }
-
-    if args.apply and scan["orphans"]:
-        quarantine_dir.mkdir(parents=True, exist_ok=True)
-        for item in scan["orphans"]:
-            src = Path(item["path"])
-            dst = quarantine_dir / src.name
-            if dst.exists():
-                raise FileExistsError(f"quarantine destination exists: {dst}")
-            shutil.move(str(src), str(dst))
-            manifest["moved"].append({"from": str(src), "to": str(dst)})
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     report_path = REPORTS_DIR / "chroma_orphan_cleanup_latest.json"

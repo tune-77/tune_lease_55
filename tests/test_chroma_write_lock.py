@@ -61,6 +61,7 @@ def test_writer_entry_points_share_the_common_lock() -> None:
     feedback_store = Path("api/knowledge/feedback_watcher.py").read_text(encoding="utf-8")
     direct_reindex = Path("scripts/reindex_obsidian.py").read_text(encoding="utf-8")
     reindex_runner = Path("scripts/run_obsidian_reindex.sh").read_text(encoding="utf-8")
+    orphan_cleanup = Path("scripts/cleanup_chroma_orphans.py").read_text(encoding="utf-8")
 
     assert 'chroma_write_lock("obsidian_reindex")' in maintenance
     assert 'chroma_write_lock("shion_memory_sync")' in memory_vector
@@ -70,6 +71,7 @@ def test_writer_entry_points_share_the_common_lock() -> None:
     assert 'chroma_write_lock("lease_feedback_upsert")' in feedback_store
     assert 'chroma_write_lock("lease_feedback_initialize")' in feedback_store
     assert 'chroma_write_lock("obsidian_full_reindex")' in direct_reindex
+    assert 'chroma_write_lock("chroma_orphan_cleanup")' in orphan_cleanup
     assert 'report.get("status") == "deferred"' in maintenance
     assert "REINDEX_EXIT -ne 75" in reindex_runner
     assert "GCS sync もスキップ" in reindex_runner
