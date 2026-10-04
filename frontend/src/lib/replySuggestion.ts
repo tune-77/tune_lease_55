@@ -10,11 +10,11 @@ export function suggestReply(assistantText: string): string | null {
   const last = questions[questions.length - 1].trim();
   if (text.length - (text.lastIndexOf(last) + last.length) > 80) return null;
 
-  // 読点・括弧より後ろを対象にする
-  const clause = last.split(/[、,「」『』（）()]/).pop()?.trim() ?? "";
+  // 読点より後ろを対象にする（括弧内の目的語は残す）
+  const clause = last.split(/[、,]/).pop()?.trim() ?? "";
 
   // 「どちらにしますか」等の選択・疑問詞つきは候補を出さない
-  if (/どちら|どれ|どう|何|なに|いつ|どこ|誰|いかが/.test(clause)) return null;
+  if (/どちら|どれ|どの|どう|何|なに|いつ|どこ|誰|いかが/.test(clause)) return null;
 
   // 〜しますか / 〜しましょうか / 〜しておきますか → 〜してくれ
   const suru = clause.match(/^(.+?)(?:しておき|し)(?:ますか|ましょうか)[？?]$/);
