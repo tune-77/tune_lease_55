@@ -4,7 +4,7 @@
 
 [![PR Checks](https://github.com/tune-77/tune_lease_55/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/pr-checks.yml)
 [![Daily Test Suite](https://github.com/tune-77/tune_lease_55/actions/workflows/daily-test.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/daily-test.yml)
-[![Deploy to Cloud Run](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml)
+[![Deploy to Cloud Run (paused)](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/deploy.yml)
 [![Security Scan](https://github.com/tune-77/tune_lease_55/actions/workflows/security-scan.yml/badge.svg)](https://github.com/tune-77/tune_lease_55/actions/workflows/security-scan.yml)
 
 [![紫苑デモ動画](https://img.youtube.com/vi/KWLbWEHHn-E/hqdefault.jpg)](https://youtu.be/KWLbWEHHn-E)
@@ -39,10 +39,10 @@
 
 設計上、紫苑の **身体** と **頭脳** は分離しています。
 
-- 身体: Cloud Run 上の UI / API / スコアリング / チャット / 紫苑レビュー
+- 身体: 本番は Mac 上の Cloudflare 版（https://shion.tune77.com）で動く UI / API / スコアリング / チャット / 紫苑レビュー（2026-10 までは Cloud Run。現在は停止中の予備）
 - 頭脳: Obsidian / Markdown Vault に保存される判断資産、過去判断、違和感、改善ログ
 
-Cloud Run は紫苑を動かす実行環境ですが、判断資産の正本を直接書き換えません。改善候補は一度検疫キューに入り、人間承認を経てから頭脳へ昇格します。この分離により、リース審査の頭脳を、法務レビュー、営業支援、CS品質監査など別業務の頭脳へ差し替えることもできます。
+実行環境（身体）は紫苑を動かしますが、判断資産の正本を直接書き換えません。改善候補は一度検疫キューに入り、人間承認を経てから頭脳へ昇格します。この分離により、リース審査の頭脳を、法務レビュー、営業支援、CS品質監査など別業務の頭脳へ差し替えることもできます。
 
 ## まず何を作ったか
 
@@ -52,7 +52,7 @@ Cloud Run は紫苑を動かす実行環境ですが、判断資産の正本を�
 | 解く課題 | ベテランの違和感・確認観点・承認条件が、案件ごとに消えてしまう |
 | 何が新しいか | 人間の曖昧な違和感を、後で使える確認点・条件・説明に変える |
 | デモで見る所 | なんか変 → AIが言語化 → 人間が修正 → 次回案件で思い出す / 評価GUI |
-| 技術の芯 | Next.js / FastAPI / Gemini / ADK / Cloud Run / Obsidian-RAG / 検疫DB / 判断資産DevOps / 頭脳差し替え |
+| 技術の芯 | Next.js / FastAPI / Gemini / ADK / Cloudflare Tunnel・Access（本番）/ Cloud Run（停止中の予備）/ Obsidian-RAG / 検疫DB / 判断資産DevOps / 頭脳差し替え |
 
 紫苑は「AIが正解を出す」ための単発チャットではありません。人間が現場で感じた違和感、修正、承認条件、反証を **判断パーツ** として保存し、次の案件で組み直し、人間がまた評価するための運用基盤です。つまり、プロンプトエンジニアリングを個人技ではなく、業務判断のPDCAプロセスにします。
 
@@ -129,7 +129,7 @@ AIにとって自然な学習の形を、人間の業務判断に移植する。
 | 項目 | 内容 |
 |---|---|
 | 課題 | 審査現場の「なんか変」「条件付きなら通せる」「ここが怖い」が、会話や稟議前の迷いの中で消える |
-| 必須技術 | Cloud Run（API/Web分離）+ Gemini API + **ADK**（`api/shion_agent.py`、ツール自律呼び出し） |
+| 必須技術 | Cloud Run（API/Web分離）+ Gemini API + **ADK**（`api/shion_agent.py`、ツール自律呼び出し）。※ハッカソン提出時の構成。2026-10 から本番は Cloudflare 版（Mac）に移り、Cloud Run は停止中の予備 |
 | 実証フィールド | リース審査。財務・物件・営業メモ・過去案件・ニュース・RAGを使う高文脈な判断業務 |
 | 差別化 | ① 人間の違和感を言語化する ② 修正履歴として残す ③ 承認済みだけ再利用する ④ 次回案件で思い出す ⑤ 結果データで後から検証する |
 | 一言 | 紫苑は、なんか変、を捨てないAIです |
@@ -188,11 +188,11 @@ AIにとって自然な学習の形を、人間の業務判断に移植する。
 
 | 要素 | 役割 | 実装例 |
 |---|---|---|
-| 身体 | 画面、API、スコアリング、チャット、紫苑レビューを動かす | Cloud Run / Next.js / FastAPI / Gemini / ADK |
+| 身体 | 画面、API、スコアリング、チャット、紫苑レビューを動かす | Cloudflare 版（Mac・本番）/ Cloud Run（停止中の予備）/ Next.js / FastAPI / Gemini / ADK |
 | 頭脳 | 判断資産、過去判断、違和感、条件付き承認理由、改善ログを保持する | Obsidian / Markdown Vault / GCS同期コピー / memory index |
 | 安全装置 | 改善候補を正本へ直入れせず、検疫・人間承認・昇格を通す | 検疫DB / approval workflow / promotion scripts |
 
-このため、Cloud Run上の実行環境は共通のまま、頭脳となる判断資産Vaultを差し替えることで、別業務へ展開できます。
+このため、実行環境（Cloudflare 版でも Cloud Run でも）は共通のまま、頭脳となる判断資産Vaultを差し替えることで、別業務へ展開できます。
 
 ```text
 Lease Brain  -> リース審査の確認質問・承認条件・稟議文面
@@ -254,7 +254,7 @@ CS Brain     -> 問い合わせ品質・再発防止・回答方針
 flowchart TD
     Shion["紫苑<br/>判断資産DevOps Core"]
 
-    subgraph Body["身体: Cloud Run 実行環境"]
+    subgraph Body["身体: 実行環境（本番=Cloudflare 版 Mac / 予備=Cloud Run）"]
         FE["Next.js UI<br/>審査入力 / チャット / 紫苑レビュー"]
         API["FastAPI API<br/>スコアリング / OCR / ADK / Gemini"]
         Score["審査判断エンジン<br/>財務スコア / Q_risk / 物件リスク / 類似案件"]
@@ -616,10 +616,10 @@ DevOpsとして扱うことで、判断資産にはライフサイクルが生�
 ```mermaid
 graph TD
     User["👤 審査担当者"] --> FE["Next.js フロントエンド\nPort 3000"]
-    User --> CRWEB["Cloud Run Web\nasia-northeast1"]
-    CRWEB --> FE
-    CRWEB --> CRAPI["Cloud Run API\nallow unauthenticated"]
-    CRAPI --> API
+    User --> CF["Cloudflare（本番）\nshion.tune77.com\nAccess メールPIN / 回数制限 / 休止ページ"]
+    CF -->|named tunnel| FE
+    User -.->|停止中の予備| CRWEB["Cloud Run Web\nasia-northeast1（2026-10〜停止）"]
+    CRWEB -.-> CRAPI["Cloud Run API"]
     FE --> API["FastAPI\nPort 8000"]
     API --> SHION["🌸 紫苑（SHION）\nlease_intelligence_dialogue.py"]
     API --> LOOP["会話ループエンジニアリング\nContinuity Hook / Delta Awareness\nMemory-to-Judgment / Reflection Gate"]
@@ -1069,6 +1069,25 @@ Zero Trust のチーム名（Free プラン）だけは初回にダッシュボ�
 
 Access 導入後、外から `curl https://shion.tune77.com/chat` するとログイン画面への 302 になるのが正常です。
 
+### 本番運用（Cloudflare 版・2026-10〜）
+
+2026-10 から本番は **Mac 上の Cloudflare 版** です。Cloud Run は 2026-10-01 に停止し（PR #1188）、現在は予備扱いです。
+
+| 項目 | 内容 |
+|---|---|
+| URL | https://shion.tune77.com（named tunnel `tune-lease-55` → `http://127.0.0.1:3000`） |
+| 常駐 | launchd `com.tunelease.next`（KeepAlive）が `run_next_stable.sh` を常駐させ、FastAPI / Next.js / cloudflared が落ちたら起こし直す |
+| 再起動 | `FORCE_RESTART=1 bash run_next_stable.sh`（手順は `.claude/skills/restart-api/SKILL.md`）。ポートを手で kill しない |
+| ログイン | Cloudflare Access のメールワンタイムPIN（所有者メールのみ・730時間） |
+| 回数制限 | チャット・軍師・音声トークン等に同一IP 10秒5回まで |
+| 停止時 | Mac に届かない間は休止ページ Worker が「紫苑は今お休み中です」を返す |
+| バックアップ | 暗号化アーカイブを iCloud と Cloudflare R2（`tune-lease-55-backups`）の2系統へ。案件データは週次（日曜 01:30, `com.tunelease.case-data-backup`）、判断資産は日次（23:30, `com.tunelease.judgment-asset-backup`）。成否は `data/backup_status.json` と朝報。復号は `scripts/restore_case_data_backup.py`、R2 一覧は `python scripts/r2_offsite.py --list` |
+| 監視 | 朝報の死活チェック（Access の service token）と `bash scripts/cloudflare_edge_setup.sh --verify` |
+
+**Mac のスリープに注意**: Mac がスリープ・再起動中・ネットワーク断の間は本番も止まります（休止ページが出るだけで、データは失われません）。電源接続時はスリープしない設定（システム設定 › バッテリー › 電源アダプタ、または `sudo pmset -c sleep 0`）にし、蓋を閉じる運用は避けてください。OS アップデート後は `https://shion.tune77.com` が開けるか確認します。
+
+**Cloud Run（停止中の予備）**: 2026-10-03 に Cloud Run サービス（`tune-lease-55-api` / `-web`）と Artifact Registry リポジトリ `cloud-run-source-deploy` も削除済みです。GCS バケット `tune-lease-55-data` と Secret Manager のシークレットは残っています。再開は `.github/workflows/cloudrun-pause.yml` 冒頭の手順に従いますが、サービスが無いので IAM を戻すだけでは足りません。先に `gcloud artifacts repositories create cloud-run-source-deploy --repository-format=docker --location=asia-northeast1 --project gen-lang-client-0420497423` でリポジトリを作り直してから、`deploy.yml` を `force_deploy` で実行して作り直します。
+
 
 ## 何ができるか
 
@@ -1089,7 +1108,7 @@ Access 導入後、外から `curl https://shion.tune77.com/chat` するとロ�
 - Obsidianに集めたリースニュースを、審査の確認事項・判断変更へつなげる
 - 案件削除の監査ログを `/operations` で確認し、削除漏れ・孤児レコードを検知する
 
-Cloud Run の API は現在 `CLOUDRUN_DATA_MODE=production`（既定）で動き、`API_ACCESS_KEY` 必須（fail-closed）です。ハッカソン審査・公開デモ用には `CLOUDRUN_DATA_MODE=demo` を明示してデモDBだけで動かせます。デプロイ手順とデモ/本番分離・検疫・昇格の流れは [DevOpsサイクルとしての紫苑](#devopsサイクルとしての紫苑) と [Cloud Run / GCS Vault 対応](#cloud-run--gcs-vault-対応) にまとめています。
+本番は [本番運用（Cloudflare 版・2026-10〜）](#本番運用cloudflare-版2026-10) のとおり Mac 上で動いています。以下は停止中の予備である Cloud Run の設定です。Cloud Run の API は `CLOUDRUN_DATA_MODE=production`（既定）で動き、`API_ACCESS_KEY` 必須（fail-closed）です。ハッカソン審査・公開デモ用には `CLOUDRUN_DATA_MODE=demo` を明示してデモDBだけで動かせます。デプロイ手順とデモ/本番分離・検疫・昇格の流れは [DevOpsサイクルとしての紫苑](#devopsサイクルとしての紫苑) と [Cloud Run / GCS Vault 対応](#cloud-run--gcs-vault-対応) にまとめています。
 
 ### 2026年9月の主な追加
 
@@ -1347,7 +1366,9 @@ Google AI Studio / Geminiを単一チャットではなく、複数の役割を�
 
 ## Cloud Run / GCS Vault 対応
 
-本番はGoogle Cloud Run上でAPI/Webサービスを分離して展開しています。
+> **2026-10 から Cloud Run は停止中の予備です。** 本番は Mac 上の Cloudflare 版です（[本番運用](#本番運用cloudflare-版2026-10)）。2026-10-01 に停止（PR #1188、`config/cloudrun_pause.json`）、2026-10-03 にサービスと Artifact Registry を削除しました。Cloud Run との同期スクリプトは停止中はスキップされます。以下は再開時のための記録で、当時の構成をそのまま残しています。
+
+2026-09 までの本番は Google Cloud Run 上で API/Web サービスを分離して展開していました。
 
 | サービス | 名称 | 役割 |
 |---|---|---|
@@ -1484,10 +1505,11 @@ memory/                      日次作業メモ
 data/                        ローカル生成データ。原則 git 対象外
 scoring_core.py              審査スコアの中核（承認ラインは constants.py の APPROVAL_LINE）
 lease_intelligence_*.py      紫苑の自己モデル、対話、内省、central
-run_next_stable.sh           主起動スクリプト（ローカル）
-Dockerfile / Dockerfile.api  Cloud Run 向けコンテナ定義
-cloudbuild.yaml              Cloud Build デプロイ設定
-CLOUD_RUN.md                 Cloud Run 運用の詳細（データモード、APIキー、スナップショット）
+run_next_stable.sh           主起動スクリプト（本番＝Cloudflare 版もこれで常駐）
+cloudflare/                  休止ページ Worker（Cloudflare 版の本番エッジ）
+Dockerfile / Dockerfile.api  Cloud Run 向けコンテナ定義（停止中の予備）
+cloudbuild.yaml              Cloud Build デプロイ設定（停止中の予備）
+CLOUD_RUN.md                 Cloud Run 運用の詳細（停止中の予備。データモード、APIキー、スナップショット）
 ```
 
 ## このリポジトリの芯

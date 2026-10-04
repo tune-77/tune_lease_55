@@ -5,6 +5,8 @@ description: Restart the tune_lease_55 Next/FastAPI production-style launcher wi
 
 # Restart Next With Cloudflare
 
+Since October 2026 this Cloudflare edition (https://shion.tune77.com, named tunnel `tune-lease-55`) is the production environment; Cloud Run is paused as a standby. A restart here briefly takes production down (the sleep-page Worker covers the gap).
+
 Use this skill to keep the current app stack available and publish the Next UI through Cloudflare Tunnel. Prefer the persistent LaunchAgent so the app does not stop when the Codex or terminal session ends.
 
 ## Fast Path

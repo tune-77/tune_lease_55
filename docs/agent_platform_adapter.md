@@ -60,7 +60,7 @@ Agent Platform は紫苑の「外側の司令塔」にする。source of truth �
 
 この接続方針の強みは、「AIエージェントを作った」ではなく、**業務AIエージェントを運用し、観測し、評価し、判断基準として育てる基盤** だと説明できること。
 
-- Cloud Run: 本番運用できるAPI/Web基盤
+- Cloud Run: 本番運用できるAPI/Web基盤（2026-10 から停止中の予備。現在の本番は Mac 上の Cloudflare 版）
 - Gemini API: OCR、対話、レビュー、審査コメント生成
 - ADK: 紫苑をツール利用型エージェントとして動かす入口
 - Agent Platform: 将来の評価、監視、ガバナンス、ツール統制の受け皿
