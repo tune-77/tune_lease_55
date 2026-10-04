@@ -98,9 +98,22 @@ def _term_to_col(lease_term_months: int) -> str:
 def _ensure_term_columns(conn: sqlite3.Connection) -> None:
     """期間別列が未存在なら ALTER TABLE で追加する。"""
     existing = {row[1] for row in conn.execute("PRAGMA table_info(base_rate_master)")}
-    for col in TERM_COLS:
-        if col not in existing:
-            conn.execute(f"ALTER TABLE base_rate_master ADD COLUMN {col} REAL")
+    if all(col in existing for col in TERM_COLS):
+        return
+
+    # pytest-xdist や複数プロセス起動時は、複数接続が同時に不足列を
+    # 検出し得る。書き込みロック取得後に再確認して、同じ列を二重に
+    # ALTER TABLE する TOCTOU 競合を防ぐ。
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(base_rate_master)")}
+        for col in TERM_COLS:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE base_rate_master ADD COLUMN {col} REAL")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def _get_conn() -> sqlite3.Connection:

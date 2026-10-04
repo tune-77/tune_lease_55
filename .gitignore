@@ -125,6 +125,8 @@ data/canonical_judgment_rules_preview.json
 data/shion_reflection_delta.json
 data/shion_timeline_delta.json
 data/embedding_compare_cache/
+data/embedding_eval_cache/
+data/cloudflare_rag_shadow_log.jsonl
 data/memory/
 data/judgment_asset_rules_v2.json
 data/shion_memory_freshness.jsonl
