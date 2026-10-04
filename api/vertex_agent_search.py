@@ -11,6 +11,7 @@ import html
 import json
 import os
 
+from ai_runtime_client import google_genai_client
 from config import GEMINI_MODEL_DEFAULT
 import re
 import subprocess
@@ -706,7 +707,9 @@ def google_search_grounding(query: str, *, model: str | None = None) -> dict[str
 
         sdk_token = _access_token()
         sdk_credentials = _OAuthCredentials(token=sdk_token) if sdk_token else None
-        client = genai.Client(
+        client = google_genai_client(
+            feature="vertex_grounded_search",
+            client_factory=genai.Client,
             vertexai=True,
             project=config.project_id,
             location=location,

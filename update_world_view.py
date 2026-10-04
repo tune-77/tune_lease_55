@@ -14,6 +14,8 @@ import os
 from config import get_gemini_model
 import re
 import sys
+
+from ai_runtime_client import tracked_ai_http_call
 import tempfile
 from pathlib import Path
 
@@ -115,7 +117,14 @@ def _call_gemini(prompt: str) -> dict:
                 "thinkingConfig": {"thinkingBudget": 512},
             },
         }
-        resp = requests.post(url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60)
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60
+            ),
+            provider="google",
+            model=_GEMINI_MODEL,
+            feature="world_view_update",
+        )
         resp.raise_for_status()
         raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         m = re.search(r'\{[\s\S]*\}', raw)

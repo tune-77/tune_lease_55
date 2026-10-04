@@ -12,6 +12,7 @@ _REPO_ROOT_FOR_CONFIG = str(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if _REPO_ROOT_FOR_CONFIG not in sys.path:
     sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
 from config import get_gemini_model  # noqa: E402
+from ai_runtime_client import instrument_legacy_gemini_model  # noqa: E402
 
 _GEMINI_MODEL = get_gemini_model()
 _GEMINI_REST_URL = (
@@ -62,9 +63,13 @@ def _call_gemini_sdk(prompt: str, api_key: str) -> str | None:
     try:
         import google.generativeai as genai  # type: ignore
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name=_GEMINI_MODEL,
-            generation_config={"max_output_tokens": 4096, "temperature": 0.3},
+        model = instrument_legacy_gemini_model(
+            genai.GenerativeModel(
+                model_name=_GEMINI_MODEL,
+                generation_config={"max_output_tokens": 4096, "temperature": 0.3},
+            ),
+            feature="improvement_consolidation",
+            model=_GEMINI_MODEL,
         )
         resp = model.generate_content(prompt)
         text = getattr(resp, "text", "") or ""

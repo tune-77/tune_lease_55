@@ -1,0 +1,116 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from ai_runtime_client import (
+    anthropic_client,
+    extract_token_usage,
+    google_genai_client,
+    tracked_ai_call,
+    tracked_ai_http_call,
+)
+
+
+def _read_entries(path):
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_google_client_records_metadata_without_content(tmp_path, monkeypatch):
+    log_path = tmp_path / "usage.jsonl"
+    monkeypatch.setenv("AI_USAGE_LOG_PATH", str(log_path))
+
+    class Usage:
+        prompt_token_count = 12
+        candidates_token_count = 5
+        total_token_count = 17
+
+    class Models:
+        def generate_content(self, **_kwargs):
+            return type("Response", (), {"text": "private answer", "usage_metadata": Usage()})()
+
+    raw = type("Client", (), {"models": Models()})()
+    client = google_genai_client(feature="screening_chat", client_factory=lambda **_: raw)
+    response = client.models.generate_content(model="gemini-test", contents="private prompt")
+
+    assert response.text == "private answer"
+    [entry] = _read_entries(log_path)
+    assert entry["provider"] == "google"
+    assert entry["feature"] == "screening_chat"
+    assert entry["model"] == "gemini-test"
+    assert entry["input_tokens"] == 12
+    assert entry["output_tokens"] == 5
+    assert entry["total_tokens"] == 17
+    serialized = json.dumps(entry, ensure_ascii=False)
+    assert "private prompt" not in serialized
+    assert "private answer" not in serialized
+
+
+def test_failure_records_only_exception_type(tmp_path, monkeypatch):
+    log_path = tmp_path / "usage.jsonl"
+    monkeypatch.setenv("AI_USAGE_LOG_PATH", str(log_path))
+
+    def fail():
+        raise RuntimeError("secret customer text")
+
+    with pytest.raises(RuntimeError, match="secret customer text"):
+        tracked_ai_call(
+            fail,
+            provider="google",
+            model="gemini-test",
+            feature="test",
+        )
+
+    [entry] = _read_entries(log_path)
+    assert entry["ok"] is False
+    assert entry["error_type"] == "RuntimeError"
+    assert "secret customer text" not in json.dumps(entry, ensure_ascii=False)
+
+
+def test_anthropic_usage_is_normalized(tmp_path, monkeypatch):
+    log_path = tmp_path / "usage.jsonl"
+    monkeypatch.setenv("AI_USAGE_LOG_PATH", str(log_path))
+
+    usage = type("Usage", (), {"input_tokens": 8, "output_tokens": 3})()
+    response = type("Response", (), {"usage": usage})()
+    messages = type("Messages", (), {"create": lambda self, **_: response})()
+    raw = type("Client", (), {"messages": messages})()
+    client = anthropic_client(feature="mebuki", client_factory=lambda **_: raw)
+
+    assert client.messages.create(model="claude-test") is response
+    [entry] = _read_entries(log_path)
+    assert entry["provider"] == "anthropic"
+    assert entry["input_tokens"] == 8
+    assert entry["output_tokens"] == 3
+    assert entry["total_tokens"] == 11
+
+
+def test_extract_token_usage_accepts_rest_dict():
+    assert extract_token_usage(
+        {"usageMetadata": {"promptTokenCount": 4, "candidatesTokenCount": 6, "totalTokenCount": 10}}
+    ) == {"input_tokens": 4, "output_tokens": 6, "total_tokens": 10}
+
+
+def test_http_call_records_usage_and_preserves_response(tmp_path, monkeypatch):
+    log_path = tmp_path / "usage.jsonl"
+    monkeypatch.setenv("AI_USAGE_LOG_PATH", str(log_path))
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"usageMetadata": {"promptTokenCount": 2, "candidatesTokenCount": 7}}
+
+    response = Response()
+    actual = tracked_ai_http_call(
+        lambda: response,
+        provider="google",
+        model="gemini-rest",
+        feature="rest_test",
+    )
+
+    assert actual is response
+    [entry] = _read_entries(log_path)
+    assert entry["total_tokens"] == 9

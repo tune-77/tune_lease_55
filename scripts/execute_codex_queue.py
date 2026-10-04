@@ -17,6 +17,7 @@ if _REPO_ROOT_FOR_CONFIG not in sys.path:
     sys.path.insert(0, _REPO_ROOT_FOR_CONFIG)
 from silent_failure_log import record_silent_failure
 from config import get_gemini_model  # noqa: E402
+from ai_runtime_client import instrument_legacy_gemini_model  # noqa: E402
 
 
 def repo_root() -> Path:
@@ -124,7 +125,10 @@ def _try_gemini(prompt: str, api_key: str) -> tuple[int, str, str]:
         return -1, "", "google-generativeai パッケージ未インストール"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(get_gemini_model())
+        model_name = get_gemini_model()
+        model = instrument_legacy_gemini_model(
+            genai.GenerativeModel(model_name), feature="codex_queue", model=model_name
+        )
         response = model.generate_content(prompt)
         text = response.text or ""
         if not text.strip():

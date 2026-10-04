@@ -18,6 +18,7 @@ import matplotlib.font_manager as fm
 import numpy as np
 import seaborn as sns
 import datetime
+from ai_runtime_client import instrument_legacy_gemini_model
 from coeff_definitions import (
     COEFFS,
     BAYESIAN_PRIOR_EXTRA,
@@ -1626,7 +1627,9 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int)
 
     try:
         genai.configure(api_key=api_key.strip())
-        gemini_model = genai.GenerativeModel(model)
+        gemini_model = instrument_legacy_gemini_model(
+            genai.GenerativeModel(model), feature="legacy_streamlit_chat", model=model
+        )
         try:
             config = genai.types.GenerationConfig(max_output_tokens=2048, temperature=0.7)
             response = gemini_model.generate_content(prompt, generation_config=config)

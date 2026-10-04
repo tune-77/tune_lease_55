@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from ai_runtime_client import google_genai_client  # noqa: E402
 from config import GEMINI_MODEL_DEFAULT as DEFAULT_MODEL  # noqa: E402
 
 
@@ -59,7 +60,9 @@ def generate_text(
 
         token = _access_token()
         credentials = _OAuthCredentials(token=token) if token else None
-        client = genai.Client(
+        client = google_genai_client(
+            feature="vertex_text_generation",
+            client_factory=genai.Client,
             vertexai=True,
             project=config.project_id,
             location=location,

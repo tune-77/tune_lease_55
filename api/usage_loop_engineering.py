@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import os
 
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import re
 from pathlib import Path
@@ -128,7 +129,14 @@ def _call_gemini(prompt: str) -> str:
             "responseMimeType": "application/json",
         },
     }
-    resp = requests.post(url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60)
+    resp = tracked_ai_http_call(
+        lambda: requests.post(
+            url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60
+        ),
+        provider="google",
+        model=model,
+        feature="usage_loop_engineering",
+    )
     resp.raise_for_status()
     return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 

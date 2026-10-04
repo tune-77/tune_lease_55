@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ipaddress
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import socket
 import sys
@@ -214,11 +215,16 @@ summary_codes と usage_codes は必ず上記の英字コードだけを返し�
     result = defaults
     finish_reason = ""
     for current_payload in (payload, with_retry_tokens(payload, 2048)):
-        response = requests.post(
-            _gemini_generate_url(),
-            json=current_payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=30,
+        response = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_generate_url(),
+                json=current_payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=30,
+            ),
+            provider="google",
+            model=get_gemini_model(),
+            feature="lease_news_summary",
         )
         response.raise_for_status()
         raw, finish_reason = extract_candidate_text(response.json())

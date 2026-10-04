@@ -32,6 +32,8 @@ from config import get_gemini_model
 import re
 import time
 import requests
+
+from ai_runtime_client import tracked_ai_http_call
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -360,11 +362,16 @@ def _post_gemini(payload: dict, timeout: float, deadline: float | None = None) -
     last_exc: Exception | None = None
     for attempt in range(3):
         try:
-            resp = requests.post(
-                _gemini_url(),
-                json=payload,
-                headers={"x-goog-api-key": api_key},
-                timeout=timeout,
+            resp = tracked_ai_http_call(
+                lambda: requests.post(
+                    _gemini_url(),
+                    json=payload,
+                    headers={"x-goog-api-key": api_key},
+                    timeout=timeout,
+                ),
+                provider="google",
+                model=get_gemini_model(),
+                feature="multi_agent_screening",
             )
             resp.raise_for_status()
             return resp

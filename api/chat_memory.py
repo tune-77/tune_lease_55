@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import time
 from typing import Any, Callable
@@ -193,11 +194,16 @@ def _continue_truncated_response(
                 "maxOutputTokens": _chat_max_tokens(),
             },
         }
-        response = requests.post(
-            _gemini_url(),
-            json=payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=timeout,
+        response = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_url(),
+                json=payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=timeout,
+            ),
+            provider="google",
+            model=_gemini_model(),
+            feature="chat_memory_continuation",
         )
         response.raise_for_status()
         data = response.json()
@@ -274,11 +280,16 @@ def get_summary(user_id: str = "default") -> str:
             "contents": [{"role": "user", "parts": [{"text": lines}]}],
             "generationConfig": {"temperature": 0.2, "maxOutputTokens": 256},
         }
-        resp = requests.post(
-            _gemini_url(),
-            json=payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=30,
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_url(),
+                json=payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=30,
+            ),
+            provider="google",
+            model=_gemini_model(),
+            feature="chat_memory_summary",
         )
         resp.raise_for_status()
         body = resp.json()
@@ -445,11 +456,16 @@ def call_gemini_with_tools(
     text = ""
     for _round in range(max_tool_rounds + 1):
         payload = {**base_payload, "contents": contents}
-        resp = requests.post(
-            _gemini_url(),
-            json=payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=90,
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_url(),
+                json=payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=90,
+            ),
+            provider="google",
+            model=_gemini_model(),
+            feature="chat_memory_tools",
         )
         resp.raise_for_status()
         data = resp.json()
@@ -521,11 +537,16 @@ def call_gemini_chat(
             "maxOutputTokens": _chat_max_tokens(),
         },
     }
-    resp = requests.post(
-        _gemini_url(),
-        json=payload,
-        headers={"x-goog-api-key": api_key},
-        timeout=60,
+    resp = tracked_ai_http_call(
+        lambda: requests.post(
+            _gemini_url(),
+            json=payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=60,
+        ),
+        provider="google",
+        model=_gemini_model(),
+        feature="chat_memory",
     )
     resp.raise_for_status()
     data = resp.json()
