@@ -1,4 +1,8 @@
-from ai_chat import _remove_redundant_phrases
+from ai_chat import _remove_redundant_phrases, tracked_ai_http_call
+
+
+def test_gemini_stream_http_tracker_is_imported():
+    assert callable(tracked_ai_http_call)
 
 
 def test_remove_redundant_phrase_requires_delimiter_after_hai():

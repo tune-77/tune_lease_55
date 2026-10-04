@@ -13,7 +13,12 @@ from typing import Optional, Generator
 import re
 import streamlit as st
 
-from ai_runtime_client import google_genai_client, instrument_legacy_gemini_model, tracked_ai_call
+from ai_runtime_client import (
+    google_genai_client,
+    instrument_legacy_gemini_model,
+    tracked_ai_call,
+    tracked_ai_http_call,
+)
 from config import (
     OLLAMA_MODEL,
     GEMINI_API_KEY_ENV,
