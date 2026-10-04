@@ -27,6 +27,8 @@ from __future__ import annotations
 import json
 import os
 
+from ai_runtime_client import tracked_ai_http_call
+
 from config import get_gemini_model
 import re
 
@@ -278,11 +280,16 @@ def _ai_review(params: dict, checks: list[dict], verdict: str) -> dict | None:
         },
     }
     try:
-        resp = requests.post(
-            _gemini_url(),
-            json=payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=30,
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_url(),
+                json=payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=30,
+            ),
+            provider="google",
+            model=get_gemini_model(),
+            feature="business_plan_check",
         )
         resp.raise_for_status()
         raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()

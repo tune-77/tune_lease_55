@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from ai_runtime_client import google_genai_client
+
 try:
     from obsidian_bridge import (
         append_chat_note,
@@ -719,7 +721,9 @@ def build_chat_reply(
             _sys.path.insert(0, _root)
         from config import get_gemini_model
 
-        client = genai.Client(api_key=api_key)
+        client = google_genai_client(
+            feature="chat_assistant", client_factory=genai.Client, api_key=api_key
+        )
         model = get_gemini_model()
         response = client.models.generate_content(
             model=model,

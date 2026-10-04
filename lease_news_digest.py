@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 
+from ai_runtime_client import google_genai_client
 from config import get_gemini_model
 import re
 import threading
@@ -1429,7 +1430,9 @@ def _generate_llm_news_signal_candidates(base_signals: list[dict]) -> dict:
             "valid_until は入力より長くしないでください。\n"
             + json.dumps(payload, ensure_ascii=False)
         )
-        client = genai.Client(api_key=api_key)
+        client = google_genai_client(
+            feature="lease_news_digest", client_factory=genai.Client, api_key=api_key
+        )
         response = client.models.generate_content(
             model=get_gemini_model(),
             contents=prompt,

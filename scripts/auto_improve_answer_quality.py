@@ -15,6 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from ai_runtime_client import google_genai_client  # noqa: E402
+from config import get_gemini_model  # noqa: E402
 
 from scripts.evaluate_answer_quality import (
     DEFAULT_EVAL_SET,
@@ -310,7 +312,9 @@ def research_failed_answer(
 - 自動承認・自動否決を提案しない。
 - 回答本文だけを日本語で返す。"""
 
-    client = genai.Client(
+    client = google_genai_client(
+        feature="answer_quality_improvement",
+        client_factory=genai.Client,
         vertexai=True,
         project=vertex_config.project_id,
         location=location,

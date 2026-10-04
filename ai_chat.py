@@ -13,6 +13,12 @@ from typing import Optional, Generator
 import re
 import streamlit as st
 
+from ai_runtime_client import (
+    google_genai_client,
+    instrument_legacy_gemini_model,
+    tracked_ai_call,
+    tracked_ai_http_call,
+)
 from config import (
     OLLAMA_MODEL,
     GEMINI_API_KEY_ENV,
@@ -169,7 +175,7 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
     try:
         import google.genai as _genai
         from google.genai import types as _genai_types
-        client = _genai.Client(api_key=api_key.strip())
+        client = google_genai_client(feature="ai_chat", client_factory=_genai.Client, api_key=api_key.strip())
         _cfg_kwargs: dict = {"max_output_tokens": max_output_tokens, "temperature": 0.7}
         if system_instruction:
             _cfg_kwargs["system_instruction"] = system_instruction
@@ -205,7 +211,9 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
         }
         if system_instruction:
             _old_kwargs["system_instruction"] = system_instruction
-        _old_model_obj = _old_genai.GenerativeModel(**_old_kwargs)
+        _old_model_obj = instrument_legacy_gemini_model(
+            _old_genai.GenerativeModel(**_old_kwargs), feature="ai_chat_legacy", model=_model
+        )
         # マルチターン形式: parts を文字列リストに変換（旧SDK互換）
         old_contents = [
             {"role": c["role"], "parts": [p["text"] for p in c["parts"]]}
@@ -231,8 +239,13 @@ def _gemini_chat(api_key: str, model: str, messages: list, timeout_seconds: int,
             body_dict["systemInstruction"] = {"parts": [{"text": system_instruction}]}
         body = _json.dumps(body_dict).encode("utf-8")
         req = _ureq.Request(url, data=body, headers={"Content-Type": "application/json"})
-        with _ureq.urlopen(req, timeout=timeout_seconds) as resp_obj:
-            data = _json.loads(resp_obj.read().decode("utf-8"))
+        def _rest_call():
+            with _ureq.urlopen(req, timeout=timeout_seconds) as resp_obj:
+                return _json.loads(resp_obj.read().decode("utf-8"))
+
+        data = tracked_ai_call(
+            _rest_call, provider="google", model=_model, feature="ai_chat_rest_fallback"
+        )
         text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
         if text and text.strip():
             return {"message": {"content": _remove_redundant_phrases(text.strip())}}
@@ -1049,13 +1062,18 @@ def _stream_gemini(prompt: str) -> Generator[str, None, None]:
     model = st.session_state.get("gemini_model", GEMINI_MODEL_DEFAULT)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
-        resp = requests.post(
-            f"{url}?key={api_key}",
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1024},
-            },
-            timeout=60,
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                f"{url}?key={api_key}",
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1024},
+                },
+                timeout=60,
+            ),
+            provider="google",
+            model=model,
+            feature="ai_chat_stream",
         )
         resp.raise_for_status()
         text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]

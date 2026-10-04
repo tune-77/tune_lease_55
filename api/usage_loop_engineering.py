@@ -13,6 +13,7 @@ import json
 import os
 import time
 
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import re
 from pathlib import Path
@@ -132,14 +133,22 @@ def _call_gemini(prompt: str) -> str:
     }
     for attempt in range(3):
         try:
-            resp = requests.post(url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60)
+            resp = tracked_ai_http_call(
+                lambda: requests.post(
+                    url, json=payload, headers={"x-goog-api-key": api_key}, timeout=60
+                ),
+                provider="google",
+                model=model,
+                feature="usage_loop_engineering",
+            )
             resp.raise_for_status()
             return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
             if attempt >= 2:
                 raise
-        except requests.exceptions.HTTPError:
-            if attempt >= 2 or (resp.status_code != 429 and resp.status_code < 500):
+        except requests.exceptions.HTTPError as exc:
+            status_code = int(getattr(getattr(exc, "response", None), "status_code", 0) or 0)
+            if attempt >= 2 or (status_code != 429 and status_code < 500):
                 raise
         time.sleep(_GEMINI_RETRY_DELAYS_S[attempt])
     raise RuntimeError("Gemini呼出しの再試行に失敗しました")

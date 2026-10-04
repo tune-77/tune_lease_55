@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 
+from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -104,11 +105,16 @@ LGBMの主な重要度: {_top_factor_text(result.get("lgb_importance"))}
         import requests
 
         url = _gemini_generate_url()
-        response = requests.post(
-            url,
-            json={"contents": [{"parts": [{"text": prompt}]}]},
-            headers={"x-goog-api-key": api_key},
-            timeout=25,
+        response = tracked_ai_http_call(
+            lambda: requests.post(
+                url,
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                headers={"x-goog-api-key": api_key},
+                timeout=25,
+            ),
+            provider="google",
+            model=get_gemini_model(),
+            feature="advanced_analysis",
         )
         response.raise_for_status()
         text = response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()

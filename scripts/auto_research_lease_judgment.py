@@ -19,6 +19,8 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from silent_failure_log import clip
 
+from ai_runtime_client import google_genai_client  # noqa: E402
+from config import get_gemini_model  # noqa: E402
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 
@@ -506,7 +508,9 @@ def research_topic(topic: ResearchTopic) -> tuple[str, list[dict[str, str]], str
 - 顧客名や架空の数値を作らない。
 - この段階では根拠候補を最大12件に絞り、一次情報と補助情報を区別する。
 """
-    client = genai.Client(
+    client = google_genai_client(
+        feature="auto_research_lease_judgment",
+        client_factory=genai.Client,
         vertexai=True,
         project=vertex_config.project_id,
         location=location,

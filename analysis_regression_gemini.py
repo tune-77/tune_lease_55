@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import streamlit as st
+from ai_runtime_client import google_genai_client, instrument_legacy_gemini_model
 from data_cases import load_all_cases
 from secret_manager import get_gemini_api_key
 from config import GEMINI_MODEL_DEFAULT
@@ -42,7 +43,9 @@ def _gemini_call(prompt: str, max_tokens: int = 4000) -> str | None:
     try:
         import google.genai as _genai
         from google.genai import types as _types
-        client = _genai.Client(api_key=api_key)
+        client = google_genai_client(
+            feature="analysis_regression", client_factory=_genai.Client, api_key=api_key
+        )
         cfg = _types.GenerateContentConfig(max_output_tokens=max_tokens, temperature=0.1)
         resp = client.models.generate_content(model=model, contents=prompt, config=cfg)
         text = None
@@ -64,9 +67,13 @@ def _gemini_call(prompt: str, max_tokens: int = 4000) -> str | None:
     try:
         import google.generativeai as _old
         _old.configure(api_key=api_key)
-        m = _old.GenerativeModel(
-            model_name=model,
-            generation_config={"max_output_tokens": max_tokens, "temperature": 0.1},
+        m = instrument_legacy_gemini_model(
+            _old.GenerativeModel(
+                model_name=model,
+                generation_config={"max_output_tokens": max_tokens, "temperature": 0.1},
+            ),
+            feature="analysis_regression_legacy",
+            model=model,
         )
         resp = m.generate_content(prompt)
         text = getattr(resp, "text", "") or ""
