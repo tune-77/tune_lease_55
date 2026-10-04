@@ -11,6 +11,7 @@ from ai_runtime_client import (
     tracked_ai_call,
     tracked_ai_http_call,
 )
+from scripts.report_ai_usage import summarize
 
 
 def _read_entries(path):
@@ -134,3 +135,46 @@ def test_usage_log_rotates_at_configured_size(tmp_path, monkeypatch):
     assert rotated.exists()
     assert len(_read_entries(log_path)) == 1
     assert len(_read_entries(rotated)) == 1
+
+
+def test_usage_report_includes_rotated_generation(tmp_path):
+    log_path = tmp_path / "usage.jsonl"
+    rotated = log_path.with_suffix(".jsonl.1")
+    rotated.write_text(
+        json.dumps(
+            {
+                "provider": "google",
+                "feature": "screening_chat",
+                "model": "gemini-test",
+                "ok": True,
+                "duration_ms": 10,
+                "input_tokens": 3,
+                "output_tokens": 2,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    log_path.write_text(
+        json.dumps(
+            {
+                "provider": "google",
+                "feature": "screening_chat",
+                "model": "gemini-test",
+                "ok": False,
+                "duration_ms": 30,
+                "input_tokens": 7,
+                "output_tokens": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    [row] = summarize(log_path)
+
+    assert row["calls"] == 2
+    assert row["errors"] == 1
+    assert row["avg_duration_ms"] == 20.0
+    assert row["input_tokens"] == 10
+    assert row["output_tokens"] == 3

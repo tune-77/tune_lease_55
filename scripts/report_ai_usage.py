@@ -19,21 +19,25 @@ def summarize(path: Path) -> list[dict]:
     groups: dict[tuple[str, str, str], dict] = defaultdict(
         lambda: {"calls": 0, "errors": 0, "duration_ms": 0.0, "input_tokens": 0, "output_tokens": 0}
     )
-    if not path.exists():
+    log_paths = (path.with_suffix(f"{path.suffix}.1"), path)
+    if not any(log_path.exists() for log_path in log_paths):
         return []
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            try:
-                item = json.loads(line)
-            except (json.JSONDecodeError, TypeError):
-                continue
-            key = (str(item.get("provider") or "unknown"), str(item.get("feature") or "unknown"), str(item.get("model") or "unknown"))
-            row = groups[key]
-            row["calls"] += 1
-            row["errors"] += 0 if item.get("ok") else 1
-            row["duration_ms"] += float(item.get("duration_ms") or 0)
-            row["input_tokens"] += int(item.get("input_tokens") or 0)
-            row["output_tokens"] += int(item.get("output_tokens") or 0)
+    for log_path in log_paths:
+        if not log_path.exists():
+            continue
+        with log_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    item = json.loads(line)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                key = (str(item.get("provider") or "unknown"), str(item.get("feature") or "unknown"), str(item.get("model") or "unknown"))
+                row = groups[key]
+                row["calls"] += 1
+                row["errors"] += 0 if item.get("ok") else 1
+                row["duration_ms"] += float(item.get("duration_ms") or 0)
+                row["input_tokens"] += int(item.get("input_tokens") or 0)
+                row["output_tokens"] += int(item.get("output_tokens") or 0)
     result = []
     for (provider, feature, model), row in sorted(groups.items()):
         calls = row["calls"]
