@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/shion/voice", tags=["shion-voice"])
 
-FALLBACK_MODEL = "gemini-2.5-flash-native-audio-latest"
+FALLBACK_MODEL = "gemini-3.1-flash-live-preview"
 _JST = ZoneInfo("Asia/Tokyo")
 _VOICE_TAIL = (
     "\n\n【音声通話モード】\n"
