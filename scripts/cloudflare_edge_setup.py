@@ -195,15 +195,26 @@ def find_zone(api: Api) -> dict[str, Any]:
 
 
 def access_ready(api: Api, account_id: str, plan: Plan) -> bool:
+    reason = ""
     try:
         org = api.get(f"/accounts/{account_id}/access/organizations")
     except CloudflareError as exc:
         org = None
         if exc.status not in (400, 403, 404):
             raise
+        reason = str(exc)
     if not org or not org.get("auth_domain"):
-        plan.add(Change("manual", "Zero Trust 組織（チーム名）",
-                        note="未初期化。ダッシュボードの Zero Trust でチーム名と Free プランを選んでから再実行"))
+        # 未有効化と権限不足はどちらも 403 なので、Access 側の別APIの応答で見分ける。
+        if not reason or "not_enabled" not in reason:
+            try:
+                api.get(f"/accounts/{account_id}/access/apps")
+            except CloudflareError as exc:
+                reason = str(exc)
+        if "not_enabled" in reason:
+            note = "Access 未有効化。ダッシュボードの Zero Trust でチーム名と Free プランを選んでから再実行"
+        else:
+            note = f"取得できません（トークンの Access 権限不足の可能性）: {reason[:200]}"
+        plan.add(Change("manual", "Zero Trust 組織（チーム名）", note=note))
         return False
     plan.add(Change("ok", f"Zero Trust 組織 {org.get('auth_domain')}"))
     return True
@@ -409,10 +420,11 @@ def _sha(text: str) -> str:
 def plan_worker(api: Api, account_id: str, plan: Plan) -> None:
     local = worker_source()
     remote = api.get_text(f"/accounts/{account_id}/workers/scripts/{WORKER_NAME}/content/v2")
-    remote_hash = _sha(remote) if remote is not None else None
-    if remote_hash == _sha(local):
+    # Cloudflare はソースを multipart で返すので、手元のソースがそのまま含まれていれば同一とみなす。
+    if remote is not None and local in remote:
         plan.add(Change("ok", f"Worker {WORKER_NAME}"))
         return
+    remote_hash = _sha(remote) if remote is not None else None
     plan.add(Change("update" if remote_hash else "create", f"Worker {WORKER_NAME}",
                     before={"sha256": remote_hash} if remote_hash else None,
                     after={"sha256": _sha(local), "source": str(WORKER_FILE.relative_to(REPO_ROOT)),
