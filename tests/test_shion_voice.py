@@ -257,3 +257,46 @@ def test_generate_score_lets_shion_choose_theme(monkeypatch):
     sv._generate_score("")
     sv._generate_score("雨")
     assert "自由に決め" in prompts[0] and "テーマ「雨」" in prompts[1]
+
+
+# ── REV-463: 読み上げ ──
+
+@pytest.fixture
+def tts_client(monkeypatch):
+    monkeypatch.setenv("SHION_TTS_ENABLED", "1")
+    calls = []
+    monkeypatch.setattr(sv, "_tts_synthesize", lambda text, speaker: calls.append((text, speaker)) or b"RIFFtts")
+    monkeypatch.setattr(sv, "_tts_credit", lambda speaker: "VOICEVOX:冥鳴ひまり")
+    app = FastAPI()
+    app.include_router(sv.router)
+    return TestClient(app), calls
+
+
+def test_tts_returns_wav_with_speaker_from_env(tts_client, monkeypatch):
+    client, calls = tts_client
+    monkeypatch.setenv("SHION_TTS_SPEAKER_ID", "9")
+    res = client.post("/api/shion/voice/tts", json={"text": " こんにちは。 "})
+    assert res.status_code == 200 and res.content == b"RIFFtts"
+    assert res.headers["content-type"] == "audio/wav"
+    assert calls == [("こんにちは。", 9)]
+    from urllib.parse import unquote
+    assert unquote(res.headers["x-voice-credit"]) == "VOICEVOX:冥鳴ひまり"
+
+
+def test_tts_default_speaker_and_disabled(tts_client, monkeypatch):
+    client, calls = tts_client
+    client.post("/api/shion/voice/tts", json={"text": "はい"})
+    assert calls[-1][1] == 14
+    monkeypatch.setenv("SHION_TTS_ENABLED", "0")
+    assert client.post("/api/shion/voice/tts", json={"text": "はい"}).status_code == 404
+
+
+def test_tts_engine_down_returns_503(tts_client, monkeypatch):
+    client, _ = tts_client
+
+    def boom(*args):
+        raise ConnectionError("refused")
+
+    monkeypatch.setattr(sv, "_tts_synthesize", boom)
+    assert client.post("/api/shion/voice/tts", json={"text": "はい"}).status_code == 503
+    assert client.post("/api/shion/voice/tts", json={"text": "あ" * 301}).status_code == 422

@@ -23,6 +23,7 @@ import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagC
 import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 import ShionVoiceCall from "@/components/chat/ShionVoiceCall";
 import ShionSingButton from "@/components/chat/ShionSingButton";
+import { useShionSpeech } from "@/lib/useShionSpeech";
 
 interface ChatMessage {
   id: number;
@@ -242,6 +243,7 @@ export default function ChatPage() {
   const [researchRunning, setResearchRunning] = useState<Record<number, boolean>>({});
   const [speechEnabled, setSpeechEnabled] = useState(true);
   const [speaking, setSpeaking] = useState(false);
+  const shionSpeech = useShionSpeech(); // REV-463: 読み上げは VOICEVOX（失敗時ブラウザ）
   const [entryGreeting, setEntryGreeting] = useState<ShionEntryGreeting>({
     headline: "こんにちは。",
     body: "リース審査や業界動向について何でも聞いてください。",
@@ -256,7 +258,9 @@ export default function ChatPage() {
 
   const userId = SHION_CHAT_USER_ID;
 
-  const speakText = (text: string) => {
+  const speakingNow = speaking || shionSpeech.speaking;
+
+  const speakTextBrowser = (text: string) => {
     if (!speechEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "ja-JP";
@@ -267,7 +271,13 @@ export default function ChatPage() {
     window.speechSynthesis.speak(utter);
   };
 
+  const speakText = (text: string) => {
+    if (!speechEnabled) return;
+    void shionSpeech.speak(text, speakTextBrowser);
+  };
+
   const stopSpeech = () => {
+    shionSpeech.stop();
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -275,7 +285,7 @@ export default function ChatPage() {
   };
 
   const toggleSpeech = () => {
-    if (speaking) {
+    if (speakingNow) {
       stopSpeech();
       return;
     }
@@ -286,7 +296,8 @@ export default function ChatPage() {
     });
   };
 
-  useEffect(() => () => stopSpeech(), []);
+  // VOICEVOX 側は useShionSpeech がアンマウント時に止める
+  useEffect(() => () => window.speechSynthesis?.cancel(), []);
 
   const scrollToBottom = () => {
     const el = messageListRef.current;
@@ -533,6 +544,7 @@ export default function ChatPage() {
 
   const sendMessageWithText = async (text: string) => {
     if (!text.trim() || loading) return;
+    if (speechEnabled) shionSpeech.unlock();
     const optimisticUser: ChatMessage = {
       id: Date.now(),
       user_id: userId,
@@ -600,6 +612,7 @@ export default function ChatPage() {
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || loading) return;
+    if (speechEnabled) shionSpeech.unlock();
 
     const optimisticUser: ChatMessage = {
       id: Date.now(),
@@ -1474,16 +1487,16 @@ export default function ChatPage() {
           <button
             type="button"
             onClick={toggleSpeech}
-            title={speaking ? "読み上げ停止" : speechEnabled ? "音声読み上げON（クリックでOFF）" : "音声読み上げOFF（クリックでON）"}
+            title={speakingNow ? "読み上げ停止" : speechEnabled ? `音声読み上げON（${shionSpeech.credit || "クリックでOFF"}）` : "音声読み上げOFF（クリックでON）"}
             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${
-              speaking
+              speakingNow
                 ? "bg-rose-600 text-white animate-pulse"
                 : speechEnabled
                 ? "bg-blue-500 text-white shadow-sm"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            {speaking ? <VolumeX className="w-4 h-4" /> : speechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            {speakingNow ? <VolumeX className="w-4 h-4" /> : speechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
           <ShionVoiceCall userId={userId} disabled={loading} onEnded={() => void loadHistory()} />
           <ShionSingButton userId={userId} theme={input} disabled={loading} />

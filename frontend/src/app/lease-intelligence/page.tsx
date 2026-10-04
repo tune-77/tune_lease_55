@@ -15,6 +15,7 @@ import LeasePaymentSimulator from "@/components/analysis/LeasePaymentSimulator";
 import { isImeComposing } from "@/lib/keyboard";
 import { isSingRequest } from "@/lib/shionSing";
 import { useDialogueSinging } from "@/lib/useDialogueSinging";
+import { useShionSpeech } from "@/lib/useShionSpeech";
 import DialogueSongPlayer from "@/components/chat/DialogueSongPlayer";
 
 type KnowledgeRef = {
@@ -1141,6 +1142,7 @@ export default function LeaseIntelligencePage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const singer = useDialogueSinging(); // REV-462: 「歌って」→ 歌唱API
+  const shionSpeech = useShionSpeech(); // REV-463: 読み上げは VOICEVOX（失敗時ブラウザ）
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState("");
   const [showLatestButton, setShowLatestButton] = useState(false);
@@ -1345,7 +1347,7 @@ export default function LeaseIntelligencePage() {
   const speechGenerationRef = useRef(0);
 
   // ── TTS ──────────────────────────────────────────────────────────────────
-  const speakText = (text: string) => {
+  const speakTextBrowser = (text: string) => {
     if (!speechEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
     const synthesis = window.speechSynthesis;
     const generation = speechGenerationRef.current + 1;
@@ -1383,6 +1385,13 @@ export default function LeaseIntelligencePage() {
     setVoiceError("");
     synthesis.cancel();
     speakNext(0);
+  };
+
+  const speakText = (text: string) => {
+    if (!speechEnabled) return;
+    speechGenerationRef.current += 1;
+    window.speechSynthesis?.cancel();
+    void shionSpeech.speak(text, speakTextBrowser);
   };
 
   const speakTextRef = useRef(speakText);
@@ -1616,6 +1625,7 @@ export default function LeaseIntelligencePage() {
   const send = async () => {
     const text = input.trim();
     if ((!text && !attachedFile) || loading) return;
+    if (speechEnabled) shionSpeech.unlock();
     setInput("");
     setError("");
     setFileError("");
@@ -1637,6 +1647,7 @@ export default function LeaseIntelligencePage() {
     if (!currentFile && isSingRequest(text)) {
       // REV-462: 歌の依頼は対話AIではなく歌唱APIへ。sing() は最初の await より前に audio を解錠する
       const songId = userMessage.id + 1;
+      shionSpeech.stop();
       const song = singer.sing(text, songId);
       setLoading(true);
       try {
@@ -2440,11 +2451,12 @@ export default function LeaseIntelligencePage() {
                     if (v) {
                       speechGenerationRef.current += 1;
                       window.speechSynthesis?.cancel();
+                      shionSpeech.stop();
                     }
                     return !v;
                   });
                 }}
-                title={speechEnabled ? "音声読み上げON（クリックでOFF）" : "音声読み上げOFF（クリックでON）"}
+                title={speechEnabled ? `音声読み上げON（${shionSpeech.credit || "クリックでOFF"}）` : "音声読み上げOFF（クリックでON）"}
                 className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition ${
                   speechEnabled
                     ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"

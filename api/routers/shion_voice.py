@@ -16,7 +16,7 @@ import time
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -387,3 +387,64 @@ def sing(req: SingRequest):
         "credit": _credit(teacher_id, voice_id),
         "remaining_today": daily_limit - used - 1,
     }
+
+
+# ── REV-463: 読み上げ（VOICEVOX トーク。歌唱と同じ声に揃える） ──
+
+class TtsRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+
+
+def _tts_speaker() -> int:
+    return _env_int("SHION_TTS_SPEAKER_ID", 14)  # 冥鳴ひまり ノーマル（歌唱 3014 と同じ声）
+
+
+def _tts_synthesize(text: str, speaker: int) -> bytes:
+    import requests
+
+    base = _voicevox_url()
+    q = requests.post(f"{base}/audio_query", params={"speaker": speaker, "text": text}, timeout=30)
+    q.raise_for_status()
+    query = q.json()
+    try:
+        query["speedScale"] = float(os.environ.get("SHION_TTS_SPEED", "1.1"))
+    except ValueError:
+        pass
+    wav = requests.post(f"{base}/synthesis", params={"speaker": speaker}, json=query, timeout=60)
+    wav.raise_for_status()
+    return wav.content
+
+
+def _tts_credit(speaker: int) -> str:
+    """利用規約のクレジット「VOICEVOX:キャラ名」を /speakers から作る。"""
+    key = (-1, speaker)
+    if key not in _credit_cache:
+        import requests
+
+        try:
+            speakers = requests.get(f"{_voicevox_url()}/speakers", timeout=10).json()
+            names = {st["id"]: s["name"] for s in speakers for st in s["styles"]}
+            _credit_cache[key] = f"VOICEVOX:{names[speaker]}"
+        except Exception:
+            return "VOICEVOX"
+    return _credit_cache[key]
+
+
+@router.post("/tts")
+def tts(req: TtsRequest):
+    """チャット返答の1文〜数文を VOICEVOX で読み上げた wav を返す（無効・失敗時はブラウザ読み上げへ）。"""
+    if os.environ.get("SHION_TTS_ENABLED", "0") != "1":
+        raise HTTPException(status_code=404, detail="tts disabled")
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="empty text")
+    speaker = _tts_speaker()
+    try:
+        wav = _tts_synthesize(text, speaker)
+    except Exception as exc:
+        logger.error("shion tts: voicevox failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="読み上げエンジンに接続できませんでした") from None
+    # ヘッダは latin-1 のみなので URL エンコードで渡す
+    from urllib.parse import quote
+
+    return Response(content=wav, media_type="audio/wav", headers={"X-Voice-Credit": quote(_tts_credit(speaker))})
