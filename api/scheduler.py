@@ -11,10 +11,14 @@ APScheduler による定期バッチスケジューラ。
 from __future__ import annotations
 
 import datetime as dt
+import fcntl
+import functools
 import json
 import logging
 import os
+import threading
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +35,7 @@ logger.setLevel(logging.INFO)
 logger.propagate = False
 
 _scheduler: BackgroundScheduler | None = None
+_JOB_RUNS_LOCK = threading.Lock()
 
 
 def run_crystallization_batch() -> dict:
@@ -198,9 +203,10 @@ def run_shion_usage_loop() -> dict:
         result = generate_proposals()
         if not result.get("generated"):
             reason = str(result.get("reason", ""))
-            log = logger.warning if reason.startswith("Gemini生成に失敗") else logger.info
+            status = "error" if reason.startswith("Gemini生成に失敗") else "no_proposals"
+            log = logger.warning if status == "error" else logger.info
             log(f"[ShionUsageLoop] 提案なし: {reason}")
-            return {"status": "no_proposals", "reason": result.get("reason", "")}
+            return {"status": status, "reason": reason}
 
         proposals = result.get("proposals", [])
         pushed = _push_proposals_to_improvement_log(proposals, source="usage_loop")
@@ -267,6 +273,79 @@ def _job_runs_path() -> Path:
     return data_dir / "scheduler_job_runs.jsonl"
 
 
+def _read_job_records(path: Path) -> list[dict[str, Any]]:
+    """実行台帳を厳格に読む。1行でも壊れていれば安全のため補完・実行を止める。"""
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+            if not isinstance(record, dict) or not record.get("ts") or not record.get("job_id"):
+                raise ValueError("required fields are missing")
+            dt.datetime.fromisoformat(str(record["ts"]))
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise ValueError(f"実行台帳の{line_no}行目が不正です: {exc}") from exc
+        records.append(record)
+    return records
+
+
+def _append_job_record(record: dict[str, Any]) -> None:
+    path = _job_runs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+
+
+@contextmanager
+def _job_runs_file_lock(path: Path):
+    """複数プロセスが同時起動してもclaimの確認と追記を直列化する。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _claim_daily_job(job_id: str, now: dt.datetime | None = None) -> tuple[bool, str]:
+    """副作用の前に当日分をclaimし、同日中の二重実行を防ぐ。"""
+    current = now or dt.datetime.now()
+    path = _job_runs_path()
+    with _JOB_RUNS_LOCK:
+        try:
+            with _job_runs_file_lock(path):
+                records = _read_job_records(path)
+                for record in records:
+                    recorded_at = dt.datetime.fromisoformat(str(record["ts"]))
+                    if recorded_at.date() == current.date() and str(record["job_id"]) == job_id:
+                        return False, "already_claimed"
+                _append_job_record(
+                    {
+                        "ts": current.isoformat(timespec="seconds"),
+                        "job_id": job_id,
+                        "status": "running",
+                        "result": {},
+                    }
+                )
+        except (OSError, ValueError) as exc:
+            logger.warning(f"[Scheduler] 実行台帳を確認できないため実行中止: {exc}")
+            return False, "ledger_unavailable"
+    return True, ""
+
+
+def _run_daily_job_once(job_id: str, func: Any) -> dict[str, Any]:
+    claimed, reason = _claim_daily_job(job_id)
+    if not claimed:
+        status = "skipped_duplicate" if reason == "already_claimed" else "error"
+        return {"status": status, "reason": reason}
+    return func()
+
+
 def _scheduler_job_listener(event: Any) -> None:
     if getattr(event, "code", None) == EVENT_JOB_MISSED:
         logger.warning(f"[Scheduler] 実行結果: job_id={event.job_id} status=missed")
@@ -288,10 +367,9 @@ def _scheduler_job_listener(event: Any) -> None:
         "result": recorded_result,
     }
     try:
-        path = _job_runs_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        with _JOB_RUNS_LOCK:
+            with _job_runs_file_lock(_job_runs_path()):
+                _append_job_record(record)
     except OSError as exc:
         logger.warning(f"[Scheduler] 実行記録の書込みに失敗: {exc}")
 
@@ -306,18 +384,14 @@ def _schedule_catchup_jobs(scheduler: BackgroundScheduler, now: dt.datetime) -> 
         logger.info("[Scheduler] 初回のため取りこぼし補完をスキップ")
         return []
 
-    completed_today: set[str] = set()
     try:
-        lines = runs_path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
+        records = _read_job_records(runs_path)
+    except (OSError, ValueError) as exc:
         logger.warning(f"[Scheduler] 実行記録の読込みに失敗: {exc}")
         return []
-    for line in lines:
-        try:
-            record = json.loads(line)
-            recorded_at = dt.datetime.fromisoformat(str(record.get("ts") or ""))
-        except (json.JSONDecodeError, TypeError, ValueError):
-            continue
+    completed_today: set[str] = set()
+    for record in records:
+        recorded_at = dt.datetime.fromisoformat(str(record["ts"]))
         if recorded_at.date() == now.date():
             completed_today.add(str(record.get("job_id") or ""))
 
@@ -329,12 +403,14 @@ def _schedule_catchup_jobs(scheduler: BackgroundScheduler, now: dt.datetime) -> 
         run_date = now + dt.timedelta(seconds=90 + 30 * len(scheduled))
         catchup_id = f"{job_id}_catchup"
         scheduler.add_job(
-            func,
+            functools.partial(_run_daily_job_once, job_id, func),
             trigger="date",
             run_date=run_date,
             id=catchup_id,
             name=f"{name}（取りこぼし補完）",
             replace_existing=True,
+            misfire_grace_time=6 * 3600,
+            coalesce=True,
         )
         scheduled.append(job_id)
         logger.warning(f"[Scheduler] 取りこぼし補完: {job_id} を {run_date} に実行")
@@ -355,7 +431,7 @@ def start_scheduler() -> BackgroundScheduler:
     for job_id, func, hour, minute, name in _DAILY_JOBS:
         # Mac スリープ中に予定時刻を過ぎても復帰後に1回だけ実行する
         _scheduler.add_job(
-            func,
+            functools.partial(_run_daily_job_once, job_id, func),
             trigger=CronTrigger(hour=hour, minute=minute, timezone="Asia/Tokyo"),
             id=job_id,
             name=name,
