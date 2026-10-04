@@ -327,6 +327,8 @@ class KnowledgeVectorStore:
                         metadata={"hnsw:space": "cosine"},
                     )
             except ChromaWriteLockTimeout:
+                if timeout is None:
+                    raise
                 return False
             logger.info("[KnowledgeVectorStore] collection initialized: %s", self._chroma_dir)
             return True

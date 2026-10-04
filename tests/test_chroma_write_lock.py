@@ -116,3 +116,21 @@ def test_first_obsidian_search_does_not_wait_for_active_writer(tmp_path, monkeyp
 
     assert store.search("再リース") == []
     assert lock_calls == [0]
+
+    writer_store = KnowledgeVectorStore(chroma_dir=str(tmp_path / "writer"))
+    with pytest.raises(ChromaWriteLockTimeout, match="busy"):
+        writer_store._ensure_collection()
+    assert lock_calls == [0, None]
+
+
+def test_direct_reindex_cli_returns_tempfail_on_writer_contention(monkeypatch) -> None:
+    from scripts import reindex_obsidian
+
+    monkeypatch.setattr(sys, "argv", ["reindex_obsidian.py", "--full", "--vault", "/unused"])
+    monkeypatch.setattr(
+        reindex_obsidian,
+        "full_reindex",
+        lambda _vault: (_ for _ in ()).throw(ChromaWriteLockTimeout("busy")),
+    )
+
+    assert reindex_obsidian.main() == 75
