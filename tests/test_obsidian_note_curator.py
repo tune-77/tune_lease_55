@@ -39,6 +39,30 @@ def test_apply_writes_tags_and_moves_file(tmp_path):
     assert backup_dir.exists()
 
 
+def test_move_collision_preserves_both_notes(tmp_path):
+    vault = tmp_path / "vault"
+    backup_dir = tmp_path / "backup"
+    source = vault / "Inbox" / "same.md"
+    destination = vault / "Research" / "same.md"
+    _write(source, "source content")
+    _write(destination, "destination content")
+
+    report = build_report(
+        vault,
+        state_path=tmp_path / "state.json",
+        backup_dir=backup_dir,
+        apply=True,
+        max_files=1,
+        generate_fn=_fake_generate("TAGS: safe\nFOLDER: Research"),
+    )
+
+    entry = report["entries"][0]
+    assert entry["applied"] is False
+    assert entry["skipped_reason"] == "destination_exists"
+    assert source.read_text(encoding="utf-8") == "source content"
+    assert destination.read_text(encoding="utf-8") == "destination content"
+
+
 def test_dry_run_does_not_persist_state(tmp_path):
     vault = tmp_path / "vault"
     _write(vault / "note.md", "本文")

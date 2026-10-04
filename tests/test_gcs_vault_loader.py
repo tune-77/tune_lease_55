@@ -197,7 +197,7 @@ class TestDownloadVault:
 
         assert (tmp_path / "deep" / "nested" / "dir" / "note.md").read_bytes() == b"deep"
 
-    def test_prunes_local_md_missing_from_gcs(self, tmp_path: Path) -> None:
+    def test_quarantines_local_md_missing_from_gcs(self, tmp_path: Path) -> None:
         stale = tmp_path / "old.md"
         stale.write_text("# stale")
         keep = tmp_path / "keep.md"
@@ -211,7 +211,62 @@ class TestDownloadVault:
         download_vault(dest_dir=tmp_path, prefix="vault/")
 
         assert not stale.exists()
+        quarantined = list((tmp_path.parent / f".{tmp_path.name}-quarantine").rglob("old.md"))
+        assert len(quarantined) == 1
+        assert quarantined[0].read_text() == "# stale"
         assert keep.read_text() == "# fresh keep"
+
+    def test_empty_remote_listing_never_removes_local_notes(self, tmp_path: Path) -> None:
+        local = tmp_path / "important.md"
+        local.write_text("# irreplaceable")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = []
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path, prefix="vault/")
+        except RuntimeError as exc:
+            assert "listing is empty" in str(exc)
+        else:
+            raise AssertionError("empty remote listing should stop the sync")
+
+        assert local.read_text() == "# irreplaceable"
+        assert not (tmp_path.parent / f".{tmp_path.name}-quarantine").exists()
+
+    def test_rejects_real_obsidian_vault_destination(self, tmp_path: Path) -> None:
+        (tmp_path / ".obsidian").mkdir()
+        note = tmp_path / "important.md"
+        note.write_text("# keep")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = []
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path)
+        except RuntimeError as exc:
+            assert "Obsidian vault" in str(exc)
+        else:
+            raise AssertionError("real Vault destination should be rejected")
+
+        assert note.exists()
+
+    def test_download_failure_leaves_existing_mirror_untouched(self, tmp_path: Path) -> None:
+        existing = tmp_path / "keep.md"
+        existing.write_text("# original")
+        failing = _make_blob("vault/keep.md", b"# replacement")
+        failing.download_to_filename.side_effect = OSError("network failure")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = [failing]
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path, prefix="vault/")
+        except OSError as exc:
+            assert "network failure" in str(exc)
+        else:
+            raise AssertionError("download failure should propagate")
+
+        assert existing.read_text() == "# original"
 
     def test_skips_unsafe_relative_paths(self, tmp_path: Path) -> None:
         outside = tmp_path.parent / "evil.md"

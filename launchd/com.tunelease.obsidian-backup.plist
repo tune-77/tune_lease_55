@@ -10,7 +10,7 @@
     <string>/bin/zsh</string>
     <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/run_obsidian_backup.sh</string>
     <string>--keep</string>
-    <string>14</string>
+    <string>30</string>
   </array>
 
   <key>EnvironmentVariables</key>
@@ -31,13 +31,11 @@
     <string>1</string>
   </dict>
 
-  <!-- 毎週日曜 01:00 に実行（Vault へ書き込む夜間ジョブ群より前にスナップショットを取る。
+  <!-- 毎日 01:00 に実行（Vault へ書き込む夜間ジョブ群より前にスナップショットを取る。
        以前は 04:00 で、02:00 aurion / 03:00 reindex / 04:00 改善パイプラインと重なり
        書き込み途中の Vault を写す恐れがあった） -->
   <key>StartCalendarInterval</key>
   <dict>
-    <key>Weekday</key>
-    <integer>0</integer>
     <key>Hour</key>
     <integer>1</integer>
     <key>Minute</key>

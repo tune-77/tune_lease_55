@@ -94,6 +94,7 @@ class BackupSummary:
     excluded_count: int
     dry_run: bool
     failed: list[dict[str, str]] = field(default_factory=list)
+    suspicious_drop: bool = False
 
 
 # iCloud で「最適化」されて実体がローカルに無いファイル（dataless）。
@@ -199,6 +200,34 @@ def _cleanup_old_snapshots(root: Path, vault_name: str, keep: int) -> list[Path]
     return removed
 
 
+def _latest_complete_manifest(root: Path, vault_name: str) -> dict[str, object] | None:
+    """直近の完全バックアップmanifestを返す。壊れたmanifestは無視する。"""
+    if not root.exists():
+        return None
+    manifests = sorted(
+        root.glob(f"{vault_name}_*/backup_manifest.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for path in manifests:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if payload.get("status") == "complete" and isinstance(payload.get("file_count"), int):
+            return payload
+    return None
+
+
+def _is_suspicious_drop(current_count: int, previous_manifest: dict[str, object] | None) -> bool:
+    if not previous_manifest:
+        return False
+    previous_count = int(previous_manifest["file_count"])
+    drop = previous_count - current_count
+    threshold = max(50, int(previous_count * 0.10))
+    return drop >= threshold
+
+
 def backup_vault(
     vault: Path,
     backup_root: Path = DEFAULT_BACKUP_ROOT,
@@ -209,6 +238,8 @@ def backup_vault(
     excludes = list(excludes or DEFAULT_EXCLUDES)
     files, excluded_count = _iter_vault_files(vault, excludes)
     total_bytes = sum(p.stat().st_size for p in files)
+    previous_manifest = _latest_complete_manifest(backup_root, vault.name)
+    suspicious_drop = _is_suspicious_drop(len(files), previous_manifest)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest = _unique_destination(backup_root, _snapshot_name(vault, ts))
@@ -221,6 +252,7 @@ def backup_vault(
             total_bytes=total_bytes,
             excluded_count=excluded_count,
             dry_run=True,
+            suspicious_drop=suspicious_drop,
         )
 
     backup_root.mkdir(parents=True, exist_ok=True)
@@ -244,7 +276,7 @@ def backup_vault(
         "vault": str(vault),
         "destination": str(dest),
         "created_at": datetime.now().isoformat(timespec="seconds"),
-        "status": "partial" if failed else "complete",
+        "status": "partial" if failed else ("suspicious" if suspicious_drop else "complete"),
         "file_count": len(files),
         "copied_count": len(files) - len(failed),
         "failed_count": len(failed),
@@ -252,13 +284,17 @@ def backup_vault(
         "total_bytes": total_bytes,
         "excluded_count": excluded_count,
         "excludes": excludes,
+        "previous_complete_file_count": previous_manifest.get("file_count") if previous_manifest else None,
+        "suspicious_drop": suspicious_drop,
     }
     (dest / "backup_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
-    _cleanup_old_snapshots(backup_root, vault.name, keep)
+    # 欠損や急減がある実行では、正常な復旧点をローテーション削除しない。
+    if not failed and not suspicious_drop:
+        _cleanup_old_snapshots(backup_root, vault.name, keep)
     return BackupSummary(
         vault=vault,
         destination=dest,
@@ -267,6 +303,7 @@ def backup_vault(
         excluded_count=excluded_count,
         dry_run=False,
         failed=failed,
+        suspicious_drop=suspicious_drop,
     )
 
 
@@ -317,6 +354,12 @@ def main(argv: list[str] | None = None) -> int:
             + ", ".join(item["path"] for item in summary.failed[:5]),
             file=sys.stderr,
         )
+    if summary.suspicious_drop:
+        print(
+            "ALERT: Vault file count dropped sharply; older complete backups were preserved.",
+            file=sys.stderr,
+        )
+        return 2
     return 0
 
 

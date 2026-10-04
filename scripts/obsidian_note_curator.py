@@ -19,8 +19,11 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import re
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -184,6 +187,21 @@ def _render_note(frontmatter: dict[str, Any], body: str) -> str:
     return f"---\n{dumped}\n---\n{body}"
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """同一ディレクトリで書いてから置換し、途中書き込みの破損を避ける。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 def apply_tags_and_move(
     path: Path,
     vault: Path,
@@ -213,16 +231,25 @@ def apply_tags_and_move(
     folder = proposal.get("folder") or ""
     if folder:
         destination_dir = vault / folder
-        destination_dir.mkdir(parents=True, exist_ok=True)
         candidate = destination_dir / path.name
         if candidate.resolve() != path.resolve():
+            if candidate.exists():
+                return {
+                    "applied": False,
+                    "skipped_reason": "destination_exists",
+                    "backup_path": str(backup_path),
+                    "conflicting_path": str(candidate.relative_to(vault)),
+                }
             target_path = candidate
             moved = True
 
     if new_text != original_text or moved:
-        target_path.write_text(new_text, encoding="utf-8")
-        if moved and target_path != path:
-            path.unlink()
+        _atomic_write_text(path, new_text)
+        if moved:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(path), str(target_path))
+            if _read_text(target_path) != new_text:
+                raise OSError(f"Moved note verification failed: {target_path}")
 
     return {
         "applied": True,

@@ -8,10 +8,10 @@ Files:
 - `launchd/com.tunelease.obsidian-backup.plist`
 
 Default behavior:
-- source vault: `/Users/kobayashiisaoryou/Documents/Obsidian Vault`
+- source vault: `OBSIDIAN_VAULT_PATH` / `OBSIDIAN_VAULT` (the installed plist points at the iCloud Obsidian Vault)
 - backup root: `/Users/kobayashiisaoryou/Library/Mobile Documents/com~apple~CloudDocs/tune_lease_55_backups/obsidian`
-- retention: 14 snapshots per vault prefix
-- schedule: once per day via `StartInterval`
+- retention: 30 daily snapshots per vault prefix
+- schedule: every day at 01:00 via `StartCalendarInterval`
 - logs: `~/Library/Logs/tune_lease_55_obsidian_backup.{out,err}.log`
 
 Install steps on macOS:
@@ -28,4 +28,5 @@ Uninstall:
 
 Notes:
 - The job uses the repo-local backup script and never deletes the source vault.
+- A partial backup or a sudden file-count drop never rotates older complete snapshots.
 - The script supports `--dry-run` and `--keep`.
