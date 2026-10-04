@@ -303,3 +303,119 @@ def test_funnel_summary_splits_dialogue_and_normal_chat(tmp_path):
     by = capture.funnel_summary("2026-10-02", path=path)["day_by_surface"]
     assert by["対話室"]["taught"] == 1
     assert by["通常チャット"] == {"taught": 1, "saved": 1, "recalled": 0, "used": 0}
+
+
+# 2026-10-04 対話室: 保存していないのに「テンプレート集として永続化します」「いつでも呼び出せます」と言った回答。
+INCIDENT_REPLY = """承知いたしました。
+
+### 記録内容：異業種多角化案件の審査コメントテンプレート
+- **内容**:
+    1. 資産転用の妥当性（本業とのシナジー vs 専用設備リスク）
+    2. 収益構造の独立性（景気サイクルの分散、販売ルートの確実性）
+    3. リスク管理体制（採算管理の独立性、撤退基準の有無）
+    4. 総合判断（本業の強みの延長 vs 新規投資リスク）
+
+上記を、リース審査システム内の「稟議コメント・テンプレート集」として永続化します。
+
+---
+これで、いつでもこの判断軸を呼び出せます。
+
+次に、このテンプレートを実際に使ってみる場面を想定して、何か準備しておきますか？"""
+
+TEMPLATE_ANSWER = """承知いたしました。
+
+### 稟議コメントテンプレート：異業種多角化案件
+
+**【異業種多角化案件の審査意見】**
+1. **資産転用の妥当性:** 本業の既存設備・人員の活用状況について、[本業とのシナジー/専用設備によるリスク]を確認。
+2. **収益構造の独立性:** 本業と異なる景気サイクルへの対応、および販売ルートの確実性について、[確保済み/未定]と判断。
+3. **リスク管理体制:** 採算管理の独立性および撤退基準の有無について、[明示あり/なし]を確認。
+4. **総合判断:** 上記より、本件は[本業の強みの延長/新規投資によるリスク大]と判断し、[承認/条件付き承認/否決]とする。
+
+今回の保存で、多角化案件に関する判断資産の構築はひとまず完了です。他に、稟議フローで気になる点はありますか？
+
+（この発言はまだ保存していません。残したい場合は「判断資産に入れて」と送ってください。）"""
+
+
+def test_honesty_removes_incident_persist_and_recall_claims():
+    fixed = capture.enforce_save_honesty(INCIDENT_REPLY, {"is_teaching": False, "saved": False})
+    for claim in ("永続化します", "テンプレート集", "いつでもこの判断軸を呼び出せます"):
+        assert claim not in fixed
+    assert "資産転用の妥当性" in fixed and "まだ保存していません" in fixed
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "判断資産に入れておきます。", "Knowledgeに登録しておきました。", "記録に残しておきます。", "テンプレート集に追加します。",
+        "保存は完了しました。", "今回の保存で、判断資産の構築はひとまず完了です。", "ナレッジへ入れておきました。",
+        "いつでも参照できます。", "永続化しました。",
+    ],
+)
+def test_save_claims_are_detected(sentence):
+    assert capture.SAVE_CLAIM_RE.search(sentence)
+    assert "まだ保存していません" in capture.enforce_save_honesty(sentence, {"saved": False})
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "このテンプレートは保存が必要です。", "審査記録として残すべきです。", "稟議書に保存しておくと良いでしょう。",
+        "保存しますか？", "保存しておきますか。", "保存する必要があります。", "残価を保証する契約です。",
+        "条件付き承認では保証人を追加します。", "記録を残すことをお勧めします。", "保存してください。",
+    ],
+)
+def test_suggestions_and_general_talk_are_kept(sentence):
+    assert capture.enforce_save_honesty(sentence, {"saved": False}) == sentence
+
+
+def test_save_request_saves_previous_shion_answer(tmp_path, monkeypatch):
+    vault = _vault(tmp_path, monkeypatch)
+    calls: list[tuple[str, dict]] = []
+
+    def saver(claim, **kw):
+        calls.append((claim, kw))
+        return {"captured": True, "candidate": {"id": "cand-tpl"}}
+
+    turn = capture.prepare_teaching_turn(
+        "作ったテンプレートを保存する必要があるな",
+        vault=vault,
+        surface="lease_intelligence_dialogue",
+        candidate_saver=saver,
+        previous_user_message="稟議コメントのテンプレートとして保存　そこまで頻度はないだろう",
+        previous_assistant_message=TEMPLATE_ANSWER,
+    )
+    save = turn.save
+    assert save["saved"] and save["source"] == "shion_answer"
+    assert save["topic"] == "稟議コメントテンプレート：異業種多角化案件"
+    claim, kw = calls[0]
+    assert kw == {"user_requested": True}
+    assert "資産転用の妥当性" in claim and "まだ保存していません" not in claim
+    assert "今回の保存" not in claim and "気になる点はありますか" not in claim
+    note = (vault / "Lease Intelligence" / "Knowledge").glob("*.md")
+    assert any("撤退基準" in p.read_text(encoding="utf-8") for p in note)
+    assert "直前の紫苑の回答「稟議コメントテンプレート：異業種多角化案件」" in turn.save_context
+
+    fixed = turn.finalize(INCIDENT_REPLY)
+    assert "テンプレート集" not in fixed and "永続化します" not in fixed  # 保存しても無い保存先は言わせない
+    assert "保存したもの: 直前の紫苑の回答「稟議コメントテンプレート：異業種多角化案件」" in fixed
+    assert "判断資産候補（要確認）" in fixed
+
+    # 次に多角化案件を聞いたら、保存したテンプレートが想起される
+    monkeypatch.setattr(capture, "_chat_taught_candidates", lambda: [])
+    asked = capture.prepare_teaching_turn(
+        "異業種への多角化案件の稟議コメントはどう書けばいい？",
+        vault=vault,
+        surface="next_chat_general",
+        candidate_saver=lambda claim, **kw: pytest.fail("問いは保存しない"),
+    )
+    assert asked.recall_items and "多角化" in asked.recall_context
+
+
+def test_bare_save_instruction_still_saves_users_own_teaching():
+    """「判断資産にしておいて」だけなら、直前のユーザーの教示を保存する（回答は保存しない）。"""
+    assert capture.save_request_target(
+        "そうだね　判断資産にしておいて", "銀行と取引のない企業とは付き合わない", TEMPLATE_ANSWER
+    ) == ""
+    assert capture.save_request_target("作ったテンプレートを保存して", "", TEMPLATE_ANSWER) == TEMPLATE_ANSWER
+    assert capture.save_request_target("保存が必要か考えてる", "", "元気です") == ""

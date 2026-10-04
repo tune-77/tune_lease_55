@@ -4999,6 +4999,7 @@ def _capture_chat_judgment_asset_if_needed(
     user_id: str,
     surface: str,
     response_mode: str = "",
+    user_requested: bool = False,
 ) -> dict[str, Any]:
     from api.chat_judgment_asset_capture import capture_chat_judgment_asset_if_needed
 
@@ -5007,6 +5008,7 @@ def _capture_chat_judgment_asset_if_needed(
         user_id=user_id,
         surface=surface,
         response_mode=response_mode,
+        user_requested=user_requested,
         candidates_loader=_load_autoresearch_judgment_asset_candidates,
         candidate_creator=_create_manual_judgment_asset_candidate,
         request_factory=JudgmentAssetCandidateManualRequest,
@@ -6186,19 +6188,29 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         # 保存結果をプロンプトへ渡し、紫苑が保存の成否と違うことを言わないようにする。
         # 雑談モードでも、ドメインの問いでは回答前に Knowledge と RAG を引く。
         # 以前は回答後に参照ボタン用に検索するだけで、回答には届いていなかった。
-        from api.chat_teaching_capture import prepare_teaching_turn, previous_user_message, vector_store_rag_search
+        from api.chat_teaching_capture import (
+            prepare_teaching_turn,
+            previous_assistant_message,
+            previous_user_message,
+            vector_store_rag_search,
+        )
 
         teaching_turn = prepare_teaching_turn(
             message,
             vault=vault,
             surface="lease_intelligence_dialogue",
-            candidate_saver=lambda claim: _capture_chat_judgment_asset_if_needed(
+            candidate_saver=lambda claim, **kw: _capture_chat_judgment_asset_if_needed(
                 claim,
                 user_id=DIALOGUE_USER_ID,
                 surface="lease_intelligence_dialogue",
                 response_mode="shion",
+                **kw,
             ),
             previous_user_message=previous_user_message(history),
+            # history は会話モードによって1発言あたりの文字数が切り詰められるので、保存対象の回答は全文を引き直す。
+            previous_assistant_message=previous_assistant_message(
+                get_recent_messages(DIALOGUE_USER_ID, limit=2, since=req.since)
+            ),
             rag_search=vector_store_rag_search("next_chat_rag"),
         )
         teaching_save = teaching_turn.save
@@ -6925,29 +6937,37 @@ def post_chat(req: ChatRequest):
 
         # 対話室と同じく、教わったノウハウは回答前に決定的に保存し、審査の問いでは回答前に想起する。
         # 判断資産候補の保存はここで1回だけ行い、回答後はその結果を使う（指示語だけの教示で二重登録しない）。
-        from api.chat_teaching_capture import prepare_teaching_turn, previous_user_message, vector_store_rag_search
+        from api.chat_teaching_capture import (
+            prepare_teaching_turn,
+            previous_assistant_message,
+            previous_user_message,
+            vector_store_rag_search,
+        )
         from lease_news_digest import find_vault as _find_teaching_vault
 
         teaching_surface = "next_chat_general" if question_category == "general" else "next_chat_rag"
         teaching_candidate_capture: dict[str, Any] = {}
 
-        def _save_teaching_candidate(claim: str) -> dict[str, Any]:
+        def _save_teaching_candidate(claim: str, **kw: Any) -> dict[str, Any]:
             teaching_candidate_capture.update(
                 _capture_chat_judgment_asset_if_needed(
                     claim,
                     user_id=req.user_id,
                     surface=teaching_surface,
                     response_mode=req.response_mode,
+                    **kw,
                 )
             )
             return teaching_candidate_capture
 
+        teaching_recent = [] if is_screening_review else get_recent_messages(req.user_id, limit=6)
         teaching_turn = prepare_teaching_turn(
             search_text,
             vault=_find_teaching_vault(),
             surface=teaching_surface,
             candidate_saver=_save_teaching_candidate,
-            previous_user_message=previous_user_message([] if is_screening_review else get_recent_messages(req.user_id, limit=6)),
+            previous_user_message=previous_user_message(teaching_recent),
+            previous_assistant_message=previous_assistant_message(teaching_recent),
             # RAG 分岐は build_chat_retrieval_context で引くので、RAG を飛ばす general だけ渡す。
             rag_search=vector_store_rag_search("next_chat_general") if question_category == "general" else None,
             allow_save=not is_screening_review,
