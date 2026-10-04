@@ -76,6 +76,17 @@ def stale_vector_ids(existing_ids: list[str], records: list[dict]) -> list[str]:
     return sorted({str(vector_id) for vector_id in existing_ids if str(vector_id)} - current_ids)
 
 
+def mutation_is_processed(info: dict, mutation_id: str, expected_count: int) -> bool:
+    """最後のmutationが反映済みで、index件数もexportと一致するか確認する。"""
+    processed = str(
+        info.get("processedUpToMutation")
+        or info.get("processed_up_to_mutation")
+        or ""
+    )
+    count = int(info.get("vectorCount", info.get("vector_count", 0)) or 0)
+    return bool(mutation_id) and processed == mutation_id and count == expected_count
+
+
 def _error_message(payload: Any, status_code: int) -> str:
     errors = payload.get("errors") if isinstance(payload, dict) else None
     if isinstance(errors, list):
@@ -345,18 +356,21 @@ def command_sync(client: VectorizeClient, token: str, *, apply: bool) -> int:
     removed_ids = stale_vector_ids(existing_ids, records)
     delete_mutations = client.delete_by_ids(removed_ids)
     mutation_ids = client.upsert(records)
+    submitted_mutations = delete_mutations + mutation_ids
+    if not submitted_mutations:
+        raise RuntimeError("Vectorize APIがmutation IDを返さなかったため、反映確認できません")
+    final_mutation_id = submitted_mutations[-1]
     print(
         f"{'作成' if created else '再利用'} index={INDEX_NAME} / "
         f"delete={len(removed_ids)} / upsert={len(records)} / "
-        f"mutations={len(delete_mutations) + len(mutation_ids)}"
+        f"mutations={len(submitted_mutations)}"
     )
-    # 反映は非同期。短時間だけ確認し、未反映でも失敗とはしない。
+    # 件数は更新前から同じ場合があるため、最後のmutation IDの処理完了も確認する。
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         info = client.info()
-        count = int(info.get("vectorCount", info.get("vector_count", 0)) or 0)
-        if count == len(records):
-            print(f"反映確認: {count} vectors")
+        if mutation_is_processed(info, final_mutation_id, len(records)):
+            print(f"反映確認: {len(records)} vectors / mutation={final_mutation_id}")
             return 0
         time.sleep(2)
     print("反映待ち: Vectorizeの非同期処理は継続中です。statusで再確認してください。")

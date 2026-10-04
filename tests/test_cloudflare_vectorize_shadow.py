@@ -6,6 +6,7 @@ from scripts.cloudflare_vectorize_shadow import (
     INDEX_NAME,
     VectorizeClient,
     build_vector_records,
+    mutation_is_processed,
     stable_vector_id,
     stale_vector_ids,
 )
@@ -147,6 +148,24 @@ def test_delete_by_ids_uses_json_endpoint():
 def test_stale_vector_ids_excludes_current_export_records():
     records = [{"id": "current"}, {"id": "new"}]
     assert stale_vector_ids(["current", "withdrawn", "withdrawn"], records) == ["withdrawn"]
+
+
+def test_mutation_is_processed_requires_final_mutation_and_exact_count():
+    assert mutation_is_processed(
+        {"processedUpToMutation": "upsert-2", "vectorCount": 3},
+        "upsert-2",
+        3,
+    )
+    assert not mutation_is_processed(
+        {"processedUpToMutation": "upsert-1", "vectorCount": 3},
+        "upsert-2",
+        3,
+    )
+    assert not mutation_is_processed(
+        {"processedUpToMutation": "upsert-2", "vectorCount": 4},
+        "upsert-2",
+        3,
+    )
 
 
 def test_reranker_reorders_vectorize_candidates_and_keeps_original_rank():

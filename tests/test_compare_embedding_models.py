@@ -203,6 +203,45 @@ def test_run_end_to_end_with_stub_embedder(tmp_path, monkeypatch):
     assert cem.run(args) == 0
 
 
+def test_explicit_vault_overrides_default_export_source(tmp_path, monkeypatch):
+    import argparse
+    import json
+
+    import scripts.compare_embedding_models as cem
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "knowledge.md").write_text("# リース\n\n満了時の確認事項", encoding="utf-8")
+    eval_set = tmp_path / "eval.json"
+    eval_set.write_text(json.dumps([{
+        "id": "vault-case",
+        "query": "満了",
+        "expected_path_any": ["knowledge.md"],
+        "forbidden_path_any": [],
+    }]), encoding="utf-8")
+
+    monkeypatch.setattr(cem, "LocalEmbedder", _StubEmbedder)
+    monkeypatch.setattr(cem, "EVAL_SET_PATH", eval_set)
+    monkeypatch.setattr(cem, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(cem, "REPORT_DIR", tmp_path / "reports")
+    monkeypatch.setattr(
+        cem,
+        "build_exported_corpus",
+        lambda _path: pytest.fail("明示された--vaultではexportを読まない"),
+    )
+
+    args = argparse.Namespace(
+        vault=str(vault),
+        corpus_source="agent-search-export",
+        models="local",
+        top_k=5,
+        max_chunks=0,
+    )
+    assert cem.run(args) == 0
+    body = next((tmp_path / "reports").glob("*.md")).read_text(encoding="utf-8")
+    assert "コーパス経路: vault" in body
+
+
 def test_run_excludes_cases_missing_expected_document_from_metrics(tmp_path, monkeypatch):
     import argparse
     import json

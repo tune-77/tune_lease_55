@@ -474,7 +474,9 @@ def run(args: argparse.Namespace) -> int:
             print("❌ CLOUDFLARE_ACCOUNT_ID を解決できませんでした。環境変数で指定してください。")
             return 2
 
-    corpus_source = getattr(args, "corpus_source", "vault")
+    requested_vault = str(getattr(args, "vault", "") or "").strip()
+    # --vault は明示指定なので、既定のagent-search-exportより優先する。
+    corpus_source = "vault" if requested_vault else getattr(args, "corpus_source", "vault")
     if corpus_source == "agent-search-export":
         export_dir = Path(getattr(args, "export_dir", "") or DEFAULT_EXPORT_DIR)
         try:
@@ -487,7 +489,7 @@ def run(args: argparse.Namespace) -> int:
         if uses_cloudflare and not getattr(args, "allow_unsanitized_cloud_corpus", False):
             print("❌ Workers AIへ未選別Vaultを送信しません。--corpus-source agent-search-export を使ってください。")
             return 2
-        vault = Path(args.vault) if args.vault else find_default_vault()
+        vault = Path(requested_vault).expanduser() if requested_vault else find_default_vault()
         if not vault or not vault.is_dir():
             print("❌ Obsidian Vault が見つかりません。--vault で指定してください。")
             return 2
