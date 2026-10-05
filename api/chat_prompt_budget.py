@@ -68,6 +68,7 @@ SPECS: dict[str, BlockSpec] = {
     "shion_specificity_context": BlockSpec(SHAPE, 800),
     "vague_information_request_context": BlockSpec(SHAPE, 600),
     "shion_light_tone_context": BlockSpec(SHAPE, 600),
+    "user_affect_context": BlockSpec(SHAPE, 700),
     "shion_non_domain_context": BlockSpec(SHAPE, 600),
     "prompt_suffix": BlockSpec(SHAPE, 600),
     # 3: RAG/Knowledge・Vertex の根拠・DB・外部調査
