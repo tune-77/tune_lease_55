@@ -149,6 +149,46 @@ def _load_reflection_section(vault: Path, date_str: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+def _compact_dialogue_note(text: str, max_chars: int = 6000) -> str:
+    """Keep every turn of the day, trimmed, instead of only the first few kB.
+
+    Dialogue notes reach 90kB on busy days; a head cut kept only the morning
+    greeting. User turns carry the signal, so they get the larger share.
+    """
+    turns: list[tuple[str, str]] = []
+    speaker = ""
+    buf: list[str] = []
+
+    def flush() -> None:
+        body = " ".join(buf).strip()
+        if speaker and body:
+            turns.append((speaker, body))
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        match = re.fullmatch(r"\*\*(ユーザー|リース知性体)\*\*", stripped)
+        if match:
+            flush()
+            speaker, buf = match.group(1), []
+        elif stripped.startswith(("#", "<!--", "source_ts:")):
+            flush()
+            speaker, buf = "", []
+        elif speaker and stripped:
+            buf.append(stripped)
+    flush()
+    if not turns:
+        return text.strip()[:max_chars]
+    # Assistant markers stay even when shortened: signal extraction uses them
+    # as the end of each user turn.
+    for assistant_limit in (160, 60, 1):
+        compact = "\n".join(
+            f"**{who}**\n{body[: 400 if who == 'ユーザー' else assistant_limit]}\n" for who, body in turns
+        )
+        if len(compact) <= max_chars:
+            break
+    return compact[:max_chars]
+
+
 def _load_dialogue(vault: Path, date_str: str) -> str:
     """Load reflection material for a day.
 
@@ -157,12 +197,16 @@ def _load_dialogue(vault: Path, date_str: str) -> str:
     then fold in Cloud Run conversation logs and summaries as reflection input.
     """
     sources = [
-        ("リース知性体対話室", _dialogue_dir(vault) / f"{date_str}.md", 4000),
         ("Cloud Run会話ログ", _cloudrun_conversation_dir(vault) / f"{date_str}.md", 5000),
         ("Cloud SQL会話要約", _cloudsql_summary_dir(vault) / f"{date_str}_cloudsql_summary.md", 3000),
         ("AI Chatメモ", _ai_chat_dir(vault) / f"{date_str}.md", 3000),
     ]
     parts: list[str] = []
+    dialogue_note = _compact_dialogue_note(
+        _read_file_safe(_dialogue_dir(vault) / f"{date_str}.md", max_chars=200_000)
+    )
+    if dialogue_note:
+        parts.append(f"【リース知性体対話室】\n{dialogue_note}")
     for label, path, limit in sources:
         text = _read_file_safe(path, max_chars=limit)
         if text:
@@ -227,7 +271,7 @@ def _call_gemini(system_prompt: str, user_text: str) -> str:
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": user_text}]}],
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2000},
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4096},
     }
     resp = tracked_ai_http_call(
         lambda: requests.post(
@@ -1211,12 +1255,6 @@ def _evaluate_reflection_quality(
         reasons.extend(haranmaru_reasons)
         score -= min(45, 15 + (len(haranmaru_reasons) * 8))
 
-    if any(term in dialogue_text for term in ("ハッカソン", "審査員", "紹介", "行儀")):
-        hackathon_terms = ("ハッカソン", "審査員", "紹介", "行儀", "見られる", "弱すぎる")
-        if sum(1 for term in hackathon_terms if term in reflection_text) < 2:
-            reasons.append("hackathon_context_missing")
-            score -= 35
-
     passed = not reasons
     return {
         "passed": passed,
@@ -2185,6 +2223,14 @@ def _write_reflection_file(vault: Path, date_str: str, reflection_text: str, sou
     return path
 
 
+_HOLLOW_REFLECTION_REASONS = {
+    "too_short",
+    "too_similar_to_previous",
+    "stale_boilerplate",
+    "hollow_dialogue_material",
+}
+
+
 def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> str:
     """Generate Shion's reflection on today's dialogue and append it to Private Reflection."""
     if date_str is None:
@@ -2192,6 +2238,16 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
 
     target_date = dt.date.fromisoformat(date_str)
     dialogue_text = _load_dialogue(vault, date_str)
+    # The nightly pipeline runs at 04:00, before the day's conversations
+    # happen, so the previous day's full dialogue is the real material.
+    previous_date = (target_date - dt.timedelta(days=1)).isoformat()
+    previous_dialogue = _load_dialogue(vault, previous_date)
+    if previous_dialogue:
+        dialogue_text = "\n\n".join(
+            part
+            for part in (f"【前日（{previous_date}）の対話】\n{previous_dialogue}", dialogue_text)
+            if part.strip()
+        )[:12000]
     material_kind = "dialogue"
     if not dialogue_text.strip():
         dialogue_text = _load_vault_reading_material(vault, date_str)
@@ -2245,6 +2301,35 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
             reflection_text = ""
             source = "fallback"
 
+    def _quality(text: str) -> dict[str, object]:
+        return _evaluate_reflection_quality(
+            vault=vault,
+            date_str=date_str,
+            reflection_text=text,
+            dialogue_text=dialogue_text,
+        )
+
+    llm_text = reflection_text
+    llm_quality = _quality(llm_text) if llm_text else {}
+    if llm_text and not bool(llm_quality.get("passed")):
+        # Ask Gemini to fix what the gate flagged before considering the
+        # template; the template cannot know what the person actually said.
+        reasons = ", ".join(str(reason) for reason in llm_quality.get("reasons", []))
+        try:
+            retry_text = _call_gemini(
+                _REFLECTION_SYSTEM_PROMPT,
+                user_text + f"\n\n【前回の下書きが品質ゲートで不足と判定された点】\n{reasons}\n"
+                "上の不足を直して、全体を書き直すこと。",
+            )
+        except Exception:
+            retry_text = ""
+        if retry_text and _is_usable_reflection(retry_text):
+            retry_quality = _quality(retry_text)
+            if int(retry_quality.get("score", 0)) >= int(llm_quality.get("score", 0)):
+                llm_text, llm_quality = retry_text, retry_quality
+                source = "gemini+llm-retry"
+        reflection_text = llm_text
+
     if not reflection_text:
         reflection_text = _build_fallback_reflection(
             date_str=date_str,
@@ -2252,30 +2337,26 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
             recent_reflections=recent_reflections,
         )
 
-    loop_quality = _evaluate_reflection_quality(
-        vault=vault,
-        date_str=date_str,
-        reflection_text=reflection_text,
-        dialogue_text=dialogue_text,
-    )
+    loop_quality = llm_quality if llm_text else _quality(reflection_text)
     loop_regenerations = 0
     max_loop_regenerations = 2
     while not bool(loop_quality.get("passed")) and loop_regenerations < max_loop_regenerations:
-        loop_regenerations += 1
         reasons = [str(reason) for reason in loop_quality.get("reasons", [])]
+        # The gate is a keyword checklist the template is written to satisfy,
+        # so it used to replace Gemini's text about the real conversation on
+        # structural misses. Only genuinely hollow LLM text is replaced now.
+        if llm_text and not set(reasons) & _HOLLOW_REFLECTION_REASONS:
+            break
+        llm_text = ""
+        loop_regenerations += 1
         reflection_text = _build_fallback_reflection(
             date_str=date_str,
             dialogue_text=dialogue_text,
             recent_reflections=recent_reflections,
             loop_issues=reasons,
         )
+        loop_quality = _quality(reflection_text)
         source = f"{source}+loop-regenerated"
-        loop_quality = _evaluate_reflection_quality(
-            vault=vault,
-            date_str=date_str,
-            reflection_text=reflection_text,
-            dialogue_text=dialogue_text,
-        )
 
     if not bool(loop_quality.get("passed")):
         reasons = ", ".join(str(reason) for reason in loop_quality.get("reasons", []))

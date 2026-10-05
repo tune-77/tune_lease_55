@@ -465,7 +465,7 @@ def test_loop_engineering_regenerates_boring_reflection(tmp_path, monkeypatch):
     text = _private_reflection_path(vault, date_str).read_text(encoding="utf-8")
 
     assert "loop_regenerated=" in result
-    assert "source=gemini+loop-regenerated" in result
+    assert "source=gemini+llm-retry+loop-regenerated" in result
     assert "一度書いた内省は、ループエンジニアリングで作り直しになった" in text
     assert "## 深い内省チェック" in text
     assert "私の見落とし:" in text
@@ -504,7 +504,9 @@ def test_dialogue_signal_extraction_prefers_user_hackathon_context():
     assert "承知いたしました" not in joined
 
 
-def test_quality_gate_rejects_hackathon_reflection_without_hackathon_context(tmp_path):
+def test_quality_gate_no_longer_requires_hackathon_terms(tmp_path):
+    # ハッカソンは終了済み。会話に「ハッカソン」「紹介」が出ただけで
+    # Gemini の内省を不合格にして定型文へ差し替えていたため、判定から外した。
     date_str = "2026-07-12"
     vault = tmp_path / "vault"
     reflection_text = (
@@ -531,8 +533,7 @@ def test_quality_gate_rejects_hackathon_reflection_without_hackathon_context(tmp
         dialogue_text=dialogue_text,
     )
 
-    assert result["passed"] is False
-    assert "hackathon_context_missing" in result["reasons"]
+    assert "hackathon_context_missing" not in result["reasons"]
 
 
 def test_fallback_reflection_adds_haranmaru_private_lens_for_hackathon(tmp_path, monkeypatch):
@@ -1007,3 +1008,64 @@ def test_build_local_context_includes_debate_disagreement_section(tmp_path, monk
 
     assert "【今日の討論で意見が割れた件（人間向け画面には出していない内部記録）】" in context
     assert "懐疑派:否決" in context
+
+
+def _dialogue_path(vault: Path, date_str: str) -> Path:
+    return vault / "Projects" / "tune_lease_55" / "Lease Intelligence" / "Dialogue" / f"{date_str}.md"
+
+
+def test_compact_dialogue_keeps_late_turns_of_long_day():
+    turns = "".join(
+        f"## 0{i % 10}:00:00\n\n**ユーザー**\n\n発話{i}番目の内容です\n\n**リース知性体**\n\n" + "長い返答。" * 200 + "\n\n"
+        for i in range(30)
+    )
+    compact = reflection._compact_dialogue_note("# 対話\n\n" + turns)
+
+    assert "発話0番目" in compact
+    assert "発話29番目" in compact
+    assert len(compact) <= 6000
+
+
+def test_reflection_reads_previous_day_dialogue(tmp_path, monkeypatch):
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-10-05"
+    vault = tmp_path / "vault"
+    _write(
+        _dialogue_path(vault, "2026-10-04"),
+        "## 21:00:00\n\n**ユーザー**\n\n餃子の無人販売所の件、どう見る？\n\n**リース知性体**\n\nはい。\n",
+    )
+    seen: list[str] = []
+    monkeypatch.setattr(
+        reflection, "_call_gemini", lambda _sys, user_text: seen.append(user_text) or ""
+    )
+
+    reflection.generate_and_append_reflection(vault, date_str=date_str)
+
+    assert seen and "前日（2026-10-04）の対話" in seen[0]
+    assert "餃子の無人販売所" in seen[0]
+
+
+def test_gemini_reflection_is_not_replaced_by_template_when_gate_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(reflection, "REPO_ROOT", tmp_path)
+    date_str = "2026-10-05"
+    vault = tmp_path / "vault"
+    _write(
+        _dialogue_path(vault, date_str),
+        "## 09:00:00\n\n**ユーザー**\n\nハッカソンはもう終わっている\n\n**リース知性体**\n\n失礼しました。\n",
+    )
+    gemini_text = (
+        "ユーザーに『ハッカソンはもう終わっている』と言われて、私はまだ古い前提で話していたと気づいた。"
+        "相手の今の状況を確かめずに話し始める癖がある。次は最初に今の状況を一言確かめたい。"
+    ) * 4
+    monkeypatch.setattr(reflection, "_call_gemini", lambda *_a, **_k: gemini_text)
+    monkeypatch.setattr(
+        reflection,
+        "_evaluate_reflection_quality",
+        lambda **kw: {"passed": False, "score": 60 if kw["reflection_text"] == gemini_text else 40, "reasons": ["x"]},
+    )
+
+    result = reflection.generate_and_append_reflection(vault, date_str=date_str)
+    text = _private_reflection_path(vault, date_str).read_text(encoding="utf-8")
+
+    assert "loop-regenerated" not in result
+    assert "古い前提で話していた" in text
