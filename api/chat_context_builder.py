@@ -7,7 +7,7 @@ into one auditable state object.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 from silent_failure_log import record_silent_failure
 
@@ -76,6 +76,8 @@ class ChatContextState:
     grey_judgment_context: str
     grey_judgment_payload: dict[str, Any]
     business_plan_consult_context: str
+    user_affect_context: str = ""
+    user_affect_payload: dict[str, Any] = field(default_factory=dict)
 
 
 def _suppressed_identity_payload() -> dict[str, Any]:
@@ -135,6 +137,11 @@ def build_chat_context_state(
     shion_specificity_context = deps.build_shion_specificity(message)
     vague_information_request_context = deps.build_vague_information_request(message)
     shion_light_tone_context = deps.build_shion_light_tone(message)
+    from api.user_affect import build_user_affect_prompt_block, estimate_user_affect
+
+    user_affect = estimate_user_affect(message)
+    user_affect_context = build_user_affect_prompt_block(user_affect)
+    user_affect_payload = user_affect.to_payload()
     shion_non_domain_context = deps.build_shion_non_domain(message)
     human_device_resonance_context = deps.build_human_device_resonance(message, user_id=user_id, now=now)
     judgment_response_shape_context = deps.build_judgment_response_shape(message)
@@ -161,6 +168,7 @@ def build_chat_context_state(
         shion_specificity_context = ""
         vague_information_request_context = ""
         shion_light_tone_context = ""
+        user_affect_context = ""
         shion_non_domain_context = ""
         human_device_resonance_context = ""
         judgment_response_shape_context = ""
@@ -225,4 +233,6 @@ def build_chat_context_state(
         grey_judgment_context=grey_judgment_context,
         grey_judgment_payload=grey_judgment_payload,
         business_plan_consult_context=business_plan_consult_context,
+        user_affect_context=user_affect_context,
+        user_affect_payload=user_affect_payload,
     )

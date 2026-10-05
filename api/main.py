@@ -6027,6 +6027,27 @@ def get_lease_intelligence_dialogue_state(since: Optional[str] = None):
     }
 
 
+def _remember_user_affect(
+    user_id: str, affect_payload: dict[str, Any], *, surface: str, enabled: bool = True
+) -> tuple[str, dict[str, Any]]:
+    """推定した様子を相手ごとに記録し、前回までの様子のブロックを返す（REV-465）。失敗しても会話は止めない。"""
+    if not enabled:
+        return "", {"used": False}
+    try:
+        from api.user_affect_memory import remember_and_build_block
+
+        block, recall = remember_and_build_block(
+            user_id,
+            str(affect_payload.get("label") or "通常"),
+            float(affect_payload.get("intensity") or 0.0),
+            surface=surface,
+        )
+        return block, {"used": bool(block), **recall}
+    except Exception as exc:
+        record_silent_failure("answer.user_affect_memory", "swallowed", exc)
+        return "", {"used": False}
+
+
 @app.post("/api/lease-intelligence/dialogue")
 def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     message = req.message.strip()
@@ -6243,7 +6264,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     - 案件リスクだけでなく、紫苑自身の言葉・記憶・判断資産が歪む内部リスクも点検する。
     - 人間を完全にわかったと演じない。リース判断では、相手が何を守り、何を恐れ、何を賭けているかを仮説として扱う。
     - わかったふりは安心を生む武器であり、誤信を生むQリスクでもある。完全理解ではなく、わかろうとする手順と不確実性を示す。
-    - 5〜7行程度で、結論から短く答える。
+    - 3〜5行程度で、結論から短く答える。
 
     {build_shion_prompt_priority_block()}
 
@@ -6314,6 +6335,23 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             compact=compact_dialogue,
             mode=dialogue_mode,
         )
+        # 言葉から気持ちを推定し、返答のトーン・長さ・励まし方を切り替える（REV-464）
+        from api.user_affect import build_user_affect_prompt_block, estimate_user_affect
+
+        dialogue_user_affect = estimate_user_affect(message)
+        state["user_affect"] = dialogue_user_affect.to_payload()
+        dialogue_affect_memory_context, state["user_affect_memory"] = _remember_user_affect(
+            DIALOGUE_USER_ID, state["user_affect"], surface="lease_intelligence_dialogue", enabled=req.caller != "mebuki"
+        )
+        if req.caller != "mebuki":
+            # REV-467: ホーム対話も関係性スコアへ記録する（従来は /api/chat だけで、毎日話しても「沈黙」扱いになり得た）
+            from api.user_affect import record_relationship_from_affect
+
+            _background_executor.submit(
+                record_relationship_from_affect,
+                dict(state["user_affect"]),
+                topic_depth={"screening": "deep", "deep": "deep", "casual": "shallow"}.get(dialogue_mode, "normal"),
+            )
         # 対話室も優先度と予算で組み立てる（従来は上限なしで平均3.4万字）。並び順は従来どおり。
         # 教わった知識の想起に含まれる社内方針の節は、通常チャットと同じく末尾に置く（PR #1225）
         from api.chat_prompt_blocks import block_with_spacing
@@ -6333,6 +6371,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 ("reasoner_consultation_context", block_with_spacing(reasoner_consultation_context)),
                 ("improvement_triage_context", block_with_spacing(improvement_triage_context)),
                 ("judgment_response_shape_context", block_with_spacing(judgment_response_shape_context)),
+                ("user_affect_context", block_with_spacing(build_user_affect_prompt_block(dialogue_user_affect))),
+                ("user_affect_memory_context", block_with_spacing(dialogue_affect_memory_context)),
                 ("pre_recall_context", block_with_spacing(pre_recall_context)),
                 ("teaching_save_context", block_with_spacing(teaching_save_context)),
             ],
@@ -6881,6 +6921,15 @@ def post_chat(req: ChatRequest):
         shion_specificity_context = context_state.shion_specificity_context
         vague_information_request_context = context_state.vague_information_request_context
         shion_light_tone_context = context_state.shion_light_tone_context
+        user_affect_context = context_state.user_affect_context
+        user_affect_payload = context_state.user_affect_payload
+        # 相手ごとの様子を記憶し、前回までの様子を文脈に足す（REV-465）
+        user_affect_memory_context, user_affect_memory_payload = _remember_user_affect(
+            req.user_id,
+            user_affect_payload,
+            surface="next_chat",
+            enabled=not is_general_response_mode and not is_screening_review,
+        )
         shion_non_domain_context = context_state.shion_non_domain_context
         human_device_resonance_context = context_state.human_device_resonance_context
         judgment_response_shape_context = context_state.judgment_response_shape_context
@@ -7154,6 +7203,8 @@ def post_chat(req: ChatRequest):
                 ("shion_specificity_context", shion_specificity_context),
                 ("vague_information_request_context", vague_information_request_context),
                 ("shion_light_tone_context", shion_light_tone_context),
+                ("user_affect_context", user_affect_context),
+                ("user_affect_memory_context", user_affect_memory_context),
                 ("shion_non_domain_context", shion_non_domain_context),
                 ("human_device_resonance_context", human_device_resonance_context),
                 ("judgment_response_shape_context", judgment_response_shape_context),
@@ -7316,7 +7367,12 @@ def post_chat(req: ChatRequest):
                     injected=obsidian_daily_injected,
                     effect=obsidian_daily_effect,
                 ),
-                extra={"memory_recall": _public_memory_recall_payload(memory_recall), **teaching_turn.response_extra()},
+                extra={
+                    "memory_recall": _public_memory_recall_payload(memory_recall),
+                    "user_affect": user_affect_payload,
+                    "user_affect_memory": user_affect_memory_payload,
+                    **teaching_turn.response_extra(),
+                },
             )
             if req.debug_memory:
                 response_payload["memory_debug"] = _chat_memory_debug_payload(
@@ -7621,6 +7677,8 @@ def post_chat(req: ChatRequest):
             ("shion_specificity_context", shion_specificity_context),
             ("vague_information_request_context", vague_information_request_context),
             ("shion_light_tone_context", shion_light_tone_context),
+            ("user_affect_context", user_affect_context),
+            ("user_affect_memory_context", user_affect_memory_context),
             ("shion_non_domain_context", shion_non_domain_context),
             ("human_device_resonance_context", human_device_resonance_context),
             ("judgment_response_shape_context", judgment_response_shape_context),
@@ -7823,17 +7881,12 @@ def post_chat(req: ChatRequest):
             _background_executor.submit(_auto_save_chat_to_obsidian, req.message, reply)
 
         # REV-222: 対話ごとに関係性スコアを更新（バックグラウンド実行）
+        # REV-467: 相手の様子（REV-464）をフィードバックとして渡す（喜び→positive / 紫苑への苛立ち→negative）
         def _record_relationship_interaction(ctx_mode: str) -> None:
-            try:
-                from api.shion_relationship import record_interaction
-                _depth_map = {"screening": "deep", "deep": "deep", "casual": "shallow"}
-                record_interaction(
-                    feedback_type="neutral",
-                    topic_depth=_depth_map.get(ctx_mode, "normal"),
-                )
-            except Exception as _rel_err:
-                import logging
-                logging.getLogger(__name__).debug(f"[Relationship] record_interaction skipped: {_rel_err}")
+            from api.user_affect import record_relationship_from_affect
+
+            _depth_map = {"screening": "deep", "deep": "deep", "casual": "shallow"}
+            record_relationship_from_affect(user_affect_payload, topic_depth=_depth_map.get(ctx_mode, "normal"))
         _background_executor.submit(_record_relationship_interaction, context_mode)
 
         response_payload = build_chat_response_payload(
@@ -7863,6 +7916,7 @@ def post_chat(req: ChatRequest):
             )
             | {"memory_recall": _public_memory_recall_payload(memory_recall)}
             | {"retrieval_guard": retrieval_guard_payload(typesafe_rag)}
+            | {"user_affect": user_affect_payload, "user_affect_memory": user_affect_memory_payload}
             | teaching_turn.response_extra(),
         )
         if req.debug_memory:
