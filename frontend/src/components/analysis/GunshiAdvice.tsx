@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import DOMPurify from 'dompurify';
 import { Activity, AlertTriangle, Bot, CheckCircle2, FileText, HelpCircle, Loader2, PenLine, Sparkles, Target, Users } from 'lucide-react';
 import type { ScoringFormData } from '@/types';
@@ -163,6 +164,7 @@ const getYukikazeStatus = (score: number): YukikazeStatus => {
 };
 
 export default function GunshiAdvice({ score, modelDecision, industry_major, formData, estatContext, onChatLoaded, highlightCompanies = [] }: GunshiAdviceProps) {
+  const router = useRouter();
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [humorMode, setHumorMode] = useState<HumorMode>(getInitialHumorMode);
@@ -389,7 +391,7 @@ export default function GunshiAdvice({ score, modelDecision, industry_major, for
       sales_dept: formData.sales_dept || '',
       case_id: formData.company_no || formData.company_name || '',
     }));
-    window.location.href = '/chat';
+    router.push('/chat');
   };
 
   const handleRecordJudgmentChange = async () => {
