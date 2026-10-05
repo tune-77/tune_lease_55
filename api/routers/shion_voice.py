@@ -322,22 +322,31 @@ def _generate_score(theme: str) -> dict:
         build_shion_system_prompt(load_mind(), now)
         + "\n\n【歌唱モード】\n"
         + (f"テーマ「{theme}」で、" if theme else "テーマは紫苑がいまの気分で自由に決め、")
-        + "紫苑らしい短い歌（8〜16小節）を作曲・作詞する。\n"
+        + "紫苑らしい短い歌（4/4拍子・8〜16小節）を作曲・作詞し、ピアノ伴奏用のコード進行もつける。\n"
         "次のJSONだけを返す: "
-        '{"title": "曲名", "bpm": 60〜180の整数, "notes": [{"lyric": "ひらがな1モーラ", "key": MIDIノート番号, "beats": 拍数}]}\n'
+        '{"title": "曲名", "bpm": 60〜180の整数, "key": "調（例: C, Am）", '
+        '"notes": [{"lyric": "ひらがな1モーラ", "key": MIDIノート番号, "beats": 拍数}], '
+        '"chords": [{"chord": "コード名", "beats": 拍数}]}\n'
         f"- lyric はひらがな1モーラ（「きゃ」等の拗音は1つ）。休符は key を null、lyric を空文字にする\n"
         f"- key は {_KEY_MIN}〜{_KEY_MAX}、beats は 0.25〜4、notes は最大{_MAX_NOTES}個\n"
-        "- 歌いやすい旋律にし、跳躍は控えめにする"
+        "- 歌いやすい旋律にし、跳躍は控えめにする\n"
+        "- chords はメロディと同じ調・同じテンポで、先頭の音符から並べる。beats の合計を notes の beats の合計と同じにする\n"
+        "- コード名は C, Am, F, G7, Dm7, Cmaj7, Esus4, C/E のような英語表記。基本は1小節（4拍）か2拍ごと\n"
+        "- メロディの各音は、その時に鳴っているコードの構成音を中心にする"
     )
     return call_gemini_json(prompt, temperature=0.8, max_output_tokens=4096)
 
 
+def _score_bpm(score: dict) -> int:
+    try:
+        return min(180, max(60, int(score.get("bpm") or 96)))
+    except (TypeError, ValueError):
+        return 96
+
+
 def _to_voicevox_score(score: dict) -> tuple[dict, str]:
     """LLM の楽譜を検証・補正し、VOICEVOX の楽譜と歌詞文字列を返す。"""
-    try:
-        bpm = min(180, max(60, int(score.get("bpm") or 96)))
-    except (TypeError, ValueError):
-        bpm = 96
+    bpm = _score_bpm(score)
     raw = score.get("notes") if isinstance(score.get("notes"), list) else []
     notes = [{"key": None, "frame_length": 15, "lyric": ""}]  # 先頭は休符必須
     lyrics = []
@@ -428,6 +437,12 @@ def sing(req: SingRequest):
         except Exception as exc:
             logger.error("shion sing: voicevox failed (%s)", type(exc).__name__)
             raise HTTPException(status_code=503, detail="歌唱エンジンに接続できませんでした") from None
+        # REV-469: 同じテンポ・調のコード進行からピアノ伴奏を作って重ねる（オフ・失敗時は歌声のみ）
+        from api.shion_sing_accompaniment import add_accompaniment
+
+        mixed = add_accompaniment(wav, vv_score, score.get("chords"), _score_bpm(score))
+        if mixed is not None:
+            wav = mixed
 
         _sung[today] = used + 1
         _last_sung_at = time.monotonic()
@@ -441,6 +456,7 @@ def sing(req: SingRequest):
         "audio_base64": base64.b64encode(wav).decode("ascii"),
         "mime_type": "audio/wav",
         "credit": _credit(teacher_id, voice_id),
+        "accompaniment": mixed is not None,
         "remaining_today": daily_limit - used - 1,
     }
 
