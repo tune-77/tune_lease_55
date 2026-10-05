@@ -75,8 +75,8 @@ def _assert_safe_mirror_destination(dest: Path) -> None:
         )
 
 
-def _quarantine_stale_markdown(dest: Path, expected_paths: set[Path]) -> int:
-    """GCS に存在しないローカル .md を、削除せずミラー外へ隔離する。"""
+def _plan_stale_markdown(dest: Path, expected_paths: set[Path]) -> list[Path]:
+    """隔離対象を算出し、異常な大量変更ならミラー更新前に停止する。"""
     local_paths = {
         local_md.relative_to(dest)
         for local_md in dest.rglob("*.md")
@@ -84,7 +84,7 @@ def _quarantine_stale_markdown(dest: Path, expected_paths: set[Path]) -> int:
     }
     stale_paths = sorted(local_paths - expected_paths)
     if not stale_paths:
-        return 0
+        return []
     if not expected_paths:
         raise RuntimeError("Refusing to quarantine every local note because the GCS listing is empty")
 
@@ -93,7 +93,13 @@ def _quarantine_stale_markdown(dest: Path, expected_paths: set[Path]) -> int:
         raise RuntimeError(
             f"Refusing unusually large GCS mirror change: {len(stale_paths)}/{len(local_paths)} notes are stale"
         )
+    return stale_paths
 
+
+def _quarantine_stale_markdown(dest: Path, stale_paths: list[Path]) -> int:
+    """検証済みの stale .md を、削除せずミラー外へ隔離する。"""
+    if not stale_paths:
+        return 0
     quarantine_root = dest.parent / f".{dest.name}-quarantine" / datetime.now().strftime("%Y%m%dT%H%M%S%f")
     moved = 0
     for rel in stale_paths:
@@ -161,11 +167,13 @@ def download_vault(
     try:
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="gcs-vault-download") as executor:
             downloaded = sum(executor.map(_download, md_blobs))
+        # 既存ミラーへ1件でも置換する前に、大量欠落や空一覧を検出する。
+        stale_paths = _plan_stale_markdown(dest, expected_paths)
         for _, rel in md_blobs:
             target = dest / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             os.replace(staging / rel, target)
-        quarantined = _quarantine_stale_markdown(dest, expected_paths)
+        quarantined = _quarantine_stale_markdown(dest, stale_paths)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 

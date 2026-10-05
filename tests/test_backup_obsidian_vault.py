@@ -70,3 +70,21 @@ def test_suspicious_file_drop_preserves_older_complete_snapshot(tmp_path):
     assert manifest["previous_complete_file_count"] == 100
     assert first.destination.exists()
     assert second.destination.exists()
+
+
+def test_repeated_suspicious_snapshots_are_bounded_while_complete_restore_point_is_pinned(tmp_path):
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    for index in range(100):
+        (vault / f"note-{index}.md").write_text(str(index), encoding="utf-8")
+
+    complete = backup.backup_vault(vault, backup_root=tmp_path / "backups", keep=1)
+    for index in range(60):
+        (vault / f"note-{index}.md").unlink()
+    for _ in range(3):
+        latest = backup.backup_vault(vault, backup_root=tmp_path / "backups", keep=1)
+
+    snapshots = list((tmp_path / "backups").glob("Vault_*"))
+    assert len(snapshots) == 2
+    assert complete.destination.exists()
+    assert latest.destination.exists()

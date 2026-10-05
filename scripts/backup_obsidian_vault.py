@@ -184,7 +184,13 @@ def _unique_destination(root: Path, base_name: str) -> Path:
         suffix += 1
 
 
-def _cleanup_old_snapshots(root: Path, vault_name: str, keep: int) -> list[Path]:
+def _cleanup_old_snapshots(
+    root: Path,
+    vault_name: str,
+    keep: int,
+    *,
+    protected: Path | None = None,
+) -> list[Path]:
     if keep <= 0 or not root.exists():
         return []
     prefix = f"{vault_name}_"
@@ -193,8 +199,15 @@ def _cleanup_old_snapshots(root: Path, vault_name: str, keep: int) -> list[Path]
         if p.is_dir() and p.name.startswith(prefix)
     ]
     snapshots.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    retained = set(snapshots[:keep])
+    if protected is not None:
+        protected_resolved = protected.resolve()
+        if any(snapshot.resolve() == protected_resolved for snapshot in snapshots):
+            retained.add(next(snapshot for snapshot in snapshots if snapshot.resolve() == protected_resolved))
     removed: list[Path] = []
-    for old in snapshots[keep:]:
+    for old in snapshots:
+        if old in retained:
+            continue
         shutil.rmtree(old, ignore_errors=True)
         removed.append(old)
     return removed
@@ -215,6 +228,7 @@ def _latest_complete_manifest(root: Path, vault_name: str) -> dict[str, object] 
         except (OSError, json.JSONDecodeError):
             continue
         if payload.get("status") == "complete" and isinstance(payload.get("file_count"), int):
+            payload["_snapshot_path"] = str(path.parent)
             return payload
     return None
 
@@ -292,9 +306,11 @@ def backup_vault(
         encoding="utf-8",
     )
 
-    # 欠損や急減がある実行では、正常な復旧点をローテーション削除しない。
-    if not failed and not suspicious_drop:
-        _cleanup_old_snapshots(backup_root, vault.name, keep)
+    # 異常世代も上限内で循環させつつ、直近の正常な復旧点だけは固定して残す。
+    protected = None
+    if (failed or suspicious_drop) and previous_manifest:
+        protected = Path(str(previous_manifest["_snapshot_path"]))
+    _cleanup_old_snapshots(backup_root, vault.name, keep, protected=protected)
     return BackupSummary(
         vault=vault,
         destination=dest,

@@ -268,6 +268,25 @@ class TestDownloadVault:
 
         assert existing.read_text() == "# original"
 
+    def test_large_stale_change_is_rejected_before_replacing_existing_notes(self, tmp_path: Path) -> None:
+        keep = tmp_path / "keep.md"
+        keep.write_text("# original")
+        for index in range(101):
+            (tmp_path / f"stale-{index}.md").write_text("stale")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = [_make_blob("vault/keep.md", b"# replacement")]
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path, prefix="vault/")
+        except RuntimeError as exc:
+            assert "unusually large" in str(exc)
+        else:
+            raise AssertionError("large stale change should stop the sync")
+
+        assert keep.read_text() == "# original"
+        assert len(list(tmp_path.glob("stale-*.md"))) == 101
+
     def test_skips_unsafe_relative_paths(self, tmp_path: Path) -> None:
         outside = tmp_path.parent / "evil.md"
         if outside.exists():
