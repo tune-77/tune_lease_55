@@ -26,7 +26,8 @@ class _FakeClient:
 
 
 @pytest.fixture
-def setup(monkeypatch):
+def setup(monkeypatch, tmp_path):
+    monkeypatch.setattr("api.user_affect_memory._state_path", lambda: tmp_path / "user_affect_state.json")
     monkeypatch.setenv("SHION_VOICE_ENABLED", "1")
     monkeypatch.setenv("SHION_VOICE_MIN_INTERVAL_SECONDS", "0")
     monkeypatch.setattr(sv, "_issued", {})
@@ -114,6 +115,50 @@ def test_transcript_maps_roles_and_truncates(setup, monkeypatch):
     assert res.json() == {"saved": 2}
     assert saved[0] == ("u", "user", "こんにちは")
     assert saved[1][1] == "assistant" and len(saved[1][2]) == 2000
+
+
+def test_transcript_records_voice_affect(setup, monkeypatch):
+    client, _ = setup
+    monkeypatch.setattr("api.chat_memory.save_message", lambda u, r, t: None)
+    client.post(
+        "/api/shion/voice/transcript",
+        json={"user_id": "u", "turns": [
+            {"role": "user", "text": "今日はもう疲れた…"},
+            {"role": "model", "text": "やった！嬉しい！"},  # 紫苑側の発言は推定に使わない
+        ]},
+    )
+    from api.user_affect_memory import recall_user_affect
+
+    assert recall_user_affect("u").label == "疲れ"
+
+
+def test_session_enables_affective_only_for_supported_models(setup, monkeypatch):
+    client, fake = setup
+    client.post("/api/shion/voice/session", json={"user_id": "u"})
+    assert fake.created[-1].live_connect_constraints.config.enable_affective_dialog is None  # gemini-3.8-live
+
+    assert sv._affective_enabled("gemini-2.5-flash-native-audio-latest") is True
+    assert sv._affective_enabled("gemini-3.8-live") is False
+    monkeypatch.setenv("SHION_VOICE_AFFECTIVE", "1")
+    assert sv._affective_enabled("gemini-3.8-live") is True
+    monkeypatch.setenv("SHION_VOICE_AFFECTIVE", "0")
+    assert sv._affective_enabled("gemini-2.5-flash-native-audio-latest") is False
+
+
+def test_system_instruction_includes_voice_tone_and_affect_memory(monkeypatch, tmp_path):
+    from datetime import datetime, timedelta
+
+    from api.user_affect_memory import record_user_affect
+
+    path = tmp_path / "s.json"
+    monkeypatch.setattr("api.user_affect_memory._state_path", lambda: path)
+    record_user_affect("u", "不安", 0.9, now=datetime.now() - timedelta(hours=5), path=path)
+    monkeypatch.setattr("api.chat_memory.get_recent_messages", lambda user_id, limit=10: [])
+    monkeypatch.setattr("api.prompt_generator.load_mind", lambda: {})
+    monkeypatch.setattr("api.prompt_generator.build_shion_system_prompt", lambda mind, now: "紫苑")
+    prompt = sv._build_system_instruction("u")
+    assert "声の調子に合わせる" in prompt
+    assert "相手の最近の様子" in prompt and "不安" in prompt
 
 
 def test_recall_empty_fallback(setup, monkeypatch):

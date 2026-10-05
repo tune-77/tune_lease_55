@@ -29,7 +29,18 @@ _VOICE_TAIL = (
     "\n\n【音声通話モード】\n"
     "いまは音声通話中。話し言葉で1〜3文に収め、記号・箇条書き・URLは読み上げない。"
     "過去の記憶が必要なときは recall_memory ツールを使う。"
+    "\n\n【声の調子に合わせる（REV-466）】\n"
+    "言葉の内容だけでなく、声の速さ・大きさ・明るさ・沈み・ため息・言いよどみも聞いて、相手の今の状態を感じ取る。"
+    "疲れや沈みが聞こえたら、ゆっくり柔らかく短めに話し、最初に一言だけ労う。"
+    "急いでいる声なら前置きを省いて結論から、てきぱきと。"
+    "弾んだ声なら一緒に喜ぶ明るい温度で。苛立ちが聞こえたら、謝りすぎずに落ち着いて要点だけ返す。"
+    "不安そうな声なら、落ち着いた声で確かなことと確認が要ることを分けて伝える。"
+    "声から感じた気持ちを「疲れていますね」のように決めつけて口にしない。返し方にだけ反映する。"
+    "事実・審査判断・必要な注意は気持ちに合わせて変えない。"
 )
+# affective dialog を受け付けると実測できたモデル（2026-10-05 時点）。gemini-3.8-live は
+# ドキュメント上は対応だが、実音声を送ると 1007 invalid argument で切断されるため含めない。
+_AFFECTIVE_MODEL_PREFIXES = ("gemini-2.5-flash-native-audio",)
 
 _lock = threading.Lock()
 _issued: dict[str, int] = {}  # JST日付 -> 発行数
@@ -69,6 +80,27 @@ def _pick_model(client) -> str:
     return _model_cache[primary]
 
 
+def _affective_enabled(model: str) -> bool:
+    """SHION_VOICE_AFFECTIVE: auto（既定・対応モデルだけ）/ 1（強制）/ 0（無効）。"""
+    mode = os.environ.get("SHION_VOICE_AFFECTIVE", "auto").strip().lower()
+    if mode in {"1", "true", "on"}:
+        return True
+    if mode in {"0", "false", "off"}:
+        return False
+    return model.startswith(_AFFECTIVE_MODEL_PREFIXES)
+
+
+def _affect_memory_block(user_id: str) -> str:
+    """前回までの相手の様子（REV-465）を通話の文脈へ足す。失敗しても通話は始める。"""
+    try:
+        from api.user_affect_memory import build_user_affect_memory_block, recall_user_affect
+
+        return build_user_affect_memory_block(recall_user_affect(user_id))
+    except Exception as exc:
+        logger.warning("shion voice: affect memory unavailable (%s)", type(exc).__name__)
+        return ""
+
+
 def _build_system_instruction(user_id: str) -> str:
     from api.chat_memory import get_recent_messages
     from api.prompt_generator import build_shion_system_prompt, load_mind
@@ -79,6 +111,9 @@ def _build_system_instruction(user_id: str) -> str:
     if history:
         lines = [f"{m['role']}: {str(m['content'])[:200]}" for m in history]
         prompt += "\n\n【直近の会話】\n" + "\n".join(lines)
+    affect_block = _affect_memory_block(user_id)
+    if affect_block:
+        prompt += "\n\n" + affect_block
     return prompt + _VOICE_TAIL
 
 
@@ -132,6 +167,7 @@ def create_voice_session(req: SessionRequest):
                         model=model,
                         config=types.LiveConnectConfig(
                             response_modalities=["AUDIO"],
+                            enable_affective_dialog=True if _affective_enabled(model) else None,
                             system_instruction=_build_system_instruction(req.user_id),
                             input_audio_transcription=types.AudioTranscriptionConfig(),
                             output_audio_transcription=types.AudioTranscriptionConfig(),
@@ -202,7 +238,23 @@ def save_voice_transcript(req: TranscriptRequest):
             continue
         save_message(req.user_id, "assistant" if turn.role == "model" else "user", text)
         saved += 1
+    _remember_voice_affect(req.user_id, [t.text for t in req.turns if t.role == "user"])
     return {"saved": saved}
+
+
+def _remember_voice_affect(user_id: str, user_texts: list[str]) -> None:
+    """通話の発言（文字起こし）から様子を推定し、相手ごとの記憶に残す（REV-465/466）。"""
+    text = "\n".join(t.strip() for t in user_texts if t.strip())[-1200:]
+    if not text:
+        return
+    try:
+        from api.user_affect import estimate_user_affect
+        from api.user_affect_memory import record_user_affect
+
+        affect = estimate_user_affect(text)
+        record_user_affect(user_id, affect.label, affect.intensity, surface="voice")
+    except Exception as exc:
+        logger.warning("shion voice: affect record failed (%s)", type(exc).__name__)
 
 
 # ── REV-460: 歌唱（Gemini が楽譜を作り、ローカル VOICEVOX ENGINE が歌う） ──
