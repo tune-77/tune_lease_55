@@ -10,6 +10,7 @@ FluidSynth + GM SoundFont でローカル合成して VOICEVOX の歌声とミ�
   SHION_SING_SOUNDFONT       .sf2 のパス（既定 ~/Library/Application Support/tune_lease_55/soundfonts/GeneralUser-GS.sf2）
   SHION_SING_ACCOMP_LEVEL    伴奏の音量（歌声の RMS に対する比。既定 0.5、0〜2）
   SHION_SING_ACCOMP_PROGRAM  GM 音色番号（既定 0=ピアノ。24=ナイロンギター 等）
+  SHION_SING_KEY_SHIFT       歌のキーを上げる半音数（api/routers/shion_voice.py。伴奏も同じだけ移調する）
   SHION_FLUIDSYNTH_BIN       fluidsynth のパス（未指定なら PATH と Homebrew の既定位置を探す）
 """
 from __future__ import annotations
@@ -128,14 +129,17 @@ def _harmonize(melody: list[tuple], total_beats: float) -> list[tuple[float, flo
     return segments
 
 
-def plan_chords(chords: object, timeline: _Timeline) -> list[tuple[float, float, tuple]]:
+def plan_chords(chords: object, timeline: _Timeline, key_shift: int = 0) -> list[tuple[float, float, tuple]]:
     """Gemini のコード進行を拍区間に並べ、曲の長さに合わせて繰り返し・切り詰める。
 
+    key_shift は歌のキーを上げた半音数で、コードも同じだけ移調する。
     調がメロディとずれていれば移調し、それでも合わなければメロディから付け直す。
     """
     parsed = []
     for c in chords if isinstance(chords, list) else []:
         if isinstance(c, dict) and (chord := parse_chord(c.get("chord"))):
+            root, intervals, bass = chord
+            chord = ((root + key_shift) % 12, intervals, (bass + key_shift) % 12)
             try:
                 beats = min(8.0, max(0.5, float(c.get("beats") or 4)))
             except (TypeError, ValueError):
@@ -299,13 +303,13 @@ def mix(vocal_wav: bytes, accomp_wav: bytes, pad_seconds: float, level: float) -
     return buf.getvalue()
 
 
-def add_accompaniment(vocal_wav: bytes, vv_score: dict, chords: object, bpm: int) -> bytes | None:
+def add_accompaniment(vocal_wav: bytes, vv_score: dict, chords: object, bpm: int, key_shift: int = 0) -> bytes | None:
     """歌声 wav に伴奏を重ねた wav を返す。オフ・失敗時は None（歌声だけで返す）。"""
     if not accompaniment_enabled():
         return None
     try:
         timeline = _Timeline(vv_score["notes"], bpm)
-        segments = plan_chords(chords, timeline)
+        segments = plan_chords(chords, timeline, key_shift)
         program = int(os.environ.get("SHION_SING_ACCOMP_PROGRAM", "0") or 0)
         midi, pad = build_midi(segments, timeline, program)
         with wave.open(io.BytesIO(vocal_wav)) as w:

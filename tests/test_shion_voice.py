@@ -220,8 +220,17 @@ def test_sing_returns_wav_and_credit(sing_setup, monkeypatch):
     assert (teacher_id, voice_id) == (6000, 3002)
     notes = score["notes"]
     assert notes[0] == {"key": None, "frame_length": 15, "lyric": ""}
-    assert notes[1] == {"key": 60, "frame_length": round(0.5 * 93.75), "lyric": "あ"}  # 1拍@120bpm
+    assert notes[1] == {"key": 62, "frame_length": round(0.5 * 93.75), "lyric": "あ"}  # 1拍@120bpm、既定で+2半音
     assert notes[3]["key"] is None and notes[-1]["key"] is None
+
+
+def test_sing_key_shift_env(sing_setup, monkeypatch):
+    client, calls = sing_setup
+    monkeypatch.setenv("SHION_SING_KEY_SHIFT", "0")
+    client.post("/api/shion/voice/sing", json={"theme": "朝"})
+    monkeypatch.setenv("SHION_SING_KEY_SHIFT", "99")  # 上げすぎは +5 で頭打ち
+    client.post("/api/shion/voice/sing", json={"theme": "朝"})
+    assert [score["notes"][1]["key"] for score, _, _ in calls] == [60, 65]
 
 
 def test_sing_mixes_accompaniment(sing_setup, monkeypatch):
@@ -230,11 +239,12 @@ def test_sing_mixes_accompaniment(sing_setup, monkeypatch):
     client, calls = sing_setup
     monkeypatch.setenv("SHION_SING_ACCOMPANIMENT", "1")
     seen = []
-    monkeypatch.setattr(acc, "add_accompaniment", lambda wav, vv, chords, bpm: seen.append((wav, chords, bpm)) or b"MIXED")
+    monkeypatch.setattr(acc, "add_accompaniment",
+                        lambda wav, vv, chords, bpm, key_shift: seen.append((wav, chords, bpm, key_shift)) or b"MIXED")
     body = client.post("/api/shion/voice/sing", json={"theme": "朝"}).json()
     assert body["audio_base64"] == "TUlYRUQ=" and body["accompaniment"] is True
-    assert seen == [(b"RIFFwav", None, 120)]
-    monkeypatch.setattr(acc, "add_accompaniment", lambda *a: None)  # 伴奏失敗は歌声だけ
+    assert seen == [(b"RIFFwav", None, 120, 2)]  # 伴奏も歌と同じだけ移調
+    monkeypatch.setattr(acc, "add_accompaniment", lambda *a, **kw: None)  # 伴奏失敗は歌声だけ
     body = client.post("/api/shion/voice/sing", json={"theme": "朝"}).json()
     assert body["audio_base64"] == "UklGRndhdg==" and body["accompaniment"] is False
 

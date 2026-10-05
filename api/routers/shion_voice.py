@@ -313,6 +313,16 @@ def _sing_ids() -> tuple[int, int]:
     return _env_int("SHION_SING_TEACHER_ID", 6000), _env_int("SHION_SING_VOICE_ID", 3014)
 
 
+def _sing_key_shift() -> int:
+    """REV-473: 歌のキーを何半音上げるか（SHION_SING_KEY_SHIFT。既定 +2、不自然にならないよう -5〜+5）。"""
+    return min(5, max(-5, _env_int("SHION_SING_KEY_SHIFT", 2)))
+
+
+def _transpose(vv_score: dict, shift: int) -> dict:
+    """楽譜の音符を shift 半音ずらす（休符はそのまま）。伴奏も同じだけ移調して調を合わせる。"""
+    return {"notes": [{**n, "key": n["key"] + shift} if n["key"] is not None else n for n in vv_score["notes"]]}
+
+
 def _generate_score(theme: str) -> dict:
     from api.loop_engineering_common import call_gemini_json
     from api.prompt_generator import build_shion_system_prompt, load_mind
@@ -432,6 +442,8 @@ def sing(req: SingRequest):
             raise HTTPException(status_code=502, detail="歌を作れませんでした") from None
 
         teacher_id, voice_id = _sing_ids()
+        key_shift = _sing_key_shift()
+        vv_score = _transpose(vv_score, key_shift)
         try:
             wav = _synthesize(vv_score, teacher_id, voice_id)
         except Exception as exc:
@@ -440,7 +452,7 @@ def sing(req: SingRequest):
         # REV-469: 同じテンポ・調のコード進行からピアノ伴奏を作って重ねる（オフ・失敗時は歌声のみ）
         from api.shion_sing_accompaniment import add_accompaniment
 
-        mixed = add_accompaniment(wav, vv_score, score.get("chords"), _score_bpm(score))
+        mixed = add_accompaniment(wav, vv_score, score.get("chords"), _score_bpm(score), key_shift=key_shift)
         if mixed is not None:
             wav = mixed
 
@@ -480,6 +492,11 @@ def _tts_synthesize(text: str, speaker: int) -> bytes:
     query = q.json()
     try:
         query["speedScale"] = float(os.environ.get("SHION_TTS_SPEED", "1.1"))
+    except ValueError:
+        pass
+    # REV-473: 少し高めの声に（SHION_TTS_PITCH。VOICEVOX の pitchScale、既定 +0.04、-0.15〜0.15）
+    try:
+        query["pitchScale"] = min(0.15, max(-0.15, float(os.environ.get("SHION_TTS_PITCH", "0.04"))))
     except ValueError:
         pass
     wav = requests.post(f"{base}/synthesis", params={"speaker": speaker}, json=query, timeout=60)
