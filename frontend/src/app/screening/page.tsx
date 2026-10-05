@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
+import { fetchInterviewSignals } from "@/lib/interviewSignals";
+import InterviewSignalsCard from "@/components/analysis/InterviewSignalsCard";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import { Activity, ArrowRight, Calculator, Eye, MessageSquare, Network, PieChart, AlignLeft, Share2, AlertTriangle, ListOrdered, BadgeInfo, DollarSign, Database, ChevronDown, ChartNoAxesCombined, SlidersHorizontal, ScanText, ShieldCheck, XCircle, Minus, Swords, Save, Trash2, Sparkles, Search, Copy, FileDown } from "lucide-react";
 import ScoreDAG from "../../components/ScoreDAG";
@@ -2211,6 +2213,7 @@ export default function Dashboard() {
       const recentFeedbacks = await fetchRecentReviewFeedbacks();
       const candidates = await fetchJudgmentAssetCandidatesForScreening(targetResult, targetFormData);
       fallbackCandidates = candidates;
+      const interviewSignals = await fetchInterviewSignals(String(targetFormData.passion_text || ""));
       if (seq !== shionReviewRequestSeq.current) return;
       promptText = buildShionReviewPrompt(
         targetResult,
@@ -2218,6 +2221,7 @@ export default function Dashboard() {
         candidates,
         judgmentAssetAdaptationMode,
         recentFeedbacks,
+        interviewSignals?.enabled ? interviewSignals.prompt_block || "" : "",
       );
       const chatRequest = apiClient.post("/api/chat", buildShionReviewChatBody(targetResult, targetFormData, promptText), {
         timeout: SHION_REVIEW_HARD_TIMEOUT_MS,
@@ -2846,6 +2850,7 @@ export default function Dashboard() {
                       result={result}
                       formData={formData}
                     />
+                    <InterviewSignalsCard memo={String(formData.passion_text || "")} />
                     <JudgmentAssetCandidateCard
                       candidates={judgmentAssetCandidates}
                       loading={judgmentAssetCandidatesLoading}

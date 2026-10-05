@@ -381,6 +381,7 @@ export const buildShionReviewPrompt = (
   judgmentAssetCandidates: JudgmentAssetCandidate[] = [],
   judgmentAssetAdaptationMode: JudgmentAssetAdaptationMode = "standard",
   recentReviewFeedbacks: (ShionReviewFeedback | "" | undefined)[] = [],
+  interviewSignalsBlock = "",
 ) => {
   const score = getScreeningScore(result);
   const baseScore = Number(result.score_base);
@@ -511,6 +512,10 @@ export const buildShionReviewPrompt = (
   const reviewQualityFeedbackBlock = buildReviewQualityFeedbackBlock(recentReviewFeedbacks);
   if (reviewQualityFeedbackBlock) {
     lines.push("", reviewQualityFeedbackBlock);
+  }
+  // REV-470: 現場メモの定性シグナル（推測・参考情報。スコア・判定には入れていない）
+  if (interviewSignalsBlock) {
+    lines.push("", interviewSignalsBlock);
   }
   lines.push("", "注意: 点数の再説明ではなく、審査判断として何を残すかに寄せてください。");
   return lines.join("\n");
