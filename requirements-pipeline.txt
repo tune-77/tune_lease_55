@@ -14,4 +14,4 @@
 # fetch_fincept_data.py が健全スキップ（exit 0）するため、パイプライン全体は止まらない。
 # venv を requirements.txt だけから再構築すると本パッケージは入らない点に注意
 # （REV-034a: これが原因でマクロ更新が exit 1 になり続けた実績あり）。
-akshare>=1.18.0
+akshare>=1.18.88
