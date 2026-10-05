@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -933,6 +934,7 @@ function KnowledgeSpaceScene({
 }
 
 export default function KnowledgeSpacePage() {
+  const router = useRouter();
   const [knowledgeGraph, setKnowledgeGraph] = useState<KnowledgeGraph | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [knowledgeLoading, setKnowledgeLoading] = useState(true);
@@ -1075,7 +1077,7 @@ export default function KnowledgeSpacePage() {
                 if (window.history.length > 1) {
                   window.history.back();
                 } else {
-                  window.location.href = "/chat";
+                  router.push("/chat");
                 }
               }}
               aria-label="戻る"
@@ -1105,7 +1107,7 @@ export default function KnowledgeSpacePage() {
                 if (window.history.length > 1) {
                   window.history.back();
                 } else {
-                  window.location.href = "/chat";
+                  router.push("/chat");
                 }
               }}
               className="flex h-10 items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 text-xs font-black text-slate-200 transition hover:bg-white/10"

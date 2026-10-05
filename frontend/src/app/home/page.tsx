@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { triggerMebuki } from '../../components/layout/FloatingMebuki';
 import {
@@ -292,6 +293,7 @@ const DEFAULT_PANEL_SETTINGS: HomePanelSettings = {
 };
 
 export default function HomeDashboard() {
+  const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [panelSettings, setPanelSettings] = useState<HomePanelSettings>(DEFAULT_PANEL_SETTINGS);
@@ -551,7 +553,7 @@ export default function HomeDashboard() {
   const openShionChatFromHome = () => {
     const message = homeShionMessage.trim() || "リース審査で、今日は何から確認する？";
     window.localStorage.setItem(HOME_SHION_CHAT_DRAFT_KEY, message);
-    window.location.href = "/chat";
+    router.push("/chat");
   };
 
   return (
@@ -587,7 +589,7 @@ export default function HomeDashboard() {
               <button
                 key={item.href}
                 type="button"
-                onClick={() => window.location.href = item.href}
+                onClick={() => router.push(item.href)}
                 className="rounded-xl border border-white/25 bg-white/15 px-4 py-2 text-xs font-black text-white backdrop-blur-md transition-colors hover:bg-white/25"
               >
                 {item.label}
@@ -685,7 +687,7 @@ export default function HomeDashboard() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => window.location.href = "/chat"}
+                  onClick={() => router.push("/chat")}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 transition-colors"
                 >
                   AICHATで相談
