@@ -2257,6 +2257,15 @@ def _write_reflection_file(vault: Path, date_str: str, reflection_text: str, sou
     return path
 
 
+def _load_prediction_error_material(dates: list[str]) -> str:
+    try:
+        from api.shion_mutual_prediction import build_reflection_material
+
+        return build_reflection_material(dates)
+    except Exception:
+        return ""
+
+
 _HOLLOW_REFLECTION_REASONS = {
     "too_short",
     "too_similar_to_previous",
@@ -2295,6 +2304,10 @@ def generate_and_append_reflection(vault: Path, date_str: str | None = None) -> 
     if dialogue_text:
         material_label = "【今日の対話ログ】" if material_kind == "dialogue" else "【今日読んだObsidianの材料（対話なし）】"
         user_text_parts = [material_label, dialogue_text]
+        # REV-472: 相手について外れた予想（予測誤差）も内省の材料にする
+        prediction_errors = _load_prediction_error_material([previous_date, date_str])
+        if prediction_errors:
+            user_text_parts += ["", prediction_errors]
         local_context = _build_local_context(date_str)
         if local_context:
             user_text_parts += ["", local_context]
