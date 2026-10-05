@@ -197,7 +197,8 @@ class TestDownloadVault:
 
         assert (tmp_path / "deep" / "nested" / "dir" / "note.md").read_bytes() == b"deep"
 
-    def test_quarantines_local_md_missing_from_gcs(self, tmp_path: Path) -> None:
+    def test_quarantines_local_md_missing_from_gcs(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("GCS_VAULT_ALLOW_LARGE_QUARANTINE", "1")
         stale = tmp_path / "old.md"
         stale.write_text("# stale")
         keep = tmp_path / "keep.md"
@@ -250,6 +251,20 @@ class TestDownloadVault:
 
         assert note.exists()
 
+    def test_allows_resync_of_marker_managed_active_mirror(self, tmp_path: Path, monkeypatch) -> None:
+        (tmp_path / ".gcs-vault-mirror").touch()
+        existing = tmp_path / "keep.md"
+        existing.write_text("# old")
+        monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+        monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = [_make_blob("vault/keep.md", b"# fresh")]
+        _set_client_mock(client_mock)
+
+        download_vault(dest_dir=tmp_path, prefix="vault/")
+
+        assert existing.read_text() == "# fresh"
+
     def test_download_failure_leaves_existing_mirror_untouched(self, tmp_path: Path) -> None:
         existing = tmp_path / "keep.md"
         existing.write_text("# original")
@@ -286,6 +301,25 @@ class TestDownloadVault:
 
         assert keep.read_text() == "# original"
         assert len(list(tmp_path.glob("stale-*.md"))) == 101
+
+    def test_stale_ratio_is_rejected_below_absolute_limit(self, tmp_path: Path) -> None:
+        keep = tmp_path / "keep.md"
+        keep.write_text("# original")
+        for index in range(3):
+            (tmp_path / f"stale-{index}.md").write_text("stale")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = [_make_blob("vault/keep.md", b"# replacement")]
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path, prefix="vault/")
+        except RuntimeError as exc:
+            assert "unusually large" in str(exc)
+        else:
+            raise AssertionError("large stale ratio should stop the sync")
+
+        assert keep.read_text() == "# original"
+        assert len(list(tmp_path.glob("stale-*.md"))) == 3
 
     def test_skips_unsafe_relative_paths(self, tmp_path: Path) -> None:
         outside = tmp_path.parent / "evil.md"

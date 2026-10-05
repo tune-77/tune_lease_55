@@ -61,14 +61,15 @@ def _assert_safe_mirror_destination(dest: Path) -> None:
     if (resolved / ".obsidian").exists():
         raise RuntimeError(f"Refusing to use an Obsidian vault as a GCS mirror: {resolved}")
 
+    managed_mirror = (resolved / _MIRROR_MARKER).exists()
     for env_name in ("OBSIDIAN_VAULT", "OBSIDIAN_VAULT_PATH"):
         configured = (os.environ.get(env_name) or "").strip()
-        if configured and resolved == Path(configured).expanduser().resolve():
+        if configured and resolved == Path(configured).expanduser().resolve() and not managed_mirror:
             raise RuntimeError(f"Refusing to use {env_name} as a GCS mirror: {resolved}")
 
     temp_roots = {Path("/tmp").resolve(), Path("/private/tmp").resolve(), Path(tempfile.gettempdir()).resolve()}
     in_temp = any(resolved == root or _is_relative_to(resolved, root) for root in temp_roots)
-    if not in_temp and not (resolved / _MIRROR_MARKER).exists():
+    if not in_temp and not managed_mirror:
         raise RuntimeError(
             f"Unmanaged GCS mirror destination: {resolved}. "
             f"Create {resolved / _MIRROR_MARKER} only after confirming this is a disposable mirror."
@@ -88,8 +89,10 @@ def _plan_stale_markdown(dest: Path, expected_paths: set[Path]) -> list[Path]:
     if not expected_paths:
         raise RuntimeError("Refusing to quarantine every local note because the GCS listing is empty")
 
-    limit = max(_MAX_STALE_FILES, int(len(local_paths) * _MAX_STALE_RATIO))
-    if len(stale_paths) > limit and os.environ.get("GCS_VAULT_ALLOW_LARGE_QUARANTINE") != "1":
+    stale_ratio = len(stale_paths) / len(local_paths)
+    too_many_files = len(stale_paths) > _MAX_STALE_FILES
+    too_large_ratio = stale_ratio > _MAX_STALE_RATIO
+    if (too_many_files or too_large_ratio) and os.environ.get("GCS_VAULT_ALLOW_LARGE_QUARANTINE") != "1":
         raise RuntimeError(
             f"Refusing unusually large GCS mirror change: {len(stale_paths)}/{len(local_paths)} notes are stale"
         )
