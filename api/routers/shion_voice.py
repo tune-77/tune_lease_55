@@ -251,8 +251,12 @@ def _remember_voice_affect(user_id: str, user_texts: list[str]) -> None:
         from api.user_affect import estimate_user_affect
         from api.user_affect_memory import record_user_affect
 
+        from api.user_affect import record_relationship_from_affect
+
         affect = estimate_user_affect(text)
         record_user_affect(user_id, affect.label, affect.intensity, surface="voice")
+        # REV-467: 通話1回を関係性スコアへ記録（声で話した日も「沈黙」扱いにしない）
+        record_relationship_from_affect(affect.to_payload(), topic_depth="normal")
     except Exception as exc:
         logger.warning("shion voice: affect record failed (%s)", type(exc).__name__)
 
