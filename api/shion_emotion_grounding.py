@@ -13,7 +13,8 @@
 返答そのものは書き換えない（照合はバックグラウンド）。
 
 環境変数:
-  SHION_EMOTION_VERIFY       on（既定・TypeSafe鍵がある時だけ動く） | off
+  SHION_EMOTION_VERIFY       on（既定・TypeSafe鍵がある時だけ動く） | off  … 真面目な感情の質問の照合
+  SHION_SCREENING_VERIFY     off（既定） | on  … 審査回答の照合。審査回答は社名・人名・財務数値を含みうるため明示的に有効化した時だけ
   SHION_EMOTION_REPORT_MODE  distinguish（既定・言い分け） | recorder（記録係・解釈なし）
 """
 
@@ -25,6 +26,7 @@ import os
 import re
 import threading
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -54,10 +56,11 @@ RULE_LABELS = {
     "decay": "揺れの自然な戻り",
     "daily_decay": "日替わりの半減",
     "catch_up": "以前の変化の続き",
+    "step_limit": "1回に動く幅の制限",
 }
 
 # 出来事ではなく時間・集計で起きる変化。記録では1行にまとめて示す
-_DRIFT_RULES = {"decay", "daily_decay", "catch_up", "memory_baseline"}
+_DRIFT_RULES = {"decay", "daily_decay", "catch_up", "step_limit", "memory_baseline"}
 
 EVENT_LABELS = {"dialogue": "対話", "daily": "日次更新", "dissonance": "不整合の検知"}
 
@@ -79,6 +82,8 @@ MAX_LINE_CHARS = 900
 MAX_CLAIMS = 8
 MAX_CLAIM_CHARS = 300
 CONFIDENCE_MIN = 0.60
+LOG_ROTATE_BYTES = 2_000_000
+MAX_PENDING_VERIFICATIONS = 4
 VERDICTS = ("verified", "contradicted", "unsupported_fact", "marked_interpretation", "not_state_claim")
 SCREENING_VERDICTS = ("data_basis", "proposal_or_check", "interpretation_as_basis", "other")
 MAX_SCREENING_SENTENCES = 12
@@ -100,6 +105,11 @@ _SERIOUS_PATTERN = re.compile(
     r"|内部状態|パラメータ|数値|記録|根拠|なぜ|どうして|何[かが]変わ|どう変わ"
 )
 _SCREENING_TERMS = ("スコア", "判定", "承認", "否決", "審査", "稟議", "与信", "格付")
+# 審査の場面でも感情の質問として扱う、紫苑自身の内部状態を目的語にした言い回し
+_EXPLICIT_SELF_STATE = re.compile(
+    r"(感情|心|気持ち|内部状態)(は|って|が)(ある|あるの|あんの)"
+    r"|(君|きみ|あなた|紫苑|しおん|シオン|お前|おまえ)の(中|内側|内部|心|感情|気持ち|気分)"
+)
 _STATE_TERMS = (
     *AXIS_LABELS.values(), *AXIS_LABELS.keys(), "状態", "パラメータ", "感情", "気分", "数値",
     "和らい", "上昇", "高ま", "下が", "上が", "強く出", "揺れ", "愛着", "期待と不安", "知的高揚",
@@ -124,13 +134,15 @@ def report_mode() -> str:
 
 
 def classify_turn(message: str, dialogue_mode: str = "") -> str:
-    """場面を判定する。真面目な感情の質問を最優先し、次に審査、気持ちの雑談、それ以外の順。"""
+    """場面を判定する。審査（内部状態を明示的に問う時を除く）→真面目な感情の質問→気持ちの雑談→それ以外。"""
     text = str(message or "")
     about_self = is_self_emotion_question(text) or bool(_SELF_INNER_PATTERN.search(text))
+    if dialogue_mode == "screening" or any(term in text for term in _SCREENING_TERMS):
+        # 審査を優先する。「あなたはこの案件をどう感じる？」は審査の質問として扱い、
+        # 紫苑自身の内部状態を明示的に問う時（「君にも感情はある？」等）だけ例外にする
+        return "serious_emotion" if about_self and _EXPLICIT_SELF_STATE.search(text) else "screening"
     if about_self and _SERIOUS_PATTERN.search(text):
         return "serious_emotion"
-    if dialogue_mode == "screening" or any(term in text for term in _SCREENING_TERMS):
-        return "screening"
     return "casual_emotion" if about_self else "casual"
 
 
@@ -170,16 +182,23 @@ SCREENING_RULES = """【審査回答の根拠（REV-481）】
 - データで確認できないことは「データ上は確認できない」と言い、推測で埋めない。提案や確認したい点は、そう分かる形で挙げてよい。"""
 
 
-def build_turn_block(state: Mapping[str, Any], kind: str, mode: str | None = None) -> tuple[str, str]:
+def build_turn_block(
+    state: Mapping[str, Any],
+    kind: str,
+    mode: str | None = None,
+    pending_causes: list[Mapping[str, Any]] | None = None,
+) -> tuple[str, str]:
     """場面に合わせた (プロンプト用ブロック, 照合用の根拠) を返す。
 
     照合用の根拠は真面目な感情の質問だけで返す（審査は根拠なしの分類で照合、雑談は照合しない）。
     """
     mode = mode if mode in REPORT_MODES else report_mode()
     if kind == "serious_emotion":
-        return build_grounding_block(state, rules=_SERIOUS_RULES[mode])
+        return build_grounding_block(state, rules=_SERIOUS_RULES[mode], pending_causes=pending_causes)
     if kind == "casual_emotion":
-        block, _ = build_grounding_block(state, rules=_CASUAL_EMOTION_RULES[mode], limit=3)
+        block, _ = build_grounding_block(
+            state, rules=_CASUAL_EMOTION_RULES[mode], limit=3, pending_causes=pending_causes
+        )
         return block, ""
     if kind == "screening":
         return SCREENING_RULES, ""
@@ -217,8 +236,23 @@ def _entry_line(entry: Mapping[str, Any], *, include_trigger: bool) -> str:
     return f"{head}: " + "。".join(parts)
 
 
+def _pending_line(pending_causes: list[Mapping[str, Any]] | None) -> str:
+    """今の発言で記録される予定の原因（返答のあとに確定）。今の一言で何が変わったかを聞かれた時のため。"""
+    if not pending_causes:
+        return "- 今回の発言（返答のあとに記録が確定）: 動かす原因なし"
+    parts = [f"{AXIS_LABELS.get(str(c.get('axis')), c.get('axis'))} {_cause_text(c)}" for c in pending_causes]
+    return (
+        "- 今回の発言（返答のあとに記録が確定。実際の値は揺れの戻りと1回の幅の制限を含めて決まる）で動かす予定の原因: "
+        + "、".join(parts)
+    )
+
+
 def build_grounding_block(
-    state: Mapping[str, Any], *, rules: str | None = None, limit: int = LOG_ENTRY_LIMIT
+    state: Mapping[str, Any],
+    *,
+    rules: str | None = None,
+    limit: int = LOG_ENTRY_LIMIT,
+    pending_causes: list[Mapping[str, Any]] | None = None,
 ) -> tuple[str, str]:
     """(プロンプト用ブロック, 照合用の根拠) を返す。照合用は相手の発言本文を含めない。"""
     from lease_intelligence_mind import _derive_complex_emotions
@@ -236,6 +270,9 @@ def build_grounding_block(
         evidence_log = [_entry_line(entry, include_trigger=False)[:MAX_LINE_CHARS] for entry in entries]
     else:
         log_lines = evidence_log = ["- 記録なし（この仕組みを入れてから、まだ気分は動いていない）"]
+    if pending_causes is not None:
+        log_lines = [*log_lines, _pending_line(pending_causes)]
+        evidence_log = [*evidence_log, _pending_line(pending_causes)]
     head = [rules, f"現在の値: {values}", f"複雑な感情（上位3・計算式）: {complex_line}", "直近の気分の変化記録（古い順）:"]
     # プロンプト予算で指示行が削られないよう、ここで古い記録から落として収める
     while len(log_lines) > 1 and len("\n".join([*head, *log_lines])) > MAX_BLOCK_CHARS:
@@ -246,6 +283,7 @@ def build_grounding_block(
         [
             "AIアシスタントの内部状態の記録。項目は次の8つだけで、他の項目は存在しない: "
             + "、".join(f"{label}({key})" for key, label in AXIS_LABELS.items()),
+            "これらは演出的パラメータで、意識・主観的な体験・人間や生物としての感情があることを示すものではない（仕組み上の事実）。",
             f"現在の値: {values}",
             f"複雑な感情（上位3・計算式）: {complex_line}",
             "直近の変化記録（古い順。ここに無い変化・原因は記録されていない）:",
@@ -343,8 +381,15 @@ def parse_verify_output(
     return results
 
 
-def verify_enabled() -> bool:
-    if str(os.environ.get("SHION_EMOTION_VERIFY") or "on").strip().lower() in {"0", "off", "false", "no"}:
+def _env_on(name: str, default: str) -> bool:
+    return str(os.environ.get(name) or default).strip().lower() not in {"0", "off", "false", "no", ""}
+
+
+def verify_enabled(kind: str = "serious_emotion") -> bool:
+    if kind == "screening":
+        if not _env_on("SHION_SCREENING_VERIFY", "off"):
+            return False
+    elif not _env_on("SHION_EMOTION_VERIFY", "on"):
         return False
     try:
         from typesafe_rag_guard import typesafe_available
@@ -354,12 +399,27 @@ def verify_enabled() -> bool:
         return False
 
 
-def _masked(texts: list[str]) -> list[tuple[str, str]]:
-    """社名・人名らしき部分は伏せ、PII様の内容が残る文は送らない。"""
+_MONEY_RE = re.compile(r"円|億|万|％|%|売上|利益|借入|年商|資本金")
+_NUMBER_RE = re.compile(r"[0-9０-９][0-9０-９,，.．]*")
+
+
+def _masked(texts: list[str], *, numbers: bool = False) -> list[tuple[str, str]]:
+    """外部（TypeSafe）へ送れる形にする。送れない文は落とす（fail-closed）。
+
+    - 社名・人名らしき部分は伏せ、PII様の内容が残る文は送らない（mask_for_jev）
+    - numbers=True（審査）: 数値はすべて伏せる
+    - 気分の照合では気分の数値は残すが、金額・比率など財務の語を含む文は送らない
+    """
     from api.chat_judgment_asset_capture import mask_for_jev
 
-    pairs = [(text, mask_for_jev(text)) for text in texts]
-    return [(text, masked) for text, masked in pairs if masked]
+    pairs = []
+    for text in texts:
+        if not numbers and _MONEY_RE.search(text):
+            continue
+        masked = mask_for_jev(_NUMBER_RE.sub("〈数値〉", text) if numbers else text)
+        if masked:
+            pairs.append((text, masked))
+    return pairs
 
 
 def _split_sentences(reply: str, limit: int) -> list[str]:
@@ -420,9 +480,7 @@ def verify_reply(
     masked_claims = [masked for _, masked in sendable]
     payload = build_verify_request(masked_claims, evidence)
     response = request_fn(payload)
-    parsed = parse_verify_output(response, masked_claims)
-    for item in parsed:
-        item["claim"] = sendable[item["index"]][0]
+    parsed = parse_verify_output(response, masked_claims)  # ログには伏せた文だけを残す
     flagged = {"contradicted", "unsupported_fact"} | ({"marked_interpretation"} if mode == "recorder" else set())
     return {
         "status": "applied",
@@ -440,7 +498,7 @@ def verify_screening_reply(
     sentences = _split_sentences(reply, MAX_SCREENING_SENTENCES)
     if not sentences:
         return {"status": "skipped", "reason": "no_sentences"}
-    sendable = _masked(sentences)
+    sendable = _masked(sentences, numbers=True)
     if not sendable:
         return {"status": "skipped", "reason": "nothing_safe_to_send"}
     if request_fn is None:
@@ -449,8 +507,6 @@ def verify_screening_reply(
     payload = build_screening_request(masked)
     response = request_fn(payload)
     parsed = parse_verify_output(response, masked, SCREENING_VERDICTS)
-    for item in parsed:
-        item["claim"] = sendable[item["index"]][0]
     return {
         "status": "applied",
         "model": str(response.get("model") or payload["model"]),
@@ -465,8 +521,8 @@ def _log_path() -> Path:
 
 
 def should_verify(kind: str) -> bool:
-    """照合は真面目な感情の質問と審査だけ。雑談は対象外（解釈も面白さとして許容）。"""
-    return kind in {"serious_emotion", "screening"}
+    """照合は真面目な感情の質問と審査だけ。雑談は対象外（解釈も面白さとして許容）。審査は既定OFF。"""
+    return kind in {"serious_emotion", "screening"} and verify_enabled(kind)
 
 
 def verify_and_log(
@@ -481,7 +537,7 @@ def verify_and_log(
 ) -> dict[str, Any]:
     """バックグラウンドで呼ぶ。失敗しても会話は止めず、失敗もログに残す。"""
     mode = mode if mode in REPORT_MODES else report_mode()
-    if not verify_enabled():
+    if not verify_enabled(kind):
         result: dict[str, Any] = {"status": "skipped", "reason": "verify_disabled_or_no_typesafe"}
     else:
         try:
@@ -491,16 +547,54 @@ def verify_and_log(
                 result = verify_reply(reply, evidence, mode=mode)
         except Exception as exc:
             result = {"status": "error", "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    from api.chat_judgment_asset_capture import mask_for_jev
+
     record = {
         "ts": datetime.now().isoformat(timespec="seconds"),
         "surface": surface,
         "kind": kind,
         "mode": mode,
-        "question": " ".join(str(message or "").split())[:60],
-        **result,
+        # 質問・主張は伏せた形だけを残す（審査の社名・数値を別ログへ複製しない）
+        "question": mask_for_jev(_NUMBER_RE.sub("〈数値〉", " ".join(str(message or "").split())))[:60],
+        **{key: value for key, value in result.items() if key != "claims"},
     }
     target = path or _log_path()
     target.parent.mkdir(parents=True, exist_ok=True)
-    with _LOG_LOCK, target.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    with _LOG_LOCK:
+        if target.exists() and target.stat().st_size > LOG_ROTATE_BYTES:
+            target.replace(target.with_suffix(target.suffix + ".1"))
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     return record
+
+
+# 照合は外部APIを待つので、記憶保存などの共有バックグラウンドプールを使わない。
+# 専用の1スレッドで順に処理し、溜まりすぎたら新しい照合を捨てる（返答や記憶には影響しない）。
+_VERIFY_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="shion-emotion-verify")
+_VERIFY_PENDING = 0
+_VERIFY_PENDING_LOCK = threading.Lock()
+
+
+def submit_verification(message: str, reply: str, evidence: str, *, surface: str, kind: str) -> bool:
+    """照合を専用スレッドへ投入する。待ちが上限を超えていれば投入せず False を返す。"""
+    global _VERIFY_PENDING
+    with _VERIFY_PENDING_LOCK:
+        if _VERIFY_PENDING >= MAX_PENDING_VERIFICATIONS:
+            return False
+        _VERIFY_PENDING += 1
+
+    def run() -> None:
+        global _VERIFY_PENDING
+        try:
+            verify_and_log(message, reply, evidence, surface=surface, kind=kind)
+        finally:
+            with _VERIFY_PENDING_LOCK:
+                _VERIFY_PENDING -= 1
+
+    try:
+        _VERIFY_EXECUTOR.submit(run)
+    except RuntimeError:  # シャットダウン中など
+        with _VERIFY_PENDING_LOCK:
+            _VERIFY_PENDING -= 1
+        return False
+    return True

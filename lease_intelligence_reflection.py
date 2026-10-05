@@ -1418,6 +1418,7 @@ def _return_reflection_to_memory(vault: Path, feedback: dict[str, object]) -> No
         keypoints.append("Private Reflectionが前日と似すぎた場合は、保存成功ではなく停滞として扱い、材料鮮度と後追い再生成を確認する。")
     try:
         from lease_intelligence_mind import (
+            _mind_locked,
             _write_state,
             load_lease_intelligence_mind,
             save_conversation_keypoints,
@@ -1430,21 +1431,23 @@ def _return_reflection_to_memory(vault: Path, feedback: dict[str, object]) -> No
                 keypoints=keypoints,
                 date_str=date_str,
             )
-        state = load_lease_intelligence_mind(vault)
-        reflection_state = {
-            **dict(state.get("private_reflection", {})),
-            "last_reflected_date": date_str,
-            "last_feedback": feedback,
-            "last_reusable_lessons": lessons[:4],
-            "next_context": str(feedback.get("next_context") or ""),
-        }
-        if lessons:
-            reflection_state["text"] = "\n".join(lessons[:4])
-        reflection_state["reflection_count"] = int(reflection_state.get("reflection_count", 0)) + 1
-        state["private_reflection"] = reflection_state
-        if feedback.get("next_context"):
-            state["current_question"] = f"内省から次に持ち越す問い: {feedback.get('next_context')}"
-        _write_state(vault, state)
+        # 読んでから書くまでを排他にする（REV-481）
+        with _mind_locked(vault):
+            state = load_lease_intelligence_mind(vault)
+            reflection_state = {
+                **dict(state.get("private_reflection", {})),
+                "last_reflected_date": date_str,
+                "last_feedback": feedback,
+                "last_reusable_lessons": lessons[:4],
+                "next_context": str(feedback.get("next_context") or ""),
+            }
+            if lessons:
+                reflection_state["text"] = "\n".join(lessons[:4])
+            reflection_state["reflection_count"] = int(reflection_state.get("reflection_count", 0)) + 1
+            state["private_reflection"] = reflection_state
+            if feedback.get("next_context"):
+                state["current_question"] = f"内省から次に持ち越す問い: {feedback.get('next_context')}"
+            _write_state(vault, state)
     except Exception as exc:
         print(f"[reflection] feedback loop 失敗（続行）: {exc}")
 
