@@ -70,6 +70,9 @@ SPECS: dict[str, BlockSpec] = {
     "shion_light_tone_context": BlockSpec(SHAPE, 600),
     "user_affect_context": BlockSpec(SHAPE, 700),
     "mutual_prediction_context": BlockSpec(SHAPE, 800),  # REV-472 予想の答え合わせ・好奇心の問いかけ
+    # REV-481 事実と解釈の扱い・感情の自己報告の根拠（変化記録）。記録だけ削られて指示が残ると
+    # 推測で埋めるため削らない層に置く。大きさは shion_emotion_grounding 側で3000字以内に収める
+    "emotion_grounding_context": BlockSpec(CORE),
     "shion_non_domain_context": BlockSpec(SHAPE, 600),
     "prompt_suffix": BlockSpec(SHAPE, 600),
     # 3: RAG/Knowledge・Vertex の根拠・DB・外部調査

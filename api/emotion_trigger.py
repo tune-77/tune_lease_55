@@ -57,14 +57,7 @@ def trigger_emotion(event: str, meta: dict[str, Any] | None = None) -> None:
     try:
         from pathlib import Path
 
-        from lease_intelligence_mind import (
-            DIALOGUE_MOOD_CAP,
-            _apply_dialogue_mood,
-            _compute_pad,
-            _derive_mood,
-            _write_state,
-            load_lease_intelligence_mind,
-        )
+        from lease_intelligence_mind import apply_mood_causes
         from lease_news_digest import find_vault
 
         vault = find_vault()
@@ -75,17 +68,12 @@ def trigger_emotion(event: str, meta: dict[str, Any] | None = None) -> None:
         if not deltas:
             return
 
-        vault_path = Path(vault)
-        state = load_lease_intelligence_mind(vault_path)
-        adjustments = dict(state.get("dialogue_mood", {}))
-        for key, delta in deltas.items():
-            next_val = int(adjustments.get(key, 0)) + delta
-            adjustments[key] = max(-DIALOGUE_MOOD_CAP, min(DIALOGUE_MOOD_CAP, next_val))
-
-        state["dialogue_mood"] = adjustments
-        state["mood"] = _apply_dialogue_mood(_derive_mood(state.get("memories", [])), adjustments)
-        state["pad"] = _compute_pad(state["mood"])
-        _write_state(vault_path, state)
+        # 変化は「審査の出来事」として気分の変化記録に残す（REV-481）
+        causes = [
+            {"axis": key, "delta": int(delta), "rule": "screening_event", "detail": f"審査の出来事: {event}"}
+            for key, delta in deltas.items()
+        ]
+        apply_mood_causes(Path(vault), causes, event=f"screening:{event}", trigger=event)
         print(f"[EmotionTrigger] {event} → mood updated")
     except Exception as e:
         print(f"[EmotionTrigger] skipped ({event}): {e}")

@@ -6083,6 +6083,57 @@ def _begin_mutual_prediction(
         return None
 
 
+def _build_emotion_grounding(
+    vault, message: str, dialogue_mode: str = "", mood_signals: dict[str, Any] | None = None
+) -> tuple[str, str, str]:
+    """場面に合わせた事実と解釈の扱いのブロック・照合用の根拠・場面名を返す（REV-481）。
+
+    真面目な感情の質問には気分の変化記録と言い分け指示、審査には根拠をデータに限る指示、
+    雑談には軽い推量の言い方の指示を渡す。今回の発言で動かす予定の原因も載せる。
+    """
+    try:
+        from api.shion_emotion_grounding import build_turn_block, classify_turn
+
+        kind = classify_turn(message, dialogue_mode)
+        state = {}
+        pending = None
+        if vault and kind in {"serious_emotion", "casual_emotion"}:
+            from lease_intelligence_mind import dialogue_mood_causes, load_lease_intelligence_mind
+
+            state = load_lease_intelligence_mind(vault)
+            pending = dialogue_mood_causes(message, mood_signals)
+        if kind in {"serious_emotion", "casual_emotion"} and not state:
+            return "", "", kind
+        block, evidence = build_turn_block(state, kind, pending_causes=pending)
+        return block, evidence, kind
+    except Exception as exc:
+        record_silent_failure("answer.emotion_grounding", "swallowed", exc)
+        return "", "", ""
+
+
+def _dialogue_mood_signals(affect: dict[str, Any], prediction_outcome: dict[str, Any] | None) -> dict[str, Any]:
+    """気分を動かす材料: 相手の様子（REV-464）・予想の答え合わせ（REV-472）・関係性（REV-467）。
+
+    返答前に決まる材料だけを使い、同じ値を根拠ブロックと返答後の記録の両方に渡す。
+    関係性は全体状態の最後の変化量ではなく、この発言の様子から決まる記録（positive/negative）を使う。
+    """
+    signals: dict[str, Any] = {"affect": affect or {}, "prediction": prediction_outcome or {}}
+    try:
+        from api.shion_relationship import get_relationship_state
+        from api.user_affect import relationship_feedback_from_affect
+
+        rel = get_relationship_state()
+        signals["relationship"] = {
+            "feedback": relationship_feedback_from_affect(
+                str((affect or {}).get("label") or ""), list((affect or {}).get("cues") or [])
+            ),
+            "trend": rel.get("trend"),
+        }
+    except Exception as exc:
+        record_silent_failure("answer.mood_relationship_signal", "swallowed", exc)
+    return signals
+
+
 def _finish_mutual_prediction(turn, reply: str) -> dict[str, Any]:
     """返答に問いかけが入ったかを記録し、応答用の payload を返す（REV-472）。"""
     if turn is None:
@@ -6402,6 +6453,15 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             enabled=req.caller != "mebuki",
         )
         dialogue_prediction_context = dialogue_prediction_turn.prompt_block if dialogue_prediction_turn else ""
+        # 場面に合わせて事実（記録）と解釈の扱いを指示する（REV-481）
+        dialogue_mood_signals = _dialogue_mood_signals(
+            state["user_affect"],
+            (dialogue_prediction_turn.payload or {}).get("outcome") if dialogue_prediction_turn else None,
+        )
+        emotion_grounding_context, emotion_grounding_evidence, emotion_turn_kind = _build_emotion_grounding(
+            vault, message, dialogue_mode, dialogue_mood_signals
+        )
+        state["emotion_grounding"] = {"used": bool(emotion_grounding_context), "kind": emotion_turn_kind}
         if req.caller != "mebuki":
             # REV-467: ホーム対話も関係性スコアへ記録する（従来は /api/chat だけで、毎日話しても「沈黙」扱いになり得た）
             from api.user_affect import record_relationship_from_affect
@@ -6433,6 +6493,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 ("user_affect_context", block_with_spacing(build_user_affect_prompt_block(dialogue_user_affect))),
                 ("user_affect_memory_context", block_with_spacing(dialogue_affect_memory_context)),
                 ("mutual_prediction_context", block_with_spacing(dialogue_prediction_context)),
+                ("emotion_grounding_context", block_with_spacing(emotion_grounding_context)),
                 ("pre_recall_context", block_with_spacing(pre_recall_context)),
                 ("teaching_save_context", block_with_spacing(teaching_save_context)),
             ],
@@ -6504,8 +6565,15 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
         from lease_intelligence_mind import register_dialogue_event, self_state_summary
 
-        refreshed = register_dialogue_event(vault, message, reply)
+        refreshed = register_dialogue_event(vault, message, reply, signals=dialogue_mood_signals)
         state = {**state, **self_state_summary(refreshed)}
+        from api.shion_emotion_grounding import should_verify, submit_verification
+
+        if should_verify(emotion_turn_kind):
+            # 照合は真面目な感情の質問と（有効化時の）審査だけ。雑談は対象外。専用スレッドで行う（REV-481）
+            submit_verification(
+                message, reply, emotion_grounding_evidence, surface="lease_intelligence_dialogue", kind=emotion_turn_kind
+            )
 
         # 記憶・キーポイント・Knowledge昇格を1本のバックグラウンド処理で直列化する。
         try:
