@@ -81,6 +81,7 @@ SPECS: dict[str, BlockSpec] = {
     "shared_shion_memory_context": BlockSpec(MEMORY, 6000),
     "mid_term_memory_context": BlockSpec(MEMORY, 600, "ordered"),
     "memory_to_judgment_context": BlockSpec(MEMORY, 400),
+    "user_affect_memory_context": BlockSpec(MEMORY, 600),
     "memory_expression_context": BlockSpec(MEMORY, 600),
     "improvement_context": BlockSpec(MEMORY, 1500, "ordered"),
     "pdca_block": BlockSpec(MEMORY, 800),

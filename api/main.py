@@ -6027,6 +6027,27 @@ def get_lease_intelligence_dialogue_state(since: Optional[str] = None):
     }
 
 
+def _remember_user_affect(
+    user_id: str, affect_payload: dict[str, Any], *, surface: str, enabled: bool = True
+) -> tuple[str, dict[str, Any]]:
+    """推定した様子を相手ごとに記録し、前回までの様子のブロックを返す（REV-465）。失敗しても会話は止めない。"""
+    if not enabled:
+        return "", {"used": False}
+    try:
+        from api.user_affect_memory import remember_and_build_block
+
+        block, recall = remember_and_build_block(
+            user_id,
+            str(affect_payload.get("label") or "通常"),
+            float(affect_payload.get("intensity") or 0.0),
+            surface=surface,
+        )
+        return block, {"used": bool(block), **recall}
+    except Exception as exc:
+        record_silent_failure("answer.user_affect_memory", "swallowed", exc)
+        return "", {"used": False}
+
+
 @app.post("/api/lease-intelligence/dialogue")
 def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     message = req.message.strip()
@@ -6319,6 +6340,9 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
 
         dialogue_user_affect = estimate_user_affect(message)
         state["user_affect"] = dialogue_user_affect.to_payload()
+        dialogue_affect_memory_context, state["user_affect_memory"] = _remember_user_affect(
+            DIALOGUE_USER_ID, state["user_affect"], surface="lease_intelligence_dialogue", enabled=req.caller != "mebuki"
+        )
         # 対話室も優先度と予算で組み立てる（従来は上限なしで平均3.4万字）。並び順は従来どおり。
         # 教わった知識の想起に含まれる社内方針の節は、通常チャットと同じく末尾に置く（PR #1225）
         from api.chat_prompt_blocks import block_with_spacing
@@ -6339,6 +6363,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 ("improvement_triage_context", block_with_spacing(improvement_triage_context)),
                 ("judgment_response_shape_context", block_with_spacing(judgment_response_shape_context)),
                 ("user_affect_context", block_with_spacing(build_user_affect_prompt_block(dialogue_user_affect))),
+                ("user_affect_memory_context", block_with_spacing(dialogue_affect_memory_context)),
                 ("pre_recall_context", block_with_spacing(pre_recall_context)),
                 ("teaching_save_context", block_with_spacing(teaching_save_context)),
             ],
@@ -6889,6 +6914,13 @@ def post_chat(req: ChatRequest):
         shion_light_tone_context = context_state.shion_light_tone_context
         user_affect_context = context_state.user_affect_context
         user_affect_payload = context_state.user_affect_payload
+        # 相手ごとの様子を記憶し、前回までの様子を文脈に足す（REV-465）
+        user_affect_memory_context, user_affect_memory_payload = _remember_user_affect(
+            req.user_id,
+            user_affect_payload,
+            surface="next_chat",
+            enabled=not is_general_response_mode and not is_screening_review,
+        )
         shion_non_domain_context = context_state.shion_non_domain_context
         human_device_resonance_context = context_state.human_device_resonance_context
         judgment_response_shape_context = context_state.judgment_response_shape_context
@@ -7163,6 +7195,7 @@ def post_chat(req: ChatRequest):
                 ("vague_information_request_context", vague_information_request_context),
                 ("shion_light_tone_context", shion_light_tone_context),
                 ("user_affect_context", user_affect_context),
+                ("user_affect_memory_context", user_affect_memory_context),
                 ("shion_non_domain_context", shion_non_domain_context),
                 ("human_device_resonance_context", human_device_resonance_context),
                 ("judgment_response_shape_context", judgment_response_shape_context),
@@ -7328,6 +7361,7 @@ def post_chat(req: ChatRequest):
                 extra={
                     "memory_recall": _public_memory_recall_payload(memory_recall),
                     "user_affect": user_affect_payload,
+                    "user_affect_memory": user_affect_memory_payload,
                     **teaching_turn.response_extra(),
                 },
             )
@@ -7635,6 +7669,7 @@ def post_chat(req: ChatRequest):
             ("vague_information_request_context", vague_information_request_context),
             ("shion_light_tone_context", shion_light_tone_context),
             ("user_affect_context", user_affect_context),
+            ("user_affect_memory_context", user_affect_memory_context),
             ("shion_non_domain_context", shion_non_domain_context),
             ("human_device_resonance_context", human_device_resonance_context),
             ("judgment_response_shape_context", judgment_response_shape_context),
@@ -7877,7 +7912,7 @@ def post_chat(req: ChatRequest):
             )
             | {"memory_recall": _public_memory_recall_payload(memory_recall)}
             | {"retrieval_guard": retrieval_guard_payload(typesafe_rag)}
-            | {"user_affect": user_affect_payload}
+            | {"user_affect": user_affect_payload, "user_affect_memory": user_affect_memory_payload}
             | teaching_turn.response_extra(),
         )
         if req.debug_memory:
