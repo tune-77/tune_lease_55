@@ -68,6 +68,14 @@ def test_plan_chords_transposes_wrong_key():
     assert seg[0][2][0] == 0
 
 
+def test_plan_chords_follows_key_shift():
+    vv = _vv([1] * 16)
+    up = {"notes": [{**n, "key": n["key"] + 2} if n["key"] is not None else n for n in vv["notes"]]}
+    tl = acc._Timeline(up["notes"], 120)  # C の歌を +2 半音（D）
+    seg = acc.plan_chords([{"chord": "C", "beats": 4}, {"chord": "G", "beats": 4}], tl, key_shift=2)
+    assert [s[2][0] for s in seg[:2]] == [2, 9]  # D, A に移調される
+
+
 def test_plan_chords_harmonizes_when_chords_missing():
     tl = acc._Timeline(_vv([1] * 8)["notes"], 120)
     seg = acc.plan_chords("garbage", tl)

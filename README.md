@@ -1224,7 +1224,7 @@ graph LR
 | `/qualitative` | 定性分析。定性 LR / LightGBM の比較 |
 | `/history-dash` | 過去案件、成約ドライバー、タグ傾向 |
 | `/finance` | 物件ファイナンス審査と稟議条件案 |
-| `/chat` | Obsidian 文脈を使う AI チャット。`SHION_VOICE_ENABLED=1` 時は紫苑との音声通話ボタンも表示。`SHION_SING_ENABLED=1` かつローカル VOICEVOX ENGINE（127.0.0.1:50021）稼働時は「歌って」ボタンで紫苑が歌う（声は `SHION_SING_VOICE_ID`）。`brew install fluid-synth` と GM SoundFont（既定 `~/Library/Application Support/tune_lease_55/soundfonts/GeneralUser-GS.sf2`）があれば同じテンポ・調のピアノ伴奏を重ねる（`SHION_SING_ACCOMPANIMENT=0` でオフ、音量は `SHION_SING_ACCOMP_LEVEL`、詳細は `api/shion_sing_accompaniment.py`） |
+| `/chat` | Obsidian 文脈を使う AI チャット。`SHION_VOICE_ENABLED=1` 時は紫苑との音声通話ボタンも表示。`SHION_SING_ENABLED=1` かつローカル VOICEVOX ENGINE（127.0.0.1:50021）稼働時は「歌って」ボタンで紫苑が歌う（声は `SHION_SING_VOICE_ID`、キーは既定で +2 半音・`SHION_SING_KEY_SHIFT` で -5〜+5 に調整、伴奏も同じだけ移調）。読み上げの声の高さは `SHION_TTS_PITCH`（VOICEVOX pitchScale、既定 0.04）。`brew install fluid-synth` と GM SoundFont（既定 `~/Library/Application Support/tune_lease_55/soundfonts/GeneralUser-GS.sf2`）があれば同じテンポ・調のピアノ伴奏を重ねる（`SHION_SING_ACCOMPANIMENT=0` でオフ、音量は `SHION_SING_ACCOMP_LEVEL`、詳細は `api/shion_sing_accompaniment.py`） |
 | `/chat-compare` | 紫苑/一般比較。同じ問いを2モードへ投げ、記憶・同一性・経験ループの差を可視化 |
 | `/lease-intelligence` | 紫苑との専用対話 |
 | `/voice-chat` | リアルタイム会話。音声入力、紫苑回答の読み上げ、参照した判断資産の表示 |
