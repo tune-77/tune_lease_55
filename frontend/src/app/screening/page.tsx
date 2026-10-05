@@ -2407,6 +2407,9 @@ export default function Dashboard() {
       sales_dept: formData.sales_dept,
       quantum_risk: result.quantum_risk,
       case_id: result.case_id,
+      risk_review_reasons: Array.isArray(result.risk_review_reasons)
+        ? result.risk_review_reasons.filter((reason: unknown): reason is string => typeof reason === "string" && reason.length > 0).slice(0, 3)
+        : [],
     };
     window.sessionStorage.setItem(SCREENING_RETURN_STATE_KEY, JSON.stringify({
       version: SCREENING_DRAFT_VERSION,
