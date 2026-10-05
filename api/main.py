@@ -681,6 +681,8 @@ app.include_router(debate_router)
 
 from api.routers.shion_voice import router as shion_voice_router
 app.include_router(shion_voice_router)
+from api.routers.interview_signals import router as interview_signals_router
+app.include_router(interview_signals_router)
 
 
 _MAIN_COMPAT_EXPORTS = {
