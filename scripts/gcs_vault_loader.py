@@ -83,11 +83,11 @@ def _plan_stale_markdown(dest: Path, expected_paths: set[Path]) -> list[Path]:
         for local_md in dest.rglob("*.md")
         if _is_relative_to(local_md, dest)
     }
+    if not expected_paths:
+        raise RuntimeError("Refusing to quarantine every local note because the GCS listing is empty")
     stale_paths = sorted(local_paths - expected_paths)
     if not stale_paths:
         return []
-    if not expected_paths:
-        raise RuntimeError("Refusing to quarantine every local note because the GCS listing is empty")
 
     stale_ratio = len(stale_paths) / len(local_paths)
     too_many_files = len(stale_paths) > _MAX_STALE_FILES

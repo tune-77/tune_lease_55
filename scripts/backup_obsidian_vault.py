@@ -238,8 +238,9 @@ def _is_suspicious_drop(current_count: int, previous_manifest: dict[str, object]
         return False
     previous_count = int(previous_manifest["file_count"])
     drop = previous_count - current_count
-    threshold = max(50, int(previous_count * 0.10))
-    return drop >= threshold
+    if drop <= 0 or previous_count <= 0:
+        return False
+    return drop >= 50 or (drop / previous_count) >= 0.10
 
 
 def backup_vault(

@@ -61,7 +61,7 @@ def _make_blob(name: str, content: bytes = b"# test") -> MagicMock:
 class TestDownloadVault:
     def test_returns_dest_dir(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("vault/note.md")]
         _set_client_mock(client_mock)
 
         result = download_vault(dest_dir=tmp_path)
@@ -70,7 +70,7 @@ class TestDownloadVault:
     def test_creates_dest_dir(self, tmp_path: Path) -> None:
         dest = tmp_path / "vault_out"
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("vault/note.md")]
         _set_client_mock(client_mock)
 
         download_vault(dest_dir=dest)
@@ -160,7 +160,7 @@ class TestDownloadVault:
 
     def test_uses_default_bucket_and_prefix(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("vault/note.md")]
         _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path)
@@ -169,7 +169,7 @@ class TestDownloadVault:
 
     def test_uses_custom_bucket_and_prefix(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("custom/note.md")]
         _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, bucket="my-bucket", prefix="custom/")
@@ -178,7 +178,7 @@ class TestDownloadVault:
 
     def test_normalizes_gs_url_bucket(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("custom/note.md")]
         _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, bucket="gs://my-bucket/some-prefix", prefix="custom/")
@@ -361,9 +361,12 @@ class TestLoadVaultTexts:
         client_mock.list_blobs.return_value = [_make_blob("vault/image.png")]
         _set_client_mock(client_mock)
 
-        texts = load_vault_texts(dest_dir=tmp_path, prefix="vault/")
-
-        assert texts == []
+        try:
+            load_vault_texts(dest_dir=tmp_path, prefix="vault/")
+        except RuntimeError as exc:
+            assert "listing is empty" in str(exc)
+        else:
+            raise AssertionError("a GCS listing without Markdown should stop the sync")
 
     def test_returns_texts_sorted_by_path(self, tmp_path: Path) -> None:
         blobs = [

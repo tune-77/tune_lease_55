@@ -72,6 +72,23 @@ def test_suspicious_file_drop_preserves_older_complete_snapshot(tmp_path):
     assert second.destination.exists()
 
 
+def test_small_vault_percentage_drop_is_suspicious(tmp_path):
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    for index in range(40):
+        (vault / f"note-{index}.md").write_text(str(index), encoding="utf-8")
+
+    first = backup.backup_vault(vault, backup_root=tmp_path / "backups", keep=1)
+    for note in vault.glob("*.md"):
+        note.unlink()
+    second = backup.backup_vault(vault, backup_root=tmp_path / "backups", keep=1)
+
+    manifest = json.loads((second.destination / "backup_manifest.json").read_text(encoding="utf-8"))
+    assert second.suspicious_drop is True
+    assert manifest["status"] == "suspicious"
+    assert first.destination.exists()
+
+
 def test_repeated_suspicious_snapshots_are_bounded_while_complete_restore_point_is_pinned(tmp_path):
     vault = tmp_path / "Vault"
     vault.mkdir()
