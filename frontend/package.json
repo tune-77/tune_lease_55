@@ -43,7 +43,7 @@
     "playwright-core": "^1.63.0",
     "start-server-and-test": "^3.0.12",
     "tailwindcss": "^4",
-    "typescript": "^5",
+    "typescript": "^7",
     "wait-on": "^9.1.0"
   }
 }
