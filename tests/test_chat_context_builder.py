@@ -103,3 +103,26 @@ def test_context_builder_budget_can_disable_news_and_daily_context():
     assert state.news_brief_context == ""
     assert state.news_actions_context == ""
     assert state.obsidian_daily_context == ""
+
+
+def test_context_builder_adds_user_affect_block_in_shion_mode():
+    kwargs = dict(
+        user_id="u1",
+        now="2026-08-02 10:00",
+        long_input=False,
+        news_focus_context="news",
+        news_brief_context="brief",
+        news_actions_context="actions",
+        obsidian_daily_context="daily",
+        deps=_deps(category="general"),
+    )
+    state = build_chat_context_state(message="もう疲れた…手短にお願い", response_mode="shion", **kwargs)
+    assert state.user_affect_payload["label"] == "疲れ"
+    assert "相手の今の様子" in state.user_affect_context
+
+    neutral = build_chat_context_state(message="残価設定とは？", response_mode="shion", **kwargs)
+    assert neutral.user_affect_context == ""
+    assert neutral.user_affect_payload["label"] == "通常"
+
+    general = build_chat_context_state(message="もう疲れた…", response_mode="general", **kwargs)
+    assert general.user_affect_context == ""

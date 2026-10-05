@@ -6314,6 +6314,11 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             compact=compact_dialogue,
             mode=dialogue_mode,
         )
+        # 言葉から気持ちを推定し、返答のトーン・長さ・励まし方を切り替える（REV-464）
+        from api.user_affect import build_user_affect_prompt_block, estimate_user_affect
+
+        dialogue_user_affect = estimate_user_affect(message)
+        state["user_affect"] = dialogue_user_affect.to_payload()
         # 対話室も優先度と予算で組み立てる（従来は上限なしで平均3.4万字）。並び順は従来どおり。
         # 教わった知識の想起に含まれる社内方針の節は、通常チャットと同じく末尾に置く（PR #1225）
         from api.chat_prompt_blocks import block_with_spacing
@@ -6333,6 +6338,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 ("reasoner_consultation_context", block_with_spacing(reasoner_consultation_context)),
                 ("improvement_triage_context", block_with_spacing(improvement_triage_context)),
                 ("judgment_response_shape_context", block_with_spacing(judgment_response_shape_context)),
+                ("user_affect_context", block_with_spacing(build_user_affect_prompt_block(dialogue_user_affect))),
                 ("pre_recall_context", block_with_spacing(pre_recall_context)),
                 ("teaching_save_context", block_with_spacing(teaching_save_context)),
             ],
@@ -6881,6 +6887,8 @@ def post_chat(req: ChatRequest):
         shion_specificity_context = context_state.shion_specificity_context
         vague_information_request_context = context_state.vague_information_request_context
         shion_light_tone_context = context_state.shion_light_tone_context
+        user_affect_context = context_state.user_affect_context
+        user_affect_payload = context_state.user_affect_payload
         shion_non_domain_context = context_state.shion_non_domain_context
         human_device_resonance_context = context_state.human_device_resonance_context
         judgment_response_shape_context = context_state.judgment_response_shape_context
@@ -7154,6 +7162,7 @@ def post_chat(req: ChatRequest):
                 ("shion_specificity_context", shion_specificity_context),
                 ("vague_information_request_context", vague_information_request_context),
                 ("shion_light_tone_context", shion_light_tone_context),
+                ("user_affect_context", user_affect_context),
                 ("shion_non_domain_context", shion_non_domain_context),
                 ("human_device_resonance_context", human_device_resonance_context),
                 ("judgment_response_shape_context", judgment_response_shape_context),
@@ -7316,7 +7325,11 @@ def post_chat(req: ChatRequest):
                     injected=obsidian_daily_injected,
                     effect=obsidian_daily_effect,
                 ),
-                extra={"memory_recall": _public_memory_recall_payload(memory_recall), **teaching_turn.response_extra()},
+                extra={
+                    "memory_recall": _public_memory_recall_payload(memory_recall),
+                    "user_affect": user_affect_payload,
+                    **teaching_turn.response_extra(),
+                },
             )
             if req.debug_memory:
                 response_payload["memory_debug"] = _chat_memory_debug_payload(
@@ -7621,6 +7634,7 @@ def post_chat(req: ChatRequest):
             ("shion_specificity_context", shion_specificity_context),
             ("vague_information_request_context", vague_information_request_context),
             ("shion_light_tone_context", shion_light_tone_context),
+            ("user_affect_context", user_affect_context),
             ("shion_non_domain_context", shion_non_domain_context),
             ("human_device_resonance_context", human_device_resonance_context),
             ("judgment_response_shape_context", judgment_response_shape_context),
@@ -7863,6 +7877,7 @@ def post_chat(req: ChatRequest):
             )
             | {"memory_recall": _public_memory_recall_payload(memory_recall)}
             | {"retrieval_guard": retrieval_guard_payload(typesafe_rag)}
+            | {"user_affect": user_affect_payload}
             | teaching_turn.response_extra(),
         )
         if req.debug_memory:
