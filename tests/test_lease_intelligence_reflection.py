@@ -1069,3 +1069,35 @@ def test_gemini_reflection_is_not_replaced_by_template_when_gate_fails(tmp_path,
 
     assert "loop-regenerated" not in result
     assert "古い前提で話していた" in text
+
+
+def test_read_file_safe_retries_icloud_deadlock_after_download(tmp_path, monkeypatch, capsys):
+    note = tmp_path / "2026-10-04.md"
+    note.write_text("---\ndate: x\n---\n昨夜の会話", encoding="utf-8")
+    real_read = Path.read_text
+    calls = {"n": 0}
+
+    def flaky_read(self, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError(11, "Resource deadlock avoided")
+        return real_read(self, *args, **kwargs)
+
+    downloads: list[list[str]] = []
+    monkeypatch.setattr(Path, "read_text", flaky_read)
+    monkeypatch.setattr(reflection.shutil, "which", lambda _name: "/usr/bin/brctl")
+    monkeypatch.setattr(reflection.subprocess, "run", lambda cmd, **_k: downloads.append(cmd))
+    monkeypatch.setattr(reflection.time, "sleep", lambda _s: None)
+
+    assert reflection._read_file_safe(note) == "昨夜の会話"
+    assert downloads and downloads[0][:2] == ["brctl", "download"]
+
+
+def test_read_file_safe_warns_instead_of_silently_dropping_material(tmp_path, monkeypatch, capsys):
+    note = tmp_path / "2026-10-04.md"
+    note.write_text("会話", encoding="utf-8")
+    monkeypatch.setattr(Path, "read_text", lambda *_a, **_k: (_ for _ in ()).throw(OSError(11, "deadlock")))
+    monkeypatch.setattr(reflection.shutil, "which", lambda _name: None)
+
+    assert reflection._read_file_safe(note) == ""
+    assert "Vaultノートを読めず" in capsys.readouterr().err
