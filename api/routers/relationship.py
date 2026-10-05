@@ -52,3 +52,13 @@ def get_user_affect_endpoint(user_id: str = "default"):
         return {**recall.to_payload(), "prompt_block": build_user_affect_memory_block(recall)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/relationship/mutual-prediction")
+def get_mutual_prediction_endpoint(user_id: str = "default"):
+    """REV-472: 紫苑が相手について立てた予想・答え合わせ・気になること（確認・デバッグ用）。"""
+    try:
+        from api.shion_mutual_prediction import get_user_summary
+        return get_user_summary(user_id[:100])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

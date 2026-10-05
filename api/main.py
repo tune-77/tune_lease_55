@@ -6050,6 +6050,52 @@ def _remember_user_affect(
         return "", {"used": False}
 
 
+def _begin_mutual_prediction(
+    user_id: str,
+    message: str,
+    affect_payload: dict[str, Any],
+    affect_memory_payload: dict[str, Any],
+    *,
+    context_mode: str,
+    surface: str,
+    enabled: bool = True,
+):
+    """前回の予想を答え合わせし、今回の予想と気になることを残す（REV-472）。失敗しても会話は止めない。"""
+    from api.shion_mutual_prediction import mutual_prediction_enabled
+
+    if not enabled or not mutual_prediction_enabled():
+        return None
+    try:
+        from api.shion_mutual_prediction import begin_turn, record_relationship_from_outcome
+
+        turn = begin_turn(
+            user_id,
+            message=message,
+            affect_payload=affect_payload,
+            context_mode=context_mode,
+            surface=surface,
+            recurrent=str((affect_memory_payload or {}).get("recurrent") or ""),
+        )
+        _background_executor.submit(record_relationship_from_outcome, turn.outcome)
+        return turn
+    except Exception as exc:
+        record_silent_failure("answer.mutual_prediction", "swallowed", exc)
+        return None
+
+
+def _finish_mutual_prediction(turn, reply: str) -> dict[str, Any]:
+    """返答に問いかけが入ったかを記録し、応答用の payload を返す（REV-472）。"""
+    if turn is None:
+        return {"used": False}
+    try:
+        from api.shion_mutual_prediction import finish_turn
+
+        finish_turn(turn, reply)
+    except Exception as exc:
+        record_silent_failure("answer.mutual_prediction_finish", "swallowed", exc)
+    return dict(turn.payload)
+
+
 @app.post("/api/lease-intelligence/dialogue")
 def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
     message = req.message.strip()
@@ -6345,6 +6391,17 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         dialogue_affect_memory_context, state["user_affect_memory"] = _remember_user_affect(
             DIALOGUE_USER_ID, state["user_affect"], surface="lease_intelligence_dialogue", enabled=req.caller != "mebuki"
         )
+        # 相手を予想し、前回の予想を答え合わせする（REV-472）
+        dialogue_prediction_turn = _begin_mutual_prediction(
+            DIALOGUE_USER_ID,
+            message,
+            state["user_affect"],
+            state["user_affect_memory"],
+            context_mode=dialogue_mode,
+            surface="lease_intelligence_dialogue",
+            enabled=req.caller != "mebuki",
+        )
+        dialogue_prediction_context = dialogue_prediction_turn.prompt_block if dialogue_prediction_turn else ""
         if req.caller != "mebuki":
             # REV-467: ホーム対話も関係性スコアへ記録する（従来は /api/chat だけで、毎日話しても「沈黙」扱いになり得た）
             from api.user_affect import record_relationship_from_affect
@@ -6375,6 +6432,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 ("judgment_response_shape_context", block_with_spacing(judgment_response_shape_context)),
                 ("user_affect_context", block_with_spacing(build_user_affect_prompt_block(dialogue_user_affect))),
                 ("user_affect_memory_context", block_with_spacing(dialogue_affect_memory_context)),
+                ("mutual_prediction_context", block_with_spacing(dialogue_prediction_context)),
                 ("pre_recall_context", block_with_spacing(pre_recall_context)),
                 ("teaching_save_context", block_with_spacing(teaching_save_context)),
             ],
@@ -6412,6 +6470,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {detail}")
 
         reply = teaching_turn.finalize(reply)
+        state["mutual_prediction"] = _finish_mutual_prediction(dialogue_prediction_turn, reply)
 
         save_message(DIALOGUE_USER_ID, "user", message)
         save_message(DIALOGUE_USER_ID, "assistant", reply)
@@ -6932,6 +6991,17 @@ def post_chat(req: ChatRequest):
             surface="next_chat",
             enabled=not is_general_response_mode and not is_screening_review,
         )
+        # 相手を予想し、前回の予想を答え合わせする（REV-472）。審査レビュー・一般モードでは行わない
+        chat_prediction_turn = _begin_mutual_prediction(
+            req.user_id,
+            req.message,
+            user_affect_payload,
+            user_affect_memory_payload,
+            context_mode=context_state.context_mode,
+            surface="next_chat",
+            enabled=not is_general_response_mode and not is_screening_review,
+        )
+        mutual_prediction_context = chat_prediction_turn.prompt_block if chat_prediction_turn else ""
         shion_non_domain_context = context_state.shion_non_domain_context
         human_device_resonance_context = context_state.human_device_resonance_context
         judgment_response_shape_context = context_state.judgment_response_shape_context
@@ -7207,6 +7277,7 @@ def post_chat(req: ChatRequest):
                 ("shion_light_tone_context", shion_light_tone_context),
                 ("user_affect_context", user_affect_context),
                 ("user_affect_memory_context", user_affect_memory_context),
+                ("mutual_prediction_context", mutual_prediction_context),
                 ("shion_non_domain_context", shion_non_domain_context),
                 ("human_device_resonance_context", human_device_resonance_context),
                 ("judgment_response_shape_context", judgment_response_shape_context),
@@ -7260,6 +7331,7 @@ def post_chat(req: ChatRequest):
                 )
             reply = teaching_turn.finalize(call_gemini_chat(effective_system_prompt, history_for_gemini, req.message))
             reply = enforce_policy_first(reply, policy_prompt_context)
+            mutual_prediction_payload = _finish_mutual_prediction(chat_prediction_turn, reply)
             obsidian_daily_effect = {}
             if obsidian_daily_context and not is_screening_review:
                 obsidian_daily_effect = record_obsidian_daily_intelligence_event(
@@ -7373,6 +7445,7 @@ def post_chat(req: ChatRequest):
                     "memory_recall": _public_memory_recall_payload(memory_recall),
                     "user_affect": user_affect_payload,
                     "user_affect_memory": user_affect_memory_payload,
+                    "mutual_prediction": mutual_prediction_payload,
                     **teaching_turn.response_extra(),
                 },
             )
@@ -7681,6 +7754,7 @@ def post_chat(req: ChatRequest):
             ("shion_light_tone_context", shion_light_tone_context),
             ("user_affect_context", user_affect_context),
             ("user_affect_memory_context", user_affect_memory_context),
+            ("mutual_prediction_context", mutual_prediction_context),
             ("shion_non_domain_context", shion_non_domain_context),
             ("human_device_resonance_context", human_device_resonance_context),
             ("judgment_response_shape_context", judgment_response_shape_context),
@@ -7740,6 +7814,7 @@ def post_chat(req: ChatRequest):
         estimated_user_emotion, reply = extract_estimated_user_emotion(reply)
         reply = teaching_turn.finalize(reply)
         reply = enforce_policy_first(reply, policy_prompt_context)  # 方針を使ったのに冒頭で述べていなければ1行目へ
+        mutual_prediction_payload = _finish_mutual_prediction(chat_prediction_turn, reply)
         obsidian_daily_effect = {}
         if obsidian_daily_context and not is_screening_review:
             obsidian_daily_effect = record_obsidian_daily_intelligence_event(
@@ -7919,6 +7994,7 @@ def post_chat(req: ChatRequest):
             | {"memory_recall": _public_memory_recall_payload(memory_recall)}
             | {"retrieval_guard": retrieval_guard_payload(typesafe_rag)}
             | {"user_affect": user_affect_payload, "user_affect_memory": user_affect_memory_payload}
+            | {"mutual_prediction": mutual_prediction_payload}
             | teaching_turn.response_extra(),
         )
         if req.debug_memory:

@@ -108,6 +108,15 @@ def record_interaction(
 
     Returns: 更新後の state
     """
+    # REV-472: 予想の答え合わせ（record_prediction_outcome）と同時に書いても失われないよう排他する
+    with _STATE_LOCK:
+        return _record_interaction_locked(feedback_type, topic_depth)
+
+
+def _record_interaction_locked(
+    feedback_type: Literal["positive", "negative", "neutral"],
+    topic_depth: Literal["shallow", "normal", "deep"],
+) -> dict[str, Any]:
     state = _load_state()
 
     # ── 基本増加 ─────────────────────────────────────────────
@@ -148,6 +157,26 @@ def record_interaction(
 
     _save_state(state)
     logger.debug(f"[Relationship] score={state['score']}, trend={state['trend']}, delta={delta:+.3f}")
+    return state
+
+
+def record_prediction_outcome(*, hit: bool, surprise: float = 0.0) -> dict[str, Any]:
+    """REV-472: 相手についての予想の答え合わせを「理解度」として記録する。
+
+    - understanding: 当たり=1 / 外れ=0 の指数移動平均（初期 0.5）
+    - 予想が当たった（相手を分かっていた）時だけスコアを少し上げる（+0.03）
+    - 外れはスコアを下げない（紫苑の読み違いは相手への評価ではない）。理解度だけが下がる
+    """
+    with _STATE_LOCK:
+        state = _load_state()
+        prev = float(state.get("understanding", 0.5))
+        state["understanding"] = round(0.85 * prev + 0.15 * (1.0 if hit else 0.0), 3)
+        state["prediction_hits"] = int(state.get("prediction_hits", 0)) + (1 if hit else 0)
+        state["prediction_misses"] = int(state.get("prediction_misses", 0)) + (0 if hit else 1)
+        state["last_surprise"] = round(max(0.0, min(1.0, float(surprise))), 2)
+        if hit:
+            state["score"] = round(min(_SCORE_MAX, float(state.get("score", _SCORE_INITIAL)) + 0.03), 3)
+        _save_state(state)
     return state
 
 
@@ -221,4 +250,5 @@ def get_fear_context() -> dict[str, Any]:
         "days_since_last": round(days_since, 1),
         "negative_streak": state.get("negative_streak", 0),
         "total_interactions": state.get("total_interactions", 0),
+        "understanding": state.get("understanding", 0.5),
     }
