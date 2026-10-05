@@ -41,3 +41,14 @@ def post_relationship_feedback(req: RelationshipFeedbackRequest):
         return {"status": "ok", "score": state["score"], "trend": state["trend"]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/relationship/user-affect")
+def get_user_affect_endpoint(user_id: str = "default"):
+    """REV-465: 相手ごとに記憶した最近の様子（減衰後）を返す（確認・デバッグ用）。"""
+    try:
+        from api.user_affect_memory import build_user_affect_memory_block, recall_user_affect
+        recall = recall_user_affect(user_id[:100])
+        return {**recall.to_payload(), "prompt_block": build_user_affect_memory_block(recall)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
