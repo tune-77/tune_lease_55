@@ -61,7 +61,7 @@ def _make_blob(name: str, content: bytes = b"# test") -> MagicMock:
 class TestDownloadVault:
     def test_returns_dest_dir(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("vault/note.md")]
         _set_client_mock(client_mock)
 
         result = download_vault(dest_dir=tmp_path)
@@ -70,7 +70,7 @@ class TestDownloadVault:
     def test_creates_dest_dir(self, tmp_path: Path) -> None:
         dest = tmp_path / "vault_out"
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("vault/note.md")]
         _set_client_mock(client_mock)
 
         download_vault(dest_dir=dest)
@@ -160,7 +160,7 @@ class TestDownloadVault:
 
     def test_uses_default_bucket_and_prefix(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("vault/note.md")]
         _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path)
@@ -169,7 +169,7 @@ class TestDownloadVault:
 
     def test_uses_custom_bucket_and_prefix(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("custom/note.md")]
         _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, bucket="my-bucket", prefix="custom/")
@@ -178,7 +178,7 @@ class TestDownloadVault:
 
     def test_normalizes_gs_url_bucket(self, tmp_path: Path) -> None:
         client_mock = MagicMock()
-        client_mock.list_blobs.return_value = []
+        client_mock.list_blobs.return_value = [_make_blob("custom/note.md")]
         _set_client_mock(client_mock)
 
         download_vault(dest_dir=tmp_path, bucket="gs://my-bucket/some-prefix", prefix="custom/")
@@ -197,7 +197,8 @@ class TestDownloadVault:
 
         assert (tmp_path / "deep" / "nested" / "dir" / "note.md").read_bytes() == b"deep"
 
-    def test_prunes_local_md_missing_from_gcs(self, tmp_path: Path) -> None:
+    def test_quarantines_local_md_missing_from_gcs(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("GCS_VAULT_ALLOW_LARGE_QUARANTINE", "1")
         stale = tmp_path / "old.md"
         stale.write_text("# stale")
         keep = tmp_path / "keep.md"
@@ -211,7 +212,114 @@ class TestDownloadVault:
         download_vault(dest_dir=tmp_path, prefix="vault/")
 
         assert not stale.exists()
+        quarantined = list((tmp_path.parent / f".{tmp_path.name}-quarantine").rglob("old.md"))
+        assert len(quarantined) == 1
+        assert quarantined[0].read_text() == "# stale"
         assert keep.read_text() == "# fresh keep"
+
+    def test_empty_remote_listing_never_removes_local_notes(self, tmp_path: Path) -> None:
+        local = tmp_path / "important.md"
+        local.write_text("# irreplaceable")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = []
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path, prefix="vault/")
+        except RuntimeError as exc:
+            assert "listing is empty" in str(exc)
+        else:
+            raise AssertionError("empty remote listing should stop the sync")
+
+        assert local.read_text() == "# irreplaceable"
+        assert not (tmp_path.parent / f".{tmp_path.name}-quarantine").exists()
+
+    def test_rejects_real_obsidian_vault_destination(self, tmp_path: Path) -> None:
+        (tmp_path / ".obsidian").mkdir()
+        note = tmp_path / "important.md"
+        note.write_text("# keep")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = []
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path)
+        except RuntimeError as exc:
+            assert "Obsidian vault" in str(exc)
+        else:
+            raise AssertionError("real Vault destination should be rejected")
+
+        assert note.exists()
+
+    def test_allows_resync_of_marker_managed_active_mirror(self, tmp_path: Path, monkeypatch) -> None:
+        (tmp_path / ".gcs-vault-mirror").touch()
+        existing = tmp_path / "keep.md"
+        existing.write_text("# old")
+        monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+        monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = [_make_blob("vault/keep.md", b"# fresh")]
+        _set_client_mock(client_mock)
+
+        download_vault(dest_dir=tmp_path, prefix="vault/")
+
+        assert existing.read_text() == "# fresh"
+
+    def test_download_failure_leaves_existing_mirror_untouched(self, tmp_path: Path) -> None:
+        existing = tmp_path / "keep.md"
+        existing.write_text("# original")
+        failing = _make_blob("vault/keep.md", b"# replacement")
+        failing.download_to_filename.side_effect = OSError("network failure")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = [failing]
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path, prefix="vault/")
+        except OSError as exc:
+            assert "network failure" in str(exc)
+        else:
+            raise AssertionError("download failure should propagate")
+
+        assert existing.read_text() == "# original"
+
+    def test_large_stale_change_is_rejected_before_replacing_existing_notes(self, tmp_path: Path) -> None:
+        keep = tmp_path / "keep.md"
+        keep.write_text("# original")
+        for index in range(101):
+            (tmp_path / f"stale-{index}.md").write_text("stale")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = [_make_blob("vault/keep.md", b"# replacement")]
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path, prefix="vault/")
+        except RuntimeError as exc:
+            assert "unusually large" in str(exc)
+        else:
+            raise AssertionError("large stale change should stop the sync")
+
+        assert keep.read_text() == "# original"
+        assert len(list(tmp_path.glob("stale-*.md"))) == 101
+
+    def test_stale_ratio_is_rejected_below_absolute_limit(self, tmp_path: Path) -> None:
+        keep = tmp_path / "keep.md"
+        keep.write_text("# original")
+        for index in range(3):
+            (tmp_path / f"stale-{index}.md").write_text("stale")
+        client_mock = MagicMock()
+        client_mock.list_blobs.return_value = [_make_blob("vault/keep.md", b"# replacement")]
+        _set_client_mock(client_mock)
+
+        try:
+            download_vault(dest_dir=tmp_path, prefix="vault/")
+        except RuntimeError as exc:
+            assert "unusually large" in str(exc)
+        else:
+            raise AssertionError("large stale ratio should stop the sync")
+
+        assert keep.read_text() == "# original"
+        assert len(list(tmp_path.glob("stale-*.md"))) == 3
 
     def test_skips_unsafe_relative_paths(self, tmp_path: Path) -> None:
         outside = tmp_path.parent / "evil.md"
@@ -253,9 +361,12 @@ class TestLoadVaultTexts:
         client_mock.list_blobs.return_value = [_make_blob("vault/image.png")]
         _set_client_mock(client_mock)
 
-        texts = load_vault_texts(dest_dir=tmp_path, prefix="vault/")
-
-        assert texts == []
+        try:
+            load_vault_texts(dest_dir=tmp_path, prefix="vault/")
+        except RuntimeError as exc:
+            assert "listing is empty" in str(exc)
+        else:
+            raise AssertionError("a GCS listing without Markdown should stop the sync")
 
     def test_returns_texts_sorted_by_path(self, tmp_path: Path) -> None:
         blobs = [
