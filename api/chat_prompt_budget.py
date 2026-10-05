@@ -70,6 +70,7 @@ SPECS: dict[str, BlockSpec] = {
     "shion_light_tone_context": BlockSpec(SHAPE, 600),
     "user_affect_context": BlockSpec(SHAPE, 700),
     "mutual_prediction_context": BlockSpec(SHAPE, 800),  # REV-472 予想の答え合わせ・好奇心の問いかけ
+    "emotion_grounding_context": BlockSpec(SHAPE, 3200),  # REV-481 感情の自己報告の根拠（変化記録）
     "shion_non_domain_context": BlockSpec(SHAPE, 600),
     "prompt_suffix": BlockSpec(SHAPE, 600),
     # 3: RAG/Knowledge・Vertex の根拠・DB・外部調査
