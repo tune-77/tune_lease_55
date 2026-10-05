@@ -15,7 +15,10 @@ from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
 import random
 import re
+import shutil
+import subprocess
 import sys
+import time
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -53,14 +56,43 @@ def _ai_chat_dir(vault: Path) -> Path:
     return vault / "Projects" / "tune_lease_55" / "AI Chat"
 
 
-def _read_file_safe(path: Path, max_chars: int = 3000) -> str:
+def _read_text_icloud(path: Path) -> str:
+    """read_text that survives iCloud-evicted (dataless) Vault files.
+
+    Under launchd a dataless file fails with EDEADLK (Errno 11) instead of
+    downloading, which used to look exactly like "no dialogue that day".
+    Ask iCloud to download it and retry once before giving up loudly.
+    """
     try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        # Strip YAML frontmatter
-        text = re.sub(r"^---\n.*?\n---\n", "", text, flags=re.DOTALL)
-        return text.strip()[:max_chars]
-    except Exception:
+        return path.read_text(encoding="utf-8", errors="ignore")
+    except OSError as first_error:
+        if not path.exists() or not shutil.which("brctl"):
+            raise
+        try:
+            subprocess.run(["brctl", "download", str(path)], capture_output=True, timeout=30, check=False)
+        except (OSError, subprocess.SubprocessError):
+            raise first_error
+        deadline = time.monotonic() + 30
+        while True:
+            time.sleep(2)
+            try:
+                return path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+
+
+def _read_file_safe(path: Path, max_chars: int = 3000) -> str:
+    if not path.exists():
         return ""
+    try:
+        text = _read_text_icloud(path)
+    except OSError as exc:
+        print(f"[reflection] 警告: Vaultノートを読めず材料から外しました ({path.name}): {exc}", file=sys.stderr)
+        return ""
+    # Strip YAML frontmatter
+    text = re.sub(r"^---\n.*?\n---\n", "", text, flags=re.DOTALL)
+    return text.strip()[:max_chars]
 
 
 def _event_jst_date(ts: str) -> str:
@@ -2173,7 +2205,9 @@ def _write_reflection_file(vault: Path, date_str: str, reflection_text: str, sou
     )
 
     if path.exists():
-        existing = path.read_text(encoding="utf-8")
+        # Raises if iCloud cannot materialize it: better to skip a day than
+        # rewrite the note from an empty read (cf. PR #1265).
+        existing = _read_text_icloud(path)
         existing = _ensure_private_frontmatter(existing)
         existing = _ensure_private_notice(existing)
         if "## 今日の対話について" in existing:
