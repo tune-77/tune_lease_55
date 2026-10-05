@@ -44,3 +44,13 @@ def test_shion_prompt_priority_block_defines_conflict_order():
     assert "記憶・Obsidian・判断資産" in block
     assert block.index("システム安全") < block.index("ユーザーの直近依頼")
     assert block.index("ユーザーの直近依頼") < block.index("記憶・Obsidian・判断資産")
+
+
+def test_shion_tone_block_prefers_casual_short_replies_without_dropping_business_detail():
+    block = build_shion_feminine_tone_block()
+
+    assert "距離感と長さ" in block
+    assert "1〜3文" in block
+    assert "もしよろしければ" in block
+    assert "仕事・案件・明日の段取りの話へ戻さず" in block
+    assert "中身を削らない" in block

@@ -91,3 +91,10 @@ def test_record_relationship_from_affect_updates_score(monkeypatch, tmp_path):
     assert state["total_interactions"] == 1
     record_relationship_from_affect(estimate_user_affect("やった！承認された！").to_payload(), topic_depth="deep")
     assert get_relationship_state()["negative_streak"] == 0
+
+
+def test_tired_and_down_styles_stay_short_and_do_not_return_to_work():
+    for msg in ("今日ちょっと疲れた", "失注しました。落ち込んでます"):
+        block = build_user_affect_prompt_block(estimate_user_affect(msg))
+        assert "1〜3文" in block
+        assert "戻さない" in block

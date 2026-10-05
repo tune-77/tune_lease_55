@@ -401,7 +401,7 @@ def chat_mode_instruction(mode: str) -> str:
     }
     label = labels.get(mode, labels["normal"])
     rule = rules.get(mode, rules["normal"])
-    return f"\n\n【今回の応答モード: {label}】\n- {rule}\n- 空行は増やしすぎない。雑談・通常相談は5〜7行程度まで自然に話してよい。長文入力だけは8行程度までに圧縮する。"
+    return f"\n\n【今回の応答モード: {label}】\n- {rule}\n- 空行は増やしすぎない。雑談は1〜3文、通常相談は3〜5行程度で返す。業務の詳しい説明や長文入力でも8行程度までに圧縮する（必要な数字・判断・確認事項は削らない）。"
 
 
 def build_chat_basic_lease_question_context(message: str) -> str:
