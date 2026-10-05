@@ -491,7 +491,8 @@ def _tts_synthesize(text: str, speaker: int) -> bytes:
     q.raise_for_status()
     query = q.json()
     try:
-        query["speedScale"] = float(os.environ.get("SHION_TTS_SPEED", "1.1"))
+        # REV-474: 少し速めに（SHION_TTS_SPEED。既定 1.15、聞き取れる範囲 0.8〜1.3）
+        query["speedScale"] = min(1.3, max(0.8, float(os.environ.get("SHION_TTS_SPEED", "1.15"))))
     except ValueError:
         pass
     # REV-473: 少し高めの声に（SHION_TTS_PITCH。VOICEVOX の pitchScale、既定 +0.04、-0.15〜0.15）
