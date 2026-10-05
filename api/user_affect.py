@@ -181,3 +181,36 @@ def build_user_affect_prompt_block(affect: UserAffect) -> str:
         "（「疲れていますね」と断定しない）、返し方にだけ反映する。\n"
         "- 事実・根拠・審査判断・必要な警告は気持ちに合わせて変えない。"
     )
+
+
+# 紫苑の返答そのものへの不満を示す語（仕事への苛立ちとは区別する）
+_SHION_DIRECTED_COMPLAINTS = ("違うって", "そうじゃない", "何度も", "ちゃんとして", "意味わからん", "意味不明", "いい加減")
+
+
+def relationship_feedback_from_affect(label: str, cues: list[str] | tuple[str, ...] = ()) -> str:
+    """推定した様子を関係性スコア（REV-220）のフィードバックに変換する（REV-467）。
+
+    - 喜び → positive（一緒に喜べた）
+    - 紫苑の返答への苛立ち（「違うって」「何度も」等）→ negative
+    - それ以外（疲れ・不安・仕事への苛立ちなど）→ neutral（相手のつらさを紫苑への評価にしない）
+    """
+    if label == "喜び":
+        return "positive"
+    if label == "苛立ち" and any(c in _SHION_DIRECTED_COMPLAINTS for c in cues):
+        return "negative"
+    return "neutral"
+
+
+def record_relationship_from_affect(affect_payload: dict[str, Any], *, topic_depth: str = "normal") -> None:
+    """関係性スコアへ対話1回分を記録する。失敗しても会話は止めない。"""
+    try:
+        from api.shion_relationship import record_interaction
+
+        feedback = relationship_feedback_from_affect(
+            str(affect_payload.get("label") or NEUTRAL), list(affect_payload.get("cues") or [])
+        )
+        record_interaction(feedback_type=feedback, topic_depth=topic_depth)  # type: ignore[arg-type]
+    except Exception as exc:
+        from silent_failure_log import record_silent_failure
+
+        record_silent_failure("answer.relationship_from_affect", "swallowed", exc)

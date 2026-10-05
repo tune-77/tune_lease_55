@@ -28,6 +28,7 @@ class _FakeClient:
 @pytest.fixture
 def setup(monkeypatch, tmp_path):
     monkeypatch.setattr("api.user_affect_memory._state_path", lambda: tmp_path / "user_affect_state.json")
+    monkeypatch.setattr("api.shion_relationship._STATE_PATH", tmp_path / "relationship.json")
     monkeypatch.setenv("SHION_VOICE_ENABLED", "1")
     monkeypatch.setenv("SHION_VOICE_MIN_INTERVAL_SECONDS", "0")
     monkeypatch.setattr(sv, "_issued", {})
@@ -130,6 +131,9 @@ def test_transcript_records_voice_affect(setup, monkeypatch):
     from api.user_affect_memory import recall_user_affect
 
     assert recall_user_affect("u").label == "疲れ"
+    from api.shion_relationship import get_relationship_state
+
+    assert get_relationship_state()["total_interactions"] == 1  # REV-467: 通話も関係性に記録
 
 
 def test_session_enables_affective_only_for_supported_models(setup, monkeypatch):

@@ -68,3 +68,26 @@ def test_payload_shape():
     payload = estimate_user_affect("至急お願いします").to_payload()
     assert payload["label"] == "焦り"
     assert set(payload) == {"label", "intensity", "cues"}
+
+
+def test_relationship_feedback_from_affect():
+    from api.user_affect import relationship_feedback_from_affect as fb
+
+    assert fb("喜び", ["やった"]) == "positive"
+    assert fb("苛立ち", ["違うって"]) == "negative"
+    assert fb("苛立ち", ["イライラ"]) == "neutral"  # 仕事への苛立ちは紫苑への評価にしない
+    assert fb("疲れ", ["疲れ"]) == "neutral"
+    assert fb("通常") == "neutral"
+
+
+def test_record_relationship_from_affect_updates_score(monkeypatch, tmp_path):
+    monkeypatch.setattr("api.shion_relationship._STATE_PATH", tmp_path / "rel.json")
+    from api.shion_relationship import get_relationship_state
+    from api.user_affect import estimate_user_affect, record_relationship_from_affect
+
+    record_relationship_from_affect(estimate_user_affect("何度も言ってるけど違うって").to_payload())
+    state = get_relationship_state()
+    assert state["negative_streak"] == 1
+    assert state["total_interactions"] == 1
+    record_relationship_from_affect(estimate_user_affect("やった！承認された！").to_payload(), topic_depth="deep")
+    assert get_relationship_state()["negative_streak"] == 0

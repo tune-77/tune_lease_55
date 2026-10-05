@@ -6343,6 +6343,15 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         dialogue_affect_memory_context, state["user_affect_memory"] = _remember_user_affect(
             DIALOGUE_USER_ID, state["user_affect"], surface="lease_intelligence_dialogue", enabled=req.caller != "mebuki"
         )
+        if req.caller != "mebuki":
+            # REV-467: ホーム対話も関係性スコアへ記録する（従来は /api/chat だけで、毎日話しても「沈黙」扱いになり得た）
+            from api.user_affect import record_relationship_from_affect
+
+            _background_executor.submit(
+                record_relationship_from_affect,
+                dict(state["user_affect"]),
+                topic_depth={"screening": "deep", "deep": "deep", "casual": "shallow"}.get(dialogue_mode, "normal"),
+            )
         # 対話室も優先度と予算で組み立てる（従来は上限なしで平均3.4万字）。並び順は従来どおり。
         # 教わった知識の想起に含まれる社内方針の節は、通常チャットと同じく末尾に置く（PR #1225）
         from api.chat_prompt_blocks import block_with_spacing
@@ -7872,17 +7881,12 @@ def post_chat(req: ChatRequest):
             _background_executor.submit(_auto_save_chat_to_obsidian, req.message, reply)
 
         # REV-222: 対話ごとに関係性スコアを更新（バックグラウンド実行）
+        # REV-467: 相手の様子（REV-464）をフィードバックとして渡す（喜び→positive / 紫苑への苛立ち→negative）
         def _record_relationship_interaction(ctx_mode: str) -> None:
-            try:
-                from api.shion_relationship import record_interaction
-                _depth_map = {"screening": "deep", "deep": "deep", "casual": "shallow"}
-                record_interaction(
-                    feedback_type="neutral",
-                    topic_depth=_depth_map.get(ctx_mode, "normal"),
-                )
-            except Exception as _rel_err:
-                import logging
-                logging.getLogger(__name__).debug(f"[Relationship] record_interaction skipped: {_rel_err}")
+            from api.user_affect import record_relationship_from_affect
+
+            _depth_map = {"screening": "deep", "deep": "deep", "casual": "shallow"}
+            record_relationship_from_affect(user_affect_payload, topic_depth=_depth_map.get(ctx_mode, "normal"))
         _background_executor.submit(_record_relationship_interaction, context_mode)
 
         response_payload = build_chat_response_payload(
