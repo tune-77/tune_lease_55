@@ -24,6 +24,7 @@ def summarize(path: Path) -> list[dict]:
             "input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
+            "cached_tokens": 0,
         }
     )
     log_paths = (path.with_suffix(f"{path.suffix}.1"), path)
@@ -51,6 +52,7 @@ def summarize(path: Path) -> list[dict]:
                     total_tokens = item.get("total_tokens")
                     row["input_tokens"] += input_tokens
                     row["output_tokens"] += output_tokens
+                    row["cached_tokens"] += int(item.get("cached_tokens") or 0)
                     row["total_tokens"] += (
                         int(total_tokens) if total_tokens is not None else input_tokens + output_tokens
                     )
@@ -68,6 +70,7 @@ def summarize(path: Path) -> list[dict]:
                 "input_tokens": row["input_tokens"],
                 "output_tokens": row["output_tokens"],
                 "total_tokens": row["total_tokens"],
+                "cached_tokens": row["cached_tokens"],
             }
         )
     return result
@@ -81,11 +84,11 @@ def main() -> int:
     if not rows:
         print(f"AI usage log is empty: {args.path}")
         return 0
-    print("provider\tfeature\tmodel\tcalls\terrors\tavg_ms\tinput_tokens\toutput_tokens\ttotal_tokens")
+    print("provider\tfeature\tmodel\tcalls\terrors\tavg_ms\tinput_tokens\toutput_tokens\ttotal_tokens\tcached_tokens")
     for row in rows:
         print(
             f"{row['provider']}\t{row['feature']}\t{row['model']}\t{row['calls']}\t{row['errors']}\t"
-            f"{row['avg_duration_ms']}\t{row['input_tokens']}\t{row['output_tokens']}\t{row['total_tokens']}"
+            f"{row['avg_duration_ms']}\t{row['input_tokens']}\t{row['output_tokens']}\t{row['total_tokens']}\t{row['cached_tokens']}"
         )
     return 0
 
