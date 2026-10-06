@@ -71,8 +71,8 @@ class ScoringResponse(BaseModel):
     comparison: str
     user_op_margin: float
     user_equity_ratio: float
-    bench_op_margin: float
-    bench_equity_ratio: float
+    bench_op_margin: Optional[float] = None  # 業種照合不可なら None（REV-482）
+    bench_equity_ratio: Optional[float] = None
     score_borrower: float
     score_base: Optional[float] = None
     industry_sub: str
