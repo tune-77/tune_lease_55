@@ -701,6 +701,10 @@ def should_log(result: GroundingResult) -> bool:
 def submit_verification(message: str, original_reply: str, result: GroundingResult, *, surface: str) -> bool:
     global _VERIFY_PENDING
     summary = result.summary()
+    from ai_budget import PROACTIVE, deferred
+
+    if deferred(PROACTIVE):  # 1日予算に近い日は自発の照合を先送り（REV-485）
+        return False
     with _VERIFY_PENDING_LOCK:
         if _VERIFY_PENDING >= MAX_PENDING_VERIFICATIONS:
             return False

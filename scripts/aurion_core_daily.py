@@ -1271,6 +1271,16 @@ def vertex_credit_lines() -> list[str]:
         return [f"- Vertex クレジット状況: 読み込み失敗 `{type(exc).__name__}`"]
 
 
+def ai_budget_lines() -> list[str]:
+    """Gemini の1日予算ガード（ai_budget.py）: 前日の推定費用・止めた呼び出し・上限到達（朝報の上部）。"""
+    try:
+        from ai_budget import morning_report_lines
+
+        return morning_report_lines()
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return [f"- Gemini 予算ガード: 読み込み失敗 `{type(exc).__name__}`"]
+
+
 def answer_regression_lines() -> list[str]:
     """週次の答えの品質回帰テスト（scripts/weekly_answer_regression.py）の警告と点数（朝報の上部）。"""
     try:
@@ -1340,6 +1350,7 @@ def write_morning_report(
         *silent_failure_lines(),
         *answer_regression_lines(),
         *vertex_credit_lines(),
+        *ai_budget_lines(),
         *chat_prompt_budget_lines(),
         "",
         f"[[@AI_Insight_Evolved_{date_str()}]]",
