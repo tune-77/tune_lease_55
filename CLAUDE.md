@@ -43,7 +43,8 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 
 - 既定は **録画済み返答の再生**: `python scripts/replay_recorded_replies.py --processor <名前> [--limit 20]`（Gemini を呼ばない・採点は Jev・上限100件）
 - 本物の Gemini 呼び出しが要る検証だけ `AI_LIVE_VERIFY=1` を明示する。1日 `AI_VERIFY_MAX_CALLS`（既定30）回まで、当日費用が1日予算の60%を超えると止まる
-- 1日予算は `AI_DAILY_BUDGET_YEN`（既定50円）。紫苑のチャット・審査は止めず、検証→夜間・自発系の順に止める。前日の推定と止めた件数は朝報に出る
+- 1日予算は `AI_DAILY_BUDGET_YEN`（既定50円）。紫苑のチャット・審査と**記憶・内省（Private Reflection・記憶の圧縮/保存・相手の様子・予測の記録・気分の変化記録など）は止めない**。止めるのは検証→夜間・記憶に関わらない自発系（日次イラスト等）のみ。前日の推定と止めた件数は朝報に出る
+- 費用削減でプロンプトの記憶系ブロックを削らない（2026-10-07 ユーザー方針）。絞ってよいのはニュース・改善レポート・相談キュー等の付加情報だけ
 
 ---
 
