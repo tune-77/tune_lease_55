@@ -6503,6 +6503,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             ],
             question=full_message,
             surface="dialogue",
+            context_mode=dialogue_mode,  # 雑談ではニュース・改善報告・相談キューを外す（REV-486）
             reserved_tail=merge_policy_blocks(_dialogue_policy),
         )
         consultation_ids: list[str] = []
