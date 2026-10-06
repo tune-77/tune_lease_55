@@ -63,6 +63,7 @@ type ChatContext = {
   sales_dept?: string;
   quantum_risk?: number;
   case_id?: string;
+  risk_review_reasons?: string[];
 };
 
 const SHION_AVATAR = "/lease-intelligence/moods/curiosity.webp";
@@ -379,7 +380,13 @@ export default function ChatPage() {
           if (ctx.quantum_risk != null) {
             lines.push(`・量子リスク: ${ctx.quantum_risk.toFixed(1)}`);
           }
-          lines.push("", "この案件について、審査上のポイントや懸念点を教えてください。");
+          const reasons = (ctx.risk_review_reasons ?? []).slice(0, 3);
+          if (reasons.length > 0) {
+            lines.push("・判定根拠:", ...reasons.map((reason) => `  - ${reason}`));
+            lines.push("", "この根拠に沿って審査上のポイントを説明してください。");
+          } else {
+            lines.push("", "この案件について、審査上のポイントや懸念点を教えてください。");
+          }
           const autoMessage = lines.join("\n");
           window.setTimeout(() => sendMessageWithText(autoMessage), 400);
         } catch {

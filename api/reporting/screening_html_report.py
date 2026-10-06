@@ -212,7 +212,7 @@ def _benchmark_card(result: dict) -> str:
     ]
     rows = []
     for name, bench, user in pairs:
-        bench_f, user_f = _f(bench), _f(user)
+        bench_f, user_f = _f(bench, None), _f(user)  # 業界目安が None（業種照合不可）なら行ごと出さない
         if bench_f is None or user_f is None:
             continue
         rows.append([name, max(round(bench_f), 0), max(round(user_f), 0), round(bench_f, 1), round(user_f, 1)])
