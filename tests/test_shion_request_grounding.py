@@ -193,3 +193,16 @@ def test_output_file_and_after_run_promise():
     result = grounding.ground_reply("依頼文にして", reply, enabled=True)
     assert not result.missing_refs
     assert "実行後は" not in result.reply and "進めてよろしいでしょうか" in result.reply
+
+
+def test_dialogue_entry_points(monkeypatch):
+    assert grounding.build_request_context("今日はどう？", []) == ""
+    assert "実在が確かめられた参照" in grounding.build_request_context("紫苑依頼分にして", [{"content": "スコアの件"}])
+    submitted = []
+    monkeypatch.setattr(grounding, "submit_verification", lambda *a, **k: submitted.append(a) or True)
+    result = grounding.ground_reply_safely("紫苑依頼分にして", REAL_REQUEST)
+    summary = grounding.log_grounding("紫苑依頼分にして", REAL_REQUEST, result, "test")
+    assert summary["missing_refs"] and submitted
+    assert grounding.log_grounding("x", "y", None, "test") == {}
+    monkeypatch.setattr(grounding, "ground_reply", lambda *a, **k: 1 / 0)
+    assert grounding.ground_reply_safely("x", "y") is None

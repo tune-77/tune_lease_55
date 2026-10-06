@@ -723,3 +723,44 @@ def submit_verification(message: str, original_reply: str, result: GroundingResu
             _VERIFY_PENDING -= 1
         return False
     return True
+
+
+# ── 対話室からの呼び出し口（api/main.py を太らせないため、例外もここで握る） ──────────
+
+
+def _record_failure(where: str, exc: Exception) -> None:
+    try:
+        from silent_failure_log import record_silent_failure
+
+        record_silent_failure(where, "swallowed", exc)
+    except Exception:
+        pass
+
+
+def build_request_context(message: str, history: list[dict[str, Any]]) -> str:
+    """依頼文を頼まれた時だけ、実在の参照一覧・実行者・禁止範囲を渡す。"""
+    try:
+        if not is_request_turn(message):
+            return ""
+        recent = "\n".join(str(m.get("content") or "")[:1500] for m in history[-4:])
+        return build_request_block(message, recent)
+    except Exception as exc:
+        _record_failure("answer.request_grounding_context", exc)
+        return ""
+
+
+def ground_reply_safely(message: str, reply: str) -> GroundingResult | None:
+    try:
+        return ground_reply(message, reply)
+    except Exception as exc:
+        _record_failure("answer.request_grounding", exc)
+        return None
+
+
+def log_grounding(message: str, original_reply: str, result: GroundingResult | None, surface: str) -> dict[str, Any]:
+    """依頼文の場面・約束を見つけた時だけ、照合結果と Jev の分類をログへ残す。画面用の要約を返す。"""
+    if result is None:
+        return {}
+    if should_log(result):
+        submit_verification(message, original_reply, result, surface=surface)
+    return result.summary()
