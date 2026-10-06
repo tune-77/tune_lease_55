@@ -294,8 +294,13 @@ JSON形式で返してください:
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with _urllib_request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        from ai_runtime_client import tracked_ai_call
+
+        def _fetch() -> dict:
+            with _urllib_request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+
+        data = tracked_ai_call(_fetch, provider="google", model=gemini_model, feature="shion_activity_reflection")
         # thinking part 対策: text キーを持つ最初の non-thought part を探す
         parts = data["candidates"][0]["content"]["parts"]
         text = next(

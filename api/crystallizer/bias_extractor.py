@@ -15,6 +15,8 @@ from typing import Any
 
 import requests
 
+from ai_runtime_client import extract_token_usage, tracked_ai_call
+
 from api.llm_json_guard import LLMJsonError, extract_candidate_text, parse_json_object
 
 _SYSTEM = """あなたは金融・リース審査領域における「認知バイアス監査およびリスク分析のスペシャリスト」です。
@@ -141,7 +143,13 @@ def extract_bias(comment_text: str, case_id: str = "N/A") -> dict[str, Any]:
         if attempt > 0:
             time.sleep(2 ** (attempt - 1))  # 1s, 2s
         try:
-            resp = requests.post(_gemini_url(), json=payload, headers=headers, timeout=60)
+            resp = tracked_ai_call(
+                lambda: requests.post(_gemini_url(), json=payload, headers=headers, timeout=60),
+                provider="google",
+                model=get_gemini_model(),
+                feature="crystallizer_bias_extraction",
+                token_extractor=lambda r: extract_token_usage(r.json()),
+            )
             if resp.status_code == 429:
                 last_error = "rate_limited(429)"
                 continue

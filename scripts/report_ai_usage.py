@@ -15,8 +15,8 @@ if str(REPO_ROOT) not in sys.path:
 from ai_runtime_client import usage_log_lock, usage_log_path  # noqa: E402
 
 
-def summarize(path: Path) -> list[dict]:
-    groups: dict[tuple[str, str, str], dict] = defaultdict(
+def summarize(path: Path, *, by_source: bool = False) -> list[dict]:
+    groups: dict[tuple[str, ...], dict] = defaultdict(
         lambda: {
             "calls": 0,
             "errors": 0,
@@ -43,6 +43,10 @@ def summarize(path: Path) -> list[dict]:
                     except (json.JSONDecodeError, TypeError):
                         continue
                     key = (str(item.get("provider") or "unknown"), str(item.get("feature") or "unknown"), str(item.get("model") or "unknown"))
+                    if by_source:
+                        # 呼び出し元（入口スクリプト名、worktree なら名前付き）。REV-484 以前の行は unknown
+                        source = str(item.get("source") or "unknown")
+                        key += (f"{source}@{item['worktree']}" if item.get("worktree") else source,)
                     row = groups[key]
                     row["calls"] += 1
                     row["errors"] += 0 if item.get("ok") else 1
@@ -57,10 +61,12 @@ def summarize(path: Path) -> list[dict]:
                         int(total_tokens) if total_tokens is not None else input_tokens + output_tokens
                     )
     result = []
-    for (provider, feature, model), row in sorted(groups.items()):
+    for key, row in sorted(groups.items()):
+        provider, feature, model = key[:3]
         calls = row["calls"]
         result.append(
             {
+                **({"source": key[3]} if by_source else {}),
                 "provider": provider,
                 "feature": feature,
                 "model": model,
@@ -79,15 +85,18 @@ def summarize(path: Path) -> list[dict]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=Path, default=usage_log_path())
+    parser.add_argument("--by-source", action="store_true", help="呼び出し元（入口スクリプト・worktree）別にも分ける")
     args = parser.parse_args()
-    rows = summarize(args.path)
+    rows = summarize(args.path, by_source=args.by_source)
     if not rows:
         print(f"AI usage log is empty: {args.path}")
         return 0
-    print("provider\tfeature\tmodel\tcalls\terrors\tavg_ms\tinput_tokens\toutput_tokens\ttotal_tokens\tcached_tokens")
+    prefix = "source\t" if args.by_source else ""
+    print(prefix + "provider\tfeature\tmodel\tcalls\terrors\tavg_ms\tinput_tokens\toutput_tokens\ttotal_tokens\tcached_tokens")
     for row in rows:
         print(
-            f"{row['provider']}\t{row['feature']}\t{row['model']}\t{row['calls']}\t{row['errors']}\t"
+            (f"{row['source']}\t" if args.by_source else "")
+            + f"{row['provider']}\t{row['feature']}\t{row['model']}\t{row['calls']}\t{row['errors']}\t"
             f"{row['avg_duration_ms']}\t{row['input_tokens']}\t{row['output_tokens']}\t{row['total_tokens']}\t{row['cached_tokens']}"
         )
     return 0

@@ -57,13 +57,19 @@ def synthesize_pattern(cases: list[AnomalyCase]) -> str:
         "generationConfig": {"temperature": 0.4, "maxOutputTokens": 512},
     }
     try:
-        resp = requests.post(
-            _gemini_url(),
-            json=payload,
-            headers={"x-goog-api-key": api_key},
-            timeout=60,
+        from ai_runtime_client import tracked_ai_http_call
+
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                _gemini_url(),
+                json=payload,
+                headers={"x-goog-api-key": api_key},
+                timeout=60,
+            ),
+            provider="google",
+            model=get_gemini_model(),
+            feature="crystallizer_pattern_synthesis",
         )
-        resp.raise_for_status()
         return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
         return _fallback_pattern(cases, error=str(e))

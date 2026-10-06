@@ -87,12 +87,18 @@ def summarize_with_gemini(prs: list, commits: list) -> str | None:
         },
     }
     try:
-        resp = requests.post(
-            f"{_gemini_url()}?key={api_key}",
-            json=payload,
-            timeout=30,
+        from ai_runtime_client import tracked_ai_http_call
+
+        resp = tracked_ai_http_call(
+            lambda: requests.post(
+                f"{_gemini_url()}?key={api_key}",
+                json=payload,
+                timeout=30,
+            ),
+            provider="google",
+            model=get_gemini_model(),
+            feature="dispatch_log_summary",
         )
-        resp.raise_for_status()
         return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
         print(f"Gemini要約に失敗しました（スキップ）: {e}")

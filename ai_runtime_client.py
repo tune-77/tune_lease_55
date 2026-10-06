@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -22,17 +23,50 @@ from typing import Any, Callable, TypeVar
 
 _T = TypeVar("_T")
 _WRITE_LOCK = threading.Lock()
-_DEFAULT_LOG_PATH = Path(__file__).resolve().parent / "data" / "ai_usage.jsonl"
+_REPO_ROOT = Path(__file__).resolve().parent
+
+
+def _main_repo_root(root: Path = _REPO_ROOT) -> Path:
+    """git worktree から動いた時は本体リポジトリを返す（worktree の .git はファイル）。
+
+    worktree の data/ai_usage.jsonl は worktree 削除と一緒に消え、検証実行の利用量が
+    どこにも残らなかった（2026-10 の Gemini 利用増の半分以上が未計測だった）。
+    """
+    try:
+        text = (root / ".git").read_text(encoding="utf-8").strip() if (root / ".git").is_file() else ""
+    except OSError:
+        return root
+    if text.startswith("gitdir:"):
+        gitdir = Path(text.split(":", 1)[1].strip())  # <main>/.git/worktrees/<name>
+        if gitdir.parent.name == "worktrees" and gitdir.parent.parent.name == ".git":
+            return gitdir.parent.parent.parent
+    return root
+
+
+_MAIN_ROOT = _main_repo_root()
+_DEFAULT_LOG_PATH = _MAIN_ROOT / "data" / "ai_usage.jsonl"
 _DEFAULT_MAX_LOG_BYTES = 10 * 1024 * 1024
 
 
 def _enabled() -> bool:
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("AI_USAGE_LOG_PATH", "").strip():
+        # テスト中のモック呼び出しを本番の利用量として数えない（明示パス指定時だけ記録）
+        return False
     return os.environ.get("AI_USAGE_LOG_ENABLED", "1").strip().lower() not in {
         "0",
         "false",
         "no",
         "off",
     }
+
+
+def _call_source() -> dict[str, str]:
+    """呼び出し元の実行入口（スクリプト名）と worktree 名。本文・引数は残さない。"""
+    entry = Path(sys.argv[0]).name if sys.argv and sys.argv[0] else ""
+    source: dict[str, str] = {"source": entry or "unknown"}
+    if _REPO_ROOT != _MAIN_ROOT:
+        source["worktree"] = _REPO_ROOT.name
+    return source
 
 
 def usage_log_path() -> Path:
@@ -180,6 +214,7 @@ def tracked_ai_call(
         "feature": str(feature or "unknown"),
         "operation": str(operation or "unknown"),
         "model": str(model or "unknown"),
+        **_call_source(),
     }
     try:
         response = call()

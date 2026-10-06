@@ -757,8 +757,15 @@ def _apply_llm_diff(rule: ImprovementRule) -> ApplyResult:
 
     try:
         import httpx as _httpx
-        resp = _httpx.post(url, json=payload, headers=headers, timeout=120.0)
-        resp.raise_for_status()
+
+        from ai_runtime_client import tracked_ai_http_call
+
+        resp = tracked_ai_http_call(
+            lambda: _httpx.post(url, json=payload, headers=headers, timeout=120.0),
+            provider="google",
+            model=model,
+            feature="rule_engine_apply",
+        )
         result = resp.json()
     except Exception as e:
         return ApplyResult(rule.rev_id, False, f"Gemini API 呼び出しに失敗しました: {e}")
