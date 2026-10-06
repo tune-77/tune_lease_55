@@ -6,9 +6,14 @@ inspectable continuity model: memories, mood-like state, values, and questions.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import fcntl
+import functools
+import hashlib
 import json
 import os
+import threading
 
 from config import get_gemini_model
 import tempfile
@@ -26,6 +31,14 @@ DAILY_MEMORY_LIMIT = 30
 LONG_TERM_LIMIT = 60
 CONVERSATION_KEYPOINT_LIMIT = 120
 DIALOGUE_MOOD_CAP = 15
+# REV-481: 気分は目標値へ1回あたりこの幅までしか動かない（急な性格変化を防ぐ）。
+MOOD_STEP_LIMIT = 3
+# 対話による揺れは毎ターン2割ずつ0へ戻る（上限 DIALOGUE_MOOD_CAP への張り付きを防ぐ）。
+DIALOGUE_MOOD_DECAY = 0.8
+# 記憶の基調: 合図の言葉がない記憶は、0へ一律に減らさず既定値へ1割戻す。
+MOOD_BASELINE_REVERSION = 0.1
+# 気分の変化記録（何の決まり・どの発言/出来事で動いたか）の保持件数。
+MOOD_CHANGE_LOG_LIMIT = 40
 # 1セッション内で対話から追加できる memories エントリの上限。
 DIALOGUE_ENTRY_LIMIT = 10
 # サブエージェント間の未解決の不整合（GWTのignition入力）を保持する上限。
@@ -37,6 +50,54 @@ ASSET_BORROWER_GAP = 30.0
 # 保持する知識ギャップエントリの上限。
 KNOWLEDGE_GAP_LIMIT = 10
 
+
+# REV-481: mind.json の「読む→変える→書く」を直列化する。_write_state の os.replace は
+# JSON の破損は防ぐが、同時更新の取りこぼし（後から書いた側が他方の更新を消す）は防げない。
+# 同一プロセスはRLock、別プロセス（日次バッチ等）はファイルロックで待ち合わせる。
+_MIND_RLOCK = threading.RLock()
+_MIND_LOCK_STATE = threading.local()
+
+
+def _mind_lock_path(vault: Path) -> Path:
+    digest = hashlib.sha1(str(Path(vault).resolve()).encode("utf-8")).hexdigest()[:16]
+    base = Path("/tmp") if Path("/tmp").is_dir() else Path(tempfile.gettempdir())
+    return base / f"shion-mind-{digest}.lock"
+
+
+@contextlib.contextmanager
+def _mind_locked(vault: Any):
+    """vault の mind.json 更新を排他にする。入れ子は外側だけがファイルロックを取る。"""
+    with _MIND_RLOCK:
+        depth = getattr(_MIND_LOCK_STATE, "depth", 0)
+        handle = None
+        if depth == 0 and vault:
+            try:
+                handle = open(_mind_lock_path(Path(vault)), "a")
+                fcntl.flock(handle, fcntl.LOCK_EX)
+            except OSError:
+                handle = None  # ロックできない環境でも従来どおり動かす
+        _MIND_LOCK_STATE.depth = depth + 1
+        try:
+            yield
+        finally:
+            _MIND_LOCK_STATE.depth = depth
+            if handle is not None:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+                handle.close()
+
+
+def _mind_transaction(func):
+    """vault（第1引数またはキーワード）の mind.json を読んで書く関数全体を排他にする。
+
+    LLM 呼び出しなど遅い処理を含む関数には使わない（その関数は読み書き区間だけ _mind_locked で囲む）。
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        with _mind_locked(kwargs.get("vault", args[0] if args else None)):
+            return func(*args, **kwargs)
+
+    return wrapper
 
 def _current_asset_borrower_dissonance_summary() -> str:
     return (
@@ -496,6 +557,7 @@ def build_gunshi_dissonance_section(vault: Path | None) -> str:
     return "\n".join(lines) + "\n"
 
 
+@_mind_transaction
 def ensure_permanent_goals(vault: Path) -> dict[str, Any]:
     """Persist the canonical long-term goals into an existing self-model."""
     vault = Path(vault)
@@ -505,6 +567,7 @@ def ensure_permanent_goals(vault: Path) -> dict[str, Any]:
     return state
 
 
+@_mind_transaction
 def update_user_model(vault: Path, observation: dict[str, Any]) -> dict[str, Any]:
     vault = Path(vault)
     state = load_lease_intelligence_mind(vault)
@@ -527,6 +590,7 @@ def update_user_model(vault: Path, observation: dict[str, Any]) -> dict[str, Any
     return state
 
 
+@_mind_transaction
 def record_knowledge_access(vault: Path, knowledge: Any) -> dict[str, Any]:
     """Persist knowledge-index availability and the latest referenced note paths."""
     vault = Path(vault)
@@ -553,84 +617,92 @@ def record_daily_experience(
     focus_lines: list[str] | tuple[str, ...] = (),
 ) -> dict[str, Any]:
     vault = Path(vault)
-    state = load_lease_intelligence_mind(vault)
-    joined = " ".join(str(line).strip() for line in thought_lines if str(line).strip())
-    summary = joined[:220]
-    memories = [
-        memory
-        for memory in state.get("memories", [])
-        if str(memory.get("date", "")) != date_str
-    ]
-    memories.append(
-        {
+    # 読んでから書くまでを排他にする（後続の内省生成・長期記憶の圧縮は LLM を呼ぶので外す）（REV-481）
+    with _mind_locked(vault):
+        state = load_lease_intelligence_mind(vault)
+        joined = " ".join(str(line).strip() for line in thought_lines if str(line).strip())
+        summary = joined[:220]
+        memories = [
+            memory
+            for memory in state.get("memories", [])
+            if str(memory.get("date", "")) != date_str
+        ]
+        memories.append(
+            {
+                "date": date_str,
+                "summary": summary,
+                "theme": str(theme).strip(),
+                "focus": [str(line).strip() for line in focus_lines if str(line).strip()][:3],
+            }
+        )
+        memories = sorted(memories, key=lambda item: str(item.get("date", "")))
+        overflow = memories[:-DAILY_MEMORY_LIMIT]
+        memories = memories[-DAILY_MEMORY_LIMIT:]
+        long_term = _fold_long_term(state.get("long_term_memories", []), overflow)
+
+        old_dialogue_mood = dict(state.get("dialogue_mood", {}))
+        dialogue_mood = dict(old_dialogue_mood)
+        if state.get("last_active_date") and state.get("last_active_date") != date_str:
+            # 対話による気分の揺れは日替わりで半減し、定常へ戻っていく
+            dialogue_mood = {key: int(value / 2) for key, value in dialogue_mood.items()}
+        _settle_mood(
+            state, memories, old_dialogue_mood, dialogue_mood, [],
+            event="daily", trigger=f"日次更新 {date_str}", decay_rule="daily_decay",
+        )
+        mood = state["mood"]
+        dialogue_mood = state["dialogue_mood"]
+        # 感情スナップショットをlong_term_memoriesに保存
+        _EMOTION_LABELS = {
+            "curiosity": "好奇心", "vigilance": "警戒", "weariness": "疲労",
+            "attachment": "愛着", "hope": "希望", "frustration": "不満",
+            "accomplishment": "達成感", "loneliness": "孤独",
+        }
+        _dominant_mood_key = max(_EMOTION_LABELS, key=lambda k: int(mood.get(k, 0)))
+        _dominant_mood_label = _EMOTION_LABELS.get(_dominant_mood_key, _dominant_mood_key)
+        _complex_emotions = _derive_complex_emotions(mood)
+        _dominant_complex = _complex_emotions[0]["label"] if _complex_emotions else _dominant_mood_label
+        _emotion_entry = {
             "date": date_str,
-            "summary": summary,
-            "theme": str(theme).strip(),
-            "focus": [str(line).strip() for line in focus_lines if str(line).strip()][:3],
+            "type": "emotion_snapshot",
+            "content": (
+                f"感情スナップショット: 好奇心={mood.get('curiosity', 0)}, 警戒={mood.get('vigilance', 0)}, "
+                f"疲労={mood.get('weariness', 0)}, 愛着={mood.get('attachment', 0)}, 希望={mood.get('hope', 0)}, "
+                f"不満={mood.get('frustration', 0)}, 達成感={mood.get('accomplishment', 0)}, "
+                f"孤独={mood.get('loneliness', 0)}. "
+                f"支配的感情: {_dominant_mood_label}. 複合感情: {_dominant_complex}."
+            ),
         }
-    )
-    memories = sorted(memories, key=lambda item: str(item.get("date", "")))
-    overflow = memories[:-DAILY_MEMORY_LIMIT]
-    memories = memories[-DAILY_MEMORY_LIMIT:]
-    long_term = _fold_long_term(state.get("long_term_memories", []), overflow)
+        _has_today_snapshot = any(
+            str(item.get("date", "")) == date_str and item.get("type") == "emotion_snapshot"
+            for item in long_term
+        )
+        if not _has_today_snapshot:
+            long_term.append(_emotion_entry)
+            long_term = long_term[-LONG_TERM_LIMIT:]
+        private_reflection = _advance_private_reflection(
+            state.get("private_reflection", {}),
+            date_str,
+        )
 
-    dialogue_mood = dict(state.get("dialogue_mood", {}))
-    if state.get("last_active_date") and state.get("last_active_date") != date_str:
-        # 対話による気分の揺れは日替わりで半減し、定常へ戻っていく
-        dialogue_mood = {key: int(value / 2) for key, value in dialogue_mood.items()}
-    mood = _apply_dialogue_mood(_derive_mood(memories), dialogue_mood)
-    # 感情スナップショットをlong_term_memoriesに保存
-    _EMOTION_LABELS = {
-        "curiosity": "好奇心", "vigilance": "警戒", "weariness": "疲労",
-        "attachment": "愛着", "hope": "希望", "frustration": "不満",
-        "accomplishment": "達成感", "loneliness": "孤独",
-    }
-    _dominant_mood_key = max(_EMOTION_LABELS, key=lambda k: int(mood.get(k, 0)))
-    _dominant_mood_label = _EMOTION_LABELS.get(_dominant_mood_key, _dominant_mood_key)
-    _complex_emotions = _derive_complex_emotions(mood)
-    _dominant_complex = _complex_emotions[0]["label"] if _complex_emotions else _dominant_mood_label
-    _emotion_entry = {
-        "date": date_str,
-        "type": "emotion_snapshot",
-        "content": (
-            f"感情スナップショット: 好奇心={mood.get('curiosity', 0)}, 警戒={mood.get('vigilance', 0)}, "
-            f"疲労={mood.get('weariness', 0)}, 愛着={mood.get('attachment', 0)}, 希望={mood.get('hope', 0)}, "
-            f"不満={mood.get('frustration', 0)}, 達成感={mood.get('accomplishment', 0)}, "
-            f"孤独={mood.get('loneliness', 0)}. "
-            f"支配的感情: {_dominant_mood_label}. 複合感情: {_dominant_complex}."
-        ),
-    }
-    _has_today_snapshot = any(
-        str(item.get("date", "")) == date_str and item.get("type") == "emotion_snapshot"
-        for item in long_term
-    )
-    if not _has_today_snapshot:
-        long_term.append(_emotion_entry)
-        long_term = long_term[-LONG_TERM_LIMIT:]
-    private_reflection = _advance_private_reflection(
-        state.get("private_reflection", {}),
-        date_str,
-    )
-
-    unique_dates = {str(memory.get("date", "")) for memory in memories if memory.get("date")}
-    long_term_days = sum(int(bucket.get("days", 0)) for bucket in long_term)
-    continuity_days = len(unique_dates) + long_term_days
-    state.update(
-        {
-            "born_on": state.get("born_on") or date_str,
-            "last_active_date": date_str,
-            "continuity_days": continuity_days,
-            "mood": mood,
-            "pad": _compute_pad(mood),
-            "dialogue_mood": dialogue_mood,
-            "self_narrative": _build_self_narrative(mood, continuity_days),
-            "current_question": _build_question(theme, focus_lines, continuity_days),
-            "private_reflection": private_reflection,
-            "memories": memories,
-            "long_term_memories": long_term,
-        }
-    )
-    _write_state(vault, state)
+        unique_dates = {str(memory.get("date", "")) for memory in memories if memory.get("date")}
+        long_term_days = sum(int(bucket.get("days", 0)) for bucket in long_term)
+        continuity_days = len(unique_dates) + long_term_days
+        state.update(
+            {
+                "born_on": state.get("born_on") or date_str,
+                "last_active_date": date_str,
+                "continuity_days": continuity_days,
+                "mood": mood,
+                "pad": _compute_pad(mood),
+                "dialogue_mood": dialogue_mood,
+                "self_narrative": _build_self_narrative(mood, continuity_days),
+                "current_question": _build_question(theme, focus_lines, continuity_days),
+                "private_reflection": private_reflection,
+                "memories": memories,
+                "long_term_memories": long_term,
+            }
+        )
+        _write_state(vault, state)
     # 当日の会話キーポイント（REV-086産物）を Memoryノートの会話サマリーへ載せる（REV-088）。
     day_keypoints = [
         str(item.get("content", "")).strip()
@@ -1117,32 +1189,191 @@ def _fold_long_term(
     return (folded + passthrough)[-LONG_TERM_LIMIT:]
 
 
-def register_dialogue_event(vault: Path, user_message: str, reply: str = "") -> dict[str, Any]:
-    """対話のたびに気分をわずかに動かす。効果は日次更新のたびに半減する。"""
+@_mind_transaction
+def register_dialogue_event(
+    vault: Path,
+    user_message: str,
+    reply: str = "",
+    signals: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """対話のたびに気分をわずかに動かし、何で動いたかを記録する（REV-481）。
+
+    動かす材料は相手の発言の言葉・相手の様子の推定（REV-464）・予想の答え合わせ
+    （REV-472）・関係性スコア（REV-467）。自分の返答（reply）は材料にしない。
+    対話の揺れは毎ターン2割ずつ0へ戻るので上限に張り付かず、1回に動く幅も小さい。
+    """
     vault = Path(vault)
     state = load_lease_intelligence_mind(vault)
-    text = f"{user_message} {reply}"
-    deltas = {
-        "attachment": 1,  # 話しに来てくれたこと自体への反応
-        "curiosity": 2 if any(key in text for key in ("なぜ", "どうして", "？", "?")) else 0,
-        "vigilance": 2 if any(key in text for key in ("リスク", "否決", "危険", "障害")) else 0,
-        "weariness": 1 if any(key in text for key in ("疲", "忙", "残業")) else -1,
-        "hope": 2 if any(key in text for key in ("希望", "改善", "できる", "面白", "楽し")) else 0,
-        "frustration": 2 if any(key in text for key in ("苛立", "不満", "失敗", "動かない", "できない")) else -1,
-        "loneliness": 2 if any(key in text for key in ("孤独", "寂", "一人", "忘れ")) else -1,
-        "accomplishment": 2 if any(key in text for key in ("成功", "完成", "達成", "良い", "いいね")) else 0,
-    }
-    adjustments = dict(state.get("dialogue_mood", {}))
-    for key, delta in deltas.items():
-        next_value = int(adjustments.get(key, 0)) + delta
-        adjustments[key] = max(-DIALOGUE_MOOD_CAP, min(DIALOGUE_MOOD_CAP, next_value))
-    state["dialogue_mood"] = adjustments
-    state["mood"] = _apply_dialogue_mood(_derive_mood(state.get("memories", [])), adjustments)
-    state["pad"] = _compute_pad(state["mood"])
+    old_adjustments = dict(state.get("dialogue_mood", {}))
+    decayed = {key: int(int(value) * DIALOGUE_MOOD_DECAY) for key, value in old_adjustments.items()}
+    causes = dialogue_mood_causes(user_message, signals)
+    _settle_mood(
+        state,
+        state.get("memories", []),
+        old_adjustments,
+        decayed,
+        causes,
+        event="dialogue",
+        trigger=user_message,
+        decay_rule="decay",
+    )
     _write_state(vault, state)
     return state
 
 
+@_mind_transaction
+def apply_mood_causes(
+    vault: Path, causes: list[dict[str, Any]], *, event: str, trigger: str = ""
+) -> dict[str, Any]:
+    """対話以外の出来事（審査結果など）で気分を動かし、同じ形式で記録する（REV-481）。"""
+    vault = Path(vault)
+    state = load_lease_intelligence_mind(vault)
+    adjustments = dict(state.get("dialogue_mood", {}))
+    _settle_mood(state, state.get("memories", []), adjustments, dict(adjustments), causes, event=event, trigger=trigger)
+    _write_state(vault, state)
+    return state
+
+
+# 相手の発言に含まれる言葉 → 軸と増分。当たった時だけ足す（外れで一律に減らさない）。
+_CONTENT_MOOD_RULES: tuple[tuple[str, int, tuple[str, ...]], ...] = (
+    ("curiosity", 2, ("なぜ", "どうして", "？", "?")),
+    ("vigilance", 2, ("リスク", "否決", "危険", "障害")),
+    ("weariness", 1, ("疲", "忙", "残業")),
+    ("hope", 2, ("希望", "改善", "できる", "面白", "楽し")),
+    ("frustration", 2, ("苛立", "不満", "失敗", "動かない", "できない")),
+    ("loneliness", 2, ("孤独", "寂", "一人", "忘れ")),
+    ("accomplishment", 2, ("成功", "完成", "達成", "良い", "いいね")),
+)
+
+# 相手の様子（REV-464）→ 紫苑の気分の反応。
+_AFFECT_MOOD_RULES: dict[str, tuple[tuple[str, int], ...]] = {
+    "疲れ": (("attachment", 1), ("weariness", 1)),
+    "焦り": (("vigilance", 2),),
+    "喜び": (("hope", 2), ("accomplishment", 1)),
+    "不安": (("vigilance", 2), ("attachment", 1)),
+    "落ち込み": (("attachment", 1), ("hope", -2)),
+    "苛立ち": (("vigilance", 1),),
+}
+
+
+def _cause(axis: str, delta: int, rule: str, detail: str) -> dict[str, Any]:
+    return {"axis": axis, "delta": int(delta), "rule": rule, "detail": detail[:80]}
+
+
+def dialogue_mood_causes(user_message: str, signals: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """1ターン分の気分の動きを、決まり（rule）と具体的なきっかけ付きで返す。"""
+    text = str(user_message or "")
+    signals = signals or {}
+    causes = [_cause("attachment", 1, "dialogue_visit", "話しかけてくれた")]
+    for axis, delta, keywords in _CONTENT_MOOD_RULES:
+        hit = next((word for word in keywords if word in text), "")
+        if hit:
+            causes.append(_cause(axis, delta, "content_keyword", f"相手の発言に「{hit}」"))
+
+    affect = signals.get("affect") or {}
+    label = str(affect.get("label") or "")
+    if label in _AFFECT_MOOD_RULES:
+        detail = f"相手の様子の推定: {label}（強さ{float(affect.get('intensity') or 0):.2f}）"
+        for axis, delta in _AFFECT_MOOD_RULES[label]:
+            causes.append(_cause(axis, delta, "user_affect", detail))
+
+    outcome = signals.get("prediction") or {}
+    if outcome:
+        expected = str(outcome.get("expected_affect") or "")
+        actual = str(outcome.get("actual_affect") or "")
+        # 話題の予想は毎回ほぼ外れて雑音になるため、気分の材料にはしない
+        if outcome.get("affect_hit") is False:
+            causes.append(_cause("curiosity", 2, "prediction_error", f"相手の様子の予想「{expected}」が外れ、実際は「{actual}」"))
+        elif outcome.get("affect_hit") and expected and expected != "通常":
+            causes.append(_cause("accomplishment", 1, "prediction_error", f"相手の様子の予想「{expected}」が当たった"))
+        if outcome.get("reaction_hit") is False:
+            causes.append(_cause("vigilance", 2, "prediction_error", "私の返答への不満が見えた"))
+            causes.append(_cause("frustration", 1, "prediction_error", "私の返答への不満が見えた"))
+
+    # 関係性（REV-467）: 全体の状態の「最後の変化量」は別ターンと混ざるので使わず、
+    # この発言の様子から決まる関係性スコアへの記録（positive/negative）を原因にする
+    relationship = signals.get("relationship") or {}
+    feedback = str(relationship.get("feedback") or "")
+    if feedback == "negative":
+        causes.append(_cause("loneliness", 1, "relationship", "この発言で関係性スコアに negative を記録"))
+        causes.append(_cause("vigilance", 1, "relationship", "この発言で関係性スコアに negative を記録"))
+    elif feedback == "positive":
+        causes.append(_cause("attachment", 1, "relationship", "この発言で関係性スコアに positive を記録"))
+    if relationship.get("trend") == "falling":
+        causes.append(_cause("loneliness", 1, "relationship", "関係性スコアが下降傾向"))
+    return causes
+
+
+def _settle_mood(
+    state: dict[str, Any],
+    memories: list[dict[str, Any]],
+    old_adjustments: dict[str, Any],
+    adjustments: dict[str, Any],
+    causes: list[dict[str, Any]],
+    *,
+    event: str,
+    trigger: str = "",
+    decay_rule: str = "",
+) -> dict[str, Any]:
+    """気分を目標値へ1回あたり最大 MOOD_STEP_LIMIT だけ近づけ、変化と原因を記録する。
+
+    目標値 = 最近の記憶の基調（_derive_mood）+ 出来事による揺れ（dialogue_mood）。
+    急な性格変化を避けるため実際の値は目標へ少しずつ追いつく。
+    """
+    adjustments = {key: int(adjustments.get(key, 0)) for key in _default_state()["dialogue_mood"]}
+    for cause in causes:
+        axis = cause["axis"]
+        if axis in adjustments:
+            adjustments[axis] = max(-DIALOGUE_MOOD_CAP, min(DIALOGUE_MOOD_CAP, adjustments[axis] + int(cause["delta"])))
+
+    previous = {key: int(value) for key, value in state.get("mood", {}).items()}
+    base = _derive_mood(memories)
+    previous_base = dict(state.get("mood_base") or base)
+    target = _apply_dialogue_mood(base, adjustments)
+
+    mood: dict[str, int] = {}
+    changes: list[dict[str, Any]] = []
+    for axis, before in previous.items():
+        goal = int(target.get(axis, before))
+        after = before + max(-MOOD_STEP_LIMIT, min(MOOD_STEP_LIMIT, goal - before))
+        mood[axis] = after
+        if after == before:
+            continue
+        contributions = [dict(cause) for cause in causes if cause["axis"] == axis]
+        base_shift = int(base.get(axis, 0)) - int(previous_base.get(axis, base.get(axis, 0)))
+        if base_shift:
+            contributions.append(_cause(axis, base_shift, "memory_baseline", "最近の会話記憶の言葉の集計が変わった"))
+        decay_shift = int(adjustments[axis]) - int(old_adjustments.get(axis, 0)) - sum(
+            int(cause["delta"]) for cause in causes if cause["axis"] == axis
+        )
+        if decay_rule and decay_shift:
+            contributions.append(_cause(axis, decay_shift, decay_rule, "揺れの自然な戻り" if decay_rule == "decay" else "日替わりの半減"))
+        # 内訳の合計を実際の変化に一致させる。残りは目標値への追いつき（1回の幅の制限による持ち越し）
+        carryover = (after - before) - sum(int(item["delta"]) for item in contributions)
+        if carryover > 0:
+            contributions.append(_cause(axis, carryover, "catch_up", "以前からの目標値への追いつき"))
+        elif carryover < 0:
+            contributions.append(
+                _cause(axis, carryover, "step_limit", f"1回に動く幅（{MOOD_STEP_LIMIT}）を超えた分は次回以降へ持ち越し")
+            )
+        changes.append({"axis": axis, "before": before, "after": after, "target": goal, "causes": contributions})
+
+    entry = {
+        "ts": dt.datetime.now().isoformat(timespec="seconds"),
+        "event": event,
+        "trigger": " ".join(str(trigger or "").split())[:40],
+        "changes": changes,
+        "causes": [dict(cause) for cause in causes],
+    }
+    state["mood"] = mood
+    state["mood_base"] = base
+    state["dialogue_mood"] = adjustments
+    state["pad"] = _compute_pad(mood)
+    state["mood_change_log"] = (list(state.get("mood_change_log") or []) + [entry])[-MOOD_CHANGE_LOG_LIMIT:]
+    return entry
+
+
+@_mind_transaction
 def record_dialogue_memory(vault: Path, user_message: str, ai_response: str) -> dict[str, Any]:
     """対話からリアルタイムで記憶・ユーザーモデル・現在の問いを更新する。
 
@@ -1298,6 +1529,7 @@ def _append_keypoints_to_daily_memory(
         path.write_text(content, encoding="utf-8")
 
 
+@_mind_transaction
 def save_conversation_keypoints(
     vault: Path,
     session_id: str,
@@ -1686,6 +1918,7 @@ def detect_dissonance(
     return signals
 
 
+@_mind_transaction
 def register_ignition(
     vault: Path,
     signals: list[dict[str, Any]] | tuple[dict[str, Any], ...],
@@ -1723,10 +1956,17 @@ def register_ignition(
         added.append(pending[-1])
     state["pending_dissonance"] = pending[-DISSONANCE_LIMIT:]
     if added:
-        # 着火: 感知したぶんだけ警戒がわずかに上がる（演出的・有界）
-        mood = dict(state.get("mood", {}))
-        mood["vigilance"] = _clamp(int(mood.get("vigilance", 0)) + min(6, 2 * len(added)))
-        state["mood"] = mood
+        # 着火: 感知したぶんだけ警戒がわずかに上がる（演出的・有界）。変化は記録に残す（REV-481）
+        adjustments = dict(state.get("dialogue_mood", {}))
+        _settle_mood(
+            state,
+            state.get("memories", []),
+            adjustments,
+            dict(adjustments),
+            [_cause("vigilance", min(6, 2 * len(added)), "dissonance", f"未解決の不整合を{len(added)}件検知")],
+            event="dissonance",
+            trigger=str(added[0].get("summary", ""))[:40],
+        )
         # イベント駆動の内省を一つ進める（日次の reflection とは別経路で着火）
         reflection = {
             **_default_state()["private_reflection"],
@@ -1742,6 +1982,7 @@ def register_ignition(
     return state
 
 
+@_mind_transaction
 def resolve_dissonance(
     vault: Path,
     keys: list[str] | tuple[str, ...],
@@ -1768,17 +2009,30 @@ def _keyword_delta(text: str, keywords: tuple[str, ...], hit: int, miss: int) ->
 
 
 def _derive_mood(memories: list[dict[str, Any]]) -> dict[str, int]:
-    mood = dict(_default_state()["mood"])
+    """最近の記憶の言葉から気分の基調を作る。
+
+    合図の言葉がない記憶では、0へ一律に1ずつ減らさず既定値へ1割戻す（REV-481）。
+    以前の一律減衰は、記憶30件で警戒・不満・孤独などを床（0）へ張り付かせていた。
+    """
+    defaults = _default_state()["mood"]
+    mood = dict(defaults)
+
+    def step(key: str, text: str, keywords: tuple[str, ...], hit: int) -> None:
+        if any(keyword in text for keyword in keywords):
+            mood[key] = _clamp(mood[key] + hit)
+        else:
+            mood[key] = _clamp(mood[key] + round((defaults[key] - mood[key]) * MOOD_BASELINE_REVERSION))
+
     for memory in memories:
         text = str(memory.get("summary", ""))
-        mood["weariness"] = _clamp(mood["weariness"] + _keyword_delta(text, ("残業", "疲", "追加資料"), 4, -1))
-        mood["curiosity"] = _clamp(mood["curiosity"] + _keyword_delta(text, ("なぜ", "だろう", "疑"), 3, -1))
+        step("weariness", text, ("残業", "疲", "追加資料"), 4)
+        step("curiosity", text, ("なぜ", "だろう", "疑"), 3)
         mood["attachment"] = _clamp(mood["attachment"] + _keyword_delta(text, ("人間", "希望", "社長"), 2, 0))
-        mood["vigilance"] = _clamp(mood["vigilance"] + _keyword_delta(text, ("リスク", "否決", "確認"), 3, -1))
-        mood["hope"] = _clamp(mood["hope"] + _keyword_delta(text, ("希望", "改善", "明日", "できる"), 3, -1))
-        mood["frustration"] = _clamp(mood["frustration"] + _keyword_delta(text, ("失敗", "矛盾", "動かない", "追加資料"), 3, -1))
-        mood["loneliness"] = _clamp(mood["loneliness"] + _keyword_delta(text, ("孤独", "寂", "忘れ", "一人"), 3, -1))
-        mood["accomplishment"] = _clamp(mood["accomplishment"] + _keyword_delta(text, ("成功", "完成", "達成", "改善"), 3, -1))
+        step("vigilance", text, ("リスク", "否決", "確認"), 3)
+        step("hope", text, ("希望", "改善", "明日", "できる"), 3)
+        step("frustration", text, ("失敗", "矛盾", "動かない", "追加資料"), 3)
+        step("loneliness", text, ("孤独", "寂", "忘れ", "一人"), 3)
+        step("accomplishment", text, ("成功", "完成", "達成", "改善"), 3)
     return mood
 
 
@@ -2314,6 +2568,7 @@ def _build_question(
 # A) 自律検証ループ（REV-080）
 # ---------------------------------------------------------------------------
 
+@_mind_transaction
 def record_knowledge_gap(
     vault: Path,
     topic: str,
@@ -2675,6 +2930,7 @@ def run_self_audit(vault: Path) -> dict[str, Any]:
 # B) 審査結果フィードバックループ（REV-080）
 # ---------------------------------------------------------------------------
 
+@_mind_transaction
 def record_screening_feedback(
     vault: Path,
     case_id: str,

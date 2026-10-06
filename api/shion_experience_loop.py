@@ -26,6 +26,8 @@ DEFAULT_EVENT_LOG = REPO_ROOT / "data" / "shion_experience_events.jsonl"
 _STATE_LOCK = threading.Lock()
 
 _MOOD_KEYS = ("curiosity", "vigilance", "attachment", "frustration", "accomplishment")
+# 経験ごとに既定値へ戻す割合（REV-481: 上限・下限への張り付き防止）
+EXPERIENCE_MOOD_REVERSION = 0.1
 
 # 想起ルート（api/shion_memory_taxonomy.RECALL_ROUTES の語彙）→ confidence キーの対応。
 # 従来は `route in confidence` で判定しており、ルート名（case_screening 等）と
@@ -232,12 +234,17 @@ def infer_experience_signals(
 def update_experience_state(state: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
     updated = load_like_state(state)
     signals = event.get("signals") or {}
-    mood = dict(updated.get("mood") or {})
-    mood["curiosity"] = _clamp(mood.get("curiosity", 60) + signals.get("relationship_depth", 0) + signals.get("uncertainty", 0))
-    mood["vigilance"] = _clamp(mood.get("vigilance", 58) + signals.get("uncertainty", 0) + max(0, signals.get("practical_depth", 0) - 2))
-    mood["attachment"] = _clamp(mood.get("attachment", 55) + min(2, signals.get("relationship_depth", 0)))
-    mood["frustration"] = _clamp(mood.get("frustration", 20) + max(0, signals.get("implementation_pressure", 0) - 2) - 1)
-    mood["accomplishment"] = _clamp(mood.get("accomplishment", 34) + min(3, signals.get("practical_depth", 0)))
+    # 毎回、既定値へ1割戻してから足す（REV-481）。足すだけだと全軸が100に張り付いていた
+    defaults = default_experience_state()["mood"]
+    mood = {
+        key: _clamp(int(value) + round((defaults.get(key, int(value)) - int(value)) * EXPERIENCE_MOOD_REVERSION))
+        for key, value in {**defaults, **dict(updated.get("mood") or {})}.items()
+    }
+    mood["curiosity"] = _clamp(mood["curiosity"] + signals.get("relationship_depth", 0) + signals.get("uncertainty", 0))
+    mood["vigilance"] = _clamp(mood["vigilance"] + signals.get("uncertainty", 0) + max(0, signals.get("practical_depth", 0) - 2))
+    mood["attachment"] = _clamp(mood["attachment"] + min(2, signals.get("relationship_depth", 0)))
+    mood["frustration"] = _clamp(mood["frustration"] + max(0, signals.get("implementation_pressure", 0) - 2))
+    mood["accomplishment"] = _clamp(mood["accomplishment"] + min(3, signals.get("practical_depth", 0)))
     updated["mood"] = mood
 
     confidence = dict(updated.get("confidence") or {})
