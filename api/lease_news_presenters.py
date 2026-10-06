@@ -54,6 +54,15 @@ def lease_news_brief_to_dict(brief):
     }
 
 
+def _illustration_api_url(url: str) -> str:
+    try:
+        from api.shion_illustration_gallery import public_url_to_api
+
+        return public_url_to_api(url)
+    except Exception:
+        return url or ""
+
+
 def lease_news_reflection_to_dict(reflection):
     if not reflection or not getattr(reflection, "available", False):
         return {"available": False}
@@ -66,7 +75,8 @@ def lease_news_reflection_to_dict(reflection):
         "headline": getattr(reflection, "headline", ""),
         "thought_lines": list(getattr(reflection, "thought_lines", ()) or ()),
         "tomorrow_lines": list(getattr(reflection, "tomorrow_lines", ()) or ()),
-        "illustration_url": getattr(reflection, "illustration_url", ""),
+        # public は next start でビルド後の追加分が404になるので、実在する画像だけ配信APIのURLにする（REV-488）
+        "illustration_url": _illustration_api_url(getattr(reflection, "illustration_url", "")),
         "continuity_days": getattr(reflection, "continuity_days", 0),
         "dominant_mood": getattr(reflection, "dominant_mood", ""),
         "self_narrative": getattr(reflection, "self_narrative", ""),

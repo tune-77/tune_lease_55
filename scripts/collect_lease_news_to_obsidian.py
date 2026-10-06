@@ -1548,12 +1548,17 @@ def main(argv: list[str] | None = None) -> int:
                 generate_daily_grumble_illustration,
             )
 
-            reflection = get_latest_lease_news_reflection(vault=vault)
-            illustration_url = generate_daily_grumble_illustration(
-                date_str=date_str,
-                lines=list(reflection.thought_lines),
-            )
-            print(f"reflection_illustration={illustration_url}")
+            # 毎朝のイラスト生成は既定で停止（REV-488・Gemini 費用削減）。過去分はランダム表示で使う。
+            # 再開は SHION_DAILY_ILLUSTRATION_ENABLED=1。古い画像のアーカイブは従来どおり続ける。
+            if os.environ.get("SHION_DAILY_ILLUSTRATION_ENABLED", "").strip().lower() in {"1", "true", "on", "yes"}:
+                reflection = get_latest_lease_news_reflection(vault=vault)
+                illustration_url = generate_daily_grumble_illustration(
+                    date_str=date_str,
+                    lines=list(reflection.thought_lines),
+                )
+                print(f"reflection_illustration={illustration_url}")
+            else:
+                print("reflection_illustration=skipped(SHION_DAILY_ILLUSTRATION_ENABLED off)")
             archived_images = archive_old_grumble_illustrations(
                 vault=vault,
                 keep_days=30,
