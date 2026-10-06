@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { Music, Loader2 } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import ShionIllustration from "@/components/chat/ShionIllustration";
 
 type Props = {
   userId: string;
@@ -77,6 +78,8 @@ export default function ShionSingButton({ userId, theme, disabled }: Props) {
           <div className="px-4 py-2 border-b border-slate-100 text-sm font-medium text-slate-700">
             {loading ? "紫苑が歌を準備中…（数十秒）" : song ? `♪ ${song.title}` : "歌唱"}
           </div>
+          {/* 合成を待つ間だけ過去イラストを1枚。歌が届いたら消える（REV-488） */}
+          {loading && <ShionIllustration mode="random" className="px-4 pt-2" />}
           {error && <p className="px-4 py-2 text-xs text-rose-600">{error}</p>}
           {song && (
             <div className="px-4 py-2 space-y-2">

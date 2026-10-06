@@ -11,6 +11,7 @@ import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
 import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
+import ShionIllustration from "@/components/chat/ShionIllustration";
 import LeasePaymentSimulator from "@/components/analysis/LeasePaymentSimulator";
 import { isImeComposing } from "@/lib/keyboard";
 import { isSingRequest } from "@/lib/shionSing";
@@ -2337,9 +2338,13 @@ export default function LeaseIntelligencePage() {
             {loading && (
               <div className="flex items-center gap-3 text-sm text-violet-700">
                 {singer.singing ? (
-                  <>
-                    <Music className="h-5 w-5 animate-pulse" /> 紫苑が歌を準備中…（作詞・作曲・歌唱で数十秒かかります）
-                  </>
+                  <div className="flex flex-col gap-2">
+                    <span className="flex items-center gap-3">
+                      <Music className="h-5 w-5 animate-pulse" /> 紫苑が歌を準備中…（作詞・作曲・歌唱で数十秒かかります）
+                    </span>
+                    {/* 待つ間だけ過去イラストを1枚。歌が流れ始めると消える（REV-488） */}
+                    <ShionIllustration mode="random" className="w-64 max-w-full" />
+                  </div>
                 ) : (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" /> 考えています…
