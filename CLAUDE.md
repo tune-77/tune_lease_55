@@ -35,6 +35,18 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 
 ---
 
+## Gemini 利用の検証ルール（REV-485）
+
+理由: 2026-10 の Gemini 費用の過半が、開発時の再生検証・実験で本物の対話経路（1回 約1.9万トークン）を繰り返し叩いたことによる。月2,000円の予算に収めるため。
+適用条件: 返答の後処理・プロンプト・記憶などを検証・実験する時（worktree・`python -`/`-c`・`eval_|evaluate_|experiment_|replay_|compare_|bench_|probe_` スクリプトの手動実行）。
+削除条件: 月の Gemini 費用が予算の半分以下で安定し、`ai_budget.py` の検証クラス判定が不要になった時。
+
+- 既定は **録画済み返答の再生**: `python scripts/replay_recorded_replies.py --processor <名前> [--limit 20]`（Gemini を呼ばない・採点は Jev・上限100件）
+- 本物の Gemini 呼び出しが要る検証だけ `AI_LIVE_VERIFY=1` を明示する。1日 `AI_VERIFY_MAX_CALLS`（既定30）回まで、当日費用が1日予算の60%を超えると止まる
+- 1日予算は `AI_DAILY_BUDGET_YEN`（既定50円）。紫苑のチャット・審査は止めず、検証→夜間・自発系の順に止める。前日の推定と止めた件数は朝報に出る
+
+---
+
 ## プロジェクト構成・開発ルール（Next.js 16 + FastAPI + SQLite）
 
 理由: 複数の作業経路（Next/FastAPI/自動改善/Serena）混在とVault・改善履歴の増加により、入口を固定し出典なき推測を防がないと調査・レビューが散る。
