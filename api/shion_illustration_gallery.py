@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import json
 import random
 import re
 import shutil
@@ -118,10 +119,34 @@ def pick(mode: str, names: list[str], today: dt.date | None = None) -> str | Non
     return random.choice(names)
 
 
-def payload(name: str | None) -> dict:
+CAPTIONS_FILE = "captions.json"
+
+
+def _captions(gallery_dir: Path | None = None) -> dict[str, str]:
+    try:
+        data = json.loads(((gallery_dir or GALLERY_DIR) / CAPTIONS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_caption(name: str, caption: str, gallery_dir: Path | None = None) -> None:
+    """週1回の生成（REV-490）で、題材の一言を画像と一緒に残す。"""
+    directory = gallery_dir or GALLERY_DIR
+    captions = _captions(directory)
+    captions[name] = str(caption or "")[:40]
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / CAPTIONS_FILE).write_text(json.dumps(captions, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def payload(name: str | None, gallery_dir: Path | None = None) -> dict:
     if not name:
         return {"available": False}
-    return {"available": True, "date": NAME_RE.match(name).group(1), "url": FILE_URL_PREFIX + name}
+    result = {"available": True, "date": NAME_RE.match(name).group(1), "url": FILE_URL_PREFIX + name}
+    caption = _captions(gallery_dir).get(name)
+    if caption:
+        result["caption"] = caption
+    return result
 
 
 def public_url_to_api(url: str) -> str:
