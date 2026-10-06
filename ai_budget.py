@@ -1,8 +1,8 @@
 """Gemini 利用の1日予算ガード（REV-485）。
 
 data/ai_usage.jsonl から当日（JST）の概算費用を出し、上限に近づいたら
-検証 → 夜間ジョブ・自発系 の順に呼び出しを止める。紫苑のチャットと審査
-（essential）は止めない。止めた呼び出しと上限到達は data/ai_budget_events.jsonl
+検証 → 夜間ジョブ・記憶に関わらない自発系 の順に呼び出しを止める。紫苑のチャットと
+審査（essential）、記憶・内省（memory）は止めない。止めた呼び出しと上限到達は data/ai_budget_events.jsonl
 に残し、朝報（aurion_core_daily）に出す。本文・引数は記録しない。
 
 環境変数:
@@ -28,25 +28,38 @@ from typing import Any, Iterable
 JST = timezone(timedelta(hours=9))
 
 ESSENTIAL = "essential"
+MEMORY = "memory"
 PROACTIVE = "proactive"
 NIGHTLY = "nightly"
 VERIFICATION = "verification"
-CLASSES = (ESSENTIAL, PROACTIVE, NIGHTLY, VERIFICATION)
+CLASSES = (ESSENTIAL, MEMORY, PROACTIVE, NIGHTLY, VERIFICATION)
 
-# 当日費用が予算のこの割合に達したら止める（essential は止めない）
+# 当日費用が予算のこの割合に達したら止める（essential・memory は止めない）
 STOP_RATIO = {VERIFICATION: 0.6, PROACTIVE: 0.8, NIGHTLY: 0.8}
 
-# 自発系: 紫苑が自分から生成するもの（好奇心・内省・ループ・日次画像など）
-PROACTIVE_FEATURES = frozenset({
+# 記憶・内省系: 上限到達時も止めない（ユーザー方針 2026-10-07「記憶系はいじらない」）。
+# 夜間に launchd から動いても、feature かスクリプト名で記憶系と分かれば止めない。
+MEMORY_FEATURES = frozenset({
+    "chat_memory",
+    "chat_memory_tools",
+    "chat_memory_summary",
+    "chat_memory_continuation",
     "lease_intelligence_reflection",  # Private Reflection
     "mind_reflection",
     "mind_reflection_legacy_fallback",
-    "shion_activity_reflection",  # 行動観察からの理解と好奇心
+    "mind_classification",
+    "mind_classification_rest_fallback",
+    "shion_activity_reflection",  # 行動観察からの理解と好奇心（記録に残る）
+    "shion_self_analysis",
+    "world_view_update",  # mind.json の世界の読み
+    "loop_engineering",  # 記憶の昇格候補抽出・想起の並べ替えでも使う共通口
+})
+_MEMORY_SCRIPT_RE = re.compile(r"(memory|reflection|mind|recall|experience)")
+# 記憶に関わらない自発系だけ止める（日次イラスト・利用ループの提案）
+PROACTIVE_FEATURES = frozenset({
     "usage_loop_engineering",
     "novelist_daily_image",
     "novelist_daily_image_fallback",
-    "world_view_update",
-    "shion_self_analysis",
 })
 # 夜間・バッチ系
 NIGHTLY_FEATURES = frozenset({
@@ -126,6 +139,8 @@ def call_class(feature: str, source: dict[str, str] | None = None) -> str:
         return VERIFICATION
     if not scheduled and _VERIFY_SCRIPT_RE.match(entry):
         return VERIFICATION
+    if feature in MEMORY_FEATURES or _MEMORY_SCRIPT_RE.search(entry):
+        return MEMORY
     if feature in PROACTIVE_FEATURES:
         return PROACTIVE
     if scheduled or feature in NIGHTLY_FEATURES:
@@ -236,8 +251,8 @@ def _note_limit_reached(status: dict[str, Any]) -> None:
 
 
 def check(feature: str, cls: str) -> None:
-    """止めるべき呼び出しなら AIBudgetBlocked。essential は常に通す。"""
-    if cls == ESSENTIAL or not guard_enabled():
+    """止めるべき呼び出しなら AIBudgetBlocked。essential・memory は常に通す。"""
+    if cls in (ESSENTIAL, MEMORY) or not guard_enabled():
         return
     status = today_status()
     _note_limit_reached(status)
@@ -266,7 +281,7 @@ def check(feature: str, cls: str) -> None:
 
 def deferred(cls: str) -> bool:
     """Gemini 以外（Jev 照合など）の自発処理を、同じ基準で先送りするか。"""
-    if cls == ESSENTIAL or not guard_enabled():
+    if cls in (ESSENTIAL, MEMORY) or not guard_enabled():
         return False
     try:
         status = today_status()

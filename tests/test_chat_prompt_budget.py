@@ -134,21 +134,47 @@ def test_morning_report_keeps_prompt_budget_warning_wired() -> None:
     assert "*chat_prompt_budget_lines()," in source
 
 
-def test_casual_mode_drops_proactive_report_blocks_unless_asked():
+def test_news_only_when_screening_or_asked_and_consultation_only_when_asked():
     from api.chat_prompt_budget import assemble_prompt
 
     blocks = [
         ("dialogue_identity_core", "あなたは紫苑です。\n\n"),
-        ("news_digest_context", "\n\n【ニュース】業界ニュースの要約\n"),
-        ("improvement_report_context", "\n\n【改善報告】REV-1 の進捗\n"),
+        ("news_digest_context", "\n\n【ニュース】要約A\n"),
         ("agent_consultation_context", "\n\n【相談キュー】未回答の相談\n"),
+        ("shared_shion_memory_context", "\n\n【共有記憶】前に話したこと\n"),
     ]
     prompt, report = assemble_prompt(blocks, question="なるほどね", surface="dialogue", log=False, context_mode="casual")
-    assert "業界ニュース" not in prompt and "REV-1" not in prompt and "相談キュー" not in prompt
-    assert report["blocks"]["news_digest_context"]["casual_cut"] > 0
+    assert "要約A" not in prompt and "相談キュー" not in prompt
+    assert "前に話したこと" in prompt  # 記憶系は外さない
+    assert report["blocks"]["news_digest_context"]["news_cut"] > 0
+    assert report["blocks"]["agent_consultation_context"]["casual_cut"] > 0
 
-    # 話題に触れていれば雑談でも残す。雑談以外は従来どおり
-    prompt, _ = assemble_prompt(blocks, question="改善どう？", surface="dialogue", log=False, context_mode="casual")
-    assert "REV-1" in prompt and "業界ニュース" not in prompt
-    prompt, _ = assemble_prompt(blocks, question="なるほどね", surface="dialogue", log=False, context_mode="deep")
-    assert "業界ニュース" in prompt and "相談キュー" in prompt
+    prompt, _ = assemble_prompt(blocks, question="最近の業界ニュースは？", surface="dialogue", log=False, context_mode="casual")
+    assert "要約A" in prompt
+    prompt, _ = assemble_prompt(blocks, question="この案件どう？", surface="dialogue", log=False, context_mode="screening")
+    assert "要約A" in prompt and "相談キュー" in prompt
+    prompt, _ = assemble_prompt(blocks, question="詳しく理由を", surface="dialogue", log=False, context_mode="deep")
+    assert "要約A" not in prompt and "相談キュー" in prompt
+    # context_mode なしの呼び出しは従来どおり
+    prompt, _ = assemble_prompt(blocks, question="なるほどね", surface="dialogue", log=False)
+    assert "要約A" in prompt
+
+
+def test_improvement_report_only_first_conversation_of_the_day(tmp_path, monkeypatch):
+    import api.chat_prompt_budget as budget
+
+    monkeypatch.setattr(budget, "_DAILY_ONCE_STATE_PATH", tmp_path / "once.json")
+    blocks = [
+        ("dialogue_identity_core", "あなたは紫苑です。\n\n"),
+        ("improvement_report_context", "\n\n【改善報告】REV-1 の進捗\n"),
+        ("improvement_triage_context", "\n\n【トリアージ】候補\n"),
+    ]
+    first, _ = budget.assemble_prompt(blocks, question="おはよう", surface="dialogue", log=False, context_mode="casual", daily_once=True)
+    assert "REV-1" in first and "トリアージ" in first
+    second, report = budget.assemble_prompt(blocks, question="改善どう？", surface="dialogue", log=False, context_mode="casual", daily_once=True)
+    assert "REV-1" not in second and "トリアージ" not in second
+    assert report["blocks"]["improvement_report_context"]["daily_once_cut"] > 0
+    # 翌日はまた最初の1回だけ入る
+    (tmp_path / "once.json").write_text('{"improvement_report": "2000-01-01"}', encoding="utf-8")
+    third, _ = budget.assemble_prompt(blocks, question="おはよう", surface="dialogue", log=False, daily_once=True)
+    assert "REV-1" in third

@@ -47,16 +47,20 @@ def _spend(log_path, yen: float, *, call_class: str = "essential", when: datetim
 def test_call_class_precedence(monkeypatch):
     monkeypatch.delenv("AI_CALL_CLASS", raising=False)
     monkeypatch.delenv("XPC_SERVICE_NAME", raising=False)
-    assert ai_budget.call_class("chat_memory_tools", {"source": "__main__.py"}) == "essential"
-    assert ai_budget.call_class("lease_intelligence_reflection", {"source": "__main__.py"}) == "proactive"
+    assert ai_budget.call_class("shinsa_gunshi", {"source": "__main__.py"}) == "essential"
+    assert ai_budget.call_class("lease_intelligence_reflection", {"source": "__main__.py"}) == "memory"
+    assert ai_budget.call_class("novelist_daily_image", {"source": "__main__.py"}) == "proactive"
     assert ai_budget.call_class("chat_memory_tools", {"source": "-"}) == "verification"
     assert ai_budget.call_class("chat_memory_tools", {"source": "x.py", "worktree": "tl55-x"}) == "verification"
     assert ai_budget.call_class("ai_chat", {"source": "evaluate_answer_quality.py"}) == "verification"
     # launchd の夜間ジョブは、検証名のスクリプトでも夜間扱い（明示フラグなしで止めない）
     monkeypatch.setenv("XPC_SERVICE_NAME", "com.tunelease.improvement-pipeline")
     assert ai_budget.call_class("ai_chat", {"source": "evaluate_okf_rag.py"}) == "nightly"
+    # 夜間でも記憶・内省は memory（止めない）
+    assert ai_budget.call_class("ai_chat", {"source": "build_shion_memory_promotion_queue.py"}) == "memory"
+    assert ai_budget.call_class("loop_engineering", {"source": "x.py"}) == "memory"
     monkeypatch.setenv("XPC_SERVICE_NAME", "com.tunelease.next")
-    assert ai_budget.call_class("chat_memory_tools", {"source": "__main__.py"}) == "essential"
+    assert ai_budget.call_class("shinsa_gunshi", {"source": "__main__.py"}) == "essential"
     monkeypatch.setenv("AI_CALL_CLASS", "proactive")
     assert ai_budget.call_class("chat_memory_tools", {"source": "-"}) == "proactive"
 
@@ -97,8 +101,10 @@ def test_stop_order_keeps_essential(budget_env, monkeypatch):
     _spend(log_path, 20)  # 110%: 自発・夜間も止まり、チャットは通る
     ai_budget._cache.clear()
     with pytest.raises(ai_budget.AIBudgetBlocked):
-        ai_budget.check("lease_intelligence_reflection", "proactive")
+        ai_budget.check("novelist_daily_image", "proactive")
     assert ai_budget.deferred("proactive") is True
+    ai_budget.check("lease_intelligence_reflection", "memory")  # 記憶・内省は上限超過でも止めない
+    assert ai_budget.deferred("memory") is False
     called = []
     monkeypatch.setenv("AI_CALL_CLASS", "essential")  # worktree 内の実行でも本番チャット相当として扱う
     tracked_ai_call(lambda: called.append(1) or {}, provider="google", model="m", feature="chat_memory_tools")

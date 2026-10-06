@@ -6503,7 +6503,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             ],
             question=full_message,
             surface="dialogue",
-            context_mode=dialogue_mode,  # 雑談ではニュース・改善報告・相談キューを外す（REV-486）
+            context_mode=dialogue_mode,  # ニュースは関連時・相談キューは雑談で外す（REV-486/487）
+            daily_once=True,  # 改善レポートは1日1回、最初の会話だけ（REV-487）
             reserved_tail=merge_policy_blocks(_dialogue_policy),
         )
         consultation_ids: list[str] = []
@@ -7380,6 +7381,7 @@ def post_chat(req: ChatRequest):
                 question=search_text,
                 surface="next_chat_general",
                 reserved_tail=policy_prompt_context,
+                context_mode=context_mode,  # ニュースは審査・関連時だけ（REV-487）
             )
             log_prompt_composition(
                 surface="next_chat_general",
@@ -7858,6 +7860,7 @@ def post_chat(req: ChatRequest):
             question=search_text,
             surface="next_chat_rag",
             reserved_tail=policy_prompt_context,
+            context_mode=context_mode,  # ニュースは審査・関連時だけ（REV-487）
         )
         # 計測のみ。太りやすいブロックだけ名前を付け、残りは unaccounted_chars に出す。
         log_prompt_composition(

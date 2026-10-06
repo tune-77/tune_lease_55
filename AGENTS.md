@@ -14,7 +14,7 @@
 
 - 検証・実験で返答を作り直さない。既定は `python scripts/replay_recorded_replies.py --processor <name>`（録画済み返答の再生・Jev採点・Gemini呼び出しなし・上限100件）。
 - worktree・`python -`/`-c`・`eval_|evaluate_|experiment_|replay_|compare_|bench_|probe_` スクリプトからの Gemini 呼び出しは検証クラスとして `ai_budget.py` が止める。必要な時だけ `AI_LIVE_VERIFY=1`（1日 `AI_VERIFY_MAX_CALLS` 回まで）。
-- 1日予算 `AI_DAILY_BUDGET_YEN`（既定50円）。チャット・審査は止めない。
+- 1日予算 `AI_DAILY_BUDGET_YEN`（既定50円）。チャット・審査と記憶・内省は止めない。費用削減でプロンプトの記憶系ブロックを削らない（絞るのはニュース・改善レポート等の付加情報だけ）。
 
 ## AI Chat / Obsidian Search Rule
 

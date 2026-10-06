@@ -215,16 +215,50 @@ def _fit_reserved_tail(text: str, limit: int) -> str:
     return compact[:limit]
 
 
-# 雑談モードでは外す自発報告系ブロック（REV-486, Gemini 費用削減）。
-# 質問がその話題に触れている時だけ残す。
+# Gemini 費用削減（月2,000円目標）で、記憶以外の付加情報だけを絞る。記憶系ブロックは対象外。
+# ニュース（REV-487）: 審査の会話か、質問がニュース・市況に触れた時だけ入れる。
+NEWS_BLOCKS = frozenset({"news_digest_context", "news_focus_context", "news_brief_context", "news_actions_context"})
+NEWS_KEYWORDS = ("ニュース", "業界", "動向", "記事", "市況", "景気", "相場")
+# 相談キュー（REV-486）: 雑談では、質問が相談に触れた時だけ入れる。
 CASUAL_OPTIONAL_BLOCKS: dict[str, tuple[str, ...]] = {
-    "news_digest_context": ("ニュース", "業界", "動向", "記事"),
-    "improvement_report_context": ("改善", "REV", "パイプライン", "報告", "不具合", "バグ", "直し"),
-    "improvement_observability_context": ("改善", "REV", "パイプライン", "報告", "不具合", "バグ", "直し"),
-    "improvement_triage_context": ("改善", "REV", "トリアージ", "不具合", "バグ", "直し"),
     "agent_consultation_context": ("相談", "エージェント"),
     "reasoner_consultation_context": ("相談", "上位", "推論"),
 }
+# 改善レポート（REV-487）: 1日1回、その日の最初の会話だけ入れる（daily_once=True の呼び出し）。
+DAILY_ONCE_BLOCKS = frozenset({"improvement_report_context", "improvement_observability_context", "improvement_triage_context"})
+_DAILY_ONCE_STATE_PATH = Path(
+    os.environ.get("CHAT_DAILY_ONCE_STATE_PATH")
+    or Path(__file__).resolve().parents[1] / "data" / "chat_daily_once_state.json"
+)
+
+
+def _claim_daily_once(key: str, today: str) -> bool:
+    """その日まだ入れていなければ True を返して記録する（再起動をまたいでも1日1回）。"""
+    try:
+        state = json.loads(_DAILY_ONCE_STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    if state.get(key) == today:
+        return False
+    state[key] = today
+    try:
+        _DAILY_ONCE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _DAILY_ONCE_STATE_PATH.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+    return True
+
+
+def _optional_cut(name: str, text: str, question: str, context_mode: str) -> str:
+    """付加情報ブロックを外す理由（外さないなら空文字）。"""
+    if not text or not context_mode:
+        return ""
+    if name in NEWS_BLOCKS and context_mode != "screening" and not any(k in question for k in NEWS_KEYWORDS):
+        return "news_cut"
+    keywords = CASUAL_OPTIONAL_BLOCKS.get(name)
+    if context_mode == "casual" and keywords and not any(k in question for k in keywords):
+        return "casual_cut"
+    return ""
 
 
 def assemble_prompt(
@@ -236,10 +270,12 @@ def assemble_prompt(
     reserved_tail: str = "",
     log: bool = True,
     context_mode: str = "",
+    daily_once: bool = False,
 ) -> tuple[str, dict[str, Any]]:
     """(ブロック名, 本文) の並びから、予算内のプロンプトと落とした量のレポートを返す。
 
-    context_mode="casual" の時は CASUAL_OPTIONAL_BLOCKS を、質問がその話題に触れない限り外す。
+    context_mode を渡すとニュース・相談キューを関連時だけ入れ、daily_once=True なら
+    改善レポートを1日1回（その日の最初の会話）だけ入れる。記憶系ブロックは対象外。
     """
     if max_chars is None:
         env_name = "DIALOGUE_SYSTEM_PROMPT_MAX_CHARS" if surface.startswith("dialogue") else "CHAT_SYSTEM_PROMPT_MAX_CHARS"
@@ -256,11 +292,17 @@ def assemble_prompt(
         text = str(text or "")
         spec = SPECS.get(name, DEFAULT_SPEC)
         report[name] = {"tier": spec.tier, "orig": len(text), "dedup": 0, "budget_cut": 0, "overflow_cut": 0, "kept": 0}
-        keywords = CASUAL_OPTIONAL_BLOCKS.get(name)
-        if context_mode == "casual" and text and keywords and not any(k in question for k in keywords):
-            report[name]["casual_cut"] = len(text)
+        cut = _optional_cut(name, text, question, context_mode)
+        if cut:
+            report[name][cut] = len(text)
             text = ""
         texts[i] = text
+    if daily_once:
+        once_indices = [i for i, (name, _t) in enumerate(blocks) if name in DAILY_ONCE_BLOCKS and texts[i]]
+        if once_indices and not _claim_daily_once("improvement_report", dt.datetime.now().astimezone().date().isoformat()):
+            for i in once_indices:
+                report[blocks[i][0]]["daily_once_cut"] = len(texts[i])
+                texts[i] = ""
     original_occurrences: dict[str, list[tuple[int, str]]] = {}
     for i, (name, _text) in enumerate(blocks):
         if SPECS.get(name, DEFAULT_SPEC).tier == CORE:
