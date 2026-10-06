@@ -90,7 +90,13 @@ def test_anthropic_usage_is_normalized(tmp_path, monkeypatch):
 def test_extract_token_usage_accepts_rest_dict():
     assert extract_token_usage(
         {"usageMetadata": {"promptTokenCount": 4, "candidatesTokenCount": 6, "totalTokenCount": 10}}
-    ) == {"input_tokens": 4, "output_tokens": 6, "total_tokens": 10}
+    ) == {"input_tokens": 4, "output_tokens": 6, "total_tokens": 10, "cached_tokens": None}
+
+
+def test_extract_token_usage_reads_cached_tokens():
+    assert extract_token_usage(
+        {"usageMetadata": {"promptTokenCount": 100, "candidatesTokenCount": 5, "cachedContentTokenCount": 80}}
+    )["cached_tokens"] == 80
 
 
 def test_http_call_records_usage_and_preserves_response(tmp_path, monkeypatch):

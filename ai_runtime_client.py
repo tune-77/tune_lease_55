@@ -125,10 +125,21 @@ def extract_token_usage(response: Any) -> dict[str, int | None]:
     )
     if total_tokens is None and (input_tokens is not None or output_tokens is not None):
         total_tokens = (input_tokens or 0) + (output_tokens or 0)
+    # 入力のうちキャッシュから読まれた分（Gemini暗黙/明示キャッシュ・Anthropic cache read）。
+    # 入力単価の約1割で課金されるため、プロンプト順序変更などの効果判定に使う。
+    cached_tokens = _integer(
+        _field(
+            usage,
+            "cached_content_token_count",
+            "cachedContentTokenCount",
+            "cache_read_input_tokens",
+        )
+    )
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
+        "cached_tokens": cached_tokens,
     }
 
 
@@ -182,6 +193,7 @@ def tracked_ai_call(
                 "input_tokens": None,
                 "output_tokens": None,
                 "total_tokens": None,
+                "cached_tokens": None,
             }
         )
         raise
@@ -189,7 +201,7 @@ def tracked_ai_call(
     try:
         tokens = token_extractor(response)
     except Exception:
-        tokens = {"input_tokens": None, "output_tokens": None, "total_tokens": None}
+        tokens = {"input_tokens": None, "output_tokens": None, "total_tokens": None, "cached_tokens": None}
     _append_usage(
         {
             **base,
