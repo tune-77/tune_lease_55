@@ -967,8 +967,13 @@ def _generate_conclusions_with_llm(
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        from ai_runtime_client import tracked_ai_call
+
+        def _fetch() -> dict:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+
+        data = tracked_ai_call(_fetch, provider="google", model=gemini_model, feature="aurion_core_inference")
         # thinking part 対策: text キーを持つ最初の part を探す
         parts = data["candidates"][0]["content"]["parts"]
         text = next(

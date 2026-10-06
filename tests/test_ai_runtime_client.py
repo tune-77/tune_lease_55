@@ -231,3 +231,49 @@ def test_usage_report_preserves_provider_total_tokens(tmp_path):
     assert row["input_tokens"] == 5
     assert row["output_tokens"] == 3
     assert row["total_tokens"] == 21
+
+
+def test_worktree_usage_log_resolves_to_main_repo(tmp_path):
+    import ai_runtime_client
+
+    main = tmp_path / "main"
+    (main / ".git" / "worktrees" / "wt").mkdir(parents=True)
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {main / '.git' / 'worktrees' / 'wt'}\n", encoding="utf-8")
+
+    assert ai_runtime_client._main_repo_root(worktree) == main
+    assert ai_runtime_client._main_repo_root(main) == main
+
+
+def test_entry_records_call_source_and_skips_unconfigured_pytest(tmp_path, monkeypatch):
+    import ai_runtime_client
+
+    log_path = tmp_path / "usage.jsonl"
+    monkeypatch.setenv("AI_USAGE_LOG_PATH", str(log_path))
+    monkeypatch.setattr(ai_runtime_client.sys, "argv", ["/x/scripts/nightly_job.py", "--secret-arg"])
+    tracked_ai_call(lambda: {}, provider="google", model="m", feature="f")
+    [entry] = _read_entries(log_path)
+    assert entry["source"] == "nightly_job.py"
+    assert "secret-arg" not in json.dumps(entry)
+
+    # 明示パスなしの pytest 中は、既定ログ（本番の data/）へ書かない
+    monkeypatch.delenv("AI_USAGE_LOG_PATH")
+    default_path = tmp_path / "default.jsonl"
+    monkeypatch.setattr(ai_runtime_client, "_DEFAULT_LOG_PATH", default_path)
+    tracked_ai_call(lambda: {}, provider="google", model="m", feature="f")
+    assert not default_path.exists()
+
+
+def test_usage_report_can_split_by_source(tmp_path):
+    log_path = tmp_path / "usage.jsonl"
+    rows = [
+        {"provider": "google", "feature": "chat", "model": "m", "ok": True, "input_tokens": 10, "source": "uvicorn"},
+        {"provider": "google", "feature": "chat", "model": "m", "ok": True, "input_tokens": 7, "source": "replay.py", "worktree": "tl55-x"},
+        {"provider": "google", "feature": "chat", "model": "m", "ok": True, "input_tokens": 1},
+    ]
+    log_path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+    by_source = {row["source"]: row["input_tokens"] for row in summarize(log_path, by_source=True)}
+    assert by_source == {"replay.py@tl55-x": 7, "unknown": 1, "uvicorn": 10}
+    assert summarize(log_path)[0]["input_tokens"] == 18
