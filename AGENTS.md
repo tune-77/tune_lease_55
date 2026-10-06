@@ -10,6 +10,12 @@
 
 - 日次改善パイプラインは、ユーザーが明示的に依頼した場合を除き、拡張・リファクタリングしない。正常稼働している場合は現状を維持する。
 
+## Gemini Verification Budget Rule (REV-485)
+
+- 検証・実験で返答を作り直さない。既定は `python scripts/replay_recorded_replies.py --processor <name>`（録画済み返答の再生・Jev採点・Gemini呼び出しなし・上限100件）。
+- worktree・`python -`/`-c`・`eval_|evaluate_|experiment_|replay_|compare_|bench_|probe_` スクリプトからの Gemini 呼び出しは検証クラスとして `ai_budget.py` が止める。必要な時だけ `AI_LIVE_VERIFY=1`（1日 `AI_VERIFY_MAX_CALLS` 回まで）。
+- 1日予算 `AI_DAILY_BUDGET_YEN`（既定50円）。チャット・審査は止めない。
+
 ## AI Chat / Obsidian Search Rule
 
 AIチャットからObsidian/Vaultを参照する処理を実装・変更する時のルールは `.claude/skills/obsidian-search-rule/SKILL.md` を参照。

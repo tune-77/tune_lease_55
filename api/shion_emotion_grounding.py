@@ -578,6 +578,10 @@ _VERIFY_PENDING_LOCK = threading.Lock()
 def submit_verification(message: str, reply: str, evidence: str, *, surface: str, kind: str) -> bool:
     """照合を専用スレッドへ投入する。待ちが上限を超えていれば投入せず False を返す。"""
     global _VERIFY_PENDING
+    from ai_budget import PROACTIVE, deferred
+
+    if deferred(PROACTIVE):  # 1日予算に近い日は自発の照合を先送り（REV-485）
+        return False
     with _VERIFY_PENDING_LOCK:
         if _VERIFY_PENDING >= MAX_PENDING_VERIFICATIONS:
             return False

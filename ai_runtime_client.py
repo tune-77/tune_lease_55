@@ -207,6 +207,8 @@ def tracked_ai_call(
     token_extractor: Callable[[Any], dict[str, int | None]] = extract_token_usage,
 ) -> _T:
     """Execute one provider call and record privacy-safe operational metadata."""
+    source = _call_source()
+    call_class = _budget_guard(str(provider or ""), str(feature or "unknown"), source)
     started = time.perf_counter()
     base: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -214,7 +216,8 @@ def tracked_ai_call(
         "feature": str(feature or "unknown"),
         "operation": str(operation or "unknown"),
         "model": str(model or "unknown"),
-        **_call_source(),
+        **source,
+        "call_class": call_class,
     }
     try:
         response = call()
@@ -237,16 +240,38 @@ def tracked_ai_call(
         tokens = token_extractor(response)
     except Exception:
         tokens = {"input_tokens": None, "output_tokens": None, "total_tokens": None, "cached_tokens": None}
-    _append_usage(
-        {
-            **base,
-            "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-            "ok": True,
-            "error_type": None,
-            **tokens,
-        }
-    )
+    entry = {
+        **base,
+        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+        "ok": True,
+        "error_type": None,
+        **tokens,
+    }
+    _append_usage(entry)
+    if base["provider"] == "google":
+        try:
+            import ai_budget
+
+            ai_budget.note_call(call_class, ai_budget.entry_cost_usd(entry))
+        except Exception:
+            pass
     return response
+
+
+def _budget_guard(provider: str, feature: str, source: dict[str, str]) -> str:
+    """Gemini の1日予算ガード（ai_budget.py）。止める時だけ AIBudgetBlocked を投げる。"""
+    try:
+        import ai_budget
+
+        call_class = ai_budget.call_class(feature, source)
+        if provider == "google":
+            ai_budget.check(feature, call_class)
+        return call_class
+    except Exception as exc:
+        if type(exc).__name__ == "AIBudgetBlocked":
+            raise
+        # ガード自体の故障で AI 呼び出しを止めない
+        return "unknown"
 
 
 def _http_token_usage(response: Any) -> dict[str, int | None]:
