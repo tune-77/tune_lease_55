@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tunelease.shion-weekly-illustration</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/shion_weekly_illustration.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
+    <key>OBSIDIAN_VAULT_PATH</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>OBSIDIAN_VAULT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>PATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
+  </dict>
+
+  <!-- 毎週日曜 07:30（REV-490）。夜間・早朝の定時ジョブ（0〜6時台）が終わった後の低負荷な時間。その週のチャットから題材を選び紫苑のイラストを1枚作る（約14円/回・予算ガードの自発系） -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_shion_weekly_illustration.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_shion_weekly_illustration.err.log</string>
+</dict>
+</plist>

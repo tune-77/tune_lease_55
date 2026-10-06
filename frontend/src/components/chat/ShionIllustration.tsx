@@ -8,7 +8,8 @@ import Image from "next/image";
 import { X } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
-type Illustration = { available: boolean; date?: string; url?: string };
+// caption: 週1回の生成（REV-490）で、その週のチャットから選んだ題材の一言
+type Illustration = { available: boolean; date?: string; url?: string; caption?: string };
 
 function useShionIllustration(mode: "daily" | "random", enabled = true): Illustration | null {
   const [illustration, setIllustration] = useState<Illustration | null>(null);
@@ -46,7 +47,10 @@ export default function ShionIllustration({ mode, className = "" }: Props) {
         unoptimized
         className="aspect-[16/9] w-full rounded-lg border border-violet-100 object-cover"
       />
-      <figcaption className="mt-1 text-right text-[10px] text-slate-400">{illustration.date}</figcaption>
+      <figcaption className="mt-1 text-right text-[10px] text-slate-400">
+        {illustration.caption && <span className="mr-2 text-violet-700">{illustration.caption}</span>}
+        {illustration.date}
+      </figcaption>
     </figure>
   );
 }
@@ -105,6 +109,9 @@ export function TodayShionCard({ className = "" }: { className?: string }) {
         unoptimized
         className="mx-auto aspect-[16/9] w-full max-w-md rounded-lg object-cover"
       />
+      {illustration.caption && (
+        <p className="mx-auto mt-1 max-w-md text-xs text-violet-700">{illustration.caption}</p>
+      )}
     </div>
   );
 }

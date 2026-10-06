@@ -57,6 +57,8 @@ MEMORY_FEATURES = frozenset({
 _MEMORY_SCRIPT_RE = re.compile(r"(memory|reflection|mind|recall|experience)")
 # 記憶に関わらない自発系だけ止める（日次イラスト・利用ループの提案）
 PROACTIVE_FEATURES = frozenset({
+    "shion_weekly_illustration",  # 週1回のイラスト（REV-490, 約14円/回）
+    "shion_weekly_illustration_topic",
     "usage_loop_engineering",
     "novelist_daily_image",
     "novelist_daily_image_fallback",
