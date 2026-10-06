@@ -1146,7 +1146,7 @@ export default function ChatPage() {
       )}
 
       {/* 今日の紫苑（その日最初だけ・過去イラストから1日1枚, REV-488） */}
-      <TodayShionCard />
+      <TodayShionCard className="mb-3" />
 
       {/* メッセージエリア */}
       <div ref={messageListRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 pr-1 pb-4">

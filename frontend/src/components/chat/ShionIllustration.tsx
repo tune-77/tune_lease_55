@@ -58,8 +58,11 @@ function localDateKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-/** /chat 上部の「今日の紫苑」。その日最初に開いた時だけ、小さく・閉じられる形で出す。 */
-export function TodayShionCard() {
+/**
+ * 「今日の紫苑」（/chat 上部と紫苑対話室）。その日最初に開いた時だけ1回出す。
+ * 表示済みは共通キーで持つので、どちらかで見たらその日は両方とも出ない。
+ */
+export function TodayShionCard({ className = "" }: { className?: string }) {
   // 初回描画は画像取得前なので何も出さず、サーバー描画との食い違いは起きない
   const [open, setOpen] = useState(() => {
     try {
@@ -79,27 +82,29 @@ export function TodayShionCard() {
   const illustration = useShionIllustration("daily", open);
   if (!open || !illustration?.available || !illustration.url) return null;
   return (
-    <div className="mb-3 flex flex-shrink-0 items-center gap-3 rounded-xl border border-violet-100 bg-violet-50/60 p-2">
+    <div className={`flex-shrink-0 rounded-xl border border-violet-100 bg-violet-50/60 p-3 ${className}`}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-bold text-violet-800">
+          今日の紫苑
+          <span className="ml-2 text-[11px] font-normal text-slate-400">{illustration.date} のイラスト</span>
+        </p>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label="今日の紫苑を閉じる"
+          className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-600"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
       <Image
         src={illustration.url}
         alt={`今日の紫苑 ${illustration.date ?? ""}`}
-        width={160}
-        height={90}
+        width={640}
+        height={360}
         unoptimized
-        className="aspect-[16/9] w-28 rounded-lg object-cover"
+        className="mx-auto aspect-[16/9] w-full max-w-md rounded-lg object-cover"
       />
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-bold text-violet-800">今日の紫苑</p>
-        <p className="text-[10px] text-slate-400">{illustration.date} のイラスト</p>
-      </div>
-      <button
-        type="button"
-        onClick={() => setOpen(false)}
-        aria-label="今日の紫苑を閉じる"
-        className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-600"
-      >
-        <X className="h-4 w-4" />
-      </button>
     </div>
   );
 }

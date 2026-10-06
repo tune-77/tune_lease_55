@@ -11,7 +11,7 @@ import { apiClient } from "@/lib/api";
 import { openKnowledgeSpaceFocus } from "@/lib/knowledgeSpaceRoute";
 import RagConfidenceBadge, { type RagConfidenceLevel } from "@/components/chat/RagConfidenceBadge";
 import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
-import ShionIllustration from "@/components/chat/ShionIllustration";
+import ShionIllustration, { TodayShionCard } from "@/components/chat/ShionIllustration";
 import LeasePaymentSimulator from "@/components/analysis/LeasePaymentSimulator";
 import { isImeComposing } from "@/lib/keyboard";
 import { isSingRequest } from "@/lib/shionSing";
@@ -2153,6 +2153,8 @@ export default function LeaseIntelligencePage() {
             </div>
           )}
 
+          {/* 今日の紫苑（朝一回・/chat と共通で1日1回, REV-489） */}
+          <TodayShionCard className="mx-5 mt-3" />
           <div className="relative min-h-0 flex-1">
             <div
               ref={messageListRef}
