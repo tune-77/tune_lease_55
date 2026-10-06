@@ -73,6 +73,8 @@ SPECS: dict[str, BlockSpec] = {
     # REV-481 事実と解釈の扱い・感情の自己報告の根拠（変化記録）。記録だけ削られて指示が残ると
     # 推測で埋めるため削らない層に置く。大きさは shion_emotion_grounding 側で3000字以内に収める
     "emotion_grounding_context": BlockSpec(CORE),
+    # REV-482 依頼文の書き方（実行者・実在の参照一覧・本番DB禁止）。依頼文を頼まれた時だけ入る短い指示
+    "request_grounding_context": BlockSpec(CORE),
     "shion_non_domain_context": BlockSpec(SHAPE, 600),
     "prompt_suffix": BlockSpec(SHAPE, 600),
     # 3: RAG/Knowledge・Vertex の根拠・DB・外部調査

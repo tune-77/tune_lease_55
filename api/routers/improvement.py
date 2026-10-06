@@ -300,10 +300,12 @@ def _build_codex_request_draft(record: dict) -> str:
     head = f"{item_id} {title}".strip()
     lines = [
         f"紫苑依頼文: {head} を小さく実装してください。",
+        "- 実行者: Claude Code（または User）。紫苑は実行・検証しない",
         f"- 目的: {title}" + (f"（{reason}）" if reason else ""),
+        "- 対象ファイル: 要確認（実装者が rg で特定する。存在しない名前を前提にしない）",
         "- 変更範囲: 対象ファイルを最小限に。DB/API分岐/スコアリング/認証/デプロイ設定には触らない",
         "- 検証: python -m py_compile と対象テスト。フロント変更時は cd frontend && npx tsc --noEmit",
-        "- data/・models/・.claude/state・.streamlit/secrets.toml は変更禁止",
+        "- data/・models/・.claude/state・.streamlit/secrets.toml は変更禁止（DBの分析は読み取り専用かコピー上で）",
         "- gitship/deploy の要否は User が判断する（自動実行しない）",
     ]
     return "\n".join(lines)

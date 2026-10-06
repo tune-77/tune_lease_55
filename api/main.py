@@ -2442,8 +2442,8 @@ def _build_dialogue_improvement_report_context(limit: int = 4) -> str:
         "ハッカソン安全運用中は、読む・報告する・相談する・紫苑依頼文を作るところまでに限定し、実装開始、git操作、Cloud Run deploy、外部接続追加は行わない。",
         "ハッカソン前は、表示文言・導線・説明の小修正を優先し、DB/API/スコアリング/認証/デプロイ設定など副作用が大きい変更は原則後回しにする。",
         "Userが「1をやる」「これを実装」と承認した時だけ、次に紫苑依頼文を作る。承認前に実装手順を長く展開しない。",
-        "Userが実装用の依頼文を求めた場合だけ、「紫苑依頼文:」で始め、目的、対象ファイル、変更範囲、検証コマンド、gitship/deployの要否を明記する。",
-        "紫苑依頼文はUserがコピーして実行判断できるための文面であり、紫苑自身が外部実行、課金発生、git操作、デプロイを開始してはいけない。",
+        "Userが実装用の依頼文を求めた場合だけ、「紫苑依頼文:」で始め、実行者（Claude Code または User）、目的、対象ファイル、変更範囲、検証コマンド、gitship/deployの要否を明記する。",
+        "紫苑依頼文はUserがコピーして実行判断できるための文面であり、紫苑自身が外部実行、課金発生、git操作、デプロイを開始してはいけない。依頼文の後に「検証を開始します」「結果が出次第報告します」と続けない（REV-482）。",
         (
             "表の回答では複雑さを出しすぎず、"
             f"適用済み{counts.get('applied', 0)}件、"
@@ -6462,6 +6462,9 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             vault, message, dialogue_mode, dialogue_mood_signals
         )
         state["emotion_grounding"] = {"used": bool(emotion_grounding_context), "kind": emotion_turn_kind}
+        from api.shion_request_grounding import build_request_context, ground_reply_safely, log_grounding
+
+        request_grounding_context = build_request_context(message, history_for_gemini)
         if req.caller != "mebuki":
             # REV-467: ホーム対話も関係性スコアへ記録する（従来は /api/chat だけで、毎日話しても「沈黙」扱いになり得た）
             from api.user_affect import record_relationship_from_affect
@@ -6494,6 +6497,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 ("user_affect_memory_context", block_with_spacing(dialogue_affect_memory_context)),
                 ("mutual_prediction_context", block_with_spacing(dialogue_prediction_context)),
                 ("emotion_grounding_context", block_with_spacing(emotion_grounding_context)),
+                ("request_grounding_context", block_with_spacing(request_grounding_context)),
                 ("pre_recall_context", block_with_spacing(pre_recall_context)),
                 ("teaching_save_context", block_with_spacing(teaching_save_context)),
             ],
@@ -6531,6 +6535,8 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             raise HTTPException(status_code=503, detail=f"対話AIへ接続できません: {detail}")
 
         reply = teaching_turn.finalize(reply)
+        original_reply, request_grounding = reply, ground_reply_safely(message, reply)  # REV-482
+        reply = request_grounding.reply if request_grounding is not None else reply
         state["mutual_prediction"] = _finish_mutual_prediction(dialogue_prediction_turn, reply)
 
         save_message(DIALOGUE_USER_ID, "user", message)
@@ -6574,6 +6580,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
             submit_verification(
                 message, reply, emotion_grounding_evidence, surface="lease_intelligence_dialogue", kind=emotion_turn_kind
             )
+        state["request_grounding"] = log_grounding(message, original_reply, request_grounding, "lease_intelligence_dialogue")
 
         # 記憶・キーポイント・Knowledge昇格を1本のバックグラウンド処理で直列化する。
         try:
