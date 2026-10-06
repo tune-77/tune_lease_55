@@ -138,3 +138,58 @@ def test_verify_and_log_with_fake_jev(tmp_path, monkeypatch):
     assert saved["jev"]["missed_by_rules"]
     assert record["surface"] == "test"
     assert "sentences" in sent["state"]
+
+
+def test_sql_schema_check(tmp_path, monkeypatch):
+    import sqlite3
+
+    db = tmp_path / "lease_data.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE screening_records (id INTEGER, total_score REAL, outcome TEXT)")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(grounding, "get_data_path", lambda *parts: str(tmp_path.joinpath(*parts)))
+    grounding._db_schema.cache_clear()
+    ok = grounding.check_reference("SELECT id, total_score FROM screening_records sr WHERE sr.outcome = 'x'")
+    assert ok.exists
+    bad_col = grounding.check_reference(
+        "sqlite3 -readonly data/lease_data.db \"SELECT count(*) FROM screening_records WHERE status='rejected' AND equity_ratio > 30\""
+    )
+    assert not bad_col.exists and "status" in bad_col.detail and "equity_ratio" in bad_col.detail
+    embedded = grounding.check_reference(
+        "python3 -c \"import sqlite3; c = sqlite3.connect('data/lease_data.db'); c.execute('SELECT count(*) FROM screening_records WHERE outcome=1').fetchone()\""
+    )
+    assert embedded.exists
+    bad_table = grounding.check_reference("SELECT * FROM screening_history")
+    assert not bad_table.exists and "screening_history" in bad_table.detail
+    reply = "紫苑依頼文:\n- 検証: `SELECT count(*) FROM screening_records WHERE equity_ratio > 30`"
+    result = grounding.ground_reply("依頼文にして", reply, enabled=True)
+    assert "equity_ratio > 30`（要確認: 列 equity_ratio" in result.reply
+    grounding._db_schema.cache_clear()
+
+
+def test_next_time_promise_is_removed():
+    reply = (
+        "紫苑依頼文:\n- 実行者: Claude Code\n- 目的: 見逃し候補の抽出\n\n"
+        "この依頼文の内容で、実行の準備は整いました。次回の対話までに、新ロジック案を提示します。"
+    )
+    result = grounding.ground_reply("依頼文にして", reply, enabled=True)
+    assert "準備は整いました" not in result.reply and "次回の対話までに" not in result.reply
+    assert len(result.removed_promises) == 2
+
+
+def test_in_reply_analysis_is_not_a_promise():
+    reply = "以下の観点で分析を行います。記録上、同業種の否決は3件でした。こちらで分析した結果、価格負けが多いです。"
+    result = grounding.ground_reply("否決の傾向は？", reply, enabled=True)
+    assert not result.removed_promises
+    assert result.reply == reply
+
+
+def test_output_file_and_after_run_promise():
+    reply = (
+        "紫苑依頼文:\n- 実行者: Claude Code\n- 結果を `reports/financial_health_gap.md` に出力する。\n\n"
+        "この依頼内容で進めてよろしいでしょうか。実行後は、抽出された先の傾向を報告します。"
+    )
+    result = grounding.ground_reply("依頼文にして", reply, enabled=True)
+    assert not result.missing_refs
+    assert "実行後は" not in result.reply and "進めてよろしいでしょうか" in result.reply

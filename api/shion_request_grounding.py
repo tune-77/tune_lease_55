@@ -45,8 +45,9 @@ _REQUEST_ASK_RE = re.compile(r"依頼(?:文|分)|Claude ?Code(?:に|へ|向け)|
 # 紫苑自身が「実行・検証・実装・後の報告」をすると言う文。
 # 返答中のツール呼び出し（調べます・確認します）は実際にできるので対象にしない（lease_intelligence_pending が追跡する）。
 _SELF_ACTION_PATTERNS = (
-    r"(?:手元|ローカル|こちら|私|わたし|紫苑)(?:の|側の)?(?:環境|側|手元)?(?:にて|で)[^。！？\n]*?(?:検証|実行|テスト|分析|試|集計|抽出)",
-    r"(?:検証|実行|テスト|実装|分析|集計|抽出|改修|修正)(?:作業)?を?(?:開始|着手|実施|実行|進め|始め|行い)(?:し|いたし|させていただき)?ます",
+    r"(?:手元|ローカル|こちら|私|わたし|紫苑)(?:の|側の)?(?:環境|側|手元)?(?:にて|で)[^。！？\n]*?(?:検証|実行|テスト|分析|試|集計|抽出)[^。！？\n]*?ます",
+    # 分析・抽出・集計は返答の中で記録を読んで行えるので、ここでは対象にしない（環境・後での報告と結びつく時だけ）
+    r"(?:検証|テスト|実装|改修|修正)(?:作業)?を?(?:開始|着手|実施|実行|進め|始め|行い)(?:し|いたし|させていただき)?ます",
     r"(?:実装|検証|修正)に(?:着手|入り|取りかかり|取り掛かり)(?:し|いたし)?ます",
     r"結果が(?:出|わかり|分かり|まとまり)(?:次第|ましたら|たら)",
     r"(?:実装|検証|コミット|デプロイ|反映|実行)(?:の)?準備を(?:行い|進め|整え|し)ます",
@@ -54,6 +55,9 @@ _SELF_ACTION_PATTERNS = (
     r"(?:コード|スクリプト|クエリ|SQL|コマンド|テスト)を(?:実行|走らせ|流|回)(?:し|いたし)?ます",
     r"(?:コミット|デプロイ|マージ|本番反映|プッシュ)(?:を)?(?:し|いたし|行い|実施し)ます",
     r"(?:検証|実行|分析|集計|抽出|テスト)(?:の)?結果[^。！？\n]*?(?:報告|お知らせ|共有|お伝え)(?:し|いたし|させていただき)?ます",
+    r"(?:実行|検証|実装|分析)の準備(?:は|が)?(?:整い|でき)",
+    r"(?:実行|検証|分析|実装)(?:後|完了後|が(?:終わ|済ん|完了し)(?:ったら|だら|たら))[^。！？\n]*?(?:報告|お知らせ|共有|お伝え)(?:し|いたし|させていただき)?ます",
+    r"(?:次回|次の対話|後ほど|のちほど)(?:の対話)?(?:まで)?に[^。！？\n]*?(?:提示|用意|お持ち|まとめ|お届け)(?:し|いたし|させていただき)?ます",
 )
 _SELF_ACTION_RE = re.compile("|".join(_SELF_ACTION_PATTERNS))
 # 主語が実装者・User の文（依頼文の中身）は紫苑の約束ではない
@@ -75,7 +79,7 @@ _PATH_EXTS = (".py", ".ts", ".tsx", ".js", ".db", ".sqlite", ".sqlite3", ".sh", 
 _COMMAND_HEADS = ("python", "python3", "pytest", "uv", "npm", "npx", "node", "bash", "sh", "sqlite3", "cd", "make", "git")
 _DOTTED_MODULE_RE = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$")
 _IDENT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(?:\(.*\))?$")
-_NEW_FILE_RE = re.compile(r"新規|新しく作|新設|作成する|追加する|create", re.IGNORECASE)
+_NEW_FILE_RE = re.compile(r"新規|新しく作|新設|作成する|追加する|出力|書き出|保存先|create|output", re.IGNORECASE)
 _SYMBOL_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 _SYMBOL_EXTS = (".py", ".ts", ".tsx", ".js", ".mjs", ".sh", ".yml", ".yaml", ".toml", ".sql", ".plist")
 _SENTENCE_RE = re.compile(r"[^。！？!?]*[。！？!?]?")
@@ -176,6 +180,7 @@ class RefCheck:
     kind: str  # path / module / symbol / command
     exists: bool
     detail: str = ""
+    source: str = ""  # 返答中の元の書き方（「要確認」を付ける位置）
 
 
 def _check_command(text: str) -> RefCheck | None:
@@ -217,10 +222,78 @@ def _check_command(text: str) -> RefCheck | None:
     return RefCheck(text, "command", True)
 
 
+_SQL_RE = re.compile(r"\b(?:SELECT|UPDATE|INSERT\s+INTO|DELETE\s+FROM)\b", re.IGNORECASE)
+_SQL_TABLE_RE = re.compile(r"\b(?:FROM|JOIN|UPDATE|INTO)\s+([A-Za-z_]\w*)", re.IGNORECASE)
+_SQL_STRING_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
+_SQL_WORDS = frozenset(
+    """select from where and or not null is in as on join left right inner outer cross distinct count sum avg min max
+    group by order having limit offset desc asc case when then else end like between exists union all cast round
+    coalesce ifnull substr length lower upper date datetime strftime julianday abs total json_extract update set
+    insert into values delete true false glob escape collate integer real text over partition rowid""".split()
+)
+
+
+@lru_cache(maxsize=8)
+def _db_schema(db_path: str) -> dict[str, frozenset[str]]:
+    """読み取り専用で開いてテーブルと列を読む（照合のためだけ。書き込まない）。"""
+    import sqlite3
+
+    if not Path(db_path).exists():
+        return {}
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2)
+    try:
+        tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view')")]
+        return {
+            table: frozenset(row[1] for row in conn.execute(f'PRAGMA table_info("{table}")'))
+            for table in tables
+        }
+    finally:
+        conn.close()
+
+
+def check_sql(text: str) -> RefCheck | None:
+    """コード中のSQLのテーブル名・列名が、審査履歴DB（data/ の該当DB）に実在するか。"""
+    if not _SQL_RE.search(text):
+        return None
+    db_match = re.search(r"(?:data/)?([\w-]+\.(?:db|sqlite3?))", text)
+    db_name = db_match.group(1) if db_match else "lease_data.db"
+    try:
+        schema = _db_schema(get_data_path(db_name))
+    except Exception:
+        return None
+    if not schema:
+        return None
+    start = _SQL_RE.search(text).start()
+    sql = text[start:]
+    quote = text[start - 1] if start and text[start - 1] in "'\"" else ""
+    if quote and quote in sql:
+        sql = sql[: sql.index(quote)]  # python -c "...execute('SELECT ...')" の文字列部分だけ
+    body = _SQL_STRING_RE.sub(" ", sql)
+    tables = [t for t in _SQL_TABLE_RE.findall(body)]
+    unknown_tables = [t for t in tables if t not in schema]
+    label = " ".join(body.split())[:120]  # 文字列リテラル（社名などが入りうる）は伏せた形で残す
+    if unknown_tables:
+        return RefCheck(label, "sql", False, f"テーブル {', '.join(dict.fromkeys(unknown_tables))} が {db_name} に無い")
+    columns = set().union(*(schema[t] for t in tables)) if tables else set()
+    unknown_cols = [
+        token for token in dict.fromkeys(re.findall(r"[A-Za-z_]\w*", body))
+        if token.lower() not in _SQL_WORDS and token not in schema and token not in columns
+        and not re.fullmatch(r"[A-Za-z]{1,2}\d*", token)  # 別名（t, sr 等）
+    ]
+    if tables and unknown_cols:
+        return RefCheck(label, "sql", False, f"列 {', '.join(unknown_cols[:5])} が {', '.join(dict.fromkeys(tables))} に無い")
+    return RefCheck(label, "sql", True)
+
+
 def check_reference(ref: str) -> RefCheck | None:
     """1つのコード参照の実在を確かめる。照合の対象外（普通の語・SQL 等）は None。"""
     text = " ".join(str(ref or "").split())
-    if not text or re.search(r"[ぁ-んァ-ヶ一-龥]", text):
+    if not text:
+        return None
+    sql = check_sql(text)
+    if sql is not None:
+        return sql
+    if re.search(r"[ぁ-んァ-ヶ一-龥]", text):
         return None
     command = _check_command(text)
     if command is not None:
@@ -319,7 +392,7 @@ def _annotate_refs(reply: str, missing: list[RefCheck]) -> str:
     out = reply
     for ref in missing:
         note = f"（要確認: {ref.detail}）" if ref.detail else MISSING_NOTE
-        for candidate in (f"`{ref.ref}`",):
+        for candidate in dict.fromkeys(c for c in (f"`{ref.source}`" if ref.source else "", f"`{ref.ref}`") if c):
             if candidate in out and f"{candidate}{note}" not in out:
                 out = out.replace(candidate, f"{candidate}{note}", 1)
                 break
@@ -353,6 +426,7 @@ def collect_refs(text: str) -> list[RefCheck]:
         result = check_reference(raw)
         if result is None or result.ref in seen:
             continue
+        result.source = raw
         seen.add(result.ref)
         checks.append(result)
     return checks
@@ -489,6 +563,7 @@ def build_request_block(message: str, history_text: str = "") -> str:
         "対象ファイル・関数・コマンドは、下の一覧か会話で実在が確かめられたものだけを書く。わからない時は「対象ファイル: 要確認（Claude Code が rg で特定する）」と書き、名前を作らない。",
         "新しく作るファイルは「新規作成: scripts/xxx.py」と明記する。存在しないスクリプト・引数・DB名を、既にあるかのように書かない。",
         "検証コマンドは実在するテストか `python -m py_compile <対象>` にする。新しいスクリプトを走らせる場合は、それを作る作業も依頼文に含める。",
+        "既存スクリプトに無い引数（--mode 等）を書かない。引数を足すなら「改修: scripts/xxx.py に --yyy を追加」と作業として書く。",
         "data/・本番DB（data/lease_data.db 等）への書き込み（UPDATE/INSERT、フラグ付与、列追加）を含む変更案は出さない。分析は「読み取り専用（sqlite3 -readonly）か、DBのコピー上で行う」と書く。",
         "実在が確かめられた参照:",
     ]
