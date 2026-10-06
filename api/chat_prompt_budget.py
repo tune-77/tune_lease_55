@@ -215,6 +215,18 @@ def _fit_reserved_tail(text: str, limit: int) -> str:
     return compact[:limit]
 
 
+# 雑談モードでは外す自発報告系ブロック（REV-486, Gemini 費用削減）。
+# 質問がその話題に触れている時だけ残す。
+CASUAL_OPTIONAL_BLOCKS: dict[str, tuple[str, ...]] = {
+    "news_digest_context": ("ニュース", "業界", "動向", "記事"),
+    "improvement_report_context": ("改善", "REV", "パイプライン", "報告", "不具合", "バグ", "直し"),
+    "improvement_observability_context": ("改善", "REV", "パイプライン", "報告", "不具合", "バグ", "直し"),
+    "improvement_triage_context": ("改善", "REV", "トリアージ", "不具合", "バグ", "直し"),
+    "agent_consultation_context": ("相談", "エージェント"),
+    "reasoner_consultation_context": ("相談", "上位", "推論"),
+}
+
+
 def assemble_prompt(
     blocks: list[tuple[str, str]],
     *,
@@ -223,8 +235,12 @@ def assemble_prompt(
     max_chars: int | None = None,
     reserved_tail: str = "",
     log: bool = True,
+    context_mode: str = "",
 ) -> tuple[str, dict[str, Any]]:
-    """(ブロック名, 本文) の並びから、予算内のプロンプトと落とした量のレポートを返す。"""
+    """(ブロック名, 本文) の並びから、予算内のプロンプトと落とした量のレポートを返す。
+
+    context_mode="casual" の時は CASUAL_OPTIONAL_BLOCKS を、質問がその話題に触れない限り外す。
+    """
     if max_chars is None:
         env_name = "DIALOGUE_SYSTEM_PROMPT_MAX_CHARS" if surface.startswith("dialogue") else "CHAT_SYSTEM_PROMPT_MAX_CHARS"
         max_chars = int(os.environ.get(env_name, "30000" if surface.startswith("dialogue") else "24000"))
@@ -240,6 +256,10 @@ def assemble_prompt(
         text = str(text or "")
         spec = SPECS.get(name, DEFAULT_SPEC)
         report[name] = {"tier": spec.tier, "orig": len(text), "dedup": 0, "budget_cut": 0, "overflow_cut": 0, "kept": 0}
+        keywords = CASUAL_OPTIONAL_BLOCKS.get(name)
+        if context_mode == "casual" and text and keywords and not any(k in question for k in keywords):
+            report[name]["casual_cut"] = len(text)
+            text = ""
         texts[i] = text
     original_occurrences: dict[str, list[tuple[int, str]]] = {}
     for i, (name, _text) in enumerate(blocks):

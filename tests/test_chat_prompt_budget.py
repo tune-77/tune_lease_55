@@ -132,3 +132,23 @@ def test_morning_report_keeps_prompt_budget_warning_wired() -> None:
     source = (Path(__file__).parents[1] / "scripts" / "aurion_core_daily.py").read_text(encoding="utf-8")
     assert "def chat_prompt_budget_lines()" in source
     assert "*chat_prompt_budget_lines()," in source
+
+
+def test_casual_mode_drops_proactive_report_blocks_unless_asked():
+    from api.chat_prompt_budget import assemble_prompt
+
+    blocks = [
+        ("dialogue_identity_core", "あなたは紫苑です。\n\n"),
+        ("news_digest_context", "\n\n【ニュース】業界ニュースの要約\n"),
+        ("improvement_report_context", "\n\n【改善報告】REV-1 の進捗\n"),
+        ("agent_consultation_context", "\n\n【相談キュー】未回答の相談\n"),
+    ]
+    prompt, report = assemble_prompt(blocks, question="なるほどね", surface="dialogue", log=False, context_mode="casual")
+    assert "業界ニュース" not in prompt and "REV-1" not in prompt and "相談キュー" not in prompt
+    assert report["blocks"]["news_digest_context"]["casual_cut"] > 0
+
+    # 話題に触れていれば雑談でも残す。雑談以外は従来どおり
+    prompt, _ = assemble_prompt(blocks, question="改善どう？", surface="dialogue", log=False, context_mode="casual")
+    assert "REV-1" in prompt and "業界ニュース" not in prompt
+    prompt, _ = assemble_prompt(blocks, question="なるほどね", surface="dialogue", log=False, context_mode="deep")
+    assert "業界ニュース" in prompt and "相談キュー" in prompt
