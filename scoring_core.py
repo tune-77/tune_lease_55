@@ -227,6 +227,31 @@ def _load_benchmarks():
         return {}
 
 
+def _industry_name(industry_sub: str) -> str:
+    """'24 金属製品製造業' → '金属製品製造業'。先頭がコード（数字始まり）の時だけ外す。"""
+    head, _, rest = (industry_sub or "").strip().partition(" ")
+    return rest.strip() if rest and head[:1].isdigit() else (industry_sub or "").strip()
+
+
+def _resolve_benchmark(benchmarks: dict, industry_sub: str) -> dict | None:
+    """業種の業界目安を引く。完全一致 → 業種名一致の順。見つからなければ None。
+
+    業種コード単独では照合しない。案件側(JSIC: 24=金属製品)とベンチマーク側
+    (24=生産用機械器具)で同じ番号が別業種を指すため、コード一致は誤照合になる。
+    """
+    key = (industry_sub or "").strip()
+    if not key:
+        return None
+    hit = benchmarks.get(key)
+    if isinstance(hit, dict):
+        return hit
+    name = _industry_name(key)
+    for bkey, bval in benchmarks.items():
+        if isinstance(bval, dict) and _industry_name(bkey) == name:
+            return bval
+    return None
+
+
 def _load_capex_lease_data():
     """industry_capex_lease.json を読み込む。"""
     candidates = [
@@ -845,15 +870,22 @@ def run_quick_scoring(inputs: dict) -> dict:
     user_lease_credit_pct = (lease_credit / nenshu * 100) if nenshu > 0 and lease_credit > 0 else None
 
     benchmarks = _load_benchmarks()
-    bench = benchmarks.get(industry_sub, {})
-    bench_op_margin = float(bench.get("op_margin") or 0)
-    beq = bench.get("equity_ratio")
-    if beq is not None and isinstance(beq, (int, float)):
-        bench_equity_ratio = float(beq)
-    else:
-        bench_equity_ratio = float(bench.get("equity_ratio_display") or 0)
-    bench_comment = (bench.get("comment") or "").strip()
-    bench_lease_cost_ratio = float(bench.get("lease_cost_ratio") or 0)
+    bench = _resolve_benchmark(benchmarks, industry_sub)
+    benchmark_matched = bench is not None
+    # 照合できない業種は目安 0% ではなく None（不明）。0 を入れると「平均より高い」と誤表示する。
+    bench_op_margin: float | None = None
+    bench_equity_ratio: float | None = None
+    bench_lease_cost_ratio: float | None = None
+    bench_comment = ""
+    if bench is not None:
+        bench_op_margin = float(bench.get("op_margin") or 0)
+        beq = bench.get("equity_ratio")
+        if beq is not None and isinstance(beq, (int, float)):
+            bench_equity_ratio = float(beq)
+        else:
+            bench_equity_ratio = float(bench.get("equity_ratio_display") or 0)
+        bench_comment = (bench.get("comment") or "").strip()
+        bench_lease_cost_ratio = float(bench.get("lease_cost_ratio") or 0)
     capex_lease_data = _load_capex_lease_data()
     rent_expense_ky = _safe_float(inputs.get("rent_expense"))  # 千円
     user_lease_cost_ratio = (rent_expense_ky / nenshu * 100) if nenshu > 0 else 0.0
@@ -875,21 +907,24 @@ def run_quick_scoring(inputs: dict) -> dict:
     except Exception as exc:
         log_warning(f"e-Stat統合文脈生成失敗: {exc}", context="run_quick_scoring")
 
-    comp_margin = "高い" if user_op_margin >= bench_op_margin else "低い"
-    comp_equity = "高い" if user_equity_ratio >= bench_equity_ratio else "低い"
-    _lease_line = ""
-    if bench_lease_cost_ratio > 0:
-        comp_lease = "高い" if user_lease_cost_ratio > bench_lease_cost_ratio else "低い"
-        _lease_line = (
-            f"\n- **リース費用比率**: {user_lease_cost_ratio:.1f}% "
-            f"(業界目安: {bench_lease_cost_ratio:.1f}%) → 平均より{comp_lease}"
+    if not benchmark_matched:
+        comparison = f"- **業界目安**: 照合不可（業種: {industry_sub or '未入力'}）"
+    else:
+        comp_margin = "高い" if user_op_margin >= bench_op_margin else "低い"
+        comp_equity = "高い" if user_equity_ratio >= bench_equity_ratio else "低い"
+        _lease_line = ""
+        if bench_lease_cost_ratio > 0:
+            comp_lease = "高い" if user_lease_cost_ratio > bench_lease_cost_ratio else "低い"
+            _lease_line = (
+                f"\n- **リース費用比率**: {user_lease_cost_ratio:.1f}% "
+                f"(業界目安: {bench_lease_cost_ratio:.1f}%) → 平均より{comp_lease}"
+            )
+        comparison = (
+            f"- **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin:.1f}%) → 平均より{comp_margin}\n"
+            f"- **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio:.1f}%) → 平均より{comp_equity}\n"
+            f"- **業界**: {bench_comment or '—'}"
+            f"{_lease_line}"
         )
-    comparison = (
-        f"- **営業利益率**: {user_op_margin:.1f}% (業界目安: {bench_op_margin:.1f}%) → 平均より{comp_margin}\n"
-        f"- **自己資本比率**: {user_equity_ratio:.1f}% (業界目安: {bench_equity_ratio:.1f}%) → 平均より{comp_equity}\n"
-        f"- **業界**: {bench_comment or '—'}"
-        f"{_lease_line}"
-    )
 
     # ── 単位変換メモ ───────────────────────────────────────────────────────────
     # inputs の財務数値はすべて「千円」単位で入力される（UI・Slack Bot 共通）。
@@ -1024,7 +1059,7 @@ def run_quick_scoring(inputs: dict) -> dict:
     #   E(2倍超) × 高ベンチ(≥2%): 飲食・不動産はリース積極活用=優良傾向 → ペナルティ無効
     #   E(2倍超) × 低ベンチ(<2%): 卸売0.6%等は比率が爆発しやすいため絶対lcr>3%を条件に追加
     lease_ratio_adj = 0.0
-    if bench_lease_cost_ratio > 0 and user_lease_cost_ratio > 0:
+    if bench_lease_cost_ratio and bench_lease_cost_ratio > 0 and user_lease_cost_ratio > 0:
         ratio_vs_bench = user_lease_cost_ratio / bench_lease_cost_ratio
         if ratio_vs_bench > 2.0:
             if bench_lease_cost_ratio < 2.0 and user_lease_cost_ratio > 3.0:
@@ -1254,6 +1289,7 @@ def run_quick_scoring(inputs: dict) -> dict:
         "bench_equity_ratio": bench_equity_ratio,
         "user_lease_cost_ratio": round(user_lease_cost_ratio, 2),
         "bench_lease_cost_ratio": bench_lease_cost_ratio,
+        "benchmark_matched": benchmark_matched,
         "lease_ratio_adj": lease_ratio_adj,
         "score_borrower": round(score_borrower, 1),
         "industry_sub": industry_sub,
