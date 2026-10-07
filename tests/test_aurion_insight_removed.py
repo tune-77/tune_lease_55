@@ -30,7 +30,6 @@ def test_status_lines_no_longer_mention_web_search():
 
 @pytest.fixture
 def midnight(tmp_path, monkeypatch):
-    monkeypatch.setenv("AURION_MIN_RUNTIME_SECONDS", "0")
     monkeypatch.setattr(acd, "STATE_DIR", tmp_path)
     monkeypatch.setattr(acd, "LOG_DIR", tmp_path)
     monkeypatch.setattr(acd, "SYNC_ROOT", tmp_path / "sync")
@@ -44,6 +43,9 @@ def midnight(tmp_path, monkeypatch):
 
 
 def test_midnight_keeps_sync_rag_and_db_audit_without_reasoning(midnight):
+    # 最低実行時間の待機（AURION_MIN_RUNTIME_SECONDS）も廃止した（REV-495）。time.sleep を使わない
+    assert not hasattr(acd, "time")
+
     assert acd.run_midnight() == 0
 
     state = json.loads(next(midnight.glob("state_*.json")).read_text(encoding="utf-8"))
