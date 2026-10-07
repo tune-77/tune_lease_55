@@ -147,6 +147,14 @@ def _log_shadow(rows: list[dict[str, Any]]) -> list[str]:
     return [record["judgment_id"] for record in records]
 
 
+def _scorable(rule: Any) -> bool:
+    """active で、紫苑の返答由来（content_source=shion）でないもの。REV-498。
+
+    紫苑の返答はユーザーの方針ではないので「方針らしさ」の採点・判定待ちに入れない。
+    """
+    return isinstance(rule, dict) and rule.get("status") == "active" and rule.get("content_source") != "shion"
+
+
 def score_canonical_rules(
     *,
     canonical_path: Path = DEFAULT_CANONICAL_JSON,
@@ -159,7 +167,7 @@ def score_canonical_rules(
     queue = load_queue(queue_path)
     targets = []
     for rule in rules:
-        if not isinstance(rule, dict) or rule.get("status") != "active":
+        if not _scorable(rule):
             continue
         text = main_statement(str(rule.get("canonical_statement") or ""))
         rule_id = str(rule.get("id") or "")
@@ -194,7 +202,7 @@ def score_canonical_rules(
         scored.append(row)
     for row, judgment_id in zip(scored, _log_shadow(scored) if scored else []):
         row["judgment_id"] = judgment_id
-    active_ids = {str(rule.get("id")) for rule in rules if isinstance(rule, dict) and rule.get("status") == "active"}
+    active_ids = {str(rule.get("id")) for rule in rules if _scorable(rule)}
     for rule_id in list(queue):
         if rule_id not in active_ids:
             queue.pop(rule_id)  # 統合・降格されたものは目安候補から外す

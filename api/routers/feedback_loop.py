@@ -207,6 +207,8 @@ class JudgmentAssetCandidateManualRequest(BaseModel):
     research_topic: str = "manual"
     case_id: str = ""
     review_id: Optional[int] = None
+    # 本文の出所。user=ユーザーが教えた／入力した、shion=紫苑の返答（ユーザーが保存を頼んだもの）。REV-498
+    content_source: Literal["user", "shion"] = "user"
 
 
 class JudgmentAssetPromotionReviewRequest(BaseModel):
@@ -1727,6 +1729,8 @@ def _promote_judgment_asset_candidate_to_canonical(
                 "updated_at": now,
                 "promotion_source": promoted_by,
                 "private": False,
+                # 紫苑の返答由来なら出所を引き継ぐ（方針らしさ採点の対象外。REV-498）
+                "content_source": str(candidate.get("content_source") or "user"),
                 "material_types": [material_type],
                 "domains": ["lease_screening"],
             }

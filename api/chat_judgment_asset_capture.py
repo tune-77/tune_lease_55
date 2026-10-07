@@ -107,6 +107,8 @@ def create_manual_judgment_asset_candidate(
         "manual_case_id": str(req.case_id or "")[:120],
         "manual_review_id": int(req.review_id or 0) if req.review_id else 0,
         "use_policy": "人間が追加した判断資産候補。案件レビューで使い、効いた/外したと結果検証で育てる。",
+        # 本文の出所（REV-498）。紫苑の返答を保存したものは shion。ユーザー由来の根拠として数えない
+        "content_source": str(getattr(req, "content_source", "") or "user"),
     }
     candidates_jsonl.parent.mkdir(parents=True, exist_ok=True)
     with candidates_jsonl.open("a", encoding="utf-8") as fh:
@@ -278,6 +280,8 @@ def capture_chat_judgment_asset_if_needed(
                 candidate_type=chat_judgment_asset_candidate_type(claim),
                 research_topic=CHAT_TEACHING_TOPIC,
                 case_id=f"chat:{user_id}",
+                # user_requested は「保存して」と頼まれた紫苑の返答。ユーザーの教示と区別する（REV-498）
+                content_source="shion" if user_requested else "user",
             )
         )
         writeback = cloudrun_event_recorder(
