@@ -127,6 +127,7 @@ def _run_main(tmp_path, monkeypatch, *, passing: bool, extra: list[str]) -> int:
         "build_report",
         lambda **_: {
             "missing_historical_answers": [],
+            "answer_coverage": {"total_cases": 1, "scored_with_latest": 1, "stale": [], "no_answer": []},
             "final": {
                 "total": 1, "passed": 1 if passing else 0, "average_score": 0,
                 "concept_coverage": 0, "forbidden_cases": 0, "uncertainty_misses": 0, "cases": [],
@@ -136,7 +137,8 @@ def _run_main(tmp_path, monkeypatch, *, passing: bool, extra: list[str]) -> int:
     monkeypatch.setattr(hist, "write_outputs", lambda *a, **k: None)
     monkeypatch.setattr(
         sys, "argv",
-        ["x", "--eval-set", str(eval_set), "--prompt-feedback", str(feedback), *extra],
+        ["x", "--eval-set", str(eval_set), "--prompt-feedback", str(feedback),
+         "--chat-log", str(tmp_path / "chat.jsonl"), *extra],
     )
     return hist.main()
 
@@ -150,3 +152,58 @@ def test_failed_cases_are_a_quality_warning_not_a_pipeline_failure(tmp_path, mon
 def test_strict_flag_keeps_failing_exit_code(tmp_path, monkeypatch):
     assert _run_main(tmp_path, monkeypatch, passing=False, extra=["--strict"]) == 1
     assert _run_main(tmp_path, monkeypatch, passing=True, extra=["--strict"]) == 0
+
+
+def _case(case_id: str, query: str) -> dict:
+    return {
+        "id": case_id,
+        "query": query,
+        "required_concepts": [["厨房設備"], ["資金繰り"]],
+        "forbidden_claims": [],
+        "require_uncertainty": False,
+        "_source_id": f"hash-{case_id}",
+    }
+
+
+def test_latest_answer_is_used_over_first_record():
+    # REV-497: 以前は同じ質問の最初の記録（6/12）を毎回使い、新しい回答が評価に入らなかった
+    cases = [_case("c1", "飲食業をやりたいんだけどリース使う？")]
+    feedback = [
+        {"question_hash": "hash-c1", "question": "飲食業をやりたいんだけどリース使う？",
+         "response_text": "古い回答", "timestamp": "2026-06-12T10:50:24"},
+    ]
+    chat = [
+        {"user_message": "飲食業をやりたいんだけど、リース使う?", "assistant_reply": "厨房設備と資金繰りを見る",
+         "ts": "2026-10-06T09:00:00", "surface": "lease_intelligence_dialogue"},
+    ]
+
+    answers = hist.build_historical_answers(cases, feedback, chat, fresh_since="2026-09-08")
+
+    assert answers["c1"]["answer"] == "厨房設備と資金繰りを見る"
+    assert answers["c1"]["freshness"] == "fresh"
+    assert answers["c1"]["answer_source"] == "chat_log:lease_intelligence_dialogue"
+
+
+def test_only_old_answers_are_not_scored_and_shown_with_date():
+    cases = [_case("c1", "電車はリース？"), _case("c2", "レンタカーを借りるには")]
+    feedback = [{"question_hash": "hash-c1", "question": "電車はリース？", "response_text": "古い",
+                 "timestamp": "2026-06-12T10:52:59"}]
+
+    answers = hist.build_historical_answers(cases, feedback, [], fresh_since="2026-09-08")
+    report = hist.build_report(cases=cases, answers=answers, eval_set_path=Path("e"), prompt_feedback_path=Path("f"))
+
+    coverage = report["answer_coverage"]
+    assert coverage["scored_with_latest"] == 0
+    assert coverage["stale"] == [{"id": "c1", "query": "電車はリース？", "latest_answered_at": "2026-06-12T10:52:59"}]
+    assert [item["id"] for item in coverage["no_answer"]] == ["c2"]
+    assert report["final"]["total"] == 0
+
+
+def test_different_question_with_same_template_is_not_matched():
+    # 「中古車はリースできる？」を「焼却炉はリースできる？」の回答として採点しない
+    cases = [_case("c1", "焼却炉はリースできる？")]
+    chat = [{"user_message": "中古車はリースできる？", "assistant_reply": "できます", "ts": "2026-10-01T00:00:00"}]
+
+    answers = hist.build_historical_answers(cases, [], chat, fresh_since="2026-09-08")
+
+    assert answers["c1"]["freshness"] == "none"
