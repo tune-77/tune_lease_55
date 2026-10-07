@@ -21,6 +21,12 @@ importance: 高
 """
 
 
+@pytest.fixture(autouse=True)
+def _no_real_jev(monkeypatch):
+    # 既存テストは本物の Jev を呼ばない。ハブ判定のテストだけ偽の判定器と NEWS_ZETTEL_HUB_CHECK=1 を使う
+    monkeypatch.setenv("NEWS_ZETTEL_HUB_CHECK", "0")
+
+
 @pytest.fixture
 def vault(tmp_path):
     news = tmp_path / zettel.NEWS_DIR
@@ -213,3 +219,88 @@ def test_news_collector_plist_enables_backfill_with_daily_limit():
     env = plistlib.loads(Path("launchd/com.tunelease.lease-news-collector.plist").read_bytes())["EnvironmentVariables"]
     assert env["NEWS_ZETTEL_BACKFILL"] == "1"
     assert env["NEWS_ZETTEL_BACKFILL_DAILY_LIMIT"] == "200"
+
+
+
+# ── REV-501: ハブ判定（案B）と統計記事の重複（案C） ──────────────────────
+IDEA = "運送業は人手不足で稼働が落ちると返済原資が細るかも。ドライバー確保の見通しを確かめたい。"
+
+
+def _one_clip(vault):
+    return sorted((vault / zettel.NEWS_DIR).glob("2026-10-08*.md"))
+
+
+def test_weak_hub_is_dropped_and_memo_left_unconnected(vault, monkeypatch):
+    monkeypatch.setenv("NEWS_ZETTEL_HUB_CHECK", "1")
+    seen: list[str] = []
+
+    def checker(texts):
+        seen.extend(texts)
+        return [0.3]
+
+    state: dict = {}
+    summary = zettel.process(vault, _one_clip(vault), state,
+                             model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": ["h2"]}]},
+                             hub_checker=checker)
+
+    assert summary["hub_checked"] == 1 and summary["hub_dropped"] == 1 and summary["unconnected"] == 1
+    assert "ハブ: 倒産率とリスク" in seen[0]
+    text = next((vault / zettel.MEMO_DIR).glob("*.md")).read_text(encoding="utf-8")
+    assert "connection: unconnected" in text and "hub_check: 0.3" in text and "倒産率とリスク" in text.split("---")[1]
+    entry = next(iter(state.values()))
+    assert entry["hubs"] == [] and entry["proposed_hubs"] == ["倒産率とリスク"] and entry["hub_fit"] == 0.3
+
+
+def test_fitting_hub_is_kept(vault, monkeypatch):
+    monkeypatch.setenv("NEWS_ZETTEL_HUB_CHECK", "1")
+    zettel.process(vault, _one_clip(vault), {},
+                   model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": ["h2"]}]},
+                   hub_checker=lambda texts: [0.9])
+
+    text = next((vault / zettel.MEMO_DIR).glob("*.md")).read_text(encoding="utf-8")
+    assert "connection: connected" in text and "[[03-知識_業界/業種分析/倒産率とリスク|倒産率とリスク]]" in text
+
+
+def test_jev_unavailable_keeps_link_marked_unchecked(vault, monkeypatch):
+    monkeypatch.setenv("NEWS_ZETTEL_HUB_CHECK", "1")
+    summary = zettel.process(vault, _one_clip(vault), {},
+                             model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": ["h2"]}]},
+                             hub_checker=lambda texts: [None])
+
+    assert summary["hub_unchecked"] == 1 and summary["connected"] == 1
+    assert "hub_check: unchecked" in next((vault / zettel.MEMO_DIR).glob("*.md")).read_text(encoding="utf-8")
+
+
+def test_stat_key_matches_same_numbers_only_with_units():
+    a = zettel.stat_key("2026-10-08", "8月の工作機械受注 64%増 北米アジア伸び歴代2位 - 日刊工業")
+    b = zettel.stat_key("2026-10-08", "工作機械受注、8月64%増 北米アジア伸び歴代2位 - 日経")
+    assert a and a == b
+    assert zettel.stat_key("2026-10-08", "8月の工作機械受注65%増 AI関連が好調") != a
+    assert zettel.stat_key("2026-10-08", "日銀短観は製造業改善も設備投資は鈍化") == ""
+    assert zettel.stat_key("2026-10-09", "工作機械受注、8月64%増 北米アジア伸び歴代2位") != a  # 日付が違えば別
+
+
+def test_same_stat_requires_overlap_and_same_place():
+    def item(title):
+        return {"topic": zettel.normalize_topic(title), "stat_key": zettel.stat_key("2026-10-08", title)}
+
+    machine = item("8月の工作機械受注 64%増 北米アジア伸び歴代2位")
+    assert zettel.is_same_stat(item("工作機械受注、8月64%増 北米アジア伸び歴代2位"), {machine["stat_key"]: [machine["topic"]]})
+    aomori = item("9月の青森県内企業倒産は3件 負債総額は小規模")
+    assert not zettel.is_same_stat(item("9月の岡山県内企業倒産は3件 建設業が中心"), {aomori["stat_key"]: [aomori["topic"]]})
+
+
+def test_same_statistic_from_another_outlet_is_skipped_before_model(vault):
+    first = _clip(vault, "2026-10-08", "S1", "8月の工作機械受注 64%増 北米アジア伸び歴代2位 - 日刊工業")
+    second = _clip(vault, "2026-10-08", "S2", "工作機械受注、8月64%増 北米アジア伸び歴代2位 - 日経")
+    calls: list[str] = []
+
+    def model(prompt):
+        calls.append(prompt)
+        return {"items": [{"i": 0, "idea": IDEA, "hubs": []}]}
+
+    state: dict = {}
+    summary = zettel.process(vault, [first, second], state, model_call=model)
+
+    assert summary["duplicate_stat"] == 1 and summary["written"] == 1 and "[1]" not in calls[0]
+    assert state[str(zettel.NEWS_DIR / second.name)]["status"] == "duplicate_stat"
