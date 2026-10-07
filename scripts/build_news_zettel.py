@@ -77,9 +77,10 @@ def available_hubs(vault: Path) -> list[dict[str, str]]:
 def _read_text(path: Path) -> str | None:
     """iCloud 退避（dataless）は読まない。読めても時間がかかれば諦める。"""
     try:
-        if os.stat(path).st_flags & SF_DATALESS:
+        # st_flags は macOS だけにある。無い環境（CI の Linux 等）では退避判定をしない
+        if getattr(os.stat(path), "st_flags", 0) & SF_DATALESS:
             return None
-    except (OSError, AttributeError):
+    except OSError:
         return None
     use_alarm = hasattr(signal, "SIGALRM")
     if use_alarm:

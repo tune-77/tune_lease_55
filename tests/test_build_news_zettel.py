@@ -128,3 +128,15 @@ def test_run_script_wires_zettel_after_collection():
     script = Path("scripts/run_lease_news_collection.sh").read_text(encoding="utf-8")
     assert script.index("collect_lease_news_to_obsidian.py") < script.index("build_news_zettel.py")
     assert '"$SCRIPT_DIR/build_news_zettel.py" ||' in script
+
+
+def test_read_text_works_without_st_flags(tmp_path, monkeypatch):
+    # CI（Linux）には st_flags が無い。退避判定ができなくても普通に読む
+    import os
+    from types import SimpleNamespace
+
+    path = tmp_path / "a.md"
+    path.write_text("本文", encoding="utf-8")
+    monkeypatch.setattr(zettel.os, "stat", lambda _p: SimpleNamespace(st_size=6))
+
+    assert zettel._read_text(path) == "本文"
