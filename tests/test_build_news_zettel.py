@@ -26,7 +26,8 @@ def vault(tmp_path):
     news = tmp_path / zettel.NEWS_DIR
     news.mkdir(parents=True)
     for day, name in [("2026-10-08", "A"), ("2026-10-07", "B"), ("2026-09-01", "C"), ("2026-08-01", "D")]:
-        (news / f"{day}_業界リスクニュース_{name}.md").write_text(CLIP.replace("2026-10-08", day), encoding="utf-8")
+        text = CLIP.replace("2026-10-08", day).replace("過去最多 - 東京商工リサーチ", f"過去最多（{name}） - 東京商工リサーチ")
+        (news / f"{day}_業界リスクニュース_{name}.md").write_text(text, encoding="utf-8")
     hub = tmp_path / "03-知識_業界/業種分析/倒産率とリスク.md"
     hub.parent.mkdir(parents=True)
     hub.write_text("# 倒産率とリスク\n", encoding="utf-8")
@@ -140,3 +141,75 @@ def test_read_text_works_without_st_flags(tmp_path, monkeypatch):
     monkeypatch.setattr(zettel.os, "stat", lambda _p: SimpleNamespace(st_size=6))
 
     assert zettel._read_text(path) == "本文"
+
+
+# ── REV-500: 品質の修正 ────────────────────────────────────────────────
+def _clip(vault, day, name, title, topic=None):
+    text = CLIP.replace("2026-10-08", day).replace(
+        "# 人手不足倒産は225件、年度上半期として4年連続で過去最多 - 東京商工リサーチ", f"# {title}"
+    )
+    if topic:
+        text = text.replace("importance: 高\n", f'importance: 高\ncanonical_topic: "{topic}"\n')
+    path = vault / zettel.NEWS_DIR / f"{day}_業界リスクニュース_{name}.md"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_promo_titles_are_skipped_without_calling_model(vault):
+    promo = _clip(vault, "2026-10-08", "P", "中古建設機械市場の成長予測(2026年から2033年、年平均成長率5.9%) - PR")
+    calls = []
+    state: dict = {}
+
+    summary = zettel.process(vault, [promo], state, model_call=lambda p: calls.append(p) or {"items": []})
+
+    assert summary["promo"] == 1 and calls == []
+    assert state[str(zettel.NEWS_DIR / promo.name)]["status"] == "skipped_promo"
+
+
+def test_same_topic_from_another_source_is_not_written_twice(vault):
+    first = _clip(vault, "2026-10-08", "X1", "東京港・大井コンテナふ頭再編の全体像 - LOGISTICS TODAY", "東京港・大井コンテナふ頭再編の全体像")
+    second = _clip(vault, "2026-10-08", "X2", "東京港・大井コンテナふ頭再編の全体像 - Yahoo!ニュース", "東京港・大井コンテナふ頭再編の全体像")
+    idea = "港の再編で荷役機器の入れ替えが出てくるかも。荷役機器の案件なら残価の見方を確かめたい。"
+    calls = []
+
+    def model(prompt):
+        calls.append(prompt)
+        return {"items": [{"i": 0, "idea": idea, "hubs": ["h2"]}]}
+
+    state: dict = {}
+    summary = zettel.process(vault, [first, second], state, model_call=model)
+
+    assert summary["written"] == 1 and summary["duplicate_topic"] == 1
+    assert "[1]" not in calls[0]  # 重複は呼び出しに含めない
+    # 翌日、同じ話題の別クリップが来ても作らない（state の topic で判定）
+    third = _clip(vault, "2026-10-09", "X3", "東京港・大井コンテナふ頭再編の全体像 - 47NEWS", "東京港・大井コンテナふ頭再編の全体像")
+    assert zettel.process(vault, [third], state, model_call=model)["duplicate_topic"] == 1
+
+
+def test_old_state_without_topic_is_backfilled_from_clip(vault):
+    path = next((vault / zettel.NEWS_DIR).glob("2026-10-08*.md"))
+    state = {str(zettel.NEWS_DIR / path.name): {"status": "written"}}
+
+    topics = zettel.processed_topics(vault, state)
+
+    assert topics and state[str(zettel.NEWS_DIR / path.name)]["topic"] in topics
+
+
+def test_at_most_one_hub_is_kept():
+    rows = zettel.validate({"items": [{"i": 0, "idea": "x" * 40, "hubs": ["h1", "h2"]}]}, 1, {"h1", "h2"})
+    assert rows[0]["hubs"] == ["h1"]
+
+
+def test_prompt_forbids_assertive_phrases_and_asks_single_hub():
+    prompt = zettel.build_prompt([{"title": "t", "industries": "", "lease_assets": ""}], [])
+    assert "直結する" in prompt and "急増中" in prompt
+    assert "id を1個" in prompt
+
+
+def test_news_collector_plist_enables_backfill_with_daily_limit():
+    import plistlib
+    from pathlib import Path
+
+    env = plistlib.loads(Path("launchd/com.tunelease.lease-news-collector.plist").read_bytes())["EnvironmentVariables"]
+    assert env["NEWS_ZETTEL_BACKFILL"] == "1"
+    assert env["NEWS_ZETTEL_BACKFILL_DAILY_LIMIT"] == "200"

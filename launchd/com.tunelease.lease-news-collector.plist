@@ -27,6 +27,11 @@
          enforce へ上げる前に [news-guard] の1行JSONを1〜2週間集計する。 -->
     <key>TYPESAFE_NEWS_MODE</key>
     <string>shadow</string>
+    <!-- ニュースの永続メモ: 過去分の補完を新しい順に1日200件まで（REV-500。止める時は 0） -->
+    <key>NEWS_ZETTEL_BACKFILL</key>
+    <string>1</string>
+    <key>NEWS_ZETTEL_BACKFILL_DAILY_LIMIT</key>
+    <string>200</string>
     <!-- launchd は .zshrc を読まないため Keychain のサービス名をここで渡す
          （鍵そのものはplistに置かない）。 -->
     <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>
