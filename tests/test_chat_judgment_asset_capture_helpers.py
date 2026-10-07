@@ -128,3 +128,33 @@ def test_mask_for_jev_hides_company_and_person_and_blocks_pii():
     masked = mask_for_jev("株式会社ヤマダ運輸の山田社長は資金繰りに詳しい")
     assert "ヤマダ" not in masked and "山田" not in masked
     assert mask_for_jev("連絡先は 03-1234-5678 です") == ""
+
+
+def test_capture_records_content_source_user_or_shion(tmp_path):
+    # REV-498: ユーザーの教示は user、「保存して」と頼まれた紫苑の返答は shion として登録する
+    from api.chat_judgment_asset_capture import capture_chat_judgment_asset_if_needed, create_manual_judgment_asset_candidate
+
+    created = []
+    capture_chat_judgment_asset_if_needed(
+        "歯科医院の開業前リースは、銀行の融資実行日と見積書の日付が一致しているか必ず確認する。",
+        jev_shadow=lambda _claim: None,
+        **_capture_kwargs(created),
+    )
+    capture_chat_judgment_asset_if_needed(
+        "承知いたしました。### 稟議コメントテンプレート 返済原資と保全を分けて書く。",
+        jev_shadow=lambda _claim: None,
+        user_requested=True,
+        **_capture_kwargs(created),
+    )
+
+    assert [req.content_source for req in created] == ["user", "shion"]
+
+    row = create_manual_judgment_asset_candidate(
+        SimpleNamespace(
+            claim=created[1].claim, candidate_type="application_rule", research_topic="chat_judgment_teaching",
+            case_id="chat:u1", review_id=None, content_source="shion",
+        ),
+        candidates_jsonl=tmp_path / "c.jsonl",
+        candidate_state_json=tmp_path / "s.json",
+    )
+    assert row["content_source"] == "shion"

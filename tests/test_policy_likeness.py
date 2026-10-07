@@ -110,3 +110,33 @@ def test_judge_with_jev_defaults_keychain_service(monkeypatch):
 
     assert pl.judge_with_jev(["設備の稼働率と返済原資を確認してから条件を決める方針。"]) == [0.8]
     assert seen["service"] == "typesafe-api-key"
+
+
+def test_shion_reply_rules_are_not_scored_or_queued(tmp_path, monkeypatch):
+    monkeypatch.setenv("JEV_JUDGMENT_LOG_PATH", "off")
+    # REV-498: 紫苑の返答（content_source=shion）は方針らしさの採点・判定待ちに入れない
+    canonical = tmp_path / "canonical.json"
+    canonical.write_text(
+        json.dumps(
+            {
+                "rules": [
+                    {"id": "user1", "status": "active", "canonical_statement": "延滞先には増額しない。"},
+                    {"id": "shion1", "status": "active", "content_source": "shion", "canonical_statement": "承知いたしました。"},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    queue = tmp_path / "queue.json"
+    pl.save_queue({"shion1": {"id": "shion1", "tier": "guideline", "decision": None, "probability": 0.9}}, queue)
+    seen: list[str] = []
+
+    def judge(texts):
+        seen.extend(texts)
+        return [0.5 for _ in texts]
+
+    pl.score_canonical_rules(canonical_path=canonical, queue_path=queue, judge=judge)
+
+    assert seen == ["延滞先には増額しない。"]
+    assert "shion1" not in pl.load_queue(queue)
