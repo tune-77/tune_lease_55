@@ -110,3 +110,43 @@ def test_historical_outputs_and_daily_post_wiring(tmp_path):
     historical_pos = script.index("scripts/evaluate_experience_replay_historical.py")
     ab_report_pos = script.index("scripts/build_judgment_asset_ab_report.py")
     assert replay_pos < historical_pos < ab_report_pos
+
+
+def _run_main(tmp_path, monkeypatch, *, passing: bool, extra: list[str]) -> int:
+    import sys
+
+    eval_set = tmp_path / "eval.json"
+    eval_set.write_text(
+        json.dumps([{"id": "c1", "query": "q", "concepts": [{"aliases": ["返済原資"]}]}], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    feedback = tmp_path / "feedback.jsonl"
+    _write_jsonl(feedback, [{"question": "q", "response_text": "返済原資を確認します" if passing else "わからない"}])
+    monkeypatch.setattr(
+        hist,
+        "build_report",
+        lambda **_: {
+            "missing_historical_answers": [],
+            "final": {
+                "total": 1, "passed": 1 if passing else 0, "average_score": 0,
+                "concept_coverage": 0, "forbidden_cases": 0, "uncertainty_misses": 0, "cases": [],
+            },
+        },
+    )
+    monkeypatch.setattr(hist, "write_outputs", lambda *a, **k: None)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["x", "--eval-set", str(eval_set), "--prompt-feedback", str(feedback), *extra],
+    )
+    return hist.main()
+
+
+def test_failed_cases_are_a_quality_warning_not_a_pipeline_failure(tmp_path, monkeypatch, capsys):
+    # REV-496: 不合格は品質の指標。8/14 から変わらない 0/10 が毎日パイプライン障害として検出されていた
+    assert _run_main(tmp_path, monkeypatch, passing=False, extra=[]) == 0
+    assert "warn: 不合格 1/1 件" in capsys.readouterr().out
+
+
+def test_strict_flag_keeps_failing_exit_code(tmp_path, monkeypatch):
+    assert _run_main(tmp_path, monkeypatch, passing=False, extra=["--strict"]) == 1
+    assert _run_main(tmp_path, monkeypatch, passing=True, extra=["--strict"]) == 0

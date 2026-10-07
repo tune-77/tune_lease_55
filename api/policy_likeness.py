@@ -98,6 +98,10 @@ def judge_with_jev(texts: list[str], *, batch: int = 15) -> list[float | None]:
     from api.chat_judgment_asset_capture import mask_for_jev
 
     os.environ.setdefault("TYPESAFE_DEDUP_TIMEOUT_SECONDS", "90")
+    # 改善パイプライン（launchd com.tunelease.improvement-pipeline）の plist には鍵の受け渡しが無く、
+    # 10/5 の初回から毎回 TYPESAFE_API_KEY is not configured で34件とも失敗していた（REV-496）。
+    # 他の Jev 呼び出し（lease_intelligence_mind 等）と同じ Keychain 項目を既定にする。
+    os.environ.setdefault("TYPESAFE_API_KEYCHAIN_SERVICE", "typesafe-api-key")
     masked = [mask_for_jev(text) for text in texts]
     sendable = [k for k, m in enumerate(masked) if m]
     results: list[float | None] = [None] * len(texts)
