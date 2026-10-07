@@ -46,16 +46,6 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 STATE_DIR = PROJECT_ROOT / "data" / "aurion_daily"
 LOG_DIR = PROJECT_ROOT / "logs" / "aurion_daily"
 
-
-def evolved_insight_enabled() -> bool:
-    """@AI_Insight_Evolved ノートを書くか（REV-491。既定オフ）。
-
-    9/10 以降「3. 結論」が毎日同じフォールバック定型文で、Web抜粋も生HTMLの断片だった。
-    唯一の読み手 extract_wiki_vault_insights も「新規改善案なし」を返し続けていたため止める。
-    midnight の推論（state の reasoning）は check_aurion_state のアラートが使うので残す。
-    """
-    return os.environ.get("AURION_EVOLVED_INSIGHT_ENABLED", "0").strip().lower() in {"1", "true", "on"}
-
 KEYWORDS = [
     "リース",
     "審査",
@@ -1363,7 +1353,7 @@ def write_morning_report(
         *ai_budget_lines(),
         *chat_prompt_budget_lines(),
         "",
-        *([f"[[@AI_Insight_Evolved_{date_str()}]]"] if evolved_insight_enabled() else []),
+        f"[[@AI_Insight_Evolved_{date_str()}]]",
         "[[Q-Risk]] [[LightGBM スコアリング]] [[業種別傾向]] [[審査方針]]",
         "",
         "## SYSTEM STATUS",
@@ -1807,14 +1797,12 @@ def run_morning_report(dry_run: bool = False) -> int:
         )
         return 0
     report = write_morning_report(state, db, recent, codex_queue, declaration_gaps)
-    insight: Path | None = None
-    if evolved_insight_enabled():
-        web = state.get("web") or web_tactical_search(3)
-        reasoning = state.get("reasoning") or cross_reasoning_loop(db, recent, web)
-        insight = write_evolved_insight(state, db, recent, web, reasoning, report)
+    web = state.get("web") or web_tactical_search(3)
+    reasoning = state.get("reasoning") or cross_reasoning_loop(db, recent, web)
+    insight = write_evolved_insight(state, db, recent, web, reasoning, report)
     notify(
         "AURION CORE Morning Report",
-        f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; quota {codex_queue.get('blocked_by_quota_count', 0)}; gaps {declaration_gaps.get('count', 0)}; insight: {insight.name if insight else 'off'}",
+        f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; quota {codex_queue.get('blocked_by_quota_count', 0)}; gaps {declaration_gaps.get('count', 0)}; insight: {insight.name}",
     )
 
     db_count_rows = db.get("counts") or []
@@ -1840,8 +1828,7 @@ def run_morning_report(dry_run: bool = False) -> int:
     _send_slack("\n".join(slack_lines))
 
     print(str(report))
-    if insight:
-        print(str(insight))
+    print(str(insight))
     return 0
 
 
