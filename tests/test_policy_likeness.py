@@ -89,3 +89,24 @@ def test_decision_endpoint_rejects_on_cloud_run(monkeypatch):
     with pytest.raises(HTTPException) as excinfo:
         feedback_loop.post_policy_likeness_decision("a", feedback_loop.PolicyLikenessDecisionRequest(is_policy=True))
     assert excinfo.value.status_code == 409
+
+
+def test_judge_with_jev_defaults_keychain_service(monkeypatch):
+    # REV-496: 改善パイプラインの launchd には鍵の受け渡しが無く、毎回 TYPESAFE_API_KEY is not configured だった
+    import typesafe_dedup_guard as transport
+
+    monkeypatch.delenv("TYPESAFE_API_KEYCHAIN_SERVICE", raising=False)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    seen: dict[str, str] = {}
+
+    def fake_request(payload):
+        import os
+
+        seen["service"] = os.environ.get("TYPESAFE_API_KEYCHAIN_SERVICE", "")
+        return {"answers": {"item0": {"noul": 0.8}}}
+
+    monkeypatch.setattr(transport, "_default_request", fake_request)
+    monkeypatch.setattr(transport, "_noul", lambda answers, key: answers[key]["noul"])
+
+    assert pl.judge_with_jev(["設備の稼働率と返済原資を確認してから条件を決める方針。"]) == [0.8]
+    assert seen["service"] == "typesafe-api-key"

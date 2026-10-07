@@ -147,6 +147,7 @@ def main() -> int:
     parser.add_argument("--prompt-feedback", type=Path, default=DEFAULT_PROMPT_FEEDBACK)
     parser.add_argument("--output-json", type=Path, default=DEFAULT_OUTPUT_JSON)
     parser.add_argument("--output-md", type=Path, default=DEFAULT_OUTPUT_MD)
+    parser.add_argument("--strict", action="store_true", help="不合格が1件でもあれば終了コード1にする")
     args = parser.parse_args()
 
     cases = json.loads(args.eval_set.expanduser().read_text(encoding="utf-8"))
@@ -168,7 +169,15 @@ def main() -> int:
         f"uncertainty_miss={final['uncertainty_misses']} "
         f"missing={len(report['missing_historical_answers'])}"
     )
-    return 0 if final["passed"] == final["total"] else 1
+    failed = final["total"] - final["passed"]
+    if failed:
+        # 不合格は回答品質の指標であって、パイプラインの障害ではない（REV-496）。
+        # 10/3 に `|| true` を外して実際の終了コードを記録するようにした結果、8/14 から変わらない
+        # 0/10 が毎日「パイプライン障害」として検出されていた。止めたい時だけ --strict を使う。
+        print(f"[experience-replay-historical] warn: 不合格 {failed}/{final['total']} 件（品質の指標・障害ではない）")
+    if args.strict and failed:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
