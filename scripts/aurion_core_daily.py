@@ -19,7 +19,6 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-import time
 import traceback
 import urllib.request
 from collections import Counter
@@ -1340,7 +1339,6 @@ def _q_risk_discovery_essay() -> str:
 
 def run_midnight(dry_run: bool = False) -> int:
     _mkdirs()
-    start_monotonic = time.monotonic()
     state: dict[str, Any] = {
         "mode": "midnight",
         "started_at": now().isoformat(timespec="seconds"),
@@ -1380,10 +1378,6 @@ def run_midnight(dry_run: bool = False) -> int:
             + "\n".join(f"• {e}" for e in state["errors"][:3])
         )
     finally:
-        min_runtime = float(os.environ.get("AURION_MIN_RUNTIME_SECONDS", "61"))
-        remaining = min_runtime - (time.monotonic() - start_monotonic)
-        if remaining > 0:
-            time.sleep(remaining)
         state["finished_at"] = now().isoformat(timespec="seconds")
         state_path = write_state(state)
         print(json.dumps({"state": str(state_path), **state}, ensure_ascii=False, indent=2))
