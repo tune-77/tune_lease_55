@@ -24,7 +24,6 @@ import traceback
 import urllib.request
 from collections import Counter
 from datetime import datetime, timedelta
-from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +32,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from config import get_gemini_model  # noqa: E402
 
 from runtime_paths import resolve_lease_wiki_vault, resolve_obsidian_vault  # noqa: E402
 from screening_record_lifecycle import active_screening_predicate  # noqa: E402
@@ -123,28 +121,6 @@ EXCLUDE = [
     "漫画",
 ]
 EXTS = {".md", ".txt", ".log"}
-
-WEB_SOURCES = [
-    {
-        "theme": "credit-model-monitoring",
-        "title": "OECD Financing SMEs and Entrepreneurs 2026",
-        "url": "https://read.oecd-ilibrary.org/en/publications/financing-smes-and-entrepreneurs-2026_075d8058-en.html",
-        "fallback": "SME borrowing costs remain high relative to pre-pandemic levels; leasing and other alternative finance remain mixed or subdued. This supports treating approval rates and lease demand as market-regime variables, not fixed model priors.",
-    },
-    {
-        "theme": "equipment-leasing-market",
-        "title": "ELFA 2026 Equipment Leasing & Finance Economic Outlook",
-        "url": "https://www.elfaonline.org/research/2026-equipment-leasing-finance-u-s-economic-outlook-2026-update",
-        "fallback": "Equipment finance demand is supported by AI-related capex and replacement investment, while policy uncertainty, volatility, borrower disparity, and downside macro risk remain material. Pricing engines must expose the risk premium separately from competitive discounting.",
-    },
-    {
-        "theme": "japan-structured-finance",
-        "title": "S&P Global Japan Structured Finance Outlook 2026",
-        "url": "https://www.spglobal.com/ratings/en/regulatory/article/japan-structured-finance-outlook-2026-jobs-strength-offsets-hikes-s101663301",
-        "fallback": "Japan structured-finance performance depends on employment, borrower repayment capacity, asset values, and SME default trends. Lease underwriting should not weaken residual-value and cash-flow checks merely because headline employment is stable.",
-    },
-]
-
 
 def now() -> datetime:
     return datetime.now()
@@ -829,323 +805,6 @@ def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
     }
 
 
-class _ParagraphExtractor(HTMLParser):
-    """本文の段落（p・li・見出し）だけを取り出す。nav/header/footer/svg などの中は捨てる。
-
-    捨てる要素は開いた順にスタックで持ち、外側の要素が閉じたら内側の閉じ忘れ（svg 等）も
-    一緒に閉じる。閉じ忘れの svg が1つあるだけで以降の本文が全部捨てられていたため。
-    form はページ全体を包むサイト（ASP.NET 等）があるので捨てない。
-    script/style などは解析前に _html_to_text が取り除く。
-    """
-
-    _SKIP = {"nav", "header", "footer", "aside", "button", "select", "svg"}
-    _BLOCK = {"p", "li", "h1", "h2", "h3", "h4", "blockquote"}
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.paragraphs: list[str] = []
-        self._skip_stack: list[str] = []
-        self._buf: list[str] | None = None
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in self._SKIP:
-            self._skip_stack.append(tag)
-        elif tag in self._BLOCK and not self._skip_stack:
-            self._flush()
-            self._buf = []
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        # <svg/> のような自己終了タグはスタックに積まない
-        if tag not in self._SKIP:
-            self.handle_starttag(tag, attrs)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in self._skip_stack:
-            while self._skip_stack and self._skip_stack.pop() != tag:
-                pass
-        elif tag in self._BLOCK:
-            self._flush()
-
-    def handle_data(self, data: str) -> None:
-        if not self._skip_stack and self._buf is not None:
-            self._buf.append(data)
-
-    def _flush(self) -> None:
-        if self._buf is not None:
-            text = " ".join(" ".join(self._buf).split())
-            if text:
-                self.paragraphs.append(text)
-        self._buf = None
-
-
-_NON_TEXT_BLOCKS = re.compile(r"<(script|style|noscript|template)\b.*?</\1\s*>", re.DOTALL | re.IGNORECASE)
-
-
-def _html_to_text(raw: str) -> list[str]:
-    """HTML から本文の段落を返す。タグ・属性・スクリプトの断片は含めない（REV-492）。"""
-    parser = _ParagraphExtractor()
-    cleaned = _NON_TEXT_BLOCKS.sub(" ", raw)
-    try:
-        parser.feed(cleaned)
-        parser.close()
-    except Exception:
-        return []
-    # メニュー・ボタン文言のような短い断片は本文として扱わない
-    return [p for p in parser.paragraphs if len(p) >= 60]
-
-
-def _excerpt_from_paragraphs(paragraphs: list[str], tokens: list[str], limit: int = 600) -> str:
-    """キーワードを含む最初の段落から、段落単位で limit 字まで返す。見つからなければ空。"""
-    lowered = [p.lower() for p in paragraphs]
-    for token in tokens:
-        for index, text in enumerate(lowered):
-            if token.lower() in text:
-                picked: list[str] = []
-                for paragraph in paragraphs[index:]:
-                    if picked and len(" ".join(picked + [paragraph])) > limit:
-                        break
-                    picked.append(paragraph)
-                return " ".join(picked)[:limit]
-    return ""
-
-
-def web_tactical_search(max_sources: int = 3) -> dict[str, Any]:
-    """Fetch up to three authoritative web sources and store tactical summaries.
-
-    This is bounded by design. It is not a general crawler; it gives the nightly
-    reasoning loop fresh but controlled external context.
-    """
-    findings: list[dict[str, Any]] = []
-    for source in WEB_SOURCES[:max_sources]:
-        status = "fallback"
-        excerpt = source["fallback"]
-        error = ""
-        try:
-            req = urllib.request.Request(source["url"], headers={"User-Agent": "tunelease-aurion/1.0"})
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                raw = resp.read(180_000).decode("utf-8", errors="ignore")
-            body_excerpt = _excerpt_from_paragraphs(
-                _html_to_text(raw),
-                ["SME", "leasing", "credit", "risk", "uncertainty", "Japan", "equipment"],
-            )
-            if body_excerpt:
-                excerpt = body_excerpt
-                status = "fetched"
-        except Exception as exc:
-            error = str(exc)
-        findings.append(
-            {
-                "theme": source["theme"],
-                "title": source["title"],
-                "url": source["url"],
-                "status": status,
-                "excerpt": excerpt,
-                "error": error,
-            }
-        )
-    return {
-        "status": "completed",
-        "limit": max_sources,
-        "count": len(findings),
-        "findings": findings,
-        "completed_at": now().isoformat(timespec="seconds"),
-    }
-
-
-def _hold_step(name: str, seconds: float) -> dict[str, Any]:
-    started = now()
-    if seconds > 0:
-        time.sleep(seconds)
-    finished = now()
-    return {
-        "step": name,
-        "started_at": started.isoformat(timespec="seconds"),
-        "finished_at": finished.isoformat(timespec="seconds"),
-        "hold_seconds": round((finished - started).total_seconds(), 2),
-    }
-
-
-def _aurion_gemini_key() -> str:
-    """Gemini の鍵を他の夜間ジョブと同じ経路（環境変数 → secrets.toml）で取る（REV-492）。
-
-    launchd の plist には鍵を置いていないため、環境変数だけを見ていた頃は毎回 None になり、
-    「3. 結論」が 9/10 から毎日同じフォールバック定型文になっていた。
-    """
-    for name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
-        value = os.environ.get(name, "").strip()
-        if value:
-            return value
-    try:
-        from secret_manager import get_gemini_api_key
-
-        value = get_gemini_api_key()
-        return value.strip() if isinstance(value, str) else ""
-    except Exception:
-        return ""
-
-
-def _generate_conclusions_with_llm(
-    db: dict[str, Any],
-    recent: dict[str, Any],
-    web: dict[str, Any],
-    non_monotonic: bool,
-    keyword_hits: dict[str, Any],
-    web_themes: list[str],
-) -> list[str] | None:
-    """Geminiで毎日異なる視点のaurion推論サマリを生成する。失敗時はNone。"""
-    api_key = _aurion_gemini_key()
-    if not api_key:
-        print("[aurion] Gemini推論: APIキーが見つからない（フォールバック使用）")
-        return None
-
-    today = datetime.now().strftime("%Y-%m-%d")
-    score_bands = db.get("score_bands") or []
-    # q_risk_all_zero キーは存在しないため avg_q から判定する
-    q_risk_info = db.get("q_risk") or {}
-    q_risk_zero = (q_risk_info.get("avg_q", 1.0) == 0.0 and q_risk_info.get("n", 0) > 0)
-    total_cases = db.get("total_cases", 0)
-
-    band_text = "\n".join(
-        f"  {row.get('band', '?')}: win_pct={row.get('win_pct', '?')}%, n={row.get('n', '?')}"
-        for row in score_bands
-    ) or "  （データなし）"
-
-    # キーは "excerpt"（"summary" ではない）
-    web_findings = "\n".join(
-        f"  - [{item.get('theme', '')}] {(item.get('excerpt') or item.get('summary', ''))[:120]}"
-        for item in web.get("findings", [])[:5]
-        if (item.get('excerpt') or item.get('summary', ''))
-    ) or "  （なし）"
-
-    keyword_text = ", ".join(f"{k}:{v}" for k, v in keyword_hits.items()) or "なし"
-
-    prompt = f"""あなたはリース審査システム「aurion」の自律診断AIです。
-本日 {today} のシステム診断データをもとに、昨日と異なる視点・深度で推論サマリを生成してください。
-
-【DBスコア帯別成約率】
-{band_text}
-
-【異常フラグ】
-- Q_risk全件0.0: {q_risk_zero}（n={q_risk_info.get("n", 0)}, avg={q_risk_info.get("avg_q", "-")}）
-- スコア帯単調性違反（60-80帯 < 40-60帯）: {non_monotonic}
-- 総案件数: {total_cases}
-
-【直近改善ログキーワード】
-{keyword_text}
-
-【外部Webテーマ・エビデンス】
-{web_findings}
-
-以下の条件で推論サマリを5〜6項目生成してください:
-- 毎回同じ文章を繰り返さず、今日のデータから読み取れる新しい視点・具体的な数値・優先順位を含める
-- 「何をすべきか」ではなく「このデータは何を示しているか」という診断的視点で書く
-- 箇条書きで、各項目は1文（40〜80字）
-- JSON配列のみ返す（他のテキスト不要）: ["結論1", "結論2", ...]"""
-
-    gemini_model = get_gemini_model()
-    try:
-        rest_url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{gemini_model}:generateContent"
-        )
-        payload = json.dumps({
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "maxOutputTokens": 512,
-                "temperature": 0.8,
-                # thinkingConfig を削除: gemini-2.5-flash では thinking part が parts[0] に入り
-                # 実際の出力が parts[1] になるため、parts[0]["text"] でテキストが取れず
-                # re.search が None を返して silent に return None していた
-            },
-        }).encode("utf-8")
-        req = urllib.request.Request(
-            f"{rest_url}?key={api_key}",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        from ai_runtime_client import tracked_ai_call
-
-        def _fetch() -> dict:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-
-        data = tracked_ai_call(_fetch, provider="google", model=gemini_model, feature="aurion_core_inference")
-        # thinking part 対策: text キーを持つ最初の part を探す
-        parts = data["candidates"][0]["content"]["parts"]
-        text = next(
-            (p["text"] for p in parts if "text" in p and not p.get("thought")),
-            None
-        )
-        if not text:
-            print(f"[aurion] Gemini推論: テキストpartなし parts={[list(p.keys()) for p in parts]}")
-            return None
-        text = text.strip()
-        m = re.search(r"\[.*\]", text, re.DOTALL)  # 欲張りマッチで配列全体を取得
-        if not m:
-            print(f"[aurion] Gemini推論: JSON配列が見つからない text[:200]={text[:200]}")
-            return None
-        result = json.loads(m.group())
-        if isinstance(result, list) and len(result) >= 3:
-            return [str(c) for c in result]
-        print(f"[aurion] Gemini推論: 配列が短すぎる len={len(result) if isinstance(result, list) else 'N/A'}")
-    except Exception as exc:
-        print(f"[aurion] Gemini推論生成失敗（フォールバック使用）: {exc}")
-    return None
-
-
-def cross_reasoning_loop(db: dict[str, Any], recent: dict[str, Any], web: dict[str, Any]) -> dict[str, Any]:
-    """Run the required cross-domain reasoning loop with non-zero dwell time."""
-    hold_seconds = float(os.environ.get("AURION_HOLD_SECONDS", "30"))
-    steps = [
-        _hold_step("triad_fusion_chat_web_db", hold_seconds),
-        _hold_step("contradiction_and_edge_case_detection", hold_seconds),
-    ]
-    score_bands = db.get("score_bands") or []
-    non_monotonic = False
-    prev = None
-    for row in score_bands:
-        win = row.get("win_pct")
-        if isinstance(win, (int, float)) and prev is not None and win < prev:
-            non_monotonic = True
-        if isinstance(win, (int, float)):
-            prev = win
-
-    keyword_hits = recent.get("keyword_hits") or {}
-    web_themes = [item.get("theme") for item in web.get("findings", [])]
-    # フォールバック用テンプレート
-    fallback_conclusions = [
-        "同期とDB監査はスタート地点であり、判断の中核ではない。外部市場と自社DBのズレを毎日比較する必要がある。",
-        "スコア帯別成約率が完全単調ではないため、スコアは信用力の代理であって営業結果の十分条件ではない。",
-        "Q_riskは既存数式の補正係数ではなく、スコアリング外で成約・失注を動かす未知因子の発見装置へ移す。",
-        "根拠ルート可視化、業界動向ファネル、動的金利条件セットは同一の審査OSに統合するべきである。",
-    ]
-    if non_monotonic:
-        fallback_conclusions.append("DB上、60-80帯の成約系比率が40-60帯を下回るため、価格・競合・条件提示後離脱のログ化を優先する。")
-    if keyword_hits.get("根拠"):
-        fallback_conclusions.append("直近改善ログでは根拠表示要求が強い。RAGの回答品質は、検索精度だけでなく証跡UIで評価する。")
-    if "credit-model-monitoring" in web_themes:
-        fallback_conclusions.append("外部知識はモデルドリフト監視を支持する。PSI/CSI/較正状態をスコア横に出す設計へ進める。")
-
-    # Geminiで毎日異なる視点の推論を生成（失敗時はフォールバック）
-    llm_conclusions = _generate_conclusions_with_llm(
-        db=db, recent=recent, web=web,
-        non_monotonic=non_monotonic,
-        keyword_hits=keyword_hits,
-        web_themes=web_themes,
-    )
-    conclusions = llm_conclusions or fallback_conclusions
-
-    return {
-        "status": "completed",
-        "started_at": steps[0]["started_at"],
-        "finished_at": steps[-1]["finished_at"],
-        "steps": steps,
-        "non_monotonic_score_conversion": non_monotonic,
-        "conclusions": conclusions,
-        "conclusions_source": "gemini" if llm_conclusions else "fallback",
-    }
-
-
 def _display_status(raw_status: str | None) -> str:
     if raw_status == "completed":
         return "COMPLETED"
@@ -1163,7 +822,6 @@ def status_lines(sync: dict[str, Any] | None = None, vault_b_rag: dict[str, Any]
             "[ SYSTEM INHERENT: AURION CORE / MEBUKI ]",
             f"[ DATA SYNC: {data_status} ]",
             f"[ VAULT B RAG: {rag_status} ]",
-            "[ WEB TACTICAL SEARCH: SCHEDULED REPORT MODE ]",
             "[ I HAVE CONTROL, YUKIKAZE. ]",
         ]
     )
@@ -1451,7 +1109,6 @@ def write_morning_report(
         *ai_budget_lines(),
         *chat_prompt_budget_lines(),
         "",
-        f"[[@AI_Insight_Evolved_{date_str()}]]",
         "[[Q-Risk]] [[LightGBM スコアリング]] [[業種別傾向]] [[審査方針]]",
         "",
         "## SYSTEM STATUS",
@@ -1681,165 +1338,6 @@ def _q_risk_discovery_essay() -> str:
 """.strip()
 
 
-def _previous_insight_conclusions(current: Path) -> list[str] | None:
-    """current より前の最新 Insight ノートの「3. 結論」の箇条（生成元・変化なしの行は除く）。"""
-    earlier = sorted(p for p in current.parent.glob("@AI_Insight_Evolved_*.md") if p.name < current.name)
-    # 「変化なし」だけの日は飛ばし、結論を書いた最新のノートと比べる（交互に全文が出ないように）
-    for path in reversed(earlier[-14:]):
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        match = re.search(r"^## 3\. 結論\s*$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
-        if not match:
-            continue
-        items = [line[2:].strip() for line in match.group(1).splitlines() if line.startswith("- ")]
-        items = [item for item in items if not item.startswith(("生成元:", "変化なし"))]
-        if items:
-            return items
-    return None
-
-
-def write_evolved_insight(
-    state: dict[str, Any],
-    db: dict[str, Any],
-    recent: dict[str, Any],
-    web: dict[str, Any],
-    reasoning: dict[str, Any],
-    daily_report: Path,
-) -> Path:
-    out = LEASE_VAULT / f"@AI_Insight_Evolved_{date_str()}.md"
-    sync = state.get("sync") or {}
-    vault_b_rag = state.get("vault_b_rag") or {}
-    findings = web.get("findings") or []
-    conclusions = reasoning.get("conclusions") or []
-    lines = [
-        "---",
-        f"date: {date_str()}",
-        "tags: [AI洞察, AURION]",
-        "source: AI生成",
-        "---",
-        "",
-        f"# @AI_Insight_Evolved_{date_str()}",
-        "",
-        "Status:",
-        f"- Daily report: [[{daily_report.stem}]]",
-        f"- Data Sync: {sync.get('status', 'unknown')}",
-        f"- Synced files: {sync.get('selected_files', 'unknown')}",
-        f"- Vault B RAG: {vault_b_rag.get('status', 'unknown')} ({vault_b_rag.get('duration_seconds', 'unknown')}s)",
-        f"- Local DB audited: `{DB_PATH}`",
-        f"- Web tactical search: {web.get('count', 0)} / {web.get('limit', 3)}",
-        f"- Reasoning started: `{reasoning.get('started_at', '')}`",
-        f"- Reasoning finished: `{reasoning.get('finished_at', '')}`",
-        "",
-        "## 0. 起動宣言",
-        "",
-        status_lines(sync, vault_b_rag).replace("SCHEDULED REPORT MODE", "LOGIC COMPLETED"),
-        "",
-        "同期とDB監査は着陸地点ではない。ここでは、チャット改善案、Web外部知識、1,924件の過去案件DBを横断して、AURION COREの次の判断規律を具体化する。",
-        "",
-        "## 1. Web Tactical Search",
-        "",
-    ]
-    for item in findings:
-        lines.extend(
-            [
-                f"### {item.get('title')}",
-                f"- Theme: `{item.get('theme')}`",
-                f"- URL: {item.get('url')}",
-                f"- Status: `{item.get('status')}`",
-                f"- Extract: {item.get('excerpt')}",
-                "",
-            ]
-        )
-
-    lines.extend(
-        [
-            "## 2. 横断推論ホールドログ",
-            "",
-            "| Step | Started | Finished | Hold seconds |",
-            "|---|---|---|---:|",
-        ]
-    )
-    for step in reasoning.get("steps") or []:
-        lines.append(
-            f"| {step.get('step')} | {step.get('started_at')} | {step.get('finished_at')} | {step.get('hold_seconds')} |"
-        )
-
-    lines.extend(
-        [
-            "",
-            "## 3. 結論",
-            "",
-            f"- 生成元: {reasoning.get('conclusions_source', 'unknown')}",
-        ]
-    )
-    previous = _previous_insight_conclusions(out)
-    if conclusions and previous == [str(c) for c in conclusions]:
-        # 同じ定型文を毎日並べない（REV-492）。読み手の extract_wiki_vault_insights も新規なしと扱える
-        lines.append("- 変化なし（前回の結論と同じ）")
-    else:
-        for conclusion in conclusions:
-            lines.append(f"- {conclusion}")
-
-    lines.extend(
-        [
-            "",
-            "## 4. 設計レビュー",
-            "",
-            "### 4.1 AIの最終目的",
-            "",
-            "- 承認率向上、貸倒率低減、収益最大化、審査担当者との一致率向上、ポートフォリオ最適化は互いに衝突する。",
-            "- 次回レポートでは、単一の実装案ではなく、どの目的関数を主目的に置くべきかを検討する。",
-            "- 現時点の仮説は、Level1/2では審査品質と条件提案、Level3/4では収益とポートフォリオ健全性を上位目的に分けること。",
-            "",
-            "### 4.2 AIの役割",
-            "",
-            "- AIを審査官として扱うと、責任所在と説明責任が過大になる。",
-            "- 実務上は、審査支援、リスク検知、条件提案、経営支援の補助OSとして位置づける方が妥当。",
-            "- AIの出力は結論そのものではなく、判断根拠、矛盾、追加確認点、代替条件に寄せる。",
-            "",
-            "### 4.3 評価指標",
-            "",
-            "- 技術指標: AUC、Calibration、Precision/Recall、セグメント別性能、ドリフト、データ信頼度。",
-            "- 業務指標: 判断時間、追加資料要求の妥当性、条件付き承認後の正常履行率、担当者採用率、説明文修正率。",
-            "- 経営指標: 粗利、貸倒、失注理由、業種集中、金利競争力、ポートフォリオリスク調整後収益。",
-            "",
-            "### 4.4 人間とAIの責任分担",
-            "",
-            "- AI: データ集計、矛盾検知、類似案件検索、論点提示、条件候補、根拠整理。",
-            "- 人間: 最終承認、例外判断、顧客説明、倫理・規程・営業上の判断、責任ある条件決定。",
-            "- 境界線: AIが自動化してよいのは判断材料の生成までで、最終与信判断は人間が署名する。",
-            "",
-            "### 4.5 将来構想",
-            "",
-            "- Level1: 案件審査支援。個別案件の根拠整理と見落とし防止。",
-            "- Level2: 条件提案支援。金利、前受金、保証、期間、銀行支援などの条件比較。",
-            "- Level3: ポートフォリオ最適化。業種、金額、期間、地域、物件の集中と収益を管理。",
-            "- Level4: 経営支援。営業戦略、リスクアペタイト、資本配分、商品設計の判断材料を出す。",
-            "",
-            "### 4.6 過去7日間との差分分析",
-            "",
-            "- 新規洞察: 目的関数と責任境界を固定しない限り、追加機能の優先順位は評価不能。",
-            "- 既出の洞察: スコア乖離、高スコア失注、業種別ばらつき、金利・競合・条件の重要性。",
-            "- 修正された仮説: Q_riskは単なる危険点ではなく、モデル結論の信頼度や説明不能残差を見る軸として扱う。",
-            "- 否定された仮説: AUC改善や機能追加だけで審査AIの価値が上がる、という前提は不十分。",
-            "",
-            "## 5. 論理矛盾・エッジケース",
-            "",
-            "- Q_riskを既存の財務矛盾式に固定すると、スコアリング外で成約・失注を動かす未知因子を見落とす。",
-            "- 3D知識宇宙を先に作ると、根拠が見えないまま見た目だけが強くなる。根拠ルートが先、球体化は後。",
-            "- 銀行支援依頼書は返済計画ではない。具体的支援額、期間、資金使途、返済原資、期限がなければ信用補完として弱い。",
-            "- 高スコア案件でも成約しない場合がある。価格、競合、顧客心理、条件提示後離脱のログが不足している可能性が高い。",
-            "",
-            _q_risk_discovery_essay(),
-            "",
-        ]
-    )
-    out.write_text("\n".join(lines), encoding="utf-8")
-    return out
-
-
 def run_midnight(dry_run: bool = False) -> int:
     _mkdirs()
     start_monotonic = time.monotonic()
@@ -1869,11 +1367,9 @@ def run_midnight(dry_run: bool = False) -> int:
                 "Vault B RAG refresh failed: "
                 + json.dumps(state["vault_b_rag"], ensure_ascii=False)
             )
-            raise RuntimeError("Vault B RAG refresh failed; aborting inference")
+            raise RuntimeError("Vault B RAG refresh failed; aborting DB audit")
         state["db"] = audit_db()
         state["recent"] = collect_recent_improvements()
-        state["web"] = web_tactical_search(3)
-        state["reasoning"] = cross_reasoning_loop(state["db"], state["recent"], state["web"])
         notify("AURION CORE / MEBUKI", status_lines(sync, state.get("vault_b_rag")))
     except Exception as exc:
         state["errors"].append(str(exc))
@@ -1920,12 +1416,9 @@ def run_morning_report(dry_run: bool = False) -> int:
         )
         return 0
     report = write_morning_report(state, db, recent, codex_queue, declaration_gaps)
-    web = state.get("web") or web_tactical_search(3)
-    reasoning = state.get("reasoning") or cross_reasoning_loop(db, recent, web)
-    insight = write_evolved_insight(state, db, recent, web, reasoning, report)
     notify(
         "AURION CORE Morning Report",
-        f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; quota {codex_queue.get('blocked_by_quota_count', 0)}; gaps {declaration_gaps.get('count', 0)}; insight: {insight.name}",
+        f"06:00 report generated: {report.name}; Codex queue {codex_queue.get('queued_count', 0)}/{codex_queue.get('codex_auto_safe_count', 0)}; quota {codex_queue.get('blocked_by_quota_count', 0)}; gaps {declaration_gaps.get('count', 0)}",
     )
 
     db_count_rows = db.get("counts") or []
@@ -1951,7 +1444,6 @@ def run_morning_report(dry_run: bool = False) -> int:
     _send_slack("\n".join(slack_lines))
 
     print(str(report))
-    print(str(insight))
     return 0
 
 
