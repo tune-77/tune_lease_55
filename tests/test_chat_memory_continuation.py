@@ -82,3 +82,25 @@ def test_continuation_round_limit_adds_clear_notice(monkeypatch):
     assert "前半。" in result
     assert "まだ途中。" in result
     assert "回答が非常に長いため" in result
+
+
+def test_tool_usage_is_logged_with_names_only(monkeypatch, tmp_path):
+    import json
+
+    log_path = tmp_path / "tools.jsonl"
+    monkeypatch.setenv("CHAT_TOOL_USAGE_LOG_PATH", str(log_path))
+    call = Mock()
+    call.raise_for_status.return_value = None
+    call.json.return_value = {
+        "candidates": [{"finishReason": "STOP", "content": {"parts": [
+            {"functionCall": {"name": "search_obsidian", "args": {"query": "秘密の相談内容"}}}
+        ]}}]
+    }
+    post = Mock(side_effect=[call, _response("答え。", "STOP")])
+    monkeypatch.setattr(chat_memory.requests, "post", post)
+    monkeypatch.setattr(chat_memory, "_get_gemini_api_key", lambda: "test-key")
+
+    assert chat_memory.call_gemini_with_tools("system", [], "question", [], lambda _n, _a: {"ok": True}) == "答え。"
+    [entry] = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    assert entry["calls"] == 2 and entry["tools"] == ["search_obsidian"]
+    assert "秘密" not in log_path.read_text(encoding="utf-8")
