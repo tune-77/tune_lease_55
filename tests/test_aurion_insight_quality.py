@@ -67,6 +67,21 @@ def test_html_to_text_keeps_body_paragraphs_only():
     assert "Short risk." not in joined
 
 
+def test_body_inside_page_form_and_after_unclosed_svg_is_kept():
+    # ELFA のページ（ASP.NET）はページ全体が <form> に包まれ、閉じていない <svg> が1つある。
+    # 以前はどちらかで以降の本文が全部捨てられ、段落0件になっていた
+    html = (
+        '<html><body><form id="aspnetForm"><nav><svg><path d="M1"/></nav>'
+        '<svg class="icon"><path d="M2"/></svg>'
+        "<p>Equipment Finance Industry : The AI-related investment boom was a major bright spot for lessors.</p>"
+        "</form></body></html>"
+    )
+
+    assert acd._html_to_text(html) == [
+        "Equipment Finance Industry : The AI-related investment boom was a major bright spot for lessors."
+    ]
+
+
 def test_excerpt_starts_at_matching_paragraph_and_respects_limit():
     excerpt = acd._excerpt_from_paragraphs(acd._html_to_text(_HTML), ["SME", "risk"], limit=200)
 
