@@ -24,6 +24,7 @@ import traceback
 import urllib.request
 from collections import Counter
 from datetime import datetime, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -828,6 +829,70 @@ def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
     }
 
 
+class _ParagraphExtractor(HTMLParser):
+    """本文の段落（p・li・見出し）だけを取り出す。script/style/nav/header/footer などは捨てる。"""
+
+    _SKIP = {"script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg", "button", "select"}
+    _BLOCK = {"p", "li", "h1", "h2", "h3", "h4", "blockquote"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.paragraphs: list[str] = []
+        self._skip_depth = 0
+        self._buf: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._SKIP:
+            self._skip_depth += 1
+        elif tag in self._BLOCK and self._skip_depth == 0:
+            self._flush()
+            self._buf = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._SKIP:
+            self._skip_depth = max(0, self._skip_depth - 1)
+        elif tag in self._BLOCK:
+            self._flush()
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0 and self._buf is not None:
+            self._buf.append(data)
+
+    def _flush(self) -> None:
+        if self._buf is not None:
+            text = " ".join(" ".join(self._buf).split())
+            if text:
+                self.paragraphs.append(text)
+        self._buf = None
+
+
+def _html_to_text(raw: str) -> list[str]:
+    """HTML から本文の段落を返す。タグ・属性・スクリプトの断片は含めない（REV-492）。"""
+    parser = _ParagraphExtractor()
+    try:
+        parser.feed(raw)
+        parser.close()
+    except Exception:
+        return []
+    # メニュー・ボタン文言のような短い断片は本文として扱わない
+    return [p for p in parser.paragraphs if len(p) >= 60]
+
+
+def _excerpt_from_paragraphs(paragraphs: list[str], tokens: list[str], limit: int = 600) -> str:
+    """キーワードを含む最初の段落から、段落単位で limit 字まで返す。見つからなければ空。"""
+    lowered = [p.lower() for p in paragraphs]
+    for token in tokens:
+        for index, text in enumerate(lowered):
+            if token.lower() in text:
+                picked: list[str] = []
+                for paragraph in paragraphs[index:]:
+                    if picked and len(" ".join(picked + [paragraph])) > limit:
+                        break
+                    picked.append(paragraph)
+                return " ".join(picked)[:limit]
+    return ""
+
+
 def web_tactical_search(max_sources: int = 3) -> dict[str, Any]:
     """Fetch up to three authoritative web sources and store tactical summaries.
 
@@ -843,14 +908,12 @@ def web_tactical_search(max_sources: int = 3) -> dict[str, Any]:
             req = urllib.request.Request(source["url"], headers={"User-Agent": "tunelease-aurion/1.0"})
             with urllib.request.urlopen(req, timeout=12) as resp:
                 raw = resp.read(180_000).decode("utf-8", errors="ignore")
-            text = " ".join(raw.replace("<", " <").replace(">", "> ").split())
-            candidates = []
-            for token in ["SME", "leasing", "credit", "risk", "uncertainty", "Japan", "equipment"]:
-                idx = text.lower().find(token.lower())
-                if idx >= 0:
-                    candidates.append(text[max(0, idx - 350): idx + 850])
-            if candidates:
-                excerpt = candidates[0][:1200]
+            body_excerpt = _excerpt_from_paragraphs(
+                _html_to_text(raw),
+                ["SME", "leasing", "credit", "risk", "uncertainty", "Japan", "equipment"],
+            )
+            if body_excerpt:
+                excerpt = body_excerpt
                 status = "fetched"
         except Exception as exc:
             error = str(exc)
@@ -886,6 +949,25 @@ def _hold_step(name: str, seconds: float) -> dict[str, Any]:
     }
 
 
+def _aurion_gemini_key() -> str:
+    """Gemini の鍵を他の夜間ジョブと同じ経路（環境変数 → secrets.toml）で取る（REV-492）。
+
+    launchd の plist には鍵を置いていないため、環境変数だけを見ていた頃は毎回 None になり、
+    「3. 結論」が 9/10 から毎日同じフォールバック定型文になっていた。
+    """
+    for name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    try:
+        from secret_manager import get_gemini_api_key
+
+        value = get_gemini_api_key()
+        return value.strip() if isinstance(value, str) else ""
+    except Exception:
+        return ""
+
+
 def _generate_conclusions_with_llm(
     db: dict[str, Any],
     recent: dict[str, Any],
@@ -895,11 +977,9 @@ def _generate_conclusions_with_llm(
     web_themes: list[str],
 ) -> list[str] | None:
     """Geminiで毎日異なる視点のaurion推論サマリを生成する。失敗時はNone。"""
-    api_key = (
-        os.environ.get("GOOGLE_API_KEY", "").strip()
-        or os.environ.get("GEMINI_API_KEY", "").strip()
-    )
+    api_key = _aurion_gemini_key()
     if not api_key:
+        print("[aurion] Gemini推論: APIキーが見つからない（フォールバック使用）")
         return None
 
     today = datetime.now().strftime("%Y-%m-%d")
@@ -1031,12 +1111,13 @@ def cross_reasoning_loop(db: dict[str, Any], recent: dict[str, Any], web: dict[s
         fallback_conclusions.append("外部知識はモデルドリフト監視を支持する。PSI/CSI/較正状態をスコア横に出す設計へ進める。")
 
     # Geminiで毎日異なる視点の推論を生成（失敗時はフォールバック）
-    conclusions = _generate_conclusions_with_llm(
+    llm_conclusions = _generate_conclusions_with_llm(
         db=db, recent=recent, web=web,
         non_monotonic=non_monotonic,
         keyword_hits=keyword_hits,
         web_themes=web_themes,
-    ) or fallback_conclusions
+    )
+    conclusions = llm_conclusions or fallback_conclusions
 
     return {
         "status": "completed",
@@ -1045,6 +1126,7 @@ def cross_reasoning_loop(db: dict[str, Any], recent: dict[str, Any], web: dict[s
         "steps": steps,
         "non_monotonic_score_conversion": non_monotonic,
         "conclusions": conclusions,
+        "conclusions_source": "gemini" if llm_conclusions else "fallback",
     }
 
 
@@ -1583,6 +1665,25 @@ def _q_risk_discovery_essay() -> str:
 """.strip()
 
 
+def _previous_insight_conclusions(current: Path) -> list[str] | None:
+    """current より前の最新 Insight ノートの「3. 結論」の箇条（生成元・変化なしの行は除く）。"""
+    earlier = sorted(p for p in current.parent.glob("@AI_Insight_Evolved_*.md") if p.name < current.name)
+    # 「変化なし」だけの日は飛ばし、結論を書いた最新のノートと比べる（交互に全文が出ないように）
+    for path in reversed(earlier[-14:]):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        match = re.search(r"^## 3\. 結論\s*$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+        if not match:
+            continue
+        items = [line[2:].strip() for line in match.group(1).splitlines() if line.startswith("- ")]
+        items = [item for item in items if not item.startswith(("生成元:", "変化なし"))]
+        if items:
+            return items
+    return None
+
+
 def write_evolved_insight(
     state: dict[str, Any],
     db: dict[str, Any],
@@ -1654,10 +1755,16 @@ def write_evolved_insight(
             "",
             "## 3. 結論",
             "",
+            f"- 生成元: {reasoning.get('conclusions_source', 'unknown')}",
         ]
     )
-    for conclusion in conclusions:
-        lines.append(f"- {conclusion}")
+    previous = _previous_insight_conclusions(out)
+    if conclusions and previous == [str(c) for c in conclusions]:
+        # 同じ定型文を毎日並べない（REV-492）。読み手の extract_wiki_vault_insights も新規なしと扱える
+        lines.append("- 変化なし（前回の結論と同じ）")
+    else:
+        for conclusion in conclusions:
+            lines.append(f"- {conclusion}")
 
     lines.extend(
         [

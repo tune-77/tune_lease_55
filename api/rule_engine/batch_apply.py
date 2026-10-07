@@ -26,6 +26,9 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 _LEDGER_PATH = Path(__file__).parent / "ledger_rules.json"
 
+# analyze_pipeline_health などが解決済みにした台帳ルールの status
+_RESOLVED_STATUSES = {"resolved", "stale_resolved"}
+
 # batch_apply 側で弾く保護対象ターゲット（rule_engine 側でも弾いているが二重防衛）
 _PROTECTED_PATTERNS = [
     "data/*.db",
@@ -160,6 +163,7 @@ class _Results:
         self.idempotent: list[tuple[str, str]] = []
         self.failed: list[tuple[str, str]] = []
         self.skipped_manual: list[tuple[str, str]] = []
+        self.skipped_resolved: list[tuple[str, str]] = []
         self.skipped_llm: list[tuple[str, str]] = []
         self.skipped_pending_review: list[tuple[str, str]] = []
         self.skipped_applied: list[tuple[str, str]] = []
@@ -187,6 +191,13 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
         if rule.get("applied_at"):
             res.skipped_applied.append((rev_id, f"適用済み ({rule['applied_at']})"))
             print(f"  ⏭️  {rev_id} [{rule_type}] 適用済みのためスキップ")
+            continue
+
+        # 解決済みの manual は「手動対応必要」に数えない（REV-493）。
+        # analyze_pipeline_health が復旧を確認して stale_resolved にした障害検出（例: REV-399a は
+        # 9/20 解決）が、毎朝「失敗率62%」のまま手動対応一覧に出続けていた。
+        if rule_type == "manual" and rule.get("status") in _RESOLVED_STATUSES:
+            res.skipped_resolved.append((rev_id, f"解決済み ({rule.get('resolved_at') or rule.get('status')})"))
             continue
 
         # manual はスキップ
@@ -276,6 +287,8 @@ def run_batch(rules: list[dict], dry_run: bool, rev_filter: str | None) -> None:
         print(f"  ❌ 適用失敗                  : {len(res.failed):>3} 件")
 
     print(f"  ⚠️  手動対応必要 [manual]        : {len(res.skipped_manual):>3} 件")
+    if res.skipped_resolved:
+        print(f"  ⏭️  解決済み manual スキップ      : {len(res.skipped_resolved):>3} 件")
     print(f"  ⚠️  LLM確認待ち [pending_llm]   : {len(res.skipped_llm):>3} 件")
     print(f"  ⚠️  承認待ち [pending_review]    : {len(res.skipped_pending_review):>3} 件")
     print(f"  ⏭️  適用済みスキップ             : {len(res.skipped_applied):>3} 件")
