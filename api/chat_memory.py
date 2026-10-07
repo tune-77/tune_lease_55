@@ -6,6 +6,7 @@ chat_messages テーブルを lease_data.db 内に作成し、
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from ai_runtime_client import tracked_ai_http_call
 from config import get_gemini_model
@@ -439,6 +440,26 @@ def refresh_stale_chat_summaries(*, stale_after_messages: int = 20, min_messages
     }
 
 
+def _log_tool_usage(rounds: int, tool_names: list[str]) -> None:
+    """紫苑チャットのツール往復の内訳（ツール名と回数だけ。引数・本文は残さない, REV-491）。"""
+    configured = os.environ.get("CHAT_TOOL_USAGE_LOG_PATH", "").strip()
+    if os.environ.get("PYTEST_CURRENT_TEST") and not configured:
+        return  # テストのモック呼び出しを本番の記録に混ぜない
+    try:
+        import json
+        from datetime import datetime, timezone
+
+        from ai_runtime_client import _MAIN_ROOT
+
+        path = Path(configured or _MAIN_ROOT / "data" / "chat_tool_usage.jsonl")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "calls": rounds, "tools": tool_names}
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # 計測の失敗で応答を止めない
+
+
 def call_gemini_with_tools(
     system_prompt: str,
     history: list[dict],
@@ -477,8 +498,11 @@ def call_gemini_with_tools(
     }
 
     text = ""
+    tool_names: list[str] = []
+    calls = 0
     for _round in range(max_tool_rounds + 1):
         payload = {**base_payload, "contents": contents}
+        calls += 1
         resp = tracked_ai_http_call(
             lambda: requests.post(
                 _gemini_url(),
@@ -519,6 +543,7 @@ def call_gemini_with_tools(
 
         # Execute each tool and build function response parts
         response_parts = []
+        tool_names.extend(str(fc.get("name") or "") for fc in func_calls)
         for fc in func_calls:
             result = tool_executor(fc["name"], fc.get("args") or {})
             response_parts.append({
@@ -529,6 +554,7 @@ def call_gemini_with_tools(
             })
         contents.append({"role": "user", "parts": response_parts})
 
+    _log_tool_usage(calls, tool_names)
     return text
 
 
