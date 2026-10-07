@@ -145,3 +145,31 @@ def test_main_returns_0_when_all_historical_cases_passed(tmp_path, monkeypatch, 
 
     assert exit_code == 0
     assert capsys.readouterr().err == ""
+
+
+def test_main_returns_0_when_no_case_had_a_latest_answer(tmp_path, monkeypatch, capsys):
+    """REV-497: 全問「最新なし」で採点0件なのは正常（ドリフト検知の対象外）。"""
+    report_path = tmp_path / "historical.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-10-08T00:00:00",
+                "answer_coverage": {"total_cases": 10, "scored_with_latest": 0, "stale": [], "no_answer": []},
+                "final": {"cases": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_experience_replay_checklist_candidates.py",
+            "--historical-report", str(report_path),
+            "--output-json", str(tmp_path / "out.json"),
+            "--output-md", str(tmp_path / "out.md"),
+        ],
+    )
+
+    assert checklist.main() == 0
+    assert "最新なし" in capsys.readouterr().err

@@ -249,6 +249,14 @@ def main() -> int:
     # 検知するのは final.cases 自体が空/欠落しているケース（report は読めたのに
     # 評価ケース総数が0件＝上位レポートのスキーマがドリフトして拾えていない疑い）。
     all_cases = (report.get("final") or {}).get("cases") if isinstance(report.get("final"), dict) else None
+    coverage = report.get("answer_coverage") if isinstance(report.get("answer_coverage"), dict) else None
+    if report and not all_cases and coverage is not None and coverage.get("scored_with_latest") == 0:
+        # REV-497: 最新の回答が無い質問は採点しない。全問「最新なし」なら空は正常（ドリフトではない）
+        print(
+            "[checklist_candidates] 最新の回答で採点できたケースが0件（全問「最新なし」）。候補なし",
+            file=sys.stderr,
+        )
+        return 0
     if report and not all_cases:
         print(
             "[checklist_candidates] 警告: 履歴品質レポートは読めたが final.cases が空/欠落。"
