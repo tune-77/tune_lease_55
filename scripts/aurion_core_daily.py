@@ -830,32 +830,44 @@ def collect_recent_improvements(limit_files: int = 7) -> dict[str, Any]:
 
 
 class _ParagraphExtractor(HTMLParser):
-    """本文の段落（p・li・見出し）だけを取り出す。script/style/nav/header/footer などは捨てる。"""
+    """本文の段落（p・li・見出し）だけを取り出す。nav/header/footer/svg などの中は捨てる。
 
-    _SKIP = {"script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg", "button", "select"}
+    捨てる要素は開いた順にスタックで持ち、外側の要素が閉じたら内側の閉じ忘れ（svg 等）も
+    一緒に閉じる。閉じ忘れの svg が1つあるだけで以降の本文が全部捨てられていたため。
+    form はページ全体を包むサイト（ASP.NET 等）があるので捨てない。
+    script/style などは解析前に _html_to_text が取り除く。
+    """
+
+    _SKIP = {"nav", "header", "footer", "aside", "button", "select", "svg"}
     _BLOCK = {"p", "li", "h1", "h2", "h3", "h4", "blockquote"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.paragraphs: list[str] = []
-        self._skip_depth = 0
+        self._skip_stack: list[str] = []
         self._buf: list[str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self._SKIP:
-            self._skip_depth += 1
-        elif tag in self._BLOCK and self._skip_depth == 0:
+            self._skip_stack.append(tag)
+        elif tag in self._BLOCK and not self._skip_stack:
             self._flush()
             self._buf = []
 
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        # <svg/> のような自己終了タグはスタックに積まない
+        if tag not in self._SKIP:
+            self.handle_starttag(tag, attrs)
+
     def handle_endtag(self, tag: str) -> None:
-        if tag in self._SKIP:
-            self._skip_depth = max(0, self._skip_depth - 1)
+        if tag in self._skip_stack:
+            while self._skip_stack and self._skip_stack.pop() != tag:
+                pass
         elif tag in self._BLOCK:
             self._flush()
 
     def handle_data(self, data: str) -> None:
-        if self._skip_depth == 0 and self._buf is not None:
+        if not self._skip_stack and self._buf is not None:
             self._buf.append(data)
 
     def _flush(self) -> None:
@@ -866,11 +878,15 @@ class _ParagraphExtractor(HTMLParser):
         self._buf = None
 
 
+_NON_TEXT_BLOCKS = re.compile(r"<(script|style|noscript|template)\b.*?</\1\s*>", re.DOTALL | re.IGNORECASE)
+
+
 def _html_to_text(raw: str) -> list[str]:
     """HTML から本文の段落を返す。タグ・属性・スクリプトの断片は含めない（REV-492）。"""
     parser = _ParagraphExtractor()
+    cleaned = _NON_TEXT_BLOCKS.sub(" ", raw)
     try:
-        parser.feed(raw)
+        parser.feed(cleaned)
         parser.close()
     except Exception:
         return []
