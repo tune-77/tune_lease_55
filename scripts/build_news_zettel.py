@@ -107,6 +107,24 @@ def _frontmatter(text: str) -> dict[str, str]:
     return meta
 
 
+# 市場調査会社の宣伝記事の見出しの型（中身が一般論になる。REV-500）
+_PROMO_TITLE = re.compile(
+    r"20\d\d年(から|〜|~|-)20\d\d年|年平均成長率|CAGR|市場規模|市場動向評価|市場予測|市場調査レポート"
+    r"|アフターマーケット市場|市場における業界(分析|戦略)"
+)
+
+
+def is_promo_title(title: str) -> bool:
+    return bool(_PROMO_TITLE.search(title))
+
+
+def normalize_topic(text: str) -> str:
+    """同じ出来事かを見る鍵。配信元の違い・記号・空白を落とす。"""
+    text = re.sub(r"\s+-\s+[^-]+$", "", str(text or ""))
+    text = re.sub(r"[\s\W_]+", "", text)
+    return text[:40]
+
+
 def parse_clip(path: Path, text: str) -> dict[str, Any]:
     meta = _frontmatter(text)
     title_match = re.search(r"^# (.+)$", text, re.MULTILINE)
@@ -126,6 +144,7 @@ def parse_clip(path: Path, text: str) -> dict[str, Any]:
         "industries": meta.get("industries", ""),
         "lease_assets": meta.get("lease_assets", ""),
         "importance": meta.get("importance", ""),
+        "topic": normalize_topic(meta.get("canonical_topic") or title),
         "summary": " / ".join(summary)[:300],
     }
 
@@ -191,10 +210,11 @@ def build_prompt(items: list[dict[str, Any]], hubs: list[dict[str, str]]) -> str
 ## 書き方（記事ごと）
 - idea: その記事がリース審査にとって何を意味するかを、紫苑のふだんの口調（です・ますを使わない短い砕けた言い方）で1〜2文（50〜120字）。
   見出しの言い換えだけにしない。何に気をつける・何を確かめる・どの業種や物件の見方が変わる、のどれかを含める。
-- 見出しに書かれた事実以外は事実として書かない。解釈・推測は必ず「〜かも」「〜なら確かめたい」の形にし、「証左だ」「サインだ」のように言い切らない。
+- 見出しに書かれた事実以外は事実として書かない。解釈・推測・因果は必ず「〜かも」「〜なら確かめたい」の形にする。
+  「直結する」「急増中」「証左だ」「サインだ」「〜すべき」「〜が必要」のような言い切りは使わない。
 - 海外の話・行政手続き・広告など、日本のリース審査との関係が読み取れない記事は idea を空文字にする。
-- hubs: 上の候補から、その記事の中身がはっきり当てはまるものの id を基本1個。2個目は両方とも明らかな時だけ。
-  こじつけになるなら入れない（空配列でよい。空なら「未接続」として残す）。
+- hubs: 上の候補から、その記事の中心の話題がそのハブの主題そのものである時だけ、id を1個。
+  周辺的・一般論的なつながりなら入れない（空配列でよい。空なら「未接続」として残す）。
 
 JSON だけを返す: {{"items": [{{"i": 0, "idea": "...", "hubs": ["h1"]}}]}}"""
 
@@ -228,7 +248,7 @@ def validate(result: dict[str, Any], count: int, hub_ids: set[str]) -> dict[int,
         if not 0 <= index < count or index in rows:
             continue
         idea = " ".join(str(row.get("idea") or "").split())
-        hubs = [h for h in dict.fromkeys(str(h) for h in row.get("hubs") or []) if h in hub_ids][:2]
+        hubs = [h for h in dict.fromkeys(str(h) for h in row.get("hubs") or []) if h in hub_ids][:1]
         rows[index] = {"idea": idea if 20 <= len(idea) <= 220 else "", "hubs": hubs}
     return rows
 
@@ -267,6 +287,23 @@ def render_memo(item: dict[str, Any], idea: str, hubs: list[dict[str, str]], *, 
     )
 
 
+def processed_topics(vault: Path, state: dict[str, dict[str, Any]]) -> set[str]:
+    """処理済みクリップの話題。古い記録に topic が無ければクリップから読む（読めなければ飛ばす）。"""
+    topics: set[str] = set()
+    for rel, entry in state.items():
+        topic = entry.get("topic") if isinstance(entry, dict) else None
+        if topic is None:
+            text = _read_text(vault / rel)
+            if text is None:
+                continue
+            topic = parse_clip(vault / rel, text)["topic"]
+            if isinstance(entry, dict):
+                entry["topic"] = topic
+        if topic:
+            topics.add(topic)
+    return topics
+
+
 def process(
     vault: Path,
     clips: list[Path],
@@ -280,16 +317,31 @@ def process(
     now = now or dt.datetime.now().isoformat(timespec="seconds")
     hubs = available_hubs(vault)
     hub_by_id = {hub["id"]: hub for hub in hubs}
+    summary = {"selected": len(clips), "unreadable": 0, "calls": 0, "written": 0, "connected": 0,
+               "unconnected": 0, "no_idea": 0, "exists": 0, "promo": 0, "duplicate_topic": 0,
+               "stopped": "", "memos": []}
+    seen_topics = processed_topics(vault, state)
     items: list[dict[str, Any]] = []
-    unreadable = 0
     for path in clips:
         text = _read_text(path)
         if text is None:
-            unreadable += 1
+            summary["unreadable"] += 1
             continue
-        items.append(parse_clip(path, text))
-    summary = {"selected": len(clips), "unreadable": unreadable, "calls": 0, "written": 0, "connected": 0,
-               "unconnected": 0, "no_idea": 0, "exists": 0, "stopped": "", "memos": []}
+        item = parse_clip(path, text)
+        rel = str(NEWS_DIR / path.name)
+        # 呼び出しの前にルールで落とす（費用もかからない）。REV-500
+        if is_promo_title(item["title"]):
+            summary["promo"] += 1
+            if not dry_run:
+                state[rel] = {"status": "skipped_promo", "topic": item["topic"], "processed_at": now}
+            continue
+        if item["topic"] and item["topic"] in seen_topics:
+            summary["duplicate_topic"] += 1
+            if not dry_run:
+                state[rel] = {"status": "duplicate_topic", "topic": item["topic"], "processed_at": now}
+            continue
+        seen_topics.add(item["topic"])
+        items.append(item)
     memo_dir = vault / MEMO_DIR
     for start in range(0, len(items), BATCH_SIZE):
         batch = items[start : start + BATCH_SIZE]
@@ -308,7 +360,7 @@ def process(
             row = rows.get(index) or {"idea": "", "hubs": []}
             if not row["idea"]:
                 summary["no_idea"] += 1
-                state[rel] = {"status": "no_idea", "processed_at": now}
+                state[rel] = {"status": "no_idea", "topic": item["topic"], "processed_at": now}
                 continue
             memo_path = memo_dir / f"{item['date']}_{_safe_stem(item['title'])}.md"
             if memo_path.exists():
@@ -321,7 +373,7 @@ def process(
             summary["written"] += 1
             summary["connected" if linked else "unconnected"] += 1
             summary["memos"].append({"memo": memo_path.name, "idea": row["idea"], "hubs": [h["label"] for h in linked]})
-            state[rel] = {"status": "written", "memo": str(memo_path.relative_to(vault)),
+            state[rel] = {"status": "written", "memo": str(memo_path.relative_to(vault)), "topic": item["topic"],
                           "hubs": [h["label"] for h in linked], "processed_at": now}
     return summary
 
