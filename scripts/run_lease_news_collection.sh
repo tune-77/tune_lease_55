@@ -15,6 +15,11 @@ fi
 
 "$PYTHON_BIN" "$SCRIPT_DIR/collect_lease_news_to_obsidian.py" "$@"
 
+# 取り込んだ記事から、紫苑の言葉の永続メモを作る（ツェッテルカステン試行・REV-499）。
+# 既定は直近分だけ。過去分の補完は NEWS_ZETTEL_BACKFILL=1 の時だけ。止めるのは NEWS_ZETTEL_ENABLED=0。
+# 失敗してもニュース収集の成否には影響させない。
+"$PYTHON_BIN" "$SCRIPT_DIR/build_news_zettel.py" || echo "[run_lease_news_collection] 永続メモの作成に失敗しました" >&2
+
 # 収集直後にGCSへ同期する。日次改善パイプライン（4時）の同期を待つと、
 # その後6時に収集した当日分がCloud Runへ反映されるまで最大1日遅れるため、
 # ここで前倒しして同期する。失敗してもニュース収集自体の成否には影響させない

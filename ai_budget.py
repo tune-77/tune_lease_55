@@ -59,6 +59,7 @@ _MEMORY_SCRIPT_RE = re.compile(r"(memory|reflection|mind|recall|experience)")
 PROACTIVE_FEATURES = frozenset({
     "shion_weekly_illustration",  # 週1回のイラスト（REV-490, 約14円/回）
     "shion_weekly_illustration_topic",
+    "news_zettel",  # ニュースの永続メモ（REV-499 試行, flash-lite 10件/回）
     "usage_loop_engineering",
     "novelist_daily_image",
     "novelist_daily_image_fallback",
