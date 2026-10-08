@@ -7,8 +7,9 @@
 * 判定: ``memory_promotion_policy.classify_lease_teaching``（1段）
 * 保存: Obsidian ``Lease Intelligence/Knowledge/`` のノートと、判断資産候補（要確認）
 * 想起: Knowledge ノートからの文字 n-gram 一致（回答前にプロンプトへ入れる）
-* 正直さ: 保存の成否に合わない「判断資産にします」「永続化します」等を回答から外し、保存先を添える
-* 保存依頼: 「作ったテンプレートを保存して」は直前の紫苑の回答を保存する（何を保存したかを添える）
+* 正直さ: 保存の成否に合わない「判断資産にします」「永続化します」等を回答から外す。保存した回も
+  保存先などの処理通知は本文に出さない（REV-540。結果は応答の teaching_save と指標ログで確かめる）
+* 保存依頼: 「作ったテンプレートを保存して」は直前の紫苑の回答を保存する
 * 指標: 教えた→保存した→想起した→回答で使った を ``data/shion_teaching_funnel.jsonl`` に残す
 
 対話室と通常チャット（/api/chat）は ``prepare_teaching_turn`` → ``TeachingTurn.finalize`` で共通に使う。
@@ -62,8 +63,11 @@ SAVE_CLAIM_RE = re.compile(
     r"いつでも[^。\n]{0,20}(呼び出せ|取り出せ|引き出せ|参照でき)(ます|る))(?!か)"
 )
 _PROMISE_RE = re.compile(rf"[^。\n]*(?:{SAVE_CLAIM_RE.pattern})[^。\n]*[。]?")
-# 実在しない保存先の名前（「稟議コメント・テンプレート集」など）。実在する保存先は Knowledge と判断資産候補だけ。
-_INVENTED_PLACE_RE = re.compile(r"[「『][^」』]{1,30}(集|データベース|DB|ライブラリ|台帳|フォルダ)[」』]")
+# 保存処理の通知文（「Knowledgeノート `….md` に保存し、判断資産候補として反映した。」「保存先: …」）。
+# 2026-10-09 に紫苑が実在しないノート名まで添えていた。保存した回でだけ外す。
+_SAVE_NOTICE_RE = re.compile(
+    r"[^。\n]*(?:保存先|保存したもの[:：]|Knowledge\s*ノート|判断資産候補|`[^`\n]*\.md`)[^。\n]*[。]?"
+)
 # 「保存して」「保存する必要があるな」「残しておいて」「判断資産に入れて」のような保存の依頼。
 _SAVE_REQUEST_RE = re.compile(
     r"(保存|記録|登録|永続化)(して|しと|しよう|したい|する必要|が必要|お願い|頼む)|"
@@ -72,6 +76,8 @@ _SAVE_REQUEST_RE = re.compile(
 # 依頼の対象が紫苑の回答だと分かる語。指示語だけなら従来どおり直前のユーザー発言を優先する。
 _ANSWER_REFERENCE_RE = re.compile(r"テンプレ|まとめ|判断軸|チェックリスト|回答|答え|作った|作って|紫苑の|さっきの|今の(案|内容)|この(案|内容)")
 SHION_ANSWER_SOURCE = "shion_answer_saved_on_request"
+# Knowledge ノートの題名づけ（記憶の保存なので ai_budget の MEMORY_FEATURES に入れて止めない）。
+TITLE_FEATURE = "chat_teaching_title"
 
 
 def _funnel_path() -> Path:
@@ -113,11 +119,72 @@ def resolve_teaching_claim(message: str, previous_user_message: str = "") -> str
     return text[:500]
 
 
-def teaching_topic(claim: str) -> str:
-    """Knowledge ノートの見出し。指示語を除いた最初の節を24字まで。"""
+def teaching_topic(claim: str, title_maker: Callable[[str], str] | None = None) -> str:
+    """Knowledge ノートの見出し（ファイル名にもなる）。
+
+    ``title_maker`` があれば内容を表す題名を作らせる。無いか失敗したら、相づち・感想の文
+    （「友人の話、それは胸が痛むね」「そうだね」）を飛ばし、審査の語を含む最初の文を24字まで使う。
+    2026-10-09 時点で Knowledge ノートの多くが会話の一文を題名にしていた。
+    """
+    from memory_promotion_policy import has_domain_keyword
+
     text = _EXPLICIT_PHRASES.sub("", str(claim or "")).strip(" 　、。,.!！")
-    first = re.split(r"[。\n]", text, maxsplit=1)[0].strip() or text
+    if title_maker is not None and text:
+        try:
+            title = _clean_title(title_maker(text))
+        except Exception as exc:  # noqa: BLE001 - 題名づけの失敗で保存は止めない
+            print(f"[TeachingCapture] 題名づけに失敗: {type(exc).__name__}: {exc}")
+            title = ""
+        if title:
+            return title
+    sentences = [s.strip(" 　*#>-") for s in re.split(r"[。！？!?\n]", text) if s.strip(" 　*#>-")]
+    first = next((s for s in sentences if has_domain_keyword(s)), sentences[0] if sentences else text)
     return first[:24] or "対話で教わった審査ノウハウ"
+
+
+def _clean_title(raw: str) -> str:
+    title = re.sub(r"[*#`「」『』\"'【】]|^(題名|タイトル)[:：]\s*", "", str(raw or "").strip().splitlines()[0] if str(raw or "").strip() else "")
+    title = title.strip(" 　。、.")
+    return title if 2 <= len(title) <= 30 else ""
+
+
+_TITLE_INSTRUCTION = (
+    "次はリース審査の対話で保存するノートの本文。内容を表す題名を、20字以内の名詞句で1つだけ返す。"
+    "あいさつ・相づち・感想・会話の言い回しは使わない。例: 「経営者の離婚とリース審査」「中古トラックの見積書の注意点」。"
+    "題名だけを出力する。"
+)
+
+
+def gemini_knowledge_title(text: str) -> str:
+    """Knowledge ノートの題名を Gemini（既定モデル）で作る。失敗したら空文字（呼び出し側が文から作る）。"""
+    import requests
+
+    from ai_runtime_client import tracked_ai_http_call
+    from api.secret_access import get_gemini_api_key
+    from config import get_gemini_model
+
+    api_key = get_gemini_api_key()
+    if not api_key:
+        return ""
+    model = get_gemini_model()
+    payload = {
+        "system_instruction": {"parts": [{"text": _TITLE_INSTRUCTION}]},
+        "contents": [{"role": "user", "parts": [{"text": str(text)[:2000]}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 512},
+    }
+    resp = tracked_ai_http_call(
+        lambda: requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            json=payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=8,
+        ),
+        provider="google",
+        model=model,
+        feature=TITLE_FEATURE,
+    )
+    parts = resp.json()["candidates"][0]["content"]["parts"]
+    return "".join(str(p.get("text") or "") for p in parts if not p.get("thought"))
 
 
 def _knowledge_dir(vault: Path) -> Path:
@@ -177,15 +244,15 @@ def _answer_body(answer: str) -> str:
     return "\n\n".join(paragraphs)[:3000]
 
 
-def answer_topic(answer: str) -> str:
-    """回答の見出し（最初の ### 行か【】）を保存名にする。無ければ最初の文。"""
+def answer_topic(answer: str, title_maker: Callable[[str], str] | None = None) -> str:
+    """回答の見出し（最初の ### 行か【】）を保存名にする。無ければ内容から題名を作る。"""
     for line in str(answer or "").splitlines():
         heading = re.match(r"\s*(#{1,4}\s*(.+)|\**【(.+?)】)", line)
         if heading:
             name = re.sub(r"^(記録内容|保存内容)[:：]\s*|[*#`]", "", (heading.group(2) or heading.group(3) or "")).strip()
             if name:
                 return name[:40]
-    return teaching_topic(answer)
+    return teaching_topic(answer, title_maker)
 
 
 def _write_knowledge_and_candidate(
@@ -254,6 +321,9 @@ def _record_saved(result: dict[str, Any], surface: str, **fields: Any) -> None:
             knowledge=bool(result["knowledge_path"]),
             candidate=bool(result["candidate_id"]),
             duplicate=result["knowledge_duplicate"] and (result["candidate_duplicate"] or not result["candidate_id"]),
+            # 回答本文に保存先を出さないので、どこへ保存したかはここで確かめる。
+            knowledge_path=result["knowledge_path"],
+            candidate_id=result["candidate_id"],
             **fields,
         )
 
@@ -267,6 +337,7 @@ def save_lease_teaching(
     previous_user_message: str = "",
     previous_assistant_message: str = "",
     date_str: str | None = None,
+    title_maker: Callable[[str], str] | None = None,
 ) -> dict[str, Any]:
     """教示なら Knowledge と判断資産候補へ保存し、その結果を返す（回答前に同期で呼ぶ）。
 
@@ -281,7 +352,7 @@ def save_lease_teaching(
     answer = save_request_target(message, previous_user_message, previous_assistant_message)
     if answer:
         body = _answer_body(answer)
-        topic = answer_topic(answer)
+        topic = answer_topic(body, title_maker)
         record_funnel_event("taught", surface=surface, reason="save_request_shion_answer")
         result = _write_knowledge_and_candidate(
             f"{topic}\n\n{body}",
@@ -301,7 +372,7 @@ def save_lease_teaching(
     claim = resolve_teaching_claim(message, previous_user_message)
     record_funnel_event("taught", surface=surface, reason=reason)
     result = _write_knowledge_and_candidate(
-        claim, topic=teaching_topic(claim), vault=vault, candidate_saver=candidate_saver, date_str=date_str
+        claim, topic=teaching_topic(claim, title_maker), vault=vault, candidate_saver=candidate_saver, date_str=date_str
     )
     _record_saved(result, surface)
     return {"is_teaching": True, "reason": reason, **result}
@@ -333,21 +404,30 @@ def build_save_result_prompt_block(result: dict[str, Any]) -> str:
     return (
         "【今回の発言の保存結果】\n"
         f"{what}保存済み{already}: {'・'.join(places)}。"
-        "保存したもの・保存先を一言だけ添えてよい。判断資産として正式採用されたとは言わない"
-        "（人のレビュー待ちの候補である）。"
-        + _NO_INVENTED_PLACE
+        "保存・反映したこと、保存先、判断資産候補のことは回答に書かない（処理結果はシステムが別に記録する。"
+        "ユーザーは本文に処理の通知を出さないよう求めている）。内容にだけ普段どおり答えること。"
     )
 
 
 _NO_INVENTED_PLACE = "保存先は Knowledge ノートと判断資産候補だけ。「〇〇集」「〇〇データベース」など無い機能名を作らないこと。"
 
 
-def _drop_invented_place_claims(text: str) -> str:
-    return _PROMISE_RE.sub(lambda m: "" if _INVENTED_PLACE_RE.search(m.group(0)) else m.group(0), text)
+def _drop_save_notices(text: str, knowledge_path: str = "") -> str:
+    """保存の約束文・保存先の通知文を外す（保存した結果は ``teaching_save`` と指標ログに残る）。"""
+    text = _PROMISE_RE.sub("", text)
+    text = _SAVE_NOTICE_RE.sub("", text)
+    if knowledge_path:
+        text = re.sub(rf"[^。\n]*{re.escape(knowledge_path)}[^。\n]*[。]?", "", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def enforce_save_honesty(reply: str, result: dict[str, Any]) -> str:
-    """保存の成否と食い違う約束を回答から外し、保存したときは保存したもの・保存先を添える。"""
+    """保存の成否と食い違う約束を回答から外す。保存したときも保存の通知は本文に出さない。
+
+    2026-10-09 ユーザー方針「判断資産候補（要確認）などは表示しなくていい、処理してくれれば」。
+    以前は保存先を本文に添えていたが、保存結果は応答の ``teaching_save`` と指標ログ
+    （``data/shion_teaching_funnel.jsonl`` の saved 行）でだけ確かめる。
+    """
     text = str(reply or "")
     if not result.get("saved"):
         stripped = _PROMISE_RE.sub("", text).strip()
@@ -358,17 +438,7 @@ def enforce_save_honesty(reply: str, result: dict[str, Any]) -> str:
             )
             return f"{stripped}\n\n{note}".strip()
         return text
-    # 保存はしたが、実在しない保存先（「〇〇テンプレート集として永続化します」）を言う文は外す。
-    text = _drop_invented_place_claims(text).strip()
-    what = f"保存したもの: 直前の紫苑の回答「{result.get('topic')}」\n" if result.get("source") == "shion_answer" else ""
-    if not what and ("保存先" in text or (result.get("knowledge_path") and result["knowledge_path"] in text)):
-        return text
-    places = []
-    if result.get("knowledge_path"):
-        places.append(f"`{result['knowledge_path']}`")
-    if result.get("candidate_id"):
-        places.append("判断資産候補（要確認）")
-    return f"{text.rstrip()}\n\n{what}保存先: {'・'.join(places)}"
+    return _drop_save_notices(text, str(result.get("knowledge_path") or "")) or text.strip()
 
 
 def _ngrams(text: str, n: int = 2) -> set[str]:
@@ -614,6 +684,7 @@ def prepare_teaching_turn(
     previous_assistant_message: str = "",
     rag_search: Callable[[str], list[dict[str, Any]]] | None = None,
     allow_save: bool = True,
+    title_maker: Callable[[str], str] | None = None,
 ) -> TeachingTurn:
     """回答前に、教示なら保存し、審査の問いなら Knowledge・教わった候補・RAG を想起する。
 
@@ -632,6 +703,7 @@ def prepare_teaching_turn(
             candidate_saver=candidate_saver,
             previous_user_message=previous_user_message,
             previous_assistant_message=previous_assistant_message,
+            title_maker=title_maker,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[TeachingCapture] 保存判定に失敗: {type(exc).__name__}: {exc}")
