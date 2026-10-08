@@ -217,3 +217,27 @@ def test_news_zettel_without_news_summary_uses_tail_of_search_results_not_memory
     b0, b1 = without["blocks"], with_memo["blocks"]
     assert b1["user_personal_memory_context"]["kept"] == b0["user_personal_memory_context"]["kept"]
     assert b1["rag_context"]["kept"] < b0["rag_context"]["kept"]
+
+
+def test_reference_closing_line_goes_to_response_shape_only_when_memo_is_kept() -> None:
+    """REV-543: 参考メモが残る時だけ、回答の型のブロックに「最後に一文だけ」を足す。字数は上限内・記憶系は不変。"""
+    shape = "\n\n【判断系の質問への回答の型】\n- 結論→理由→判断分岐の順に書く"
+
+    def blocks(with_memo: bool) -> list[tuple[str, str]]:
+        return [*_zettel_blocks(with_memo), ("judgment_response_shape_context", shape)]
+
+    args = dict(question="倒産", surface="test", max_chars=2700, log=False)
+    p0, without = budget.assemble_prompt(blocks(False), **args)
+    p1, with_memo = budget.assemble_prompt(blocks(True), **args)
+    line = budget.REFERENCE_CLOSING_INSTRUCTION
+    assert line not in p0
+    assert line in p1 and len(p1) <= 2700
+    assert p1.index("回答の型") < p1.index(line.strip()[:20])  # 回答の型のブロックの末尾
+    b0, b1 = without["blocks"], with_memo["blocks"]
+    assert b1["judgment_response_shape_context"]["reference_closing_added"] == len(line)
+    assert b1["user_personal_memory_context"]["kept"] == b0["user_personal_memory_context"]["kept"]
+    assert "建設業の倒産" in p1
+
+    # 参考メモが無い（雑談など）時は足さない
+    p2, _ = budget.assemble_prompt(blocks(False), question="こんにちは", surface="test", log=False)
+    assert line not in p2

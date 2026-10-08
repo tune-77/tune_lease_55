@@ -264,6 +264,15 @@ RESERVE_DONORS = (
 )
 
 
+# REV-543 参考メモの注意書き（ブロックの見出し）だけでは、後ろに来る回答の型の指示が優先されて一度も触れられなかった。
+# 参考メモがプロンプトに残る時だけ、回答の型のブロックの末尾に短い指示を足す（字数は参考メモと一緒に確保する）。
+REFERENCE_CLOSING_TARGETS = ("judgment_response_shape_context", "prompt_suffix", "dialogue_response_core")
+REFERENCE_CLOSING_INSTRUCTION = (
+    "\n- 【最近のニュースから】の参考メモが質問と関係あれば、回答の最後（出典行の直前）に一文だけ"
+    "「最近のニュースでは〜という見方もある」と添える。関係が薄ければ触れない。審査の判定・スコア・承認条件の根拠にはしない。"
+)
+
+
 def _optional_cut(name: str, text: str, question: str, context_mode: str) -> str:
     """付加情報ブロックを外す理由（外さないなら空文字）。"""
     if not text or not context_mode:
@@ -392,9 +401,12 @@ def assemble_prompt(
 
     def restore_reserved(held: dict[int, str]) -> None:
         """外しておいた参考ブロックを、空き→入れ替え元の順で場所を作って戻す（REV-533）。"""
+        closing_at = next((j for name in REFERENCE_CLOSING_TARGETS
+                           for j, (n, _t) in enumerate(blocks) if n == name and texts[j]), None)
+        extra = len(REFERENCE_CLOSING_INSTRUCTION) if closing_at is not None else 0
         for i, text in held.items():
             total = sum(len(t) for t in texts.values())
-            need = len(text) - (limit - total)
+            need = len(text) + extra - (limit - total)
             for donor in RESERVE_DONORS:
                 if need <= 0:
                     break
@@ -406,12 +418,18 @@ def assemble_prompt(
                     texts[j] = _fit(texts[j], target, SPECS.get(donor, DEFAULT_SPEC).mode, grams) if target else ""
                     report[donor]["overflow_cut"] += before - len(texts[j])
                     need -= before - len(texts[j])
-            room = limit - sum(len(t) for t in texts.values())
+            room = limit - sum(len(t) for t in texts.values()) - extra
             kept = text if len(text) <= room else _fit(text, max(0, room), "ordered", grams)
             if not _split_items(kept)[1] or len(kept) > room:
                 kept = ""  # 見出しだけ残っても意味がない
             texts[i] = kept
             report[blocks[i][0]]["overflow_cut"] += len(text) - len(kept)
+            if kept and closing_at is not None:  # REV-543 回答の型の側に「最後に一文だけ」を足す
+                texts[closing_at] += REFERENCE_CLOSING_INSTRUCTION
+                target = report[blocks[closing_at][0]]
+                target["orig"] += extra
+                target["reference_closing_added"] = extra
+                closing_at = None
 
     # 2. 記憶〜補助は個別予算、重複除去、overflow の順。重複で空きを作ってから、
     #    高優先度の根拠より先に低優先度層を落とす。
