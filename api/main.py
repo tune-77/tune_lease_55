@@ -6085,6 +6085,21 @@ def _begin_mutual_prediction(
         return None
 
 
+def _dialogue_news_zettel_context(rag_hits: list[dict[str, Any]] | None) -> str:
+    """対話室: 検索でハブノートが当たった時の最近のニュース永続メモ（REV-502・SHION_NEWS_ZETTEL_CONTEXT=1 の時だけ）。"""
+    from api.news_zettel_context import build_news_zettel_context
+
+    return build_news_zettel_context(str(h.get("file_name") or h.get("ref") or "") for h in rag_hits or [])
+
+
+def _chat_news_zettel_context(rag_refs: list[str] | None) -> str:
+    """/api/chat（RAG 経路）: 同上。"""
+    from api.news_zettel_context import build_news_zettel_context
+
+    block = build_news_zettel_context(rag_refs or [])
+    return f"\n\n{block}" if block else ""
+
+
 def _build_emotion_grounding(
     vault, message: str, dialogue_mode: str = "", mood_signals: dict[str, Any] | None = None
 ) -> tuple[str, str, str]:
@@ -6502,6 +6517,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 ("request_grounding_context", block_with_spacing(request_grounding_context)),
                 ("pre_recall_context", block_with_spacing(pre_recall_context)),
                 ("teaching_save_context", block_with_spacing(teaching_save_context)),
+                ("news_zettel_context", block_with_spacing(_dialogue_news_zettel_context(_rag_hits))),
             ],
             question=full_message,
             surface="dialogue",
@@ -7823,6 +7839,7 @@ def post_chat(req: ChatRequest):
             ("reflection_gate_context", reflection_gate_context),
             ("world_proxy_context", world_proxy_context),
             ("rag_context", rag_context),
+            ("news_zettel_context", _chat_news_zettel_context(rag_refs)),
             ("external_research_context", external_research_context),
             ("db_context", db_context),
             ("improvement_context", improvement_context),

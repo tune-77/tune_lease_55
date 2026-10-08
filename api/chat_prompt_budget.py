@@ -98,6 +98,8 @@ SPECS: dict[str, BlockSpec] = {
     "news_brief_context": BlockSpec(AUX, 600, "ordered"),
     "news_actions_context": BlockSpec(AUX, 500, "ordered"),
     "news_digest_context": BlockSpec(AUX, 500, "ordered"),
+    # REV-502 検索でハブが当たった時の最近のニュース永続メモ（参考・審査の根拠にしない）。既定オフ
+    "news_zettel_context": BlockSpec(AUX, 500),
     "obsidian_daily_context": BlockSpec(AUX, 800, "ordered"),
     "experience_loop_context": BlockSpec(AUX, 600),
     "continuity_hook_context": BlockSpec(AUX, 400),
