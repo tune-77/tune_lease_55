@@ -68,5 +68,15 @@ def test_wired_into_dialogue_and_chat_rag_path():
 
     assert "news_zettel_context" in SPECS
     main = Path("api/main.py").read_text(encoding="utf-8")
-    assert '("news_zettel_context", block_with_spacing(_dialogue_news_zettel_context(_rag_hits)))' in main
-    assert '("news_zettel_context", _chat_news_zettel_context(rag_refs))' in main
+    assert '("news_zettel_context", block_with_spacing(_news_zettel_from_hits(_rag_hits)))' in main
+    assert '("news_zettel_context", _news_zettel_from_refs(rag_refs))' in main
+
+
+def test_helpers_build_from_hits_and_refs(setup, monkeypatch):
+    vault, state_path = setup
+    monkeypatch.setattr(ctx, "STATE_PATH", state_path)
+    monkeypatch.setattr(ctx, "build_news_zettel_context",
+                        lambda refs, **_: "BLOCK" if "倒産率とリスク.md" in list(refs) else "")
+    assert ctx.context_from_hits([{"file_name": "倒産率とリスク.md"}]) == "BLOCK"
+    assert ctx.context_from_refs(["倒産率とリスク.md"]) == "\n\nBLOCK"
+    assert ctx.context_from_refs([]) == ""

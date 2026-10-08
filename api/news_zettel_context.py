@@ -144,3 +144,14 @@ def build_news_zettel_context(
             "審査の判定・スコア・承認条件の根拠には使わない。質問と関係が薄ければ触れなくてよい。",
         ]
     )
+
+
+def context_from_hits(rag_hits: list[dict[str, Any]] | None) -> str:
+    """対話室: 検索結果（hit の dict）から。main.py の行数を増やさないためここに置く。"""
+    return build_news_zettel_context(str(h.get("file_name") or h.get("ref") or "") for h in rag_hits or [])
+
+
+def context_from_refs(rag_refs: list[str] | None) -> str:
+    """/api/chat（RAG 経路）: 検索結果の ref から。前の節と区切るため先頭に空行を付ける。"""
+    block = build_news_zettel_context(rag_refs or [])
+    return f"\n\n{block}" if block else ""
