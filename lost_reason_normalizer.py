@@ -15,6 +15,9 @@ CANONICAL_LOST_REASONS = {
     "理由未入力",
 }
 
+# 失注理由に添える一言（何に負けたか）の上限文字数（REV-538）
+LOST_REASON_DETAIL_MAX = 40
+
 FUNDING_NOT_COMPETITOR = {"現金", "銀行借入対応", "融資対応", "自己資金"}
 
 
