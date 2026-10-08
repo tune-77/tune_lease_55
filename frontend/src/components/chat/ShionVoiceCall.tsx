@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from "@google/genai";
 import { Phone, PhoneOff, Loader2 } from "lucide-react";
 import { apiClient } from "@/lib/api";
+import { VoicevoxSpeaker } from "@/lib/voicevoxSpeaker";
 
 type Props = {
   userId: string;
@@ -15,6 +16,23 @@ type Props = {
 
 type Turn = { role: "user" | "model"; text: string };
 type Status = "idle" | "connecting" | "live" | "ending";
+// REV-530: 通話の声。kore=Gemini Live の声、himari=文字起こしを VOICEVOX（冥鳴ひまり）で読み上げ
+type VoiceEngine = "kore" | "himari";
+const VOICE_KEY = "shion-voice-engine";
+
+// 通話の残り時間の基準（コンポーネント外で時刻を取る）
+function deadlineAfter(seconds: number): number {
+  return Date.now() + seconds * 1000;
+}
+
+function storedVoice(): VoiceEngine | null {
+  try {
+    const value = typeof window !== "undefined" ? window.localStorage.getItem(VOICE_KEY) : null;
+    return value === "kore" || value === "himari" ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 
 function toBase64(buf: ArrayBuffer): string {
@@ -55,6 +73,23 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
   const turnsRef = useRef<Turn[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const endingRef = useRef(false);
+  const [voice, setVoice] = useState<VoiceEngine>(() => storedVoice() ?? "kore");
+  const [himariAvailable, setHimariAvailable] = useState(false);
+  const voiceRef = useRef<VoiceEngine>(voice);
+  const speakerRef = useRef<VoicevoxSpeaker | null>(null);
+
+  const switchVoice = (next: VoiceEngine) => {
+    voiceRef.current = next;
+    setVoice(next);
+    try {
+      window.localStorage.setItem(VOICE_KEY, next);
+    } catch {
+      /* 保存できなくても今回の通話は切り替える */
+    }
+    // 切替時は鳴っている側を止める（次の発話から新しい声）
+    stopPlayback();
+    speakerRef.current?.stop();
+  };
 
   const appendTurn = (role: Turn["role"], text: string) => {
     const list = turnsRef.current;
@@ -118,12 +153,26 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
     if (msg.toolCall) void handleToolCall(msg);
     const content = msg.serverContent;
     if (!content) return;
-    if (content.interrupted) stopPlayback();
-    if (content.inputTranscription?.text) appendTurn("user", content.inputTranscription.text);
-    if (content.outputTranscription?.text) appendTurn("model", content.outputTranscription.text);
-    for (const part of content.modelTurn?.parts ?? []) {
-      if (part.inlineData?.data) playChunk(part.inlineData.data);
+    const himari = voiceRef.current === "himari";
+    if (content.interrupted) {
+      stopPlayback();
+      speakerRef.current?.stop();
     }
+    if (content.inputTranscription?.text) {
+      appendTurn("user", content.inputTranscription.text);
+      // ひまりは Live の再生より遅れて鳴るので、Live のターンが終わった後の割り込みはこちらで止める
+      if (himari && speakerRef.current?.speaking) speakerRef.current.stop();
+    }
+    if (content.outputTranscription?.text) {
+      appendTurn("model", content.outputTranscription.text);
+      if (himari) speakerRef.current?.push(content.outputTranscription.text);
+    }
+    if (!himari) {
+      for (const part of content.modelTurn?.parts ?? []) {
+        if (part.inlineData?.data) playChunk(part.inlineData.data);
+      }
+    }
+    if (content.turnComplete && himari) speakerRef.current?.endTurn();
   };
 
   const endCall = async () => {
@@ -136,6 +185,8 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
     sessionRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     stopPlayback();
+    speakerRef.current?.stop();
+    speakerRef.current = null;
     await micCtxRef.current?.close().catch(() => undefined);
     await outCtxRef.current?.close().catch(() => undefined);
     micCtxRef.current = null;
@@ -164,6 +215,7 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
     const micCtx = new AudioContext();
     outCtxRef.current = outCtx;
     micCtxRef.current = micCtx;
+    speakerRef.current = new VoicevoxSpeaker(outCtx);
     void outCtx.resume();
     void micCtx.resume();
     try {
@@ -173,6 +225,12 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
       });
       streamRef.current = stream;
       const { data } = await apiClient.post("/api/shion/voice/session", { user_id: userId });
+      setHimariAvailable(Boolean(data.himari_available));
+      // 画面で選んだ声を優先。未選択なら SHION_VOICE_ENGINE の既定。ひまりが使えなければ Kore
+      const chosen: VoiceEngine = storedVoice() ?? (data.default_voice === "himari" ? "himari" : "kore");
+      const effective: VoiceEngine = chosen === "himari" && data.himari_available ? "himari" : "kore";
+      voiceRef.current = effective;
+      setVoice(effective);
 
       const ai = new GoogleGenAI({ apiKey: data.token, httpOptions: { apiVersion: "v1alpha" } });
       const session = await ai.live.connect({
@@ -194,7 +252,7 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
       micCtx.createMediaStreamSource(stream).connect(node);
 
       // 上限はトークン失効でサーバー側が強制する。ここは表示と、切れる前に自分から切るため。
-      const endsAt = Date.now() + data.max_seconds * 1000;
+      const endsAt = deadlineAfter(data.max_seconds);
       setRemaining(data.max_seconds);
       timerRef.current = setInterval(() => {
         const left = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
@@ -240,6 +298,22 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
             </span>
             {status === "live" && <span className="tabular-nums text-slate-500">残り {mmss}</span>}
           </div>
+          {status === "live" && himariAvailable && (
+            <div className="flex items-center gap-1 px-4 py-1.5 border-b border-slate-100 text-[11px] text-slate-500">
+              <span>声:</span>
+              {(["kore", "himari"] as const).map((engine) => (
+                <button
+                  key={engine}
+                  type="button"
+                  onClick={() => switchVoice(engine)}
+                  className={`rounded-md px-2 py-0.5 ${voice === engine ? "bg-emerald-600 text-white" : "bg-slate-100 hover:bg-slate-200"}`}
+                >
+                  {engine === "kore" ? "Kore" : "ひまり"}
+                </button>
+              ))}
+              {voice === "himari" && <span className="ml-auto text-[10px] text-slate-400">VOICEVOX:冥鳴ひまり</span>}
+            </div>
+          )}
           {error && <p className="px-4 py-2 text-xs text-rose-600">{error}</p>}
           <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1 text-xs leading-relaxed">
             {turns.map((t, i) => (

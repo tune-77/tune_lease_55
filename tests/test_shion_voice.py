@@ -375,3 +375,16 @@ def test_tts_engine_down_returns_503(tts_client, monkeypatch):
     monkeypatch.setattr(sv, "_tts_synthesize", boom)
     assert client.post("/api/shion/voice/tts", json={"text": "はい"}).status_code == 503
     assert client.post("/api/shion/voice/tts", json={"text": "あ" * 301}).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("engine", "tts", "expected"),
+    [("", "1", ("kore", True)), ("himari", "1", ("himari", True)), ("himari", "0", ("kore", False)), ("bogus", "1", ("kore", True))],
+)
+def test_session_reports_voice_engine_default(setup, monkeypatch, engine, tts, expected):
+    """REV-530: 既定は Kore。ひまり（VOICEVOX）は /tts が有効な時だけ既定にできる。"""
+    client, _ = setup
+    monkeypatch.setenv("SHION_VOICE_ENGINE", engine)
+    monkeypatch.setenv("SHION_TTS_ENABLED", tts)
+    body = client.post("/api/shion/voice/session", json={}).json()
+    assert (body["default_voice"], body["himari_available"]) == expected
