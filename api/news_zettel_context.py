@@ -11,6 +11,9 @@
 - 質問文を渡すと、同じハブのメモの中から質問との近さで2件まで選び、近いものが無ければ添えない（REV-535）。
   近さは文字の2字組の重なりを、メモ全体でよく出る組ほど軽く数えたもの（AI 呼び出しなし・費用ゼロ）。
   質問文を渡さない呼び出しは従来どおり新しい順（recent_memos は互換のため残す）
+- 質問文を渡した時は、検索で当たったハブに限らず全ハブのメモから選ぶ（REV-537）。雑談の誤ヒット
+  （「今日の気分は？」→「今日の市場はどう動いた」）を防ぐため、内容語（漢字・カタカナ等の2字組で、
+  メモの25%以下にしか出ないもの）が2つ以上一致することも条件にする
 """
 from __future__ import annotations
 
@@ -30,6 +33,10 @@ BODY_CHARS = 100
 HUB_FIT_MIN = float(os.environ.get("NEWS_ZETTEL_HUB_FIT_MIN", "0.7"))
 # REV-535 本番のメモ348件で確認: 雑談は最高0.08、質問と関係の薄いメモは0.10〜0.13、関係するメモは0.16以上
 RELEVANCE_MIN = float(os.environ.get("NEWS_ZETTEL_RELEVANCE_MIN", "0.13"))
+# REV-537 内容語の一致数。「リース」「審査」「設備投資」のようにメモの25%超に出る組は数えない
+MIN_TOPIC_HITS = 2
+COMMON_GRAM_RATIO = 0.25
+_CONTENT_GRAM_RE = re.compile(r"^[\u4e00-\u9fff\u30a0-\u30ffA-Za-z0-9ー々]{2}$")
 
 
 def enabled() -> bool:
@@ -170,6 +177,12 @@ def relevance(question_grams: set[str], memo_grams: set[str], df: dict[str, int]
     return sum(weight[gram] for gram in question_grams & memo_grams) / whole if whole > 0 else 0.0
 
 
+def topic_hits(question_grams: set[str], memo_grams: set[str], df: dict[str, int], total: int) -> int:
+    """質問とメモに共通する内容語の2字組の数（ひらがな混じり・メモの25%超に出る組は数えない）。"""
+    limit = COMMON_GRAM_RATIO * max(total, 1)
+    return sum(1 for gram in question_grams & memo_grams if _CONTENT_GRAM_RE.match(gram) and df.get(gram, 0) <= limit)
+
+
 def relevant_memos(
     hubs: list[str],
     question: str,
@@ -180,8 +193,12 @@ def relevant_memos(
     state_path: Path = STATE_PATH,
     limit: int = MAX_MEMOS,
     min_score: float = RELEVANCE_MIN,
+    min_topic_hits: int = MIN_TOPIC_HITS,
 ) -> list[dict[str, Any]]:
-    """ハブにつながった最近の永続メモのうち、質問に近いものを limit 件まで（近さが min_score 未満は除く）。"""
+    """ハブにつながった最近の永続メモのうち、質問に近いものを limit 件まで。
+
+    近さが min_score 未満、または内容語の一致が min_topic_hits 未満のメモは除く。
+    """
     from api.chat_prompt_budget import _bigrams
 
     question_grams = _bigrams(question)
@@ -193,7 +210,7 @@ def relevant_memos(
     for row in candidates:
         if row["memo"] in grams:
             score = relevance(question_grams, grams[row["memo"]], df, len(grams))
-            if score >= min_score:
+            if score >= min_score and topic_hits(question_grams, grams[row["memo"]], df, len(grams)) >= min_topic_hits:
                 rows.append({**row, "score": round(score, 3)})
     rows.sort(key=lambda row: (row["score"], row["date"]), reverse=True)
     return rows[:limit]
@@ -209,12 +226,14 @@ def build_news_zettel_context(
 ) -> str:
     """プロンプトに添えるブロック。無効・ハブが当たっていない・メモが無い時は空文字。
 
-    question を渡すと質問に近いメモだけを選ぶ（REV-535）。渡さなければ従来どおり新しい順。
+    question を渡すと、全ハブのメモから質問に近いものだけを選ぶ（REV-535/537）。渡さなければ従来どおり
+    検索で当たったハブのメモを新しい順。
     """
     if not enabled():
         return ""
     try:
-        hubs = hit_hubs(refs)
+        # REV-537 質問文がある時は検索で当たったハブに限らず全ハブから、質問に近いメモを選ぶ
+        hubs = hit_hubs(refs) if question is None else list(dict.fromkeys(_hub_labels_by_file().values()))
         if not hubs:
             return ""
         if vault is None:
