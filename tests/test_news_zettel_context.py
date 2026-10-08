@@ -168,7 +168,7 @@ def test_read_time_uses_recheck_and_legacy_threshold(setup):
     from scripts.build_news_zettel import HUBS
 
     use = {hub["label"]: hub["use"] for hub in HUBS}["機械受注統計"]
-    state = {"clip/m.md": {"status": "written", "memo": "05/2026-10-08_m.md", "hubs": ["機械受注統計"], "hub_fit": 0.79}}
+    state = {"clip/m.md": {"status": "written", "memo": "05/2026-10-08_7月の機械受注3.7%減.md", "hubs": ["機械受注統計"], "hub_fit": 0.79}}
     assert ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck={}) == []  # 古い点数 0.79 < 0.85
     ok = {"clip/m.md": {"hub": "機械受注統計", "hub_use": use, "hub_fit": 0.72}}
     assert len(ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck=ok)) == 1
@@ -177,3 +177,17 @@ def test_read_time_uses_recheck_and_legacy_threshold(setup):
     state["clip/m.md"]["hub_use"] = use  # 新しい説明で判定された新規メモ
     state["clip/m.md"]["hub_fit"] = 0.72
     assert len(ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck={})) == 1
+
+
+def test_machine_orders_hub_needs_keyword_in_title():
+    """REV-541: 機械受注統計は見出しに「機械受注」か「工作機械」を含むメモだけ（点数が高くても）。"""
+    from scripts.build_news_zettel import HUBS
+
+    use = {hub["label"]: hub["use"] for hub in HUBS}["機械受注統計"]
+    state = {
+        "clip/a.md": {"status": "written", "memo": "05/2026-10-08_法人企業統計4―6月期設備投資は6四半期連続増.md", "hubs": ["機械受注統計"]},
+        "clip/b.md": {"status": "written", "memo": "05/2026-10-07_8月の工作機械受注64%増.md", "hubs": ["機械受注統計"]},
+    }
+    recheck = {key: {"hub": "機械受注統計", "hub_use": use, "hub_fit": 0.9} for key in state}
+    rows = ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck=recheck)
+    assert [row["memo"] for row in rows] == ["05/2026-10-07_8月の工作機械受注64%増.md"]

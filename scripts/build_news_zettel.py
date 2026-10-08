@@ -76,7 +76,9 @@ HUBS: list[dict[str, str]] = [
      "use": "内閣府の機械受注統計・工作機械受注（日工会）そのもの（法人企業統計の設備投資・海外の資本財受注・各種調査・個社の投資は除く）",
      # REV-539 説明を絞ると本物の統計記事でも 0.67〜0.80 になる（57組で確認。法人企業統計は0.56前後）ので 0.70。
      # 古い説明で判定した点数（hub_use が今の説明と違うもの）には従来の 0.85 を使う
-     "fit_min": "0.70", "legacy_fit_min": "0.85"},
+     "fit_min": "0.70", "legacy_fit_min": "0.85",
+     # REV-541 Jev 判定のばらつきで法人企業統計などが 0.70 を超えるため、見出しの語でも絞る（| 区切りのどれか）
+     "title_any": "機械受注|工作機械"},
 ]
 
 
@@ -368,6 +370,12 @@ def hub_fit_min(hub: dict[str, str]) -> float:
     return max(HUB_FIT_MIN, float(hub.get("fit_min") or 0))
 
 
+def hub_title_ok(hub: dict[str, str], title: str) -> bool:
+    """見出しの条件（title_any）があるハブは、見出しにその語のどれかを含む記事だけ接続する（REV-541）。"""
+    words = [word for word in str(hub.get("title_any") or "").split("|") if word]
+    return not words or any(word in str(title or "") for word in words)
+
+
 def hub_legacy_fit_min(hub: dict[str, str]) -> float:
     """今と違う（古い）説明で判定した点数に使うしきい値。指定が無ければ hub_fit_min と同じ（REV-539）。"""
     return max(HUB_FIT_MIN, float(hub.get("legacy_fit_min") or hub.get("fit_min") or 0))
@@ -571,6 +579,9 @@ def process(
                 continue
             linked = [hub_by_id[h] for h in row["hubs"]]
             check = checks.get(index)
+            if linked and not hub_title_ok(linked[0], item["title"]):
+                summary["hub_title_dropped"] = summary.get("hub_title_dropped", 0) + 1
+                linked = []  # 見出しの条件に合わない（REV-541）
             if linked and check is None:
                 summary["hub_unchecked"] += 1
             elif linked:
@@ -728,6 +739,8 @@ def process_meti(vault: Path, state: dict[str, dict[str, Any]], *, model_call=No
                 continue
             linked = [hub_by_id[h] for h in row["hubs"]]
             check = checks.get(index)
+            if linked and not hub_title_ok(linked[0], item["title"]):
+                linked = []  # 見出しの条件に合わない（REV-541）
             if linked and check is not None and check < hub_fit_min(linked[0]):
                 linked = []
             memo_dir.mkdir(parents=True, exist_ok=True)
