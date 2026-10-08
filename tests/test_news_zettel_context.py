@@ -68,8 +68,9 @@ def test_wired_into_dialogue_and_chat_rag_path():
 
     assert "news_zettel_context" in SPECS
     main = Path("api/main.py").read_text(encoding="utf-8")
-    assert '("news_zettel_context", block_with_spacing(_news_zettel_from_hits(_rag_hits)))' in main
-    assert '("news_zettel_context", _news_zettel_from_refs(rag_refs))' in main
+    # REV-535 質問文を渡して、質問に近いメモを選ぶ
+    assert '("news_zettel_context", block_with_spacing(_news_zettel_from_hits(_rag_hits, question=message)))' in main
+    assert '("news_zettel_context", _news_zettel_from_refs(rag_refs, question=search_text))' in main
 
 
 def test_helpers_build_from_hits_and_refs(setup, monkeypatch):
@@ -91,3 +92,56 @@ def test_existing_memos_on_stricter_hubs_need_085(setup):
     state["clip/2026-10-08_別ハブ.md"]["hub_fit"] = 0.86
     assert len(ctx.recent_memos(["補助金の制度全体像"], state=state, today=TODAY)) == 1
     assert len(ctx.recent_memos(["倒産率とリスク"], state=state, today=TODAY)) == 2  # 0.81 でも従来どおり
+
+
+# ── REV-535: 質問との近さで選ぶ（AI 呼び出しなし） ──────────────────────
+@pytest.fixture
+def topical(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHION_NEWS_ZETTEL_CONTEXT", "1")
+    memos = tmp_path / MEMO_DIR
+    memos.mkdir(parents=True)
+    state = {}
+    rows = [
+        ("2026-10-09_半導体", "半導体工場の設備投資が加速", "半導体関連の設備投資が増えそう。製造装置の需要を見たい。"),
+        ("2026-10-08_建設倒産", "建設業の倒産が前年比2割増", "建設業の倒産が増えている。受注残と資金繰りを確かめたい。"),
+        ("2026-10-07_運送倒産", "燃料高で運送業の倒産が増加", "運送業は燃料高を転嫁できず倒産が増えているかも。運賃の転嫁を確かめたい。"),
+        ("2026-10-06_金利", "中小企業の調達金利が上昇", "金利上昇で利払いが重くなりそう。返済余力を確かめたい。"),
+        ("2026-10-05_アパレル", "アパレル卸の売上が減少", "アパレル卸は在庫が重いかも。在庫回転を確かめたい。"),
+    ]
+    for name, title, body in rows:
+        (memos / f"{name}.md").write_text(f"---\ntype: news_zettel\n---\n# {title}\n\n{body}\n\n- 元記事: [[x]]\n", encoding="utf-8")
+        state[f"clip/{name}.md"] = {"status": "written", "memo": f"{MEMO_DIR}/{name}.md", "hubs": ["倒産率とリスク"], "hub_fit": 0.9}
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    ctx._INDEX_CACHE.clear()
+    return tmp_path, state_path
+
+
+def _ask(topical, question):
+    vault, state_path = topical
+    return ctx.build_news_zettel_context(["倒産率とリスク.md"], question=question, vault=vault, state_path=state_path, today=TODAY)
+
+
+def test_question_picks_closest_memos_not_newest(topical):
+    block = _ask(topical, "運送業や建設業の倒産が増えてるけど、リース審査で気をつけることは？")
+    assert "建設業の倒産" in block and "運送業の倒産" in block
+    assert "半導体" not in block  # 一番新しいが質問と関係ない
+
+
+def test_unrelated_question_adds_nothing(topical):
+    assert _ask(topical, "こんにちは、今日は寒いね") == ""
+
+
+def test_without_question_keeps_newest_first_for_compatibility(topical):
+    vault, state_path = topical
+    block = ctx.build_news_zettel_context(["倒産率とリスク.md"], vault=vault, state_path=state_path, today=TODAY)
+    assert "半導体" in block  # question を渡さない呼び出しは従来どおり新しい順
+
+
+def test_helpers_pass_question_through(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(ctx, "build_news_zettel_context", lambda refs, **kw: seen.update(kw) or "B")
+    ctx.context_from_hits([{"file_name": "x.md"}], question="質問")
+    assert seen["question"] == "質問"
+    ctx.context_from_refs(["x.md"])
+    assert seen["question"] is None

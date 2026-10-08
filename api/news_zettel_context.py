@@ -8,11 +8,15 @@
   （#1297 の事実と解釈の言い分け: 永続メモは紫苑がニュースを書き直した解釈であって、記録された事実ではない）
 - 未接続のメモ・Jev 判定を通っていないメモ（REV-501 より前の hub_fit 無し）は使わない
 - SHION_NEWS_ZETTEL_CONTEXT=1 の時だけ有効。既定は空文字（プロンプトは変わらない）
+- 質問文を渡すと、同じハブのメモの中から質問との近さで2件まで選び、近いものが無ければ添えない（REV-535）。
+  近さは文字の2字組の重なりを、メモ全体でよく出る組ほど軽く数えたもの（AI 呼び出しなし・費用ゼロ）。
+  質問文を渡さない呼び出しは従来どおり新しい順（recent_memos は互換のため残す）
 """
 from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -24,6 +28,8 @@ MAX_AGE_DAYS = 45
 TITLE_CHARS = 36  # REV-533 プロンプト上限の中で確実に残すため短くする（1件 約150字）
 BODY_CHARS = 100
 HUB_FIT_MIN = float(os.environ.get("NEWS_ZETTEL_HUB_FIT_MIN", "0.7"))
+# REV-535 本番のメモ348件で確認: 雑談は最高0.08、質問と関係の薄いメモは0.10〜0.13、関係するメモは0.16以上
+RELEVANCE_MIN = float(os.environ.get("NEWS_ZETTEL_RELEVANCE_MIN", "0.13"))
 
 
 def enabled() -> bool:
@@ -95,8 +101,8 @@ def recent_memos(
     return rows[:limit]
 
 
-def _memo_text(vault: Path, rel: str) -> tuple[str, str]:
-    """永続メモの見出しと本文（1〜2文）。読めなければ空。"""
+def _memo_parts(vault: Path, rel: str) -> tuple[str, str]:
+    """永続メモの見出しと本文（全文・空白は詰める）。読めなければ空。"""
     try:
         path = vault / rel
         if getattr(os.stat(path), "st_flags", 0) & 0x40000000:  # iCloud 退避中は読まない
@@ -106,30 +112,111 @@ def _memo_text(vault: Path, rel: str) -> tuple[str, str]:
         return "", ""
     title = re.search(r"^# (.+)$", text, re.MULTILINE)
     body = text.split("\n# ", 1)[-1].split("\n", 1)[-1].split("\n- 元記事", 1)[0].strip()
-    return (title.group(1).strip() if title else ""), " ".join(body.split())[:BODY_CHARS]
+    return (title.group(1).strip() if title else ""), " ".join(body.split())
+
+
+def _memo_text(vault: Path, rel: str) -> tuple[str, str]:
+    """永続メモの見出しと本文（1〜2文）。読めなければ空。"""
+    title, body = _memo_parts(vault, rel)
+    return title, body[:BODY_CHARS]
+
+
+_INDEX_CACHE: dict[tuple[str, str, float], tuple[dict[str, set[str]], dict[str, int]]] = {}
+
+
+def _memo_index(vault: Path, state_path: Path, state: dict[str, dict[str, Any]]) -> tuple[dict[str, set[str]], dict[str, int]]:
+    """書かれた永続メモ全部の 2字組と、組ごとの出現メモ数。状態ファイルが変わるまで使い回す（1日1回更新）。"""
+    from api.chat_prompt_budget import _bigrams
+
+    try:
+        mtime = state_path.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+    key = (str(vault), str(state_path), mtime)
+    if key not in _INDEX_CACHE:
+        grams: dict[str, set[str]] = {}
+        df: dict[str, int] = {}
+        for entry in state.values():
+            memo = str(entry.get("memo") or "") if isinstance(entry, dict) and entry.get("status") == "written" else ""
+            if not memo or memo in grams:
+                continue
+            title, body = _memo_parts(vault, memo)
+            if not body:
+                continue
+            grams[memo] = _bigrams(title + body)
+            for gram in grams[memo]:
+                df[gram] = df.get(gram, 0) + 1
+        _INDEX_CACHE.clear()
+        _INDEX_CACHE[key] = (grams, df)
+    return _INDEX_CACHE[key]
+
+
+def relevance(question_grams: set[str], memo_grams: set[str], df: dict[str, int], total: int) -> float:
+    """質問の 2字組のうちメモにもある割合。どのメモにもよく出る組（リース・審査など）ほど軽く数える。"""
+    weight = {gram: math.log((total + 1) / (df.get(gram, 0) + 1)) for gram in question_grams}
+    whole = sum(weight.values())
+    return sum(weight[gram] for gram in question_grams & memo_grams) / whole if whole > 0 else 0.0
+
+
+def relevant_memos(
+    hubs: list[str],
+    question: str,
+    *,
+    state: dict[str, dict[str, Any]],
+    today: dt.date,
+    vault: Path,
+    state_path: Path = STATE_PATH,
+    limit: int = MAX_MEMOS,
+    min_score: float = RELEVANCE_MIN,
+) -> list[dict[str, Any]]:
+    """ハブにつながった最近の永続メモのうち、質問に近いものを limit 件まで（近さが min_score 未満は除く）。"""
+    from api.chat_prompt_budget import _bigrams
+
+    question_grams = _bigrams(question)
+    candidates = recent_memos(hubs, state=state, today=today, limit=len(state))
+    if not question_grams or not candidates:
+        return []
+    grams, df = _memo_index(vault, state_path, state)
+    rows = []
+    for row in candidates:
+        if row["memo"] in grams:
+            score = relevance(question_grams, grams[row["memo"]], df, len(grams))
+            if score >= min_score:
+                rows.append({**row, "score": round(score, 3)})
+    rows.sort(key=lambda row: (row["score"], row["date"]), reverse=True)
+    return rows[:limit]
 
 
 def build_news_zettel_context(
     refs: Iterable[str],
     *,
+    question: str | None = None,
     vault: Path | None = None,
     state_path: Path = STATE_PATH,
     today: dt.date | None = None,
 ) -> str:
-    """プロンプトに添えるブロック。無効・ハブが当たっていない・メモが無い時は空文字。"""
+    """プロンプトに添えるブロック。無効・ハブが当たっていない・メモが無い時は空文字。
+
+    question を渡すと質問に近いメモだけを選ぶ（REV-535）。渡さなければ従来どおり新しい順。
+    """
     if not enabled():
         return ""
     try:
         hubs = hit_hubs(refs)
         if not hubs:
             return ""
-        memos = recent_memos(hubs, state=_load_state(state_path), today=today or dt.date.today())
-        if not memos:
-            return ""
         if vault is None:
             from runtime_paths import resolve_obsidian_vault
 
             vault = resolve_obsidian_vault()
+        state = _load_state(state_path)
+        day = today or dt.date.today()
+        if question is None:
+            memos = recent_memos(hubs, state=state, today=day)
+        else:
+            memos = relevant_memos(hubs, question, state=state, today=day, vault=vault, state_path=state_path)
+        if not memos:
+            return ""
         lines = []
         for memo in memos:
             title, body = _memo_text(vault, memo["memo"])
@@ -153,12 +240,12 @@ def build_news_zettel_context(
     )
 
 
-def context_from_hits(rag_hits: list[dict[str, Any]] | None) -> str:
+def context_from_hits(rag_hits: list[dict[str, Any]] | None, question: str | None = None) -> str:
     """対話室: 検索結果（hit の dict）から。main.py の行数を増やさないためここに置く。"""
-    return build_news_zettel_context(str(h.get("file_name") or h.get("ref") or "") for h in rag_hits or [])
+    return build_news_zettel_context((str(h.get("file_name") or h.get("ref") or "") for h in rag_hits or []), question=question)
 
 
-def context_from_refs(rag_refs: list[str] | None) -> str:
+def context_from_refs(rag_refs: list[str] | None, question: str | None = None) -> str:
     """/api/chat（RAG 経路）: 検索結果の ref から。前の節と区切るため先頭に空行を付ける。"""
-    block = build_news_zettel_context(rag_refs or [])
+    block = build_news_zettel_context(rag_refs or [], question=question)
     return f"\n\n{block}" if block else ""
