@@ -22,6 +22,8 @@ import { suggestReply } from "@/lib/replySuggestion";
 import RagConfidenceBadge, { type RagKnowledgeRef } from "@/components/chat/RagConfidenceBadge";
 import ResponseUsefulnessButtons from "@/components/chat/ResponseUsefulnessButtons";
 import ShionVoiceCall from "@/components/chat/ShionVoiceCall";
+import VoiceAutoSendControl from "@/components/chat/VoiceAutoSendControl";
+import { useVoiceAutoSend } from "@/lib/useVoiceAutoSend";
 import ShionSingButton from "@/components/chat/ShionSingButton";
 import { TodayShionCard } from "@/components/chat/ShionIllustration";
 import { useShionSpeech } from "@/lib/useShionSpeech";
@@ -254,6 +256,9 @@ export default function ChatPage() {
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  // REV-504: 話し終わったら自動送信（既定オフ）。タイマーからは最新の送信関数を呼ぶ
+  const voiceAutoSend = useVoiceAutoSend();
+  const sendMessageRef = useRef<() => void>(() => undefined);
   const briefRequestSeqRef = useRef(0);
   const lastProactiveAlertRef = useRef<string | null>(null);
   const lastLatentNeedRef = useRef<string | null>(null);
@@ -862,6 +867,7 @@ export default function ChatPage() {
       if (!transcript) return;
       setInput((prev) => `${prev}${prev.trim() ? "\n" : ""}${transcript}`);
       window.setTimeout(resizeTextarea, 0);
+      voiceAutoSend.schedule(() => sendMessageRef.current());
     };
     recognition.onerror = () => setListening(false);
     recognition.onend = () => setListening(false);
@@ -918,6 +924,13 @@ export default function ChatPage() {
       return "";
     }
   };
+
+  // 描画のたびに最新の送信関数へ差し替える（ref は描画中に書き換えない）
+  useEffect(() => {
+    sendMessageRef.current = () => {
+      void sendMessage();
+    };
+  });
 
   return (
     <div className="flex flex-col h-[calc(100dvh-4rem)] max-w-3xl mx-auto px-4 py-6 overflow-hidden">
@@ -1473,7 +1486,10 @@ export default function ChatPage() {
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              voiceAutoSend.cancel();
+            }}
             onKeyDown={handleKeyDown}
             placeholder={improvementMode ? "改善したい点を入力（例: この画面の導線が分かりにくい）" : replySuggestion ? `${replySuggestion}（Tabで入力）` : `${entryGreeting.placeholder}（Enterで送信 / Shift+Enterで改行）`}
             rows={1}
@@ -1525,6 +1541,16 @@ export default function ChatPage() {
             )}
           </button>
         </div>
+        {voiceSupported && (
+          <div className="mt-1 px-1">
+            <VoiceAutoSendControl
+              autoSend={voiceAutoSend.autoSend}
+              onChange={voiceAutoSend.setAutoSend}
+              countdown={voiceAutoSend.countdown}
+              onCancel={voiceAutoSend.cancel}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
