@@ -107,10 +107,11 @@ def topical(tmp_path, monkeypatch):
         ("2026-10-07_運送倒産", "燃料高で運送業の倒産が増加", "運送業は燃料高を転嫁できず倒産が増えているかも。運賃の転嫁を確かめたい。"),
         ("2026-10-06_金利", "中小企業の調達金利が上昇", "金利上昇で利払いが重くなりそう。返済余力を確かめたい。"),
         ("2026-10-05_アパレル", "アパレル卸の売上が減少", "アパレル卸は在庫が重いかも。在庫回転を確かめたい。"),
+        ("2026-10-04_今日の市場", "今日の市場はどう動いた?", "今日の市場は機械受注の悪化で設備投資に逆風かも。", "機械受注統計"),
     ]
-    for name, title, body in rows:
+    for name, title, body, *hub in rows:
         (memos / f"{name}.md").write_text(f"---\ntype: news_zettel\n---\n# {title}\n\n{body}\n\n- 元記事: [[x]]\n", encoding="utf-8")
-        state[f"clip/{name}.md"] = {"status": "written", "memo": f"{MEMO_DIR}/{name}.md", "hubs": ["倒産率とリスク"], "hub_fit": 0.9}
+        state[f"clip/{name}.md"] = {"status": "written", "memo": f"{MEMO_DIR}/{name}.md", "hubs": hub or ["倒産率とリスク"], "hub_fit": 0.9}
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     ctx._INDEX_CACHE.clear()
@@ -145,3 +146,19 @@ def test_helpers_pass_question_through(monkeypatch):
     assert seen["question"] == "質問"
     ctx.context_from_refs(["x.md"])
     assert seen["question"] is None
+
+
+# ── REV-537: 全ハブから選ぶ・雑談の誤ヒットを防ぐ ──────────────────────
+def test_question_finds_memos_on_hubs_the_search_did_not_hit(topical):
+    vault, state_path = topical
+    block = ctx.build_news_zettel_context(["業種別傾向.md"], question="運送業や建設業の倒産が増えてるけど？",
+                                          vault=vault, state_path=state_path, today=TODAY)
+    assert "（倒産率とリスク）" in block and "建設業の倒産" in block
+    assert ctx.build_news_zettel_context([], question="建設業の倒産が増えてる", vault=vault,
+                                         state_path=state_path, today=TODAY)  # 当たったハブが無くても選ぶ
+
+
+def test_small_talk_sharing_only_generic_words_adds_nothing(topical):
+    # 「今日」「どう」だけが一致する（内容語の一致が1つ）
+    assert _ask(topical, "今日の気分はどう？") == ""
+    assert _ask(topical, "最近どう？元気にしてた？") == ""
