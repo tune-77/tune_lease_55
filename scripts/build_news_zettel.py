@@ -234,8 +234,10 @@ def build_prompt(items: list[dict[str, Any]], hubs: list[dict[str, str]]) -> str
     hub_lines = "\n".join(f"- {hub['id']}: {hub['label']}（{hub['use']}）" for hub in hubs)
     # 3行要約・活用メモはクリップ作成時の定型文（「工期・更新投資…を確認する」等）が多く、
     # 渡すとそのまま書き写されるので見出し・業種・物件だけを渡す（REV-499 試行の結果）
+    # body は経産省フィードの要約（記事ページは取得しない）だけ。REV-503
     article_lines = "\n".join(
         f"[{index}] {item['title']}\n    業種: {item['industries'] or '-'} / 物件: {item['lease_assets'] or '-'}"
+        + (f"\n    本文の要点（{item['source_label']}の発表より）: {item['body'][:300]}" if item.get("body") else "")
         for index, item in enumerate(items)
     )
     return f"""あなたはリース審査担当の相棒「紫苑」です。業界ニュースを、審査の知識として残す「永続メモ」に書き直します。
@@ -308,8 +310,15 @@ def render_memo(
     hub_check: float | None = None,
     proposed: list[str] | None = None,
 ) -> str:
-    source = f"{item['folder']}/{item['path'].stem}"
     title = re.sub(r"\s+-\s+[^-]+$", "", item["title"]).strip()  # 末尾の「 - 配信元」を外す
+    if item.get("source_url"):
+        # 経産省フィード由来（クリップは無い）。出典を明記し、元の発表ページへリンクする。要約は保存しない
+        source_line = f'source_url: "{item["source_url"]}"'
+        origin = f"[{title[:40]}]({item['source_url']})（出典: {item['source_label']}）"
+    else:
+        source = f"{item['folder']}/{item['path'].stem}"
+        source_line = f'source_note: "[[{source}]]"'
+        origin = f"[[{source}|{title[:40]}]]"
     related = " ".join(f"[[{hub['path']}|{hub['label']}]]" for hub in hubs) or "未接続"
     hub_labels = json.dumps([hub["label"] for hub in hubs], ensure_ascii=False)
     return "\n".join(
@@ -325,7 +334,8 @@ def render_memo(
                 if proposed
                 else []
             ),
-            f'source_note: "[[{source}]]"',
+            source_line,
+            *([f"source_label: {item['source_label']}"] if item.get("source_label") else []),
             f"generated_by: {FEATURE} ({model})",
             f"generated_at: {now}",
             "tags: [ニュース永続メモ]",
@@ -334,7 +344,7 @@ def render_memo(
             "",
             idea,
             "",
-            f"- 元記事: [[{source}|{title[:40]}]]",
+            f"- 元記事: {origin}",
             f"- 関連: {related}",
             "",
         ]
@@ -563,6 +573,156 @@ def process(
     return summary
 
 
+# ── 経済産業省の報道発表フィード（REV-503） ─────────────────────────────────
+# 記事ページと robots.txt は 403（ボット遮断）なので取りに行かない。フィードに入っている冒頭の要約だけを
+# 「本文の要点」として使う（PDL1.0・出典明記）。要約は Gemini への入力にだけ使い、Vault には保存しない。
+METI_FEED_URL = "https://www.meti.go.jp/ml_index_release_atom.xml"
+METI_LABEL = "経済産業省"
+METI_STATUS_PATH = _MAIN_ROOT / "data" / "news_zettel_meti_feed.json"
+METI_MAX_AGE_DAYS = int(os.environ.get("NEWS_ZETTEL_METI_MAX_AGE_DAYS", "14"))
+METI_MAX_ITEMS = 10
+METI_STALE_DAYS = 30
+FEED_USER_AGENT = "tunelease-news-zettel/1.0"
+
+
+def fetch_meti_feed(timeout: float = 15.0) -> str:
+    import urllib.request
+
+    request = urllib.request.Request(METI_FEED_URL, headers={"User-Agent": FEED_USER_AGENT})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read(2_000_000).decode("utf-8", errors="replace")
+
+
+def parse_meti_feed(xml_text: str) -> list[dict[str, str]]:
+    import html as _html
+
+    entries = []
+    for block in re.findall(r"<entry>(.*?)</entry>", xml_text, re.DOTALL):
+        title = re.search(r"<title[^>]*>(.*?)</title>", block, re.DOTALL)
+        link = re.search(r'<link[^>]*rel="alternate"[^>]*href="([^"]+)"', block) or re.search(r'<link[^>]*href="([^"]+)"', block)
+        updated = re.search(r"<(?:updated|published)>([^<]+)</", block)
+        summary = re.search(r"<(summary|content)[^>]*>(.*?)</\1>", block, re.DOTALL)
+        if not (title and link and updated):
+            continue
+        entries.append({
+            "title": " ".join(_html.unescape(re.sub(r"<[^>]+>", "", title.group(1))).split()),
+            "url": link.group(1).strip(),
+            "date": updated.group(1).strip()[:10],
+            "summary": " ".join(_html.unescape(re.sub(r"<[^>]+>", "", summary.group(2))).split()) if summary else "",
+        })
+    return entries
+
+
+def meti_items(entries: list[dict[str, str]], state: dict[str, dict[str, Any]], *, today: dt.date) -> list[dict[str, Any]]:
+    """未処理で直近 METI_MAX_AGE_DAYS 日以内の発表だけ。フィードが止まっている間は空。"""
+    cutoff = (today - dt.timedelta(days=METI_MAX_AGE_DAYS)).isoformat()
+    items = []
+    for entry in sorted(entries, key=lambda e: e["date"], reverse=True):
+        key = f"meti:{entry['url']}"
+        if key in state or entry["date"] < cutoff or not entry["summary"]:
+            continue
+        items.append({
+            "key": key,
+            "title": entry["title"],
+            "date": entry["date"],
+            "industries": "",
+            "lease_assets": "",
+            "summary": "",
+            "body": entry["summary"][:300],
+            "source_url": entry["url"],
+            "source_label": METI_LABEL,
+            "topic": normalize_topic(entry["title"]),
+            "stat_key": "",
+        })
+    return items[:METI_MAX_ITEMS]
+
+
+def write_meti_status(entries: list[dict[str, str]], *, today: dt.date, error: str = "", written: int = 0,
+                      path: Path | None = None) -> dict[str, Any]:
+    path = path or METI_STATUS_PATH
+    latest = max((e["date"] for e in entries), default="")
+    days = (today - dt.date.fromisoformat(latest)).days if latest else None
+    status = {"checked_at": dt.datetime.now().isoformat(timespec="seconds"), "feed": METI_FEED_URL,
+              "entries": len(entries), "latest_entry_date": latest, "days_since_latest": days,
+              "stale": days is None or days >= METI_STALE_DAYS, "memos_written": written, "error": error}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(status, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return status
+
+
+def morning_report_lines(path: Path | None = None) -> list[str]:
+    """朝報用: 経産省フィードの最新日付。長く止まっていれば分かるようにする。"""
+    path = path or METI_STATUS_PATH
+    try:
+        status = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if status.get("error"):
+        return [f"- 📰 経産省フィード（永続メモ用）: 取得失敗 `{status['error'][:60]}`"]
+    mark = "⚠️ " if status.get("stale") else ""
+    return [
+        f"- 📰 {mark}経産省フィード（永続メモ用）: 最新 {status.get('latest_entry_date') or '不明'}"
+        f"（{status.get('days_since_latest')}日前）・前回のメモ {status.get('memos_written', 0)}件"
+    ]
+
+
+def process_meti(vault: Path, state: dict[str, dict[str, Any]], *, model_call=None, hub_checker=None,
+                 model_name: str = "", today: dt.date | None = None, fetch=None, now: str | None = None) -> dict[str, Any]:
+    today = today or dt.date.today()
+    now = now or dt.datetime.now().isoformat(timespec="seconds")
+    summary = {"meti_entries": 0, "meti_new": 0, "meti_written": 0, "meti_no_idea": 0, "meti_stopped": ""}
+    try:
+        entries = parse_meti_feed((fetch or fetch_meti_feed)())
+    except Exception as exc:  # noqa: BLE001 - フィードが取れなくても業界ニュースの処理は終わっている
+        write_meti_status([], today=today, error=f"{type(exc).__name__}: {str(exc)[:80]}")
+        summary["meti_stopped"] = type(exc).__name__
+        return summary
+    summary["meti_entries"] = len(entries)
+    seen = processed_topics(vault, state)
+    items = [item for item in meti_items(entries, state, today=today) if item["topic"] not in seen]
+    summary["meti_new"] = len(items)
+    hubs = available_hubs(vault)
+    hub_by_id = {hub["id"]: hub for hub in hubs}
+    memo_dir = vault / MEMO_DIR
+    if items:
+        try:
+            result = (model_call or call_model)(build_prompt(items, hubs))
+        except Exception as exc:  # noqa: BLE001 - 予算ガード等。未処理は次回へ
+            summary["meti_stopped"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+            write_meti_status(entries, today=today, written=0)
+            return summary
+        rows = validate(result, len(items), set(hub_by_id))
+        checks = check_hubs(items, rows, hub_by_id, hub_checker)
+        for index, item in enumerate(items):
+            row = rows.get(index) or {"idea": "", "hubs": []}
+            if not row["idea"]:
+                summary["meti_no_idea"] += 1
+                state[item["key"]] = {"status": "no_idea", "topic": item["topic"], "processed_at": now}
+                continue
+            memo_path = memo_dir / f"{item['date']}_{_safe_stem(item['title'])}.md"
+            if memo_path.exists():
+                state[item["key"]] = {"status": "exists", "topic": item["topic"], "processed_at": now}
+                continue
+            linked = [hub_by_id[h] for h in row["hubs"]]
+            check = checks.get(index)
+            if linked and check is not None and check < HUB_FIT_MIN:
+                linked = []
+            memo_dir.mkdir(parents=True, exist_ok=True)
+            memo_path.write_text(
+                render_memo(item, row["idea"], linked, model=model_name, now=now, hub_check=check,
+                            proposed=[hub_by_id[h]["label"] for h in row["hubs"]]),
+                encoding="utf-8",
+            )
+            summary["meti_written"] += 1
+            state[item["key"]] = {"status": "written", "memo": str(memo_path.relative_to(vault)), "topic": item["topic"],
+                                  "stat_key": "", "hubs": [h["label"] for h in linked],
+                                  "proposed_hubs": [hub_by_id[h]["label"] for h in row["hubs"]],
+                                  "hub_fit": None if check is None else round(check, 3),
+                                  "source_label": METI_LABEL, "processed_at": now}
+    write_meti_status(entries, today=today, written=summary["meti_written"])
+    return summary
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vault", type=Path, default=None)
@@ -589,6 +749,8 @@ def main() -> int:
     from config import get_gemini_model
 
     summary = process(args.vault, clips, state, model_name=get_gemini_model(), dry_run=args.dry_run)
+    if not args.dry_run and os.environ.get("NEWS_ZETTEL_METI_FEED", "1").strip() != "0":
+        summary.update(process_meti(args.vault, state, model_name=get_gemini_model()))
     if not args.dry_run:
         save_state(state)
     print(json.dumps({k: v for k, v in summary.items() if k != "memos"}, ensure_ascii=False))

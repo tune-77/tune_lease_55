@@ -1036,6 +1036,16 @@ def ai_budget_lines() -> list[str]:
         return [f"- Gemini 予算ガード: 読み込み失敗 `{type(exc).__name__}`"]
 
 
+def news_zettel_feed_lines() -> list[str]:
+    """経産省フィード（ニュース永続メモの本文の要点）の最新日付。止まっていれば ⚠️（REV-503）。"""
+    try:
+        from scripts.build_news_zettel import morning_report_lines
+
+        return morning_report_lines()
+    except Exception as exc:  # noqa: BLE001 - 指標の失敗で朝報を止めない
+        return [f"- 📰 経産省フィード: 読み込み失敗 `{type(exc).__name__}`"]
+
+
 def answer_regression_lines() -> list[str]:
     """週次の答えの品質回帰テスト（scripts/weekly_answer_regression.py）の警告と点数（朝報の上部）。"""
     try:
@@ -1106,6 +1116,7 @@ def write_morning_report(
         *answer_regression_lines(),
         *vertex_credit_lines(),
         *ai_budget_lines(),
+        *news_zettel_feed_lines(),
         *chat_prompt_budget_lines(),
         "",
         "[[Q-Risk]] [[LightGBM スコアリング]] [[業種別傾向]] [[審査方針]]",
