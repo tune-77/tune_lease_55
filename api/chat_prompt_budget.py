@@ -251,6 +251,19 @@ def _claim_daily_once(key: str, today: str) -> bool:
     return True
 
 
+# REV-533 ニュース永続メモ（参考）は補助の層の中で最初に削られていた（/api/chat 18回中17回・対話室全回が上限超過）。
+# 一旦外して他を通常どおり削り、空きが足りない分は下の順で「入れ替え」て確保する。記憶系は資金源にしない
+# （記憶系の割り当ては永続メモが無い時と同じかそれ以上になる）。根拠の層は検索結果の末尾だけを最後の手段に使う。
+RESERVED_AUX_BLOCKS = ("news_zettel_context",)
+RESERVE_DONORS = (
+    "news_digest_context", "news_actions_context", "news_brief_context",  # ニュース要約（見出しの寄せ集め）
+    "obsidian_daily_context",  # 朝報
+    "improvement_triage_context", "improvement_observability_context", "improvement_report_context",
+    "reasoner_consultation_context", "agent_consultation_context",
+    "rag_context", "dialogue_knowledge_context",  # 最後の手段: 関連度の低い末尾の検索結果
+)
+
+
 def _optional_cut(name: str, text: str, question: str, context_mode: str) -> str:
     """付加情報ブロックを外す理由（外さないなら空文字）。"""
     if not text or not context_mode:
@@ -377,11 +390,38 @@ def assemble_prompt(
                 total += len(addition)
                 live_keys.add(key)
 
+    def restore_reserved(held: dict[int, str]) -> None:
+        """外しておいた参考ブロックを、空き→入れ替え元の順で場所を作って戻す（REV-533）。"""
+        for i, text in held.items():
+            total = sum(len(t) for t in texts.values())
+            need = len(text) - (limit - total)
+            for donor in RESERVE_DONORS:
+                if need <= 0:
+                    break
+                for j in (j for j, (name, _t) in enumerate(blocks) if name == donor and texts[j]):
+                    if need <= 0:
+                        break
+                    before = len(texts[j])
+                    target = max(0, before - need)
+                    texts[j] = _fit(texts[j], target, SPECS.get(donor, DEFAULT_SPEC).mode, grams) if target else ""
+                    report[donor]["overflow_cut"] += before - len(texts[j])
+                    need -= before - len(texts[j])
+            room = limit - sum(len(t) for t in texts.values())
+            kept = text if len(text) <= room else _fit(text, max(0, room), "ordered", grams)
+            if not _split_items(kept)[1] or len(kept) > room:
+                kept = ""  # 見出しだけ残っても意味がない
+            texts[i] = kept
+            report[blocks[i][0]]["overflow_cut"] += len(text) - len(kept)
+
     # 2. 記憶〜補助は個別予算、重複除去、overflow の順。重複で空きを作ってから、
     #    高優先度の根拠より先に低優先度層を落とす。
     apply_budgets(range(MEMORY, AUX + 1))
     deduplicate()
+    held = {i: texts[i] for i, (name, _t) in enumerate(blocks) if name in RESERVED_AUX_BLOCKS and texts[i]}
+    for i in held:
+        texts[i] = ""
     overflow(range(MEMORY, AUX + 1))
+    restore_reserved(held)
     # 3. まだ超える時だけ方針〜根拠へ個別予算を適用する。高優先度側の予算で
     #    唯一のコピーが消えた場合は、元の低優先度コピーを戻してから再度重複除去する。
     if sum(len(t) for t in texts.values()) > limit:
