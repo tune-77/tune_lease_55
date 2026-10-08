@@ -18,6 +18,9 @@ import { isSingRequest } from "@/lib/shionSing";
 import { useDialogueSinging } from "@/lib/useDialogueSinging";
 import { useShionSpeech } from "@/lib/useShionSpeech";
 import DialogueSongPlayer from "@/components/chat/DialogueSongPlayer";
+import ShionVoiceCall, { type VoiceCallTurn } from "@/components/chat/ShionVoiceCall";
+import VoiceAutoSendControl from "@/components/chat/VoiceAutoSendControl";
+import { useVoiceAutoSend } from "@/lib/useVoiceAutoSend";
 
 type KnowledgeRef = {
   doc_id: string;
@@ -262,6 +265,8 @@ const formatShionActionTimestamp = (value?: string) => {
 
 const DIALOGUE_RETRY_DELAYS_MS = [1200, 2500, 4000];
 const DIALOGUE_LOCAL_HISTORY_KEY = "lease-intelligence-dialogue-local-history";
+// REV-504: 通話の会話を対話室の記憶と共有するための ID（サーバーの DIALOGUE_USER_ID と同じ値）
+const DIALOGUE_VOICE_USER_ID = "lease-intelligence-dialogue";
 const DIALOGUE_CLEARED_AT_KEY = "lease-intelligence-dialogue-cleared-at";
 const DIALOGUE_DAILY_IMPROVEMENT_KEY_PREFIX = "lease-intelligence-daily-improvement-report";
 const DIALOGUE_DAILY_IMPROVEMENT_VERSION = "v4";
@@ -1345,6 +1350,9 @@ export default function LeaseIntelligencePage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  // REV-504: 話し終わったら自動送信（既定オフ）。タイマーからは最新の送信関数を呼ぶ
+  const voiceAutoSend = useVoiceAutoSend();
+  const dialogueSendRef = useRef<() => void>(() => undefined);
   const speechGenerationRef = useRef(0);
 
   // ── TTS ──────────────────────────────────────────────────────────────────
@@ -1471,6 +1479,7 @@ export default function LeaseIntelligencePage() {
         .trim();
       if (!transcript) return;
       setInput((prev) => `${prev}${prev.trim() ? "\n" : ""}${transcript}`);
+      voiceAutoSend.schedule(() => dialogueSendRef.current());
     };
     recognition.onerror = (e) => {
       const code = e?.error ?? String(e);
@@ -1733,6 +1742,32 @@ export default function LeaseIntelligencePage() {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
+  // 描画のたびに最新の送信関数へ差し替える（ref は描画中に書き換えない）
+  useEffect(() => {
+    dialogueSendRef.current = () => {
+      void send();
+    };
+  });
+
+  // REV-504: 通話の会話を対話室の画面にも並べる（文字起こしはサーバー側で対話室の記憶に保存済み）
+  const appendVoiceCallTurns = (turns: VoiceCallTurn[]) => {
+    if (turns.length === 0) return;
+    const base = Date.now();
+    setMessages((prev) => {
+      const next = [
+        ...prev,
+        ...turns.map((turn, i): Message => ({
+          id: base + i,
+          role: turn.role === "user" ? "user" : "assistant",
+          content: `📞 ${turn.text}`,
+          created_at: new Date().toISOString(),
+        })),
+      ];
+      saveLocalDialogueMessages(next);
+      return next;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-amber-50 p-4 md:p-8">
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -2438,7 +2473,10 @@ export default function LeaseIntelligencePage() {
               <textarea
                 ref={textareaRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  voiceAutoSend.cancel();
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) {
                     e.preventDefault();
@@ -2473,6 +2511,11 @@ export default function LeaseIntelligencePage() {
                 {speechEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
               </button>
 
+              {/* 音声通話（/chat と同じ部品。対話室の会話を引き継ぐ） */}
+              <div className="flex h-12 shrink-0 items-center">
+                <ShionVoiceCall userId={DIALOGUE_VOICE_USER_ID} disabled={loading} onEnded={appendVoiceCallTurns} />
+              </div>
+
               {/* 送信ボタン */}
               <button
                 onClick={send}
@@ -2483,6 +2526,14 @@ export default function LeaseIntelligencePage() {
                 <Send className="h-5 w-5" />
                 <span>送信</span>
               </button>
+            </div>
+            <div className="mt-2 px-1">
+              <VoiceAutoSendControl
+                autoSend={voiceAutoSend.autoSend}
+                onChange={voiceAutoSend.setAutoSend}
+                countdown={voiceAutoSend.countdown}
+                onCancel={voiceAutoSend.cancel}
+              />
             </div>
           </footer>
         </main>
