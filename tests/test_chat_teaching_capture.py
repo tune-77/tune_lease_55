@@ -113,12 +113,34 @@ def test_honesty_removes_unbacked_promises():
     assert "まだ保存していません" in fixed
 
 
-def test_honesty_appends_save_location_when_saved():
-    fixed = capture.enforce_save_honesty(
-        "承知しました。",
-        {"saved": True, "knowledge_path": "Lease Intelligence/Knowledge/x_2026-10-02.md", "candidate_id": "c"},
+def test_saved_reply_shows_no_save_notice():
+    """保存しても本文に処理の通知を出さない（2026-10-09 ユーザー方針）。保存先は teaching_save と指標ログで確かめる。"""
+    saved = {"saved": True, "knowledge_path": "Lease Intelligence/Knowledge/x_2026-10-02.md", "candidate_id": "c"}
+    assert capture.enforce_save_honesty("承知しました。", saved) == "承知しました。"
+    incident = (
+        "経営者の離婚は、経営権と連帯保証の変化として見る。\n\n"
+        "Knowledgeノート `Projects/tune_lease_55/Lease Intelligence/Knowledge/経営者の離婚とリース審査_2026-10-09.md`"
+        " に保存し、判断資産候補として反映した。\n\n"
+        "保存先: `Lease Intelligence/Knowledge/x_2026-10-02.md`・判断資産候補（要確認）"
     )
-    assert "保存先: `Lease Intelligence/Knowledge/x_2026-10-02.md`・判断資産候補（要確認）" in fixed
+    fixed = capture.enforce_save_honesty(incident, saved)
+    assert fixed == "経営者の離婚は、経営権と連帯保証の変化として見る。"
+    block = capture.build_save_result_prompt_block({"is_teaching": True, **saved})
+    assert "回答に書かない" in block and "添えてよい" not in block
+
+
+def test_knowledge_title_skips_chitchat_and_uses_title_maker(monkeypatch):
+    assert capture._default_title_maker() is None  # テストでは conftest が Gemini の題名づけを止める
+    monkeypatch.delenv("SHION_KNOWLEDGE_TITLE_LLM")
+    assert capture._default_title_maker() is capture.gemini_knowledge_title
+    answer = "友人の話、それは胸が痛むね。急な環境の変化は大きな衝撃だ。リース審査では経営権と連帯保証の変化を見る。"
+    assert capture.teaching_topic(answer).startswith("リース審査では")
+    assert capture.teaching_topic(answer, lambda text: "**「経営者の離婚とリース審査」**\n") == "経営者の離婚とリース審査"
+    # 題名づけが失敗・空なら文から作る
+    assert capture.teaching_topic(answer, lambda text: 1 / 0).startswith("リース審査では")
+    assert capture.teaching_topic(answer, lambda text: "").startswith("リース審査では")
+    # 見出しのある回答は見出しを使い、題名づけを呼ばない
+    assert capture.answer_topic("### 稟議の型\n本文", lambda text: pytest.fail("見出しがあれば呼ばない")) == "稟議の型"
 
 
 def test_chat_candidates_go_to_review(tmp_path):
@@ -253,7 +275,7 @@ def test_teaching_turn_saves_then_next_question_recalls_and_counts_use(tmp_path,
     )
     assert taught.save["saved"] is True and saver_calls
     assert "保存済み" in taught.save_context and taught.recall_context == ""
-    assert "保存先:" in taught.finalize("承知しました。")
+    assert taught.finalize("承知しました。") == "承知しました。"
 
     monkeypatch.setattr(capture, "_chat_taught_candidates", lambda: [])
     asked = capture.prepare_teaching_turn(
@@ -398,8 +420,7 @@ def test_save_request_saves_previous_shion_answer(tmp_path, monkeypatch):
 
     fixed = turn.finalize(INCIDENT_REPLY)
     assert "テンプレート集" not in fixed and "永続化します" not in fixed  # 保存しても無い保存先は言わせない
-    assert "保存したもの: 直前の紫苑の回答「稟議コメントテンプレート：異業種多角化案件」" in fixed
-    assert "判断資産候補（要確認）" in fixed
+    assert "保存したもの" not in fixed and "判断資産候補" not in fixed and "保存先" not in fixed
 
     # 次に多角化案件を聞いたら、保存したテンプレートが想起される
     monkeypatch.setattr(capture, "_chat_taught_candidates", lambda: [])

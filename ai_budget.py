@@ -44,6 +44,7 @@ MEMORY_FEATURES = frozenset({
     "chat_memory_tools",
     "chat_memory_summary",
     "chat_memory_continuation",
+    "chat_teaching_title",  # 教わったノウハウの Knowledge ノートの題名（REV-540）
     "lease_intelligence_reflection",  # Private Reflection
     "mind_reflection",
     "mind_reflection_legacy_fallback",

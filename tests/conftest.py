@@ -50,3 +50,4 @@ def _isolate_shion_vault_memory_sources(tmp_path, monkeypatch):
     """記憶索引が実 Vault を読まず、教示ファネルも data/ へ書かないようにする。"""
     monkeypatch.setenv("SHION_MEMORY_INDEX_VAULT", "off")
     monkeypatch.setenv("SHION_TEACHING_FUNNEL_PATH", str(tmp_path / "shion_teaching_funnel.jsonl"))
+    monkeypatch.setenv("SHION_KNOWLEDGE_TITLE_LLM", "off")  # Knowledge ノートの題名づけで Gemini を呼ばない
