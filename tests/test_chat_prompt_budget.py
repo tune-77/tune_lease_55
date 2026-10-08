@@ -178,3 +178,42 @@ def test_improvement_report_only_first_conversation_of_the_day(tmp_path, monkeyp
     (tmp_path / "once.json").write_text('{"improvement_report": "2000-01-01"}', encoding="utf-8")
     third, _ = budget.assemble_prompt(blocks, question="おはよう", surface="dialogue", log=False, daily_once=True)
     assert "REV-1" in third
+
+
+def _zettel_blocks(with_memo: bool, *, news: bool = True) -> list[tuple[str, str]]:
+    memo = (
+        "\n\n【最近のニュースから（参考。審査の根拠にしない）】一言添える程度\n"
+        "- 2026-10-08（倒産率とリスク）建設業の倒産: 資材高で資金繰りが苦しいかも\n"
+        "- 2026-10-07（倒産率とリスク）運送業の倒産: 燃料高が続くかも"
+    )
+    return [
+        ("base_prompt_root", "あなたは紫苑です。" + "人格" * 300),
+        ("news_brief_context", _bullets("ニュース", 6) if news else ""),
+        ("user_personal_memory_context", _bullets("個人", 30)),
+        ("rag_context", _bullets("根拠", 12)),
+        ("news_zettel_context", memo if with_memo else ""),
+        ("consciousness_ux_context", _bullets("意識", 8)),
+    ]
+
+
+def test_news_zettel_kept_by_swapping_out_news_summary_not_memory() -> None:
+    """REV-533: 参考メモは上限超過でも残り、場所はニュース要約から取る。記憶系は永続メモが無い時と同じ。"""
+    args = dict(question="倒産", surface="test", max_chars=2600, log=False)
+    _p0, without = budget.assemble_prompt(_zettel_blocks(False), **args)
+    prompt, with_memo = budget.assemble_prompt(_zettel_blocks(True), **args)
+    assert len(prompt) <= 2600
+    assert "建設業の倒産" in prompt and "運送業の倒産" in prompt
+    b0, b1 = without["blocks"], with_memo["blocks"]
+    assert b1["user_personal_memory_context"]["kept"] == b0["user_personal_memory_context"]["kept"]
+    assert b1["news_brief_context"]["kept"] < b0["news_brief_context"]["kept"]
+    assert b1["rag_context"]["kept"] == b0["rag_context"]["kept"]
+
+
+def test_news_zettel_without_news_summary_uses_tail_of_search_results_not_memory() -> None:
+    args = dict(question="倒産", surface="test", max_chars=2400, log=False)
+    _p0, without = budget.assemble_prompt(_zettel_blocks(False, news=False), **args)
+    prompt, with_memo = budget.assemble_prompt(_zettel_blocks(True, news=False), **args)
+    assert len(prompt) <= 2400 and "建設業の倒産" in prompt
+    b0, b1 = without["blocks"], with_memo["blocks"]
+    assert b1["user_personal_memory_context"]["kept"] == b0["user_personal_memory_context"]["kept"]
+    assert b1["rag_context"]["kept"] < b0["rag_context"]["kept"]

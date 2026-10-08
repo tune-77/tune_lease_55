@@ -21,6 +21,8 @@ from typing import Any, Iterable
 STATE_PATH = Path(__file__).resolve().parents[1] / "data" / "news_zettel_state.json"
 MAX_MEMOS = 2
 MAX_AGE_DAYS = 45
+TITLE_CHARS = 36  # REV-533 プロンプト上限の中で確実に残すため短くする（1件 約150字）
+BODY_CHARS = 100
 HUB_FIT_MIN = float(os.environ.get("NEWS_ZETTEL_HUB_FIT_MIN", "0.7"))
 
 
@@ -104,7 +106,7 @@ def _memo_text(vault: Path, rel: str) -> tuple[str, str]:
         return "", ""
     title = re.search(r"^# (.+)$", text, re.MULTILINE)
     body = text.split("\n# ", 1)[-1].split("\n", 1)[-1].split("\n- 元記事", 1)[0].strip()
-    return (title.group(1).strip() if title else ""), " ".join(body.split())[:180]
+    return (title.group(1).strip() if title else ""), " ".join(body.split())[:BODY_CHARS]
 
 
 def build_news_zettel_context(
@@ -132,7 +134,7 @@ def build_news_zettel_context(
         for memo in memos:
             title, body = _memo_text(vault, memo["memo"])
             if body:
-                lines.append(f"- {memo['date']}（{memo['hub']}）{title[:50]}: {body}")
+                lines.append(f"- {memo['date']}（{memo['hub']}）{title[:TITLE_CHARS]}: {body}")
         if not lines:
             return ""
     except Exception as exc:  # noqa: BLE001 - 参考情報なので失敗しても回答は続ける
@@ -140,13 +142,13 @@ def build_news_zettel_context(
 
         record_silent_failure("answer.news_zettel_context", "swallowed", exc, detail="ニュース永続メモを添えずに続行")
         return ""
+    # 注意書きは見出し行に入れる。上限で削る時はメモ（古い方）から落ち、注意書きは残る（REV-533）
     return "\n".join(
         [
-            "【最近のニュースから（参考。審査の根拠にしない）】",
+            "【最近のニュースから（参考。審査の根拠にしない）】紫苑がニュースを書き直した解釈で、記録された事実ではない。"
+            "触れるなら「最近のニュースでは〜という見方もある」と一言添える程度にし、判定・スコア・承認条件の根拠には使わない。"
+            "質問と関係が薄ければ触れなくてよい。",
             *lines,
-            "これは紫苑が最近のニュースを書き直したメモで、記録された事実ではなく解釈。"
-            "触れる時は「最近のニュースでは〜という見方もある」のように参考として一言添える程度にし、"
-            "審査の判定・スコア・承認条件の根拠には使わない。質問と関係が薄ければ触れなくてよい。",
         ]
     )
 
