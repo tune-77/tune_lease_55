@@ -76,21 +76,33 @@ def recent_memos(
     state: dict[str, dict[str, Any]],
     today: dt.date,
     limit: int = MAX_MEMOS,
+    recheck: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """ハブにつながった（Jev 判定を通った）最近の永続メモを新しい順に limit 件まで。"""
     cutoff = (today - dt.timedelta(days=MAX_AGE_DAYS)).isoformat()
-    from scripts.build_news_zettel import HUBS, hub_fit_min
+    from scripts.build_news_zettel import HUBS, hub_fit_min, hub_legacy_fit_min, load_recheck
 
-    # REV-534 しきい値を上げたハブ（機械受注統計・補助金）は、既存メモも読む時に同じしきい値で絞る（メモは書き換えない）
-    fit_min = {hub["label"]: hub_fit_min(hub) for hub in HUBS}
+    # REV-534/536/539 説明を絞ったハブは、既存メモも読む時に絞る（メモ・状態ファイルは書き換えない）。
+    # 今の説明で判定し直した点数（data/news_zettel_hub_recheck.json）があればそれを使い、
+    # 判定に使った説明が今と同じならそのハブのしきい値、古い説明の点数なら legacy のしきい値で絞る
+    hub_by_label = {hub["label"]: hub for hub in HUBS}
+    rechecked = load_recheck() if recheck is None else recheck
     rows = []
-    for entry in state.values():
+    for key, entry in state.items():
         if not isinstance(entry, dict) or entry.get("status") != "written":
             continue
-        fit = entry.get("hub_fit")
         linked = [hub for hub in entry.get("hubs") or [] if hub in hubs]
         first = (entry.get("hubs") or [""])[0]  # hub_fit は先頭のハブについての判定
-        if not linked or fit is None or float(fit) < max(HUB_FIT_MIN, fit_min.get(first, 0.0)):
+        record = rechecked.get(key) if (rechecked.get(key) or {}).get("hub") == first else None
+        fit = (record or entry).get("hub_fit")
+        hub = hub_by_label.get(first)
+        if hub is None:
+            need = HUB_FIT_MIN
+        elif (record or entry).get("hub_use") == hub["use"]:
+            need = hub_fit_min(hub)
+        else:
+            need = hub_legacy_fit_min(hub)
+        if not linked or fit is None or float(fit) < need:
             continue
         memo = str(entry.get("memo") or "")
         date = Path(memo).name[:10]

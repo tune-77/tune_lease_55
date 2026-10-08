@@ -443,10 +443,15 @@ def test_morning_report_includes_feed_line():
 def test_stricter_threshold_only_for_machine_orders_and_subsidy_hubs(vault, monkeypatch):
     monkeypatch.setenv("NEWS_ZETTEL_HUB_CHECK", "1")
     by_label = {hub["label"]: hub for hub in zettel.HUBS}
-    assert zettel.hub_fit_min(by_label["機械受注統計"]) == 0.85
+    # REV-539 機械受注統計は説明を絞った分、今の説明での判定は 0.70・古い説明の点数は 0.85
+    assert zettel.hub_fit_min(by_label["機械受注統計"]) == 0.70
+    assert zettel.hub_legacy_fit_min(by_label["機械受注統計"]) == 0.85
     assert zettel.hub_fit_min(by_label["補助金の制度全体像"]) == 0.85
+    assert zettel.hub_legacy_fit_min(by_label["補助金の制度全体像"]) == 0.85
     assert zettel.hub_fit_min(by_label["倒産率とリスク"]) == zettel.HUB_FIT_MIN  # 他のハブは変えない
-    assert by_label["機械受注統計"]["use"] == "国内の機械受注・設備投資の統計"
+    # REV-539 さらに内閣府の機械受注統計・工作機械受注そのものに絞る
+    assert by_label["機械受注統計"]["use"].startswith("内閣府の機械受注統計・工作機械受注（日工会）そのもの")
+    assert "法人企業統計" in by_label["機械受注統計"]["use"] and "海外の資本財受注" in by_label["機械受注統計"]["use"]
     assert "融資・保証・相談窓口・セミナーは除く" in by_label["補助金の制度全体像"]["use"]
 
     hub = vault / "03-知識_業界/市場分析データ/機械受注統計_2023-2026.md"
@@ -456,9 +461,30 @@ def test_stricter_threshold_only_for_machine_orders_and_subsidy_hubs(vault, monk
     state: dict = {}
     summary = zettel.process(vault, _one_clip(vault), state,
                              model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": ["h15"]}]},
-                             hub_checker=lambda texts: seen.extend(texts) or [0.8])
-    assert "国内の機械受注・設備投資の統計" in seen[0]
-    assert summary["hub_dropped"] == 1 and next(iter(state.values()))["hubs"] == []
+                             hub_checker=lambda texts: seen.extend(texts) or [0.65])
+    assert "内閣府の機械受注統計" in seen[0]
+    entry = next(iter(state.values()))
+    assert summary["hub_dropped"] == 1 and entry["hubs"] == []
+    assert entry["hub_use"] == by_label["機械受注統計"]["use"]  # 判定に使った説明を残す（REV-539）
+
+
+def test_recheck_writes_side_file_without_touching_memos_or_state(vault, tmp_path):
+    """REV-539: 説明を変えたハブの既存接続を判定し直し、別ファイルにだけ保存する。"""
+    memo_dir = vault / zettel.MEMO_DIR
+    memo_dir.mkdir(parents=True)
+    memo = memo_dir / "2026-10-08_機械受注.md"
+    memo.write_text("---\ntype: news_zettel\n---\n# 7月の機械受注3.7%減\n\n機械受注が減ったかも。\n\n- 元記事: [[x]]\n", encoding="utf-8")
+    before = memo.read_text(encoding="utf-8")
+    state = {"clip/a.md": {"status": "written", "memo": str(memo.relative_to(vault)), "hubs": ["機械受注統計"], "hub_fit": 0.79},
+             "clip/b.md": {"status": "written", "memo": "x.md", "hubs": ["倒産率とリスク"], "hub_fit": 0.9}}
+    snapshot = json.dumps(state, sort_keys=True)
+    seen: list[str] = []
+    out = tmp_path / "recheck.json"
+    result = zettel.recheck_hubs(vault, state, ["機械受注統計"], checker=lambda texts: seen.extend(texts) or [0.77], path=out)
+    assert result == {"targets": 1, "checked": 1} and "内閣府の機械受注統計" in seen[0]
+    item = zettel.load_recheck(out)["clip/a.md"]
+    assert item["hub_fit"] == 0.77 and item["hub"] == "機械受注統計" and item["hub_use"].startswith("内閣府")
+    assert memo.read_text(encoding="utf-8") == before and json.dumps(state, sort_keys=True) == snapshot
 
 
 def test_industry_trend_hub_is_also_stricter():

@@ -145,3 +145,19 @@ def test_helpers_pass_question_through(monkeypatch):
     assert seen["question"] == "質問"
     ctx.context_from_refs(["x.md"])
     assert seen["question"] is None
+
+
+def test_read_time_uses_recheck_and_legacy_threshold(setup):
+    """REV-539: 古い説明の点数は 0.85、今の説明で判定し直した点数はそのハブのしきい値（機械受注統計は 0.70）。"""
+    from scripts.build_news_zettel import HUBS
+
+    use = {hub["label"]: hub["use"] for hub in HUBS}["機械受注統計"]
+    state = {"clip/m.md": {"status": "written", "memo": "05/2026-10-08_m.md", "hubs": ["機械受注統計"], "hub_fit": 0.79}}
+    assert ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck={}) == []  # 古い点数 0.79 < 0.85
+    ok = {"clip/m.md": {"hub": "機械受注統計", "hub_use": use, "hub_fit": 0.72}}
+    assert len(ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck=ok)) == 1
+    low = {"clip/m.md": {"hub": "機械受注統計", "hub_use": use, "hub_fit": 0.6}}
+    assert ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck=low) == []
+    state["clip/m.md"]["hub_use"] = use  # 新しい説明で判定された新規メモ
+    state["clip/m.md"]["hub_fit"] = 0.72
+    assert len(ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck={})) == 1

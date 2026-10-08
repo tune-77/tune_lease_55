@@ -73,7 +73,10 @@ HUBS: list[dict[str, str]] = [
     {"id": "h11", "path": "03-知識_業界/税務・会計知識/新リース会計基準2027", "label": "新リース会計基準2027", "use": "リース会計・税制の変更"},
     {"id": "h12", "path": "Asset Knowledge/INDEX", "label": "物件知識（Asset Knowledge）", "use": "建機・製造設備・車両・医療機器など物件ごとの需要・中古相場"},
     {"id": "h15", "path": "03-知識_業界/市場分析データ/機械受注統計_2023-2026", "label": "機械受注統計",
-     "use": "国内の機械受注・設備投資の統計", "fit_min": "0.85"},
+     "use": "内閣府の機械受注統計・工作機械受注（日工会）そのもの（法人企業統計の設備投資・海外の資本財受注・各種調査・個社の投資は除く）",
+     # REV-539 説明を絞ると本物の統計記事でも 0.67〜0.80 になる（57組で確認。法人企業統計は0.56前後）ので 0.70。
+     # 古い説明で判定した点数（hub_use が今の説明と違うもの）には従来の 0.85 を使う
+     "fit_min": "0.70", "legacy_fit_min": "0.85"},
 ]
 
 
@@ -365,6 +368,11 @@ def hub_fit_min(hub: dict[str, str]) -> float:
     return max(HUB_FIT_MIN, float(hub.get("fit_min") or 0))
 
 
+def hub_legacy_fit_min(hub: dict[str, str]) -> float:
+    """今と違う（古い）説明で判定した点数に使うしきい値。指定が無ければ hub_fit_min と同じ（REV-539）。"""
+    return max(HUB_FIT_MIN, float(hub.get("legacy_fit_min") or hub.get("fit_min") or 0))
+
+
 HUB_FIT_QUESTION = {
     "type": "noul",
     "instructions": "`items[{n}]` は、業界ニュースの見出し、それをリース審査向けに書き直したメモ、リンク先ハブノートの主題です。"
@@ -582,7 +590,9 @@ def process(
             state[rel] = {"status": "written", "memo": str(memo_path.relative_to(vault)), "topic": item["topic"],
                           "stat_key": item["stat_key"], "hubs": [h["label"] for h in linked],
                           "proposed_hubs": [hub_by_id[h]["label"] for h in row["hubs"]],
-                          "hub_fit": None if check is None else round(check, 3), "processed_at": now}
+                          "hub_fit": None if check is None else round(check, 3),
+                          **({"hub_use": hub_by_id[row["hubs"][0]]["use"]} if check is not None else {}),
+                          "processed_at": now}
     return summary
 
 
@@ -731,9 +741,59 @@ def process_meti(vault: Path, state: dict[str, dict[str, Any]], *, model_call=No
                                   "stat_key": "", "hubs": [h["label"] for h in linked],
                                   "proposed_hubs": [hub_by_id[h]["label"] for h in row["hubs"]],
                                   "hub_fit": None if check is None else round(check, 3),
+                                  **({"hub_use": hub_by_id[row["hubs"][0]]["use"]} if check is not None else {}),
                                   "source_label": METI_LABEL, "processed_at": now}
     write_meti_status(entries, today=today, written=summary["meti_written"])
     return summary
+
+
+# ── ハブの説明を変えた時の判定し直し（REV-539） ──────────────────────────────
+# 既存メモ・状態ファイルは書き換えず、今の説明での点数を別ファイルに置く。読み出し（api/news_zettel_context）は
+# こちらを優先し、説明が今と同じならそのハブのしきい値、古ければ legacy のしきい値で絞る。Jev のみ（Gemini なし）。
+RECHECK_PATH = Path(__file__).resolve().parents[1] / "data" / "news_zettel_hub_recheck.json"
+
+
+def load_recheck(path: Path = RECHECK_PATH) -> dict[str, dict[str, Any]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    items = data.get("items") if isinstance(data, dict) else None
+    return items if isinstance(items, dict) else {}
+
+
+def recheck_hubs(
+    vault: Path,
+    state: dict[str, dict[str, Any]],
+    labels: list[str],
+    *,
+    checker: Callable[[list[str]], list[float | None]] | None = None,
+    path: Path = RECHECK_PATH,
+    batch: int = 20,
+) -> dict[str, int]:
+    """接続済みの既存メモのうち labels のハブにつながるものを、今の説明で判定し直して path に保存する。"""
+    from api.news_zettel_context import _memo_parts
+
+    hubs = {hub["label"]: hub for hub in HUBS}
+    targets = []
+    for key, entry in state.items():
+        first = (entry.get("hubs") or [""])[0] if isinstance(entry, dict) and entry.get("status") == "written" else ""
+        if first in labels and first in hubs:
+            title, body = _memo_parts(vault, str(entry.get("memo") or ""))
+            if body:
+                targets.append((key, hubs[first], f"ハブ: {first}（{hubs[first]['use']}）\n見出し: {title[:80]}\nメモ: {body[:160]}"))
+    items = load_recheck(path)
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    checked = 0
+    for start in range(0, len(targets), batch):
+        chunk = targets[start:start + batch]
+        for (key, hub, _text), score in zip(chunk, (checker or judge_hubs_with_jev)([t for _k, _h, t in chunk])):
+            if score is not None:
+                items[key] = {"hub": hub["label"], "hub_use": hub["use"], "hub_fit": round(score, 3), "checked_at": now}
+                checked += 1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": 1, "items": items}, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"targets": len(targets), "checked": checked}
 
 
 def main() -> int:
@@ -744,7 +804,14 @@ def main() -> int:
     parser.add_argument("--backfill", action="store_true", help="過去の未処理クリップも新しい順に処理する")
     parser.add_argument("--backfill-limit", type=int, default=int(os.environ.get("NEWS_ZETTEL_BACKFILL_DAILY_LIMIT", "20")))
     parser.add_argument("--dry-run", action="store_true", help="プロンプトを表示するだけ（呼び出し・書き込みなし）")
+    parser.add_argument("--recheck-hubs", nargs="+", metavar="ハブ名",
+                        help="説明を変えたハブの既存の接続を Jev で判定し直すだけ（メモ・状態ファイルは書き換えない）")
     args = parser.parse_args()
+    if args.recheck_hubs:
+        from runtime_paths import resolve_obsidian_vault
+
+        print(json.dumps(recheck_hubs(args.vault or resolve_obsidian_vault(), load_state(), args.recheck_hubs), ensure_ascii=False))
+        return 0
 
     if os.environ.get("NEWS_ZETTEL_ENABLED", "1").strip() == "0":
         print("[news_zettel] NEWS_ZETTEL_ENABLED=0 のためスキップ")
