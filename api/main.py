@@ -6481,6 +6481,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         from api.chat_prompt_blocks import block_with_spacing
         from api.chat_prompt_budget import assemble_prompt, split_dialogue_prompt
         from api.judgment_policy import merge_policy_blocks, split_policy_block
+        from api.news_zettel_context import context_from_hits as _news_zettel_from_hits  # REV-502
 
         _dialogue_policy, pre_recall_context = split_policy_block(pre_recall_context)
         system_prompt, dialogue_prompt_budget = assemble_prompt(
@@ -6502,6 +6503,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 ("request_grounding_context", block_with_spacing(request_grounding_context)),
                 ("pre_recall_context", block_with_spacing(pre_recall_context)),
                 ("teaching_save_context", block_with_spacing(teaching_save_context)),
+                ("news_zettel_context", block_with_spacing(_news_zettel_from_hits(_rag_hits))),
             ],
             question=full_message,
             surface="dialogue",
@@ -7792,6 +7794,7 @@ def post_chat(req: ChatRequest):
 
         # 社内方針（ユーザーが定めたルール）は回答の型・判断分岐の指示に負けないよう、最後に1つの節として置く
         from api.judgment_policy import enforce_policy_first, merge_policy_blocks, split_policy_block
+        from api.news_zettel_context import context_from_refs as _news_zettel_from_refs  # REV-502
 
         _memory_policy, memory_recall_context = split_policy_block(memory_recall_context)
         _teaching_policy, teaching_prompt_context = split_policy_block(teaching_prompt_context)
@@ -7823,6 +7826,7 @@ def post_chat(req: ChatRequest):
             ("reflection_gate_context", reflection_gate_context),
             ("world_proxy_context", world_proxy_context),
             ("rag_context", rag_context),
+            ("news_zettel_context", _news_zettel_from_refs(rag_refs)),
             ("external_research_context", external_research_context),
             ("db_context", db_context),
             ("improvement_context", improvement_context),

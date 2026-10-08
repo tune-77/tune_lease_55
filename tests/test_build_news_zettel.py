@@ -304,3 +304,48 @@ def test_same_statistic_from_another_outlet_is_skipped_before_model(vault):
 
     assert summary["duplicate_stat"] == 1 and summary["written"] == 1 and "[1]" not in calls[0]
     assert state[str(zettel.NEWS_DIR / second.name)]["status"] == "duplicate_stat"
+
+
+# ── REV-502: リースニュースへの拡大（既定オフ） ─────────────────────────────
+def _lease_clip(vault, day, name, title):
+    folder = vault / zettel.LEASE_NEWS_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{day}_リースニュース_{name}.md"
+    path.write_text(CLIP.replace("2026-10-08", day).replace(
+        "# 人手不足倒産は225件、年度上半期として4年連続で過去最多 - 東京商工リサーチ", f"# {title}"), encoding="utf-8")
+    return path
+
+
+def test_lease_news_is_ignored_unless_enabled(vault, monkeypatch):
+    _lease_clip(vault, "2026-10-08", "L1", "建機レンタル大手が中古建機の再販を強化 - リース事業協会")
+    monkeypatch.delenv("NEWS_ZETTEL_LEASE_NEWS", raising=False)
+    kwargs = dict(today=dt.date(2026, 10, 8), new_days=2, new_limit=20, backfill=True, backfill_limit=20)
+
+    assert all(p.parent.name == "業界リスクニュース" for p in zettel.select_clips(vault, {}, **kwargs))
+
+    monkeypatch.setenv("NEWS_ZETTEL_LEASE_NEWS", "1")
+    picked = zettel.select_clips(vault, {}, **kwargs)
+    assert {p.parent.name for p in picked} == {"業界リスクニュース", "リースニュース"}
+    assert [p.name[:10] for p in picked] == sorted([p.name[:10] for p in picked], reverse=True)  # 日付の新しい順に混ぜる
+
+
+def test_lease_news_memo_goes_to_its_own_folder_with_correct_link(vault, monkeypatch):
+    monkeypatch.setenv("NEWS_ZETTEL_LEASE_NEWS", "1")
+    clip = _lease_clip(vault, "2026-10-08", "L1", "建機レンタル大手が中古建機の再販を強化 - リース事業協会")
+    state: dict = {}
+
+    zettel.process(vault, [clip], state, model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": []}]})
+
+    memo = next((vault / zettel.LEASE_NEWS_DIR / "永続メモ").glob("*.md"))
+    assert "[[05-クリップ_記事/リースニュース/2026-10-08_リースニュース_L1|" in memo.read_text(encoding="utf-8")
+    assert str(zettel.LEASE_NEWS_DIR / clip.name) in state
+    assert not (vault / zettel.MEMO_DIR).exists()
+
+
+def test_same_topic_across_risk_and_lease_news_is_written_once(vault, monkeypatch):
+    monkeypatch.setenv("NEWS_ZETTEL_LEASE_NEWS", "1")
+    risk = _clip(vault, "2026-10-08", "R1", "東京港・大井コンテナふ頭再編の全体像 - LOGISTICS TODAY", "東京港・大井コンテナふ頭再編の全体像")
+    lease = _lease_clip(vault, "2026-10-08", "L2", "東京港・大井コンテナふ頭再編の全体像 - リース事業協会")
+    summary = zettel.process(vault, [risk, lease], {},
+                             model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": []}]})
+    assert summary["written"] == 1 and summary["duplicate_topic"] == 1

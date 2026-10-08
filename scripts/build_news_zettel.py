@@ -38,6 +38,17 @@ from ai_runtime_client import _MAIN_ROOT  # noqa: E402
 FEATURE = "news_zettel"
 NEWS_DIR = Path("05-クリップ_記事") / "業界リスクニュース"
 MEMO_DIR = NEWS_DIR / "永続メモ"
+# リースニュース（被リンク0が279件）にも広げる時だけ NEWS_ZETTEL_LEASE_NEWS=1（REV-502。既定オフ）。
+# 永続メモは各フォルダの「永続メモ/」に置き、RAG ではそれぞれのニュースの減点がそのまま効く
+LEASE_NEWS_DIR = Path("05-クリップ_記事") / "リースニュース"
+MEMO_SUBDIR = "永続メモ"
+
+
+def source_dirs() -> list[Path]:
+    dirs = [NEWS_DIR]
+    if os.environ.get("NEWS_ZETTEL_LEASE_NEWS", "0").strip() == "1":
+        dirs.append(LEASE_NEWS_DIR)
+    return dirs
 STATE_PATH = _MAIN_ROOT / "data" / "news_zettel_state.json"
 SF_DATALESS = 0x40000000
 READ_TIMEOUT_SECONDS = 5
@@ -157,6 +168,8 @@ def parse_clip(path: Path, text: str) -> dict[str, Any]:
                 summary.append(line)
     return {
         "path": path,
+        # Vault 基準のフォルダ（例: 05-クリップ_記事/業界リスクニュース）。元記事リンクと永続メモの置き場所に使う
+        "folder": Path(path.parent.parent.name) / path.parent.name,
         "date": meta.get("date") or path.name[:10],
         "title": title,
         "industries": meta.get("industries", ""),
@@ -193,17 +206,24 @@ def select_clips(
     backfill: bool,
     backfill_limit: int,
 ) -> list[Path]:
-    """未処理のクリップを新しい順に選ぶ。直近分は new_limit 件まで、補完は backfill_limit 件まで。"""
-    news_dir = vault / NEWS_DIR
-    names = sorted((p.name for p in news_dir.glob("*.md")), reverse=True)[:MAX_SCAN_FILES]
+    """未処理のクリップを新しい順に選ぶ。直近分は new_limit 件まで、補完は backfill_limit 件まで。
+
+    対象フォルダが複数（リースニュースを有効にした時）でも、ファイル名の日付で新しい順に混ぜて選ぶ。
+    """
+    entries = [
+        (path.name, folder)
+        for folder in source_dirs()
+        for path in (vault / folder).glob("*.md")
+    ]
+    entries = sorted(entries, key=lambda item: item[0], reverse=True)[:MAX_SCAN_FILES]
     cutoff = (today - dt.timedelta(days=new_days)).isoformat()
     recent: list[Path] = []
     older: list[Path] = []
-    for name in names:
-        rel = str(NEWS_DIR / name)
+    for name, folder in entries:
+        rel = str(folder / name)
         if rel in state:
             continue
-        (recent if name[:10] >= cutoff else older).append(news_dir / name)
+        (recent if name[:10] >= cutoff else older).append(vault / folder / name)
     picked = recent[:new_limit]
     if backfill:
         picked += older[:backfill_limit]
@@ -288,7 +308,7 @@ def render_memo(
     hub_check: float | None = None,
     proposed: list[str] | None = None,
 ) -> str:
-    source = f"{NEWS_DIR}/{item['path'].stem}"
+    source = f"{item['folder']}/{item['path'].stem}"
     title = re.sub(r"\s+-\s+[^-]+$", "", item["title"]).strip()  # 末尾の「 - 配信元」を外す
     related = " ".join(f"[[{hub['path']}|{hub['label']}]]" for hub in hubs) or "未接続"
     hub_labels = json.dumps([hub["label"] for hub in hubs], ensure_ascii=False)
@@ -469,7 +489,7 @@ def process(
             summary["unreadable"] += 1
             continue
         item = parse_clip(path, text)
-        rel = str(NEWS_DIR / path.name)
+        rel = str(item["folder"] / path.name)
         # 呼び出しの前にルールで落とす（費用もかからない）。REV-500
         if is_promo_title(item["title"]):
             summary["promo"] += 1
@@ -491,7 +511,6 @@ def process(
         if item["stat_key"]:
             seen_stats.setdefault(item["stat_key"], []).append(item["topic"])
         items.append(item)
-    memo_dir = vault / MEMO_DIR
     for start in range(0, len(items), BATCH_SIZE):
         batch = items[start : start + BATCH_SIZE]
         if dry_run:
@@ -506,7 +525,8 @@ def process(
         rows = validate(result, len(batch), set(hub_by_id))
         checks = check_hubs(batch, rows, hub_by_id, hub_checker)
         for index, item in enumerate(batch):
-            rel = str(NEWS_DIR / item["path"].name)
+            rel = str(item["folder"] / item["path"].name)
+            memo_dir = vault / item["folder"] / MEMO_SUBDIR
             row = rows.get(index) or {"idea": "", "hubs": []}
             if not row["idea"]:
                 summary["no_idea"] += 1
