@@ -437,3 +437,25 @@ def test_morning_report_includes_feed_line():
     from pathlib import Path
 
     assert "*news_zettel_feed_lines()," in Path("scripts/aurion_core_daily.py").read_text(encoding="utf-8")
+
+
+# ── REV-534: 機械受注統計・補助金のハブだけ説明を絞り、しきい値を 0.85 に上げる ──────────
+def test_stricter_threshold_only_for_machine_orders_and_subsidy_hubs(vault, monkeypatch):
+    monkeypatch.setenv("NEWS_ZETTEL_HUB_CHECK", "1")
+    by_label = {hub["label"]: hub for hub in zettel.HUBS}
+    assert zettel.hub_fit_min(by_label["機械受注統計"]) == 0.85
+    assert zettel.hub_fit_min(by_label["補助金の制度全体像"]) == 0.85
+    assert zettel.hub_fit_min(by_label["倒産率とリスク"]) == zettel.HUB_FIT_MIN  # 他のハブは変えない
+    assert by_label["機械受注統計"]["use"] == "国内の機械受注・設備投資の統計"
+    assert "融資・保証・相談窓口・セミナーは除く" in by_label["補助金の制度全体像"]["use"]
+
+    hub = vault / "03-知識_業界/市場分析データ/機械受注統計_2023-2026.md"
+    hub.parent.mkdir(parents=True)
+    hub.write_text("# 機械受注統計\n", encoding="utf-8")
+    seen: list[str] = []
+    state: dict = {}
+    summary = zettel.process(vault, _one_clip(vault), state,
+                             model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": ["h15"]}]},
+                             hub_checker=lambda texts: seen.extend(texts) or [0.8])
+    assert "国内の機械受注・設備投資の統計" in seen[0]
+    assert summary["hub_dropped"] == 1 and next(iter(state.values()))["hubs"] == []
