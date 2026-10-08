@@ -459,3 +459,12 @@ def test_stricter_threshold_only_for_machine_orders_and_subsidy_hubs(vault, monk
                              hub_checker=lambda texts: seen.extend(texts) or [0.8])
     assert "国内の機械受注・設備投資の統計" in seen[0]
     assert summary["hub_dropped"] == 1 and next(iter(state.values()))["hubs"] == []
+
+
+def test_industry_trend_hub_is_also_stricter():
+    """REV-536: 業種別傾向も説明を絞り 0.85（個社の事例・地域の設備投資・海外の動きを寄せていた）。"""
+    by_label = {hub["label"]: hub for hub in zettel.HUBS}
+    hub = by_label["業種別傾向"]
+    assert zettel.hub_fit_min(hub) == 0.85
+    assert hub["use"].startswith("特定業種の業界全体の") and "個社の事例" in hub["use"]
+    assert zettel.hub_fit_min(by_label["Q-Risk"]) == zettel.HUB_FIT_MIN
