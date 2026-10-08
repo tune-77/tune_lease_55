@@ -155,6 +155,11 @@ _TITLE_INSTRUCTION = (
 )
 
 
+def _default_title_maker() -> Callable[[str], str] | None:
+    """対話室・通常チャットの既定の題名づけ。``SHION_KNOWLEDGE_TITLE_LLM=off`` で止める（テスト用）。"""
+    return None if os.environ.get("SHION_KNOWLEDGE_TITLE_LLM", "").strip().lower() == "off" else gemini_knowledge_title
+
+
 def gemini_knowledge_title(text: str) -> str:
     """Knowledge ノートの題名を Gemini（既定モデル）で作る。失敗したら空文字（呼び出し側が文から作る）。"""
     import requests
@@ -703,7 +708,7 @@ def prepare_teaching_turn(
             candidate_saver=candidate_saver,
             previous_user_message=previous_user_message,
             previous_assistant_message=previous_assistant_message,
-            title_maker=title_maker,
+            title_maker=title_maker or _default_title_maker(),
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[TeachingCapture] 保存判定に失敗: {type(exc).__name__}: {exc}")

@@ -129,7 +129,10 @@ def test_saved_reply_shows_no_save_notice():
     assert "回答に書かない" in block and "添えてよい" not in block
 
 
-def test_knowledge_title_skips_chitchat_and_uses_title_maker():
+def test_knowledge_title_skips_chitchat_and_uses_title_maker(monkeypatch):
+    assert capture._default_title_maker() is None  # テストでは conftest が Gemini の題名づけを止める
+    monkeypatch.delenv("SHION_KNOWLEDGE_TITLE_LLM")
+    assert capture._default_title_maker() is capture.gemini_knowledge_title
     answer = "友人の話、それは胸が痛むね。急な環境の変化は大きな衝撃だ。リース審査では経営権と連帯保証の変化を見る。"
     assert capture.teaching_topic(answer).startswith("リース審査では")
     assert capture.teaching_topic(answer, lambda text: "**「経営者の離婚とリース審査」**\n") == "経営者の離婚とリース審査"

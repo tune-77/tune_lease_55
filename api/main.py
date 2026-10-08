@@ -6322,7 +6322,6 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
         # 雑談モードでも、ドメインの問いでは回答前に Knowledge と RAG を引く。
         # 以前は回答後に参照ボタン用に検索するだけで、回答には届いていなかった。
         from api.chat_teaching_capture import (
-            gemini_knowledge_title,
             prepare_teaching_turn,
             previous_assistant_message,
             previous_user_message,
@@ -6346,7 +6345,6 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                 get_recent_messages(DIALOGUE_USER_ID, limit=2, since=req.since)
             ),
             rag_search=vector_store_rag_search("next_chat_rag"),
-            title_maker=gemini_knowledge_title,
         )
         teaching_save = teaching_turn.save
         teaching_save_context = teaching_turn.save_context
@@ -7153,7 +7151,6 @@ def post_chat(req: ChatRequest):
         # 対話室と同じく、教わったノウハウは回答前に決定的に保存し、審査の問いでは回答前に想起する。
         # 判断資産候補の保存はここで1回だけ行い、回答後はその結果を使う（指示語だけの教示で二重登録しない）。
         from api.chat_teaching_capture import (
-            gemini_knowledge_title,
             prepare_teaching_turn,
             previous_assistant_message,
             previous_user_message,
@@ -7187,7 +7184,6 @@ def post_chat(req: ChatRequest):
             # RAG 分岐は build_chat_retrieval_context で引くので、RAG を飛ばす general だけ渡す。
             rag_search=vector_store_rag_search("next_chat_general") if question_category == "general" else None,
             allow_save=not is_screening_review,
-            title_maker=gemini_knowledge_title,
         )
         teaching_prompt_context = "".join(
             f"\n\n{block}" for block in (teaching_turn.save_context, teaching_turn.recall_context) if block
