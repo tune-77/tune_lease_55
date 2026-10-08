@@ -66,10 +66,12 @@ HUBS: list[dict[str, str]] = [
     {"id": "h7", "path": "lease-wiki-vault/04_リスク分析/リース契約：残価リスク評価", "label": "残価リスク評価", "use": "中古価格・陳腐化・再販価値・残価"},
     {"id": "h8", "path": "lease-wiki-vault/00_Core Definitions/リース契約：金利と料率相場", "label": "金利と料率相場", "use": "金利・調達コスト・料率の動き"},
     {"id": "h9", "path": "lease-wiki-vault/00_Core Definitions/法定耐用年数×最短リース期間マスタ表", "label": "法定耐用年数×最短リース期間", "use": "耐用年数・リース期間の制度"},
-    {"id": "h10", "path": "03-知識_業界/補助金・融資/補助金_制度全体像", "label": "補助金の制度全体像", "use": "補助金・助成・公的融資の制度"},
+    {"id": "h10", "path": "03-知識_業界/補助金・融資/補助金_制度全体像", "label": "補助金の制度全体像",
+     "use": "補助金・助成金の制度そのもの（融資・保証・相談窓口・セミナーは除く）", "fit_min": "0.85"},
     {"id": "h11", "path": "03-知識_業界/税務・会計知識/新リース会計基準2027", "label": "新リース会計基準2027", "use": "リース会計・税制の変更"},
     {"id": "h12", "path": "Asset Knowledge/INDEX", "label": "物件知識（Asset Knowledge）", "use": "建機・製造設備・車両・医療機器など物件ごとの需要・中古相場"},
-    {"id": "h15", "path": "03-知識_業界/市場分析データ/機械受注統計_2023-2026", "label": "機械受注統計", "use": "設備投資・機械受注の統計"},
+    {"id": "h15", "path": "03-知識_業界/市場分析データ/機械受注統計_2023-2026", "label": "機械受注統計",
+     "use": "国内の機械受注・設備投資の統計", "fit_min": "0.85"},
 ]
 
 
@@ -354,6 +356,13 @@ def render_memo(
 
 
 HUB_FIT_MIN = float(os.environ.get("NEWS_ZETTEL_HUB_FIT_MIN", "0.7"))
+
+
+def hub_fit_min(hub: dict[str, str]) -> float:
+    """ハブごとのしきい値。周辺記事を寄せやすいハブ（機械受注統計・補助金）だけ高くする（REV-534）。"""
+    return max(HUB_FIT_MIN, float(hub.get("fit_min") or 0))
+
+
 HUB_FIT_QUESTION = {
     "type": "noul",
     "instructions": "`items[{n}]` は、業界ニュースの見出し、それをリース審査向けに書き直したメモ、リンク先ハブノートの主題です。"
@@ -556,7 +565,7 @@ def process(
                 summary["hub_unchecked"] += 1
             elif linked:
                 summary["hub_checked"] += 1
-                if check < HUB_FIT_MIN:
+                if check < hub_fit_min(linked[0]):
                     summary["hub_dropped"] += 1
                     linked = []  # 弱いつながりはリンクせず未接続にする（REV-501）
             memo_dir.mkdir(parents=True, exist_ok=True)
@@ -707,7 +716,7 @@ def process_meti(vault: Path, state: dict[str, dict[str, Any]], *, model_call=No
                 continue
             linked = [hub_by_id[h] for h in row["hubs"]]
             check = checks.get(index)
-            if linked and check is not None and check < HUB_FIT_MIN:
+            if linked and check is not None and check < hub_fit_min(linked[0]):
                 linked = []
             memo_dir.mkdir(parents=True, exist_ok=True)
             memo_path.write_text(

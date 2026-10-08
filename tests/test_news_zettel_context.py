@@ -80,3 +80,14 @@ def test_helpers_build_from_hits_and_refs(setup, monkeypatch):
     assert ctx.context_from_hits([{"file_name": "倒産率とリスク.md"}]) == "BLOCK"
     assert ctx.context_from_refs(["倒産率とリスク.md"]) == "\n\nBLOCK"
     assert ctx.context_from_refs([]) == ""
+
+
+def test_existing_memos_on_stricter_hubs_need_085(setup):
+    """REV-534: 既存メモは書き換えず、読む時に機械受注統計・補助金だけ 0.85 で絞る。"""
+    vault, state_path = setup
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["clip/2026-10-08_別ハブ.md"]["hub_fit"] = 0.8
+    assert ctx.recent_memos(["補助金の制度全体像"], state=state, today=TODAY) == []
+    state["clip/2026-10-08_別ハブ.md"]["hub_fit"] = 0.86
+    assert len(ctx.recent_memos(["補助金の制度全体像"], state=state, today=TODAY)) == 1
+    assert len(ctx.recent_memos(["倒産率とリスク"], state=state, today=TODAY)) == 2  # 0.81 でも従来どおり
