@@ -212,7 +212,19 @@ def create_voice_session(req: SessionRequest):
         "model": model,
         "max_seconds": max_seconds,
         "remaining_today": daily_limit - used - 1,
+        **_voice_engine_options(),
     }
+
+
+def _voice_engine_options() -> dict:
+    """通話の声（REV-530）。kore=Gemini Live の声、himari=文字起こしを VOICEVOX（冥鳴ひまり）で読み上げ。
+
+    Live のモデルはテキスト出力に対応しない（1007）ため、ひまりでも音声で受けて文字起こしを使う。
+    既定は SHION_VOICE_ENGINE（kore）。ひまりは /tts（SHION_TTS_ENABLED=1）が使える時だけ選べる。
+    """
+    himari = os.environ.get("SHION_TTS_ENABLED", "0") == "1"
+    default = os.environ.get("SHION_VOICE_ENGINE", "kore").strip().lower()
+    return {"default_voice": default if default == "himari" and himari else "kore", "himari_available": himari}
 
 
 @router.post("/recall")
