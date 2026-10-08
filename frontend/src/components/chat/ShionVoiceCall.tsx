@@ -136,14 +136,12 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
     const calls = msg.toolCall?.functionCalls ?? [];
     const functionResponses = await Promise.all(
       calls.map(async (call) => {
-        let result = "該当する記憶はありません";
-        if (call.name === "recall_memory") {
-          try {
-            const query = String((call.args as { query?: unknown } | undefined)?.query ?? "").slice(0, 500);
-            if (query) result = (await apiClient.post("/api/shion/voice/recall", { query })).data.result;
-          } catch {
-            result = "記憶を取得できませんでした";
-          }
+        // REV-531: 記憶・Obsidian・判断資産・審査試算などの読み取り専用ツールをサーバーで実行する
+        let result = "ツールを実行できませんでした";
+        try {
+          result = (await apiClient.post("/api/shion/voice/tool", { name: call.name, args: call.args ?? {} })).data.result;
+        } catch {
+          /* 失敗はそのまま紫苑に伝える */
         }
         return { id: call.id, name: call.name, response: { result } };
       }),

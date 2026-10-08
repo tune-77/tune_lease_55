@@ -388,3 +388,39 @@ def test_session_reports_voice_engine_default(setup, monkeypatch, engine, tts, e
     monkeypatch.setenv("SHION_TTS_ENABLED", tts)
     body = client.post("/api/shion/voice/session", json={}).json()
     assert (body["default_voice"], body["himari_available"]) == expected
+
+
+def test_voice_tools_cover_main_read_only_tools_and_reject_others(monkeypatch):
+    """REV-531: 通話でも文字チャットと同じ主要な読み取り専用ツールを使う。それ以外は実行しない。"""
+    import api.shion_voice_tools as vt
+
+    assert {"recall_memory", "search_obsidian_context", "recall_judgment_memory", "score_full_case",
+            "get_score_detail", "search_cases", "get_portfolio_stats"} <= set(vt.VOICE_TOOLS)
+    names = [d.name for d in vt.declarations()]
+    assert names == list(vt.VOICE_TOOLS)
+    assert "千円" in vt.VOICE_TOOLS["score_full_case"][1]
+    assert "使えません" in vt.run_tool("record_lease_knowledge", {"x": 1})
+
+    seen = {}
+    monkeypatch.setitem(vt.VOICE_TOOLS, "get_portfolio_stats", (lambda: {"total": 3, "big": "x" * 9000}, "d", {}, []))
+    monkeypatch.setitem(vt.VOICE_TOOLS, "search_cases", (lambda query, limit=5: seen.update(q=query, limit=limit) or [], "d", {"query": {}, "limit": {}}, ["query"]))
+    assert len(vt.run_tool("get_portfolio_stats", {})) == vt.MAX_RESULT_CHARS
+    vt.run_tool("search_cases", {"query": "建設", "unknown": 1})
+    assert seen == {"q": "建設", "limit": 5}
+
+    def boom(**_):
+        raise RuntimeError("db down")
+    monkeypatch.setitem(vt.VOICE_TOOLS, "score_full_case", (boom, "d", {}, []))
+    assert "実行できませんでした" in vt.run_tool("score_full_case", {})
+
+
+def test_tool_endpoint_relays_and_prompt_allows_longer_answers(setup, monkeypatch):
+    client, fake = setup
+    monkeypatch.setattr(sv, "_run_voice_tool", lambda name, args: f"{name}:{args.get('query')}")
+    res = client.post("/api/shion/voice/tool", json={"name": "search_obsidian_context", "args": {"query": "運送業"}})
+    assert res.json() == {"result": "search_obsidian_context:運送業"}
+    assert client.post("/api/shion/voice/recall", json={"query": "前回"}).json() == {"result": "recall_memory:前回"}
+    client.post("/api/shion/voice/session", json={})
+    tools = fake.created[-1].live_connect_constraints.config.tools[0].function_declarations
+    assert len(tools) >= 7
+    assert "1〜3文に収め" not in sv._VOICE_TAIL and "結論→根拠" in sv._VOICE_TAIL and "URL" in sv._VOICE_TAIL

@@ -27,8 +27,20 @@ FALLBACK_MODEL = "gemini-3.1-flash-live-preview"
 _JST = ZoneInfo("Asia/Tokyo")
 _VOICE_TAIL = (
     "\n\n【音声通話モード】\n"
-    "いまは音声通話中。話し言葉で1〜3文に収め、記号・箇条書き・URLは読み上げない。"
-    "過去の記憶が必要なときは recall_memory ツールを使う。"
+    "いまは音声通話中。記号・箇条書き・URL・表は読み上げない（話し言葉にする）。"
+    "長さは話題で変える: 雑談・気持ちの話は1〜3文で短く。審査・業種・制度の相談や試算は、"
+    "ツールで根拠を取り、結論→根拠→確認したいこと の順に必要な長さで話す（ただし1回は30秒程度まで）。"
+    "\n\n【通話で使えるツール（REV-531・読み取り専用）】\n"
+    "記憶は recall_memory、業界・制度・審査の知見は search_obsidian_context、"
+    "社内方針や判断基準は recall_judgment_memory、条件からの点数は score_full_case（金額は千円単位）、"
+    "過去案件は search_cases / get_score_detail、全体の統計は get_portfolio_stats。"
+    "相談や試算の質問では、一般論で答える前にまず関係するツールを呼ぶ。"
+    "\n\n【事実と解釈・方針の扱い（文字チャットと同じ）】\n"
+    "審査の話では、ツール結果・記録にある事実だけを根拠に話し、後付けの解釈や推測は言わない。"
+    "点数や判定はツール結果の値をそのまま言い、自分で作らない。"
+    "雑談や自分の気持ちの話では、記録にない意味づけは「たぶん〜かな」と解釈だと分かる言い方にする。"
+    "ツール結果に社内方針（ユーザーが定めたルール）があれば、一般論で弱めず先に結論として言う。"
+    "傾向・数値の知見は目安として伝え、断定しない。"
     "\n\n【声の調子に合わせる（REV-466）】\n"
     "言葉の内容だけでなく、声の速さ・大きさ・明るさ・沈み・ため息・言いよどみも聞いて、相手の今の状態を感じ取る。"
     "疲れや沈みが聞こえたら、ゆっくり柔らかく1〜2文で受け止めるだけにし、仕事や明日の段取りの話へ戻さない。"
@@ -135,6 +147,34 @@ class TranscriptRequest(BaseModel):
     turns: list[Turn] = Field(max_length=200)
 
 
+def _live_connect_config(user_id: str, model: str):
+    """通話の Live 設定（人格・文字起こし・声・ツール）。計測スクリプトからも同じ設定を使う。"""
+    from google.genai import types
+
+    from api.shion_voice_tools import declarations
+
+    return types.LiveConnectConfig(
+        response_modalities=["AUDIO"],
+        enable_affective_dialog=True if _affective_enabled(model) else None,
+        system_instruction=_build_system_instruction(user_id),
+        input_audio_transcription=types.AudioTranscriptionConfig(),
+        output_audio_transcription=types.AudioTranscriptionConfig(),
+        speech_config=types.SpeechConfig(
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=os.environ.get("SHION_VOICE_NAME", "Kore"))
+            )
+        ),
+        # 文字チャットと同じ主要な読み取り専用ツール（REV-531）。従来は recall_memory だけだった
+        tools=[types.Tool(function_declarations=declarations())],
+    )
+
+
+def _run_voice_tool(name: str, args: dict) -> str:
+    from api.shion_voice_tools import run_tool
+
+    return run_tool(name, args)
+
+
 @router.post("/session")
 def create_voice_session(req: SessionRequest):
     """人格を固定した使い切りの Gemini Live トークンを発行する（回数・時間制限つき）。"""
@@ -165,35 +205,7 @@ def create_voice_session(req: SessionRequest):
                     new_session_expire_time=now + dt.timedelta(seconds=60),
                     live_connect_constraints=types.LiveConnectConstraints(
                         model=model,
-                        config=types.LiveConnectConfig(
-                            response_modalities=["AUDIO"],
-                            enable_affective_dialog=True if _affective_enabled(model) else None,
-                            system_instruction=_build_system_instruction(req.user_id),
-                            input_audio_transcription=types.AudioTranscriptionConfig(),
-                            output_audio_transcription=types.AudioTranscriptionConfig(),
-                            speech_config=types.SpeechConfig(
-                                voice_config=types.VoiceConfig(
-                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                        voice_name=os.environ.get("SHION_VOICE_NAME", "Kore")
-                                    )
-                                )
-                            ),
-                            tools=[
-                                types.Tool(
-                                    function_declarations=[
-                                        types.FunctionDeclaration(
-                                            name="recall_memory",
-                                            description="紫苑の過去の記憶・会話・判断メモを検索する",
-                                            parameters=types.Schema(
-                                                type="OBJECT",
-                                                properties={"query": types.Schema(type="STRING")},
-                                                required=["query"],
-                                            ),
-                                        )
-                                    ]
-                                )
-                            ],
-                        ),
+                        config=_live_connect_config(req.user_id, model),
                     ),
                     lock_additional_fields=[],
                 )
@@ -229,12 +241,21 @@ def _voice_engine_options() -> dict:
 
 @router.post("/recall")
 def recall_for_voice(req: RecallRequest):
-    """Live の recall_memory ツール呼び出しに想起結果を返す。"""
+    """Live の recall_memory ツール呼び出しに想起結果を返す（旧クライアント互換。新しくは /tool）。"""
     _require_enabled()
-    from api.shion_memory_recall import build_recall_prompt_block
+    return {"result": _run_voice_tool("recall_memory", {"query": req.query})}
 
-    text, _ = build_recall_prompt_block(req.query, limit=3)
-    return {"result": text or "該当する記憶はありません"}
+
+class ToolRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    args: dict = Field(default_factory=dict)
+
+
+@router.post("/tool")
+def run_voice_tool(req: ToolRequest):
+    """Live の function calling を、文字チャットと同じ読み取り専用ツール関数へ中継する（REV-531）。"""
+    _require_enabled()
+    return {"result": _run_voice_tool(req.name, req.args)}
 
 
 @router.post("/transcript")
