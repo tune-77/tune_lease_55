@@ -125,6 +125,24 @@ def normalize_topic(text: str) -> str:
     return text[:40]
 
 
+_NUMBER_TOKEN = re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|％|ポイント|件|億円|億|万円|万|兆円|兆|円|倍|社|人|位|月|年度|年)?")
+_STRONG_UNIT = re.compile(r"(%|％|ポイント|件|億|万|兆|円|倍|社|人)$")
+
+
+def stat_key(date: str, title: str) -> str:
+    """見出しの違う同じ統計記事を見分ける鍵（日付＋見出しの数値の組）。REV-501。
+
+    例: 「8月の工作機械受注 64%増 …歴代2位」と「工作機械受注、8月64%増 …歴代2位」は同じ鍵。
+    単位つきの数値（%・件・億 など）が1つも無い見出しは、月や年だけで誤って重ならないよう鍵を作らない。
+    """
+    body = re.sub(r"\s+-\s+[^-]+$", "", str(title or ""))
+    body = re.sub(r"20\d\d", "", body) if re.search(r"\d+(?:%|％|件|億|万|兆|円|倍|社|人)", body) else body
+    tokens = sorted({re.sub(r"\s+", "", t) for t in _NUMBER_TOKEN.findall(body) if t.strip()})
+    if not any(_STRONG_UNIT.search(t) for t in tokens):
+        return ""
+    return f"{date}|{'/'.join(tokens)}"
+
+
 def parse_clip(path: Path, text: str) -> dict[str, Any]:
     meta = _frontmatter(text)
     title_match = re.search(r"^# (.+)$", text, re.MULTILINE)
@@ -145,6 +163,7 @@ def parse_clip(path: Path, text: str) -> dict[str, Any]:
         "lease_assets": meta.get("lease_assets", ""),
         "importance": meta.get("importance", ""),
         "topic": normalize_topic(meta.get("canonical_topic") or title),
+        "stat_key": stat_key(meta.get("date") or path.name[:10], title),
         "summary": " / ".join(summary)[:300],
     }
 
@@ -259,7 +278,16 @@ def _safe_stem(text: str) -> str:
     return cleaned[:40] or "memo"
 
 
-def render_memo(item: dict[str, Any], idea: str, hubs: list[dict[str, str]], *, model: str, now: str) -> str:
+def render_memo(
+    item: dict[str, Any],
+    idea: str,
+    hubs: list[dict[str, str]],
+    *,
+    model: str,
+    now: str,
+    hub_check: float | None = None,
+    proposed: list[str] | None = None,
+) -> str:
     source = f"{NEWS_DIR}/{item['path'].stem}"
     title = re.sub(r"\s+-\s+[^-]+$", "", item["title"]).strip()  # 末尾の「 - 配信元」を外す
     related = " ".join(f"[[{hub['path']}|{hub['label']}]]" for hub in hubs) or "未接続"
@@ -271,6 +299,12 @@ def render_memo(item: dict[str, Any], idea: str, hubs: list[dict[str, str]], *, 
             f"date: {item['date']}",
             f"connection: {'connected' if hubs else 'unconnected'}",
             f"hubs: {hub_labels}",
+            *(
+                [f"hub_check: {'unchecked' if hub_check is None else round(hub_check, 2)}",
+                 f"proposed_hubs: {json.dumps(proposed, ensure_ascii=False)}"]
+                if proposed
+                else []
+            ),
             f'source_note: "[[{source}]]"',
             f"generated_by: {FEATURE} ({model})",
             f"generated_at: {now}",
@@ -287,21 +321,125 @@ def render_memo(item: dict[str, Any], idea: str, hubs: list[dict[str, str]], *, 
     )
 
 
-def processed_topics(vault: Path, state: dict[str, dict[str, Any]]) -> set[str]:
-    """処理済みクリップの話題。古い記録に topic が無ければクリップから読む（読めなければ飛ばす）。"""
-    topics: set[str] = set()
+HUB_FIT_MIN = float(os.environ.get("NEWS_ZETTEL_HUB_FIT_MIN", "0.7"))
+HUB_FIT_QUESTION = {
+    "type": "noul",
+    "instructions": "`items[{n}]` は、業界ニュースの見出し、それをリース審査向けに書き直したメモ、リンク先ハブノートの主題です。"
+    "メモの中心の話題は、そのハブノートの主題そのものに当てはまりますか。",
+    "criteria": {
+        "true": "メモの中心の話題が、ハブの主題そのもの（例: 倒産件数の記事→倒産率とリスク、中古建機の再販価値→残価リスク評価）。",
+        "false": "関係は言えなくもないが周辺的・一般論的なつながり、またはほぼ無関係（例: 資材価格の記事→定性リスク、保証制度の記事→補助金制度）。",
+    },
+}
+
+
+def judge_hubs_with_jev(texts: list[str]) -> list[float | None]:
+    """メモ×ハブの組ごとに「当てはまる」確率を返す。伏せ字で送れない・不通なら None（REV-501）。"""
+    import typesafe_dedup_guard as transport
+    from api.chat_judgment_asset_capture import mask_for_jev
+
+    os.environ.setdefault("TYPESAFE_API_KEYCHAIN_SERVICE", "typesafe-api-key")
+    os.environ.setdefault("TYPESAFE_DEDUP_TIMEOUT_SECONDS", "90")
+    masked = [mask_for_jev(text) for text in texts]
+    sendable = [k for k, m in enumerate(masked) if m]
+    results: list[float | None] = [None] * len(texts)
+    if not sendable:
+        return results
+    questions = {
+        f"item{n}": {**HUB_FIT_QUESTION, "instructions": HUB_FIT_QUESTION["instructions"].format(n=n)}
+        for n in range(len(sendable))
+    }
+    try:
+        body = transport._default_request(
+            {"state": {"items": [masked[k] for k in sendable]}, "model": "jev-latest", "questions": questions}
+        )
+        for n, k in enumerate(sendable):
+            results[k] = float(transport._noul(body["answers"], f"item{n}"))
+    except Exception as exc:  # noqa: BLE001 - Jev が使えない時はリンクを残し hub_check: unchecked と記録する
+        print(f"[news_zettel] ハブ判定スキップ: {type(exc).__name__}")
+    return results
+
+
+def check_hubs(
+    batch: list[dict[str, Any]],
+    rows: dict[int, dict[str, Any]],
+    hub_by_id: dict[str, dict[str, str]],
+    checker: Callable[[list[str]], list[float | None]] | None,
+) -> dict[int, float]:
+    """メモを書いた記事のうちハブ付きのものを、1回の Jev 呼び出しでまとめて判定する。"""
+    targets = [(i, rows[i]) for i in rows if rows[i]["idea"] and rows[i]["hubs"]]
+    if not targets or os.environ.get("NEWS_ZETTEL_HUB_CHECK", "1").strip() == "0":
+        return {}
+    texts = []
+    for index, row in targets:
+        hub = hub_by_id[row["hubs"][0]]
+        texts.append(f"ハブ: {hub['label']}（{hub['use']}）\n見出し: {batch[index]['title'][:80]}\nメモ: {row['idea'][:160]}")
+    scores = (checker or judge_hubs_with_jev)(texts)
+    return {index: score for (index, _row), score in zip(targets, scores) if score is not None}
+
+
+def processed_keys(vault: Path, state: dict[str, dict[str, Any]], field: str) -> set[str]:
+    """処理済みクリップの鍵（topic / stat_key）。古い記録に無ければクリップから読んで補う（読めなければ飛ばす）。"""
+    keys: set[str] = set()
     for rel, entry in state.items():
-        topic = entry.get("topic") if isinstance(entry, dict) else None
-        if topic is None:
+        if not isinstance(entry, dict):
+            continue
+        key = entry.get(field)
+        if key is None:
             text = _read_text(vault / rel)
             if text is None:
                 continue
-            topic = parse_clip(vault / rel, text)["topic"]
-            if isinstance(entry, dict):
-                entry["topic"] = topic
-        if topic:
-            topics.add(topic)
-    return topics
+            parsed = parse_clip(vault / rel, text)
+            entry.setdefault("topic", parsed["topic"])
+            entry.setdefault("stat_key", parsed["stat_key"])
+            key = entry[field]
+        if key:
+            keys.add(key)
+    return keys
+
+
+def processed_topics(vault: Path, state: dict[str, dict[str, Any]]) -> set[str]:
+    return processed_keys(vault, state, "topic")
+
+
+STAT_TITLE_OVERLAP_MIN = 0.3
+
+
+def _title_overlap(left: str, right: str) -> float:
+    a = {left[i : i + 2] for i in range(len(left) - 1)}
+    b = {right[i : i + 2] for i in range(len(right) - 1)}
+    return len(a & b) / len(a | b) if a and b else 0.0
+
+
+def processed_stats(vault: Path, state: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+    """処理済みの統計の鍵 → その見出し（topic）の一覧。"""
+    processed_keys(vault, state, "stat_key")  # 古い記録の stat_key を補う
+    stats: dict[str, list[str]] = {}
+    for entry in state.values():
+        if isinstance(entry, dict) and entry.get("stat_key"):
+            stats.setdefault(entry["stat_key"], []).append(str(entry.get("topic") or ""))
+    return stats
+
+
+_PREFECTURE = re.compile(
+    r"北海道|青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|東京|神奈川|新潟|富山|石川|福井|山梨|長野"
+    r"|岐阜|静岡|愛知|三重|滋賀|京都|大阪|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知"
+    r"|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄"
+)
+
+
+def _same_place(left: str, right: str) -> bool:
+    """両方に都道府県名があり、それが違えば別の出来事（例: 青森の倒産3件と岡山の倒産3件）。"""
+    a, b = set(_PREFECTURE.findall(left)), set(_PREFECTURE.findall(right))
+    return not (a and b) or bool(a & b)
+
+
+def is_same_stat(item: dict[str, Any], stats: dict[str, list[str]]) -> bool:
+    """日付と数値の組が同じで、見出しも重なり、場所も食い違わない。"""
+    return any(
+        _same_place(item["topic"], other) and _title_overlap(item["topic"], other) >= STAT_TITLE_OVERLAP_MIN
+        for other in stats.get(item["stat_key"], [])
+    )
 
 
 def process(
@@ -310,6 +448,7 @@ def process(
     state: dict[str, dict[str, Any]],
     *,
     model_call: Callable[[str], dict[str, Any]] = call_model,
+    hub_checker: Callable[[list[str]], list[float | None]] | None = None,
     model_name: str = "",
     dry_run: bool = False,
     now: str | None = None,
@@ -319,8 +458,10 @@ def process(
     hub_by_id = {hub["id"]: hub for hub in hubs}
     summary = {"selected": len(clips), "unreadable": 0, "calls": 0, "written": 0, "connected": 0,
                "unconnected": 0, "no_idea": 0, "exists": 0, "promo": 0, "duplicate_topic": 0,
+               "duplicate_stat": 0, "hub_checked": 0, "hub_dropped": 0, "hub_unchecked": 0,
                "stopped": "", "memos": []}
     seen_topics = processed_topics(vault, state)
+    seen_stats = processed_stats(vault, state)
     items: list[dict[str, Any]] = []
     for path in clips:
         text = _read_text(path)
@@ -340,7 +481,15 @@ def process(
             if not dry_run:
                 state[rel] = {"status": "duplicate_topic", "topic": item["topic"], "processed_at": now}
             continue
+        if item["stat_key"] and is_same_stat(item, seen_stats):
+            summary["duplicate_stat"] += 1
+            if not dry_run:
+                state[rel] = {"status": "duplicate_stat", "topic": item["topic"], "stat_key": item["stat_key"],
+                              "processed_at": now}
+            continue
         seen_topics.add(item["topic"])
+        if item["stat_key"]:
+            seen_stats.setdefault(item["stat_key"], []).append(item["topic"])
         items.append(item)
     memo_dir = vault / MEMO_DIR
     for start in range(0, len(items), BATCH_SIZE):
@@ -355,12 +504,14 @@ def process(
             break
         summary["calls"] += 1
         rows = validate(result, len(batch), set(hub_by_id))
+        checks = check_hubs(batch, rows, hub_by_id, hub_checker)
         for index, item in enumerate(batch):
             rel = str(NEWS_DIR / item["path"].name)
             row = rows.get(index) or {"idea": "", "hubs": []}
             if not row["idea"]:
                 summary["no_idea"] += 1
-                state[rel] = {"status": "no_idea", "topic": item["topic"], "processed_at": now}
+                state[rel] = {"status": "no_idea", "topic": item["topic"], "stat_key": item["stat_key"],
+                              "processed_at": now}
                 continue
             memo_path = memo_dir / f"{item['date']}_{_safe_stem(item['title'])}.md"
             if memo_path.exists():
@@ -368,13 +519,27 @@ def process(
                 state[rel] = {"status": "exists", "memo": str(memo_path.relative_to(vault)), "processed_at": now}
                 continue
             linked = [hub_by_id[h] for h in row["hubs"]]
+            check = checks.get(index)
+            if linked and check is None:
+                summary["hub_unchecked"] += 1
+            elif linked:
+                summary["hub_checked"] += 1
+                if check < HUB_FIT_MIN:
+                    summary["hub_dropped"] += 1
+                    linked = []  # 弱いつながりはリンクせず未接続にする（REV-501）
             memo_dir.mkdir(parents=True, exist_ok=True)
-            memo_path.write_text(render_memo(item, row["idea"], linked, model=model_name, now=now), encoding="utf-8")
+            memo_path.write_text(
+                render_memo(item, row["idea"], linked, model=model_name, now=now, hub_check=check,
+                            proposed=[hub_by_id[h]["label"] for h in row["hubs"]]),
+                encoding="utf-8",
+            )
             summary["written"] += 1
             summary["connected" if linked else "unconnected"] += 1
             summary["memos"].append({"memo": memo_path.name, "idea": row["idea"], "hubs": [h["label"] for h in linked]})
             state[rel] = {"status": "written", "memo": str(memo_path.relative_to(vault)), "topic": item["topic"],
-                          "hubs": [h["label"] for h in linked], "processed_at": now}
+                          "stat_key": item["stat_key"], "hubs": [h["label"] for h in linked],
+                          "proposed_hubs": [hub_by_id[h]["label"] for h in row["hubs"]],
+                          "hub_fit": None if check is None else round(check, 3), "processed_at": now}
     return summary
 
 
