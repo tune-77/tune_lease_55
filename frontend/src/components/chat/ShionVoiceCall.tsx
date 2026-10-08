@@ -20,6 +20,11 @@ type Status = "idle" | "connecting" | "live" | "ending";
 type VoiceEngine = "kore" | "himari";
 const VOICE_KEY = "shion-voice-engine";
 
+// 通話の残り時間の基準（コンポーネント外で時刻を取る）
+function deadlineAfter(seconds: number): number {
+  return Date.now() + seconds * 1000;
+}
+
 function storedVoice(): VoiceEngine | null {
   try {
     const value = typeof window !== "undefined" ? window.localStorage.getItem(VOICE_KEY) : null;
@@ -247,7 +252,7 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
       micCtx.createMediaStreamSource(stream).connect(node);
 
       // 上限はトークン失効でサーバー側が強制する。ここは表示と、切れる前に自分から切るため。
-      const endsAt = Date.now() + data.max_seconds * 1000;
+      const endsAt = deadlineAfter(data.max_seconds);
       setRemaining(data.max_seconds);
       timerRef.current = setInterval(() => {
         const left = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
