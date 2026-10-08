@@ -6,6 +6,10 @@ import { CheckCircle, XCircle, FileText, Activity, Save, Percent, Building2, Tre
 
 export const conditionOptions = ["本件限度", "次回決算まで本件限度", "金融機関と協調", "独立・新設向け条件", "親会社等保証", "担保・保全あり", "その他"];
 
+// 失注理由の選択肢（lost_reason_normalizer.CANONICAL_LOST_REASONS と同じ表記）。分からない時は「不明」を選ぶ（REV-538）
+export const lostReasonOptions = ["他社競合（レート）", "他社競合（その他）", "調達方法変更", "設備見合わせ", "物件不適", "業績不振", "その他（不成約）", "不明"];
+export const LOST_REASON_DETAIL_MAX = 40;
+
 export const parseRateInput = (value: string, fallback = 0.0) => {
   const normalized = value.trim().replace(',', '.');
   if (!normalized) return fallback;
@@ -65,6 +69,7 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
   const [finalRate, setFinalRate] = useState('0.0');
   const [baseRate, setBaseRate] = useState('2.1');
   const [lostReason, setLostReason] = useState('');
+  const [lostReasonDetail, setLostReasonDetail] = useState('');
   const [competitorName, setCompetitorName] = useState('');
   const [competitorRate, setCompetitorRate] = useState('0.0');
   const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
@@ -92,6 +97,10 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
       triggerMebuki('challenge', '先に案件を選択してくださいね。');
       return;
     }
+    if (status === '失注' && !lostReason) {
+      triggerMebuki('challenge', '失注理由を選んでくださいね。分からない時は「不明」で大丈夫です。');
+      return;
+    }
     setSubmitting(true);
     setImpactSession(null);
     setLastRegistration(null);
@@ -106,7 +115,8 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
         status: status,
         final_rate: parsedFinalRate,
         base_rate_at_time: parsedBaseRate,
-        lost_reason: lostReason,
+        lost_reason: status === '失注' ? lostReason : '',
+        lost_reason_detail: status === '失注' ? lostReasonDetail.trim() : '',
         loan_conditions: selectedConditions,
         competitor_name: competitorName,
         competitor_rate: parsedCompetitorRate,
@@ -171,6 +181,7 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
       setFinalRate('0.0');
       setBaseRate('2.1');
       setLostReason('');
+      setLostReasonDetail('');
       setCompetitorName('');
       setCompetitorRate('0.0');
       setSelectedConditions([]);
@@ -309,19 +320,32 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
             <div className="animate-in slide-in-from-top-2 duration-300 space-y-3">
               <div>
                 <label className="block text-xs font-black text-rose-500 uppercase mb-2 flex items-center gap-1">
-                  <TrendingDown className="w-3 h-3" /> 失注理由
+                  <TrendingDown className="w-3 h-3" /> 失注理由（必須）
                 </label>
-                <textarea
-                  className="w-full bg-rose-50/30 border border-rose-100 p-4 rounded-xl text-sm font-bold text-rose-700 outline-none h-20"
+                <select
+                  className="w-full bg-rose-50/30 border border-rose-100 p-4 rounded-xl text-sm font-bold text-rose-700 outline-none"
                   value={lostReason}
                   onChange={(e) => setLostReason(e.target.value)}
-                  placeholder="金利競合で敗退、あるいは条件不一致など..."
+                >
+                  <option value="">— 選択してください —</option>
+                  {lostReasonOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-black text-rose-500 uppercase mb-2">何に負けたか（一言・任意）</label>
+                <input
+                  type="text"
+                  maxLength={LOST_REASON_DETAIL_MAX}
+                  className="w-full bg-rose-50/30 border border-rose-100 p-4 rounded-xl text-sm font-bold text-rose-700 outline-none"
+                  value={lostReasonDetail}
+                  onChange={(e) => setLostReasonDetail(e.target.value)}
+                  placeholder="例: 銀行のプロパー融資に切替、他社が期間を延長"
                 />
               </div>
               {!lostReason && (
                 <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700 font-bold animate-in slide-in-from-top-2 duration-300">
                   <span>💡</span>
-                  <span>失注理由を入力すると営業分析の精度が上がります（任意）</span>
+                  <span>失注理由を選んでください。分からない時は「不明」を選べます</span>
                 </div>
               )}
             </div>
@@ -421,7 +445,7 @@ export default function CaseRegistrationForm({ caseId, compact = false, onRegist
         <div className={compact ? "mt-6 flex justify-end" : "mt-8 flex justify-end"}>
           <button
             onClick={handleRegister}
-            disabled={submitting}
+            disabled={submitting || (status === '失注' && !lostReason)}
             className={`${compact ? 'py-4 px-8 text-base' : 'py-5 px-16 text-lg'} rounded-[2rem] shadow-2xl transition-all flex items-center gap-3 font-black ${status === '成約' ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/30' : 'bg-rose-600 hover:bg-rose-500 shadow-rose-500/30'} text-white group disabled:opacity-60`}
           >
             {submitting ? <Activity className="w-6 h-6 animate-spin" /> : <Save className="w-6 h-6 group-hover:scale-110 transition-transform" />}

@@ -15,6 +15,9 @@ CANONICAL_LOST_REASONS = {
     "理由未入力",
 }
 
+# 失注理由に添える一言（何に負けたか）の上限文字数（REV-538）
+LOST_REASON_DETAIL_MAX = 40
+
 FUNDING_NOT_COMPETITOR = {"現金", "銀行借入対応", "融資対応", "自己資金"}
 
 
@@ -22,6 +25,11 @@ def clean_text(value: object) -> str:
     if value is None:
         return ""
     return str(value).strip().replace(" ", "").replace("　", "")
+
+
+def clean_lost_reason_detail(value: object) -> str:
+    """失注理由に添える一言を、空白を詰めて上限文字数で切る（REV-538）。"""
+    return " ".join(str(value or "").split())[:LOST_REASON_DETAIL_MAX]
 
 
 def normalize_lost_reason(raw_value: object, final_status: str = "") -> str:

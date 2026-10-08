@@ -1,9 +1,8 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../lib/api';
+import { lostReasonOptions, LOST_REASON_DETAIL_MAX } from '../../components/analysis/CaseRegistrationForm';
 import { Table2, RefreshCw, Trash2, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
-
-const LOSS_REASONS = ['設備見合わせ', '他社競合', '調達方法変更', 'その他'];
 
 type Case = {
   id: string;
@@ -25,6 +24,7 @@ type ResultForm = {
   final_status: string;
   competitor_rate: string;
   loss_reason: string;
+  loss_reason_detail: string;
   final_result_date: string;
 };
 
@@ -43,7 +43,7 @@ export default function CasesPage() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [selected, setSelected] = useState<Case | null>(null);
-  const [form, setForm] = useState<ResultForm>({ final_status: '', competitor_rate: '', loss_reason: '', final_result_date: '' });
+  const [form, setForm] = useState<ResultForm>({ final_status: '', competitor_rate: '', loss_reason: '', loss_reason_detail: '', final_result_date: '' });
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [industryMajorFilter, setIndustryMajorFilter] = useState('');
@@ -73,7 +73,7 @@ export default function CasesPage() {
 
   const selectCase = (c: Case) => {
     setSelected(c);
-    setForm({ final_status: c.final_status || '', competitor_rate: '', loss_reason: '', final_result_date: '' });
+    setForm({ final_status: c.final_status || '', competitor_rate: '', loss_reason: '', loss_reason_detail: '', final_result_date: '' });
     setMsg(null);
   };
 
@@ -101,6 +101,7 @@ export default function CasesPage() {
     if (form.final_status) payload.final_status = form.final_status;
     if (form.competitor_rate) payload.competitor_rate = parseFloat(form.competitor_rate);
     if (form.loss_reason) payload.loss_reason = form.loss_reason;
+    if (form.final_status === '失注' && form.loss_reason_detail.trim()) payload.loss_reason_detail = form.loss_reason_detail.trim();
     if (form.final_result_date) payload.final_result_date = form.final_result_date;
     try {
       await apiClient.patch(`/api/cases/${selected.id}/result`, payload);
@@ -309,8 +310,16 @@ export default function CasesPage() {
                         className="w-full bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none"
                       >
                         <option value="">— 選択 —</option>
-                        {LOSS_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                        {lostReasonOptions.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
+                      <input
+                        type="text"
+                        maxLength={LOST_REASON_DETAIL_MAX}
+                        value={form.loss_reason_detail}
+                        onChange={e => setForm(f => ({ ...f, loss_reason_detail: e.target.value }))}
+                        className="mt-2 w-full bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none"
+                        placeholder="何に負けたか（一言・任意）例: 銀行融資に切替"
+                      />
                     </div>
                   )}
 

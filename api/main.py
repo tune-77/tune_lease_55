@@ -151,6 +151,7 @@ def _gemini_generate_url() -> str:
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from scoring_anomaly_monitor import record_scoring_anomalies
 from silent_failure_log import record_silent_failure
+from lost_reason_normalizer import clean_lost_reason_detail
 
 # threading.Thread 直の背景処理の未処理例外も silent_failures に残す。
 _install_thread_failure_hook()
@@ -1800,6 +1801,7 @@ class CaseResultPatch(BaseModel):
     final_status: Optional[str] = None
     competitor_rate: Optional[float] = None
     loss_reason: Optional[str] = None
+    loss_reason_detail: Optional[str] = None  # 何に負けたか（一言・任意。REV-538）
     final_result_date: Optional[str] = None
     source: str = "app"
 
@@ -2017,6 +2019,8 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
         patches["competitor_rate"] = req.competitor_rate
     if req.loss_reason is not None:
         patches["lost_reason"] = req.loss_reason
+    if req.loss_reason_detail is not None:
+        patches["lost_reason_detail"] = clean_lost_reason_detail(req.loss_reason_detail)
     if req.final_result_date is not None:
         patches["final_result_date"] = req.final_result_date
 
@@ -3173,6 +3177,7 @@ class CaseRegistration(BaseModel):
     final_rate: Optional[float] = 0.0
     base_rate_at_time: Optional[float] = 2.1
     lost_reason: str = ""
+    lost_reason_detail: str = ""  # 何に負けたか（一言・任意。REV-538）
     loan_conditions: list[str] = Field(default_factory=list)
     competitor_name: str = ""
     competitor_rate: Optional[float] = 0.0
@@ -3224,6 +3229,9 @@ def _link_registered_case_to_shion_followups(
 @app.post("/api/cases/register")
 def register_case_result(req: CaseRegistration, background_tasks: BackgroundTasks):
     from data_cases import load_all_cases, update_case
+    if req.status == "失注" and not (req.lost_reason or "").strip():  # 理由の選択は必須（REV-538）
+        raise HTTPException(status_code=400, detail="失注理由を選択してください（分からない時は「不明」）")
+    lost_reason_detail = clean_lost_reason_detail(req.lost_reason_detail) if req.status == "失注" else ""
     cases = load_all_cases()
     final_rate = float(req.final_rate or 0.0)
     base_rate_at_time = float(req.base_rate_at_time or 2.1)
@@ -3257,6 +3265,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                     "base_rate_at_time": base_rate_at_time,
                     "competitor_rate": competitor_rate,
                     "lost_reason": req.lost_reason,
+                    "lost_reason_detail": lost_reason_detail,
                     "note": req.note,
                     "grey_judgment": {
                         "status": req.status,
@@ -3283,6 +3292,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
                         "base_rate_at_time": base_rate_at_time,
                         "competitor_rate": competitor_rate,
                         "lost_reason": req.lost_reason,
+                        "lost_reason_detail": lost_reason_detail,
                         "final_note": req.note,
                         "grey_judgment": {
                             "status": req.status,
@@ -3392,7 +3402,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
     if req.status == "成約" and final_rate > 0:
         patches["winning_spread"] = final_rate - base_rate_at_time
     if req.status == "失注":
-        patches["lost_reason"] = req.lost_reason
+        patches.update(lost_reason=req.lost_reason, **({"lost_reason_detail": lost_reason_detail} if lost_reason_detail else {}))
 
     if not update_case(target_case_id, patches):
         raise HTTPException(
@@ -3437,6 +3447,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
             "base_rate_at_time": base_rate_at_time,
             "competitor_rate": competitor_rate,
             "lost_reason": req.lost_reason,
+            "lost_reason_detail": lost_reason_detail,
             "note": req.note,
             "grey_judgment": grey_judgment if "grey_judgment" in patches else {},
         },
