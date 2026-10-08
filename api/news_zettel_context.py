@@ -88,7 +88,7 @@ def recent_memos(
 ) -> list[dict[str, Any]]:
     """ハブにつながった（Jev 判定を通った）最近の永続メモを新しい順に limit 件まで。"""
     cutoff = (today - dt.timedelta(days=MAX_AGE_DAYS)).isoformat()
-    from scripts.build_news_zettel import HUBS, hub_fit_min, hub_legacy_fit_min, load_recheck
+    from scripts.build_news_zettel import HUBS, hub_fit_min, hub_legacy_fit_min, hub_title_ok, load_recheck
 
     # REV-534/536/539 説明を絞ったハブは、既存メモも読む時に絞る（メモ・状態ファイルは書き換えない）。
     # 今の説明で判定し直した点数（data/news_zettel_hub_recheck.json）があればそれを使い、
@@ -113,6 +113,9 @@ def recent_memos(
         if not linked or fit is None or float(fit) < need:
             continue
         memo = str(entry.get("memo") or "")
+        # REV-541 見出しの条件（機械受注統計: 機械受注・工作機械）。メモのファイル名は見出しの先頭40字
+        if hub is not None and not hub_title_ok(hub, Path(memo).stem[11:]):
+            continue
         date = Path(memo).name[:10]
         if not memo or date < cutoff:
             continue
