@@ -151,6 +151,7 @@ def _gemini_generate_url() -> str:
 from scoring_core import run_full_api_scoring, run_quick_scoring, APPROVAL_LINE, CONDITIONAL_LINE
 from scoring_anomaly_monitor import record_scoring_anomalies
 from silent_failure_log import record_silent_failure
+from lost_reason_normalizer import clean_lost_reason_detail
 
 # threading.Thread 直の背景処理の未処理例外も silent_failures に残す。
 _install_thread_failure_hook()
@@ -2019,7 +2020,7 @@ def patch_case_result(case_id: str, req: CaseResultPatch, background_tasks: Back
     if req.loss_reason is not None:
         patches["lost_reason"] = req.loss_reason
     if req.loss_reason_detail is not None:
-        patches["lost_reason_detail"] = _lost_reason_detail(req.loss_reason_detail)
+        patches["lost_reason_detail"] = clean_lost_reason_detail(req.loss_reason_detail)
     if req.final_result_date is not None:
         patches["final_result_date"] = req.final_result_date
 
@@ -3225,19 +3226,12 @@ def _link_registered_case_to_shion_followups(
         return {"status": "error", "linked_count": 0, "reason": str(exc)}
 
 
-def _lost_reason_detail(value: object) -> str:
-    from lost_reason_normalizer import LOST_REASON_DETAIL_MAX
-
-    return " ".join(str(value or "").split())[:LOST_REASON_DETAIL_MAX]
-
-
 @app.post("/api/cases/register")
 def register_case_result(req: CaseRegistration, background_tasks: BackgroundTasks):
     from data_cases import load_all_cases, update_case
-    # 失注は理由の選択を必須にする（分からない時は「不明」）。既存データはそのまま（REV-538）
-    if req.status == "失注" and not (req.lost_reason or "").strip():
+    if req.status == "失注" and not (req.lost_reason or "").strip():  # 理由の選択は必須（REV-538）
         raise HTTPException(status_code=400, detail="失注理由を選択してください（分からない時は「不明」）")
-    lost_reason_detail = _lost_reason_detail(req.lost_reason_detail) if req.status == "失注" else ""
+    lost_reason_detail = clean_lost_reason_detail(req.lost_reason_detail) if req.status == "失注" else ""
     cases = load_all_cases()
     final_rate = float(req.final_rate or 0.0)
     base_rate_at_time = float(req.base_rate_at_time or 2.1)
@@ -3408,9 +3402,7 @@ def register_case_result(req: CaseRegistration, background_tasks: BackgroundTask
     if req.status == "成約" and final_rate > 0:
         patches["winning_spread"] = final_rate - base_rate_at_time
     if req.status == "失注":
-        patches["lost_reason"] = req.lost_reason
-        if lost_reason_detail:
-            patches["lost_reason_detail"] = lost_reason_detail
+        patches.update(lost_reason=req.lost_reason, **({"lost_reason_detail": lost_reason_detail} if lost_reason_detail else {}))
 
     if not update_case(target_case_id, patches):
         raise HTTPException(

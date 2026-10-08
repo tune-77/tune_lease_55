@@ -2,7 +2,8 @@
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 
-from api.main import CaseRegistration, CaseResultPatch, _lost_reason_detail, patch_case_result, register_case_result
+from api.main import CaseRegistration, CaseResultPatch, patch_case_result, register_case_result
+from lost_reason_normalizer import clean_lost_reason_detail
 
 
 def _capture_update(monkeypatch):
@@ -59,5 +60,5 @@ def test_patch_saves_detail_and_keeps_old_clients(monkeypatch):
 
 
 def test_detail_normalizes_whitespace():
-    assert _lost_reason_detail(None) == ""
-    assert _lost_reason_detail(" a\n b ") == "a b"
+    assert clean_lost_reason_detail(None) == ""
+    assert clean_lost_reason_detail(" a\n b ") == "a b"

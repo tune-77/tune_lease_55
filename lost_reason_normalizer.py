@@ -27,6 +27,11 @@ def clean_text(value: object) -> str:
     return str(value).strip().replace(" ", "").replace("　", "")
 
 
+def clean_lost_reason_detail(value: object) -> str:
+    """失注理由に添える一言を、空白を詰めて上限文字数で切る（REV-538）。"""
+    return " ".join(str(value or "").split())[:LOST_REASON_DETAIL_MAX]
+
+
 def normalize_lost_reason(raw_value: object, final_status: str = "") -> str:
     raw = clean_text(raw_value)
     status = clean_text(final_status)
