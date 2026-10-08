@@ -464,7 +464,8 @@ def test_stricter_threshold_only_for_machine_orders_and_subsidy_hubs(vault, monk
                              hub_checker=lambda texts: seen.extend(texts) or [0.65])
     assert "内閣府の機械受注統計" in seen[0]
     entry = next(iter(state.values()))
-    assert summary["hub_dropped"] == 1 and entry["hubs"] == []
+    # 倒産の記事なので REV-541 の見出し条件でも外れる
+    assert summary.get("hub_title_dropped") == 1 and entry["hubs"] == []
     assert entry["hub_use"] == by_label["機械受注統計"]["use"]  # 判定に使った説明を残す（REV-539）
 
 
@@ -494,3 +495,24 @@ def test_industry_trend_hub_is_also_stricter():
     assert zettel.hub_fit_min(hub) == 0.85
     assert hub["use"].startswith("特定業種の業界全体の") and "個社の事例" in hub["use"]
     assert zettel.hub_fit_min(by_label["Q-Risk"]) == zettel.HUB_FIT_MIN
+
+
+def test_machine_orders_link_requires_keyword_in_title(vault, monkeypatch):
+    """REV-541: Jev の点数が高くても、見出しに「機械受注」「工作機械」が無ければ機械受注統計につながない。"""
+    monkeypatch.setenv("NEWS_ZETTEL_HUB_CHECK", "1")
+    hub = vault / "03-知識_業界/市場分析データ/機械受注統計_2023-2026.md"
+    hub.parent.mkdir(parents=True)
+    hub.write_text("# 機械受注統計\n", encoding="utf-8")
+    by_label = {h["label"]: h for h in zettel.HUBS}
+    assert zettel.hub_title_ok(by_label["機械受注統計"], "8月の工作機械受注 64%増")
+    assert zettel.hub_title_ok(by_label["機械受注統計"], "7月の機械受注3.7%減")
+    assert not zettel.hub_title_ok(by_label["機械受注統計"], "法人企業統計4―6月期設備投資は6四半期連続増")
+    assert zettel.hub_title_ok(by_label["倒産率とリスク"], "何でも")  # 他のハブは条件なし
+
+    clip = _one_clip(vault)[0]
+    clip.write_text(clip.read_text(encoding="utf-8").replace("過去最多", "7月の機械受注3.7%減 過去最多"), encoding="utf-8")
+    state: dict = {}
+    zettel.process(vault, [clip], state,
+                   model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": ["h15"]}]},
+                   hub_checker=lambda texts: [0.9])
+    assert next(iter(state.values()))["hubs"] == ["機械受注統計"]
