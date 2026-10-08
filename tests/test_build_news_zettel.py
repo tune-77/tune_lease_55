@@ -349,3 +349,84 @@ def test_same_topic_across_risk_and_lease_news_is_written_once(vault, monkeypatc
     summary = zettel.process(vault, [risk, lease], {},
                              model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": []}]})
     assert summary["written"] == 1 and summary["duplicate_topic"] == 1
+
+
+# ── REV-503: 経産省フィードの要約を本文の要点に使う ───────────────────────────
+FEED = """<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom">
+<entry><title>令和8年度物流パートナーシップ優良事業者を募集します</title>
+<link rel="alternate" type="text/html" href="https://www.meti.go.jp/press/2026/10/20261007001/20261007001.html"/>
+<updated>2026-10-07T05:00:00Z</updated>
+<summary>経済産業省・国土交通省では、物流の生産性向上や構造改革等に向けた取組に顕著な功績のあった事業者を表彰します。</summary></entry>
+<entry><title>古い発表</title><link rel="alternate" href="https://www.meti.go.jp/press/2026/06/x.html"/>
+<updated>2026-06-19T05:00:00Z</updated><summary>六月の発表の要約です。十分な長さの文章がここに入ります。</summary></entry>
+</feed>"""
+TODAY = dt.date(2026, 10, 8)
+
+
+def test_parse_and_select_only_recent_unprocessed_entries():
+    entries = zettel.parse_meti_feed(FEED)
+    assert [e["date"] for e in entries] == ["2026-10-07", "2026-06-19"]
+    items = zettel.meti_items(entries, {}, today=TODAY)
+    assert [i["title"] for i in items] == ["令和8年度物流パートナーシップ優良事業者を募集します"]
+    assert items[0]["body"].startswith("経済産業省・国土交通省では") and items[0]["source_label"] == "経済産業省"
+    assert zettel.meti_items(entries, {items[0]["key"]: {"status": "written"}}, today=TODAY) == []
+
+
+def test_stale_feed_does_nothing_and_records_latest_date(vault, tmp_path, monkeypatch):
+    status = tmp_path / "meti.json"
+    monkeypatch.setattr(zettel, "METI_STATUS_PATH", status)
+    stale = FEED.replace("2026-10-07T05", "2026-06-18T05")
+    calls = []
+
+    summary = zettel.process_meti(vault, {}, fetch=lambda: stale, today=TODAY, model_call=lambda p: calls.append(p))
+
+    assert summary["meti_new"] == 0 and calls == []
+    saved = json.loads(status.read_text(encoding="utf-8"))
+    assert saved["latest_entry_date"] == "2026-06-19" and saved["days_since_latest"] == 111 and saved["stale"] is True
+    line = zettel.morning_report_lines(status)[0]
+    assert "⚠️" in line and "最新 2026-06-19" in line and "111日前" in line
+
+
+def test_new_entry_uses_feed_summary_as_body_and_cites_meti_without_saving_it(vault, tmp_path, monkeypatch):
+    monkeypatch.setattr(zettel, "METI_STATUS_PATH", tmp_path / "meti.json")
+    prompts = []
+
+    def model(prompt):
+        prompts.append(prompt)
+        return {"items": [{"i": 0, "idea": IDEA, "hubs": []}]}
+
+    state: dict = {}
+    summary = zettel.process_meti(vault, state, fetch=lambda: FEED, today=TODAY, model_call=model)
+
+    assert summary["meti_written"] == 1
+    assert "本文の要点（経済産業省の発表より）: 経済産業省・国土交通省では" in prompts[0]
+    memo = next((vault / zettel.MEMO_DIR).glob("*.md")).read_text(encoding="utf-8")
+    assert "（出典: 経済産業省）" in memo and "https://www.meti.go.jp/press/2026/10/20261007001/20261007001.html" in memo
+    assert "顕著な功績のあった事業者を表彰します" not in memo  # 要約そのものは保存しない
+    assert "source_label: 経済産業省" in memo
+    assert state["meti:https://www.meti.go.jp/press/2026/10/20261007001/20261007001.html"]["status"] == "written"
+
+
+def test_feed_error_is_recorded_for_morning_report(vault, tmp_path, monkeypatch):
+    status = tmp_path / "meti.json"
+    monkeypatch.setattr(zettel, "METI_STATUS_PATH", status)
+
+    def broken():
+        raise OSError("HTTP Error 403: Forbidden")
+
+    assert zettel.process_meti(vault, {}, fetch=broken, today=TODAY)["meti_stopped"] == "OSError"
+    assert "取得失敗" in zettel.morning_report_lines(status)[0]
+
+
+def test_never_requests_article_pages_or_robots():
+    from pathlib import Path
+
+    source = Path("scripts/build_news_zettel.py").read_text(encoding="utf-8")
+    assert source.count("urlopen(") == 1 and "METI_FEED_URL" in source.split("urlopen(")[0].rsplit("def ", 1)[1]
+    assert "robots.txt\", " not in source
+
+
+def test_morning_report_includes_feed_line():
+    from pathlib import Path
+
+    assert "*news_zettel_feed_lines()," in Path("scripts/aurion_core_daily.py").read_text(encoding="utf-8")
