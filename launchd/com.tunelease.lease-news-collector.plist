@@ -32,6 +32,9 @@
     <string>1</string>
     <key>NEWS_ZETTEL_BACKFILL_DAILY_LIMIT</key>
     <string>200</string>
+    <!-- 永続メモの対象にリースニュースの過去分も加える（REV-502 で追加・REV-532 でオン。止める時は 0） -->
+    <key>NEWS_ZETTEL_LEASE_NEWS</key>
+    <string>1</string>
     <!-- launchd は .zshrc を読まないため Keychain のサービス名をここで渡す
          （鍵そのものはplistに置かない）。 -->
     <key>TYPESAFE_API_KEYCHAIN_SERVICE</key>

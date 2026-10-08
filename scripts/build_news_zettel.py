@@ -122,6 +122,8 @@ def _frontmatter(text: str) -> dict[str, str]:
 _PROMO_TITLE = re.compile(
     r"20\d\d年(から|〜|~|-)20\d\d年|年平均成長率|CAGR|市場規模|市場動向評価|市場予測|市場調査レポート"
     r"|アフターマーケット市場|市場における業界(分析|戦略)"
+    # 日経の広告特集（「日本経済新聞 電子版特集(PR) - ps.nikkei.com」）。REV-532
+    r"|特集\s*[(（]PR[)）]|ps\.nikkei\.com"
 )
 
 
