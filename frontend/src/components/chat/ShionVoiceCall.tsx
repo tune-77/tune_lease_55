@@ -11,10 +11,12 @@ import { VoicevoxSpeaker } from "@/lib/voicevoxSpeaker";
 type Props = {
   userId: string;
   disabled?: boolean;
-  onEnded?: () => void;
+  // REV-504: 保存した通話の会話を渡す（対話室が画面に並べるため）。引数を使わない呼び出し元はそのままでよい
+  onEnded?: (turns: VoiceCallTurn[]) => void;
 };
 
-type Turn = { role: "user" | "model"; text: string };
+export type VoiceCallTurn = { role: "user" | "model"; text: string };
+type Turn = VoiceCallTurn;
 type Status = "idle" | "connecting" | "live" | "ending";
 // REV-530: 通話の声。kore=Gemini Live の声、himari=文字起こしを VOICEVOX（冥鳴ひまり）で読み上げ
 type VoiceEngine = "kore" | "himari";
@@ -193,7 +195,7 @@ export default function ShionVoiceCall({ userId, disabled, onEnded }: Props) {
     if (saved.length > 0) {
       try {
         await apiClient.post("/api/shion/voice/transcript", { user_id: userId, turns: saved.slice(-200) });
-        onEnded?.();
+        onEnded?.(saved);
       } catch {
         setError("文字起こしの保存に失敗しました");
       }
