@@ -172,6 +172,13 @@ def test_promo_titles_are_skipped_without_calling_model(vault):
     assert state[str(zettel.NEWS_DIR / promo.name)]["status"] == "skipped_promo"
 
 
+def test_nikkei_sponsored_feature_is_promo():
+    assert zettel.is_promo_title("コストから価値創造へ 物流を経営の中核に|日本経済新聞 電子版特集(PR) - ps.nikkei.com")
+    assert zettel.is_promo_title("物流DXの最前線|日本経済新聞 電子版特集（PR）")
+    assert not zettel.is_promo_title("物流2024年問題、運送業の倒産が増加 - 日本経済新聞")
+    assert not zettel.is_promo_title("新宇都宮本社始動!物流の効率化 - PR TIMES")
+
+
 def test_same_topic_from_another_source_is_not_written_twice(vault):
     first = _clip(vault, "2026-10-08", "X1", "東京港・大井コンテナふ頭再編の全体像 - LOGISTICS TODAY", "東京港・大井コンテナふ頭再編の全体像")
     second = _clip(vault, "2026-10-08", "X2", "東京港・大井コンテナふ頭再編の全体像 - Yahoo!ニュース", "東京港・大井コンテナふ頭再編の全体像")

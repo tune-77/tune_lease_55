@@ -51,6 +51,10 @@
     <string>typesafe-api-key</string>
     <key>TYPESAFE_RAG_USAGE_LOG_PATH</key>
     <string>data/typesafe_rag_usage.jsonl</string>
+    <!-- 検索でハブが当たった時に、Jev 判定済みの最近のニュース永続メモを参考として2件まで添える
+         （REV-502 で追加・REV-532 でオン。止める時は 0 にして再起動） -->
+    <key>SHION_NEWS_ZETTEL_CONTEXT</key>
+    <string>1</string>
   </dict>
 
   <key>RunAtLoad</key>
