@@ -162,3 +162,18 @@ def test_small_talk_sharing_only_generic_words_adds_nothing(topical):
     # 「今日」「どう」だけが一致する（内容語の一致が1つ）
     assert _ask(topical, "今日の気分はどう？") == ""
     assert _ask(topical, "最近どう？元気にしてた？") == ""
+
+def test_read_time_uses_recheck_and_legacy_threshold(setup):
+    """REV-539: 古い説明の点数は 0.85、今の説明で判定し直した点数はそのハブのしきい値（機械受注統計は 0.70）。"""
+    from scripts.build_news_zettel import HUBS
+
+    use = {hub["label"]: hub["use"] for hub in HUBS}["機械受注統計"]
+    state = {"clip/m.md": {"status": "written", "memo": "05/2026-10-08_m.md", "hubs": ["機械受注統計"], "hub_fit": 0.79}}
+    assert ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck={}) == []  # 古い点数 0.79 < 0.85
+    ok = {"clip/m.md": {"hub": "機械受注統計", "hub_use": use, "hub_fit": 0.72}}
+    assert len(ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck=ok)) == 1
+    low = {"clip/m.md": {"hub": "機械受注統計", "hub_use": use, "hub_fit": 0.6}}
+    assert ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck=low) == []
+    state["clip/m.md"]["hub_use"] = use  # 新しい説明で判定された新規メモ
+    state["clip/m.md"]["hub_fit"] = 0.72
+    assert len(ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck={})) == 1
