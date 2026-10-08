@@ -51,6 +51,10 @@ def test_hub_hit_adds_two_recent_jev_passed_memos_as_reference(setup):
     assert "三件目" not in block  # 2件まで
     assert "未接続" not in block and "判定なし" not in block and "古い" not in block and "別ハブ" not in block
     assert "最近のニュースでは〜という見方もある" in block and "根拠には使わない" in block
+    # REV-540 関係があれば回答の最後に一文だけ。事実と解釈の言い分け（#1297）は維持
+    assert "回答の最後に一文だけ" in block and "事実として断定しない" in block and "記録された事実ではない" in block
+    assert "関係が薄ければ触れない" in block
+    assert block.split("\n", 1)[0].count("【") == 1  # 注意書きは見出し行のまま（予算で削られない）
 
 
 def test_no_hub_in_hits_means_no_block(setup):
