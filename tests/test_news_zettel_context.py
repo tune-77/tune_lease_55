@@ -1,6 +1,8 @@
 """検索でハブが当たった時の最近のニュース永続メモ（REV-502・既定オフ）。"""
 import datetime as dt
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -195,3 +197,24 @@ def test_machine_orders_hub_needs_keyword_in_title():
     recheck = {key: {"hub": "機械受注統計", "hub_use": use, "hub_fit": 0.9} for key in state}
     rows = ctx.recent_memos(["機械受注統計"], state=state, today=TODAY, recheck=recheck)
     assert [row["memo"] for row in rows] == ["05/2026-10-07_8月の工作機械受注64%増.md"]
+
+
+def test_state_files_follow_data_dir(tmp_path):
+    """REV-589 検証環境（DATA_DIR）では本番の data/ ではなく DATA_DIR の状態ファイルを読む。"""
+    import subprocess
+    import sys
+
+    code = (
+        "import api.news_zettel_context as c, scripts.build_news_zettel as b;"
+        "print(c.STATE_PATH); print(b.STATE_PATH); print(b.RECHECK_PATH); print(b.METI_STATUS_PATH)"
+    )
+    repo = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "DATA_DIR": str(tmp_path)}
+    env.pop("LEASE_DATA_DIR", None)
+    out = subprocess.run([sys.executable, "-c", code], cwd=repo, env=env, capture_output=True, text=True, check=True)
+    assert out.stdout.split() == [
+        str(tmp_path / "news_zettel_state.json"),
+        str(tmp_path / "news_zettel_state.json"),
+        str(tmp_path / "news_zettel_hub_recheck.json"),
+        str(tmp_path / "news_zettel_meti_feed.json"),
+    ]
