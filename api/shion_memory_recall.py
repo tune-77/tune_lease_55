@@ -35,7 +35,8 @@ from silent_failure_log import record_silent_failure
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
-_USAGE_LOG_PATH = _REPO_ROOT / "data" / "shion_memory_usage_log.jsonl"
+from runtime_paths import get_data_path
+_USAGE_LOG_PATH = Path(get_data_path("shion_memory_usage_log.jsonl"))  # DATA_DIR に従う（REV-544）
 _JUDGMENT_FEEDBACK_PATH = _REPO_ROOT / "data" / "judgment_asset_usage_feedback.jsonl"
 
 # 人間が明示した評価だけを想起順位へ弱く反映する。成約/失注だけでは判断資産の
@@ -554,6 +555,9 @@ def build_recall_prompt_block(
             lines.append("")
             lines.append("【経験事例（匿名）】過去の類似案件の判断と教訓:")
             lines.extend(case_lines)
+    from api.keypoint_source import NOT_TAUGHT_NOTE, source_suffix
+
+    has_untaught = False
     for idx, record in enumerate(memories, start=1):
         mtype = str(record.get("memory_type") or "memory")
         status = str(record.get("status") or "active")
@@ -562,7 +566,12 @@ def build_recall_prompt_block(
         cite = ""
         if record.get("source") == "canonical_judgment_rules" and record.get("judgment_asset_id"):
             cite = f"（出典: {asset_citation(str(record['judgment_asset_id']), str(record.get('created_at') or ''))}）"
+        elif "content_source" in record:
+            cite = source_suffix(record.get("content_source"))  # 会話の要点の出所（REV-544）
+            has_untaught = has_untaught or bool(cite)
         lines.append(f"{idx}. [{layer}/{mtype}/{status}] {content[:260]}{cite}")
+    if has_untaught:
+        lines.append(NOT_TAUGHT_NOTE)
     impact_hints = recalled.get("impact_hints") or []
     if impact_hints:
         lines.append("")

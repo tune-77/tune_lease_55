@@ -78,6 +78,21 @@ def _select_hits_with_budget(hits: list[dict[str, Any]], *, limit: int, max_toke
     }
 
 
+def _mark_self_answers(hits: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """REV-544: 開発用ノートを外し、対話室の会話ログ（紫苑自身の過去の回答）に写さない印を付ける。"""
+    from api.answer_repeat_guard import SELF_ANSWER_START, is_dev_note_path, is_self_answer_path
+
+    marked: list[dict[str, Any]] = []
+    for hit in hits or []:
+        path = str(hit.get("path") or "")
+        if is_dev_note_path(path):
+            continue
+        if is_self_answer_path(path) and SELF_ANSWER_START not in str(hit.get("snippet") or ""):
+            hit = {**hit, "snippet": f"{SELF_ANSWER_START}{hit.get('snippet') or ''}"}
+        marked.append(hit)
+    return marked
+
+
 def collect_obsidian_ai_context(
     query: str,
     *,
@@ -93,7 +108,7 @@ def collect_obsidian_ai_context(
     try:
         typesafe_filter = _load_typesafe_rag_filter(query)
         candidate_limit = max(limit * 2, limit) if typesafe_filter is not None else limit
-        hits: list[dict[str, Any]] = collect_obsidian_context(query, limit=candidate_limit)
+        hits: list[dict[str, Any]] = _mark_self_answers(collect_obsidian_context(query, limit=candidate_limit))
         if not hits:
             return {"block": "", "hits": [], "source_count": 0, "retrieval_boundary": {}}
         typesafe_boundary: dict[str, Any] = {"status": "unavailable"}

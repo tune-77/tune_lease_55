@@ -6628,7 +6628,7 @@ def post_lease_intelligence_dialogue(req: LeaseIntelligenceDialogueRequest):
                                 vault,
                                 DIALOGUE_USER_ID,
                                 keypoints,
-                                _dt.date.today().isoformat(),
+                                _dt.date.today().isoformat(), user_message=message, reply=reply,  # 出所（REV-544）
                             )
 
                     if teaching_save.get("is_teaching"):
@@ -6748,7 +6748,7 @@ def _log_shion_query_class(message: str, question_category: str) -> None:
 
         result = shion_query_class_from_category(question_category)
         try:
-            log_path = Path(__file__).parent.parent / "data" / "chat_logs.jsonl"
+            log_path = Path(get_data_path("chat_logs.jsonl"))  # DATA_DIR に従う（REV-544）
             log_path.parent.mkdir(parents=True, exist_ok=True)
             entry = {
                 "ts": datetime.now(timezone.utc).isoformat(),

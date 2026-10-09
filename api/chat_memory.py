@@ -18,6 +18,7 @@ import re
 from api.context.time_context import with_current_datetime_context
 from api.db_connection import current_backend, get_connection, placeholder, ensure_schema
 from silent_failure_log import record_silent_failure
+from api.answer_repeat_guard import apply_repeat_guard
 
 _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -479,7 +480,7 @@ def call_gemini_with_tools(
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY が設定されていません")
 
-    system_prompt = with_current_datetime_context(system_prompt)
+    system_prompt = apply_repeat_guard(with_current_datetime_context(system_prompt), history, user_message)
     contents: list[dict] = []
     for msg in history:
         gemini_role = "user" if msg["role"] == "user" else "model"
@@ -571,7 +572,7 @@ def call_gemini_chat(
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY が設定されていません")
 
-    system_prompt = with_current_datetime_context(system_prompt)
+    system_prompt = apply_repeat_guard(with_current_datetime_context(system_prompt), history, user_message)
     contents = []
     for msg in history:
         gemini_role = "user" if msg["role"] == "user" else "model"

@@ -28,7 +28,8 @@ from typing import Any, Literal
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_STATE_PATH = _REPO_ROOT / "data" / "shion_relationship_state.json"
+from runtime_paths import get_data_path
+_STATE_PATH = Path(get_data_path("shion_relationship_state.json"))  # DATA_DIR に従う（REV-544）
 _STATE_LOCK = threading.Lock()
 
 # スコアの上下限

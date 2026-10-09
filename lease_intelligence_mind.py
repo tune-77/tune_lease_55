@@ -516,15 +516,30 @@ def build_memory_recall_block(vault: Path | None, max_items: int = 10) -> str:
     lines: list[str] = ["## 紫苑の記憶（思い出し）"]
     if recent:
         lines.append("これまでの会話・教わった知識から覚えていること:")
+        from api.keypoint_source import NOT_TAUGHT_NOTE, SOURCE_LABELS, normalized_source
+
         _tag = {"conversation_keypoint": "会話", "compressed_memory": "要約"}
+        has_untaught = False
         for entry in recent:
             tag = _tag.get(str(entry.get("type", "")), "記憶")
+            if entry.get("type") == "conversation_keypoint":
+                # REV-544: 紫苑の発言・出所不明の要点は、教わった知識と区別して見せる
+                label = SOURCE_LABELS.get(normalized_source(entry.get("content_source")))
+                if label:
+                    tag = f"{tag}・{label}"
+                    has_untaught = True
             lines.append(f"- [{tag}] {str(entry.get('content', '')).strip()}")
+        if has_untaught:
+            lines.append(NOT_TAUGHT_NOTE)
 
     summary = _load_recent_conversation_summary(Path(vault))
     if summary:
+        from api.keypoint_source import NOT_TAUGHT_NOTE, SOURCE_LABELS
+
         lines.append("前日のMemoryノートに残した会話サマリー:")
         lines.append(summary)
+        if NOT_TAUGHT_NOTE not in lines and any(f"（{label}）" in summary for label in SOURCE_LABELS.values()):
+            lines.append(NOT_TAUGHT_NOTE)
 
     if len(lines) == 1:
         return ""
@@ -704,8 +719,10 @@ def record_daily_experience(
         )
         _write_state(vault, state)
     # 当日の会話キーポイント（REV-086産物）を Memoryノートの会話サマリーへ載せる（REV-088）。
+    from api.keypoint_source import source_suffix
+
     day_keypoints = [
-        str(item.get("content", "")).strip()
+        str(item.get("content", "")).strip() + source_suffix(item.get("content_source"))
         for item in state.get("conversation_keypoints", [])
         if item.get("type") == "conversation_keypoint"
         and str(item.get("date", "")) == date_str
@@ -1535,8 +1552,15 @@ def save_conversation_keypoints(
     session_id: str,
     keypoints: list[str],
     date_str: str,
+    *,
+    user_message: str = "",
+    reply: str = "",
+    content_source: str | None = None,
 ) -> dict[str, Any]:
     """会話から抽出したキーポイントを専用枠へ永続保存する（REV-086）。
+
+    REV-544: 各要点に出所 content_source（user / shion / unknown）を残す。content_source を渡せばそれを使い、
+    無ければ user_message・reply と突き合わせて決める（api/keypoint_source.py）。どちらも無ければ unknown。
 
     各キーポイントを {"date", "type": "conversation_keypoint", "content", "session_id",
     "memory_type", "confidence"} の形式で conversation_keypoints に追記する。
@@ -1545,6 +1569,7 @@ def save_conversation_keypoints(
     """
     vault = Path(vault)
     from memory_promotion_policy import should_save_conversation_keypoint
+    from api.keypoint_source import keypoint_content_source, normalized_source, source_suffix
     from api.shion_memory_taxonomy import classify_memory_text
 
     cleaned = [
@@ -1556,8 +1581,16 @@ def save_conversation_keypoints(
         return load_lease_intelligence_mind(vault)
     state = load_lease_intelligence_mind(vault)
     keypoints_store = list(state.get("conversation_keypoints") or [])
+    sources: list[str] = []
     for point in cleaned:
         content = point[:300]
+        if content_source:
+            source = normalized_source(content_source)
+        elif user_message or reply:
+            source = keypoint_content_source(content, user_message, reply)
+        else:
+            source = "unknown"
+        sources.append(source)
         keypoints_store.append(
             {
                 "date": str(date_str),
@@ -1566,6 +1599,7 @@ def save_conversation_keypoints(
                 "session_id": str(session_id),
                 "memory_type": classify_memory_text(content, source="mind.conversation_keypoint"),
                 "confidence": 0.7,
+                "content_source": source,
             }
         )
     state["conversation_keypoints"] = _limit_conversation_keypoints(
@@ -1573,7 +1607,9 @@ def save_conversation_keypoints(
     )
     _write_state(vault, state)
     try:
-        _append_keypoints_to_daily_memory(vault, date_str, cleaned)
+        _append_keypoints_to_daily_memory(
+            vault, date_str, [f"{point}{source_suffix(source)}" for point, source in zip(cleaned, sources)]
+        )
     except Exception as _obs_exc:
         print(f"[SaveKeypoints] Obsidian Memory 追記に失敗: {_obs_exc}")
     return state

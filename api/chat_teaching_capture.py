@@ -36,6 +36,7 @@ from api.judgment_policy import (
     knowledge_kind_of,
 )
 
+from api.answer_repeat_guard import SELF_ANSWER_END, SELF_ANSWER_START
 from memory_promotion_policy import TEACHING_DOMAIN_TERMS
 from runtime_paths import get_data_dir
 
@@ -584,8 +585,15 @@ def build_recall_prompt_block(items: list[dict[str, Any]], rag_hits: list[dict[s
         cite = f"（出典: {item['citation']}）" if item.get("citation") else ""
         lines.append(f"- ユーザーが教えた知識（{item['topic']}）: {item['snippet']}{cite}")
     for hit in rag_hits or []:
-        snippet = " ".join(str(hit.get("text") or "").split())[:200]
-        if snippet:
+        text = str(hit.get("text") or "")
+        if hit.get("self_answer"):
+            # REV-544: 対話室の会話ログは紫苑自身の過去の回答。教わった知識として扱わない
+            text = text.replace(SELF_ANSWER_START, "").replace(SELF_ANSWER_END, "")
+        snippet = " ".join(text.split())[:200]
+        if snippet and hit.get("self_answer"):
+            # 印で囲み、会話履歴と同じ中身なら送信直前に省く（api/answer_repeat_guard.py）
+            lines.append(f"- 紫苑自身の過去の回答（教わった知識ではない。写さない）: {SELF_ANSWER_START}{snippet}{SELF_ANSWER_END}")
+        elif snippet:
             lines.append(f"- 参照ナレッジ（{hit.get('source') or hit.get('title') or 'RAG'}）: {snippet}")
     policy_block = format_policy_block(policies)
     if not lines:

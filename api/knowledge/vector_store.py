@@ -116,7 +116,8 @@ _DEFAULT_RANKING_CONFIG = {
     "query_expansion_decay": 0.4,
 }
 
-_SEARCH_LOG_PATH = os.path.join(_REPO_ROOT, "data", "rag_search_log.jsonl")
+from runtime_paths import get_data_path
+_SEARCH_LOG_PATH = get_data_path("rag_search_log.jsonl")  # DATA_DIR に従う（REV-544）
 # キーワード検索は全文書を Chroma から取り出す（約2万件で1回約4.5秒）。1回の search で拡張クエリ込み
 # 最大5回呼ばれ、1リクエスト20秒超になっていたため、文書数が同じ間は短時間だけ使い回す。
 _KEYWORD_DOCS_TTL_S = 30.0
@@ -741,6 +742,7 @@ class KnowledgeVectorStore:
         return min(penalty, 1.0)
 
     def _rerank_hits(self, query: str, hits: list[dict], top_k: int) -> list[dict]:
+        from api.answer_repeat_guard import is_dev_note_path, is_self_answer_path, mark_self_answer_text
         from api.knowledge.obsidian_loader import (
             is_keyword_stub,
             is_vertex_metadata_section,
@@ -753,6 +755,9 @@ class KnowledgeVectorStore:
             if is_keyword_stub(str(hit.get("text") or "")) or is_vertex_metadata_section(
                 str(hit.get("section") or ""), hit.get("metadata") or {}
             ):
+                continue
+            # REV-544: 開発用ノートは参照ナレッジに入れない
+            if is_dev_note_path(self._display_path(hit)):
                 continue
             priority = self._business_priority(query, hit)
             if priority <= -9.0:
@@ -781,6 +786,10 @@ class KnowledgeVectorStore:
             if noise_penalty >= 0.18 and rank_score < 0.1:
                 continue
             item = dict(hit)
+            if is_self_answer_path(self._display_path(hit)):
+                # REV-544: 対話室の会話ログは紫苑自身の過去の回答。写さないよう印を付ける
+                item["text"] = mark_self_answer_text(str(item.get("text") or ""))
+                item["self_answer"] = True
             item["rank_score"] = round(rank_score, 4)
             item["priority_score"] = round(priority, 4)
             item["score_breakdown"] = {

@@ -19,7 +19,8 @@ from lease_news_digest import find_vault
 
 
 REPO_ROOT = Path(__file__).resolve().parent
-DATA_DIR = REPO_ROOT / "data"
+from runtime_paths import get_data_dir
+DATA_DIR = get_data_dir()  # DATA_DIR に従う（REV-544）
 REPORTS_DIR = REPO_ROOT / "reports"
 LATEST_JSON = REPORTS_DIR / "obsidian_daily_intelligence_latest.json"
 METRICS_JSONL = DATA_DIR / "obsidian_daily_intelligence_metrics.jsonl"

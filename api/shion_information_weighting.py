@@ -147,7 +147,8 @@ class InformationWeightingResult:
         return payload
 
 
-DEFAULT_SHADOW_LOG_PATH = Path(__file__).resolve().parent.parent / "data" / "information_weighting_log.jsonl"
+from runtime_paths import get_data_path
+DEFAULT_SHADOW_LOG_PATH = Path(get_data_path("information_weighting_log.jsonl"))  # DATA_DIR に従う（REV-544）
 
 
 def evaluate_information_asset(

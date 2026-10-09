@@ -15,7 +15,8 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent
 ACTIVITY_LOG = PROJECT_ROOT / "data" / "lease_intelligence_activity.jsonl"
 PROMPT_LOG = PROJECT_ROOT / "data" / "prompt_feedback_log.jsonl"
-NEWS_METRICS = PROJECT_ROOT / "data" / "lease_news_metrics.json"
+from runtime_paths import get_data_path
+NEWS_METRICS = Path(get_data_path("lease_news_metrics.json"))  # DATA_DIR に従う（REV-544）
 
 ALLOWED_SURFACES = {
     "home",
