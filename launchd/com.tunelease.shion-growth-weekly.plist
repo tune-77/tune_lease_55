@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tunelease.shion-growth-weekly</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin/python</string>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/scripts/shion_growth_weekly.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55</string>
+    <key>OBSIDIAN_VAULT_PATH</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>OBSIDIAN_VAULT</key>
+    <string>/Users/kobayashiisaoryou/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>PATH</key>
+    <string>/Users/kobayashiisaoryou/clawd/tune_lease_55/.venv/bin:/Users/kobayashiisaoryou/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/kobayashiisaoryou/anaconda3/bin</string>
+  </dict>
+
+  <!-- 毎週日曜 08:30（REV-586）。07:30 のイラスト生成の後。前の日曜〜土曜の7日分を既存ログから集計して Obsidian の成長記録に書く（AI 呼び出しなし・記憶は読むだけ） -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>8</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_shion_growth_weekly.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/kobayashiisaoryou/Library/Logs/tune_lease_55_shion_growth_weekly.err.log</string>
+</dict>
+</plist>
