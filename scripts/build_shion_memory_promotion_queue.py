@@ -271,7 +271,10 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=15)
     args = parser.parse_args()
 
-    chat_rows = _load_jsonl(args.chat_log)
+    from shion_verification_origin import is_verification_row
+
+    # REV-591: 検証の会話（origin=verification・検証用ユーザーID）は長期記憶の候補にしない
+    chat_rows = [row for row in _load_jsonl(args.chat_log) if not is_verification_row(row)]
     applied_ids = _applied_ids(args.applied_log)
     candidates = collect_candidates(
         chat_rows,

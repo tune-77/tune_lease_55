@@ -16,6 +16,11 @@
 - worktree・`python -`/`-c`・`eval_|evaluate_|experiment_|replay_|compare_|bench_|probe_` スクリプトからの Gemini 呼び出しは検証クラスとして `ai_budget.py` が止める。必要な時だけ `AI_LIVE_VERIFY=1`（1日 `AI_VERIFY_MAX_CALLS` 回まで）。
 - 1日予算 `AI_DAILY_BUDGET_YEN`（既定50円）。チャット・審査と記憶・内省は止めない。費用削減でプロンプトの記憶系ブロックを削らない（絞るのはニュース・改善レポート等の付加情報だけ）。
 
+## Verification Conversation Mark (REV-591)
+
+- 紫苑へ検証・テストの会話を送る時は必ず印を付ける: ヘッダー `X-Shion-Verification: 1`（対話室の Next 経由でも届く）か、`/api/chat` の `user_id` に verify を区切りで含める（例 `rev591_verify`）。Python は `shion_verification_origin.verification_client_headers()`（`AI_LIVE_VERIFY=1` で自動付与）。
+- 印の付いた会話は Private Reflection・相手の様子・関係性・予想・会話の要点・Knowledge・判断資産候補・週1イラスト・成長記録の材料にならない（会話ログには `origin: verification` で残る）。本番 `data/` に書かない原則（DATA_DIR）は従来どおり。
+
 ## AI Chat / Obsidian Search Rule
 
 AIチャットからObsidian/Vaultを参照する処理を実装・変更する時のルールは `.claude/skills/obsidian-search-rule/SKILL.md` を参照。

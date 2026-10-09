@@ -478,6 +478,7 @@ from api.api_key_auth import (
 # 公開デモ用の削除保護（api/demo_guard.py に実装）。
 from api.demo_guard import DemoReadonlyMiddleware, is_demo_readonly
 from api.security_headers import SecurityHeadersMiddleware, get_trusted_hosts
+from shion_verification_origin import VerificationOriginMiddleware, mark_verification_turn
 
 
 _ALLOWED_ORIGINS = [
@@ -506,6 +507,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=get_trusted_hosts())
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(VerificationOriginMiddleware)  # REV-591: X-Shion-Verification の印をリクエスト中に有効化
 # 公開デモの削除保護（DEMO_READONLY 設定時のみ有効）
 app.add_middleware(DemoReadonlyMiddleware)
 if is_demo_readonly():
@@ -4576,54 +4578,10 @@ def _auto_save_chat_to_obsidian(user_message: str, reply: str) -> None:
         print(f"[Obsidian自動保存] エラー: {_e}")
 
 
-def _redact_chat_log_text(value: str, limit: int = 1200) -> str:
-    text = str(value or "")
-    text = re.sub(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", "[email]", text)
-    text = re.sub(r"\b0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}\b", "[phone]", text)
-    text = re.sub(r"\b\d{6,}\b", "[number]", text)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    if len(text) > limit:
-        return text[: limit - 1] + "…"
-    return text
-
-
-def _append_local_cloudrun_chat_log(
-    *,
-    surface: str,
-    user_id: str,
-    category: str,
-    response_mode: str,
-    user_message: str,
-    assistant_reply: str,
-    metadata: dict,
-) -> None:
-    """ローカル実行時、Private Reflectionが読むdata/cloudrun_chat_log.jsonlに直接1行追記する。
-
-    scripts/sync_cloudrun_inputs_from_gcs.py の _chat_entry_from_event() と同じスキーマ
-    （event_id/ts/surface/user_id/category/response_mode/user_message/assistant_reply/
-    metadata/shion_hypothesis/source）に合わせている。GCS writebackはローカルでは無効な
-    ため、この関数がローカル対話をPrivate Reflectionへ到達させる唯一の経路になる。
-    """
-    import datetime as _dt
-    from uuid import uuid4
-
-    row = {
-        "event_id": str(uuid4()),
-        "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-        "surface": surface or "unknown",
-        "user_id": str(user_id or "default")[:80],
-        "category": str(category or "")[:80],
-        "response_mode": str(response_mode or "")[:40],
-        "user_message": _redact_chat_log_text(user_message, limit=1200),
-        "assistant_reply": _redact_chat_log_text(assistant_reply, limit=1800),
-        "metadata": metadata if isinstance(metadata, dict) else {},
-        "shion_hypothesis": {},
-        "source": "local_direct",
-    }
-    path = Path(get_data_path("cloudrun_chat_log.jsonl"))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+from api.chat_side_effects import (  # noqa: E402  REV-591: 会話ログ1行の書き込みは side effects 側
+    append_local_cloudrun_chat_log as _append_local_cloudrun_chat_log,
+    redact_chat_log_text as _redact_chat_log_text,
+)
 
 
 def _record_cloudrun_chat_exchange(
@@ -6795,6 +6753,7 @@ def post_chat(req: ChatRequest):
     """汎用チャット：メッセージを受け取り、会話履歴付きでGeminiへ送信して返答する。"""
     if not req.message.strip():
         raise HTTPException(status_code=422, detail="message は空にできません")
+    mark_verification_turn(user_id=req.user_id)  # REV-591: 検証用ユーザーIDの会話は記憶・内省の材料にしない
     _log_information_weighting_shadow(
         req.message,
         source="api_chat_user_message",

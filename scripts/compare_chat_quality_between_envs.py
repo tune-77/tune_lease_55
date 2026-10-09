@@ -40,7 +40,7 @@ def _post_chat(base_url: str, message: str, user_id: str, timeout: int) -> dict[
     req = urllib.request.Request(
         url,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-Shion-Verification": "1"},  # REV-591: 記憶・内省の材料にしない
         method="POST",
     )
     started = time.perf_counter()

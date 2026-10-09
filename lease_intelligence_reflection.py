@@ -12,6 +12,7 @@ import json
 import os
 
 from ai_runtime_client import tracked_ai_http_call
+from shion_verification_origin import VERIFICATION_CORRECTION_HEADING, VERIFICATION_NOTE_MARK, is_verification_row
 from config import get_gemini_model
 import random
 import re
@@ -127,7 +128,7 @@ def _load_cloudrun_chat_jsonl(date_str: str, max_items: int = 20, max_chars: int
             item = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if not isinstance(item, dict):
+        if not isinstance(item, dict) or is_verification_row(item):  # REV-591: 検証の会話は内省の材料にしない
             continue
         if _event_jst_date(str(item.get("ts") or "")) == date_str:
             rows.append(item)
@@ -167,6 +168,10 @@ def _load_recent_reflections(vault: Path, days: int = 3, base_date: dt.date | No
         if not path.exists():
             continue
         text = _read_file_safe(path, max_chars=2000)
+        correction = _verification_correction(text)
+        if correction:  # REV-591: 検証の会話を本人の会話と読んだ内省は、本文の代わりに訂正を渡す
+            snippets.append(f"【{date_str} の内省（訂正）】\n{correction}")
+            continue
         # Extract only the 対話について section
         m = re.search(r"##\s*今日の対話について\n(.*?)(?=\n##|\Z)", text, re.DOTALL)
         if m:
@@ -174,9 +179,18 @@ def _load_recent_reflections(vault: Path, days: int = 3, base_date: dt.date | No
     return "\n\n".join(snippets)
 
 
+def _verification_correction(text: str) -> str:
+    """検証の会話を材料にした内省ノートに足した「訂正」の節を返す。無ければ空。"""
+    match = re.search(rf"{re.escape(VERIFICATION_CORRECTION_HEADING)}\n(.*?)(?=\n## |\Z)", text, re.DOTALL)
+    return match.group(1).strip()[:600] if match else ""
+
+
 def _load_reflection_section(vault: Path, date_str: str) -> str:
     path = _reflection_dir(vault) / f"{date_str}.md"
     text = _read_file_safe(path, max_chars=8000)
+    correction = _verification_correction(text)
+    if correction:  # REV-591
+        return correction
     match = re.search(r"##\s*今日の対話について\n(.*?)(?=\n##|\Z)", text, re.DOTALL)
     return match.group(1).strip() if match else ""
 
@@ -190,10 +204,11 @@ def _compact_dialogue_note(text: str, max_chars: int = 6000) -> str:
     turns: list[tuple[str, str]] = []
     speaker = ""
     buf: list[str] = []
+    skipping = False
 
     def flush() -> None:
         body = " ".join(buf).strip()
-        if speaker and body:
+        if speaker and body and not skipping:
             turns.append((speaker, body))
 
     for line in text.splitlines():
@@ -205,6 +220,9 @@ def _compact_dialogue_note(text: str, max_chars: int = 6000) -> str:
         elif stripped.startswith(("#", "<!--", "source_ts:")):
             flush()
             speaker, buf = "", []
+            if stripped.startswith("#"):
+                # REV-591: 検証の往復（見出しに印）は本人の会話ではないので内省に渡さない
+                skipping = VERIFICATION_NOTE_MARK in stripped
         elif speaker and stripped:
             buf.append(stripped)
     flush()

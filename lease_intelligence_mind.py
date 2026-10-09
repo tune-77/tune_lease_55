@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ai_runtime_client import instrument_legacy_gemini_model, tracked_ai_call
+from shion_verification_origin import is_verification_turn as _is_verification_turn
 
 
 MIND_RELATIVE_DIR = Path("Projects") / "tune_lease_55" / "Lease Intelligence"
@@ -1221,6 +1222,8 @@ def register_dialogue_event(
     """
     vault = Path(vault)
     state = load_lease_intelligence_mind(vault)
+    if _is_verification_turn():  # REV-591: 検証の会話では気分を動かさない
+        return state
     old_adjustments = dict(state.get("dialogue_mood", {}))
     decayed = {key: int(int(value) * DIALOGUE_MOOD_DECAY) for key, value in old_adjustments.items()}
     causes = dialogue_mood_causes(user_message, signals)
@@ -1399,6 +1402,8 @@ def record_dialogue_memory(vault: Path, user_message: str, ai_response: str) -> 
     """
     vault = Path(vault)
     state = load_lease_intelligence_mind(vault)
+    if _is_verification_turn():  # REV-591: 検証の会話は記憶・ユーザーモデルに入れない
+        return state
     today = dt.date.today().isoformat()
     combined = f"{user_message} {ai_response}"
 
@@ -1577,7 +1582,7 @@ def save_conversation_keypoints(
         for point in (keypoints or [])
         if should_save_conversation_keypoint(str(point).strip())
     ]
-    if not cleaned:
+    if not cleaned or _is_verification_turn():  # REV-591: 検証の会話は会話の要点に残さない
         return load_lease_intelligence_mind(vault)
     state = load_lease_intelligence_mind(vault)
     keypoints_store = list(state.get("conversation_keypoints") or [])
@@ -1731,6 +1736,8 @@ def record_lease_knowledge(
     戻り値: {"path": <書き込んだパス>, "topic": ..., "created": bool}
     """
     vault = Path(vault)
+    if _is_verification_turn():  # REV-591: 検証の会話は Knowledge に保存しない
+        return {"path": "", "topic": str(topic).strip(), "created": False, "skipped": "verification"}
     topic = str(topic).strip()
     content = str(content).strip()
     source_type = str(source_type or "user_teaching").strip()
@@ -1797,7 +1804,7 @@ def record_knowledge_correction(
     """Store a user correction as reviewable revision material, not an overwrite."""
     vault = Path(vault)
     correction_text = str(correction_text or "").strip()
-    if not correction_text:
+    if not correction_text or _is_verification_turn():  # REV-591: 検証の会話は訂正材料にしない
         return {"path": "", "created": False}
     corrections_dir = mind_directory(vault) / "Knowledge Corrections"
     corrections_dir.mkdir(parents=True, exist_ok=True)

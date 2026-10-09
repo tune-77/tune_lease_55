@@ -19,6 +19,7 @@ from api.context.time_context import with_current_datetime_context
 from api.db_connection import current_backend, get_connection, placeholder, ensure_schema
 from silent_failure_log import record_silent_failure
 from api.answer_repeat_guard import apply_repeat_guard
+from shion_verification_origin import history_user_id
 
 _GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -37,6 +38,7 @@ def init_chat_messages_table() -> None:
 
 def get_recent_messages(user_id: str = "default", limit: int = 20, since: str | None = None) -> list[dict]:
     """直近 limit 件のメッセージを古い順で返す。"""
+    user_id = history_user_id(user_id)  # REV-591: 検証の会話は本人の履歴と分ける
     try:
         init_chat_messages_table()
         ph = placeholder()
@@ -86,6 +88,7 @@ def get_recent_messages(user_id: str = "default", limit: int = 20, since: str | 
 
 
 def save_message(user_id: str, role: str, content: str) -> None:
+    user_id = history_user_id(user_id)  # REV-591: 検証の会話は本人の履歴と分ける
     try:
         init_chat_messages_table()
         ph = placeholder()

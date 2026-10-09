@@ -134,7 +134,9 @@ def extract_and_save_promises(user_message: str, shion_reply: str) -> list[str]:
     加えて、約束した topic を改善ログ（自律改善パイプラインの取り込み口）へも起票し、
     約束が立ち消えず「後で自分で調べる／パイプラインが拾う」導線に必ず載るようにする。
     """
-    if not _PROMISE_RE.search(shion_reply):
+    from shion_verification_origin import is_verification_turn
+
+    if is_verification_turn() or not _PROMISE_RE.search(shion_reply):  # REV-591: 検証の会話の約束は本人への約束にしない
         return []
     topic = user_message.strip()[:300]
     task_id = str(uuid.uuid4())[:8]
@@ -300,7 +302,9 @@ def save_countermeasures_to_dispatch(user_message: str, shion_reply: str) -> int
     """If Shion's reply has a ③対応策 section, append it to dispatch_queue.jsonl.
     Returns the number of candidates written (0 if none found, or all already decided).
     """
-    block = _extract_countermeasure_block(shion_reply)
+    from shion_verification_origin import is_verification_turn
+
+    block = "" if is_verification_turn() else _extract_countermeasure_block(shion_reply)  # REV-591
     if not block:
         return 0
     candidates = _lines_to_candidates(block, user_message)

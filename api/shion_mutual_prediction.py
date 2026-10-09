@@ -74,6 +74,10 @@ _LOCK = threading.Lock()
 
 
 def mutual_prediction_enabled() -> bool:
+    from shion_verification_origin import is_verification_turn
+
+    if is_verification_turn():  # REV-591: 検証の会話では予想も答え合わせもしない
+        return False
     return os.environ.get("SHION_MUTUAL_PREDICTION_ENABLED", "1").strip().lower() not in {"0", "false", "off", "no"}
 
 
@@ -570,7 +574,10 @@ def load_prediction_errors_for_dates(dates: list[str], *, path: Path | None = No
 
 def build_reflection_material(dates: list[str], *, path: Path | None = None) -> str:
     """外れた予想を、内省の材料になる短い箇条書きにする。無ければ空文字。"""
-    errors = load_prediction_errors_for_dates(dates, path=path)
+    from shion_verification_origin import is_verification_row
+
+    # REV-591: 検証の会話での外れは相手（本人）について学ぶ材料にしない
+    errors = [e for e in load_prediction_errors_for_dates(dates, path=path) if not is_verification_row(e)]
     if not errors:
         return ""
     lines = []

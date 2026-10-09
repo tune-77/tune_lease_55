@@ -2,6 +2,8 @@ import { internalApiAuthHeaders } from "@/lib/apiAuth";
 
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://127.0.0.1:8000";
 const DIALOGUE_TIMEOUT_MS = 180_000;
+// REV-591: 検証の会話の印。FastAPI まで通さないと本人の会話として記憶・内省に入る
+const VERIFICATION_HEADER = "X-Shion-Verification";
 
 async function proxyToFastApi(request: Request, method: "POST" | "DELETE") {
   const controller = new AbortController();
@@ -9,11 +11,13 @@ async function proxyToFastApi(request: Request, method: "POST" | "DELETE") {
 
   try {
     const body = method === "POST" ? await request.text() : undefined;
+    const verification = request.headers.get(VERIFICATION_HEADER);
     const upstream = await fetch(`${FASTAPI_URL}/api/lease-intelligence/dialogue`, {
       method,
       headers: {
         ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
         ...internalApiAuthHeaders(),
+        ...(verification ? { [VERIFICATION_HEADER]: verification } : {}),
       },
       body,
       signal: controller.signal,

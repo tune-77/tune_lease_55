@@ -53,7 +53,7 @@ CITE_RE = re.compile(r"\[\[[^\]]+\]\]|出典|参照ナレッジ|根拠[:：]")
 
 def ask(base: str, question: str, user_id: str, timeout: float = 180.0) -> dict[str, Any]:
     body = json.dumps({"message": question, "user_id": user_id, "response_mode": "shion"}, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(f"{base}/api/chat", data=body, headers={"Content-Type": "application/json"}, method="POST")
+    req = urllib.request.Request(f"{base}/api/chat", data=body, headers={"Content-Type": "application/json", "X-Shion-Verification": "1"}, method="POST")  # REV-591
     started = time.monotonic()
     with urllib.request.urlopen(req, timeout=timeout) as res:
         data = json.loads(res.read().decode("utf-8"))

@@ -109,6 +109,10 @@ def record_interaction(
 
     Returns: 更新後の state
     """
+    from shion_verification_origin import is_verification_turn
+
+    if is_verification_turn():  # REV-591: 検証の会話は関係性スコアに数えない
+        return _load_state()
     # REV-472: 予想の答え合わせ（record_prediction_outcome）と同時に書いても失われないよう排他する
     with _STATE_LOCK:
         return _record_interaction_locked(feedback_type, topic_depth)

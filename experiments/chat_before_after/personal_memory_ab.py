@@ -53,7 +53,7 @@ def talk_check(question: dict, text: str) -> dict:
 
 def ask(question: str, user_id: str) -> dict:
     body = json.dumps({"message": question, "user_id": user_id, "response_mode": "shion"}, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(f"http://127.0.0.1:{PORT}/api/chat", data=body, headers={"Content-Type": "application/json"}, method="POST")
+    req = urllib.request.Request(f"http://127.0.0.1:{PORT}/api/chat", data=body, headers={"Content-Type": "application/json", "X-Shion-Verification": "1"}, method="POST")  # REV-591
     with urllib.request.urlopen(req, timeout=240) as res:
         return json.loads(res.read().decode("utf-8"))
 
