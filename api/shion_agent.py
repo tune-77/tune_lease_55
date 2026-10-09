@@ -16,6 +16,12 @@ from config import get_gemini_model
 from pathlib import Path
 from typing import AsyncGenerator
 
+from api.langfuse_observability import annotate_shion_trace, setup_langfuse_observability
+
+# Instrument ADK before constructing the production agent. This is a no-op
+# unless SHION_LANGFUSE_ENABLED is explicitly enabled with valid credentials.
+setup_langfuse_observability()
+
 from google.adk.agents import LlmAgent
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
@@ -251,6 +257,7 @@ async def stream_shion_screening(params: dict) -> AsyncGenerator[dict, None]:
         user_id="demo",
         session_id=session_id,
     )
+    annotate_shion_trace(session_id=session_id, params=params)
 
     # エージェントへのインプット（案件情報をテキストで渡す）
     user_text = _build_user_text(params)
