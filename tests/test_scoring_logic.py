@@ -77,8 +77,8 @@ def test_warning_gates_do_not_change_score(fixed_scoring, monkeypatch):
 
 
 def test_asset_update_preserves_old_snapshot(fixed_scoring, monkeypatch, tmp_path):
-    assets = json.loads((Path(sc._SCRIPT_DIR) / "static_data/scoring_judgment_assets.json").read_text())
-    path = tmp_path / "static_data/scoring_judgment_assets.json"
+    assets = json.loads((Path(sc._SCRIPT_DIR) / "config/scoring_judgment_assets.json").read_text())
+    path = tmp_path / "config/scoring_judgment_assets.json"
     path.parent.mkdir()
     path.write_text(json.dumps(assets))
     monkeypatch.setattr(sc, "_SCRIPT_DIR", str(tmp_path))

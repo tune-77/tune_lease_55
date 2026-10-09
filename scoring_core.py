@@ -849,7 +849,7 @@ def run_quick_scoring(inputs: dict) -> dict:
     """
     judgment_reasons: list[dict] = []
     try:
-        with open(os.path.join(_SCRIPT_DIR, "static_data", "scoring_judgment_assets.json"), encoding="utf-8") as f:
+        with open(os.path.join(_SCRIPT_DIR, "config", "scoring_judgment_assets.json"), encoding="utf-8") as f:
             judgment_assets = json.load(f)
     except (OSError, ValueError) as exc:
         record_silent_failure("scoring.judgment_assets", "fallback", exc)
