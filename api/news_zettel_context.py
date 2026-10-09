@@ -89,23 +89,35 @@ def recent_memos(
     today: dt.date,
     limit: int = MAX_MEMOS,
     recheck: dict[str, dict[str, Any]] | None = None,
+    industry_links: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """ハブにつながった（Jev 判定を通った）最近の永続メモを新しい順に limit 件まで。"""
     cutoff = (today - dt.timedelta(days=MAX_AGE_DAYS)).isoformat()
-    from scripts.build_news_zettel import HUBS, hub_fit_min, hub_legacy_fit_min, hub_title_ok, load_recheck
+    from scripts.build_news_zettel import (
+        HUBS,
+        hub_fit_min,
+        hub_legacy_fit_min,
+        hub_title_ok,
+        load_industry_links,
+        load_recheck,
+    )
 
     # REV-534/536/539 説明を絞ったハブは、既存メモも読む時に絞る（メモ・状態ファイルは書き換えない）。
     # 今の説明で判定し直した点数（data/news_zettel_hub_recheck.json）があればそれを使い、
     # 判定に使った説明が今と同じならそのハブのしきい値、古い説明の点数なら legacy のしきい値で絞る
     hub_by_label = {hub["label"]: hub for hub in HUBS}
     rechecked = load_recheck() if recheck is None else recheck
+    # REV-587 未接続のメモは、業種ハブで判定し直した記録（data/news_zettel_industry_links.json）があればそれを使う
+    links = load_industry_links() if industry_links is None else industry_links
     rows = []
     for key, entry in state.items():
         if not isinstance(entry, dict) or entry.get("status") != "written":
             continue
-        linked = [hub for hub in entry.get("hubs") or [] if hub in hubs]
-        first = (entry.get("hubs") or [""])[0]  # hub_fit は先頭のハブについての判定
-        record = rechecked.get(key) if (rechecked.get(key) or {}).get("hub") == first else None
+        link = links.get(key) if not entry.get("hubs") and (links.get(key) or {}).get("hub") else None
+        entry_hubs = entry.get("hubs") or ([link["hub"]] if link else [])
+        linked = [hub for hub in entry_hubs if hub in hubs]
+        first = (entry_hubs or [""])[0]  # hub_fit は先頭のハブについての判定
+        record = link or (rechecked.get(key) if (rechecked.get(key) or {}).get("hub") == first else None)
         fit = (record or entry).get("hub_fit")
         hub = hub_by_label.get(first)
         if hub is None:
