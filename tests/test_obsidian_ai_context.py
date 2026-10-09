@@ -75,6 +75,34 @@ def test_collect_obsidian_ai_context_applies_optional_typesafe_filter(monkeypatc
     }
 
 
+def test_collect_obsidian_ai_context_marks_complete_self_answer_boundary(monkeypatch):
+    from api.answer_repeat_guard import SELF_ANSWER_END, SELF_ANSWER_START, drop_self_answers_in_history
+
+    answer = "資金繰りの悪化を月次で確認し、返済余力の変化を見る。" * 3
+    hits = [
+        {
+            "path": "Projects/tune_lease_55/Lease Intelligence/Dialogue/2026-10-09.md",
+            "snippet": f"**リース知性体**\n\n{answer}",
+        }
+    ]
+    monkeypatch.setattr(
+        oac,
+        "_load_obsidian_bridge",
+        lambda: (lambda _query, limit=4: hits[:limit], lambda _query, _hits: {"digest": "digest"}),
+    )
+
+    result = oac.collect_obsidian_ai_context("資金繰り", limit=1)
+
+    assert result["block"].count(SELF_ANSWER_START) == 1
+    assert result["block"].count(SELF_ANSWER_END) == 1
+    guarded, dropped = drop_self_answers_in_history(
+        result["block"],
+        [{"role": "assistant", "content": answer}],
+    )
+    assert dropped == 1
+    assert answer[:30] not in guarded
+
+
 def test_shared_context_requires_separate_external_processing_opt_in(monkeypatch):
     monkeypatch.setenv("TYPESAFE_RAG_ENABLED", "1")
     monkeypatch.delenv("TYPESAFE_ALLOW_SHARED_CONTEXT", raising=False)
