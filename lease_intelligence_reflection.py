@@ -1430,6 +1430,7 @@ def _return_reflection_to_memory(vault: Path, feedback: dict[str, object]) -> No
                 session_id="private_reflection_feedback_loop",
                 keypoints=keypoints,
                 date_str=date_str,
+                content_source="shion",  # 紫苑自身の内省の学び（REV-544）
             )
         # 読んでから書くまでを排他にする（REV-481）
         with _mind_locked(vault):

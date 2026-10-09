@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from obsidian_query import split_query_terms
-from runtime_paths import resolve_obsidian_vault
+from runtime_paths import get_data_path, resolve_obsidian_vault
 
 
 DEFAULT_NEWS_REL_DIRS = (
@@ -25,7 +25,7 @@ DEFAULT_NEWS_REL_DIRS = (
     Path("05-クリップ_記事") / "リースニュース",
     Path("リースニュース"),
 )
-METRICS_PATH = Path(__file__).resolve().parent / "data" / "lease_news_metrics.json"
+METRICS_PATH = Path(get_data_path("lease_news_metrics.json"))  # DATA_DIR に従う（REV-544）
 NEWS_JUDGMENT_SIGNALS_JSONL = Path(__file__).resolve().parent / "data" / "news_judgment_signals.jsonl"
 NEWS_JUDGMENT_SIGNALS_LATEST_JSON = Path(__file__).resolve().parent / "data" / "news_judgment_signals_latest.json"
 NEWS_USAGE_FEEDBACK_JSONL = Path(__file__).resolve().parent / "data" / "lease_news_usage_feedback.jsonl"

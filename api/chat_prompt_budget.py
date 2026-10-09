@@ -116,7 +116,8 @@ SPECS: dict[str, BlockSpec] = {
 }
 DEFAULT_SPEC = BlockSpec(AUX, 800)
 
-_LOG_PATH = Path(os.environ.get("CHAT_PROMPT_BUDGET_LOG_PATH") or Path(__file__).resolve().parents[1] / "data" / "chat_prompt_budget_log.jsonl")
+from runtime_paths import get_data_path
+_LOG_PATH = Path(os.environ.get("CHAT_PROMPT_BUDGET_LOG_PATH") or get_data_path("chat_prompt_budget_log.jsonl"))
 _HEADER_RE = re.compile(r"^\s*【[^】]{1,60}】")
 _ITEM_PREFIX_RE = re.compile(r"^\s*(?:[-*・]|\d+[.)]|\[[^\]]{1,40}\])\s*")
 _CITE_RE = re.compile(r"（出典[:：][^）]*）")

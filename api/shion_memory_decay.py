@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_PATH = _REPO_ROOT / "data" / "shion_memory_index.json"
-_USAGE_LOG_PATH = _REPO_ROOT / "data" / "shion_memory_usage_log.jsonl"
+from runtime_paths import get_data_path
+_USAGE_LOG_PATH = Path(get_data_path("shion_memory_usage_log.jsonl"))  # DATA_DIR に従う（REV-544）
 _FRESHNESS_PATH = _REPO_ROOT / "data" / "shion_memory_freshness.jsonl"
 
 # freshness が 1.0 → 0.5 になるまでの日数（半減期）

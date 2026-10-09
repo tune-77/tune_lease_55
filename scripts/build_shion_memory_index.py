@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from api.judgment_policy import knowledge_kind_of  # noqa: E402
+from api.keypoint_source import normalized_source
 from api.shion_memory_taxonomy import MEMORY_TYPES, RECALL_ROUTES, make_memory_record
 from obsidian_query import list_vault_md_files
 from memory_promotion_policy import TEACHING_DOMAIN_TERMS
@@ -432,15 +433,16 @@ def _mind_records(path: Path) -> list[dict[str, Any]]:
         content = str(kp.get("fact") or kp.get("content") or "").strip()
         if not content:
             continue
-        records.append(
-            make_memory_record(
-                content,
-                source=str(kp.get("source") or "mind.conversation_keypoint"),
-                source_path=_display_source_path(path),
-                memory_type=kp.get("memory_type") or None,
-                confidence=_safe_float(kp.get("confidence"), 0.75),
-            ).to_dict()
-        )
+        record = make_memory_record(
+            content,
+            source=str(kp.get("source") or "mind.conversation_keypoint"),
+            source_path=_display_source_path(path),
+            memory_type=kp.get("memory_type") or None,
+            confidence=_safe_float(kp.get("confidence"), 0.75),
+        ).to_dict()
+        # 出所（REV-544）。紫苑の発言・不明の要点を想起メモで「教わった知識」と区別する
+        record["content_source"] = normalized_source(kp.get("content_source"))
+        records.append(record)
 
     return records
 

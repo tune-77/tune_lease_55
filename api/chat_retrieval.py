@@ -241,14 +241,18 @@ def _append_rag_hits(
     rag_refs: list[str],
     rag_knowledge_refs: list[dict[str, Any]],
 ) -> str:
+    from api.answer_repeat_guard import is_dev_note_path, is_self_answer_path, mark_self_answer_text
     from api.knowledge.vector_store import confidence_for_hit
 
     all_docs = []
     for hit in hits:
         text = str(hit.get("text") or "").strip()
         ref = str(hit.get("ref") or hit.get("file_name") or "").strip()
-        if not text:
-            continue
+        path = str(hit.get("file_path") or ref)
+        if not text or is_dev_note_path(path):
+            continue  # REV-544: 開発用ノートは参照ナレッジに入れない（Markdown 検索の代替経路も同じ）
+        if is_self_answer_path(path):
+            text = mark_self_answer_text(text)
         confidence, confidence_level = confidence_for_hit(hit)
         prefix = f"{ref}: " if ref else ""
         marker = RAG_CONFIDENCE_MARKERS.get(confidence_level, "")
