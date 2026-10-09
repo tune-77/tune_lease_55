@@ -87,6 +87,50 @@ HUBS: list[dict[str, str]] = [
      "title_any": "機械受注|工作機械"},
 ]
 
+# ── 業種ハブ（REV-587） ──────────────────────────────────────────────────────
+# 「業種別傾向」1つでは業界全体の比較の記事しか通らず（0.85）、特定業種の記事が未接続になっていた
+# （10/10 は172件中99件が未接続）。業種ごとのハブに分け、Jev で「その具体的な業種の記事か」を 0.70 で判定する。
+# ハブノートは Vault に最小限のものを新規作成（既存の業種ノートは書き換えない）。
+# keywords は既存の未接続メモに候補の業種を当てる時だけに使う（--link-industries。判定は Jev）
+INDUSTRY_HUB_DIR = "03-知識_業界/業種分析/業種ハブ"
+_INDUSTRY_COMMON = "業種を特定しない設備投資・景気の統計・補助金や融資の制度・海外の話は除く"
+INDUSTRY_HUBS: list[dict[str, str]] = [
+    {"id": "h21", "name": "運送業・物流", "file": "業種ハブ_運送業・物流",
+     "scope": "トラック運送・倉庫・配送の業界や企業の動き（運賃・燃料費・ドライバー不足・2024年問題・倒産など）",
+     "keywords": "運送|物流|トラック|ドライバー|2024年問題|配送|倉庫|運輸|宅配|荷主|ロジスティクス"},
+    {"id": "h22", "name": "建設業", "file": "業種ハブ_建設業",
+     "scope": "ゼネコン・工務店・設備工事・住宅建築の業界や企業の動き（公共工事・受注・資材価格・労務費・倒産など）",
+     "keywords": "建設|建築|工事|ゼネコン|工務店|建材|資材|住宅|土木"},
+    {"id": "h23", "name": "製造業", "file": "業種ハブ_製造業",
+     "scope": "工場・生産設備を持つメーカーの業界や企業の動き（生産・受注・工場の新設や更新・原材料費など）",
+     "keywords": "製造|工場|メーカー|ものづくり|生産|製鉄|製鋼|化学|樹脂|部品"},
+    {"id": "h24", "name": "飲食業", "file": "業種ハブ_飲食業",
+     "scope": "外食・飲食店・給食の業界や企業の動き（客数・食材費・人手・出店・倒産など）",
+     "keywords": "飲食|外食|レストラン|居酒屋|食堂|ラーメン|カフェ|給食|フードサービス"},
+    {"id": "h25", "name": "医療・福祉", "file": "業種ハブ_医療・福祉",
+     "scope": "病院・診療所・介護施設・薬局の業界や事業者の動き（報酬改定・経営・設備・倒産など）",
+     "keywords": "医療|病院|診療所|クリニック|介護|福祉|薬局|調剤|歯科|製薬|医薬"},
+    {"id": "h26", "name": "小売・卸売", "file": "業種ハブ_小売・卸売",
+     "scope": "スーパー・コンビニ・ドラッグストア・専門店・卸の業界や企業の動き（売上・価格・店舗・倒産など）",
+     "keywords": "小売|スーパー|コンビニ|ドラッグストア|百貨店|量販店|卸売|商社|通販|店舗"},
+]
+INDUSTRY_FIT_MIN = "0.70"
+HUBS.extend(
+    {"id": hub["id"], "path": f"{INDUSTRY_HUB_DIR}/{hub['file']}", "label": hub["name"],
+     "use": f"{hub['name']}（{hub['scope']}。{_INDUSTRY_COMMON}）", "fit_min": INDUSTRY_FIT_MIN,
+     "kind": "industry", "keywords": hub["keywords"]}
+    for hub in INDUSTRY_HUBS
+)
+
+
+def is_industry_hub(hub: dict[str, str]) -> bool:
+    return hub.get("kind") == "industry"
+
+
+def industry_candidates(text: str) -> list[dict[str, str]]:
+    """見出し・メモに業種の語があるハブ（候補。つなぐかは Jev が決める）。"""
+    return [hub for hub in HUBS if is_industry_hub(hub) and re.search(hub["keywords"], text)]
+
 
 class _ReadTimeout(Exception):
     pass
@@ -273,6 +317,7 @@ def build_prompt(items: list[dict[str, Any]], hubs: list[dict[str, str]]) -> str
 - 海外の話・行政手続き・広告など、日本のリース審査との関係が読み取れない記事は idea を空文字にする。
 - hubs: 上の候補から、その記事の中心の話題がそのハブの主題そのものである時だけ、id を1個。
   周辺的・一般論的なつながりなら入れない（空配列でよい。空なら「未接続」として残す）。
+  特定の1業種の業界や企業の話なら「業種別傾向」ではなく、その業種のハブ（運送業・物流・建設業 など）を選ぶ。
 
 JSON だけを返す: {{"items": [{{"i": 0, "idea": "...", "hubs": ["h1"]}}]}}"""
 
@@ -398,8 +443,28 @@ HUB_FIT_QUESTION = {
 }
 
 
-def judge_hubs_with_jev(texts: list[str]) -> list[float | None]:
-    """メモ×ハブの組ごとに「当てはまる」確率を返す。伏せ字で送れない・不通なら None（REV-501）。"""
+# REV-587 業種ハブは「その具体的な業種の記事か」を聞く
+INDUSTRY_FIT_QUESTION = {
+    "type": "noul",
+    "instructions": "`items[{n}]` は、業界ニュースの見出し、それをリース審査向けに書き直したメモ、つなぎ先の業種ハブ（業種名と範囲）です。"
+    "この記事は、その具体的な業種についての記事ですか。",
+    "criteria": {
+        "true": "記事の中心がその業種の業界・企業・現場の話（例: 公共工事の請負額→建設業、運送会社の2024年問題→運送業・物流、外食チェーンの客数→飲食業）。",
+        "false": "業種を特定しない設備投資・景気・金融・補助金の話、地域や国全体の統計、別の業種の話、その業種には例として触れているだけ"
+        "（例: 全産業の設備投資計画→製造業、中小企業の資金繰り支援→建設業）。",
+    },
+}
+
+
+def hub_question(hub: dict[str, str]) -> dict[str, Any]:
+    return INDUSTRY_FIT_QUESTION if is_industry_hub(hub) else HUB_FIT_QUESTION
+
+
+def judge_hubs_with_jev(texts: list[str], kinds: list[dict[str, Any]] | None = None) -> list[float | None]:
+    """メモ×ハブの組ごとに「当てはまる」確率を返す。伏せ字で送れない・不通なら None（REV-501）。
+
+    kinds を渡すと組ごとに質問（HUB_FIT_QUESTION / INDUSTRY_FIT_QUESTION）を変える（REV-587）。
+    """
     import typesafe_dedup_guard as transport
     from api.chat_judgment_asset_capture import mask_for_jev
 
@@ -410,9 +475,10 @@ def judge_hubs_with_jev(texts: list[str]) -> list[float | None]:
     results: list[float | None] = [None] * len(texts)
     if not sendable:
         return results
+    picked = [(kinds or [HUB_FIT_QUESTION] * len(texts))[k] for k in sendable]
     questions = {
-        f"item{n}": {**HUB_FIT_QUESTION, "instructions": HUB_FIT_QUESTION["instructions"].format(n=n)}
-        for n in range(len(sendable))
+        f"item{n}": {**question, "instructions": question["instructions"].format(n=n)}
+        for n, question in enumerate(picked)
     }
     try:
         body = transport._default_request(
@@ -423,6 +489,17 @@ def judge_hubs_with_jev(texts: list[str]) -> list[float | None]:
     except Exception as exc:  # noqa: BLE001 - Jev が使えない時はリンクを残し hub_check: unchecked と記録する
         print(f"[news_zettel] ハブ判定スキップ: {type(exc).__name__}")
     return results
+
+
+def _judge(checker, texts: list[str], kinds: list[dict[str, Any]]) -> list[float | None]:
+    """checker が kinds を受け取らない（テスト用の1引数の関数）ならテキストだけ渡す。"""
+    import inspect
+
+    if checker is None:
+        return judge_hubs_with_jev(texts, kinds)
+    if len(inspect.signature(checker).parameters) >= 2:
+        return checker(texts, kinds)
+    return checker(texts)
 
 
 def check_hubs(
@@ -436,10 +513,12 @@ def check_hubs(
     if not targets or os.environ.get("NEWS_ZETTEL_HUB_CHECK", "1").strip() == "0":
         return {}
     texts = []
+    kinds = []
     for index, row in targets:
         hub = hub_by_id[row["hubs"][0]]
         texts.append(f"ハブ: {hub['label']}（{hub['use']}）\n見出し: {batch[index]['title'][:80]}\nメモ: {row['idea'][:160]}")
-    scores = (checker or judge_hubs_with_jev)(texts)
+        kinds.append(hub_question(hub))
+    scores = _judge(checker, texts, kinds)
     return {index: score for (index, _row), score in zip(targets, scores) if score is not None}
 
 
@@ -807,13 +886,78 @@ def recheck_hubs(
     checked = 0
     for start in range(0, len(targets), batch):
         chunk = targets[start:start + batch]
-        for (key, hub, _text), score in zip(chunk, (checker or judge_hubs_with_jev)([t for _k, _h, t in chunk])):
+        scores = _judge(checker, [t for _k, _h, t in chunk], [hub_question(h) for _k, h, _t in chunk])
+        for (key, hub, _text), score in zip(chunk, scores):
             if score is not None:
                 items[key] = {"hub": hub["label"], "hub_use": hub["use"], "hub_fit": round(score, 3), "checked_at": now}
                 checked += 1
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"version": 1, "items": items}, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"targets": len(targets), "checked": checked}
+
+
+# ── 既存の未接続メモを業種ハブで判定し直す（REV-587） ───────────────────────────
+# REV-539 と同じく、メモ・状態ファイルは書き換えず別ファイルに置く。読み出し（api/news_zettel_context）は
+# 未接続のメモについてこちらを見て、今の説明で 0.70 以上なら業種ハブにつながったものとして扱う。Jev のみ。
+INDUSTRY_LINKS_PATH = RECHECK_PATH.with_name("news_zettel_industry_links.json")
+
+
+def load_industry_links(path: Path | None = None) -> dict[str, dict[str, Any]]:
+    return load_recheck(path or INDUSTRY_LINKS_PATH)
+
+
+def link_industries(
+    vault: Path,
+    state: dict[str, dict[str, Any]],
+    *,
+    checker: Callable[..., list[float | None]] | None = None,
+    path: Path | None = None,
+    batch: int = 20,
+) -> dict[str, int]:
+    """未接続の既存メモのうち業種の語があるものを、候補の業種ハブごとに Jev で判定し、一番高い組を残す。"""
+    from api.news_zettel_context import _memo_parts
+
+    path = path or INDUSTRY_LINKS_PATH
+    items = load_industry_links(path)
+    pairs = []
+    memos = 0
+    for key, entry in state.items():
+        if not isinstance(entry, dict) or entry.get("status") != "written" or entry.get("hubs"):
+            continue
+        done = items.get(key) or {}
+        title, body = _memo_parts(vault, str(entry.get("memo") or ""))
+        if not body:
+            continue
+        candidates = [
+            hub for hub in industry_candidates(f"{title} {body}")
+            if (done.get("uses") or {}).get(hub["label"]) != hub["use"]  # 判定済み・説明も同じなら飛ばす
+        ]
+        memos += bool(candidates)
+        for hub in candidates:
+            pairs.append((key, hub, f"ハブ: {hub['label']}（{hub['use']}）\n見出し: {title[:80]}\nメモ: {body[:160]}"))
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    checked = 0
+    for start in range(0, len(pairs), batch):
+        chunk = pairs[start:start + batch]
+        scores = _judge(checker, [t for _k, _h, t in chunk], [hub_question(h) for _k, h, _t in chunk])
+        for (key, hub, _text), score in zip(chunk, scores):
+            if score is None:
+                continue
+            checked += 1
+            record = items.setdefault(key, {"scores": {}, "uses": {}})
+            record["scores"][hub["label"]] = round(score, 3)
+            record.setdefault("uses", {})[hub["label"]] = hub["use"]
+            best = max(record["scores"], key=lambda label: record["scores"][label])
+            best_hub = next(h for h in HUBS if h["label"] == best)
+            record.update({"hub": best, "hub_use": best_hub["use"], "hub_fit": record["scores"][best], "checked_at": now})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": 1, "items": items}, ensure_ascii=False, indent=1), encoding="utf-8")
+    hub_by_label = {hub["label"]: hub for hub in HUBS}
+    linked = sum(
+        1 for record in items.values()
+        if record.get("hub") in hub_by_label and float(record.get("hub_fit") or 0) >= hub_fit_min(hub_by_label[record["hub"]])
+    )
+    return {"memos": memos, "pairs": len(pairs), "checked": checked, "linked": linked}
 
 
 def main() -> int:
@@ -826,7 +970,14 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="プロンプトを表示するだけ（呼び出し・書き込みなし）")
     parser.add_argument("--recheck-hubs", nargs="+", metavar="ハブ名",
                         help="説明を変えたハブの既存の接続を Jev で判定し直すだけ（メモ・状態ファイルは書き換えない）")
+    parser.add_argument("--link-industries", action="store_true",
+                        help="未接続の既存メモを業種ハブで Jev 判定し直すだけ（メモ・状態ファイルは書き換えない。REV-587）")
     args = parser.parse_args()
+    if args.link_industries:
+        from runtime_paths import resolve_obsidian_vault
+
+        print(json.dumps(link_industries(args.vault or resolve_obsidian_vault(), load_state()), ensure_ascii=False))
+        return 0
     if args.recheck_hubs:
         from runtime_paths import resolve_obsidian_vault
 

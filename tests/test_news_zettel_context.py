@@ -206,7 +206,7 @@ def test_state_files_follow_data_dir(tmp_path):
 
     code = (
         "import api.news_zettel_context as c, scripts.build_news_zettel as b;"
-        "print(c.STATE_PATH); print(b.STATE_PATH); print(b.RECHECK_PATH); print(b.METI_STATUS_PATH)"
+        "print(c.STATE_PATH); print(b.STATE_PATH); print(b.RECHECK_PATH); print(b.METI_STATUS_PATH); print(b.INDUSTRY_LINKS_PATH)"
     )
     repo = Path(__file__).resolve().parents[1]
     env = {**os.environ, "DATA_DIR": str(tmp_path)}
@@ -217,4 +217,27 @@ def test_state_files_follow_data_dir(tmp_path):
         str(tmp_path / "news_zettel_state.json"),
         str(tmp_path / "news_zettel_hub_recheck.json"),
         str(tmp_path / "news_zettel_meti_feed.json"),
+        str(tmp_path / "news_zettel_industry_links.json"),
     ]
+def test_unconnected_memo_uses_industry_link_at_read_time():
+    """REV-587: 未接続のメモでも、業種ハブで判定し直した記録が 0.70 以上なら、その業種ハブのメモとして使う。"""
+    from scripts.build_news_zettel import HUBS
+
+    use = {hub["label"]: hub["use"] for hub in HUBS}["建設業"]
+    state = {"clip/a.md": {"status": "written", "memo": "05/2026-10-08_7月の公共工事動向.md", "hubs": []}}
+    assert ctx.recent_memos(["建設業"], state=state, today=TODAY, recheck={}, industry_links={}) == []
+    ok = {"clip/a.md": {"hub": "建設業", "hub_use": use, "hub_fit": 0.74}}
+    rows = ctx.recent_memos(["建設業"], state=state, today=TODAY, recheck={}, industry_links=ok)
+    assert [row["hub"] for row in rows] == ["建設業"]
+    low = {"clip/a.md": {"hub": "建設業", "hub_use": use, "hub_fit": 0.65}}
+    assert ctx.recent_memos(["建設業"], state=state, today=TODAY, recheck={}, industry_links=low) == []
+    # 接続済みのメモは元のハブのまま（業種の記録では上書きしない）
+    state["clip/a.md"].update({"hubs": ["倒産率とリスク"], "hub_fit": 0.9})
+    rows = ctx.recent_memos(["建設業", "倒産率とリスク"], state=state, today=TODAY, recheck={}, industry_links=ok)
+    assert [row["hub"] for row in rows] == ["倒産率とリスク"]
+
+
+def test_industry_hubs_are_candidates_for_question_matching():
+    """REV-587: 全ハブから質問に近いメモを選ぶ時の候補に業種ハブも入る。"""
+    assert {"運送業・物流", "建設業", "医療・福祉"} <= set(ctx._hub_labels_by_file().values())
+    assert ctx.hit_hubs(["[[業種ハブ_建設業#概要]]", "業種ハブ_運送業・物流.md"]) == ["建設業", "運送業・物流"]

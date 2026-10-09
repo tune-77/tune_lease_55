@@ -516,3 +516,86 @@ def test_machine_orders_link_requires_keyword_in_title(vault, monkeypatch):
                    model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": ["h15"]}]},
                    hub_checker=lambda texts: [0.9])
     assert next(iter(state.values()))["hubs"] == ["機械受注統計"]
+
+
+def _industry_hub_note(vault, name):
+    hub = next(h for h in zettel.HUBS if h["label"] == name)
+    path = vault / f"{hub['path']}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"# {name}\n", encoding="utf-8")
+    return hub
+
+
+def test_industry_hubs_are_offered_only_when_note_exists_and_use_070(vault):
+    """REV-587: 業種ごとのハブ。ノートがある時だけ候補にし、しきい値は 0.70。"""
+    labels = [h["label"] for h in zettel.HUBS if zettel.is_industry_hub(h)]
+    assert labels == ["運送業・物流", "建設業", "製造業", "飲食業", "医療・福祉", "小売・卸売"]
+    assert "建設業" not in [h["label"] for h in zettel.available_hubs(vault)]
+    hub = _industry_hub_note(vault, "建設業")
+    assert "建設業" in [h["label"] for h in zettel.available_hubs(vault)]
+    assert zettel.hub_fit_min(hub) == 0.70 and "業種を特定しない設備投資" in hub["use"]
+    assert "その業種のハブ" in zettel.build_prompt([], zettel.available_hubs(vault))
+    assert [h["label"] for h in zettel.industry_candidates("7月の公共工事動向、請負金額が増加")] == ["建設業"]
+
+
+def test_industry_hub_is_judged_with_industry_question(vault, monkeypatch):
+    """REV-587: 業種ハブは「その具体的な業種の記事か」を Jev に聞き、0.70 以上でつなぐ。"""
+    monkeypatch.setenv("NEWS_ZETTEL_HUB_CHECK", "1")
+    hub = _industry_hub_note(vault, "運送業・物流")
+    asked: list = []
+
+    def checker(texts, kinds):
+        asked.extend(kinds)
+        return [0.72]
+
+    state: dict = {}
+    zettel.process(vault, _one_clip(vault), state,
+                   model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": [hub["id"]]}]},
+                   hub_checker=checker)
+    assert asked == [zettel.INDUSTRY_FIT_QUESTION]
+    entry = next(iter(state.values()))
+    assert entry["hubs"] == ["運送業・物流"] and entry["hub_use"] == hub["use"]
+    text = next((vault / zettel.MEMO_DIR).glob("*.md")).read_text(encoding="utf-8")
+    assert f"[[{hub['path']}|運送業・物流]]" in text
+
+    state = {}
+    for memo in (vault / zettel.MEMO_DIR).glob("*.md"):
+        memo.unlink()
+    zettel.process(vault, _one_clip(vault), state,
+                   model_call=lambda _p: {"items": [{"i": 0, "idea": IDEA, "hubs": [hub["id"]]}]},
+                   hub_checker=lambda texts, kinds: [0.6])
+    assert next(iter(state.values()))["hubs"] == []
+
+
+def test_link_industries_writes_side_file_only_and_skips_judged(vault, tmp_path):
+    """REV-587: 未接続の既存メモを業種ハブで判定し直し、別ファイルにだけ保存する（メモ・状態は書き換えない）。"""
+    memo_dir = vault / zettel.MEMO_DIR
+    memo_dir.mkdir(parents=True)
+    memo = memo_dir / "2026-10-10_7月の公共工事動向.md"
+    memo.write_text("---\ntype: news_zettel\n---\n# 7月の公共工事動向、件数・請負金額ともに減\n\n"
+                    "公共工事が減ると地場の工務店の受注が細るかも。\n\n- 元記事: [[x]]\n", encoding="utf-8")
+    plain = memo_dir / "2026-10-10_日銀短観.md"
+    plain.write_text("---\ntype: news_zettel\n---\n# 日銀短観、景況感は横ばい\n\n全体の景気は様子見かも。\n", encoding="utf-8")
+    before = memo.read_text(encoding="utf-8")
+    state = {
+        "clip/a.md": {"status": "written", "memo": str(memo.relative_to(vault)), "hubs": []},
+        "clip/b.md": {"status": "written", "memo": str(plain.relative_to(vault)), "hubs": []},
+        "clip/c.md": {"status": "written", "memo": "x.md", "hubs": ["倒産率とリスク"], "hub_fit": 0.9},
+    }
+    snapshot = json.dumps(state, sort_keys=True)
+    out = tmp_path / "links.json"
+    seen: list = []
+
+    def checker(texts, kinds):
+        seen.extend(texts)
+        return [0.83 if "建設業" in t else 0.2 for t in texts]
+
+    result = zettel.link_industries(vault, state, checker=checker, path=out)
+    assert result["memos"] == 1 and result["linked"] == 1
+    assert all("公共工事" in t for t in seen) and any("ハブ: 建設業" in t for t in seen)
+    item = zettel.load_industry_links(out)["clip/a.md"]
+    assert item["hub"] == "建設業" and item["hub_fit"] == 0.83 and item["hub_use"].startswith("建設業（")
+    assert memo.read_text(encoding="utf-8") == before and json.dumps(state, sort_keys=True) == snapshot
+    # 2回目は判定済み・説明も同じなので Jev を呼ばない
+    again = zettel.link_industries(vault, state, checker=lambda texts, kinds: pytest.fail("呼ばない"), path=out)
+    assert again["pairs"] == 0 and again["linked"] == 1
