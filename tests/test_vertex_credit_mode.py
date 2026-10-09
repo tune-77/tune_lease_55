@@ -168,6 +168,8 @@ def test_off_restores_previous_behaviour(state_path, monkeypatch) -> None:
     calls: dict = {}
     _install_fakes(monkeypatch, calls)
     monkeypatch.setenv("VERTEX_CREDIT_MODE", "off")
+    # このテストは Vertex の off を見る。端末側で昇格済みの Jev 再順位付けは分離する。
+    monkeypatch.setenv("JEV_RAG_RERANK", "off")
     state_path.write_text(json.dumps({"rerank": {"promoted": True}}))
 
     result = build_chat_retrieval_context("工作機械の残価は？", rag_top_k=3, question_category="lease_screening", is_general_response_mode=False)

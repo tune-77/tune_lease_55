@@ -33,7 +33,9 @@ def test_activity_log_accepts_only_bounded_events_and_dedupes(tmp_path):
     assert "question" not in json.loads(rows[0])
 
 
-def test_observation_stores_categories_not_question_text(tmp_path):
+def test_observation_stores_categories_not_question_text(tmp_path, monkeypatch):
+    # 単体テストでは実Geminiの表現でテンプレート理解文を上書きしない。
+    monkeypatch.setattr("lease_intelligence_activity._generate_observation_with_llm", lambda *_args, **_kwargs: None)
     activity = tmp_path / "activity.jsonl"
     prompts = tmp_path / "prompts.jsonl"
     metrics = tmp_path / "metrics.json"
@@ -125,7 +127,9 @@ def test_simulator_activity_is_recorded_not_silently_dropped(tmp_path):
     assert len(rows) == 2
 
 
-def test_dialogue_visit_is_recorded_and_reflected_in_understanding(tmp_path):
+def test_dialogue_visit_is_recorded_and_reflected_in_understanding(tmp_path, monkeypatch):
+    # 資格情報のある開発環境でも外部呼び出しをせず、決定的なフォールバックだけを検証する。
+    monkeypatch.setattr("lease_intelligence_activity._generate_observation_with_llm", lambda *_args, **_kwargs: None)
     log = tmp_path / "activity.jsonl"
 
     recorded = record_user_activity(

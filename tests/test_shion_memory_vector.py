@@ -137,11 +137,13 @@ def test_vector_module_degrades_gracefully_without_chromadb(monkeypatch):
     assert shion_memory_vector.is_available() is False
 
 
-def test_shared_encoder_returns_none_without_local_model():
+def test_shared_encoder_returns_none_without_local_model(monkeypatch):
     """ローカルモデル未配置の環境では共有エンコーダーは None（フォールバック前提）。"""
-    from api.knowledge.vector_store import get_shared_encoder
+    from api.knowledge import vector_store
 
-    assert get_shared_encoder() is None
+    # 開発端末にモデルが配置済みでも「ロード不可」の分岐を決定的に再現する。
+    monkeypatch.setattr(vector_store.KnowledgeVectorStore, "_ensure_encoder", lambda _self: False)
+    assert vector_store.get_shared_encoder() is None
 
 
 def test_background_sync_not_started_without_chromadb(monkeypatch):
