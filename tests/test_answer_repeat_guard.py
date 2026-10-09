@@ -136,3 +136,17 @@ def test_call_gemini_chat_sends_guarded_prompt(monkeypatch):
     monkeypatch.setattr(cm.requests, "post", lambda url, json, headers, timeout: sent.update(json) or _Resp())
     assert cm.call_gemini_chat("システム", _history((Q, ANSWER)), Q) == "回答"
     assert REPEAT_QUESTION_BLOCK in sent["system_instruction"]["parts"][0]["text"]
+
+
+def test_pending_prefix_from_dialogue_room_is_ignored():
+    """REV-588 対話室が先頭に付ける「前回お約束した調査」を外してから比べる。"""
+    question = "運送業や建設業の倒産が増えてるけど、審査で何を見ればいい？"
+    prefix = "[前回お約束した調査を先に実行します: 「燃料高騰の影響」（下調べ済み: 軽油価格は前年比…）]\n\n"
+    history = [{"role": "user", "content": question}, {"role": "assistant", "content": "前回の答え"}]
+    assert find_repeated_question(prefix + question, history) == question
+    # 履歴側に付いていても同じ
+    assert find_repeated_question(question, [{"role": "user", "content": prefix + question}])
+    # 外した後が別の質問なら聞き直しではない
+    assert find_repeated_question(prefix + "中古建機の残価が心配", history) == ""
+    # 調査の約束だけで本文が短い時は判定しない
+    assert find_repeated_question(prefix + "うん", history) == ""
