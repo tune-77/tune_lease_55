@@ -149,6 +149,7 @@ AIにとって自然な学習の形を、人間の業務判断に移植する。
 |---|---|
 | 審査API・結果登録・判断資産候補 | `api/main.py`, `api/schemas.py` |
 | ADK / 紫苑エージェント入口 | `api/shion_agent.py` |
+| Langfuse実行トレース（任意・本文秘匿） | `api/langfuse_observability.py`, `docs/langfuse_observability.md` |
 | 審査入力・デモ画面 | `frontend/src/app/screening/page.tsx`, `frontend/src/app/demo/page.tsx` |
 | Q_risk と人間判断フィードバック | `frontend/src/components/analysis/QRiskPanel.tsx` |
 | Cloud Run入力の帰還・検疫 | `scripts/sync_cloudrun_inputs_from_gcs.py`, `scripts/promote_cloudrun_return_data.py` |
