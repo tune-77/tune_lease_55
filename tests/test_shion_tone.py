@@ -46,10 +46,15 @@ def test_shion_prompt_priority_block_defines_conflict_order():
     assert block.index("ユーザーの直近依頼") < block.index("記憶・Obsidian・判断資産")
 
 
-def test_shion_tone_block_prefers_casual_short_replies_without_dropping_business_detail():
+def test_shion_tone_block_uses_polite_short_replies_without_dropping_business_detail():
+    """REV-596: です・ます調に統一。短さ・疲れ時に仕事へ戻さない・業務の中身は削らない、は維持。"""
     block = build_shion_feminine_tone_block()
 
-    assert "距離感と長さ" in block
+    assert "語尾と距離感" in block
+    assert "「です・ます」で統一" in block
+    assert "砕けた語尾は使わない" in block
+    assert "3〜5行" in block
+    assert "たぶん〜かと思います" in block
     assert "1〜3文" in block
     assert "もしよろしければ" in block
     assert "仕事・案件・明日の段取りの話へ戻さず" in block

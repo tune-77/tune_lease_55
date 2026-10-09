@@ -204,7 +204,7 @@ def test_turn_blocks_per_scene_and_mode(tmp_path, monkeypatch):
     recorder, _ = grounding.build_turn_block(state, "serious_emotion", "recorder")
     assert "記録係モード" in recorder and "推測は述べない" in recorder
     casual, casual_evidence = grounding.build_turn_block(state, "casual_emotion", "distinguish")
-    assert "たぶん〜かな" in casual and "物語っぽくても歓迎" in casual and casual_evidence == ""
+    assert "たぶん〜かと思います" in casual and "物語っぽくても歓迎" in casual and casual_evidence == ""
     screening, _ = grounding.build_turn_block(state, "screening", "distinguish")
     assert "解釈、後付けの理由" in screening
     chat, _ = grounding.build_turn_block({}, "casual", "distinguish")
