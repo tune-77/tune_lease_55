@@ -377,11 +377,12 @@ def save_lease_teaching(
         return {"is_teaching": False, "saved": False, "reason": reason}
     claim = resolve_teaching_claim(message, previous_user_message)
     record_funnel_event("taught", surface=surface, reason=reason)
+    topic = teaching_topic(claim, title_maker)
     result = _write_knowledge_and_candidate(
-        claim, topic=teaching_topic(claim, title_maker), vault=vault, candidate_saver=candidate_saver, date_str=date_str
+        claim, topic=topic, vault=vault, candidate_saver=candidate_saver, date_str=date_str
     )
     _record_saved(result, surface)
-    return {"is_teaching": True, "reason": reason, **result}
+    return {"is_teaching": True, "reason": reason, "topic": topic, **result}
 
 
 def build_save_result_prompt_block(result: dict[str, Any]) -> str:
@@ -444,7 +445,24 @@ def enforce_save_honesty(reply: str, result: dict[str, Any]) -> str:
             )
             return f"{stripped}\n\n{note}".strip()
         return text
-    return _drop_save_notices(text, str(result.get("knowledge_path") or "")) or text.strip()
+    return _drop_save_notices(text, str(result.get("knowledge_path") or "")) or saved_ack_reply(result)
+
+
+_ACK_TOPIC_MAX = 20
+
+
+def saved_ack_reply(result: dict[str, Any]) -> str:
+    """返事が保存通知だけだった時の短い一言（REV-595）。保存先・判断資産候補には触れない（#1339）。
+
+    元の文に戻すと隠した「保存しました」が再表示され、「うん。」だけでは素っ気ないため、
+    保存できた時だけ、教わった内容（題名）に軽く触れてお礼を言う。題名が長い・無い時は触れない。
+    """
+    if result.get("reason") == "save_request_shion_answer":
+        return "わかりました。この内容、あとで使えるようにしておきますね。"
+    topic = re.sub(r"[「」『』\[\]#*`]", "", str(result.get("topic") or "")).strip()
+    if topic and len(topic) <= _ACK_TOPIC_MAX:
+        return f"ありがとうございます。「{topic}」のこと、覚えておきますね。"
+    return "教えてくださってありがとうございます。覚えておきますね。"
 
 
 def _ngrams(text: str, n: int = 2) -> set[str]:

@@ -427,6 +427,11 @@ async def lifespan(app: FastAPI):
         stop_scheduler()
     except Exception:
         pass
+    try:
+        from api.langfuse_observability import flush_langfuse_observability
+        flush_langfuse_observability()
+    except Exception as e:
+        print(f"[API] Langfuse trace flush failed (non-fatal): {type(e).__name__}")
     # shutdown: lease_data.db の最終スナップショット（定期スナップショットの合間の変更を確実に反映）
     try:
         from api.cloudrun_db_snapshot import snapshot_and_upload
