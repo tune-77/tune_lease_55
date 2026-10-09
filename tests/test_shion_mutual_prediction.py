@@ -73,9 +73,9 @@ def test_reaction_miss_on_complaint_to_shion(paths):
 def test_curiosity_is_asked_once_in_next_casual_session(paths):
     _turn(paths, "疲れた…", "疲れ")
     turn = _turn(paths, "おはよう", "通常", now=T0 + timedelta(hours=12))
-    assert turn.question and turn.question["question"] == "この前疲れてたけど、何があったの？"
+    assert turn.question and turn.question["question"] == "この前お疲れのようでしたが、何かありましたか？"
     assert "1回だけ" in turn.prompt_block
-    assert finish_turn(turn, "おはよ。この前疲れてたけど、何があったの？", now=T0 + timedelta(hours=12), path=paths["path"])
+    assert finish_turn(turn, "おはようございます。この前お疲れのようでしたが、何かありましたか？", now=T0 + timedelta(hours=12), path=paths["path"])
 
     # 答えを受け止める指示が出て、同じことは二度聞かない
     answer = _turn(paths, "決算資料の締めが重なってて", "通常", now=T0 + timedelta(hours=12, minutes=1))
