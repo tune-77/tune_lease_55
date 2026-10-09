@@ -80,15 +80,17 @@ def _select_hits_with_budget(hits: list[dict[str, Any]], *, limit: int, max_toke
 
 def _mark_self_answers(hits: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     """REV-544: 開発用ノートを外し、対話室の会話ログ（紫苑自身の過去の回答）に写さない印を付ける。"""
-    from api.answer_repeat_guard import SELF_ANSWER_START, is_dev_note_path, is_self_answer_path
+    from api.answer_repeat_guard import is_dev_note_path, is_self_answer_path, mark_self_answer_text
 
     marked: list[dict[str, Any]] = []
     for hit in hits or []:
         path = str(hit.get("path") or "")
         if is_dev_note_path(path):
             continue
-        if is_self_answer_path(path) and SELF_ANSWER_START not in str(hit.get("snippet") or ""):
-            hit = {**hit, "snippet": f"{SELF_ANSWER_START}{hit.get('snippet') or ''}"}
+        if is_self_answer_path(path):
+            # 開始・終了の両方を付ける。送信直前の重複除去は、この境界を使って
+            # 会話履歴にすでにある紫苑自身の回答だけを安全に省く。
+            hit = {**hit, "snippet": mark_self_answer_text(str(hit.get("snippet") or ""))}
         marked.append(hit)
     return marked
 
