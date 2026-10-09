@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('審査時点の根拠・版・実効減点を表示し、再読込後も保持する', async ({ page }) => {
+test('審査時点の根拠・版・実効減点を表示し、再読込後も保持する', async ({ page }, testInfo) => {
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.addInitScript(() => {
     if (window.sessionStorage.getItem('judgment-basis-fixture-installed')) return;
@@ -28,10 +28,10 @@ test('審査時点の根拠・版・実効減点を表示し、再読込後も�
   await page.reload();
   await expect(basis).toContainText('SCORING-EQUITY / v1');
   await basis.scrollIntoViewIfNeeded();
-  await basis.screenshot({ path: '/workspace/scoring-judgment-basis-desktop.png' });
+  await basis.screenshot({ path: testInfo.outputPath('scoring-judgment-basis-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(basis).toBeVisible();
-  await basis.screenshot({ path: '/workspace/scoring-judgment-basis-mobile.png' });
+  await basis.screenshot({ path: testInfo.outputPath('scoring-judgment-basis-mobile.png') });
   expect(await basis.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
 
