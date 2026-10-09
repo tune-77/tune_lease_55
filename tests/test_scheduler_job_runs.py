@@ -153,9 +153,20 @@ def test_usage_loop_reports_gemini_failure(monkeypatch):
     assert result == {"status": "error", "reason": "Gemini生成に失敗: Timeout"}
 
 
+def test_crystallizer_is_disabled_by_default(monkeypatch):
+    """REV-585: 結晶化の書き出しは既定で停止（抽出も Gemini も呼ばない）。"""
+    import api.crystallizer.anomaly_extractor as extractor
+
+    monkeypatch.delenv("CRYSTALLIZATION_ENABLED", raising=False)
+    monkeypatch.setattr(extractor, "extract_anomalies", lambda: (_ for _ in ()).throw(AssertionError("should not run")))
+
+    assert scheduler_module.run_crystallization_batch()["status"] == "disabled"
+
+
 def test_crystallizer_reports_extraction_failure(monkeypatch):
     import api.crystallizer.anomaly_extractor as extractor
 
+    monkeypatch.setenv("CRYSTALLIZATION_ENABLED", "1")
     monkeypatch.setattr(extractor, "extract_anomalies", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
 
     result = scheduler_module.run_crystallization_batch()

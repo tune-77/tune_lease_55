@@ -115,7 +115,8 @@ def append_to_daily_brief(alerts: list[str], state_path: Path, state: dict) -> N
 """
     section += "\n".join(f"- {a}" for a in alerts) + "\n"
 
-    for vault in [_VAULT_PATH, _ICLOUD_VAULT_PATH, _ICLOUD_MAIN_VAULT_PATH]:
+    # REV-585: DAILY-BRIEF はメインVaultのルート1か所だけ（lease-wiki-vault 側は更新を止めた）
+    for vault in [_VAULT_PATH]:
         brief = vault / "DAILY-BRIEF.md"
         if brief.exists():
             try:
@@ -129,38 +130,110 @@ def append_to_daily_brief(alerts: list[str], state_path: Path, state: dict) -> N
                 print(f"  警告: DAILY-BRIEF.md 書き込み失敗 ({brief}): {e}")
 
 
-def save_alert_file(alerts: list[str], state_path: Path, state: dict) -> None:
-    """iCloud メインVault の Projects/tune_lease_55/Alerts/ にアラートファイルを保存する。"""
-    if not alerts or not _ICLOUD_MAIN_VAULT_PATH.exists():
-        return
+ALERT_REMINDER_DAYS = 7
 
-    today = datetime.now().strftime("%Y-%m-%d")
+
+def _alert_state_path() -> Path:
+    """前回 Alerts に書いた警告の一覧（REV-585）。検証時は DATA_DIR で本番 data/ から切り離す。"""
+    data_dir = Path(os.environ.get("DATA_DIR") or PROJECT_ROOT / "data")
+    return data_dir / "aurion_alert_state.json"
+
+
+def _load_alert_state() -> dict:
+    try:
+        value = json.loads(_alert_state_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _save_alert_state(alerts: list[str], today: str, first_seen: str) -> None:
+    path = _alert_state_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"alerts": alerts, "written": today, "since": first_seen}, ensure_ascii=False, indent=1),
+            encoding="utf-8",
+        )
+    except OSError as e:
+        print(f"  警告: アラート状態の保存失敗: {e}")
+
+
+def diff_alerts(previous: list[str], current: list[str]) -> dict[str, list[str]]:
+    """前回との差分。文面が変われば（数値の悪化も含め）新規＋解消として扱う。"""
+    prev, curr = set(previous), set(current)
+    return {
+        "new": [a for a in current if a not in prev],
+        "resolved": [a for a in previous if a not in curr],
+        "ongoing": [a for a in current if a in prev],
+    }
+
+
+def save_alert_file(alerts: list[str], state_path: Path, state: dict, *, today: str | None = None) -> str | None:
+    """Projects/tune_lease_55/Alerts/ に、警告が変わった時だけ書く（REV-585）。
+
+    新規・解消・文面の変化（悪化を含む）があれば必ず書く。前回と同じなら書かない。
+    同じ警告が続いても ALERT_REMINDER_DAYS 日ごとに「継続」として書き直し、出なくならないようにする。
+    戻り値は書いた理由（new / resolved / reminder）か None。
+    """
+    today = today or datetime.now().strftime("%Y-%m-%d")
+    previous_state = _load_alert_state()
+    previous = list(previous_state.get("alerts") or [])
+    diff = diff_alerts(previous, alerts)
+    since = previous_state.get("since") or today
+    days_since_written = 0
+    try:
+        days_since_written = (
+            datetime.fromisoformat(today) - datetime.fromisoformat(previous_state.get("written") or today)
+        ).days
+    except ValueError:
+        days_since_written = ALERT_REMINDER_DAYS
+
+    if diff["new"] or diff["resolved"]:
+        reason = "new" if diff["new"] else "resolved"
+        since = today if diff["new"] or not previous else since
+    elif alerts and days_since_written >= ALERT_REMINDER_DAYS:
+        reason = "reminder"
+    else:
+        if alerts:
+            print(f"  アラートは前回（{previous_state.get('written')}）と同じ → Alerts への書き出しは省略")
+        return None
+    if not _ICLOUD_MAIN_VAULT_PATH.exists():
+        return None
+
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     started_at = state.get("started_at", "不明")
-
     alert_dir = _ICLOUD_MAIN_VAULT_PATH / "Projects" / "tune_lease_55" / "Alerts"
     alert_dir.mkdir(parents=True, exist_ok=True)
     alert_path = alert_dir / f"aurion_alert_{today}.md"
 
     content = f"""# aurion 自動診断アラート — {today}
 
-> 生成: {now} | 診断ファイル: `{state_path.name}` (started: {started_at})
-
-## 検出された異常
+> 生成: {now} | 診断ファイル: `{state_path.name}` (started: {started_at}) | 前回と変化した時だけ書き出し（REV-585）
 
 """
-    content += "\n".join(f"- {a}" for a in alerts) + "\n"
+    if diff["new"]:
+        content += "## 新しく出た・変化した異常\n\n" + "\n".join(f"- {a}" for a in diff["new"]) + "\n\n"
+    if diff["resolved"]:
+        content += "## 解消した・変化した異常\n\n" + "\n".join(f"- {a}" for a in diff["resolved"]) + "\n\n"
+    if diff["ongoing"]:
+        label = f"継続中の異常（{since} から）" if reason == "reminder" else "継続中の異常"
+        content += f"## {label}\n\n" + "\n".join(f"- {a}" for a in diff["ongoing"]) + "\n\n"
+    if not alerts:
+        content += "現在、検出されている異常はありません。\n"
 
     conclusions = state.get("reasoning", {}).get("conclusions", [])
-    if conclusions:
-        content += "\n## aurion 推論サマリ\n\n"
-        content += "\n".join(f"- {c}" for c in conclusions) + "\n"
+    if conclusions and alerts:
+        content += "\n## aurion 推論サマリ\n\n" + "\n".join(f"- {c}" for c in conclusions) + "\n"
 
     try:
         alert_path.write_text(content, encoding="utf-8")
-        print(f"  アラートファイル保存: {alert_path}")
+        print(f"  アラートファイル保存（{reason}）: {alert_path}")
     except OSError as e:
         print(f"  警告: アラートファイル保存失敗: {e}")
+        return None
+    _save_alert_state(alerts, today, since if alerts else today)
+    return reason
 
 
 def main() -> int:
@@ -184,9 +257,10 @@ def main() -> int:
             print(f"    - {a}")
         append_to_export(alerts, state_path)
         append_to_daily_brief(alerts, state_path, state)
-        save_alert_file(alerts, state_path, state)
     else:
         print("  ✅ 異常なし")
+    # 異常なしの日も呼ぶ（前回あった異常の「解消」を書くため）
+    save_alert_file(alerts, state_path, state)
 
     # reasoning conclusions があれば EXPORT_FILE に追記（パイプラインプロンプト強化）
     conclusions = state.get("reasoning", {}).get("conclusions", [])

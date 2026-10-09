@@ -48,6 +48,12 @@ def run_crystallization_batch() -> dict:
     Returns:
         {"status": str, "cases_found": int, "file": str | None}
     """
+    # REV-585: 28日で6件・題材の重複ばかりで記憶にも審査にも効いていないため既定で停止（Gemini 呼び出しも止まる）。
+    # 再開は CRYSTALLIZATION_ENABLED=1。既存の Generated/ ノートは消さない。
+    if os.environ.get("CRYSTALLIZATION_ENABLED", "").strip().lower() not in {"1", "true", "on", "yes"}:
+        logger.info("[Crystallizer] CRYSTALLIZATION_ENABLED が未設定のため停止中（スキップ）")
+        return {"status": "disabled", "cases_found": 0, "file": None}
+
     logger.info("[Crystallizer] バッチ開始")
 
     try:

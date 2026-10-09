@@ -74,3 +74,45 @@ def test_detect_anomalies_flags_qrisk_stall():
     alerts = detect_anomalies(state)
 
     assert any("Q_risk" in a for a in alerts)
+
+
+def _alerts_env(tmp_path, monkeypatch):
+    import scripts.check_aurion_state as cas
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))  # 本番 data/ に書かない
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setattr(cas, "_ICLOUD_MAIN_VAULT_PATH", vault)
+    return cas, vault / "Projects" / "tune_lease_55" / "Alerts"
+
+
+def test_alerts_written_only_when_changed(tmp_path, monkeypatch):
+    """REV-585: 同じ警告が続く日は Alerts を書かない。新規・悪化（文面の変化）・解消は必ず書く。"""
+    cas, alert_dir = _alerts_env(tmp_path, monkeypatch)
+    state = {"started_at": "x"}
+    p = Path("state_x.json")
+
+    assert cas.save_alert_file(["DB 同期未完了 (status=failed)"], p, state, today="2026-10-01") == "new"
+    assert cas.save_alert_file(["DB 同期未完了 (status=failed)"], p, state, today="2026-10-02") is None
+    assert not (alert_dir / "aurion_alert_2026-10-02.md").exists()
+
+    # 悪化（文面が変わる）は書く。新しい側と消えた側の両方が載る
+    worse = ["DB 同期未完了 (status=failed)", "Q_risk が全件 0.0（計算停止の可能性, n=12）"]
+    assert cas.save_alert_file(worse, p, state, today="2026-10-03") == "new"
+    note = (alert_dir / "aurion_alert_2026-10-03.md").read_text(encoding="utf-8")
+    assert "新しく出た" in note and "Q_risk" in note and "継続中" in note
+
+    # 解消は異常なしの日でも書く
+    assert cas.save_alert_file([], p, state, today="2026-10-04") == "resolved"
+    resolved = (alert_dir / "aurion_alert_2026-10-04.md").read_text(encoding="utf-8")
+    assert "解消" in resolved and "検出されている異常はありません" in resolved
+    assert cas.save_alert_file([], p, state, today="2026-10-05") is None
+
+
+def test_unchanged_alert_is_rewritten_as_reminder_after_a_week(tmp_path, monkeypatch):
+    cas, alert_dir = _alerts_env(tmp_path, monkeypatch)
+    p, state = Path("state_x.json"), {}
+    cas.save_alert_file(["RAG 異常"], p, state, today="2026-10-01")
+    assert cas.save_alert_file(["RAG 異常"], p, state, today="2026-10-07") is None
+    assert cas.save_alert_file(["RAG 異常"], p, state, today="2026-10-08") == "reminder"
+    assert "2026-10-01 から" in (alert_dir / "aurion_alert_2026-10-08.md").read_text(encoding="utf-8")
