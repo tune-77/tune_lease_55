@@ -1,0 +1,13 @@
+{
+  "SCORING-EQUITY": {"asset_version": 1, "title": "債務超過の補正", "summary": "自己資本比率がマイナスの場合、比率の0.5倍を減点する（最大30点）。"},
+  "SCORING-LEASE-RATIO": {"asset_version": 1, "title": "リース費用比率の補正", "summary": "業界目安の1.5〜2倍は1.5点減点。2倍超では、目安2%未満かつ実比率3%超の場合に3点減点する。"},
+  "SCORING-INTUITION": {"asset_version": 1, "title": "担当者直感の補正", "summary": "直感評価1〜5のうち3を中立とし、最大±3点の補正を行う。"},
+  "SCORING-DEMO-CAP": {"asset_version": 1, "title": "公開デモ案件の上限補正", "summary": "指定された飲食出店デモ案件のみ、総合スコアの上限を35点とする。"},
+  "SCORING-ASSET-RISK": {"asset_version": 1, "title": "物件の回収リスク", "summary": "物件名・法定耐用年数・契約期間から、BEP割れ・残存価値・換金性を確認する。総合スコアへの加減点は行わない。"},
+  "SCORING-ASSET-STRENGTH": {"asset_version": 1, "title": "物件の回収上の強み", "summary": "換金性・残存価値・回収時期の優位性を表示する。総合スコアへの加点は行わない。"},
+  "SCORING-REVIEW-EQUITY": {"asset_version": 1, "title": "債務超過による審議", "summary": "自己資本比率がマイナスの場合は、点数にかかわらず人間の審議へ送る。追加減点は行わない。"},
+  "SCORING-REVIEW-PATTERN": {"asset_version": 1, "title": "財務パターン警告による審議", "summary": "高リスク財務パターンとの類似警告がある場合は人間の審議へ送る。追加減点は行わない。"},
+  "SCORING-REVIEW-CREDIT": {"asset_version": 1, "title": "信用リスク群による審議", "summary": "信用リスク群の警告フラグがある場合は人間の審議へ送る。追加減点は行わない。"},
+  "SCORING-REVIEW-QUANTUM": {"asset_version": 1, "title": "Q_risk強警戒による審議", "summary": "Q_riskが60以上の場合は人間の審議へ送る。追加減点は行わない。"},
+  "SCORING-APPROVAL-LINE": {"asset_version": 1, "title": "スコアによる判定", "summary": "総合スコアが設定された承認ライン以上なら承認圏内、未満なら要審議とする。強い信用警告がある場合は審議を優先する。"}
+}

@@ -16,6 +16,7 @@ import FormQualitative from "../../components/form/FormQualitative";
 import { toThousandYenPayload, fromThousandYenPayload } from "../../lib/scoringUnits";
 
 import IndicatorCards from "../../components/analysis/IndicatorCards";
+import ScoringJudgmentBasis from "../../components/analysis/ScoringJudgmentBasis";
 import { getScreeningScore, CurrentIssueCard, RingiPolicyCard, buildCurrentIssue, buildRingiPolicy } from "../../components/analysis/IssuePolicyCards";
 import RealGraphs from "../../components/analysis/RealGraphs";
 import GunshiAdvice from "../../components/analysis/GunshiAdvice";
@@ -2867,6 +2868,7 @@ export default function Dashboard() {
                       onCreate={createManualJudgmentAssetCandidate}
                     />
                     <CurrentIssueCard result={result} data={formData} />
+                    <ScoringJudgmentBasis result={result} />
                     <RingiPolicyCard result={result} data={formData} />
                     <DemoSimilarPastCasesCard
                       data={formData}

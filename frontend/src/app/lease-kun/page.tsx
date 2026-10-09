@@ -9,6 +9,7 @@ import { extractPrefectureFromText } from '@/lib/prefecture';
 import { CurrentIssueCard, RingiPolicyCard } from '../../components/analysis/IssuePolicyCards';
 import CaseRegistrationForm, { type CaseRegistrationResult } from '../../components/analysis/CaseRegistrationForm';
 import { ShionScreeningReviewCard } from '../../components/analysis/ShionReviewCard';
+import ScoringJudgmentBasis, { type ScoringJudgmentReason } from '../../components/analysis/ScoringJudgmentBasis';
 import { useShionScreeningReview } from '../../lib/useShionScreeningReview';
 import type { ShionReviewFeedback } from '../../lib/shionReview';
 import { focusNextNumericInput, parseHumanNumberInput } from '@/lib/numberInput';
@@ -20,6 +21,7 @@ type Message = {
 };
 
 type ScoreResult = {
+  judgment_reasons?: ScoringJudgmentReason[];
   score: number;
   score_base?: number;
   hantei: string;
@@ -1351,6 +1353,7 @@ export default function LeaseKunWizard() {
             <div className="space-y-3">
               <FocusCheckCard checks={buildFocusChecks(fullResult, formData)} />
               <CurrentIssueCard result={fullResult} data={formData} />
+              <ScoringJudgmentBasis result={fullResult} />
               <RingiPolicyCard result={fullResult} data={formData} />
               {Array.isArray(fullResult.conditional_approval_actions) && fullResult.conditional_approval_actions.length > 0 && (
                 <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
