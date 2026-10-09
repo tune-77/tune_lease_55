@@ -49,7 +49,13 @@ def source_dirs() -> list[Path]:
     if os.environ.get("NEWS_ZETTEL_LEASE_NEWS", "0").strip() == "1":
         dirs.append(LEASE_NEWS_DIR)
     return dirs
-STATE_PATH = _MAIN_ROOT / "data" / "news_zettel_state.json"
+def _data_dir() -> Path:
+    """DATA_DIR があればそこ、無ければ従来どおり本体リポジトリの data/（REV-589）。"""
+    raw = os.environ.get("DATA_DIR") or os.environ.get("LEASE_DATA_DIR")
+    return Path(raw) if raw else _MAIN_ROOT / "data"
+
+
+STATE_PATH = _data_dir() / "news_zettel_state.json"
 SF_DATALESS = 0x40000000
 READ_TIMEOUT_SECONDS = 5
 MAX_SCAN_FILES = 3000
@@ -612,7 +618,7 @@ def process(
 # 「本文の要点」として使う（PDL1.0・出典明記）。要約は Gemini への入力にだけ使い、Vault には保存しない。
 METI_FEED_URL = "https://www.meti.go.jp/ml_index_release_atom.xml"
 METI_LABEL = "経済産業省"
-METI_STATUS_PATH = _MAIN_ROOT / "data" / "news_zettel_meti_feed.json"
+METI_STATUS_PATH = _data_dir() / "news_zettel_meti_feed.json"
 METI_MAX_AGE_DAYS = int(os.environ.get("NEWS_ZETTEL_METI_MAX_AGE_DAYS", "14"))
 METI_MAX_ITEMS = 10
 METI_STALE_DAYS = 30
@@ -763,7 +769,8 @@ def process_meti(vault: Path, state: dict[str, dict[str, Any]], *, model_call=No
 # ── ハブの説明を変えた時の判定し直し（REV-539） ──────────────────────────────
 # 既存メモ・状態ファイルは書き換えず、今の説明での点数を別ファイルに置く。読み出し（api/news_zettel_context）は
 # こちらを優先し、説明が今と同じならそのハブのしきい値、古ければ legacy のしきい値で絞る。Jev のみ（Gemini なし）。
-RECHECK_PATH = Path(__file__).resolve().parents[1] / "data" / "news_zettel_hub_recheck.json"
+# DATA_DIR に従う（REV-589）。未設定なら従来どおりこのリポジトリの data/
+RECHECK_PATH = Path(os.environ.get("DATA_DIR") or os.environ.get("LEASE_DATA_DIR") or REPO_ROOT / "data") / "news_zettel_hub_recheck.json"
 
 
 def load_recheck(path: Path = RECHECK_PATH) -> dict[str, dict[str, Any]]:

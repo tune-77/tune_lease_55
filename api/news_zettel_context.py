@@ -26,7 +26,11 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
-STATE_PATH = Path(__file__).resolve().parents[1] / "data" / "news_zettel_state.json"
+from runtime_paths import get_data_path
+
+# DATA_DIR に従う（REV-589: 検証環境で本番の data/ を読まず、参考メモも検証用の状態ファイルから組み立てる）。
+# 本番は DATA_DIR 未設定なので従来どおりリポジトリの data/
+STATE_PATH = Path(get_data_path("news_zettel_state.json"))
 MAX_MEMOS = 2
 MAX_AGE_DAYS = 45
 TITLE_CHARS = 36  # REV-533 プロンプト上限の中で確実に残すため短くする（1件 約150字）
