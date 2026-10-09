@@ -36,6 +36,9 @@ REPEAT_QUESTION_BLOCK = (
     "結論が前回と同じでよい時も、言い回しと例を変える。"
 )
 
+# REV-588 対話室は前回約束した調査があると送る文の先頭に付ける（main.py pending_prefix）。
+# これが付くと一致率が 0.85 を下回り聞き直しと判定されなかったので、比べる前に外す
+_PENDING_PREFIX_RE = re.compile(r"^\s*\[前回お約束した調査を先に実行します:.*?\]\s*", re.S)
 _REPEAT_MIN_CHARS = 4
 _REPEAT_RATIO = 0.85
 _OVERLAP_WINDOW = 30
@@ -63,6 +66,10 @@ def mark_self_answer_text(text: str) -> str:
     return f"{SELF_ANSWER_START}{body.strip()[:_SELF_ANSWER_BODY_CHARS]}{SELF_ANSWER_END}"
 
 
+def _strip_pending_prefix(text: str) -> str:
+    return _PENDING_PREFIX_RE.sub("", str(text or ""), count=1)
+
+
 def _normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", str(text or ""))
     return re.sub(r"[\s\W_]+", "", text).lower()
@@ -70,13 +77,13 @@ def _normalize(text: str) -> str:
 
 def find_repeated_question(message: str, history: list[dict[str, Any]] | None) -> str:
     """履歴のユーザー発言に今回とほぼ同じものがあれば、その発言を返す。無ければ空文字。"""
-    current = _normalize(message)
+    current = _normalize(_strip_pending_prefix(message))
     if len(current) < _REPEAT_MIN_CHARS:
         return ""
     for item in reversed(list(history or [])):
         if str(item.get("role") or "") != "user":
             continue
-        previous = _normalize(str(item.get("content") or ""))
+        previous = _normalize(_strip_pending_prefix(str(item.get("content") or "")))
         if not previous:
             continue
         if previous == current or difflib.SequenceMatcher(None, previous, current).ratio() >= _REPEAT_RATIO:
