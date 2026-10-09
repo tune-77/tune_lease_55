@@ -277,7 +277,7 @@ def ask(question: str, user_id: str, timeout: float = 240.0) -> dict[str, Any]:
 
 def _post(path: str, payload: dict[str, Any], timeout: float = 240.0) -> dict[str, Any]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", data=body, headers={"Content-Type": "application/json"}, method="POST")
+    req = urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", data=body, headers={"Content-Type": "application/json", "X-Shion-Verification": "1"}, method="POST")  # REV-591
     with urllib.request.urlopen(req, timeout=timeout) as res:
         return json.loads(res.read().decode("utf-8"))
 

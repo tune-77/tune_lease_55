@@ -289,6 +289,10 @@ def capture_user_personal_memory(message: str, *, source: str = "chat") -> dict[
     Returns a status dict and never raises. This is deliberately conservative:
     it captures short user-facing memory candidates, not long business notes.
     """
+    from shion_verification_origin import is_verification_turn
+
+    if is_verification_turn():  # REV-591: 検証の会話はユーザー本人の記憶にしない
+        return {"captured": False, "reason": "verification"}
     if not _is_likely_personal_memory(message):
         return {"captured": False, "reason": "not_personal_memory"}
 

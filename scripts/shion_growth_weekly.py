@@ -33,6 +33,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from runtime_paths import get_data_dir, get_data_path, resolve_obsidian_vault  # noqa: E402
+from shion_verification_origin import is_verification_row  # noqa: E402
 
 JST = timezone(timedelta(hours=9))
 PROJECT_REL = Path("Projects") / "tune_lease_55"
@@ -121,7 +122,7 @@ def in_period(day: date | None, start: date, end: date) -> bool:
 
 def prediction_metrics(rows: list[dict[str, Any]], start: date, end: date) -> dict[str, Any]:
     """#1291 予想と答え合わせ: 気持ち・反応・話題の当たり率。"""
-    picked = [r for r in rows if in_period(jst_day(r.get("at")), start, end)]
+    picked = [r for r in rows if in_period(jst_day(r.get("at")), start, end) and not is_verification_row(r)]
     daily: dict[str, dict[str, int]] = defaultdict(lambda: Counter())
     for r in picked:
         key = jst_day(r.get("at")).isoformat()
@@ -301,7 +302,10 @@ def mood_metrics(mind: dict[str, Any], relationship: dict[str, Any], affect: dic
     """関係性スコア（#1285）・気分の値: 現在値・期間内の変化・上限/下限への張り付き。"""
     mood = {k: v for k, v in dict(mind.get("mood") or {}).items() if k in MOOD_AXES}
     dialogue = dict(mind.get("dialogue_mood") or {})
-    changes = [c for c in list(mind.get("mood_change_log") or []) if in_period(jst_day(c.get("ts")), start, end)]
+    changes = [
+        c for c in list(mind.get("mood_change_log") or [])
+        if in_period(jst_day(c.get("ts")), start, end) and not is_verification_row(c)
+    ]
     moved: Counter[str] = Counter()
     net: Counter[str] = Counter()
     for entry in changes:
@@ -319,8 +323,8 @@ def mood_metrics(mind: dict[str, Any], relationship: dict[str, Any], affect: dic
         if item.get("type") == "emotion_snapshot" and in_period(day, start, end):
             snapshots[day.isoformat()] = {k: int(v) for k, v in _SNAPSHOT_RE.findall(str(item.get("content") or ""))}
     observations = [
-        o for user in dict(affect.get("users") or {}).values() for o in list(dict(user).get("observations") or [])
-        if in_period(jst_day(o.get("at")), start, end)
+        o for uid, user in dict(affect.get("users") or {}).items() for o in list(dict(user).get("observations") or [])
+        if in_period(jst_day(o.get("at")), start, end) and not is_verification_row({**o, "user_id": uid})
     ]
     score = relationship.get("score")
     return {
@@ -426,7 +430,8 @@ def cost_metrics(rows: list[dict[str, Any]], start: date, end: date) -> dict[str
 def collect(source: Path, vault: Path, start: date, end: date, *, today: date | None = None) -> dict[str, Any]:
     """today を渡すと、終わりが2日以上前の期間では現在値しか無い指標（関係性・気分）を空にする。"""
     budget = read_jsonl(source / "chat_prompt_budget_log.jsonl")
-    chat = read_jsonl(source / "cloudrun_chat_log.jsonl")
+    # REV-591: 検証の会話（origin=verification・検証用ユーザーID）は成長記録に数えない
+    chat = [row for row in read_jsonl(source / "cloudrun_chat_log.jsonl") if not is_verification_row(row)]
     mind = read_json(vault / MIND_REL) or {}
     return {
         "start": start.isoformat(),

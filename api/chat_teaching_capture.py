@@ -707,6 +707,9 @@ def prepare_teaching_turn(
     """
     from memory_promotion_policy import has_domain_keyword
 
+    from shion_verification_origin import is_verification_turn
+
+    allow_save = allow_save and not is_verification_turn()  # REV-591: 検証の会話は Knowledge・判断資産候補に保存しない
     turn = TeachingTurn(surface=surface)
     try:
         turn.save = {"is_teaching": False, "saved": False, "reason": "save_disabled"} if not allow_save else save_lease_teaching(

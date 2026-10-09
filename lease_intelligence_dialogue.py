@@ -756,8 +756,12 @@ def append_dialogue_note(vault: Path, user_message: str, reply: str) -> str:
             "---\n\n"
             f"# リース知性体との対話 — {now.date().isoformat()}\n"
         )
+    from shion_verification_origin import VERIFICATION_NOTE_MARK, is_verification_turn
+
+    # REV-591: 検証の往復も残すが、見出しに印を付けて内省の材料から外す
+    mark = f" {VERIFICATION_NOTE_MARK}" if is_verification_turn() else ""
     section = (
-        f"\n## {now.strftime('%H:%M:%S')}\n\n"
+        f"\n## {now.strftime('%H:%M:%S')}{mark}\n\n"
         f"**ユーザー**\n\n{user_message.strip()}\n\n"
         f"**リース知性体**\n\n{reply.strip()}\n"
     )

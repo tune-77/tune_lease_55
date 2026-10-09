@@ -122,7 +122,8 @@ def recall_user_affect(user_id: str, *, now: datetime | None = None, path: Path 
     now = now or datetime.now()
     data = _load(path or _state_path())
     obs = list((data["users"].get(str(user_id or "default")[:100]) or {}).get("observations") or [])
-    obs = _prune(obs, now)
+    # REV-591: 検証の会話で推定した様子（origin=verification の印付き）は本人の様子として思い出さない
+    obs = _prune([o for o in obs if o.get("origin") != "verification"], now)
     if not obs:
         return AffectRecall()
 
@@ -231,5 +232,8 @@ def remember_and_build_block(
     """過去の様子を読んでブロックを作ってから、今回の推定を記録する（今回分は前回扱いしない）。"""
     recall = recall_user_affect(user_id, now=now, path=path)
     block = build_user_affect_memory_block(recall, current_label=label)
-    record_user_affect(user_id, label, intensity, surface=surface, now=now, path=path)
+    from shion_verification_origin import is_verification_turn
+
+    if not is_verification_turn():  # REV-591: 検証の会話は相手の様子として記録しない
+        record_user_affect(user_id, label, intensity, surface=surface, now=now, path=path)
     return block, recall.to_payload()

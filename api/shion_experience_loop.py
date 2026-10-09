@@ -155,6 +155,12 @@ def record_experience_event(
         delta_awareness=delta_awareness or {},
         memory_to_judgment=memory_to_judgment or {},
     )
+    from shion_verification_origin import is_verification_turn, origin_fields
+
+    if is_verification_turn():  # REV-591: 検証の会話は印を付けて残すだけで、経験の状態は動かさない
+        with _STATE_LOCK:
+            _append_jsonl(event_log, {**event, **origin_fields()})
+            return {"event": event, "state": public_experience_state(load_experience_state(state_path))}
     with _STATE_LOCK:
         state = load_experience_state(state_path)
         updated = update_experience_state(state, event)

@@ -255,6 +255,10 @@ def capture_chat_judgment_asset_if_needed(
     jev_shadow: Callable[[str], None] = _start_jev_shadow,
     user_requested: bool = False,
 ) -> dict[str, Any]:
+    from shion_verification_origin import is_verification_turn
+
+    if is_verification_turn():  # REV-591: 検証の会話は判断資産候補にしない
+        return {"captured": False, "reason": "verification"}
     # user_requested: ユーザーが「保存して」と頼んだ紫苑の回答（テンプレート等）。教示判定は通らないので飛ばす。
     claim = " ".join(str(message or "").split())[:1500] if user_requested else extract_chat_judgment_asset_claim(message)
     if not claim:

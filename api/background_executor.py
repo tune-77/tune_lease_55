@@ -1,5 +1,6 @@
 """Shared bounded executor for fire-and-forget API work."""
 
+import contextvars
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 
@@ -17,7 +18,8 @@ def _record_background_failure(fn, future: Future) -> None:
 
 class _RecordingExecutor(ThreadPoolExecutor):
     def submit(self, fn, /, *args, **kwargs):
-        future = super().submit(fn, *args, **kwargs)
+        # REV-591: 呼び出し元の文脈（検証の会話の印など）を背景処理にも引き継ぐ
+        future = super().submit(contextvars.copy_context().run, fn, *args, **kwargs)
         future.add_done_callback(lambda done, fn=fn: _record_background_failure(fn, done))
         return future
 

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import re
+from pathlib import Path
 from typing import Any
 
 from api.chat_debug_metadata import vertex_answer_public_payload, vertex_search_public_payload
+from runtime_paths import get_data_path
+from shion_verification_origin import is_verification_turn, origin_fields
 
 
 def compact_memory_recall_payload(memory_recall: dict[str, Any]) -> dict[str, Any]:
@@ -136,4 +141,56 @@ def memory_usage_extra(
 
 
 def should_auto_save_chat(*, improvement_mode: bool) -> bool:
-    return not bool(improvement_mode)
+    # REV-591: 検証の会話は Obsidian の自動保存の材料にしない
+    return not bool(improvement_mode) and not is_verification_turn()
+
+
+def redact_chat_log_text(value: str, limit: int = 1200) -> str:
+    text = str(value or "")
+    text = re.sub(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", "[email]", text)
+    text = re.sub(r"\b0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}\b", "[phone]", text)
+    text = re.sub(r"\b\d{6,}\b", "[number]", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(text) > limit:
+        return text[: limit - 1] + "…"
+    return text
+
+
+def append_local_cloudrun_chat_log(
+    *,
+    surface: str,
+    user_id: str,
+    category: str,
+    response_mode: str,
+    user_message: str,
+    assistant_reply: str,
+    metadata: dict,
+) -> None:
+    """ローカル実行時、Private Reflectionが読むdata/cloudrun_chat_log.jsonlに直接1行追記する。
+
+    scripts/sync_cloudrun_inputs_from_gcs.py の _chat_entry_from_event() と同じスキーマ
+    （event_id/ts/surface/user_id/category/response_mode/user_message/assistant_reply/
+    metadata/shion_hypothesis/source）に合わせている。GCS writebackはローカルでは無効な
+    ため、この関数がローカル対話をPrivate Reflectionへ到達させる唯一の経路になる。
+    """
+    import datetime as _dt
+    from uuid import uuid4
+
+    row = {
+        "event_id": str(uuid4()),
+        "ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "surface": surface or "unknown",
+        "user_id": str(user_id or "default")[:80],
+        "category": str(category or "")[:80],
+        "response_mode": str(response_mode or "")[:40],
+        "user_message": redact_chat_log_text(user_message, limit=1200),
+        "assistant_reply": redact_chat_log_text(assistant_reply, limit=1800),
+        "metadata": metadata if isinstance(metadata, dict) else {},
+        "shion_hypothesis": {},
+        "source": "local_direct",
+        **origin_fields(),  # REV-591: 検証の会話は origin=verification（記憶・内省の材料から外す印）
+    }
+    path = Path(get_data_path("cloudrun_chat_log.jsonl"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")

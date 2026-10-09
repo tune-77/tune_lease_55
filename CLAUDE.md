@@ -46,6 +46,16 @@ Work Logs: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vau
 - 1日予算は `AI_DAILY_BUDGET_YEN`（既定50円）。紫苑のチャット・審査と**記憶・内省（Private Reflection・記憶の圧縮/保存・相手の様子・予測の記録・気分の変化記録など）は止めない**。止めるのは検証→夜間・記憶に関わらない自発系（日次イラスト等）のみ。前日の推定と止めた件数は朝報に出る
 - 費用削減でプロンプトの記憶系ブロックを削らない（2026-10-07 ユーザー方針）。絞ってよいのはニュース・改善レポート・相談キュー等の付加情報だけ
 
+## 検証の会話に印を付ける（REV-591）
+
+理由: 2026-10-09 の検証（同じ質問の繰り返し・「お疲れさま、少し休憩しよう」等）が本人の会話として記録され、Private Reflection が「ユーザーは思考停止」「同じ質問が3回続いたら心理状態を確認する」等の内省・判断資産候補を作った。
+適用条件: 本番・ローカルの紫苑（`/api/chat`・対話室 `/api/lease-intelligence/dialogue`・音声など）へ検証・テストの会話を送る時。
+削除条件: 検証が常に別の DATA_DIR・別プロセスで行われ、本番の記憶へ届く経路が無くなった時。
+
+- 検証の呼び出しには必ず印を付ける: ヘッダー `X-Shion-Verification: 1`（対話室の Next 経由でも FastAPI まで届く）、または `/api/chat` の `user_id` を `rev591_verify` のように verify を区切りで含む名前にする。Python からは `shion_verification_origin.verification_client_headers()`（`AI_LIVE_VERIFY=1` で自動付与）。ブラウザから検証する時は `localStorage.shion_verification = "1"`
+- 印の付いた会話も返答は通常どおり。会話ログには `origin: verification` が付き、履歴は `<user_id>:verification` に分かれ、対話ノートの見出しに〔検証・本人の会話ではない〕が付く。Private Reflection・相手の様子・関係性スコア・予想と答え合わせ・会話の要点（mind.json）・Knowledge・判断資産候補・調査の約束・週1イラスト・成長記録の材料にはならない
+- 検証で本番 `data/` に書かない原則（DATA_DIR）は変わらない。印は本番に届いてしまった時の最後の防波堤
+
 ---
 
 ## プロジェクト構成・開発ルール（Next.js 16 + FastAPI + SQLite）
