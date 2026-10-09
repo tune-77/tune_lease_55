@@ -181,21 +181,9 @@ _次回更新: 翌 AM4:00 （run_daily_improvement_pipeline.sh）_
             f"DAILY-BRIEFの書き込みに失敗しました（target={OUTPUT_PATH}）: {exc}", level="警告"
         )
 
-    for vault, label in [
-        (ICLOUD_VAULT_PATH, "lease-wiki-vault"),
-        (ICLOUD_MAIN_VAULT_PATH, "iCloud メインVault"),
-    ]:
-        if vault.exists():
-            out = vault / "DAILY-BRIEF.md"
-            try:
-                out.write_text(content, encoding="utf-8")
-                print(f"[write_daily_brief] {label} に書き出し: {out}")
-            except OSError as exc:
-                report_pipeline_failure(
-                    f"{label} への書き込みに失敗しました（target={out}）: {exc}", level="警告"
-                )
-        else:
-            print(f"[write_daily_brief] {label} が見つかりません（スキップ）: {vault}")
+    # REV-585: 書き出し先はメインVaultのルート1か所だけ（上の OUTPUT_PATH）。
+    # 以前は lease-wiki-vault/DAILY-BRIEF.md にも同じ内容を書き、RAG に二重に入っていた。
+    # 「ホーム」の [[DAILY-BRIEF]] もルート側に解決される。既存の lease-wiki-vault 側のファイルは消さない。
 
 
 if __name__ == "__main__":
