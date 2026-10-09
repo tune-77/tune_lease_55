@@ -453,3 +453,18 @@ def test_diversification_template_is_recalled_by_paraphrase(query):
     items = capture.recall_taught_knowledge(None, query, candidates=[row])
     assert items and items[0]["path"] == "judgment_candidate:tpl"
     assert capture.recall_taught_knowledge(None, "中古トラックの走行距離はどこまで見る？", candidates=[row]) == []
+
+
+def test_notice_only_reply_becomes_short_thanks_touching_topic():
+    """REV-595 返事が保存通知だけなら、保存先に触れず教わった内容に軽く触れる一言にする（「うん。」ではなく）。"""
+    saved = {"saved": True, "knowledge_path": "Lease Intelligence/Knowledge/x_2026-10-02.md", "candidate_id": "c"}
+    only_notice = "保存しました。\n\n保存先: `Lease Intelligence/Knowledge/x_2026-10-02.md`・判断資産候補（要確認）"
+    reply = capture.enforce_save_honesty(only_notice, {**saved, "is_teaching": True, "topic": "経営者の離婚と連帯保証"})
+    assert reply == "ありがとうございます。「経営者の離婚と連帯保証」のこと、覚えておきますね。"
+    assert "保存" not in reply and ".md" not in reply and "判断資産" not in reply
+    long_topic = {**saved, "topic": "経営者の離婚が経営権と連帯保証とリース契約の継続に与える影響"}
+    assert capture.enforce_save_honesty("保存しました。", long_topic) == "教えてくださってありがとうございます。覚えておきますね。"
+    answer_saved = {**saved, "reason": "save_request_shion_answer", "topic": "審査コメントの型"}
+    assert capture.enforce_save_honesty("保存しました。", answer_saved) == "わかりました。この内容、あとで使えるようにしておきますね。"
+    # 本文が残る時は一言を足さない
+    assert capture.enforce_save_honesty("離婚は連帯保証の変化として見ます。保存しました。", saved) == "離婚は連帯保証の変化として見ます。"
