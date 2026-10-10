@@ -847,6 +847,23 @@ def run_quick_scoring(inputs: dict) -> dict:
     返却: score, hantei, comparison, user_op_margin, user_equity_ratio, bench_op_margin, bench_equity_ratio,
           score_borrower, industry_sub, industry_major
     """
+    judgment_reasons: list[dict] = []
+    try:
+        with open(os.path.join(_SCRIPT_DIR, "config", "scoring_judgment_assets.json"), encoding="utf-8") as f:
+            judgment_assets = json.load(f)
+    except (OSError, ValueError) as exc:
+        record_silent_failure("scoring.judgment_assets", "fallback", exc)
+        judgment_assets = {}
+
+    def record_reason(asset_id: str, applied_reason: str, effect: str, score_delta: float = 0.0):
+        asset = judgment_assets.get(asset_id)
+        if asset:
+            # 審査時点の説明と版をコピーし、後の資産更新で過去の根拠を変えない。
+            judgment_reasons.append({
+                "asset_id": asset_id, **asset, "applied_reason": applied_reason,
+                "effect": effect, "score_delta": round(score_delta, 1),
+            })
+
     nenshu = max(0, _safe_float(inputs.get("nenshu")))
     op_profit = _safe_float(inputs.get("op_profit") or inputs.get("rieki"))
     ord_profit = _safe_float(inputs.get("ord_profit"))
@@ -1048,10 +1065,13 @@ def run_quick_scoring(inputs: dict) -> dict:
     # ── 自己資本マイナスペナルティ ────────────────────────────────────────────
     # RandomForestモデルはnet_assetsを特徴量に含まないため後処理で補正する
     equity_penalty = 0.0
+    score_before_equity = base_score
     if user_equity_ratio < 0:
         # -1%ごとに約0.5点減点、最大-30点
         equity_penalty = max(-30.0, user_equity_ratio * 0.5)
     base_score = max(0, min(100, round(base_score + equity_penalty, 1)))
+    if equity_penalty:
+        record_reason("SCORING-EQUITY", f"自己資本比率 {user_equity_ratio:.1f}%", "adjustment", base_score - score_before_equity)
 
     # ── リース費用比率ペナルティ ────────────────────────────────────────────────
     # 検証結果(n=1106)に基づく設計:
@@ -1059,6 +1079,7 @@ def run_quick_scoring(inputs: dict) -> dict:
     #   E(2倍超) × 高ベンチ(≥2%): 飲食・不動産はリース積極活用=優良傾向 → ペナルティ無効
     #   E(2倍超) × 低ベンチ(<2%): 卸売0.6%等は比率が爆発しやすいため絶対lcr>3%を条件に追加
     lease_ratio_adj = 0.0
+    score_before_lease = base_score
     if bench_lease_cost_ratio and bench_lease_cost_ratio > 0 and user_lease_cost_ratio > 0:
         ratio_vs_bench = user_lease_cost_ratio / bench_lease_cost_ratio
         if ratio_vs_bench > 2.0:
@@ -1068,6 +1089,8 @@ def run_quick_scoring(inputs: dict) -> dict:
         elif ratio_vs_bench > 1.5:
             lease_ratio_adj = -1.5   # 1.5-2倍：両グループで否決率高い
     base_score = max(0, min(100, round(base_score + lease_ratio_adj, 1)))
+    if lease_ratio_adj:
+        record_reason("SCORING-LEASE-RATIO", f"リース費用比率 {user_lease_cost_ratio:.2f}% / 業界目安 {bench_lease_cost_ratio:.2f}%", "adjustment", base_score - score_before_lease)
 
     # ── 担当者直感スコア補正（1-5スケール、中立=3、±INTUITION_MAX_ADJ 点まで）──
     # 画面や経路によって直感スコアのキーが `intuition_score` / `intuition` に分かれていたため、
@@ -1080,10 +1103,14 @@ def run_quick_scoring(inputs: dict) -> dict:
         intuition_adj = round((intuition_score - 3.0) / 2.0 * INTUITION_MAX_ADJ, 2)
 
     final_score = max(0, min(100, round(base_score + intuition_adj, 1)))
+    if intuition_adj:
+        record_reason("SCORING-INTUITION", f"担当者直感 {intuition_score:g}/5", "adjustment", final_score - base_score)
 
     # デモケース補正: 新規飲食出店案件は「強警戒」の説明と点数がずれやすい。
     # モデル本体は変えず、ハッカソン用デモケースだけを即時警戒帯に固定する。
     final_score, demo_score_adj = _apply_demo_food_service_score_cap(inputs, final_score)
+    if demo_score_adj:
+        record_reason("SCORING-DEMO-CAP", "指定された飲食出店デモ案件に上限を適用", "adjustment", demo_score_adj)
 
     # ── SHAP近似: 各特徴量の寄与度を計算 ──
     score_contributions = compute_score_contributions(data_scoring, coeffs)
@@ -1103,6 +1130,10 @@ def run_quick_scoring(inputs: dict) -> dict:
     _term_months = _safe_int(inputs.get("lease_term"), default=60)
     _industry_sub = str(inputs.get("industry_sub") or "")
     asset_warnings, asset_bonuses = generate_asset_warnings(_asset_name, _term_months, _industry_sub)
+    if asset_warnings:
+        record_reason("SCORING-ASSET-RISK", " / ".join(asset_warnings), "warning")
+    if asset_bonuses:
+        record_reason("SCORING-ASSET-STRENGTH", " / ".join(asset_bonuses), "warning")
 
     # 高リスク財務パターンモデルによる警告フラグ（実PDではなく、スコアには影響しない）
     default_warnings = generate_default_warnings(inputs)
@@ -1218,18 +1249,23 @@ def run_quick_scoring(inputs: dict) -> dict:
     risk_review_reasons: list[str] = []
     if user_equity_ratio < 0:
         risk_review_reasons.append(f"債務超過（自己資本比率 {user_equity_ratio:.1f}%）")
+        record_reason("SCORING-REVIEW-EQUITY", risk_review_reasons[-1], "review")
     if default_warnings:
         risk_review_reasons.append("高リスク財務パターンとの類似警告")
+        record_reason("SCORING-REVIEW-PATTERN", " / ".join(default_warnings), "review")
     if credit_risk_group.get("flag"):
         risk_review_reasons.append(
             f"信用リスク群判定 {credit_risk_group.get('level', 'watch')}"
         )
+        record_reason("SCORING-REVIEW-CREDIT", " / ".join([risk_review_reasons[-1], *credit_risk_warnings]), "review")
     if q_risk_value >= 60:
         risk_review_reasons.append(f"Q_risk 強警戒（{q_risk_value:.1f}）")
+        record_reason("SCORING-REVIEW-QUANTUM", risk_review_reasons[-1], "review")
 
     risk_review_required = bool(risk_review_reasons)
     score_based_hantei = "承認圏内" if final_score >= APPROVAL_LINE else "要審議"
     hantei = "要審議" if risk_review_required else score_based_hantei
+    record_reason("SCORING-APPROVAL-LINE", f"総合スコア {final_score:.1f}点 / 承認ライン {APPROVAL_LINE:g}点 → {score_based_hantei}", "decision")
 
     # 担当者が前向きでも、点数不足または強制審議ゲートなら上長確認を促す。
     manager_review_flag = (intuition_score >= 4.0) and (
@@ -1280,6 +1316,7 @@ def run_quick_scoring(inputs: dict) -> dict:
 
     return {
         "score": final_score,
+        "judgment_reasons": judgment_reasons,
         "score_base": base_score,
         "hantei": hantei,
         "comparison": comparison,

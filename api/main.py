@@ -1598,6 +1598,7 @@ def calculate_score(req: ScoringRequest, background_tasks: BackgroundTasks):
         # 期待する戻り値のキーにマッピング
         return ScoringResponse(
             score=result.get("score", 0.0),
+            judgment_reasons=result.get("judgment_reasons", []),
             hantei=result.get("hantei", "未判定"),
             comparison=result.get("comparison", ""),
             user_op_margin=result.get("user_op_margin", 0.0),
@@ -1691,6 +1692,7 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
                 "inputs": inputs,
                 "result": {
                     "score": result.get("score", 0),
+                    "judgment_reasons": result.get("judgment_reasons", []),
                     "score_base": result.get("score_base", result.get("score", 0)),
                     "hantei": result.get("hantei", ""),
                     "user_eq": result.get("user_equity_ratio", result.get("user_eq", 0)),
@@ -1751,6 +1753,7 @@ def calculate_score_full(req: ScoringRequest, background_tasks: BackgroundTasks)
 
         return ScoringResponse(
             score=result.get("score", 0.0),
+            judgment_reasons=result.get("judgment_reasons", []),
             hantei=result.get("hantei", "未判定"),
             comparison=result.get("comparison", ""),
             user_op_margin=result.get("user_op_margin", result.get("user_op", 0.0)),
