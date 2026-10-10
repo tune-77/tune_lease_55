@@ -65,8 +65,19 @@ class ScoringRequest(BaseModel):
     intuition: int = Field(default=3)
 
 
+class ScoringJudgmentReason(BaseModel):
+    asset_id: str
+    asset_version: int
+    title: str
+    summary: str
+    applied_reason: str
+    effect: Literal["adjustment", "warning", "review", "decision"]
+    score_delta: float
+
+
 class ScoringResponse(BaseModel):
     score: float
+    judgment_reasons: list[ScoringJudgmentReason] = Field(default_factory=list)
     hantei: str
     comparison: str
     user_op_margin: float

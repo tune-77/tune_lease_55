@@ -137,3 +137,6 @@ data/error_log_candidates_surfaced.json
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# REV-600: 紫苑ギャラリー（既存の絵から作る候補。scripts/build_shion_gallery_extra.py が生成）
+data/shion_gallery_extra/

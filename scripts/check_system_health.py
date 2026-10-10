@@ -117,6 +117,8 @@ def check_backup_snapshot(backup_root: Path, max_age_hours: int) -> CheckResult:
         data = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return CheckResult("obsidian_backup", False, f"latest snapshot has invalid manifest: {exc}")
+    if not isinstance(data, dict):
+        return CheckResult("obsidian_backup", False, "latest snapshot manifest root must be an object")
     status = str(data.get("status") or "")
     try:
         failed = int(data.get("failed_count") or 0)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 
+import pytest
+
 from api import shion_illustration_gallery as gallery
 
 
@@ -45,6 +47,7 @@ def test_resolve_file_rejects_paths_and_falls_back_to_public(tmp_path):
 def test_payload_and_public_url_mapping(tmp_path, monkeypatch):
     monkeypatch.setattr(gallery, "GALLERY_DIR", tmp_path / "g")
     monkeypatch.setattr(gallery, "PUBLIC_DIR", tmp_path / "p")
+    monkeypatch.setattr(gallery, "EXTRA_DIR", tmp_path / "x")
     _touch(tmp_path / "g" / "2026-08-01.webp")
     assert gallery.payload("2026-08-01.webp") == {
         "available": True,
@@ -66,6 +69,7 @@ def test_router_serves_only_gallery_files(tmp_path, monkeypatch):
 
     monkeypatch.setattr(gallery, "GALLERY_DIR", tmp_path / "g")
     monkeypatch.setattr(gallery, "PUBLIC_DIR", tmp_path / "p")
+    monkeypatch.setattr(gallery, "EXTRA_DIR", tmp_path / "x")
     monkeypatch.setattr(gallery, "ensure_synced_in_background", lambda: None)
     _touch(tmp_path / "g" / "2026-08-01.webp", b"RIFFxxxxWEBP")
     app = FastAPI()
@@ -78,3 +82,47 @@ def test_router_serves_only_gallery_files(tmp_path, monkeypatch):
     assert res.status_code == 200 and res.headers["content-type"] == "image/webp"
     assert client.get("/api/shion/illustrations/file/secrets.toml").status_code == 404
     assert client.get("/api/shion/illustrations/random?mode=bogus").status_code == 422
+
+
+def test_extra_gallery_is_listed_served_and_labelled(tmp_path, monkeypatch):
+    """REV-600: 既存の絵（gallery-*.webp）も候補に入り、日付の代わりに「紫苑ギャラリー」と出る。"""
+    g, p, x = tmp_path / "g", tmp_path / "p", tmp_path / "x"
+    _touch(g / "2026-08-01.webp")
+    _touch(x / "gallery-0123456789.webp")
+    _touch(x / "notes.txt")
+    _touch(g / "gallery-abcdefabcd.webp")  # 日付の置き場に紛れたギャラリー名は配信しない
+
+    assert gallery.list_names(g, p, x) == ["2026-08-01.webp", "gallery-0123456789.webp"]
+    assert gallery.resolve_file("gallery-0123456789.webp", g, p, x) == x / "gallery-0123456789.webp"
+    assert gallery.resolve_file("gallery-abcdefabcd.webp", g, p, x) is None
+    assert gallery.resolve_file("gallery-../../secret", g, p, x) is None
+    assert gallery.payload("gallery-0123456789.webp", g) == {
+        "available": True,
+        "label": "紫苑ギャラリー",
+        "url": "/api/shion/illustrations/file/gallery-0123456789.webp",
+    }
+
+
+def test_build_extra_names_are_stable_and_servable():
+    pytest.importorskip("PIL")
+    from scripts import build_shion_gallery_extra as build
+
+    names = [build.output_name(src, at) for src, at in build.SOURCES]
+    assert len(set(names)) == len(names) == len(build.SOURCES)
+    assert all(gallery.EXTRA_RE.match(n) for n in names)
+    # 軍師の衣装・素材シート・紫苑が写っていない絵は入れない
+    excluded = {"IMG_1913.PNG", "IMG_1914.PNG", "IMG_1915.PNG", "IMG_1916.PNG", "IMG_1917.jpeg",
+                "IMG_1740.PNG", "IMG_1740 (1).PNG", "IMG_1741.PNG", "IMG_1754.JPG", "IMG_1760.JPG", "IMG_1780.PNG"}
+    assert not excluded & {src.rsplit("/", 1)[-1] for src, _ in build.SOURCES}
+    assert all((build.REPO_ROOT / src).is_file() for src, _ in build.SOURCES)
+
+
+def test_fit_16x9_keeps_whole_picture_without_upscaling():
+    Image = pytest.importorskip("PIL.Image")
+
+    from scripts import build_shion_gallery_extra as build
+
+    out = build.fit_16x9(Image.new("RGB", (1024, 1024), "red"))
+    assert out.size == (1280, 720)
+    small = build.fit_16x9(Image.new("RGB", (252, 353), "red"))
+    assert small.height == 353 and abs(small.width / small.height - 16 / 9) < 0.01

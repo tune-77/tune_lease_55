@@ -9,6 +9,8 @@
   data/lease_grumble_gallery/ へ写してから、そこ（ローカル）だけを配信する
 - next start はビルド後に public へ足したファイルを配信しない（404）ため、画像は
   public ではなく API（/api/shion/illustrations/file/...）で出す
+- REV-600: 既存の紫苑の絵（mebuki/・動画の1コマ）も data/shion_gallery_extra/ から候補に入れる
+  （scripts/build_shion_gallery_extra.py が作る。日付は無く「紫苑ギャラリー」と出す）
 """
 from __future__ import annotations
 
@@ -25,7 +27,10 @@ from pathlib import Path
 from ai_runtime_client import _MAIN_ROOT
 
 NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.(webp|png|jpg)$")
+EXTRA_RE = re.compile(r"^gallery-[0-9a-f]{10}\.webp$")
+EXTRA_LABEL = "紫苑ギャラリー"
 GALLERY_DIR = _MAIN_ROOT / "data" / "lease_grumble_gallery"
+EXTRA_DIR = _MAIN_ROOT / "data" / "shion_gallery_extra"
 PUBLIC_DIR = _MAIN_ROOT / "frontend" / "public" / "lease-grumble"
 ARCHIVE_PARTS = ("Projects", "tune_lease_55", "Archive", "Lease Grumble", "Images")
 RESYNC_AFTER_S = 6 * 3600
@@ -89,16 +94,26 @@ def ensure_synced_in_background() -> None:
     threading.Thread(target=run, name="shion-illustration-sync", daemon=True).start()
 
 
-def list_names(gallery_dir: Path | None = None, public_dir: Path | None = None) -> list[str]:
+def list_names(
+    gallery_dir: Path | None = None, public_dir: Path | None = None, extra_dir: Path | None = None
+) -> list[str]:
     names = set()
     for directory in (gallery_dir or GALLERY_DIR, public_dir or PUBLIC_DIR):
         if directory.is_dir():
             names.update(p.name for p in directory.iterdir() if NAME_RE.match(p.name))
+    extra = extra_dir or EXTRA_DIR
+    if extra.is_dir():
+        names.update(p.name for p in extra.iterdir() if EXTRA_RE.match(p.name))
     return sorted(names)
 
 
-def resolve_file(name: str, gallery_dir: Path | None = None, public_dir: Path | None = None) -> Path | None:
-    """配信してよいローカルのファイル。名前は日付形式だけを受け付ける（パス指定は不可）。"""
+def resolve_file(
+    name: str, gallery_dir: Path | None = None, public_dir: Path | None = None, extra_dir: Path | None = None
+) -> Path | None:
+    """配信してよいローカルのファイル。名前は日付形式とギャラリー形式だけを受け付ける（パス指定は不可）。"""
+    if EXTRA_RE.match(name or ""):
+        path = (extra_dir or EXTRA_DIR) / name
+        return path if path.is_file() else None
     if not NAME_RE.match(name or ""):
         return None
     for directory in (gallery_dir or GALLERY_DIR, public_dir or PUBLIC_DIR):
@@ -142,6 +157,8 @@ def save_caption(name: str, caption: str, gallery_dir: Path | None = None) -> No
 def payload(name: str | None, gallery_dir: Path | None = None) -> dict:
     if not name:
         return {"available": False}
+    if EXTRA_RE.match(name):  # 既存の絵（日付も題材の一言も無い）
+        return {"available": True, "label": EXTRA_LABEL, "url": FILE_URL_PREFIX + name}
     result = {"available": True, "date": NAME_RE.match(name).group(1), "url": FILE_URL_PREFIX + name}
     caption = _captions(gallery_dir).get(name)
     if caption:

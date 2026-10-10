@@ -37,6 +37,7 @@ export type ScreeningFormRecord = {
   competitor?: unknown;
 };
 export type ScreeningResultRecord = LooseRecord & {
+  judgment_reasons?: import('../components/analysis/ScoringJudgmentBasis').ScoringJudgmentReason[];
   score?: number;
   score_base?: number;
   hantei?: string;

@@ -661,7 +661,9 @@ def _is_frontmatter_excluded(path: Path) -> bool:
                     return False
         return False
     except OSError:
-        return False
+        # Fail closed: an unreadable note may contain rag_exclude metadata.
+        # Omitting it lets the next index rebuild retry after iCloud recovers.
+        return True
 
 
 # モジュール起動時に1回だけ vault を走査し、Flask の request thread での rglob 不安定挙動を回避する。
