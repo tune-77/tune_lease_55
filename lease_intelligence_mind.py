@@ -1227,6 +1227,13 @@ def register_dialogue_event(
     old_adjustments = dict(state.get("dialogue_mood", {}))
     decayed = {key: int(int(value) * DIALOGUE_MOOD_DECAY) for key, value in old_adjustments.items()}
     causes = dialogue_mood_causes(user_message, signals)
+    # REV-599: 話の内容による気分・関係性の変化は、返答を待たせないよう後からバックグラウンドで足す
+    try:
+        from api.shion_content_mood import schedule_content_effects
+
+        schedule_content_effects(vault, user_message, reply, [c for c in causes if c.get("rule") == "user_affect"])
+    except Exception:  # noqa: BLE001 - 内容の分類が使えなくても対話の気分の記録は続ける
+        pass
     _settle_mood(
         state,
         state.get("memories", []),
