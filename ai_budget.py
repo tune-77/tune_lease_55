@@ -53,6 +53,7 @@ MEMORY_FEATURES = frozenset({
     "shion_activity_reflection",  # 行動観察からの理解と好奇心（記録に残る）
     "shion_self_analysis",
     "world_view_update",  # mind.json の世界の読み
+    "shion_content_mood",  # 話の内容で気分・関係性を動かす分類（REV-599, flash-lite 1往復1回 約0.03円）
     "loop_engineering",  # 記憶の昇格候補抽出・想起の並べ替えでも使う共通口
 })
 _MEMORY_SCRIPT_RE = re.compile(r"(memory|reflection|mind|recall|experience)")

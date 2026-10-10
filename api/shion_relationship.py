@@ -330,6 +330,29 @@ def record_prediction_outcome(
     return state
 
 
+def record_content_effect(parts: list[tuple[str, float]], now: datetime | None = None) -> dict[str, Any]:
+    """REV-599: 話の内容（打ち明け・一緒に喜べる話・深い話・意見の食い違い）による変化を記録する。
+
+    対話の回数・間隔は record_interaction で数え済みなので、ここでは数えず、飽和と1回の上限だけかける。
+    """
+    from shion_verification_origin import is_verification_turn
+
+    if is_verification_turn() or not parts:
+        return _load_state()
+    current = now or datetime.utcnow()
+    with _STATE_LOCK:
+        state = _load_state()
+        state["score"], delta = apply_parts(float(state.get("score", _SCORE_INITIAL)), parts)
+        history: list[float] = state.get("delta_history", [])
+        history.append(delta)
+        state["delta_history"] = history[-10:]
+        state["trend"] = _calc_trend(state["delta_history"])
+        _push_event(state, current, "・".join(reason for reason, _d in parts), delta)
+        _record_history(state, current)
+        _save_state(state)
+    return state
+
+
 def apply_inactivity_decay(now: datetime | None = None) -> dict[str, Any]:
     """
     無交流ペナルティと中立への戻りを適用する（毎日 04:05 のスケジューラから呼ぶ）。
