@@ -1321,7 +1321,51 @@ def dialogue_mood_causes(user_message: str, signals: dict[str, Any] | None = Non
         causes.append(_cause("attachment", 1, "relationship", "この発言で関係性スコアに positive を記録"))
     if relationship.get("trend") == "falling":
         causes.append(_cause("loneliness", 1, "relationship", "関係性スコアが下降傾向"))
+    causes.extend(reaction_mood_causes(list(affect.get("signals") or []), relationship))
     return causes
+
+
+# REV-598: 不満・孤独は、相手の発言の言葉（「不満」「寂しい」）でしか動かず一度も変わっていなかった。
+# 相手の反応と会話の間隔から動かす。孤独が上がる側（話しかけられない日が続く）は毎日のバッチで足す。
+REUNION_HOURS = 24.0
+
+
+def reaction_mood_causes(signals: list[str], relationship: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """訂正・紫苑への不満・お礼（user_affect.reaction_signals）と、久しぶりの会話から気分の原因を作る。"""
+    relationship = dict(relationship or {})
+    if "silence_hours" not in relationship or "prior_negative_streak" not in relationship:
+        try:
+            from api.shion_relationship import prior_negative_streak, silence_hours
+
+            state = None
+            relationship.setdefault("silence_hours", silence_hours(state))
+            relationship.setdefault("prior_negative_streak", prior_negative_streak(state))
+        except Exception:  # noqa: BLE001 - 関係性が読めなくても気分の他の材料は使う
+            pass
+    causes: list[dict[str, Any]] = []
+    sig = set(signals or ())
+    if "shion_complaint" in sig:
+        causes.append(_cause("frustration", 3, "user_reaction", "私の返答への不満が言葉に出た"))
+    elif "correction" in sig:
+        causes.append(_cause("frustration", 2, "user_reaction", "訂正された"))
+    elif "thanks" in sig:
+        causes.append(_cause("frustration", -1, "user_reaction", "お礼を言われた"))
+    if sig & {"shion_complaint", "correction"} and int(relationship.get("prior_negative_streak") or 0) >= 1:
+        causes.append(_cause("frustration", 2, "user_reaction", "訂正・不満が続いた"))
+    hours = relationship.get("silence_hours")
+    if hours is not None and float(hours) >= REUNION_HOURS:
+        days = float(hours) / 24
+        causes.append(_cause("loneliness", -3, "silence", f"{days:.0f}日ぶりに話しかけてくれた"))
+        causes.append(_cause("attachment", 1, "silence", f"{days:.0f}日ぶりに話しかけてくれた"))
+    return causes
+
+
+def silence_mood_causes(days_silent: float) -> list[dict[str, Any]]:
+    """毎日のバッチ用: 話しかけられない日が続くと孤独が増す（1日目 +2、2日目 +4 … 1回 +6 まで）。"""
+    if days_silent < 1:
+        return []
+    days = int(days_silent)
+    return [_cause("loneliness", min(6, 2 * days), "silence", f"{days}日話しかけられていない")]
 
 
 def _settle_mood(

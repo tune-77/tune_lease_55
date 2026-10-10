@@ -63,9 +63,10 @@ def test_inactivity_decay_is_idempotent_for_same_day(tmp_path, monkeypatch):
     first = relationship.apply_inactivity_decay(now=current)
     second = relationship.apply_inactivity_decay(now=current)
 
-    assert first["score"] == 6.7
+    # REV-597: 5日の沈黙で中立（6.5）へ戻る分と、その日1日分のペナルティ（0.15）だけ（以前は超過日数×0.15）
+    assert first["score"] == 6.758
     assert second["score"] == first["score"]
-    assert second["delta_history"] == [-0.3]
+    assert second["delta_history"] == [-0.15]
     assert second["last_inactivity_decay_date"] == "2026-10-05"
 
 

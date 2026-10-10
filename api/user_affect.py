@@ -63,18 +63,44 @@ _PRIORITY = ("落ち込み", "不安", "疲れ", "焦り", "苛立ち", "喜び"
 _MIN_SCORE = 0.6
 
 
+# REV-598 関係性・気分を動かす相手の反応の手がかり（ラベルとは別。ラベルが「通常」でも拾う）
+# 「違う」単独は「業種が違う」のような内容の話にも出るため、言い切り・呼びかけの形だけを訂正とみなす
+_CORRECTION_RE = re.compile(
+    r"(^|[。、\s「])(違う(よ|って|でしょ|ね|わ|。|、|$)|違います|ちがう(よ|って|。|$)|そうじゃな|間違(って|い|え)|まちが(って|い)"
+    r"|訂正|正しくは|じゃなくて)"
+)
+_THANKS_RE = re.compile(r"ありがとう|ありがと|助かった|助かる|助かります|さすが|わかりやすい|分かりやすい|いいね|感謝")
+
+
+def reaction_signals(message: str) -> tuple[str, ...]:
+    """発言に含まれる、紫苑への反応の手がかり（"shion_complaint" / "correction" / "thanks"）。"""
+    text = str(message or "")
+    if len(text) > 600:
+        text = text[:300] + "\n" + text[-300:]
+    found: list[str] = []
+    if any(c in text for c in _SHION_DIRECTED_COMPLAINTS):
+        found.append("shion_complaint")
+    if _CORRECTION_RE.search(text):
+        found.append("correction")
+    if _THANKS_RE.search(text) and not found:
+        found.append("thanks")
+    return tuple(found)
+
+
 @dataclass(frozen=True)
 class UserAffect:
     label: str = NEUTRAL
     intensity: float = 0.0  # 0.0〜1.0
     cues: tuple[str, ...] = field(default_factory=tuple)
+    signals: tuple[str, ...] = field(default_factory=tuple)  # REV-598 reaction_signals の結果
 
     @property
     def is_neutral(self) -> bool:
         return self.label == NEUTRAL
 
     def to_payload(self) -> dict[str, Any]:
-        return {"label": self.label, "intensity": round(self.intensity, 2), "cues": list(self.cues[:4])}
+        return {"label": self.label, "intensity": round(self.intensity, 2), "cues": list(self.cues[:4]),
+                "signals": list(self.signals)}
 
 
 def _keyword_hits(text: str, word: str) -> int:
@@ -95,6 +121,7 @@ def estimate_user_affect(message: str) -> UserAffect:
     text = str(message or "").strip()
     if not text:
         return UserAffect()
+    signals = reaction_signals(text)
     # 長文（資料の貼り付け等）は感情語が偶然混じりやすいので、冒頭と末尾だけを見る
     if len(text) > 600:
         text = text[:300] + "\n" + text[-300:]
@@ -122,13 +149,13 @@ def estimate_user_affect(message: str) -> UserAffect:
         scores[top] += 0.2
 
     if not scores:
-        return UserAffect()
+        return UserAffect(signals=signals)
     best = max(_PRIORITY, key=lambda label: (scores.get(label, 0.0), -_PRIORITY.index(label)))
     best_score = scores.get(best, 0.0)
     if best_score < _MIN_SCORE:
-        return UserAffect()
+        return UserAffect(signals=signals)
     intensity = min(1.0, 0.35 + 0.25 * best_score)
-    return UserAffect(label=best, intensity=intensity, cues=tuple(cues.get(best, ())))
+    return UserAffect(label=best, intensity=intensity, cues=tuple(cues.get(best, ())), signals=signals)
 
 
 # ラベル → (語調, 長さ, 励まし方)
@@ -187,17 +214,22 @@ def build_user_affect_prompt_block(affect: UserAffect) -> str:
 _SHION_DIRECTED_COMPLAINTS = ("違うって", "そうじゃない", "何度も", "ちゃんとして", "意味わからん", "意味不明", "いい加減")
 
 
-def relationship_feedback_from_affect(label: str, cues: list[str] | tuple[str, ...] = ()) -> str:
+def relationship_feedback_from_affect(
+    label: str, cues: list[str] | tuple[str, ...] = (), signals: list[str] | tuple[str, ...] = ()
+) -> str:
     """推定した様子を関係性スコア（REV-220）のフィードバックに変換する（REV-467）。
 
-    - 喜び → positive（一緒に喜べた）
+    - 喜び・お礼（REV-598）→ positive
     - 紫苑の返答への苛立ち（「違うって」「何度も」等）→ negative
     - それ以外（疲れ・不安・仕事への苛立ちなど）→ neutral（相手のつらさを紫苑への評価にしない）
+    訂正（REV-598）は negative より弱い減点として、signals のまま関係性へ渡す。
     """
-    if label == "喜び":
-        return "positive"
-    if label == "苛立ち" and any(c in _SHION_DIRECTED_COMPLAINTS for c in cues):
+    if "shion_complaint" in signals or (label == "苛立ち" and any(c in _SHION_DIRECTED_COMPLAINTS for c in cues)):
         return "negative"
+    if "correction" in signals:
+        return "neutral"
+    if label == "喜び" or "thanks" in signals:
+        return "positive"
     return "neutral"
 
 
@@ -206,10 +238,11 @@ def record_relationship_from_affect(affect_payload: dict[str, Any], *, topic_dep
     try:
         from api.shion_relationship import record_interaction
 
+        signals = list(affect_payload.get("signals") or [])
         feedback = relationship_feedback_from_affect(
-            str(affect_payload.get("label") or NEUTRAL), list(affect_payload.get("cues") or [])
+            str(affect_payload.get("label") or NEUTRAL), list(affect_payload.get("cues") or []), signals
         )
-        record_interaction(feedback_type=feedback, topic_depth=topic_depth)  # type: ignore[arg-type]
+        record_interaction(feedback_type=feedback, topic_depth=topic_depth, signals=signals)  # type: ignore[arg-type]
     except Exception as exc:
         from silent_failure_log import record_silent_failure
 
