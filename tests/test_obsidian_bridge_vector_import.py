@@ -79,3 +79,30 @@ def test_shared_bridge_omits_frontmatter_excluded_notes(monkeypatch, tmp_path) -
     docs = bridge.iter_indexed_obsidian_documents()
 
     assert {doc["title"] for doc in docs} == {"public"}
+
+
+def test_shared_bridge_omits_note_when_frontmatter_read_fails(monkeypatch, tmp_path) -> None:
+    import mobile_app.obsidian_bridge as bridge
+
+    public = tmp_path / "public.md"
+    unreadable = tmp_path / "unreadable.md"
+    public.write_text("public body", encoding="utf-8")
+    unreadable.write_text("---\nrag_exclude: true\n---\nprivate body", encoding="utf-8")
+    original_open = bridge.Path.open
+
+    def fail_unreadable(path, *args, **kwargs):
+        if path == unreadable:
+            raise OSError("iCloud file is temporarily unavailable")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(bridge, "find_vault", lambda: tmp_path)
+    monkeypatch.setattr(
+        bridge,
+        "_VAULT_INDEX",
+        {"vault": None, "knowledge_paths": [], "chat_log_paths": [], "built_at": 0.0},
+    )
+    monkeypatch.setattr(bridge.Path, "open", fail_unreadable)
+
+    bridge._build_vault_index()
+
+    assert bridge._VAULT_INDEX["knowledge_paths"] == [public]
