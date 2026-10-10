@@ -67,7 +67,7 @@ def test_budget_spec_registered_as_shape():
 def test_payload_shape():
     payload = estimate_user_affect("至急お願いします").to_payload()
     assert payload["label"] == "焦り"
-    assert set(payload) == {"label", "intensity", "cues"}
+    assert set(payload) == {"label", "intensity", "cues", "signals"}
 
 
 def test_relationship_feedback_from_affect():
