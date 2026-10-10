@@ -50,6 +50,7 @@ def test_verification_user_ids_and_rows():
     assert is_verification_row({"user_id": "default", "origin": "verification"})
     assert is_verification_row({"user_id": "default", "metadata": {"origin": "verification"}})
     assert is_verification_row({"user_id": "rev540_verify"})
+    assert is_verification_row({"call_class": "verification"})
     assert not is_verification_row({"user_id": "default", "metadata": {}})
 
 
@@ -231,10 +232,63 @@ def test_growth_weekly_ignores_verification_rows(tmp_path, monkeypatch):
         {"ts": "2026-10-08T23:35:51+00:00", "user_id": "lease-intelligence-dialogue", "user_message": "運送業や建設業の倒産が増えてるけど？", "assistant_reply": "a", "origin": "verification"},
     ]
     (tmp_path / "cloudrun_chat_log.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    (tmp_path / "shion_emotion_grounding_log.jsonl").write_text(
+        json.dumps({"ts": "2026-10-09T09:00:00+09:00", "origin": "verification", "status": "applied",
+                    "kind": "serious_emotion", "counts": {"verified": 1}}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "chat_prompt_budget_log.jsonl").write_text(
+        json.dumps({"ts": "2026-10-09T09:00:00+09:00", "origin": "verification", "surface": "dialogue",
+                    "blocks": {"news_zettel_context": {"kept": 10}, "emotion_grounding_context": {"kept": 10}}}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "ai_usage.jsonl").write_text(
+        json.dumps({"timestamp": "2026-10-09T00:00:00+00:00", "call_class": "verification",
+                    "provider": "google", "model": "gemini-3.1-flash-lite", "input_tokens": 1000,
+                    "output_tokens": 100, "total_tokens": 1100}) + "\n",
+        encoding="utf-8",
+    )
     start, end = datetime(2026, 10, 5).date(), datetime(2026, 10, 11).date()
     result = growth.collect(tmp_path, tmp_path, start, end)
     assert result["repeat"]["repeats"] == 0
+    assert result["grounding"]["checks"] == 0 and result["grounding"]["evidence_injected"] == 0
+    assert result["news"]["attached"] == 0
+    # 検証会話は成長指標から除外するが、実際に発生したAPI費用は運用コストへ残す。
+    assert result["cost"]["yen"] > 0
+    assert result["cost"]["by_class"]["verification"] > 0
     assert growth.prediction_metrics([{"at": "2026-10-09T08:59:46", "origin": "verification", "affect_hit": False}], start, end)["n"] == 0
+
+
+def test_verification_origin_reaches_budget_and_dedicated_grounding_logs(tmp_path, monkeypatch):
+    from api import chat_prompt_budget, shion_emotion_grounding
+
+    budget_path = tmp_path / "budget.jsonl"
+    monkeypatch.setattr(chat_prompt_budget, "_LOG_PATH", budget_path)
+    _in_verification_turn(chat_prompt_budget._append_log, {"surface": "dialogue", "blocks": {}})
+    assert json.loads(budget_path.read_text(encoding="utf-8"))["origin"] == "verification"
+
+    captured = []
+
+    class ImmediateExecutor:
+        def submit(self, fn):
+            fn()
+
+    monkeypatch.setattr(shion_emotion_grounding, "_VERIFY_EXECUTOR", ImmediateExecutor())
+    monkeypatch.setattr(shion_emotion_grounding, "_VERIFY_PENDING", 0)
+    monkeypatch.setattr(
+        shion_emotion_grounding,
+        "verify_and_log",
+        lambda *args, **kwargs: captured.append(kwargs),
+    )
+    assert _in_verification_turn(
+        shion_emotion_grounding.submit_verification,
+        "question",
+        "reply",
+        "evidence",
+        surface="dialogue",
+        kind="serious_emotion",
+    )
+    assert captured[0]["origin"] == "verification"
 
 
 def test_module_has_single_header_name():

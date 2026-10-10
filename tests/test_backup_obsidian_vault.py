@@ -105,3 +105,21 @@ def test_repeated_suspicious_snapshots_are_bounded_while_complete_restore_point_
     assert len(snapshots) == 2
     assert complete.destination.exists()
     assert latest.destination.exists()
+
+
+def test_cli_returns_nonzero_for_partial_snapshot(monkeypatch, tmp_path):
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    summary = backup.BackupSummary(
+        vault=vault,
+        destination=tmp_path / "snapshot",
+        file_count=2,
+        total_bytes=10,
+        excluded_count=0,
+        dry_run=False,
+        failed=[{"path": "missing.md", "reason": "copy_error", "error": "boom"}],
+    )
+    monkeypatch.setattr(backup, "find_vault", lambda _override=None: vault)
+    monkeypatch.setattr(backup, "backup_vault", lambda **_kwargs: summary)
+
+    assert backup.main(["--vault", str(vault), "--backup-root", str(tmp_path / "backups")]) == 3

@@ -524,7 +524,11 @@ def record_relationship_from_outcome(outcome: PredictionOutcome | None) -> None:
     try:
         from api.shion_relationship import record_prediction_outcome
 
-        record_prediction_outcome(hit=not outcome.missed, surprise=outcome.surprise)
+        # REV-598: スコアには様子の当たり・返答への不満だけを使う（話題の予想は雑音のため使わない）
+        record_prediction_outcome(
+            hit=not outcome.missed, surprise=outcome.surprise,
+            affect_hit=outcome.affect_hit, reaction_hit=outcome.reaction_hit,
+        )
     except Exception as exc:
         from silent_failure_log import record_silent_failure
 

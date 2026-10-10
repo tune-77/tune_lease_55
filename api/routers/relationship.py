@@ -35,7 +35,8 @@ def post_relationship_feedback(req: RelationshipFeedbackRequest):
     try:
         from api.shion_relationship import record_interaction
         state = record_interaction(
-            feedback_type=req.feedback_type,   # type: ignore[arg-type]
+            # REV-598 画面の「良かった」ボタンは発言のお礼より少し強く数える
+            feedback_type="positive_button" if req.feedback_type == "positive" else req.feedback_type,  # type: ignore[arg-type]
             topic_depth=req.topic_depth,       # type: ignore[arg-type]
         )
         return {"status": "ok", "score": state["score"], "trend": state["trend"]}
