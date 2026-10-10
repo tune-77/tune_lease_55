@@ -5,7 +5,6 @@ reports/latest.json と static_data/macro_context.json を読み込んで
 """
 
 import json
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +25,20 @@ SIDECAR_BRIEF_MD = PROJECT_ROOT / "reports" / "agent_sidecar_brief.md"
 OUTPUT_PATH = VAULT_PATH / "DAILY-BRIEF.md"
 
 
+def _frontmatter_has_rag_exclude(text: str) -> bool:
+    """Return whether YAML frontmatter explicitly excludes the note from RAG."""
+    if not text.startswith("---\n"):
+        return False
+    end = text.find("\n---", 4)
+    if end < 0:
+        return False
+    for line in text[4:end].splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key.strip().lower() == "rag_exclude":
+            return value.strip().lower() in {"true", "1", "yes", "on"}
+    return False
+
+
 def retire_legacy_daily_brief() -> bool:
     """Keep the old nested copy but make its retirement enforceable by every RAG path."""
     legacy = ICLOUD_VAULT_PATH / "DAILY-BRIEF.md"
@@ -34,7 +47,7 @@ def retire_legacy_daily_brief() -> bool:
     temp: Path | None = None
     try:
         text = legacy.read_text(encoding="utf-8", errors="ignore")
-        if re.search(r"(?mi)^rag_exclude\s*:\s*(?:true|1|yes|on)\s*$", text):
+        if _frontmatter_has_rag_exclude(text):
             return False
         if text.startswith("---\n"):
             end = text.find("\n---", 4)
@@ -205,8 +218,10 @@ def main() -> None:
 _次回更新: 翌 AM4:00 （run_daily_improvement_pipeline.sh）_
 """
 
+    write_succeeded = False
     try:
         OUTPUT_PATH.write_text(content, encoding="utf-8")
+        write_succeeded = True
         print(f"[write_daily_brief] 書き出し完了: {OUTPUT_PATH}")
     except OSError as exc:
         # iCloud同期中のVaultファイルは稀に EDEADLK (Errno 11) を返す。
@@ -217,7 +232,8 @@ _次回更新: 翌 AM4:00 （run_daily_improvement_pipeline.sh）_
 
     # REV-585 follow-up: 既存の lease-wiki-vault 側コピーは削除せず、共通の
     # rag_exclude 契約で検索対象から外す。夜間の prune_missing で既存Chromaチャンクも消える。
-    retire_legacy_daily_brief()
+    if write_succeeded:
+        retire_legacy_daily_brief()
 
 
 if __name__ == "__main__":

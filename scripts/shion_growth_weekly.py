@@ -414,8 +414,6 @@ def cost_metrics(rows: list[dict[str, Any]], start: date, end: date) -> dict[str
     first = None
     for r in rows:
         day = jst_day(r.get("timestamp"))
-        if is_verification_row(r):
-            continue
         if day and (first is None or day < first):
             first = day
         if not in_period(day, start, end):

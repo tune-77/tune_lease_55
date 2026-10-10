@@ -253,7 +253,9 @@ def test_growth_weekly_ignores_verification_rows(tmp_path, monkeypatch):
     assert result["repeat"]["repeats"] == 0
     assert result["grounding"]["checks"] == 0 and result["grounding"]["evidence_injected"] == 0
     assert result["news"]["attached"] == 0
-    assert result["cost"]["yen"] == 0
+    # 検証会話は成長指標から除外するが、実際に発生したAPI費用は運用コストへ残す。
+    assert result["cost"]["yen"] > 0
+    assert result["cost"]["by_class"]["verification"] > 0
     assert growth.prediction_metrics([{"at": "2026-10-09T08:59:46", "origin": "verification", "affect_hit": False}], start, end)["n"] == 0
 
 
