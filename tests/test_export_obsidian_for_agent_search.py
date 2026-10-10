@@ -11,6 +11,10 @@ def _write_note(vault: Path, rel: str, body: str) -> Path:
     return path
 
 
+def test_rag_exclude_is_also_private_for_vertex_export():
+    assert exporter.has_private_marker("---\nrag_exclude: 'yes'\n---\n# Internal")
+
+
 def test_export_filters_private_notes_and_writes_quality_metadata(tmp_path):
     vault = tmp_path / "vault"
     project = "Projects/tune_lease_55"

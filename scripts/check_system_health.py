@@ -113,7 +113,28 @@ def check_backup_snapshot(backup_root: Path, max_age_hours: int) -> CheckResult:
         return CheckResult("obsidian_backup", False, f"latest snapshot is stale: {age:.1f}h ago at {latest}")
     if not manifest.exists():
         return CheckResult("obsidian_backup", False, f"latest snapshot missing manifest: {latest}")
-    return CheckResult("obsidian_backup", True, f"latest snapshot {age:.1f}h ago: {latest.name}")
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return CheckResult("obsidian_backup", False, f"latest snapshot has invalid manifest: {exc}")
+    status = str(data.get("status") or "")
+    try:
+        failed = int(data.get("failed_count") or 0)
+        file_count = int(data.get("file_count") or 0)
+        copied = int(data.get("copied_count") or 0)
+    except (TypeError, ValueError):
+        return CheckResult("obsidian_backup", False, "latest snapshot manifest has invalid counts")
+    if status != "complete" or failed or file_count <= 0 or copied != file_count:
+        return CheckResult(
+            "obsidian_backup",
+            False,
+            f"latest snapshot is not complete: status={status or 'missing'}, copied={copied}/{file_count}, failed={failed}",
+        )
+    return CheckResult(
+        "obsidian_backup",
+        True,
+        f"latest complete snapshot {age:.1f}h ago: {latest.name}, files={copied}",
+    )
 
 
 def check_case_data_backup(backup_root: Path, max_age_hours: int) -> CheckResult:

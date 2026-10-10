@@ -477,8 +477,10 @@ def assemble_prompt(
 def _append_log(summary: dict[str, Any]) -> None:
     """ブロック名と文字数だけを記録する（本文・質問文は残さない）。"""
     try:
+        from shion_verification_origin import origin_fields
+
         _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        entry = {"ts": dt.datetime.now().astimezone().isoformat(timespec="seconds"), **summary}
+        entry = {"ts": dt.datetime.now().astimezone().isoformat(timespec="seconds"), **summary, **origin_fields()}
         with _LOG_PATH.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except OSError:

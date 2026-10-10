@@ -1,4 +1,10 @@
-from api.knowledge.obsidian_loader import _chunk_by_h2, is_keyword_stub, normalize_chunk_text
+from api.knowledge.obsidian_loader import (
+    _chunk_by_h2,
+    is_keyword_stub,
+    normalize_chunk_text,
+    note_excludes_rag,
+    scan_vault,
+)
 
 
 def test_is_keyword_stub_detects_space_separated_query_lines():
@@ -39,3 +45,17 @@ def test_normalize_chunk_text_treats_number_only_differences_as_same():
     assert normalize_chunk_text("60-80帯 win_pct(58.5%) < 40-60帯(62.4%)") == normalize_chunk_text(
         "60-80帯 win_pct(58.7%) < 40-60帯(62.7%)"
     )
+
+
+def test_rag_exclude_frontmatter_is_enforced_during_scan(tmp_path):
+    (tmp_path / "included.md").write_text("# 公開\n\n検索に使う本文です。", encoding="utf-8")
+    (tmp_path / "excluded.md").write_text(
+        "---\nrag_exclude: true\n---\n# 非公開\n\n検索に出してはいけない本文です。",
+        encoding="utf-8",
+    )
+
+    chunks = list(scan_vault(str(tmp_path)))
+
+    assert {chunk.file_name for chunk in chunks} == {"included.md"}
+    assert note_excludes_rag("---\nrag_exclude: 'yes'\n---\nbody")
+    assert not note_excludes_rag("---\nrag_exclude: false\n---\nbody")

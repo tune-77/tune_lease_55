@@ -25,6 +25,53 @@ SIDECAR_BRIEF_MD = PROJECT_ROOT / "reports" / "agent_sidecar_brief.md"
 OUTPUT_PATH = VAULT_PATH / "DAILY-BRIEF.md"
 
 
+def _frontmatter_has_rag_exclude(text: str) -> bool:
+    """Return whether YAML frontmatter explicitly excludes the note from RAG."""
+    if not text.startswith("---\n"):
+        return False
+    end = text.find("\n---", 4)
+    if end < 0:
+        return False
+    for line in text[4:end].splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key.strip().lower() == "rag_exclude":
+            return value.strip().lower() in {"true", "1", "yes", "on"}
+    return False
+
+
+def retire_legacy_daily_brief() -> bool:
+    """Keep the old nested copy but make its retirement enforceable by every RAG path."""
+    legacy = ICLOUD_VAULT_PATH / "DAILY-BRIEF.md"
+    if legacy.resolve() == OUTPUT_PATH.resolve() or not legacy.exists():
+        return False
+    temp: Path | None = None
+    try:
+        text = legacy.read_text(encoding="utf-8", errors="ignore")
+        if _frontmatter_has_rag_exclude(text):
+            return False
+        if text.startswith("---\n"):
+            end = text.find("\n---", 4)
+            if end >= 0:
+                updated = text[:end] + "\nrag_exclude: true\ndeprecated_by: root_daily_brief" + text[end:]
+            else:
+                updated = "---\nrag_exclude: true\ndeprecated_by: root_daily_brief\n---\n" + text
+        else:
+            updated = "---\nrag_exclude: true\ndeprecated_by: root_daily_brief\n---\n" + text
+        temp = legacy.with_name(f".{legacy.name}.retire.tmp")
+        temp.write_text(updated, encoding="utf-8")
+        temp.replace(legacy)
+        print(f"[write_daily_brief] 旧コピーをRAG除外: {legacy}")
+        return True
+    except OSError as exc:
+        report_pipeline_failure(
+            f"旧DAILY-BRIEFのRAG除外に失敗しました（target={legacy}）: {exc}", level="警告"
+        )
+        return False
+    finally:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
+
+
 def load_json(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -171,8 +218,10 @@ def main() -> None:
 _次回更新: 翌 AM4:00 （run_daily_improvement_pipeline.sh）_
 """
 
+    write_succeeded = False
     try:
         OUTPUT_PATH.write_text(content, encoding="utf-8")
+        write_succeeded = True
         print(f"[write_daily_brief] 書き出し完了: {OUTPUT_PATH}")
     except OSError as exc:
         # iCloud同期中のVaultファイルは稀に EDEADLK (Errno 11) を返す。
@@ -181,9 +230,10 @@ _次回更新: 翌 AM4:00 （run_daily_improvement_pipeline.sh）_
             f"DAILY-BRIEFの書き込みに失敗しました（target={OUTPUT_PATH}）: {exc}", level="警告"
         )
 
-    # REV-585: 書き出し先はメインVaultのルート1か所だけ（上の OUTPUT_PATH）。
-    # 以前は lease-wiki-vault/DAILY-BRIEF.md にも同じ内容を書き、RAG に二重に入っていた。
-    # 「ホーム」の [[DAILY-BRIEF]] もルート側に解決される。既存の lease-wiki-vault 側のファイルは消さない。
+    # REV-585 follow-up: 既存の lease-wiki-vault 側コピーは削除せず、共通の
+    # rag_exclude 契約で検索対象から外す。夜間の prune_missing で既存Chromaチャンクも消える。
+    if write_succeeded:
+        retire_legacy_daily_brief()
 
 
 if __name__ == "__main__":

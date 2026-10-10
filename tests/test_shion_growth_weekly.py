@@ -42,6 +42,8 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     _jsonl(source / "ai_usage.jsonl", [
         {"timestamp": "2026-10-05T01:00:00+00:00", "provider": "google", "feature": "chat_memory",
          "model": "gemini-3.1-flash-lite", "input_tokens": 10000, "output_tokens": 500, "total_tokens": 10500, "call_class": "memory"},
+        {"timestamp": "2026-10-05T02:00:00+00:00", "provider": "google", "feature": "recorded_reply_verify",
+         "model": "gemini-3.1-flash-lite", "input_tokens": 10000, "output_tokens": 500, "total_tokens": 10500, "call_class": "verification"},
     ])
     _jsonl(source / "judgment_asset_growth_history.jsonl", [
         {"date": "2026-09-30", "counts": {"active_rules": 5}},
@@ -95,7 +97,10 @@ def test_collect_counts_each_metric_from_logs_only(tmp_path):
     assert m["judgment"]["kinds"] == {"知見": 1, "目安": 1} and m["judgment"]["excluded_shion"] == 1
     assert m["judgment"]["active_as_of_end"] == 7 and m["judgment"]["new_in_period"] == 1
     assert m["news"]["total_written"] == 2 and m["news"]["hub_rate_total"] == 50.0 and m["news"]["attached"] == 1
-    assert m["cost"]["yen"] > 0 and m["cost"]["by_class"] == {"memory": m["cost"]["yen"]}
+    assert m["cost"]["yen"] > 0
+    assert set(m["cost"]["by_class"]) == {"memory", "verification"}
+    assert m["cost"]["by_class"]["verification"] > 0
+    assert m["cost"]["yen"] > m["cost"]["by_class"]["memory"]
 
 
 def test_week_buckets_split_on_sunday():
