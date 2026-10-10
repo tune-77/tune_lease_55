@@ -161,6 +161,7 @@ def test_relationship_understanding(tmp_path, monkeypatch):
     before = rel.get_relationship_state()["score"]
     state = rel.record_prediction_outcome(hit=True, surprise=0.0)
     assert state["score"] > before and state["understanding"] > 0.5
+    after_hit = state["score"]
     state = rel.record_prediction_outcome(hit=False, surprise=0.8)
-    assert state["score"] == pytest.approx(before + 0.03)  # 外れでは下げない
+    assert state["score"] == pytest.approx(after_hit)  # 外れでは下げない（REV-597: 当たりの上げ幅は飽和する）
     assert rel.get_fear_context()["understanding"] == state["understanding"]

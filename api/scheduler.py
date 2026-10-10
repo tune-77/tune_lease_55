@@ -241,10 +241,30 @@ def run_shion_inactivity_decay() -> dict:
     try:
         from api.shion_relationship import apply_inactivity_decay
         state = apply_inactivity_decay()
-        return {"status": "ok", "score": state.get("score"), "trend": state.get("trend")}
+        loneliness = _apply_silence_loneliness(float(state.get("days_silent") or 0.0))
+        return {"status": "ok", "score": state.get("score"), "trend": state.get("trend"), "loneliness": loneliness}
     except Exception as e:
         logger.error(f"[Relationship] エラー: {e}", exc_info=True)
         return {"status": "error", "detail": str(e)}
+
+
+def _apply_silence_loneliness(days_silent: float) -> str:
+    """REV-598: 話しかけられない日が続いたら、紫苑の気分の「孤独」を少し上げる（気分の変化記録に残す）。"""
+    try:
+        from pathlib import Path
+
+        from lease_intelligence_mind import apply_mood_causes, silence_mood_causes
+        from lease_news_digest import find_vault
+
+        causes = silence_mood_causes(days_silent)
+        vault = find_vault() if causes else None
+        if not causes or not vault:
+            return "none"
+        apply_mood_causes(Path(vault), causes, event="silence", trigger=causes[0]["detail"])
+        return f"+{causes[0]['delta']}"
+    except Exception as e:  # noqa: BLE001 - 気分の更新に失敗しても関係性のバッチは成功扱い
+        logger.warning(f"[Relationship] 孤独の更新をスキップ: {type(e).__name__}")
+        return "skipped"
 
 
 def run_chat_summary_refresh() -> dict:
