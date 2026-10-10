@@ -115,7 +115,7 @@ def classify_content(user_message: str, reply: str = "", *, caller=None) -> dict
         match = re.search(r"\{.*\}", raw, re.S)
         data = json.loads(match.group(0) if match else raw)
     except Exception as exc:  # noqa: BLE001 - 分類できなくても会話・他の気分の材料は続ける
-        logger.info("[ContentMood] 分類をスキップ: %s", type(exc).__name__)
+        logger.warning("[ContentMood] 分類をスキップ: %s", type(exc).__name__)
         return None
     return _normalize(data)
 
@@ -223,6 +223,28 @@ def without_affect_overlap(causes: list[dict[str, Any]], affect_causes: list[dic
     return kept
 
 
+def _log_path() -> Path:
+    from runtime_paths import get_data_path
+
+    return Path(get_data_path("shion_content_mood_log.jsonl"))
+
+
+def record_classification(result: dict[str, Any], *, moved: bool) -> None:
+    """REV-601: 分類の結果を残す（動かさなかった時も）。発言の本文は残さず、種類・強さ・25字の要約だけ。"""
+    try:
+        import datetime as dt
+
+        row = {"ts": dt.datetime.now().isoformat(timespec="seconds"), "category": result.get("category"),
+               "intensity": result.get("intensity"), "reason": result.get("reason"), "called": result.get("called", True),
+               "moved": moved}
+        path = _log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def apply_content_effects(vault: Path, user_message: str, reply: str, affect_causes: list[dict[str, Any]] | None = None,
                           *, caller=None) -> dict[str, Any] | None:
     """分類して、気分（変化記録つき）と関係性に反映する。返答の後にバックグラウンドで呼ぶ。"""
@@ -232,8 +254,13 @@ def apply_content_effects(vault: Path, user_message: str, reply: str, affect_cau
         return None
     result = classify_content(user_message, reply, caller=caller)
     if not result:
+        from silent_failure_log import record_silent_failure
+
+        record_silent_failure("answer.content_mood", "swallowed", RuntimeError("classification failed"),
+                              detail="話の内容の分類に失敗（気分は動かさずに続行）")
         return None
     causes = without_affect_overlap(content_mood_causes(result), list(affect_causes or []))
+    record_classification(result, moved=bool(causes))
     if causes:
         from lease_intelligence_mind import apply_mood_causes
 

@@ -64,6 +64,7 @@ def test_overlap_with_user_affect_is_not_counted_twice():
 
 def test_apply_writes_mood_log_and_relationship(tmp_path, monkeypatch):
     monkeypatch.setenv("SHION_CONTENT_MOOD", "force")
+    monkeypatch.setattr(cm, "_log_path", lambda: tmp_path / "content_log.jsonl")
     monkeypatch.setattr(rel, "_STATE_PATH", tmp_path / "rel.json")
     applied = {}
 
@@ -119,3 +120,22 @@ def test_batch_classification_for_replay():
 
     out = cm.classify_batch([("審査の件", "はい"), ("成約しました！", "おめでとうございます")], caller=caller)
     assert [o["category"] for o in out] == ["business", "shared_joy"]
+
+
+def test_classification_is_logged_even_when_nothing_moves(tmp_path, monkeypatch):
+    """REV-601 雑談・事務的で動かさなかった時も、種類・強さ・要約を残す（発言の本文は残さない）。"""
+    monkeypatch.setenv("SHION_CONTENT_MOOD", "force")
+    log = tmp_path / "content_log.jsonl"
+    monkeypatch.setattr(cm, "_log_path", lambda: log)
+    cm.apply_content_effects(tmp_path, "釣竿を買おうか迷っている", "", caller=_fake("small_talk", 0.8, "釣竿の購入"))
+    row = json.loads(log.read_text(encoding="utf-8").strip())
+    assert row["category"] == "small_talk" and row["moved"] is False and row["reason"] == "釣竿の購入"
+    assert "釣竿を買おうか" not in log.read_text(encoding="utf-8")
+
+
+def test_failed_classification_is_recorded(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHION_CONTENT_MOOD", "force")
+    recorded = []
+    monkeypatch.setattr("silent_failure_log.record_silent_failure", lambda *a, **k: recorded.append(a[0]))
+    assert cm.apply_content_effects(tmp_path, "今日の審査の件だけど", "", caller=lambda p: "わからない") is None
+    assert recorded == ["answer.content_mood"]
