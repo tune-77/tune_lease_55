@@ -95,6 +95,7 @@ def replay(pairs, cache, *, mood_base: dict[str, int]) -> dict[str, Any]:
     categories: Counter[str] = Counter()
     examples: dict[str, list[str]] = {}
     rel_sum = 0.0
+    turns: list[dict[str, Any]] = []
 
     def settle(track, causes):
         track["adj"] = {a: int(v * DIALOGUE_MOOD_DECAY) for a, v in track["adj"].items()}
@@ -135,6 +136,8 @@ def replay(pairs, cache, *, mood_base: dict[str, int]) -> dict[str, Any]:
         elif len(examples.setdefault(category, [])) < 3:
             examples[category].append(f"{(pair['ts'] + JST):%m/%d} {(result or {}).get('reason', '')}")
         daily[day] = {"with": dict(tracks["with"]["mood"]), "without": dict(tracks["without"]["mood"])}
+        turns.append({"ts": (pair["ts"] + JST).isoformat(timespec="minutes"), "category": category,
+                      "with": dict(tracks["with"]["mood"]), "without": dict(tracks["without"]["mood"])})
     return {
         "pairs": len(pairs),
         "categories": dict(categories),
@@ -145,6 +148,7 @@ def replay(pairs, cache, *, mood_base: dict[str, int]) -> dict[str, Any]:
         "business_turns_moved_by_content": business_moves,
         "relationship_from_content_total": round(rel_sum, 3),
         "daily": daily,
+        "turns": turns,
     }
 
 
@@ -161,7 +165,7 @@ def main() -> int:
     mood_base = {a: int((mind.get("mood_base") or mind.get("mood") or {}).get(a, 50)) for a in AXES}
     result = replay(pairs, cache, mood_base=mood_base)
     args.out.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(json.dumps({k: v for k, v in result.items() if k != "daily"}, ensure_ascii=False))
+    print(json.dumps({k: v for k, v in result.items() if k not in ("daily", "turns")}, ensure_ascii=False))
     return 0
 
 
