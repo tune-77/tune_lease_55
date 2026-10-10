@@ -6,7 +6,7 @@ from pathlib import Path
 from scripts.check_system_health import check_backup_snapshot
 
 
-def _snapshot(root: Path, manifest: dict) -> Path:
+def _snapshot(root: Path, manifest: object) -> Path:
     path = root / "Obsidian Vault_20261010_010000"
     path.mkdir(parents=True)
     (path / "backup_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -29,3 +29,12 @@ def test_backup_health_accepts_complete_snapshot(tmp_path):
 
     assert result.ok is True
     assert "files=10" in result.message
+
+
+def test_backup_health_rejects_non_object_manifest(tmp_path):
+    _snapshot(tmp_path, None)
+
+    result = check_backup_snapshot(tmp_path, max_age_hours=24)
+
+    assert result.ok is False
+    assert "root must be an object" in result.message
