@@ -22,6 +22,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from obsidian_query import list_vault_md_files
+from api.knowledge.obsidian_loader import note_excludes_rag  # noqa: E402
 
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 
@@ -187,6 +188,8 @@ def has_secret_like_text(text: str) -> bool:
 
 
 def has_private_marker(text: str) -> bool:
+    if note_excludes_rag(text):
+        return True
     head = "\n".join(text.splitlines()[:40]).lower()
     private_patterns = (
         "vertex_exclude: true",

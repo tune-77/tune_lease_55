@@ -638,6 +638,32 @@ def _is_private_note(path: Path) -> bool:
     return any(directory in path.parts for directory in _PRIVATE_NOTE_DIRS)
 
 
+def _is_frontmatter_excluded(path: Path) -> bool:
+    """Honor the same ``rag_exclude`` frontmatter contract as the Chroma loader."""
+    try:
+        from api.knowledge.obsidian_loader import note_excludes_rag
+
+        # The bridge rebuilds its path cache every five minutes. Read only the
+        # frontmatter instead of loading every full note during that scan.
+        lines: list[str] = []
+        size = 0
+        with path.open(encoding="utf-8", errors="ignore") as handle:
+            first = handle.readline()
+            if first.strip() != "---":
+                return False
+            lines.append(first)
+            for line in handle:
+                lines.append(line)
+                size += len(line)
+                if line.strip() == "---":
+                    return note_excludes_rag("".join(lines))
+                if size > 65536:
+                    return False
+        return False
+    except OSError:
+        return False
+
+
 # モジュール起動時に1回だけ vault を走査し、Flask の request thread での rglob 不安定挙動を回避する。
 _VAULT_INDEX: dict[str, Any] = {
     "vault": None,
@@ -658,7 +684,7 @@ def _build_vault_index() -> None:
     chat_logs: list[Path] = []
     try:
         for p in vault.rglob("*.md"):
-            if _is_private_note(p):
+            if _is_private_note(p) or _is_frontmatter_excluded(p):
                 continue
             if _is_chat_log(p):
                 chat_logs.append(p)

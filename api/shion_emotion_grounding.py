@@ -534,6 +534,7 @@ def verify_and_log(
     kind: str = "serious_emotion",
     mode: str | None = None,
     path: Path | None = None,
+    origin: str = "",
 ) -> dict[str, Any]:
     """バックグラウンドで呼ぶ。失敗しても会話は止めず、失敗もログに残す。"""
     mode = mode if mode in REPORT_MODES else report_mode()
@@ -549,6 +550,9 @@ def verify_and_log(
             result = {"status": "error", "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
     from api.chat_judgment_asset_capture import mask_for_jev
 
+    from shion_verification_origin import origin_fields
+
+    origin_payload = {"origin": origin} if origin else origin_fields()
     record = {
         "ts": datetime.now().isoformat(timespec="seconds"),
         "surface": surface,
@@ -557,6 +561,7 @@ def verify_and_log(
         # 質問・主張は伏せた形だけを残す（審査の社名・数値を別ログへ複製しない）
         "question": mask_for_jev(_NUMBER_RE.sub("〈数値〉", " ".join(str(message or "").split())))[:60],
         **{key: value for key, value in result.items() if key != "claims"},
+        **origin_payload,
     }
     target = path or _log_path()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -583,10 +588,16 @@ def submit_verification(message: str, reply: str, evidence: str, *, surface: str
             return False
         _VERIFY_PENDING += 1
 
+    # ContextVar does not cross this dedicated ThreadPoolExecutor. Capture the
+    # origin before submitting so verification conversations stay identifiable.
+    from shion_verification_origin import origin_fields
+
+    turn_origin = str(origin_fields().get("origin") or "")
+
     def run() -> None:
         global _VERIFY_PENDING
         try:
-            verify_and_log(message, reply, evidence, surface=surface, kind=kind)
+            verify_and_log(message, reply, evidence, surface=surface, kind=kind, origin=turn_origin)
         finally:
             with _VERIFY_PENDING_LOCK:
                 _VERIFY_PENDING -= 1

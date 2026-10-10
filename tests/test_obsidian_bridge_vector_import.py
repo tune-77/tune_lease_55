@@ -61,3 +61,21 @@ def test_keyword_only_search_is_failure(monkeypatch, tmp_path) -> None:
 def test_vector_search_used_is_ok(monkeypatch, tmp_path) -> None:
     results, recorded = _run(monkeypatch, tmp_path, {"Q-Risk": {"hits": 3, "vector_hits": 2}})
     assert results["status"] == "ok" and not recorded
+
+
+def test_shared_bridge_omits_frontmatter_excluded_notes(monkeypatch, tmp_path) -> None:
+    import mobile_app.obsidian_bridge as bridge
+
+    (tmp_path / "public.md").write_text("public body", encoding="utf-8")
+    (tmp_path / "private.md").write_text("---\nrag_exclude: true\n---\nprivate body", encoding="utf-8")
+    monkeypatch.setattr(bridge, "find_vault", lambda: tmp_path)
+    monkeypatch.setattr(
+        bridge,
+        "_VAULT_INDEX",
+        {"vault": None, "knowledge_paths": [], "chat_log_paths": [], "built_at": 0.0},
+    )
+
+    bridge._build_vault_index()
+    docs = bridge.iter_indexed_obsidian_documents()
+
+    assert {doc["title"] for doc in docs} == {"public"}

@@ -77,6 +77,8 @@ def is_verification_row(row: Any) -> bool:
     metadata = row.get("metadata") if isinstance(row.get("metadata"), Mapping) else {}
     if VERIFICATION_ORIGIN in (row.get("origin"), metadata.get("origin")):
         return True
+    if str(row.get("call_class") or "").strip().lower() == VERIFICATION_ORIGIN:
+        return True
     return is_verification_user_id(row.get("user_id"))
 
 

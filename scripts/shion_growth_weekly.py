@@ -145,7 +145,10 @@ def prediction_metrics(rows: list[dict[str, Any]], start: date, end: date) -> di
 
 def grounding_metrics(rows: list[dict[str, Any]], budget_rows: list[dict[str, Any]], start: date, end: date) -> dict[str, Any]:
     """#1297 自己報告の接地: 照合ログの結果と、記録（気分の変化記録）をプロンプトへ渡した回数。"""
-    picked = [r for r in rows if in_period(jst_day(r.get("ts")), start, end)]
+    picked = [
+        r for r in rows
+        if in_period(jst_day(r.get("ts")), start, end) and not is_verification_row(r)
+    ]
     applied = [r for r in picked if r.get("status") == "applied" and r.get("kind") != "screening"]
     counts: Counter[str] = Counter()
     for r in applied:
@@ -154,6 +157,7 @@ def grounding_metrics(rows: list[dict[str, Any]], budget_rows: list[dict[str, An
     injected = sum(
         1 for r in budget_rows
         if in_period(jst_day(r.get("ts")), start, end)
+        and not is_verification_row(r)
         and int(dict(dict(r.get("blocks") or {}).get("emotion_grounding_context") or {}).get("kept") or 0) > 0
     )
     return {
@@ -385,7 +389,7 @@ def news_zettel_metrics(state: Any, budget_rows: list[dict[str, Any]], start: da
     new = [e for e in written if in_period(jst_day(e.get("processed_at")), start, end)]
     attached = Counter()
     for r in budget_rows:
-        if not in_period(jst_day(r.get("ts")), start, end):
+        if not in_period(jst_day(r.get("ts")), start, end) or is_verification_row(r):
             continue
         if int(dict(dict(r.get("blocks") or {}).get("news_zettel_context") or {}).get("kept") or 0) > 0:
             attached[str(r.get("surface") or "")] += 1
@@ -410,6 +414,8 @@ def cost_metrics(rows: list[dict[str, Any]], start: date, end: date) -> dict[str
     first = None
     for r in rows:
         day = jst_day(r.get("timestamp"))
+        if is_verification_row(r):
+            continue
         if day and (first is None or day < first):
             first = day
         if not in_period(day, start, end):

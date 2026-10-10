@@ -26,6 +26,20 @@ def test_build_index_extracts_nodes_edges_and_routes(tmp_path):
     assert target["backlinks"] == ["residual-value"]
 
 
+def test_build_index_omits_rag_excluded_notes(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "public.md").write_text("# Public\nsearchable body", encoding="utf-8")
+    (vault / "private.md").write_text(
+        "---\nrag_exclude: true\n---\n# Private\nmust not be routed",
+        encoding="utf-8",
+    )
+
+    index = graph.build_index(vault)
+
+    assert [node["path"] for node in index["nodes"]] == ["public.md"]
+
+
 def test_route_query_scores_without_opening_note_bodies(tmp_path):
     vault = tmp_path / "vault"
     vault.mkdir()

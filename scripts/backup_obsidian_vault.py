@@ -377,6 +377,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if summary.failed:
+        # A partial snapshot is useful as an additional recovery point, but must
+        # not be reported to launchd/health monitoring as a successful backup.
+        return 3
     return 0
 
 

@@ -23,6 +23,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from obsidian_query import list_vault_md_files, split_query_terms  # noqa: E402
+from api.knowledge.obsidian_loader import is_rag_excluded  # noqa: E402
 from runtime_paths import resolve_obsidian_vault  # noqa: E402
 from scripts._obsidian_common import safe_rel as _safe_rel  # noqa: E402
 
@@ -263,6 +264,8 @@ def build_index(vault: Path, *, include_private: bool = False) -> dict[str, Any]
             rel = _safe_rel(path, vault)
             body_raw = _read_text(path)
             meta, body = _strip_frontmatter(body_raw)
+            if is_rag_excluded(meta):
+                continue
             title = _title(meta, body, path)
             headings = _headings(body)
             tags = _tags(meta, body)

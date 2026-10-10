@@ -129,6 +129,20 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     return meta, body
 
 
+def is_rag_excluded(meta: dict | None) -> bool:
+    """Return whether parsed frontmatter explicitly excludes a note from AI retrieval."""
+    value = (meta or {}).get("rag_exclude")
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def note_excludes_rag(raw: str) -> bool:
+    """Apply the shared ``rag_exclude`` contract to raw Markdown text."""
+    meta, _body = _parse_frontmatter(raw)
+    return is_rag_excluded(meta)
+
+
 def _chunk_by_h2(body: str, file_path: str, file_name: str, meta: dict, mtime: float) -> list[Chunk]:
     """H2見出し単位でチャンキングする。H2がない場合はファイル全体を1チャンク。"""
     positions = [(m.start(), m.group(1)) for m in _H2_RE.finditer(body)]
@@ -194,6 +208,8 @@ def scan_vault(vault_path: str = _VAULT_PATH) -> Iterator[Chunk]:
                 with open(fpath, "r", encoding="utf-8", errors="replace") as f:
                     raw = f.read()
                 meta, body = _parse_frontmatter(raw)
+                if is_rag_excluded(meta):
+                    continue
                 for chunk in _chunk_by_h2(body, fpath, fname, meta, mtime):
                     yield chunk
             except Exception as e:
