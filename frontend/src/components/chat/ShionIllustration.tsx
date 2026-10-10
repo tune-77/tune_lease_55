@@ -9,7 +9,8 @@ import { X } from "lucide-react";
 import { apiClient } from "@/lib/api";
 
 // caption: 週1回の生成（REV-490）で、その週のチャットから選んだ題材の一言
-type Illustration = { available: boolean; date?: string; url?: string; caption?: string };
+// label: 日付の無い既存の絵（REV-600、「紫苑ギャラリー」）
+type Illustration = { available: boolean; date?: string; label?: string; url?: string; caption?: string };
 
 function useShionIllustration(mode: "daily" | "random", enabled = true): Illustration | null {
   const [illustration, setIllustration] = useState<Illustration | null>(null);
@@ -41,7 +42,7 @@ export default function ShionIllustration({ mode, className = "" }: Props) {
     <figure className={className}>
       <Image
         src={illustration.url}
-        alt={`紫苑のイラスト ${illustration.date ?? ""}`}
+        alt={`紫苑のイラスト ${illustration.date ?? illustration.label ?? ""}`}
         width={640}
         height={360}
         unoptimized
@@ -49,7 +50,7 @@ export default function ShionIllustration({ mode, className = "" }: Props) {
       />
       <figcaption className="mt-1 text-right text-[10px] text-slate-400">
         {illustration.caption && <span className="mr-2 text-violet-700">{illustration.caption}</span>}
-        {illustration.date}
+        {illustration.date ?? illustration.label}
       </figcaption>
     </figure>
   );
@@ -90,7 +91,9 @@ export function TodayShionCard({ className = "" }: { className?: string }) {
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-sm font-bold text-violet-800">
           今日の紫苑
-          <span className="ml-2 text-[11px] font-normal text-slate-400">{illustration.date} のイラスト</span>
+          <span className="ml-2 text-[11px] font-normal text-slate-400">
+            {illustration.date ? `${illustration.date} のイラスト` : illustration.label}
+          </span>
         </p>
         <button
           type="button"
@@ -103,7 +106,7 @@ export function TodayShionCard({ className = "" }: { className?: string }) {
       </div>
       <Image
         src={illustration.url}
-        alt={`今日の紫苑 ${illustration.date ?? ""}`}
+        alt={`今日の紫苑 ${illustration.date ?? illustration.label ?? ""}`}
         width={640}
         height={360}
         unoptimized
